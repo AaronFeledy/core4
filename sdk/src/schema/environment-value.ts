@@ -1,7 +1,6 @@
 import { Result, Schema, SchemaTransformation } from "effect";
 
 import { parseSecretReference } from "../secrets/reference.ts";
-import { executionSite } from "./execution-site.ts";
 import { layerMerge } from "./layer-merge.ts";
 
 // =============================================================================
@@ -51,10 +50,7 @@ export const BoundText = Schema.Struct({
 });
 export type BoundText = typeof BoundText.Type;
 
-const EnvironmentValueDescriptor = executionSite(
-  Schema.Union([Schema.String, SecretRef, BoundText]),
-  "secret-binding",
-)
+const EnvironmentValueDescriptor = Schema.Union([Schema.String, SecretRef, BoundText])
   .check(
     Schema.makeFilter((value) => new TextEncoder().encode(JSON.stringify(value)).length <= 1_048_576, {
       message: "Environment value exceeds the 1048576-byte expression output budget.",

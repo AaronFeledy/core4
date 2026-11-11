@@ -555,7 +555,6 @@ import {
   UpdateManifestSemver,
   UpdateManifestSha256,
 } from "./update-manifest.ts";
-import { ValidationFix, ValidationFixEdit } from "./validation-issue.ts";
 import { VolumeIdentity } from "./volume-identity.ts";
 import { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
 
@@ -610,8 +609,6 @@ const basePublicSchemaRegistry = schemaRegistry({
   ConfigKeyDescription,
   ExecutionSite,
   ExecutionSiteMatch,
-  ValidationFix,
-  ValidationFixEdit,
   SecretReference,
   SecretRef,
   BoundTextReference,

@@ -1,14 +1,8 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
+import type { ExecutionSiteMatch } from "@lando/sdk/landofile/execution-sites";
 import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
-import {
-  type LandofileLayer,
-  type ValidationFix,
-  type ValidationIssuePath,
-  formatValidationIssuePath,
-} from "@lando/sdk/schema";
+import { type LandofileLayer, type ValidationIssuePath, formatValidationIssuePath } from "@lando/sdk/schema";
 import { SECRET_BINDING_SITES } from "./secret-reference.ts";
-import { secretReferenceFix } from "./secret-reference-fix.ts";
-import { secretVariableNames } from "./secret-variable-names.ts";
 import { valueAtPath } from "./validation-suggestions.ts";
 
 interface UnsupportedSecretReferenceInput {
@@ -19,12 +13,46 @@ interface UnsupportedSecretReferenceInput {
   };
   readonly value: string;
   readonly references: readonly string[];
+  /** Plain-word shell position, when a lowered site refused at load. */
+  readonly context?: string;
   readonly document?: unknown;
   readonly defaultServiceType?: string;
 }
 
 const list = (values: readonly string[], type: "conjunction" | "disjunction" = "conjunction") =>
   new Intl.ListFormat("en", { type }).format(values);
+const usableName = (candidate: unknown): candidate is string =>
+  typeof candidate === "string" &&
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(candidate) &&
+  candidate !== "LANDO" &&
+  candidate !== "__proto__" &&
+  !candidate.startsWith("LANDO_");
+
+const secretVariableNames = (
+  input: { readonly value: string; readonly references: readonly string[] },
+  path: ValidationIssuePath,
+  site: ExecutionSiteMatch["site"] | undefined,
+): ReadonlyMap<string, string> => {
+  const names = new Map<string, string>();
+  const used = new Set<string>();
+  for (const reference of new Set(input.references)) {
+    const key =
+      typeof path.at(-1) === "number" ? input.value.slice(0, input.value.indexOf("=")) : path.at(-1);
+    const candidates = site === "build-arg" ? [key, reference] : [reference];
+    let name = candidates.find(
+      (candidate): candidate is string => usableName(candidate) && !used.has(candidate),
+    );
+    if (name === undefined) {
+      let index = 1;
+      while (used.has(index === 1 ? "SECRET" : `SECRET_${index}`)) index++;
+      name = index === 1 ? "SECRET" : `SECRET_${index}`;
+    }
+    names.set(reference, name);
+    used.add(name);
+  }
+  return names;
+};
+
 const genericSuggestion = () =>
   `Use \${secret:...} only in ${list(
     SECRET_BINDING_SITES.map((site) => site.label.replaceAll("`", "")),
@@ -36,7 +64,6 @@ export const unsupportedSecretReference = (
 ): {
   readonly message: string;
   readonly suggestion: string;
-  readonly fix?: ValidationFix;
 } => {
   const path = input.source.path;
   const match = executionSiteAt(path);
@@ -59,12 +86,9 @@ export const unsupportedSecretReference = (
   const guidance = ((): {
     readonly suggestion: string;
     readonly extra?: string;
-    readonly bindingParent?: ValidationIssuePath;
-    readonly shorthand?: boolean;
   } => {
     switch (site) {
       case undefined:
-      case "secret-binding":
         return { suggestion: genericSuggestion() };
       case "tooling-var": {
         const authoredTarget = valueAtPath(input.document, [
@@ -113,7 +137,6 @@ export const unsupportedSecretReference = (
             suggestion: `Move this step to ${service}.build.app, set ${bindings(`${service}.environment`)} to the ${binding}, and write ${shell} in the step.`,
           };
         return {
-          bindingParent: ["services", String(path[1]), "environment"],
           suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in the step. The step's shell reads it from the container environment.`,
         };
       }
@@ -135,17 +158,12 @@ export const unsupportedSecretReference = (
             suggestion: `Set ${bindings(target)} to the ${binding} and read ${name} from the environment in your program, or use a string cmd that reads ${shell}. Array commands run without a shell.`,
           };
         return {
-          bindingParent: step
-            ? ["tooling", String(path[1]), "cmds", Number(relative[0]), "env"]
-            : ["tooling", String(path[1]), "env"],
           suggestion: `Set ${bindings(target)} to the ${binding} and write ${shell} in the command. The shell reads it when the ${step ? "step" : "task"} runs.`,
         };
       }
       case "event-step": {
         const shorthand = path.length === 3;
         return {
-          bindingParent: ["events", String(path[1]), Number(path[2]), "env"],
-          shorthand,
           suggestion: shorthand
             ? `Use the object form: set ${event}.cmd to this command with ${shell} in place of the ${referenceLabel}, and ${bindings(`${event}.env`)} to the ${binding}. The shell reads it when the step runs.`
             : `Set ${bindings(`${event}.env`)} to the ${binding} and write ${shell} in the step's ${path.at(-1) === "defer" ? "deferred command" : "cmd"}.`,
@@ -191,9 +209,6 @@ export const unsupportedSecretReference = (
             ? `Write ${shell} in the command${typeof type === "string" ? ". The service type runs that string as a shell script." : " when the service type runs that string as a shell script."}`
             : `Array commands run without a shell, so read ${name} from the environment in your program, or use a string command that reads ${shell}.`;
         return {
-          ...(relative.length === 0 && typeof type === "string" && type !== "compose"
-            ? { bindingParent: ["services", String(path[1]), "environment"] }
-            : {}),
           suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding}. ${type === "compose" ? compose : typeof type === "string" ? native : `${native} ${compose}`}`,
         };
       }
@@ -208,22 +223,10 @@ export const unsupportedSecretReference = (
         return site satisfies never;
     }
   })();
-  const fix =
-    guidance.bindingParent === undefined
-      ? undefined
-      : secretReferenceFix({
-          document: input.document,
-          value: input.value,
-          path,
-          references: input.references,
-          names,
-          bindingParent: guidance.bindingParent,
-          shorthand: guidance.shorthand ?? false,
-        });
+  const context = input.context === undefined ? "" : ` in ${input.context}`;
   return {
-    message: `Secret references are not supported at ${formatValidationIssuePath(path)}.${guidance.extra ?? ""}`,
+    message: `Secret references are not supported at ${formatValidationIssuePath(path)}${context}.${guidance.extra ?? ""}`,
     suggestion: guidance.suggestion,
-    ...(fix === undefined ? {} : { fix }),
   };
 };
 

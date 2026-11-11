@@ -230,7 +230,7 @@ export const CONFIG_LINT_RULES = {
     stages: ["load"],
     severities: ["error"],
     summary:
-      "A `${secret:...}` reference outside a site that binds secrets. Landofile loads report it as the `reason` of `landofile.load`; shell command sites can also carry `fix` edits.",
+      "A `${secret:...}` reference outside a site that binds secrets. Landofile loads report it as the `reason` of `landofile.load`.",
     examplePaths: ["services.web.command"],
   },
 } as const satisfies Readonly<Record<string, ConfigLintRuleDescriptor>>;

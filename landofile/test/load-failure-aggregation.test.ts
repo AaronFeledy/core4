@@ -109,27 +109,6 @@ test("lint carries the failure tag as reason for a missing include", async () =>
   ]);
 });
 
-test("lint retains complete multi-reference fixes with physical source attribution", async () => {
-  const file = join(root, ".lando.yml");
-  await writeFile(file, 'name: aggregate\ntooling:\n  deploy:\n    cmd: "deploy ${secret:A} ${secret:B}"\n');
-  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
-  expect(snapshot.result.violations).toMatchObject([
-    {
-      rule: "landofile.load",
-      reason: "unsupported-secret-reference",
-      path: ["tooling", "deploy", "cmd"],
-      source: { file, path: ["tooling", "deploy", "cmd"] },
-      fix: {
-        edits: [
-          { op: "set", path: ["tooling", "deploy", "env", "A"], value: "${secret:A}" },
-          { op: "set", path: ["tooling", "deploy", "env", "B"], value: "${secret:B}" },
-          { op: "set", path: ["tooling", "deploy", "cmd"], value: 'deploy "$A" "$B"' },
-        ],
-      },
-    },
-  ]);
-});
-
 test("compose fragments use their implicit service type for remediation before stamping defaults", async () => {
   await writeFile(
     join(root, ".lando.yml"),
@@ -139,7 +118,6 @@ test("compose fragments use their implicit service type for remediation before s
   const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
   const issue = snapshot.result.violations.find((issue) => issue.reason === "unsupported-secret-reference");
   expect(issue?.suggestion).not.toContain("when the service type");
-  expect(issue?.fix).toBeUndefined();
   expect(issue).toMatchObject({
     rule: "landofile.load",
     path: ["services", "app", "command"],

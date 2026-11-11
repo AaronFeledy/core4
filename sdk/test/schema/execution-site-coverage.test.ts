@@ -142,7 +142,6 @@ test.each([
   [["tooling", "deploy", "cmd", 0], "tooling-cmd", [0]],
   [["tooling", "deploy", "cmds", 0], "tooling-cmds", [0]],
   [["tooling", "deploy", "cmds", 0, "cmd"], "tooling-cmds", [0, "cmd"]],
-  [["tooling", "deploy", "cmds", 0, "env", "TOKEN"], "secret-binding", []],
   [["tooling", "deploy", "vars", "token", "sh"], "tooling-var", []],
   [["events", "post-start", 0], "event-step", []],
   [["events", "post-start", 0, "cmd"], "event-step", []],
@@ -156,9 +155,17 @@ test.each([
   expect(executionSiteAt(path)).toEqual({ site, relativePath });
 });
 
-test.each([[["services", "web", "type"]], [["name"]], [["services", "web", "unknown"]]])(
-  "leaves non-execution paths unclassified: %j",
-  (path) => {
-    expect(executionSiteAt(path)).toBeUndefined();
-  },
-);
+test.each([
+  [["services", "web", "type"]],
+  [["name"]],
+  [["services", "web", "unknown"]],
+  [["services", "web", "environment", "TOKEN"]],
+  [["services", "web", "creds", "password"]],
+  [["services", "web", "password"]],
+  [["tooling", "deploy", "env", "TOKEN"]],
+  [["tooling", "deploy", "vars", "token", "env", "TOKEN"]],
+  [["toolingDefaults", "env", "TOKEN"]],
+  [["events", "post-start", 0, "env", "TOKEN"]],
+])("leaves secret-binding paths unclassified: %j", (path) => {
+  expect(executionSiteAt(path)).toBeUndefined();
+});

@@ -1,4 +1,5 @@
 import type { SecretReferenceInvalidError } from "@lando/sdk/errors";
+import type { ExecutionSiteMatch } from "@lando/sdk/landofile/execution-sites";
 import { type ParsedSecretReference, parseSecretReference } from "@lando/sdk/secrets";
 import { Result } from "effect";
 
@@ -38,6 +39,11 @@ export const SECRET_BINDING_SITES: ReadonlyArray<{
       (path[0] === "toolingDefaults" && path[1] === "env" && path.length === 3),
   },
   {
+    label: "a tooling var `env` value",
+    paths: ["tooling.<task>.vars.<name>.env.<KEY>"],
+    matches: (path) => path[0] === "tooling" && path[2] === "vars" && path[4] === "env" && path.length === 6,
+  },
+  {
     label: "an event step `env` value",
     paths: ["events.<event>.<index>.env.<KEY>"],
     matches: (path) =>
@@ -47,6 +53,38 @@ export const SECRET_BINDING_SITES: ReadonlyArray<{
 
 export const eligibleBindingPath = (path: readonly (string | number)[]): boolean =>
   SECRET_BINDING_SITES.some((site) => site.matches(path));
+
+/**
+ * Shell command sites that Lando lowers itself at invocation instead of rejecting
+ * the reference at load. argv forms and every other command site stay rejected.
+ */
+export const isLoweredSecretReferenceSite = (
+  match: ExecutionSiteMatch | undefined,
+  path: readonly (string | number)[],
+): boolean => {
+  if (match === undefined) return false;
+  switch (match.site) {
+    case "tooling-cmd":
+    case "tooling-task":
+    case "tooling-var":
+      return match.relativePath.length === 0;
+    case "tooling-cmds":
+      return (
+        (match.relativePath.length === 1 && typeof match.relativePath[0] === "number") ||
+        (match.relativePath.length === 2 &&
+          typeof match.relativePath[0] === "number" &&
+          match.relativePath[1] === "cmd")
+      );
+    case "event-step": {
+      const leaf = path.at(-1);
+      return (
+        match.relativePath.length === 0 && (typeof leaf === "number" || leaf === "cmd" || leaf === "defer")
+      );
+    }
+    default:
+      return false;
+  }
+};
 
 export const exactSecretReferenceId = (value: string): string | undefined =>
   EXACT_SECRET_REFERENCE.exec(value)?.[1];

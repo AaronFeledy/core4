@@ -1,7 +1,6 @@
 import { dirname, relative, sep } from "node:path";
 import { type ConfigLintViolation, formatValidationIssuePath } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "../diagnostic-text";
-import { formatValidationFixEdits } from "../validation-fix-text.ts";
 
 const formatPath = (path: ConfigLintViolation["path"]): string => {
   const formatted = formatValidationIssuePath(path);
@@ -39,11 +38,11 @@ const renderViolation = (violation: ConfigLintViolation, landofilePath?: string)
   } else if (scopeText.length > 0) {
     lines.push(`    scopes: ${scopeText}`);
   }
-  const guidance = [
-    ...(violation.suggestion?.split("\n").map(escapeDiagnosticText) ?? []),
-    ...(violation.fix === undefined ? [] : formatValidationFixEdits(violation.fix)),
-  ];
-  lines.push(...guidance.map((line, index) => `${index === 0 ? "    fix: " : "       | "}${line}`));
+  if (violation.suggestion !== undefined) {
+    for (const [index, line] of violation.suggestion.split("\n").entries()) {
+      lines.push(`${index === 0 ? "    fix: " : "       | "}${escapeDiagnosticText(line)}`);
+    }
+  }
   return lines.join("\n");
 };
 

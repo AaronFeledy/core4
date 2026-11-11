@@ -61,6 +61,11 @@ export function* sensitivePlanCandidates(plan: RedactionPlan): Generator<Candida
           if (Predicate.isObject(step)) yield* sensitiveMap(step.env, [...path, "cmds", index, "env"]);
         }
       }
+      if (Predicate.isObject(task.vars)) {
+        for (const [name, variable] of Object.entries(task.vars)) {
+          if (Predicate.isObject(variable)) yield* sensitiveMap(variable.env, [...path, "vars", name, "env"]);
+        }
+      }
     }
   }
   for (const [name, steps] of Object.entries(plan.events ?? {})) {

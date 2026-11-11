@@ -29,33 +29,6 @@ export const ValidationIssuePath = Schema.Array(Schema.Union([Schema.String, Sch
 });
 export type ValidationIssuePath = typeof ValidationIssuePath.Type;
 
-export const ValidationFixEdit = Schema.Struct({
-  op: Schema.Literal("set").annotate({
-    description: "Create missing mappings and replace the target value.",
-  }),
-  path: ValidationIssuePath,
-  value: Schema.Json.annotate({ description: "Replacement authored value." }),
-}).annotate({
-  identifier: "ValidationFixEdit",
-  title: "Validation Fix Edit",
-  description:
-    "One ordered set operation on an authored document, creating missing mappings and replacing the target value.",
-});
-export type ValidationFixEdit = typeof ValidationFixEdit.Type;
-
-export const ValidationFix = Schema.Struct({
-  edits: Schema.NonEmptyArray(ValidationFixEdit).annotate({
-    description:
-      "Edits applied in order to the authored document named by source.file; set creates missing mappings and replaces an existing value.",
-  }),
-}).annotate({
-  identifier: "ValidationFix",
-  title: "Validation Fix",
-  description:
-    "Ordered authored-document edits that fully resolve a validation issue when applied to source.file.",
-});
-export type ValidationFix = typeof ValidationFix.Type;
-
 /**
  * One problem found while validating an authored file (Landofile, include,
  * recipe manifest, global config). Every validator reports issues in this
@@ -103,10 +76,6 @@ export const ValidationIssue = Schema.Struct({
   message: Schema.String.annotate({ description: "Human-readable description of the problem." }),
   suggestion: Schema.optionalKey(Schema.String).annotate({
     description: "Likely fix, such as the closest allowed key for an unknown key.",
-  }),
-  fix: Schema.optionalKey(ValidationFix).annotate({
-    description:
-      "Ordered edits to source.file, present only when applying them fully resolves the issue; set creates missing mappings and replaces an existing value.",
   }),
   source: Schema.optionalKey(ValidationIssueSource).annotate({
     description: "Physical source of the effective value, when known.",

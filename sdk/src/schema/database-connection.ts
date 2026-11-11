@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 import { EnvironmentValue } from "./environment-value.ts";
-import { executionSiteKey } from "./execution-site.ts";
 import { PortNumber } from "./primitives.ts";
 
 // =============================================================================
@@ -8,11 +7,11 @@ import { PortNumber } from "./primitives.ts";
 // =============================================================================
 export const ServiceCreds = Schema.Struct({
   user: Schema.String.annotate({ description: "Literal database username." }),
-  password: executionSiteKey(EnvironmentValue, "secret-binding").annotate({
+  password: EnvironmentValue.annotate({
     description: "User password literal or deferred binding.",
   }),
   database: Schema.String.annotate({ description: "Literal database name." }),
-  rootPassword: executionSiteKey(Schema.optionalKey(EnvironmentValue), "secret-binding").annotate({
+  rootPassword: Schema.optionalKey(EnvironmentValue).annotate({
     description: "Optional administrative password literal or deferred binding.",
   }),
 }).annotate({

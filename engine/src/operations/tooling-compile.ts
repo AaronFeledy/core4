@@ -23,6 +23,7 @@ import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
+import type { ToolingShellBindings } from "../tooling/task-shape.ts";
 import type { AdmittedToolingInput } from "./tooling-input-admission.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 
@@ -99,6 +100,8 @@ export interface CompileToolingInput extends Omit<InvocationOptions, "args"> {
   readonly lookupKey: string;
   readonly task: ToolingTaskShape;
   readonly source: ToolingSource;
+  /** Generated execution-scoped secret bindings from the resolved task shape. */
+  readonly bindings?: ToolingShellBindings;
 }
 
 /**
@@ -126,12 +129,14 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
     (step, index): Effect.Effect<ToolingInvocation, ToolingInputError> =>
       Effect.gen(function* () {
         const service = yield* Effect.fromResult(resolveServiceRef(step.service, values, normalized));
+        const bound = input.bindings?.commands.get(input.task.cmd !== undefined ? "cmd" : `cmds.${index}`);
         return stepInvocation(
           input.name,
           { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
           {
             ...input,
             args: index === normalized.steps.length - 1 ? argv : [],
+            ...(bound === undefined ? {} : { env: { ...input.env, ...bound } }),
           },
         );
       }),

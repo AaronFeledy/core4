@@ -659,7 +659,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         "File-backed SQLite database relative to this service's app mount. Use db:import, db:export, db:snapshot, db:restore, and db:reset against the file.",
     }),
-    password: executionSiteKey(Schema.optionalKey(EnvironmentValue), "secret-binding").annotate({
+    password: Schema.optionalKey(EnvironmentValue).annotate({
       description:
         "Redis authentication password, passed through the container environment rather than command arguments.",
     }),
@@ -730,7 +730,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
-    environment: executionSiteKey(Schema.optionalKey(ComposeEnvironmentInput), "secret-binding"),
+    environment: Schema.optionalKey(ComposeEnvironmentInput),
     envFile: Schema.optionalKey(ComposeEnvFileInput),
     labels: Schema.optionalKey(ComposeLabelsInput),
 
@@ -899,6 +899,10 @@ export const ToolingVarSh = Schema.Struct({
     description:
       "Target for this var command: :host, a service name, or :<declared non-boolean flag>. An explicit target resets task user and dir; invocation overrides still apply.",
   }),
+  env: Schema.optionalKey(ToolingEnvironment).annotate({
+    description:
+      "Environment applied only to this var command, after the task env ban; the var command receives no task env.",
+  }),
   sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
     description:
       "Protect captured output from diagnostics and task output. Secret-like names are always sensitive; false is not accepted.",
@@ -926,7 +930,7 @@ export const ToolingStepShape = Schema.Struct({
   user: Schema.optionalKey(Schema.String).annotate({
     description: "User this step runs as; overrides the task user.",
   }),
-  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding").annotate({
+  env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Environment overlaid on the task environment for this step.",
   }),
 });
@@ -994,7 +998,7 @@ export const ToolingTaskShape = Schema.Struct({
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",
   }),
-  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding").annotate({
+  env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Environment variables applied to this tooling task after app-wide tooling defaults.",
   }),
   vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
@@ -1050,7 +1054,7 @@ export const ToolingDefaultsShape = Schema.Struct({
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Default working directory inherited by tooling tasks.",
   }),
-  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding").annotate({
+  env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Default environment variables inherited by tooling tasks.",
   }),
   vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)).annotate({

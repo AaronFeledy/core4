@@ -6,7 +6,7 @@ import { childAsts } from "./directive-paths.ts";
 
 export const ExecutionSiteMatch = Schema.Struct({
   site: ExecutionSite.annotate({
-    description: "Execution semantics or secret-binding role of the matched string.",
+    description: "Execution semantics of the matched string.",
   }),
   relativePath: ValidationIssuePath.annotate({
     description: "Path within the matched execution site, empty for the site itself.",

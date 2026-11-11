@@ -21,11 +21,10 @@ export const ExecutionSite = Schema.Literals([
   "tooling-var",
   "event-step",
   "event-lando-command",
-  "secret-binding",
 ]).annotate({
   identifier: "ExecutionSite",
   title: "Execution Site",
-  description: "Authored command execution semantics or secret-binding role for a Landofile string.",
+  description: "Authored command execution semantics for a Landofile string.",
 });
 export type ExecutionSite = typeof ExecutionSite.Type;
 

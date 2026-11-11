@@ -76,11 +76,12 @@ test.each([...cases])(
         const effective = yield* invocationToolingForPlan(compiled, persisted, "lndo.site");
         const check = effective.tooling.check;
         if (check === undefined) return yield* Effect.die("Missing check task");
-        return yield* resolveToolingTaskShape(
+        const resolved = yield* resolveToolingTaskShape(
           check,
           { event: { use: true } },
           sitesUnder(effective.sites, ["tooling", "check"]),
         );
+        return resolved.task;
       }),
     );
     expect(task.env?.PASSWORD).toEqual({ _tag: "SecretRef", reference: "INHERITED" });

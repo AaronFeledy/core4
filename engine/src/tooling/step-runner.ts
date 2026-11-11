@@ -8,6 +8,7 @@ import {
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigExpressionError, ToolingCompileError, ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
+import type { SecretRef } from "@lando/sdk/schema";
 import { Environment, EventForSelector, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { compileSelector } from "./step-compiler.ts";
@@ -88,24 +89,31 @@ export const resolveLeaf = Effect.fnUntraced(function* (leaf: ToolingStepLeaf, c
   });
   const locate = (cause: unknown): ConfigExpressionError =>
     compiledValueError(cause, { filePath: "<tooling-step>", pendingSites: sites });
+  const bindings: Record<string, SecretRef> = {};
   if (leaf.kind === "cmd") {
     for (const site of sites.filter((site) => site.path[0] === "command")) {
-      const command = yield* Effect.try({
-        try: () => bindToolingShellSite(site, context, new Set(Object.keys(context.vars ?? {}))),
+      const bound = yield* Effect.try({
+        try: () => bindToolingShellSite(site, context, new Set(Object.keys(context.vars ?? {})), leaf.env),
         catch: (cause) =>
           cause instanceof ToolingCompileError || cause instanceof ConfigExpressionError
             ? cause
             : locate(cause),
       });
-      value = replaceSiteValue(value, site.path, command);
+      Object.assign(bindings, bound.env);
+      value = replaceSiteValue(value, site.path, bound.text);
     }
   }
   switch (leaf.kind) {
-    case "cmd":
+    case "cmd": {
+      const resolved = yield* Schema.decodeUnknownEffect(ResolvedCmd)(value).pipe(mapFailures(locate));
       return {
-        leaf: yield* Schema.decodeUnknownEffect(ResolvedCmd)(value).pipe(mapFailures(locate)),
+        leaf:
+          Object.keys(bindings).length === 0
+            ? resolved
+            : { ...resolved, env: { ...resolved.env, ...bindings } },
         context,
       };
+    }
     case "command":
       return {
         leaf: yield* Schema.decodeUnknownEffect(ResolvedCommand)(value).pipe(mapFailures(locate)),

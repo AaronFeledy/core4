@@ -28,7 +28,6 @@ export const ConfigLintViolation = Schema.Struct({
   message: Schema.String,
   /** Likely fix, such as the closest allowed key or a Compose disposition. */
   suggestion: Schema.optionalKey(Schema.String),
-  fix: ValidationIssue.fields.fix,
   /** 1-based source line for diagnostics that can be located. */
   line: Schema.optionalKey(Schema.Number),
   /** 1-based source column for diagnostics that can be located. */

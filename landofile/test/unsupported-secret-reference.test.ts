@@ -61,7 +61,7 @@ test.each([
     path: ["services", "app", "build", "app", "user"],
     extra: "",
     suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
   {
     path: ["services", "app", "build", "app", 0, "run"],
@@ -139,7 +139,7 @@ test.each([
     path: ["services", "app", "type"],
     extra: "",
     suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
   {
     path: ["services", "app", "healthcheck", "command"],
@@ -157,13 +157,13 @@ test.each([
     path: ["services", "app", "readiness", "user"],
     extra: "",
     suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
   {
     path: ["services", "app", "healthcheck", "interval"],
     extra: "",
     suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
   ...[["command"], ["raw", 0], ["flags", "TOKEN"], ["args", "TOKEN"]].map((suffix) => ({
     path: ["events", "post-start", 0, ...suffix],
@@ -240,7 +240,6 @@ test.each([
   for (const token of includes) expect(diagnostic.suggestion).toContain(token);
   for (const token of excludes) expect(diagnostic.suggestion).not.toContain(token);
   expect(diagnostic.suggestion).toContain("sensitive: true");
-  expect(diagnostic.fix).toBeUndefined();
 });
 
 test("gives host-readiness advice that moves the probe into the service", () => {
@@ -258,7 +257,6 @@ test("gives host-readiness advice that moves the probe into the service", () => 
   expect(host.suggestion).toContain("on the host");
   expect(host.suggestion).toContain("target: service");
   expect(host.suggestion).toContain("services.app.environment.TOKEN");
-  expect(host.fix).toBeUndefined();
 
   const service = unsupportedSecretReference({
     source,

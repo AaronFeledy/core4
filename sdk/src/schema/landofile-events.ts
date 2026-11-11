@@ -52,7 +52,7 @@ const EventStepTail = {
 const EventCmdFields = {
   service: Schema.optionalKey(Schema.String),
   dir: Schema.optionalKey(PortablePath),
-  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding"),
+  env: Schema.optionalKey(ToolingEnvironment),
   user: Schema.optionalKey(Schema.String),
 };
 

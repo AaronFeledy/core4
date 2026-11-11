@@ -79,60 +79,6 @@ test("config lint text visibly escapes terminal controls", () => {
 });
 
 describe("config lint multiline suggestions", () => {
-  test("renders ordered scalar and block object edits after the suggestion", () => {
-    const [finding] = renderConfigLintViolations([
-      excessKey({
-        suggestion: "Bind it.",
-        fix: {
-          edits: [
-            { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
-            {
-              op: "set",
-              path: ["tooling", "deploy"],
-              value: { cmd: "echo $TOKEN", env: { TOKEN: "${secret:TOKEN}" } },
-            },
-          ],
-        },
-      }),
-    ]);
-    expect(finding?.split("\n").slice(2)).toEqual([
-      "    fix: Bind it.",
-      '       | tooling.deploy.env.TOKEN: "${secret:TOKEN}"',
-      "       | tooling.deploy:",
-      '       |   cmd: "echo $TOKEN"',
-      "       |   env:",
-      '       |     TOKEN: "${secret:TOKEN}"',
-    ]);
-  });
-
-  test("labels the first edit when a finding has no suggestion", () => {
-    const { suggestion: _suggestion, ...violation } = excessKey({
-      fix: {
-        edits: [
-          { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
-          { op: "set", path: ["tooling", "deploy", "cmd"], value: "echo $TOKEN" },
-        ],
-      },
-    });
-    const [finding] = renderConfigLintViolations([violation]);
-    expect(finding?.split("\n").slice(2)).toEqual([
-      '    fix: tooling.deploy.env.TOKEN: "${secret:TOKEN}"',
-      '       | tooling.deploy.cmd: "echo $TOKEN"',
-    ]);
-  });
-
-  test("escapes controls in edit paths and values without forging lines", () => {
-    const [finding] = renderConfigLintViolations([
-      excessKey({
-        fix: { edits: [{ op: "set", path: ["tooling", "bad\n\u001b"], value: "bad\u009b\nvalue" }] },
-      }),
-    ]);
-    expect(finding?.split("\n").slice(2)).toEqual([
-      '    fix: Did you mean "image"?',
-      '       | tooling.bad\\u000a\\u001b: "bad\\u009b\\nvalue"',
-    ]);
-  });
-
   test.each([
     { suggestion: "", expected: ["    fix: "] },
     { suggestion: "One line", expected: ["    fix: One line"] },

@@ -102,9 +102,9 @@ test.each([
     "Move this step to services.app.build.app",
   ],
   [
-    { tooling: { deploy: "deploy ${secret:TOKEN}" } },
-    ["tooling", "deploy"],
-    "Use the object form: set tooling.deploy.cmd",
+    { tooling: { deploy: { cmd: ["deploy", "${secret:TOKEN}"] } } },
+    ["tooling", "deploy", "cmd", 1],
+    "Set tooling.deploy.env.TOKEN",
   ],
   [
     { services: { app: { entrypoint: "/start ${secret:TOKEN}" } } },
@@ -117,9 +117,9 @@ test.each([
     "For runtime use, set services.app.environment.TOKEN",
   ],
   [
-    { events: { "post-stop": [{ defer: "notify ${secret:TOKEN}" }] } },
-    ["events", "post-stop", 0, "defer"],
-    "Set events.post-stop[0].env.TOKEN",
+    { events: { "post-stop": [{ task: "notify ${secret:TOKEN}" }] } },
+    ["events", "post-stop", 0, "task"],
+    "Lando command inputs cannot carry secrets",
   ],
 ] as const)(
   "reports the authored shorthand path for site-aware guidance: %j",
