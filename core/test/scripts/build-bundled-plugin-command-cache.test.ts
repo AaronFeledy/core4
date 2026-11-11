@@ -1,9 +1,8 @@
+import { expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { expect, test } from "bun:test";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 
@@ -12,7 +11,7 @@ import { bundledPluginCommands, renderPage } from "../../../scripts/build-comman
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixtureFiles = [
   "package.json",
-  "biome.json",
+  "biome.jsonc",
   "core/build.config.ts",
   "core/src/recipes/lando3-ports.ts",
   "scripts/_codegen-output.ts",

@@ -1,8 +1,7 @@
-import { Effect, Layer } from "effect";
-
 import { ScratchInitAppPort } from "@lando/engine/scratch-app/service";
 import type { ProcessRunner, StateStore } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer } from "effect";
 
 import { initApp } from "../cli/commands/init";
 import { retainedRecipeSourceStore } from "../recipes/runtime-sources";

@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Schema } from "effect";
-
 import { LandofileVersionConstraintError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 describe("Landofile version-constraint schema", () => {
   test("rejects malformed lando ranges at the boundary", () => {

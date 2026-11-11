@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect, Fiber, Stream } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -15,15 +13,16 @@ import {
 import { AppPlanner, ConfigService, FileSystem, GlobalAppService } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { TestFileSyncEngine } from "@lando/sdk/test";
+import { Effect, Fiber, Stream } from "effect";
 
 import { makeGlobalAppService } from "../../src/global-app/service.ts";
+import { startApp } from "../../src/operations/start.ts";
 import {
   applyTreeId,
   startFileSyncTreeId,
   startHostProxyTreeId,
   startRoutesTreeId,
 } from "../../src/operations/start-progress.ts";
-import { startApp } from "../../src/operations/start.ts";
 import {
   byTag,
   makeHarness,

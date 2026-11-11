@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 import * as lando3 from "@lando/lando3";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigTranslateDetectInput, ConfigTranslateInput, PluginManifest } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { type ConfigTranslatorContractHarness, runConfigTranslatorContractSuite } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 const digest = (text: string): string =>
   `sha256:${new Bun.CryptoHasher("sha256").update(text).digest("hex")}`;
@@ -153,5 +152,6 @@ describe("ConfigTranslator contract — bundled lando3", () => {
     expect(index._tag).toBe("Success");
   });
 });
+
 import { serviceTypeFacts } from "@lando/service-lando";
 import { loadLando3TranslatorPorts } from "../../src/recipes/lando3-ports.ts";

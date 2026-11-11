@@ -3,14 +3,13 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { rememberLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
+import { Effect } from "effect";
+import { deriveAppCommandToolingFingerprint } from "../../src/cache/command-index.ts";
 import {
   readFreshAppCommandCacheForCwd,
   writeAppCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
-import { deriveAppCommandToolingFingerprint } from "../../src/cache/command-index.ts";
 import { appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 
 const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {

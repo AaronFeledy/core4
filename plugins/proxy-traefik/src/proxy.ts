@@ -1,9 +1,6 @@
+import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { sameRealpath } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
-import { DateTime, Effect, Layer, Option, Stream } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-
-import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import {
   CaError,
   FileNotFoundError,
@@ -27,6 +24,8 @@ import {
   type RouterServiceShape,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { DateTime, Effect, Layer, Option, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { makeRouteApplication } from "./apply-routes.ts";
 import { ensureDashboardFile } from "./dashboard.ts";

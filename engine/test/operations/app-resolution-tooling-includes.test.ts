@@ -1,14 +1,12 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { type Context, Effect } from "effect";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
-
-import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { type Context, Effect } from "effect";
 import { loadUserLandofile } from "../../src/landofile/app-resolution.ts";
 import { scopedLandofileRuntimeInputs } from "../../src/services/landofile-live.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

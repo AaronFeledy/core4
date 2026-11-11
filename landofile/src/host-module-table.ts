@@ -1,6 +1,7 @@
 import * as sdk from "@lando/sdk";
 import * as abortablePromise from "@lando/sdk/abortable-promise";
 import * as app from "@lando/sdk/app";
+import * as certificates from "@lando/sdk/certificates";
 import * as commandResult from "@lando/sdk/command-result";
 import * as databaseCreds from "@lando/sdk/database-creds";
 import * as digest from "@lando/sdk/digest";
@@ -60,6 +61,7 @@ export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk": sdk,
   "@lando/sdk/abortable-promise": abortablePromise,
   "@lando/sdk/app": app,
+  "@lando/sdk/certificates": certificates,
   "@lando/sdk/command-result": commandResult,
   "@lando/sdk/database-creds": databaseCreds,
   "@lando/sdk/digest": digest,

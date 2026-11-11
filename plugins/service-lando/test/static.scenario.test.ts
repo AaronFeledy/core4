@@ -1,11 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema, Stream } from "effect";
-import {
-  compileTestLandofile,
-  toolingExecutionLayer,
-  toolingValueResolverLayer,
-} from "./support/compiled-landofile.ts";
-
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -26,10 +19,15 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
+import { Effect, Layer, Schema, Stream } from "effect";
 import { services } from "../src/index.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");
@@ -286,4 +284,5 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     ]);
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

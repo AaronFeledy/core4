@@ -49,7 +49,7 @@ jobs:
       - name: Build and test the container helper with Lando
         run: |
           bun run scripts/build-container-helper.ts --test
-          bun test core/test/container-helper/helper.integration.test.ts
+          bun run test:selection container-helper
 
       - name: Upload container helper
         uses: actions/upload-artifact@v6

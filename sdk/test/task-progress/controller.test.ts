@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Fiber, Schema } from "effect";
-
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent as PublishedEvent } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree, startChildTaskId } from "@lando/sdk/task-progress";
+import { Cause, Effect, Exit, Fiber, Schema } from "effect";
 
 const collectPublisher = () => {
   const events: LandoEvent[] = [];

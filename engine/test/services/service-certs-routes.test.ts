@@ -1,12 +1,9 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { Schema } from "effect";
 
 import { planAppPlannerCerts } from "./app-planner-certs-harness.ts";
 
@@ -14,7 +11,6 @@ for (const routes of [{ routes: [] }, { proxy: { web: [] } }]) {
   test(`omits the generated route SAN when ${"routes" in routes ? "service" : "proxy"} routes are explicitly empty`, async () => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-certs-route-opt-out-"));
-    const ca = makeTestCertificateAuthority();
     try {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "certs-app",
@@ -28,7 +24,6 @@ for (const routes of [{ routes: [] }, { proxy: { web: [] } }]) {
         appRoot: root,
         cacheRoot: join(root, "cache"),
         landofile,
-        ca,
       });
       // Then
       expect(result.routes).toEqual([]);
@@ -47,7 +42,6 @@ for (const routes of [{ routes: [] }, { proxy: { web: [] } }]) {
 test("derives SANs from normalized shorthand hostnames", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-certs-routes-"));
-  const ca = makeTestCertificateAuthority();
   try {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "certs-app",
@@ -59,7 +53,6 @@ test("derives SANs from normalized shorthand hostnames", async () => {
       appRoot: root,
       cacheRoot: join(root, "cache"),
       landofile,
-      ca,
     });
     // Then
     const sans = [
@@ -71,8 +64,6 @@ test("derives SANs from normalized shorthand hostnames", async () => {
       "127.0.0.1",
     ];
     expect(result.services[ServiceName.make("web")]?.certs?.sans).toEqual(sans);
-    const issued = ca.calls.find((call) => call.op === "issueCert");
-    expect(issued?.op === "issueCert" ? issued.spec.sans : []).toEqual(sans);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

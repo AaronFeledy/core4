@@ -2,8 +2,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { type Context, DateTime, Effect, Option, Result, Schema } from "effect";
+import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 
 import { causeMessage } from "@lando/sdk/errors";
 import {
@@ -13,10 +12,9 @@ import {
   UninstallStepResult,
 } from "@lando/sdk/schema";
 import { PrivilegeService } from "@lando/sdk/services";
-
-import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { type Context, DateTime, Effect, Option, Result, Schema } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
@@ -51,12 +49,13 @@ import {
 } from "./uninstall-runtime-error";
 import { inspectShellenvBlocks } from "./uninstall-shell-entries";
 
+export { contributedStepId } from "./uninstall-contributions";
 export {
+  type RemoveRuntimeDirDeps,
   chmodTreeUserWritable,
   defaultRemoveRuntimeDir,
   defaultTerminateRuntimeBinProcesses,
   managedPodmanUnshareRmInvocation,
-  type RemoveRuntimeDirDeps,
 } from "./uninstall-runtime-dir";
 export {
   UNINSTALL_RUNTIME_DIR_LEFTOVER_MESSAGE,
@@ -66,7 +65,6 @@ export {
   preferLeftoverRuntimePath,
   uninstallRuntimeDirRemediation,
 } from "./uninstall-runtime-error";
-export { contributedStepId } from "./uninstall-contributions";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one uninstall operation on one engine seam.
 

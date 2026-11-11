@@ -12,9 +12,9 @@ import {
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Stream } from "effect";
+import { startApp } from "../../src/operations/start.ts";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
 import { startGpgAgentSession, withStartedGpgAgent } from "../../src/operations/start-gpg-agent.ts";
-import { startApp } from "../../src/operations/start.ts";
 import type { DetachedWorkerSpawnSpec } from "../../src/subsystems/detached-worker/process.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/gpg-agent/intent.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
@@ -443,4 +443,5 @@ for (const prepareExit of [0, 1]) {
     }
   });
 }
+
 import { literalTestLandofile } from "../compiled-landofile.ts";

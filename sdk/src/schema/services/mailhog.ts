@@ -17,7 +17,6 @@ export const MAILHOG_DEPRECATION_NOTICE = Schema.decodeUnknownSync(DeprecationNo
 
 export const MailhogServiceConfig = deprecateSchema(
   catalogServiceConfig({
-    extraKeys: ["database"],
     type: catalogServiceType(
       Schema.Literal("mailhog"),
       "Deprecated MailHog catalog service type. Use mailpit.",

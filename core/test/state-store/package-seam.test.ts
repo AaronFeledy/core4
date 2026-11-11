@@ -2,14 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Predicate } from "effect";
-
-import { Effect, Schema } from "effect";
-
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
+import { Effect, Predicate, Schema } from "effect";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const ValueSchema = Schema.Struct({ value: Schema.String });

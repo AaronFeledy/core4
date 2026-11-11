@@ -3,7 +3,6 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { readManagedProcesses } from "../src/podman/managed-status-io.ts";
 import {
   type ManagedProcess,
   type ManagedProcessIdentity,
@@ -11,6 +10,7 @@ import {
   descendsFrom,
   managedProcessPids,
 } from "../src/podman/managed-status.ts";
+import { readManagedProcesses } from "../src/podman/managed-status-io.ts";
 import { parseRuntimeShutdownReceipt } from "../src/podman/runtime-shutdown.ts";
 
 const identity: ManagedProcessIdentity = {

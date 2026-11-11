@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option } from "effect";
-
-import { McpTransportError } from "@lando/sdk/errors";
-import { createRedactor } from "@lando/sdk/secrets";
-
 import { redactBoundedJsonValue, stringifyBoundedJson } from "@lando/mcp/bounded-json";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
+import { McpTransportError } from "@lando/sdk/errors";
+import { createRedactor } from "@lando/sdk/secrets";
+import { Cause, Effect, Option } from "effect";
 
 describe("bounded MCP JSON", () => {
   test("matches native JSON string semantics for astral and surrogate strings", async () => {

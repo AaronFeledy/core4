@@ -1,13 +1,11 @@
 import { dirname } from "node:path";
-import { Effect } from "effect";
-
-import type { RuntimeProviderShape } from "@lando/sdk/services";
-
 import type {
   HostProxyWorkerRecord,
   LegacyHostProxyWorkerRecord,
 } from "@lando/engine/subsystems/host-proxy/worker-records";
 import { probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect } from "effect";
 import type { DoctorCheck, DoctorResult, DoctorSolution } from "./doctor";
 import type { HostProxyTransportDoctorOptions } from "./doctor-host-proxy";
 import { probeHostProxyContainer } from "./doctor-host-proxy-container-probe";

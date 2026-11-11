@@ -183,6 +183,8 @@ export interface RegisteredCommand {
   readonly summary: string;
   readonly hidden: boolean;
   readonly input?: import("../schema/tooling-input.ts").ToolingInputDeclaration;
+  /** Bounded summary of what a tooling command runs, when its index entry records one. */
+  readonly runs?: import("../schema/tooling-run-summary.ts").ToolingRunSummary;
 }
 
 export class CommandRegistry extends Context.Service<

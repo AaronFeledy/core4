@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
-import { type TunnelServiceContractHarness, runTunnelServiceContract } from "@lando/sdk/test";
-
 import { AppId, ServiceName } from "@lando/core/schema";
 import { TestTunnelService, makeTestTunnelService } from "@lando/core/testing";
+import { type TunnelServiceContractHarness, runTunnelServiceContract } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

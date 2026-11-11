@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { CaError, ProxyApplyError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { app, httpsRoutes, makeHarness } from "./proxy-tls-harness.ts";
 import { routeFileBasename } from "./route-owner-fixture.ts";
@@ -62,8 +61,8 @@ describe("Traefik RouterService TLS", () => {
     expect(harness.operations).not.toContain("ca:setup");
   });
 
-  test("writes copied PEMs before valid file-provider TLS configuration", async () => {
-    // Given: an HTTPS route and issued PEM source files.
+  test("writes the issued PEMs before valid file-provider TLS configuration", async () => {
+    // Given: an HTTPS route and an authority that returns PEM values.
     const harness = makeHarness();
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
 
@@ -97,12 +96,16 @@ describe("Traefik RouterService TLS", () => {
         },
       },
     });
-    expect(harness.files.get(`/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.crt`)).toBe(
-      "app cert",
-    );
-    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/certs/default-lndo.site.ca.crt")).toBe(
-      "issuer cert",
-    );
+    const certs = "/lando/global/proxy-traefik/dynamic/certs";
+    expect(
+      [
+        `${app.ownerKey}.crt`,
+        `${app.ownerKey}.key`,
+        "default-lndo.site.crt",
+        "default-lndo.site.key",
+        "default-lndo.site.ca.crt",
+      ].map((file) => harness.files.get(`${certs}/${file}`)),
+    ).toEqual(["app cert", "app key", "default cert", "default key", "issuer cert"]);
     expect(harness.operations.indexOf(`write:${routePath}`)).toBeGreaterThan(
       harness.operations.indexOf(
         `write-secret:/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.key`,

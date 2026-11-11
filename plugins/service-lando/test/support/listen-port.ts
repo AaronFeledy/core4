@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-import { Schema } from "effect";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { composeServicePlan } from "./compose-harness.ts";
 
 export const nativeListenPortSuite = (input: {

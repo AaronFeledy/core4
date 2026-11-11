@@ -1,9 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { drainRendererSync, renderJson, renderPlain } from "@lando/renderer/runtime";
 
-import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
+import { renderPlainLine } from "@lando/renderer-lando/format";
 import {
   type LandoEvent,
   TaskCompleteEvent,
@@ -11,10 +12,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-
-import { renderPlainLine } from "@lando/renderer-lando/format";
-import { createBufferedRendererIO } from "@lando/renderer/io";
-import { drainRendererSync, renderJson, renderPlain } from "@lando/renderer/runtime";
+import { Schema } from "effect";
 
 const fixturePath = resolve(import.meta.dirname, "fixtures/renderer.init-progress.ndjson");
 const fixtureContent = readFileSync(fixturePath, "utf8");

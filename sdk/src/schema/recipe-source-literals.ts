@@ -4,8 +4,8 @@ import { evaluateExpressionEither } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 import { expressionInterpolationsTouchOnlyScopes, expressionScopeMembers } from "../expressions/scopes.ts";
 import type { LandofileSourceValue } from "./landofile-source.ts";
-import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 import type { RecipeSource } from "./recipe-source.ts";
+import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 
 export const validateSourceConfig = (
   source: RecipeSource,
@@ -22,8 +22,7 @@ export const validateSourceConfig = (
     const bindingSite =
       (path[0] === "services" &&
         ((path[2] === "environment" && path.length === 4) ||
-          (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")) ||
-          path[2] === "password")) ||
+          (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")))) ||
       (path[0] === "tooling" && path.includes("env"));
     if (
       !expressionInterpolationsTouchOnlyScopes(parsed.success, [

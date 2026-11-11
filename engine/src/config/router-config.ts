@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import {
   type AppPlan,
   DEFAULT_ROUTER_HTTPS_PORTS,
@@ -7,6 +5,7 @@ import {
   type RouterConfig,
 } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 const DEFAULT_BIND_ADDRESS = "127.0.0.1";
 const DEFAULT_ENABLED = true;

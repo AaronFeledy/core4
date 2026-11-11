@@ -1,13 +1,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import * as AppCacheService from "../../src/cache/service";
 import * as PluginRegistryLayer from "../../src/plugins/registry";

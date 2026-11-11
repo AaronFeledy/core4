@@ -1,6 +1,3 @@
-import type { InfoAppResult, InfoAppService, InfoLogSource } from "@lando/sdk/app";
-import type { ListenerAuthority } from "@lando/sdk/schema";
-
 import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import {
   type SummaryDocument,
@@ -9,6 +6,8 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "@lando/renderer/summary";
+import type { InfoAppResult, InfoAppService, InfoLogSource } from "@lando/sdk/app";
+import type { ListenerAuthority } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";

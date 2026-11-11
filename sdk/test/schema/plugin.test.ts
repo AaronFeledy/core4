@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Layer, Result, Schema } from "effect";
-
 import { definePlugin } from "@lando/sdk/plugins";
 import { EmbeddingPluginPolicy, PluginManifest, getJsonSchema } from "@lando/sdk/schema";
+import { Layer, Result, Schema } from "effect";
 
 describe("PluginManifest", () => {
   const notice = {

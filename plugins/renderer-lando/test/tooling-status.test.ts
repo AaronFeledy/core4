@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { TaskTreeCompleteEvent, TaskTreeStartEvent } from "@lando/sdk/events";
+import { DateTime, Effect } from "effect";
 
 import {
   createToolingStatusPainter,

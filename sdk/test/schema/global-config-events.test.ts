@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { GlobalConfig } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("GlobalConfig.events", () => {
   test("accepts a positive integer delivery queue capacity", () => {

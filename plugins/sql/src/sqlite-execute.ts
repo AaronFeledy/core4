@@ -1,5 +1,3 @@
-import { Effect, absurd } from "effect";
-
 import { mapFailures } from "@lando/sdk/command-result";
 import { SqlRecoveryOperationError } from "@lando/sdk/errors";
 import {
@@ -8,6 +6,7 @@ import {
   type SnapshotInfo,
   snapshotHandle,
 } from "@lando/sdk/schema";
+import { Effect, absurd } from "effect";
 
 import { exportCompression } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -20,9 +19,9 @@ import { requireSqliteIntegrity } from "./sqlite-integrity.ts";
 import { mutateSqlite } from "./sqlite-mutation.ts";
 import { sqliteSidecarPaths } from "./sqlite-path.ts";
 import { sqliteSnapshotCatalogKey } from "./sqlite-retention.ts";
+import { requireSqliteCompatibleSnapshot } from "./sqlite-snapshot.ts";
 import { createSqliteSnapshot } from "./sqlite-snapshot-capture.ts";
 import { copySqliteSnapshotArchive, extractSqliteSnapshotArchiveToFile } from "./sqlite-snapshot-transfer.ts";
-import { requireSqliteCompatibleSnapshot } from "./sqlite-snapshot.ts";
 import type { SqlFileTarget } from "./target.ts";
 
 export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(function* (

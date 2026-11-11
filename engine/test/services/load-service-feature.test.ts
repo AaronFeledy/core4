@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
-
 import { PluginLoadError } from "@lando/sdk/errors";
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
-import { PluginRegistry } from "@lando/sdk/services";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { PluginRegistry } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry";
 
 const runWithPluginRegistry = <A, E>(

@@ -1,12 +1,3 @@
-import { Effect } from "effect";
-import {
-  CliInvocation,
-  type CliInvocationContext,
-  processInvocationContext,
-} from "../../../runtime/invocation-context";
-import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
-import { Args, Flags } from "../../spec/metadata";
-
 import {
   CONFIG_SUBCOMMANDS,
   type ConfigResult,
@@ -14,11 +5,18 @@ import {
   type MetaConfigOptions,
   runConfig,
 } from "@lando/engine/operations/config";
-
+import { Effect } from "effect";
 import { createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../../../runtime/invocation-context";
 import { renderConfigResult } from "../../commands/config";
 import { configRedactionTokens } from "../../commands/config-redaction.ts";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Args, Flags } from "../../spec/metadata";
 import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../config-flags";
 import { configWriteOptionsFromInput } from "../config-write-input";
 

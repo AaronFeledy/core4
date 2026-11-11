@@ -1,9 +1,8 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-
 import { SnapshotOwnershipError } from "@lando/sdk/errors";
 import type { SnapshotInfo, VolumeInfo, VolumeRef } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { sharedVolumeInitialization } from "./volume-initialization.ts";
 
 export const requireSnapshotSeedTarget = Effect.fn("DataMover.requireSnapshotSeedTarget")(function* (

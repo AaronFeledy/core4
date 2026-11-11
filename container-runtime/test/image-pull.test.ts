@@ -4,21 +4,19 @@ import { type Socket, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
-import { DateTime, Effect, Exit, Schema, Stream } from "effect";
-
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type ImagePullProgressEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
-
-import { dockerPullDialect, libpodPullDialect, parseImageReference } from "../src/dialect.ts";
+import { DateTime, Effect, Exit, Schema, Stream } from "effect";
 import type { PullDialect } from "../src/dialect.ts";
+import { dockerPullDialect, libpodPullDialect, parseImageReference } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import type { PullFailureKind } from "../src/image-pull.ts";
 import {
   buildImagePullRequest,
   classifyPullFailure,
   parseImagePullFrame,
   pullImage,
 } from "../src/image-pull.ts";
-import type { PullFailureKind } from "../src/image-pull.ts";
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 
@@ -202,6 +200,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(failure.operation).toBe("pullArtifact");
     expect(failure.message).toContain(reference);
+    expect(failure.remediation).toContain("remove pull_policy: never");
     expect(requests).toEqual([
       {
         method: "GET",

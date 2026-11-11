@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer } from "effect";
-
 import { type AppCacheRefreshResult, refreshAppCache } from "@lando/core/cli/operations";
 import {
   AbsolutePath,
@@ -19,6 +17,7 @@ import { appCommandCachePath, appToolingCompilationCachePath } from "@lando/engi
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { DateTime, Effect, Layer } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
 const providerId = ProviderId.make("lando");
@@ -288,4 +287,5 @@ test("app cache refresh accepts built-in and compiled tooling alias targets", as
     },
   );
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

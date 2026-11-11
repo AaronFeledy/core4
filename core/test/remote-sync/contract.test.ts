@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
+import { TestDataset, TestRemoteSource, localRemoteSource, makeTestRemoteSource } from "@lando/core/testing";
 
 import {
   type DatasetContractHarness,
@@ -8,8 +7,7 @@ import {
   runDatasetContract,
   runRemoteSourceContract,
 } from "@lando/sdk/test";
-
-import { TestDataset, TestRemoteSource, localRemoteSource, makeTestRemoteSource } from "@lando/core/testing";
+import { Effect } from "effect";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { type AppConfigResult, renderAppConfigResult } from "@lando/core/cli/operations";
 import { LandofileShape, type LandofileSourceValue } from "@lando/sdk/schema";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
+import { Schema } from "effect";
 
 import { appConfigOptionsFromInput } from "../../src/cli/command-specs/app/config/index.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";

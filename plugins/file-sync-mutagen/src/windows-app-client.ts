@@ -1,9 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
-
-import { Effect } from "effect";
-
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { type AppPlan, type FileSyncSessionSpec, plannedFileSyncSessions } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import {
   type MutagenProcessClient,

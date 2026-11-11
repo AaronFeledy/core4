@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer, Stream } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-
 import { makeLandoPaths } from "@lando/paths";
-
 import { FileNotFoundError, GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
@@ -15,10 +11,11 @@ import {
   RouterService,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-import { routeOwner } from "./route-owner-fixture.ts";
-
+import { Effect, Layer, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 import { layer, makeTraefikRouterService } from "../src/proxy.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
 const root = "/lando/global/proxy-traefik";
 const marker = `${root}/dynamic/.lando-routing-state`;

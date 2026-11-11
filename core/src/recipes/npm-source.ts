@@ -8,11 +8,9 @@
  * Integrity: missing integrity/shasum fails (store policy).
  */
 import { join } from "node:path";
-
+import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 import { type SourceSession, displaySource } from "@lando/source-acquisition";
 import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
-
-import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 
 import type { ResolvedRecipe } from "./source";
 import { mapSourceAcquisitionError, runSourceSession } from "./source-session";

@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer } from "effect";
-
 import { CommandRegistry, type RegisteredCommand } from "@lando/core/services";
 import { decodeAppCommandIndex, encodeAppCommandIndex } from "@lando/engine/cache/command-index";
 import {
@@ -14,6 +12,7 @@ import {
 } from "@lando/engine/cache/command-index-writer";
 import { appCommandCachePath, appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import * as CommandRegistryLayer from "@lando/engine/services/command-registry";
+import { Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
@@ -41,7 +40,6 @@ const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Pro
   try {
     return await run(cacheRoot);
   } finally {
-    // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
     if (previous === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
     else process.env.LANDO_USER_CACHE_ROOT = previous;
     await rm(cacheRoot, { recursive: true, force: true });
@@ -932,7 +930,6 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id)).toEqual(["app:build"]);
       } finally {
-        // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
         if (previous === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
         else process.env.LANDO_USER_CACHE_ROOT = previous;
       }

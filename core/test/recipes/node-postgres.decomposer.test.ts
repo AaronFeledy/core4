@@ -9,6 +9,7 @@ import {
   NODE_POSTGRES_SERVER_JS,
 } from "../../src/recipes/builtin/node-postgres/scaffold.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: nodePostgresDecomposer,
   defaults: nodePostgresDefaults,
@@ -17,6 +18,7 @@ const {
   contentDigest: NODE_POSTGRES_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("node-postgres");
+
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
 import { renderAuxiliaryScaffold } from "../../src/recipes/init-pipeline/files.ts";

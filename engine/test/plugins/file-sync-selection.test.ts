@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Context, Effect, Layer, Result, Schema, Stream } from "effect";
-
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { FileSyncSelectionError } from "@lando/sdk/errors";
@@ -26,6 +24,7 @@ import {
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeTestStateStore } from "@lando/state-store/testing";
+import { Context, Effect, Layer, Result, Schema, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { resolveFileSyncMountPlan } from "../../src/operations/file-sync-plan.ts";

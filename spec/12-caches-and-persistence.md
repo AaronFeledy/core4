@@ -11,6 +11,8 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 
 ### 12.1 Cache catalog
 
+The app command index retains healthy script metadata and unavailable script rows with bounded `loadError`; unavailable rows carry no executable input declaration. Entries and script fingerprints come from one inspection snapshot. Valid script fingerprints cover paths and normalized metadata only; invalid and ambiguous script paths use `{ relativePath, invalid: sha256(content) }`. I/O failures are never persisted as unavailable scripts. Landofile tasks take precedence when ids overlap.
+
 The persisted app-plan key includes private implementation coordinates `{ name, source, realpath, identity }` for every selected non-bundled plugin with a path (§9.7), the resolved planning data name, and app kind (`user`, `scratch`, or `global`). The contribution graph captures plugin coordinates when it imports packages, including entryless packages, and carries them to planning outside the SDK registry contract. Planning MUST NOT walk plugin trees again. An unchanged implementation retains cache hits; editing any included source file or repointing the same name and version to another realpath invalidates the key. If the post-import identity differs from the pre-import observation, that invocation MUST skip persistent plan-cache writes. Help, version, and fresh cached-tooling paths MUST NOT perform the identity walk. Plugin coordinates are key inputs and do not change payload semantics; the private app-plan schema revision is 50.
 
 `<userCacheRoot>` holds only regenerable caches, diagnostics, and operation-scoped temporary files (§7.5). Clearing it between operations MAY cost rebuild time or network access and MUST NOT lose ownership records, live-resource state, security floors such as the update-manifest replay floor (§17.6.1), or user data. Rows under `<userDataRoot>` are durable records listed here for their catalog identity.
@@ -50,11 +52,13 @@ The embedded container helper (§17.3) uses `<userCacheRoot>/tool-downloads/cont
 
 ### 12.2 Cache encoding
 
+The private app command-index ABI is 9. ABI 8 and earlier are rejected and regenerated, with no migration or compatibility reader. Decoder invariants MUST reject `loadError` entries that also carry input declarations or wrapper routing metadata, non-script `loadError` entries, and message/remediation strings longer than 1 KiB of UTF-8. The stored diagnostics MUST be redacted before bounding. A fingerprint carries exactly one of a valid metadata `sha256` or an invalid content `invalid` digest.
+
 Router and tooling hot-path caches MUST use binary encoding. `Bun.serialize` is permitted for private cache shapes; public contract caches such as `AppPlan` use Effect Schema binary encoding. A cache MUST NOT mix encodings.
 
 Every cache is versioned. Binary files carry a cache identity, schema/Lando version, and optional freshness hash; mismatch or partial-write detection invalidates and regenerates without surfacing a user error. Command caches retain all inputs needed to validate routing freshness.
 
-Tooling caches MUST contain only expression ASTs and static redacted metadata. They MUST NOT contain dynamic shell-variable results, decrypted secrets, host output, provider connection state, or status/precondition results.
+Tooling caches MUST contain only expression ASTs and static redacted metadata. The app command index MAY keep the bounded static run summary (§8.5) verbatim, its program token and service targets included; help applies the `secrets` profile before emitting it. This exception does not admit dynamic shell results or decrypted secret bindings. They MUST NOT contain dynamic shell-variable results, decrypted secrets, host output, provider connection state, or status/precondition results.
 
 Execution observations are bounded in-memory metadata (§22.7), not replay journals. They do not change build-cache eligibility or permit caching resolved secrets and arbitrary Effect values.
 
@@ -82,7 +86,7 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userDataRoot>/scratch/registry.bin` | Durable scratch registry; its `StateStore` advisory lock serializes cross-process mutation (§21.11). |
 | `<userDataRoot>/plugins/`, `apps/<app-id>/plugins/` | User and app plugins. |
 | `<userDataRoot>/global/`, `global/.lando.dist.yml` | Global app root and generated contribution layer (§20.3). |
-| `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys (the §10.4 managed identity), certificates, and checksum/version-pinned helper binaries. |
+| `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys (the §10.4 managed identity), certificates (`certs/services/<ownerKey>/` holds each app's generated service leaves, §10.3; a certificate authority keeps no issued material here), and checksum/version-pinned helper binaries. |
 | `<userDataRoot>/secrets/` | Persistent writable `lando` user-grant store (§9.5.1), including refresh grants: private directory, owner-only files, locked atomic replacement; excluded from managed-file backups, journals, exports, and support bundles. Access tokens/resource credentials remain session-only. |
 | `<userDataRoot>/runtime/config/`, `bin/`, `storage/`, `run/`, `machines/` | Default-provider private config, binaries, storage, sockets/PIDs, and managed VM state. |
 | `/run/user/<uid>/lando-<runtime-hash>/` | Linux default-provider private `XDG_RUNTIME_DIR` (§5.8.1): rootless pause process, user namespace, OCI runtime state, and network namespaces. `<runtime-hash>` is the first 16 hex digits of the SHA-256 of the canonical `<userDataRoot>/runtime` path. Owner-only and removed by purge. `/run/user/<uid>` is normally a session tmpfs cleared at reboot; when it is unusable the session `XDG_RUNTIME_DIR` is the parent. |
@@ -143,6 +147,8 @@ This durable provider-private identity record lets stop, destroy, and a convergi
 
 ### 12.5 Hot-path read budgets
 
+Known-route script freshness reads each cached path once. Inventory freshness finds newly added paths and newly ambiguous canonical ids; it MUST use one inspection pass, not re-read each script to derive its fingerprint. Changes to invalid content and repairs invalidate deterministically, while body-only changes to valid scripts remain fresh. Performance changes MUST be measured over both normal and inventory reads using substantial script bodies; timing thresholds do not belong in new correctness tests.
+
 Warm router reads of core, app-command, and CWD-map indexes MUST complete in under 30 ms. Warm tooling reads of `app-plan` and compiled `ToolingProgram` MUST independently complete in under 30 ms. No provider contact, include resolution, expression parsing, or graph construction occurs on these paths. The perf-budget suite enforces both (§13.1), alongside the user-visible budgets in §2.1.
 
 #### 12.5.1 Compiled hot-path decoders
@@ -157,7 +163,7 @@ Schema decoding on the CLI hot path uses ahead-of-time compiled decoders under t
 
 ### 12.6 Disconnectable local-dev state
 
-After successful materialization/build, resolved plugins and includes, provider metadata and artifacts, app-plan/tooling caches, and service information required for routine development MUST be local. `start`, `stop`, `restart`, `info`, `logs`, and cached tooling MUST work without network access when state is complete. `app:rebuild` and `meta:global:rebuild` refresh referenced artifacts with local fallback and a warning (§6.13.3); acquisition needs network only for referenced artifacts with no local copy. Build steps that download packages still need network access when they execute rather than reuse a cached build layer.
+After successful materialization/build, resolved plugins and includes, provider metadata and artifacts, app-plan/tooling caches, and service information required for routine development MUST be local. With complete local state and default acquisition policy, `start`, `stop`, `restart`, `info`, `logs`, and cached tooling MUST work without network access. Explicit `pull_policy: always` requires source acquisition even when a local image exists and fails when that acquisition fails. `pull_policy: never` forbids service-image pulls, including during rebuild. `pull_policy: build` reruns the Compose build, whose steps may require network. Without an explicit policy, `app:rebuild` and `meta:global:rebuild` attempt refresh and permit local fallback with a warning (§6.13.3); acquisition then needs network only for referenced artifacts with no local copy. Build steps that download packages still need network access when they execute rather than reuse a cached build layer.
 
 Missing managed dependencies fail with a tagged error naming the missing artifact and online repair command. Routine offline-capable commands MUST NOT silently retry the network. Telemetry and update checks are best-effort and MUST NOT invalidate caches or alter local-command exit status.
 

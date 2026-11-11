@@ -3,10 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
+import { Schema } from "effect";
 
 import { AppsListResultSchema, appliedPlansDirectory } from "../../src/cli/commands/list.ts";
 

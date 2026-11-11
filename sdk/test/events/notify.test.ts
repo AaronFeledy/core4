@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { CommandInvocationCorrelation, NotifyDesktopEvent } from "@lando/sdk/events";
 import { NotifyConfig } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("NotifyDesktopEvent", () => {
   test("decodes a valid notification", () => {

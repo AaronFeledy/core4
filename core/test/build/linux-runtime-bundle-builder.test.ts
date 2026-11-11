@@ -259,7 +259,8 @@ describe("Linux runtime bundle builder", () => {
     });
     expect(result.success).toBe(true);
     const map = result.outputs.find((output) => output.path.endsWith(".map"));
-    const { sources } = (await map?.json()) as { sources: string[] };
+    if (map === undefined) throw new Error("expected a sourcemap output");
+    const { sources } = (await map.json()) as { sources: string[] };
     // Workspace packages can appear through their node_modules link; third-party packages stay excluded.
     const local = sources
       .map((path) => path.replace(/^node_modules\/@lando\/sdk\//u, "sdk/"))

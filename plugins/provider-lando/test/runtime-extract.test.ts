@@ -1,10 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { existsSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { deflateRawSync, gzipSync } from "node:zlib";
-
-import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { CATATONIT_MANIFEST, LEGACY_NATIVE_INIT_BRIDGE_VERSION } from "../src/catatonit-provision.ts";

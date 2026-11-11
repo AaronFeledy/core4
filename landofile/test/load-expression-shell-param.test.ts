@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { Effect, Result } from "effect";
-import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 
 const source = {
   appRoot: "/tmp/shell-param",

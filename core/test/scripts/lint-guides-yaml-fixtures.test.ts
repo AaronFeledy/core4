@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
+import { type GuideLintDiagnostic, formatGuideLintDiagnostic } from "../../../scripts/lint-guides.ts";
 import { lintYamlDocument, lintYamlFences } from "../../../scripts/lint-guides-yaml-fence.ts";
 import { lintFixtureLandofiles } from "../../../scripts/lint-guides-yaml-fixtures.ts";
-import { type GuideLintDiagnostic, formatGuideLintDiagnostic } from "../../../scripts/lint-guides.ts";
 
 describe("fixture Landofile invalid expectations", () => {
   test.each([

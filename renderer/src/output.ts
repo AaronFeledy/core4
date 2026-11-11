@@ -7,16 +7,15 @@
  * emitters) plus the streaming `StreamFrameSink` layer used by the command
  * boundary. The JSON branch of the stream sink is byte-stable machine output.
  */
-import { Effect, Layer, Option } from "effect";
 
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { RedactionService } from "@lando/redaction/service";
 import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "@lando/sdk/command-result";
 import { type RendererContribution, narrationIO } from "@lando/sdk/renderer";
 import type { CommandResultFormat } from "@lando/sdk/schema";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { type EventService, Renderer } from "@lando/sdk/services";
-
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService } from "@lando/redaction/service";
+import { Effect, Layer, Option } from "effect";
 import { RendererHost } from "./host.ts";
 import { type RendererIO, createStdioRendererIO } from "./io.ts";
 import * as RendererRuntime from "./runtime.ts";

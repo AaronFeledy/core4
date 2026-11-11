@@ -36,6 +36,7 @@ it.each([
 
 import { parseWorkflowLanguage } from "../src/language/parse.ts";
 import { advancePlan, planWorkflow } from "../src/planning/plan.ts";
+
 const present = <A>(value: A | undefined): A => {
   if (value === undefined) throw new Error("Expected fixture value");
   return value;

@@ -25,6 +25,6 @@ export { OP_READ_TIMEOUT_MS, type OpRunner, makeOpRunner } from "./op-cli.ts";
 export {
   ONEPASSWORD_SCHEME,
   ONEPASSWORD_STORE_ID,
-  makeOnePasswordSecretStore,
   layer,
+  makeOnePasswordSecretStore,
 } from "./store.ts";

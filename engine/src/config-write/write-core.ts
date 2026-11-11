@@ -1,9 +1,7 @@
-import { Predicate, Result, Schema } from "effect";
-
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
-
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
+import { Predicate, Result, Schema } from "effect";
 import { type PathSegment, parsePathSegments, setAtPath, unsetAtPath } from "./dot-path";
 import { type ValueType, parseTypedValue } from "./value-parse";
 

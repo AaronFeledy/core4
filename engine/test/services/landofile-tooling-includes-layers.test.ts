@@ -1,11 +1,9 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
+import { Effect } from "effect";
 import { compileToolingCommands } from "../../src/cache/command-compiler";
 import { loadLandofileLayers } from "../../src/services/landofile-live";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

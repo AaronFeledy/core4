@@ -6,13 +6,11 @@ import { serviceContainerName } from "@lando/container-runtime/plan";
 import { withoutPodmanRedirectsDefined } from "@lando/container-runtime/podman/managed-invocation";
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
-import { type Effect, Stream } from "effect";
-
 import { ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
-import type { CommandSpec, ExecChunk, ExecResult, ExecTarget } from "@lando/sdk/services";
-import type { ProcessRunner } from "@lando/sdk/services";
+import type { CommandSpec, ExecChunk, ExecResult, ExecTarget, ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
+import { type Effect, Stream } from "effect";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 

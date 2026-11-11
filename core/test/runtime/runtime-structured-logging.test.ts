@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { Effect } from "effect";
-
 import { Logger } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 

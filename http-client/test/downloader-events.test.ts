@@ -1,19 +1,16 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { Downloader, EventService, type LandoEvent } from "@lando/sdk/services";
 import { type Context, Effect, Layer, Option, Queue, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { Downloader, EventService, type LandoEvent } from "@lando/sdk/services";
-
-import { makeDownloaderEvents } from "../src/downloader-events.ts";
 import { layer as DownloaderLayer } from "../src/downloader.ts";
+import { makeDownloaderEvents } from "../src/downloader-events.ts";
 
 test("downloader event text masks values registered after event seam construction", async () => {
   // Given

@@ -1,17 +1,14 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { PaintBannerEvent } from "@lando/sdk/events";
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
-import { createBufferedRendererIO } from "@lando/renderer/io";
-import * as RendererRuntime from "@lando/renderer/runtime";
+import { Effect, Layer, Schema } from "effect";
 import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/pre-renderer.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 

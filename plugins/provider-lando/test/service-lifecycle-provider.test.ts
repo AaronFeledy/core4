@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeRuntimeProvider, persistAppliedPlan } from "@lando/provider-lando";
@@ -19,7 +17,9 @@ import {
 } from "@lando/sdk/schema";
 import type { ListFilter } from "@lando/sdk/services";
 import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
+
 const makeStateStore = () => makeStateStoreUsing({ privateFileAccess: ownerOnlyFileAccess });
 const makePluginStateStore = (
   store: Parameters<typeof makePluginStateStoreWithAccess>[0],

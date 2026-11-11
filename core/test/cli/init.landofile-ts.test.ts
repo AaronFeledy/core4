@@ -2,17 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
-import { InitTargetExistsError } from "@lando/sdk/errors";
-import type { LoadScopedLandofile } from "@lando/sdk/schema";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { InitTargetExistsError } from "@lando/sdk/errors";
+import type { LoadScopedLandofile } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const nodeTsRecipe = bundledRecipe("node-ts");
+
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";

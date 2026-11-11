@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
-
+import { Effect, Schema } from "effect";
+import { php83ServiceType } from "../src/services/php.ts";
 import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
 import { resolvePhpVia } from "../src/services/php-via.ts";
-import { php83ServiceType } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const config = (input: Readonly<Record<string, unknown>>) =>

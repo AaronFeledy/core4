@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { EditorRunner } from "@lando/engine/config-write/editor";
+
 export type { EditorRunInput, EditorRunResult, EditorRunner } from "@lando/engine/config-write/editor";
 
 export interface EditorSpawnerOptions {

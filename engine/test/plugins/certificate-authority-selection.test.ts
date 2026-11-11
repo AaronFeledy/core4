@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result } from "effect";
-
 import { AmbiguousCertificateAuthoritiesError, NoCertificateAuthorityError } from "@lando/sdk/errors";
+import { Result } from "effect";
 
 import {
   type CertificateAuthorityCandidateDefinition,

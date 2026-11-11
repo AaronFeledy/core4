@@ -1,11 +1,10 @@
-import { Flags } from "../../spec/metadata";
+import { LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
 
 import { StreamFrame } from "@lando/sdk/schema";
-
-import { LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
 import { renderLogsAppResult } from "../../commands/logs";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 import {
   logFollowFromInput,
   logLinesToStreamFrames,

@@ -1,8 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Ref, Semaphore } from "effect";
-
 import { ProxyApplyError, type ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
+import { Effect, Ref, Semaphore } from "effect";
 
 /** Keep provider bootstrap independent of global storage until routing is used. */
 export const deferredRouter = Effect.fnUntraced(function* (

@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { constants } from "node:fs";
 import {
   access,
@@ -13,8 +14,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { writeManagedRuntimeContainersConf } from "../src/runtime-config.ts";
@@ -80,9 +79,7 @@ const writeAndParse = async (): Promise<{
   const runtimeBinDir = join(root, "runtime", "bin");
   const runtimeConfigDir = join(root, "runtime", "config");
   try {
-    await Effect.runPromise(
-      writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: false }),
-    );
+    await Effect.runPromise(writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }));
     const body = await readFile(join(runtimeConfigDir, "containers.conf"), "utf8");
     const registriesBody = await readFile(join(runtimeConfigDir, "registries.conf"), "utf8");
     const policyBody = await readFile(join(runtimeConfigDir, "containers", "policy.json"), "utf8");
@@ -129,10 +126,8 @@ const withRuntimeConfigRoot = async (
   }
 };
 
-const writeOnce = (runtimeBinDir: string, runtimeConfigDir: string, useSystemdRunShim = false) =>
-  Effect.runPromise(
-    writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim }),
-  );
+const writeOnce = (runtimeBinDir: string, runtimeConfigDir: string) =>
+  Effect.runPromise(writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }));
 
 describe("writeManagedRuntimeContainersConf", () => {
   test("pins native init to the private binary without globally enabling init", async () => {
@@ -205,44 +200,22 @@ describe("writeManagedRuntimeContainersConf", () => {
     expect(policyParsed.transports?.["docker-daemon"]?.[""]?.[0]?.type).toBe("insecureAcceptAnything");
   });
 
-  test("writes a systemd-run shim when the host has no user systemd session", async () => {
-    const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-shim-"));
-    const runtimeBinDir = join(root, "runtime", "bin");
-    const runtimeConfigDir = join(root, "runtime", "config");
-    try {
-      await Effect.runPromise(
-        writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: true }),
-      );
-      const shim = join(runtimeBinDir, "systemd-run");
-      await access(shim, constants.X_OK);
-      const result = await Bun.$`${shim} -q --scope --user /bin/echo aardvark-ok`.text();
-      expect(result).toContain("aardvark-ok");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
+  test("always writes the exec-only systemd-run shim for Podman descendants", async () => {
+    // Given/When: the managed config is written (the user manager's presence does not matter:
+    // Podman's descendants run with the private runtime dir, which has no manager socket).
+    await withRuntimeConfigRoot(async (paths) => {
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
 
-  test("removes a leftover systemd-run shim when a user systemd session exists", async () => {
-    const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-shim-remove-"));
-    const runtimeBinDir = join(root, "runtime", "bin");
-    const runtimeConfigDir = join(root, "runtime", "config");
-    try {
-      await Effect.runPromise(
-        writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: true }),
-      );
-      await Effect.runPromise(
-        writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir, useSystemdRunShim: false }),
-      );
-      const shim = join(runtimeBinDir, "systemd-run");
-      await expect(access(shim, constants.F_OK)).rejects.toThrow();
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+      // Then: netavark's `systemd-run -q --scope --user <cmd>` just execs the command.
+      await access(paths.shim, constants.X_OK);
+      const result = await Bun.$`${paths.shim} -q --scope --user /bin/echo aardvark-ok`.text();
+      expect(result).toContain("aardvark-ok");
+    });
   });
 
   test("skips writes when content and mode already match so mtime stays put", async () => {
     await withRuntimeConfigRoot(async (paths) => {
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, true);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       const past = new Date(Date.now() - 120_000);
       for (const path of [paths.containersConf, paths.registriesConf, paths.policyJson, paths.shim]) {
         await utimes(path, past, past);
@@ -253,7 +226,7 @@ describe("writeManagedRuntimeContainersConf", () => {
         policy: (await stat(paths.policyJson)).mtimeMs,
         shim: (await stat(paths.shim)).mtimeMs,
       };
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, true);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       expect((await stat(paths.containersConf)).mtimeMs).toBe(before.containers);
       expect((await stat(paths.registriesConf)).mtimeMs).toBe(before.registries);
       expect((await stat(paths.policyJson)).mtimeMs).toBe(before.policy);
@@ -263,7 +236,7 @@ describe("writeManagedRuntimeContainersConf", () => {
 
   test("repairs mode-only drift without rewriting matching content", async () => {
     await withRuntimeConfigRoot(async (paths) => {
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, true);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       const containersBody = await readFile(paths.containersConf, "utf8");
       const registriesBody = await readFile(paths.registriesConf, "utf8");
       const policyBody = await readFile(paths.policyJson, "utf8");
@@ -282,7 +255,7 @@ describe("writeManagedRuntimeContainersConf", () => {
         policy: (await stat(paths.policyJson)).mtimeMs,
         shim: (await stat(paths.shim)).mtimeMs,
       };
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, true);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       expect((await stat(paths.containersConf)).mode & 0o777).toBe(0o600);
       expect((await stat(paths.registriesConf)).mode & 0o7777).toBe(0o600);
       expect((await stat(paths.policyJson)).mode & 0o777).toBe(0o600);
@@ -301,11 +274,11 @@ describe("writeManagedRuntimeContainersConf", () => {
 
   test("rewrites when content differs even if mode already matches", async () => {
     await withRuntimeConfigRoot(async (paths) => {
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, false);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       await writeFile(paths.containersConf, "stale-containers\n", { mode: 0o600 });
       await writeFile(paths.registriesConf, "stale-registries\n", { mode: 0o600 });
       await writeFile(paths.policyJson, '{"stale":true}\n', { mode: 0o600 });
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, false);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       const body = await readFile(paths.containersConf, "utf8");
       expect(body).toContain("helper_binaries_dir");
       expect(body).not.toContain("stale-containers");
@@ -319,12 +292,12 @@ describe("writeManagedRuntimeContainersConf", () => {
 
   test("replaces a managed config symlink without writing its foreign target", async () => {
     await withRuntimeConfigRoot(async (paths) => {
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, false);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       const foreign = `${paths.registriesConf}.foreign`;
       await writeFile(foreign, "foreign-content");
       await rm(paths.registriesConf);
       await symlink(foreign, paths.registriesConf);
-      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir, false);
+      await writeOnce(paths.runtimeBinDir, paths.runtimeConfigDir);
       expect(await readFile(foreign, "utf8")).toBe("foreign-content");
       expect((await lstat(paths.registriesConf)).isFile()).toBe(true);
     });

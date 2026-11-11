@@ -55,7 +55,7 @@ export const appConfigSection = (
         fields: [{ label: "file", value: result.file }],
       },
     ],
-    notes: renderConfigLintViolations(result.violations),
+    notes: renderConfigLintViolations(result.violations, result.file),
   };
 };
 

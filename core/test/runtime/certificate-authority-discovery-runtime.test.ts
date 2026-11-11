@@ -3,14 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
-
-import { NoCertificateAuthorityError } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
-
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import type { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
+import { NoCertificateAuthorityError } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
+import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const tempRoots: string[] = [];
@@ -49,7 +46,8 @@ const writeDiscoveredAuthority = async (root: string): Promise<string> => {
       "export const ca = Layer.succeed(CertificateAuthority, CertificateAuthority.of({",
       '  id: "custom-ca",',
       "  setup: () => Effect.void,",
-      '  issueCert: () => Effect.succeed({ certPath: "/tmp/cert", keyPath: "/tmp/key", caPath: "/tmp/ca" }),',
+      '  root: Effect.succeed({ certificate: "root", trusted: true }),',
+      '  issueCert: () => Effect.die("not exercised"),',
       "}));",
       "",
     ].join("\n"),

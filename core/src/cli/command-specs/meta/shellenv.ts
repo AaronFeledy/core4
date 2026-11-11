@@ -1,11 +1,10 @@
-import { Effect, Schema } from "effect";
-import { Flags } from "../../spec/metadata";
-
 import { resolveLandoRoots } from "@lando/paths";
+import { Effect, Schema } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { ShellenvInstallRecordError, normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 /**
  * `lando meta:shellenv` — print shell-profile snippets to add Lando to PATH.

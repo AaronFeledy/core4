@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import {
   type AbsolutePath,
   type AppPlan,
@@ -9,6 +7,7 @@ import {
   snapshotHandle,
 } from "@lando/sdk/schema";
 import { DataMover } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export const ownedSnapshots = Effect.fn("AppOperation.ownedSnapshots")(function* (
   roots: ReadonlyArray<AbsolutePath>,

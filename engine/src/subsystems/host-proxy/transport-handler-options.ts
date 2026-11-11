@@ -1,13 +1,12 @@
 import type { ServerResponse } from "node:http";
-import type { Context, Fiber } from "effect";
+import type { RedactionService } from "@lando/redaction/service";
 
 import type { AppRef } from "@lando/sdk/schema";
-
-import type { RedactionService } from "@lando/redaction/service";
+import type { Context, Fiber } from "effect";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyOpenCallExecutor, HostProxyRunLandoExecutor } from "./dispatch.ts";
-import type { HostProxyRunLandoSessionOptions } from "./transport-session.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
+import type { HostProxyRunLandoSessionOptions } from "./transport-session.ts";
 import type { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 
 export interface HostProxyInFlightRequest {

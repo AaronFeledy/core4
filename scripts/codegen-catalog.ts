@@ -336,6 +336,12 @@ export const CODEGEN_CATALOG = [
     script: "build-workflow-performance-workflow.ts",
     workspace: "repo",
   },
+  {
+    id: "retarget-action-bump-workflow",
+    ownership: "committed-workflow",
+    script: "build-retarget-action-bump-workflow.ts",
+    workspace: "repo",
+  },
 ] as const satisfies readonly CodegenCatalogEntry[];
 
 const SCRIPT_DIRECTORY = import.meta.dirname;

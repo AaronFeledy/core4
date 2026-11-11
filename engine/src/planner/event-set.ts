@@ -8,10 +8,10 @@ import {
   type LoadScopedLandofile,
   type ProviderCapabilities,
   type ProviderId,
+  ServiceName,
   ServiceScopedLandofile,
   authoredProbeTargetError,
 } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";

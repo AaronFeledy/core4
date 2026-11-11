@@ -4,8 +4,8 @@ import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { Effect, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { acquisition, app, liveGraph, makeObserveFixture, route } from "./observe-routes-fixture.ts";
 
 test.each(["live", "malformed", "redirect"] as const)(

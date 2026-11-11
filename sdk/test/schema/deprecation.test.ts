@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-import { SchemaAST as AST, Result, Schema } from "effect";
-
 import { DeprecationUsedEvent, LandoEvent } from "@lando/sdk/events";
 import {
   DeprecationNotice,
@@ -15,6 +12,7 @@ import {
   renderSchemaReferenceMarkdown,
   structuralDeprecationKey,
 } from "@lando/sdk/schema";
+import { SchemaAST as AST, Effect, Result, Schema } from "effect";
 
 const decode = (input: unknown) => Schema.decodeUnknownResult(DeprecationNotice)(input);
 

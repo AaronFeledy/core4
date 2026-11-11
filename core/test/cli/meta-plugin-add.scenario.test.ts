@@ -3,9 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { Cause, Effect, type Exit, Layer, Queue, Stream } from "effect";
-
+import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   BunSelfReentryError,
   FileIoError,
@@ -19,18 +18,16 @@ import {
   PluginTrustStore,
   ProcessRunner,
 } from "@lando/sdk/services";
-import { makeTestStateStore } from "@lando/state-store/testing";
-import { processRunnerFor } from "../_support/process-runner.ts";
-
-import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
-import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { NpmPackument, NpmRegistryTransport } from "@lando/source-acquisition";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { Cause, Effect, type Exit, Layer, Queue, Stream } from "effect";
 import { pluginAddSpec } from "../../src/cli/command-specs/meta/plugin/add.ts";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { defaultNpmRegistryClient } from "../../src/recipes/npm-registry-client.ts";
 import { loadNpmRegistryConfig } from "../../src/recipes/npm-registry-config";
+import { processRunnerFor } from "../_support/process-runner.ts";
 
 let userDataRoot: string;
 let pluginsRoot: string;

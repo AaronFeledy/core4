@@ -21,7 +21,8 @@ Editing a `build.app` entry changes that step's content-hash build key, so
 the next `lando start` reruns it. A `build.artifact` edit changes the image
 key the same way, so start rebuilds that image too. `lando rebuild` is the
 forced rerun when the command text is unchanged and only bind-mounted inputs
-changed, or when you want a forced pull.
+changed, or when you want a forced pull. A PHP security release on a floating
+tag is that pull. See [Pick up a PHP security release](./php-security-updates.mdx).
 
 ## The build plan captures the exact failing command
 

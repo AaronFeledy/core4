@@ -1,4 +1,11 @@
+import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
+import type { LandofileShape } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
+import { CommandRegistry, LandofileService, PathsService, type RegisteredCommand } from "@lando/sdk/services";
 /**
  * `CommandRegistry` Live Layer.
  *
@@ -23,36 +30,29 @@ import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/
  * `RegisteredCommand[]`.
  */
 import { Effect, Layer } from "effect";
-
-import type { LandofileShape } from "@lando/sdk/schema";
-import { CommandRegistry, LandofileService, PathsService, type RegisteredCommand } from "@lando/sdk/services";
-
-import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
-import { findAppRoot } from "@lando/landofile/discovery";
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { compileAppCommands } from "../cache/command-compiler.ts";
-import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
+import { compileInspectedAppCommands } from "../cache/command-compiler.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
+import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
+import { fingerprintsFromInspection } from "../cache/command-script-freshness.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
 import { PluginContributionGraph } from "../plugins/contribution-graph.ts";
 
-const discoverScriptsForCwd = Effect.fnUntraced(function* (
-  cwd: string,
-): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, never> {
+const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
   const appRoot = yield* findAppRoot(cwd);
-  if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
-  return yield* discoverBunShellScripts({ appRoot }).pipe(
-    Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
-  );
+  if (appRoot === undefined) return { scripts: [], problems: [], files: [] };
+  return yield* inspectBunShellScripts({ appRoot });
 });
 
 const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): ReadonlyArray<RegisteredCommand> =>
-  entries.map((entry) => ({
-    id: entry.id,
-    summary: entry.summary,
-    hidden: entry.hidden,
-    ...(entry.input === undefined ? {} : { input: entry.input }),
-  }));
+  entries
+    .filter((entry) => entry.loadError === undefined)
+    .map((entry) => ({
+      id: entry.id,
+      summary: entry.summary,
+      hidden: entry.hidden,
+      ...(entry.input === undefined ? {} : { input: entry.input }),
+      ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+    }));
 
 export const layerWith = (
   registrationError: (
@@ -87,10 +87,20 @@ export const layerWith = (
           if (hasServices) {
             return [];
           }
-          const entries = compileAppCommands(landofile, scripts);
+          const redaction = yield* Effect.serviceOption(RedactionService);
+          const redactor =
+            redaction._tag === "Some"
+              ? yield* redaction.value.forProfile("secrets")
+              : createRedactor("secrets", { values: collectSecretEnvValues(process.env) });
+          const entries = compileInspectedAppCommands({
+            landofile,
+            inspection: scripts,
+            redact: redactor.redactString,
+          });
           const error = registrationError(landofile.commandAliases, entries, pluginCommandIds);
           if (error !== undefined) return yield* Effect.fail(error);
           yield* writeAppCommandCache({
+            sourceScripts: fingerprintsFromInspection(scripts),
             landofile,
             entries,
             ...cacheOptions,

@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import type { PulledImage } from "@lando/container-runtime/image-pull";
+import { Effect } from "effect";
 
 /**
  * A `pullHelperImage` stub for tests that exercise helper containers but not

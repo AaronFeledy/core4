@@ -1,19 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-
+import { Schema } from "effect";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
+import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import {
   STATIC_FEATURE_ID,
   staticCaddyServiceType,
   staticNginxServiceType,
   staticServiceFeature,
 } from "../src/services/static.ts";
-
-import { tcpProbe } from "../src/services/_tcp-probe.ts";
-import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
@@ -307,4 +304,5 @@ describe("static ServiceType", () => {
     );
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

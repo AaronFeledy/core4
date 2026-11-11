@@ -1,5 +1,5 @@
 import { observeTcpListener } from "@lando/container-runtime/listener-observation";
-import { DateTime, Effect, Option } from "effect";
+import type { RedactionService } from "@lando/redaction/service";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/errors";
 import { PostAppStartEvent, PostStartEvent, PreAppStartEvent, PreStartEvent } from "@lando/sdk/events";
 import type { PreparedFileSyncTarget } from "@lando/sdk/schema";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   type AppPlanner,
   type BuildOptions,
@@ -30,14 +31,13 @@ import {
   type StateStore,
   UrlScanner,
 } from "@lando/sdk/services";
-
-import type { RedactionService } from "@lando/redaction/service";
-import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Option } from "effect";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
@@ -50,6 +50,7 @@ import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
+import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import {
   acquireFileSyncEngine,
   acquirePlannedFileSyncEngine,
@@ -58,7 +59,6 @@ import {
 } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveFileSyncMountPlan } from "./file-sync-plan.ts";
-import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishLowPortWarnings } from "./low-port-warning.ts";
@@ -73,9 +73,8 @@ import {
   projectDebuggerOverlay,
   withAcquiredStartOverlays,
 } from "./start-overlays.ts";
-import type { StopAppPreflight } from "./stop-internal.ts";
-
 import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
+import type { StopAppPreflight } from "./stop-internal.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
@@ -224,7 +223,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
         remediation: "Restore a provider with the recorded prepared-volume lifecycle before retrying start.",
       }),
     );
-  const plan = resolvedPlan;
+  // Issue and stamp generated certificates before any hook or provider work can fail later on them.
+  const plan = yield* prepareServiceCertificates(resolvedPlan);
   const preparedOverlays =
     execution.preparedOverlays ?? (yield* prepareStartOverlays({ ...target, plan }, provider));
   const engineId = bundle.kind === "accelerated" ? bundle.id : "unknown";

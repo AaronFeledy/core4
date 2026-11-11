@@ -1,8 +1,7 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { smokeWindowsBinary } from "../../../scripts/smoke-windows-binary.ts";
 

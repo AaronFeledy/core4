@@ -1,7 +1,4 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-import { serviceContainerName } from "./plan.ts";
-
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type {
@@ -12,9 +9,10 @@ import type {
   ServiceRuntimeInfo,
   ServiceSelector,
 } from "@lando/sdk/services";
-
+import { Effect } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
+import { serviceContainerName } from "./plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 import { absentShutdown } from "./shutdown-observation.ts";
 import { stopAndRemoveContainer } from "./stop-container.ts";

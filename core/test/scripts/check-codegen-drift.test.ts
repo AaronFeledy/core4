@@ -1,8 +1,7 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-
-import { afterEach, describe, expect, test } from "bun:test";
 
 import {
   CATALOG_OUTPUT_PATHS,
@@ -314,9 +313,9 @@ describe("check:codegen-drift package wiring", () => {
     const gatePr = scripts["gate:pr"];
     if (gatePr === undefined) throw new TypeError("package.json is missing gate:pr");
 
-    // When / Then: the chain runs typecheck, lint, codegen:check, boundaries, then guide-drift.
+    // When / Then: the chain runs typecheck, lint, codegen:check, test ownership, boundaries, then guide-drift.
     expect(gatePr).toBe(
-      "bun run typecheck && bun run lint && bun run codegen:check && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
+      "bun run typecheck && bun run lint && bun run codegen:check && bun run check:test-ownership && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
     );
   });
 });

@@ -3,12 +3,14 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { type Context, DateTime, Effect, Layer, Schema } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
+import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   AbsolutePath,
   CommandResultEnvelope,
@@ -20,13 +22,9 @@ import {
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
 import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
-
-import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
-import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
-import * as BunFileSystem from "@lando/engine/services/file-system";
-import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { type Context, DateTime, Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
+import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
 import { FilesystemWatchIO } from "../../src/cli/commands/doctor-filesystem-watch-io.ts";
 import {
@@ -42,7 +40,6 @@ import {
   appVersionConstraintsForReport,
   renderAppVersionConstraintResult,
 } from "../../src/cli/commands/doctor-version-constraint.ts";
-import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { withCwd } from "../_support/temp-cwd.ts";

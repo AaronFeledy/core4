@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import {
   AbsolutePath,
@@ -24,6 +22,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer } from "effect";
 
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";

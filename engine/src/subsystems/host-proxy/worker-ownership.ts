@@ -1,13 +1,10 @@
 import { readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-
-import { Effect } from "effect";
-
-import type { AppRef } from "@lando/sdk/schema";
-
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
+import type { AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 import { type WorkerClaim, changeWorkerClaim, withDetachedWorkerLock } from "../detached-worker/claim.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
 import { terminateControlRecord } from "./worker-control.ts";
@@ -56,6 +53,10 @@ const removeHostProxyClaim = (
             { ...options, claim },
             removeRunDir(app, options.paths),
           ).pipe(Effect.as("terminated" as const));
+        }
+        default: {
+          const exhaustive: never = state;
+          return exhaustive;
         }
       }
     }),

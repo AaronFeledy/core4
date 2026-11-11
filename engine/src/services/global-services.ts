@@ -1,7 +1,5 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Cause, Effect, Result, Schema } from "effect";
-
 import { GlobalAppError, GlobalServiceCapabilityError, GlobalServiceCollisionError } from "@lando/sdk/errors";
 import {
   type GlobalServiceContribution,
@@ -10,6 +8,7 @@ import {
   ProviderCapabilities,
   ServiceConfig,
 } from "@lando/sdk/schema";
+import { Cause, Effect, Result, Schema } from "effect";
 
 import { type GlobalPolicy, emptyGlobalPolicy, globalContributionPolicy } from "../global-app/enablement.ts";
 

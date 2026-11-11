@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
-
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import { type DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
 import {
@@ -11,6 +8,7 @@ import {
   Telemetry,
   markDeprecated,
 } from "@lando/sdk/services";
+import { Cause, DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
 import { registerBuiltInContractDeprecations } from "../../src/deprecation/built-in-contracts.ts";
 import * as DeprecationPluginRegistry from "../../src/deprecation/plugin-registry.ts";
 import * as DeprecationServiceLayer from "../../src/deprecation/service.ts";

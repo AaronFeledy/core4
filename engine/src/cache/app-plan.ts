@@ -3,20 +3,6 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
-
-import { Clock, Effect, Schema } from "effect";
-
-import { CacheError, type LandofileFormConflictError, isErrnoCode } from "@lando/sdk/errors";
-import {
-  AppPlan,
-  CurrentExecutableAppPlan,
-  type LandofileShape,
-  type PluginManifest,
-  type ProviderCapabilities,
-} from "@lando/sdk/schema";
-import { CacheService, type FileSystem } from "@lando/sdk/services";
-import type { Context } from "effect";
-
 import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
 import {
@@ -30,6 +16,17 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
+import { CacheError, type LandofileFormConflictError, isErrnoCode } from "@lando/sdk/errors";
+import {
+  AppPlan,
+  CurrentExecutableAppPlan,
+  type LandofileShape,
+  type PluginManifest,
+  type ProviderCapabilities,
+} from "@lando/sdk/schema";
+import { CacheService, type FileSystem } from "@lando/sdk/services";
+import type { Context } from "effect";
+import { Clock, Effect, Schema } from "effect";
 import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
 import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
 import { CORE_VERSION } from "../version.ts";
@@ -40,7 +37,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 50n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 52n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;

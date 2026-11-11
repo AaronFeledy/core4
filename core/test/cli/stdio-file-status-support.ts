@@ -1,5 +1,5 @@
 import { expect } from "bun:test";
-import { constants, closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, constants, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 

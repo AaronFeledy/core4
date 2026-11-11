@@ -1,0 +1,408 @@
+import { describe, expect, test } from "bun:test";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
+import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
+import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName, planAppIdentity } from "@lando/sdk/schema";
+import { makeStateStore } from "@lando/state-store/service";
+import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
+import {
+  listAppliedPlans,
+  loadAppliedPlan,
+  persistAppliedPlan,
+  removeAppliedPlan,
+} from "../src/applied-state.ts";
+import { makeRuntimeProvider } from "../src/index.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
+
+const providerId = ProviderId.make("podman");
+const serviceName = ServiceName.make("web");
+const metadata = {
+  resolvedAt: DateTime.makeUnsafe("2026-07-29T00:00:00Z"),
+  source: "provider-podman applied-state test",
+  runtime: 4 as const,
+};
+const proxyUrl = "http://proxy-user:proxy-password@proxy.internal:8443";
+
+const planFor = (id: string, proxy?: string): AppPlan => {
+  const appId = AppId.make(id);
+  return {
+    id: appId,
+    name: id,
+    slug: id,
+    root: AbsolutePath.make(`/tmp/${id}`),
+    provider: providerId,
+    services: {
+      [serviceName]: {
+        name: serviceName,
+        type: "node",
+        provider: providerId,
+        primary: true,
+        artifact: { kind: "ref", ref: "node:22-alpine" },
+        command: ["node", "server.js"],
+        environment: proxy === undefined ? {} : { HTTPS_PROXY: proxy },
+        mounts: [],
+        endpoints: [],
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata,
+        extensions: {},
+      },
+    },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  };
+};
+
+const withStateRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-provider-podman-applied-state-"));
+  try {
+    return await run(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
+const stateFor = (root: string) =>
+  makePluginStateStore(
+    makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+    AbsolutePath.make(root),
+    ownerOnlyFileAccess,
+  );
+
+const withFailingModify = (state: PluginStateStore): PluginStateStore => ({
+  open: <A, I>(spec: PluginStateBucketSpec<A, I>) =>
+    state.open(spec).pipe(
+      Effect.map((bucket) => ({
+        ...bucket,
+        modify: <B>(_update: (current: A | null) => readonly [B, A]) =>
+          Effect.fail(
+            new StateStoreError({
+              reason: "io",
+              operation: "modify",
+              path: String(bucket.path),
+              remediation: "Injected modify failure for podman applied-state fixture.",
+            }),
+          ),
+      })),
+    ),
+  withLock: state.withLock,
+});
+
+describe("provider-podman applied state", () => {
+  test.each([true, false, undefined, "off", "invalid"])(
+    "loads v2 init %s atomically without losing ownership",
+    async (init) => {
+      // Given
+      await withStateRoot(async (root) => {
+        const state = stateFor(root);
+        const plan = planFor("init-migration");
+        const sibling = planFor("sibling");
+        const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+        const encoded = Schema.encodeSync(AppPlan)(plan);
+        const bytes = JSON.stringify({
+          version: 2,
+          data: {
+            [sibling.id]: Schema.encodeSync(AppPlan)(sibling),
+            [plan.id]: {
+              ...encoded,
+              services: {
+                web: {
+                  ...encoded.services[serviceName],
+                  extensions: {
+                    compose: {
+                      ...(init === undefined ? {} : { init }),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+        await writeFile(path, bytes);
+        // When
+        const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
+        // Then
+        if (init === "invalid") {
+          expect(loaded).toBeUndefined();
+          expect(await readFile(path, "utf8")).toBe(bytes);
+        } else {
+          if (loaded === undefined) throw new Error("missing migrated plan");
+          expect(loaded.services[serviceName]?.init).toBe(init === "off" ? false : init);
+          expect(loaded.services[serviceName]?.extensions.compose).not.toHaveProperty("init");
+          expect(planAppIdentity(loaded)).toEqual(planAppIdentity(plan));
+          const peer = await Effect.runPromise(loadAppliedPlan(state, sibling.id));
+          expect(peer?.root).toBe(sibling.root);
+        }
+      });
+    },
+  );
+  for (const damage of ["corrupt", "migration", "decode", "bad-member"] as const) {
+    for (const operation of [
+      "apply",
+      "reconcile",
+      "stop",
+      "stop-supplied",
+      "restart",
+      "destroy",
+      "destroy-supplied",
+    ] as const) {
+      test(`${operation} refuses ${damage} state after a successful cached read`, async () => {
+        await withStateRoot(async (root) => {
+          const state = stateFor(root);
+          const plan = planFor("guarded-app");
+          const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+          const requests: string[] = [];
+          const provider = await Effect.runPromise(
+            makeRuntimeProvider({
+              platform: "linux",
+              env: {},
+              conflictDetector: () => Effect.void,
+              appliedPlanState: state,
+              podmanApi: {
+                ping: Effect.void,
+                info: Effect.succeed({ version: { Version: "6.0.0" } }),
+                request: (input) =>
+                  Effect.sync(() => {
+                    requests.push(input.path);
+                    return { status: 204, body: "" };
+                  }),
+              },
+            }),
+          );
+          await Effect.runPromise(provider.start({ app: plan.id, service: serviceName, plan }));
+          requests.length = 0;
+          const encoded = Schema.encodeSync(AppPlan)(plan);
+          const broken = {
+            ...encoded,
+            services: {
+              web: {
+                ...encoded.services[serviceName],
+                mounts: [
+                  { type: "bind", source: "/x", target: "/x", readOnly: false, realization: "accelerated" },
+                ],
+              },
+            },
+          };
+          const bytes =
+            damage === "corrupt"
+              ? "not json"
+              : JSON.stringify({
+                  version: damage === "migration" || damage === "bad-member" ? 1 : 2,
+                  data:
+                    damage === "bad-member"
+                      ? { [plan.id]: encoded, broken }
+                      : { [plan.id]: damage === "decode" ? { ...encoded, services: "invalid" } : broken },
+                });
+          await writeFile(path, bytes);
+          const target = { app: plan.id, service: serviceName };
+          const action =
+            operation === "apply" || operation === "reconcile"
+              ? provider.apply(plan, { reconcile: operation === "reconcile" })
+              : operation === "stop"
+                ? provider.stop(target)
+                : operation === "stop-supplied"
+                  ? provider.stop({ ...target, plan })
+                  : operation === "restart"
+                    ? provider.restart({ ...target, plan })
+                    : provider.destroy(
+                        { app: plan.id, ...(operation === "destroy-supplied" ? { plan } : {}) },
+                        { volumes: true },
+                      );
+          const failure = await Effect.runPromise(action.pipe(Effect.flip, Effect.scoped));
+          expect(failure).toBeInstanceOf(ProviderUnavailableError);
+          expect(failure).toMatchObject({ providerId: "podman", operation: "applied-state.read" });
+          expect(failure.remediation).toContain(path);
+          expect(failure.message).toContain("state for several apps");
+          expect(requests).toEqual([]);
+          expect(await readFile(path, "utf8")).toBe(bytes);
+        });
+      });
+    }
+    test(`observation tolerates ${damage} while inventory reports the protected record`, async () => {
+      await withStateRoot(async (root) => {
+        const state = stateFor(root);
+        const plan = planFor("guarded-app");
+        const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+        const encoded = Schema.encodeSync(AppPlan)(plan);
+        await writeFile(
+          path,
+          damage === "corrupt"
+            ? "not json"
+            : JSON.stringify({
+                version: damage === "migration" || damage === "bad-member" ? 1 : 2,
+                data: { [plan.id]: encoded, broken: {} },
+              }),
+        );
+        const provider = await Effect.runPromise(
+          makeRuntimeProvider({
+            platform: "linux",
+            env: {},
+            conflictDetector: () => Effect.void,
+            appliedPlanState: state,
+            podmanApi: {
+              ping: Effect.void,
+              info: Effect.succeed({ version: { Version: "6.0.0" } }),
+              request: () => Effect.succeed({ status: 200, body: "[]" }),
+            },
+          }),
+        );
+        expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
+        expect(await Effect.runPromise(provider.appliedPlans ?? Effect.die("missing inventory"))).toEqual([]);
+        expect(await Effect.runPromise(provider.list({ includeUnplanned: true }))).toEqual([]);
+        expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
+          plans: [],
+          unreadable: [{ path }],
+        });
+      });
+    });
+  }
+
+  test("logs discover the labeled container when applied state is unreadable", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const plan = planFor("log-app");
+      const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+      await writeFile(path, "not json");
+      const streams: string[] = [];
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          env: {},
+          conflictDetector: () => Effect.void,
+          appliedPlanState: state,
+          podmanApi: {
+            ping: Effect.void,
+            info: Effect.succeed({ version: { Version: "6.0.0" } }),
+            request: () =>
+              Effect.succeed({
+                status: 200,
+                body: JSON.stringify([
+                  {
+                    Id: "observed-log-container",
+                    Labels: { "dev.lando.app": plan.id, "dev.lando.service": serviceName },
+                  },
+                ]),
+              }),
+            stream: (input) => {
+              streams.push(input.path);
+              return Stream.empty;
+            },
+          },
+        }),
+      );
+      await Effect.runPromise(
+        Stream.runCollect(provider.logs({ app: plan.id, service: serviceName }, { follow: false })),
+      );
+      expect(streams).toHaveLength(1);
+      expect(streams[0]).toStartWith("/containers/observed-log-container/logs?");
+    });
+  });
+  test("credential-bearing proxy env round-trips across fresh stores", async () => {
+    await withStateRoot(async (root) => {
+      const plan = planFor("proxy-app", proxyUrl);
+
+      const path = await Effect.runPromise(persistAppliedPlan(stateFor(root), plan));
+      const loaded = await Effect.runPromise(loadAppliedPlan(stateFor(root), plan.id));
+
+      expect(path).toBe(join(root, "applied-plans.json"));
+      expect(loaded?.services[serviceName]?.environment.HTTPS_PROXY).toBe(proxyUrl);
+    });
+  });
+
+  test("replacement corrects broader permissions to owner-only mode on POSIX", async () => {
+    if (process.platform === "win32") return;
+
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const plan = planFor("mode-app");
+      const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+      await chmod(path, 0o644);
+
+      await Effect.runPromise(persistAppliedPlan(state, planFor("mode-app", proxyUrl)));
+
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    });
+  });
+
+  test("one collection preserves multiple apps and removes only the selected app", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const first = planFor("first-app");
+      const second = planFor("second-app");
+      await Effect.runPromise(persistAppliedPlan(state, first));
+      await Effect.runPromise(persistAppliedPlan(state, second));
+
+      await Effect.runPromise(removeAppliedPlan(state, first.id));
+
+      const plans = await Effect.runPromise(listAppliedPlans(state));
+      expect(plans.plans.map((plan) => plan.id)).toEqual([second.id]);
+      expect(await Effect.runPromise(loadAppliedPlan(state, first.id))).toBeUndefined();
+    });
+  });
+
+  test("removeAppliedPlan propagates state-store failures and retains the plan", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const plan = planFor("retained-app");
+      await Effect.runPromise(persistAppliedPlan(state, plan));
+
+      const exit = await Effect.runPromiseExit(removeAppliedPlan(withFailingModify(state), plan.id));
+
+      expect(exit._tag).toBe("Failure");
+      const failure = Exit.isFailure(exit)
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+        : undefined;
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure?.operation).toBe("applied-state.remove");
+      expect(failure?.cause).toBeInstanceOf(StateStoreError);
+      expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("modify");
+      expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
+    });
+  });
+
+  test("corrupt collection contents behave as a cache miss", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const plan = planFor("corrupt-app");
+      const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+      await writeFile(path, "not valid json");
+
+      const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
+
+      expect(loaded).toBeUndefined();
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
+    });
+  });
+
+  test("unknown collection versions behave as a cache miss", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const plan = planFor("version-app");
+      const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+      const envelope = JSON.parse(await readFile(path, "utf8"));
+      await writeFile(path, JSON.stringify({ ...envelope, version: 99 }));
+
+      const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
+
+      expect(loaded).toBeUndefined();
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
+    });
+  });
+
+  test("listAppliedPlans reports when the applied-state collection cannot be read", async () => {
+    await withStateRoot(async (root) => {
+      await mkdir(join(root, "applied-plans.json"));
+
+      const result = await Effect.runPromise(listAppliedPlans(stateFor(root)));
+
+      expect(result).toEqual({ plans: [], unreadable: [{ path: join(root, "applied-plans.json") }] });
+    });
+  });
+});

@@ -245,7 +245,17 @@ describe("renderCommandHelp", () => {
 describe("renderToolingHelp", () => {
   test("renders summary, typeable usage, extras, and service when present", () => {
     // Given a cache-shaped tooling entry with a service
-    const entry = { id: "app:greet", summary: "Echo hello", hidden: false, service: "appserver" };
+    const entry = {
+      id: "app:greet",
+      summary: "Echo hello",
+      hidden: false,
+      runs: {
+        kind: "commands",
+        steps: 1,
+        targets: [{ kind: "service", name: "appserver" }],
+        program: "echo",
+      },
+    } satisfies ToolingHelpEntry;
 
     // When tooling help is rendered
     const help = renderToolingHelp(entry);
@@ -255,7 +265,7 @@ describe("renderToolingHelp", () => {
     expect(help).toContain("lando greet [args...]");
     expect(help).not.toContain("$ lando");
     expect(sectionBody(help, "ALIASES")).toContain("app:greet");
-    expect(help).toContain("Runs in service appserver");
+    expect(help).toContain("Runs `echo` in appserver.");
     expect(typeof help).toBe("string");
   });
 

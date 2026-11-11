@@ -1,10 +1,4 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import type { ListenerObservation } from "@lando/sdk/schema";
-import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
-import { PROVIDER_LABEL } from "../labels.ts";
-import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
-import { observeTcpListener } from "../listener-observation.ts";
-
 import {
   EnvironmentValueResolutionError,
   PlanReplanRequiredError,
@@ -15,6 +9,7 @@ import {
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
+import type { ListenerObservation, VolumeCreationFact } from "@lando/sdk/schema";
 import {
   type AppPlan,
   type AppRef,
@@ -29,8 +24,7 @@ import {
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
-
-import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
@@ -49,6 +43,10 @@ import {
   unsupportedHealthcheckTarget,
   validateHealthcheckExecution,
 } from "../healthcheck-attempt.ts";
+import { isProducedArtifact, producedImageMissing } from "../image-ensure.ts";
+import { PROVIDER_LABEL } from "../labels.ts";
+import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
+import { observeTcpListener } from "../listener-observation.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
@@ -574,6 +572,13 @@ const createContainer = Effect.fnUntraced(function* (
     service.artifact?.kind === "ref" &&
     isMissingImageCreateResponse(response)
   ) {
+    // A Lando-built image exists in no registry; the forced pull that repairs Docker's
+    // inspect-200/create-404 disagreement would only reach for a tag that was never published.
+    if (isProducedArtifact(service)) {
+      return yield* Effect.fail(
+        producedImageMissing(deps.options.ctx, String(service.name), service.artifact.ref),
+      );
+    }
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
     const retry = yield* request(deps, { method: "POST", ...createRequest });
     if (retry.status === 201 || retry.status === 409) return endpoints;

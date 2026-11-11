@@ -1,10 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer, Option, Tracer } from "effect";
-
-import { EventService, type LandoEvent } from "@lando/sdk/services";
-
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { EventService, type LandoEvent } from "@lando/sdk/services";
+import { Effect, Layer, Option, Tracer } from "effect";
 import type { CliInvocationSnapshot } from "../../src/cli/command-lifecycle.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 

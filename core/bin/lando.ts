@@ -10,10 +10,9 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { resolveLandoRoots, updateHandoffDir } from "@lando/paths";
-
-import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
 import { installProcessLifecycle } from "../src/cli/process-lifecycle";
 import { runWithProcessSignalReraise } from "../src/cli/process-signals";

@@ -2,9 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { compileBunShellScriptCommands } from "@lando/engine/cache/command-compiler";
+import { compileInspectedAppCommands } from "@lando/engine/cache/command-compiler";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { fingerprintsFromInspection } from "@lando/engine/cache/command-script-freshness";
+import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
@@ -20,17 +22,22 @@ const withHelpApp = async (
     await mkdir(join(root, ".lando/scripts"), { recursive: true });
     await writeFile(join(root, ".lando.yml"), "name: [invalid\n");
     if (state.cached) await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
-    const scripts = await Effect.runPromise(discoverBunShellScripts({ appRoot: root }));
+    await writeFile(join(root, ".lando/scripts/unrelated.bun.sh"), "invalid metadata");
+    const scripts = await Effect.runPromise(inspectBunShellScripts({ appRoot: root }));
     await Effect.runPromise(
       writeAppCommandCacheStrict({
         cwd: root,
         cacheRoot,
         landofile: { name: "machine-help" },
-        entries: compileBunShellScriptCommands(scripts),
+        entries: compileInspectedAppCommands({
+          landofile: { name: "machine-help" },
+          inspection: scripts,
+          redact: createRedactor("secrets").redactString,
+        }),
+        sourceScripts: fingerprintsFromInspection(scripts),
       }),
     );
     if (!state.cached) await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
-    await writeFile(join(root, ".lando/scripts/unrelated.bun.sh"), "invalid metadata");
     await run(root, cacheRoot);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -149,6 +156,7 @@ test.each([true, false])("machine help returns the selected declaration when cac
         target: {
           canonicalId: "app:probe",
           source: "tooling",
+          runs: { kind: "script", path: ".lando/scripts/probe.bun.sh" },
           input: {
             flags: [{ name: "mode", choices: ["dev", "prod"], default: "dev" }],
             revision: expect.any(String),

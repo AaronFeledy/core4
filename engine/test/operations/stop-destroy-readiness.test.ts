@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
-import { stopAppWithPlan } from "../../src/operations/stop.ts";
+import { haltAppRuntime } from "../../src/operations/stop.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
 test.each(["stop", "destroy"] as const)("%s leaves runtime readiness untouched", async (operation) => {
@@ -19,7 +19,7 @@ test.each(["stop", "destroy"] as const)("%s leaves runtime readiness untouched",
   const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
 
   if (operation === "stop") {
-    await Effect.runPromise(stopAppWithPlan({}, target).pipe(Effect.provide(harness.layer)));
+    await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
   } else {
     await Effect.runPromise(destroyAppForTarget({}, target).pipe(Effect.provide(harness.layer)));
   }
@@ -49,7 +49,7 @@ test.each(["stop", "destroy"] as const)("%s handles an idle owning runtime", asy
   const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
   const result =
     operation === "stop"
-      ? (await Effect.runPromise(stopAppWithPlan({}, target).pipe(Effect.provide(harness.layer)))).result
+      ? (await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)))).result
       : await Effect.runPromise(destroyAppForTarget({}, target).pipe(Effect.provide(harness.layer)));
   expect(result.outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
   expect(preparations).toBe(operation === "stop" ? 0 : 1);
@@ -67,7 +67,7 @@ test("idle stop uses the same status observation for coordination and provider a
     onDestroy: () => mutations.push("destroy"),
   });
   const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
-  await Effect.runPromise(stopAppWithPlan({}, target).pipe(Effect.provide(harness.layer)));
+  await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
   expect(mutations).toEqual([]);
   expect(reads).toBe(1);
 });

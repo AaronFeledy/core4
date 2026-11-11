@@ -51,6 +51,26 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   static: {},
 };
 
+export const LANDO3_CREDS_MEMBERS: Readonly<Record<string, readonly string[]>> = {
+  mysql: ["user", "password", "database"],
+  mariadb: ["user", "password", "database"],
+  postgres: ["user", "password", "database"],
+  mongodb: ["user", "password", "database"],
+  phpmyadmin: ["user", "password"],
+  mssql: ["user", "password", "database"],
+};
+
+// Mirrors the credential members each v4 service type reads.
+export const V4_CREDS_MEMBERS: Readonly<Record<string, readonly string[]>> = {
+  mysql: ["user", "password", "database"],
+  mariadb: ["user", "password", "database"],
+  postgres: ["user", "password", "database"],
+  mongodb: ["user", "password", "database"],
+  mssql: ["user", "password", "database"],
+  redis: ["password"],
+  phpmyadmin: ["user", "password"],
+};
+
 export const LEGACY_TYPE_ALIASES: Readonly<Record<string, string>> = { mongo: "mongodb" };
 
 /**

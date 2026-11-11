@@ -1,7 +1,5 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { type Context, Effect, Layer } from "effect";
-
 import { type ShellExecError, ShellScriptOutsideRootError, ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import {
@@ -16,6 +14,7 @@ import {
   type ToolingHostStep,
   type ToolingInvocation,
 } from "@lando/sdk/services";
+import { type Context, Effect, Layer } from "effect";
 
 import { validateHostShellSteps } from "./host-shell-validation.ts";
 import { ShellRedactionTokens } from "./shell-runner.ts";

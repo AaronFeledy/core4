@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
-
 import { ToolingExecError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -23,6 +21,7 @@ import {
   makeToolingEngineContractSuite,
   runToolingEngineContractSuite,
 } from "@lando/sdk/test";
+import { DateTime, Effect, Stream } from "effect";
 
 const providerId = ProviderId.make("contract");
 const metadata = {

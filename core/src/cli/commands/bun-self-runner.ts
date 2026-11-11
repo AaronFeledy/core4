@@ -14,8 +14,8 @@ import { DateTime, Effect, Stream } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 import { ChildOutput } from "../child-output.ts";
 import { finishCommandProgress } from "../command-progress.ts";
-import { applyRemoveEnv } from "./bun-child-network-policy.ts";
 import { projectBunChildNetwork } from "./bun-child-network.ts";
+import { applyRemoveEnv } from "./bun-child-network-policy.ts";
 import { publishOptionalEvent } from "./optional-event-publish.ts";
 
 export interface BunSelfRunOptions {

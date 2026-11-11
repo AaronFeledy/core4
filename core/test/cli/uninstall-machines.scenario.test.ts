@@ -4,9 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { classifyManagedProviderMachine } from "@lando/engine/runtime/managed-provider-machine";
-import { Effect } from "effect";
-
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 import { metaUninstallSpec as declarativeUninstallSpec } from "../../src/cli/command-specs/meta/uninstall.ts";
 
 const metaUninstallSpec = {
@@ -14,6 +13,7 @@ const metaUninstallSpec = {
   run: (input: Parameters<typeof declarativeUninstallSpec.run>[0]) =>
     declarativeUninstallSpec.run(input).pipe(Effect.provide(PrivateFileAccessService.layer)),
 };
+
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 
 const seedSetupState = (userDataRoot: string, machine: unknown): void => {

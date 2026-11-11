@@ -11,8 +11,8 @@ import {
   appConfigOptionsFromInput,
   appConfigSpec,
 } from "../../src/cli/command-specs/app/config/index.ts";
-import { AppConfigResultSchema, appConfig } from "../../src/cli/commands/app-config.ts";
 import type { AppConfigOptions } from "../../src/cli/commands/app-config.ts";
+import { AppConfigResultSchema, appConfig } from "../../src/cli/commands/app-config.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
 let dir = "";

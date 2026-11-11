@@ -1,14 +1,5 @@
 import { resolve } from "node:path";
 import { buildPersistedSchemaSnapshot } from "./build-persisted-schema-snapshot.ts";
-
-import {
-  SCHEMA_ARTIFACT_FAMILIES,
-  type SchemaArtifactFamily,
-  type SchemaArtifactSet,
-  SchemaCompatibilityInputError,
-  loadWorkingSchemaArtifacts,
-} from "./schema-compatibility-artifacts.ts";
-import { regenerateBaseSchemaArtifacts } from "./schema-compatibility-baseline.ts";
 import type { AcceptCompatibilityOptions } from "./schema-compatibility/accept-exceptions.ts";
 import {
   type CompatibilityException,
@@ -20,6 +11,14 @@ import { loadCompatibilityExceptions } from "./schema-compatibility/exceptions.t
 import type { JsonSchema } from "./schema-compatibility/model.ts";
 import { buildPersistedSurfaceStores, readPersistedStoreVersions } from "./schema-compatibility/persisted.ts";
 import { loadBasePersistedStoreVersions } from "./schema-compatibility/store-versions.ts";
+import {
+  SCHEMA_ARTIFACT_FAMILIES,
+  type SchemaArtifactFamily,
+  type SchemaArtifactSet,
+  SchemaCompatibilityInputError,
+  loadWorkingSchemaArtifacts,
+} from "./schema-compatibility-artifacts.ts";
+import { regenerateBaseSchemaArtifacts } from "./schema-compatibility-baseline.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_BASE_REF = "origin/main";

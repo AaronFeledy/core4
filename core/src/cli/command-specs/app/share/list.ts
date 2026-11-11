@@ -1,8 +1,7 @@
-import { Schema } from "effect";
+import { appShareList } from "@lando/engine/operations/share";
 
 import { TunnelSession, type TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
-
-import { appShareList } from "@lando/engine/operations/share";
+import { Schema } from "effect";
 import { renderShareListResult } from "../../../commands/share";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { shareFormatFromInput, shareListFlags, shareListOptionsFromInput } from "./common";

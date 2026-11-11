@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { Predicate } from "effect";
-
-import { describe, expect, test } from "bun:test";
 
 import { collectShardedTestFiles } from "../../../scripts/test-shards.ts";
 
@@ -172,6 +171,7 @@ describe("Landofile package seam", () => {
         "assertLayerMergeCompleteness",
         "compareKeyPaths",
         "compiledLandofileSource",
+        "composeDispositionFor",
         "composeServiceDispositions",
         "composeTagDispositions",
         "composeTopLevelDispositions",

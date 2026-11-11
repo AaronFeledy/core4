@@ -229,7 +229,11 @@ test("does not skip the provider when a version-1 persisted build result has the
       ),
     );
     expect(builds).toBe(1);
-    expect(built.services[service.name]?.artifact).toEqual({ kind: "ref", ref: "web:fresh" });
+    expect(built.services[service.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "web:fresh",
+      origin: "build",
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

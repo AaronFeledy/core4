@@ -2,13 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { GlobalConfig, PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { emptyGlobalPolicy, prepareGlobalPolicy } from "../../src/global-app/enablement.ts";
 import { readGlobalResolution, withGlobalResolutionCapabilities } from "../../src/global-app/resolution.ts";

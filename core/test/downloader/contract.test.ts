@@ -1,13 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientError from "effect/http/HttpClientError";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import { type TestDownloaderHandle, makeTestDownloader } from "@lando/engine/testing/downloader";
+import { layer as DownloaderLayer } from "@lando/http-client/downloader";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 
 import type { AbsolutePath, DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import {
@@ -18,11 +17,10 @@ import {
   OnlineAcquisition,
 } from "@lando/sdk/services";
 import { type DownloaderContractHarness, runDownloaderContract } from "@lando/sdk/test";
-
-import { type TestDownloaderHandle, makeTestDownloader } from "@lando/engine/testing/downloader";
-import { layer as DownloaderLayer } from "@lando/http-client/downloader";
-import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
-import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
+import { type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

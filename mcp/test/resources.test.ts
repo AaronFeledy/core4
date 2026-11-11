@@ -161,3 +161,46 @@ test("each resource read releases its request scope before returning", async () 
   expect(observed).toEqual({ first: 1, second: 2 });
   expect(finalized).toBe(2);
 });
+
+test("keeps a published default credential on a resource while masking a registered secret", async () => {
+  // Given: an info-shaped resource with the public default password and a registered private value.
+  const privateValue = "resource-private-value";
+  const payload = {
+    creds: { user: "lando", password: "lando", database: "app" },
+    note: privateValue,
+  };
+  const response = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        return yield* client.request("resources/read", { uri: "lando://app/info" });
+      }),
+    ).pipe(
+      Effect.provide(
+        serverLayer(
+          {
+            resources: [
+              {
+                uri: "lando://app/info",
+                name: "App information",
+                description: "App information",
+                resultSchema: Schema.Unknown,
+                read: Effect.succeed(payload),
+              },
+            ],
+          },
+          [privateValue],
+        ),
+      ),
+    ),
+  );
+  const result = Schema.decodeUnknownSync(
+    Schema.Struct({ contents: Schema.Array(Schema.Struct({ text: Schema.String })) }),
+  )(response.result);
+  // Then: the published default stays readable and the registered bytes do not.
+  expect(JSON.parse(result.contents[0]?.text ?? "null")).toEqual({
+    creds: { user: "lando", password: "lando", database: "app" },
+    note: "[redacted]",
+  });
+  expect(JSON.stringify(response)).not.toContain(privateValue);
+});

@@ -1,14 +1,11 @@
 import { describe, expect, test } from "bun:test";
-
-import { Context, DateTime, Effect, Layer, Option } from "effect";
-
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { FileSyncEngine, ServiceReadiness } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
-import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { Context, DateTime, Effect, Layer, Option } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 describe("bootstrap plugin services", () => {

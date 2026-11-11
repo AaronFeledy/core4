@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import * as fs from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { HARDLINK_PUBLICATION_REMEDIATION } from "../src/transaction-error.ts";

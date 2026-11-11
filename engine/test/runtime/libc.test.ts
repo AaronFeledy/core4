@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { constants, closeSync, mkdtempSync, openSync, rmSync } from "node:fs";
+import { closeSync, constants, mkdtempSync, openSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { darwinIgnoresInterrupt, fileStatusFlags } from "../../src/runtime/libc.ts";

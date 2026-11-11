@@ -40,11 +40,7 @@ const candidate: FileSyncCandidateDefinition = {
   },
 };
 
-const withPlanner = async (
-  run: (input: {
-    readonly root: string;
-  }) => Promise<void>,
-) => {
+const withPlanner = async (run: (input: { readonly root: string }) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-sync-policy-"));
   try {
     await run({ root });

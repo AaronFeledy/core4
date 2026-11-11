@@ -1,6 +1,5 @@
-import { Context, Effect, Option } from "effect";
-
 import type { CommandWarning } from "@lando/sdk/schema";
+import { Context, Effect, Option } from "effect";
 
 export interface CommandWarningsShape {
   readonly machineOutput: boolean;

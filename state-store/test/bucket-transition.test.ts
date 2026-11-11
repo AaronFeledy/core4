@@ -4,10 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AbsolutePath } from "@lando/sdk/schema";
+import { StateStore } from "@lando/sdk/services";
 import { defineTransitions, illegalTransitionMessage } from "@lando/sdk/transitions";
 import { Effect, Schema } from "effect";
-
-import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "../src/service.ts";
 import { makeTestStateStore } from "../src/testing.ts";
 

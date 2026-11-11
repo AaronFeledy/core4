@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import * as landofile from "@lando/sdk/landofile";
+import { Effect } from "effect";
 import { parseLandofile } from "../../src/landofile/parser.ts";
 
 describe("Landofile leading comment blocks", () => {

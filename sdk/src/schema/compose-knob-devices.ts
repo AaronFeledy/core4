@@ -1,6 +1,5 @@
-import { SchemaIssue } from "effect";
-import { Effect, SchemaTransformation } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { integerTextCheck } from "./compose-knob-scalars.ts";
 import { layerMerge } from "./layer-merge.ts";
 
 const ExtensionFields = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown);
@@ -76,7 +75,10 @@ export const ComposeDevicesField = layerMerge(Schema.Array(ComposeDeviceEntryFie
 });
 export type ComposeDevices = typeof ComposeDevicesField.Type;
 
-const UlimitValue = Schema.Union([Schema.Int, Schema.String]);
+const UlimitValue = Schema.Union([
+  Schema.Int,
+  Schema.String.check(integerTextCheck("an integer limit such as 1024 or -1")),
+]);
 
 export const ComposeUlimit = Schema.Struct({
   soft: UlimitValue,
@@ -103,6 +105,6 @@ const UlimitName = Schema.String.pipe(
 
 export const ComposeUlimitsField = Schema.Record(UlimitName, ComposeUlimitEntryField).annotate({
   description:
-    "Process limits as integer or string scalars, or explicit soft and hard objects; canonicalized to a map of soft and hard limit objects.",
+    "Process limits as integers or integer strings, or explicit soft and hard objects; canonicalized to a map of soft and hard limit objects.",
 });
 export type ComposeUlimits = typeof ComposeUlimitsField.Type;

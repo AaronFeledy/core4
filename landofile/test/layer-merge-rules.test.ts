@@ -4,8 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { loadTestLandofileLayers as loadLandofileLayers } from "./support.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+import {
+  loadTestLandofileLayers as loadLandofileLayers,
+  makeTestLandofilePorts,
+  makeTestLandofileStateStore,
+} from "./support.ts";
 
 test("environment list normalization happens after list replacement across layers", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-list-replacement-"));

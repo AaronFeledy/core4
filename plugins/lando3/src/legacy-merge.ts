@@ -3,11 +3,10 @@
  * Source-tree anchor names restore identities lost during alias projection;
  * value equality alone would incorrectly discard independently authored objects.
  */
-import { LEGACY_TAGGED, isLegacyTagged } from "@lando/sdk/landofile";
-import type { LegacyDocument } from "@lando/sdk/landofile";
-import type { ConfigTranslateSourceId } from "@lando/sdk/schema";
 
-import { lando3SourceLayerOrder } from "./contract.ts";
+import type { LegacyDocument } from "@lando/sdk/landofile";
+import { LEGACY_TAGGED, isLegacyTagged } from "@lando/sdk/landofile";
+import type { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type {
   Lando3Path,
   Lando3Source,
@@ -17,6 +16,7 @@ import type {
   MergedLegacyItem,
   MergedLegacyValue,
 } from "./contract.ts";
+import { lando3SourceLayerOrder } from "./contract.ts";
 import { indexLegacySpans, lookupIdentityName, lookupSpan } from "./source.ts";
 
 const nodeOccurrences = (value: MergedLegacyValue): ReadonlyArray<LegacyOccurrence> => {

@@ -1,9 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
-import { McpToolInputError } from "@lando/sdk/errors";
-import { ToolingInputRevision } from "@lando/sdk/schema";
-
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import {
   type McpCommandEntry,
@@ -11,6 +6,9 @@ import {
   deriveToolInputSchema,
   validateToolInput,
 } from "@lando/mcp/registry";
+import { McpToolInputError } from "@lando/sdk/errors";
+import { ToolingInputRevision } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { appConfigDescribeSpec } from "../../src/cli/command-specs/app/config/describe.ts";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
@@ -306,6 +304,44 @@ describe("buildCatalog", () => {
       effective: computeEffectiveAllowlist({ defaults: [], allow: ["app:destroy"] }),
     });
     expect(catalog.tools[0]).toMatchObject({ toolId: "app:destroy", destructive: true });
+  });
+
+  test("tells agents what a tooling tool runs in its description", () => {
+    const projected = mcpRegistryWithToolingEntries({ commandEntries: [] }, [
+      {
+        id: "app:composer",
+        summary: "Run composer",
+        hidden: false,
+        runs: {
+          kind: "commands",
+          steps: 1,
+          targets: [{ kind: "service", name: "appserver" }],
+          program: "composer",
+        },
+      },
+      {
+        id: "app:deploy",
+        summary: "",
+        hidden: false,
+        runs: { kind: "script", path: ".lando/scripts/deploy.bun.sh" },
+      },
+      { id: "app:plain", summary: "Plain", hidden: false },
+    ]);
+    const catalog = buildCatalog({
+      ...projected,
+      effective: computeEffectiveAllowlist({
+        defaults: [],
+        allow: ["app:composer", "app:deploy", "app:plain"],
+      }),
+      options: { tooling: true },
+    });
+    expect(
+      Object.fromEntries(catalog.tools.map((tool) => [tool.toolId, [tool.title, tool.description]])),
+    ).toEqual({
+      "app:composer": ["Run composer", "Run composer Runs `composer` in appserver."],
+      "app:deploy": ["", "Runs .lando/scripts/deploy.bun.sh on the host."],
+      "app:plain": ["Plain", "Plain"],
+    });
   });
 
   test("projects tooling entries only when tooling is requested", () => {

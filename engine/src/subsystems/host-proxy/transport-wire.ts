@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import {
   HostProxyAuthenticationError,
   HostProxyBackpressureError,
@@ -9,6 +7,7 @@ import {
   type HostProxyTransportUnavailableError,
 } from "@lando/sdk/errors";
 import { HostProxyRequest } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import type { HostProxyOpenError } from "./open-target.ts";
 
 export const HOST_PROXY_MAX_FRAME_BYTES = 1024 * 1024;

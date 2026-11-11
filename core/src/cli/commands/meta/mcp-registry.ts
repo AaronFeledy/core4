@@ -1,3 +1,4 @@
+import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import {
   assertMcpAllowlistSafe,
   filterMcpDefaultAllowlist,
@@ -43,11 +44,11 @@ export const mcpRegistryFromBuiltIns = (
 
 export const mcpRegistryWithToolingEntries = (
   registry: McpCommandRegistry,
-  commands: ReadonlyArray<RegisteredCommand>,
+  commands: ReadonlyArray<RegisteredCommand & Pick<CommandIndexEntry, "loadError">>,
 ): McpCommandRegistry => ({
   ...registry,
   toolingEntries: commands
-    .filter((command) => !command.hidden)
+    .filter((command) => !command.hidden && command.loadError === undefined)
     .map((command) => ({ spec: toolingSpecFromRegistered(command), tooling: true })),
 });
 

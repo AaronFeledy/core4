@@ -8,11 +8,82 @@ import {
   type Environment,
   type EnvironmentValue,
   type ServiceCreds,
+  type ServiceCredsConfig,
   normalizeEnvironmentValue,
 } from "@lando/sdk/schema";
-import { ServiceConfigIssue } from "./_feature-helpers.ts";
+import { ServiceConfigIssue, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
 
 export type CredsFamily = DatabaseFamily;
+
+const CREDS_MEMBERS = ["user", "password", "database", "rootPassword"] as const;
+
+/** Authored `creds` members a service type does not read. Each one fails at `creds.<member>`. */
+export type UnusedCredsMembers = Readonly<
+  Partial<Record<keyof ServiceCreds, { readonly message: string; readonly remediation: string }>>
+>;
+
+export const DB_UNUSED_CREDS: Readonly<Record<CredsFamily, UnusedCredsMembers>> = {
+  mysql: {},
+  mariadb: {},
+  mssql: {},
+  postgres: {
+    rootPassword: {
+      message: "PostgreSQL has no separate root account; creds.password is the superuser password.",
+      remediation: "Remove creds.rootPassword and set the superuser password with creds.password.",
+    },
+  },
+  mongodb: {
+    rootPassword: {
+      message: "MongoDB has no separate root account; creds.user and creds.password are the root account.",
+      remediation: "Remove creds.rootPassword and set the root account with creds.user and creds.password.",
+    },
+  },
+};
+
+const REDIS_SINGLE_LOGIN = {
+  message:
+    "Redis authenticates its single default user with creds.password; there is no per-user or per-database login.",
+  remediation: "Remove this member and keep only creds.password.",
+};
+
+export const REDIS_UNUSED_CREDS: UnusedCredsMembers = {
+  user: REDIS_SINGLE_LOGIN,
+  database: REDIS_SINGLE_LOGIN,
+  rootPassword: {
+    message: "Redis has no separate root account; creds.password is the only Redis password.",
+    remediation: "Remove this member and keep only creds.password.",
+  },
+};
+
+const PHPMYADMIN_REMEDIATION = "Remove this member and keep only creds.user and creds.password.";
+
+export const PHPMYADMIN_UNUSED_CREDS: UnusedCredsMembers = {
+  database: {
+    message: "phpMyAdmin does not select a database; it signs in with creds.user and creds.password.",
+    remediation: PHPMYADMIN_REMEDIATION,
+  },
+  rootPassword: {
+    message: "phpMyAdmin has no separate root account; it signs in with creds.user and creds.password.",
+    remediation: PHPMYADMIN_REMEDIATION,
+  },
+};
+
+/** Effective validation for a feature that provisions or signs in with the service's authored `creds`. */
+export const claimsCreds = (featureId: string) =>
+  serviceFeatureValidateEffective(featureId, () => ({ handledServiceFields: ["creds"] }));
+
+export const assertCredsMembersUsed = (
+  authored: ServiceCredsConfig | undefined,
+  unused: UnusedCredsMembers,
+): void => {
+  if (authored === undefined) return;
+  for (const member of CREDS_MEMBERS) {
+    const rejection = unused[member];
+    if (rejection !== undefined && authored[member] !== undefined) {
+      throw new ServiceConfigIssue(["creds", member], rejection.message, rejection.remediation);
+    }
+  }
+};
 
 export type ResolveServiceCredsInput = {
   readonly family: CredsFamily;
@@ -24,7 +95,6 @@ export type ResolveServiceCredsInput = {
     readonly database: string;
     readonly rootPassword?: string;
   };
-  readonly topLevelDatabase?: string;
 };
 
 const optionalRoot = (key: string, rootPassword: EnvironmentValue | undefined): Environment =>
@@ -48,6 +118,7 @@ export const credentialValuesAgree = (left: EnvironmentValue, right: Environment
 };
 
 export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCreds => {
+  assertCredsMembersUsed(input.authored, DB_UNUSED_CREDS[input.family]);
   const fact = (field: keyof ServiceCreds): EnvironmentValue | undefined => {
     let selected = input.authored?.[field];
     let path = `creds.${field}`;
@@ -85,7 +156,7 @@ export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCre
       throw new ServiceConfigIssue(
         ["creds", "user"],
         "creds.user conflicts with the SQL Server image administrator identity sa.",
-        "Use user: sa; the image does not create another login.",
+        "Set creds.user to sa or remove it; the image does not create another login.",
       );
     }
     if (
@@ -103,7 +174,7 @@ export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCre
       authoredPassword ?? authoredRoot ?? input.defaults.rootPassword ?? input.defaults.password;
     return {
       user: "sa",
-      database: literal("database") ?? input.topLevelDatabase ?? input.defaults.database,
+      database: literal("database") ?? input.defaults.database,
       password,
       rootPassword: password,
     };
@@ -112,7 +183,7 @@ export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCre
   return {
     user: literal("user") ?? input.defaults.user,
     password: authoredPassword ?? input.defaults.password,
-    database: literal("database") ?? input.topLevelDatabase ?? input.defaults.database,
+    database: literal("database") ?? input.defaults.database,
     ...optionalRoot("rootPassword", rootPassword),
   };
 };

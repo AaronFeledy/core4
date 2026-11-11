@@ -2,17 +2,7 @@ import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Schema } from "effect";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
-import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { GlobalAppError } from "@lando/sdk/errors";
-import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { LandofileShape, type PluginManifest, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { literalLandofile } from "../_support/value-contracts.ts";
-
 import {
   bundledFirstGlobalServiceLoader,
   makeBundledFirstGlobalServiceLoader,
@@ -21,6 +11,14 @@ import type {
   GlobalServiceModuleLoader,
   PendingGlobalServiceContribution,
 } from "@lando/engine/services/global-services";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { GlobalAppError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { LandofileShape, type PluginManifest, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { AppPlanner } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Schema } from "effect";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const entry = (plugin: string, id: string, module?: string): PendingGlobalServiceContribution => ({
   plugin,

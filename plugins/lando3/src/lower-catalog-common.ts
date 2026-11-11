@@ -1,5 +1,11 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { CATALOG, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
+import {
+  CATALOG,
+  type CatalogResolution,
+  LANDO3_CREDS_MEMBERS,
+  V4_CREDS_MEMBERS,
+  resolveCatalogType,
+} from "./catalog.ts";
 import { serviceCursor } from "./claims.ts";
 import type { Lando3Path } from "./contract.ts";
 import { lowerAssignments } from "./environment.ts";
@@ -133,20 +139,64 @@ export const lowerCatalogCommon = (
   }
   if (service.creds !== undefined) {
     const creds = service.creds;
-    if (
-      hasPlainObjectPrototype(creds) &&
-      ["user", "password", "database"].every((key) => typeof creds[key] === "string")
-    ) {
-      patch.creds = creds;
-      for (const key of ["user", "password", "database"]) cursor.take(["creds", key]);
+    if (hasPlainObjectPrototype(creds)) {
+      const lowered: Record<string, string> = {};
+      if (Object.keys(creds).length === 0) cursor.acceptNoOp(["creds"]);
+      const targetMembers = Object.hasOwn(V4_CREDS_MEMBERS, resolution.id)
+        ? V4_CREDS_MEMBERS[resolution.id]
+        : undefined;
+      const legacyMembers = Object.hasOwn(LANDO3_CREDS_MEMBERS, resolution.id)
+        ? LANDO3_CREDS_MEMBERS[resolution.id]
+        : undefined;
+      for (const [key, value] of Object.entries(creds)) {
+        if (value === undefined) {
+          cursor.acceptNoOp(["creds", key]);
+          continue;
+        }
+        if (typeof value !== "string") {
+          diagnostics.push(
+            cursor.rejectTree(
+              ["creds", key],
+              `Credential member ${key} must be literal text and cannot be converted.`,
+              "Author this credential as literal text in the generated service.",
+            ),
+          );
+          continue;
+        }
+        if (!legacyMembers?.includes(key)) {
+          drop(
+            ["creds", key],
+            `Lando 3 ignored creds.${key} on ${resolution.id}.`,
+            "Configure the intended credentials by hand on an appropriate Lando 4 service.",
+          );
+          continue;
+        }
+        if (
+          !targetMembers?.includes(key) ||
+          (resolution.id === "mssql" && key === "user" && value !== "sa") ||
+          (resolution.id === "phpmyadmin" && key === "user" && value !== "root")
+        ) {
+          diagnostics.push(
+            cursor.rejectTree(
+              ["creds", key],
+              `Credential member ${key} has no equivalent on the Lando 4 ${resolution.id} service.`,
+              "Author equivalent credentials by hand in the generated service; SQL Server requires creds.user: sa.",
+            ),
+          );
+          continue;
+        }
+        lowered[key] = value;
+        cursor.take(["creds", key]);
+      }
+      if (Object.keys(lowered).length > 0) patch.creds = lowered;
     } else {
       cursor.acceptNoOp(["creds"]);
       diagnostics.push(
         unsupportedServiceKey({
           ctx,
           relative: ["creds"],
-          message: "Partial legacy credentials cannot form an independently valid native layer.",
-          remediation: "Supply user, password, and database together before converting this layer.",
+          message: "Legacy credentials must be a mapping to convert.",
+          remediation: "Author credentials under creds: as literal text in the generated service.",
         }),
       );
     }

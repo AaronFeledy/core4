@@ -1,7 +1,3 @@
-import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
-import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
-import { mapFailures } from "@lando/sdk/command-result";
-
 /**
  * `@lando/provider-podman` — opt-in RuntimeProvider for a user-installed
  * Podman socket.
@@ -14,7 +10,6 @@ import { mapFailures } from "@lando/sdk/command-result";
  * operations from `@lando/container-runtime`.
  */
 import { readFile } from "node:fs/promises";
-
 import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
@@ -24,6 +19,7 @@ import {
 } from "@lando/container-runtime/capabilities";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
+import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
@@ -70,6 +66,7 @@ import {
   runtimeDiagnosticContext,
   standaloneSecretsRedactor,
 } from "@lando/container-runtime/redact";
+import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROY_NO_OP,
@@ -78,6 +75,7 @@ import {
   removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   type ProviderCapabilityError,
   ProviderInternalError,
@@ -796,6 +794,7 @@ const assembleRuntimeProvider = (
       displayName: "Podman Runtime Provider (user-installed)",
       version: "0.0.0",
       platform,
+      runtimeIdentity: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
       capabilities: {
         ...resolvedCapabilities,
         ...(agentBridge === undefined ? {} : { agentSocket: { delivery: "guest-bridge" } }),
@@ -829,6 +828,7 @@ const assembleRuntimeProvider = (
           ctx: PODMAN_CTX,
           dialect: libpodPullDialect,
           ...(spec.policy === undefined ? {} : { policy: spec.policy }),
+          ...(spec.platform === undefined ? {} : { platform: spec.platform }),
           publish: (event) =>
             options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
         }).pipe(

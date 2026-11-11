@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import {
   APPLIED_STATE_VERSION,
   appliedPlanPath,
@@ -22,6 +20,7 @@ import {
 } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
+import { DateTime, Effect, Schema } from "effect";
 import { legacyPlan, service } from "./fixtures/environment-values.ts";
 
 interface OpenCall {
@@ -254,7 +253,7 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(5);
+    expect(calls[0]?.version).toBe(6);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
     expect(appliedPlansDir("/tmp/plugin-state/")).toBe("/tmp/plugin-state/applied-plans");
     expect(appliedPlanPath("/tmp/plugin-state", appId)).toBe("/tmp/plugin-state/applied-plans/example.json");
@@ -276,7 +275,7 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(5);
+    expect(calls[0]?.version).toBe(6);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
   });
 });

@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, type LogSource, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";

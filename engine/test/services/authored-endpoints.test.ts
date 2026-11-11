@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { PortablePath, ProviderId, ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { composeService } from "../../src/services/feature.ts";
 
 const defaults: ServiceFeatureDefinition = {

@@ -1,9 +1,8 @@
-import { Effect } from "effect";
-import * as AST from "effect/SchemaAST";
-
 import { PluginManifestError, SubscriberLevelMismatchError } from "@lando/sdk/errors";
 import { LandoEvent } from "@lando/sdk/events";
 import type { BootstrapLevel, PluginManifest, SubscriberManifestEntry } from "@lando/sdk/schema";
+import { Effect } from "effect";
+import * as AST from "effect/SchemaAST";
 
 export interface IndexedSubscriber {
   readonly pluginName: string;

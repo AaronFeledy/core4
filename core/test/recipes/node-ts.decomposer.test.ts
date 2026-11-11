@@ -6,11 +6,12 @@ import {
   renderCompiledRecipeSnapshot,
   validateSnapshotTemplate,
 } from "@lando/sdk/recipes";
-import { AbsolutePath } from "@lando/sdk/schema";
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: nodeTsDecomposer,
   defaults: nodeTsDefaults,

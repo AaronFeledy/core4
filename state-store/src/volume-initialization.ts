@@ -1,5 +1,3 @@
-import { Effect, Schema, absurd } from "effect";
-
 import {
   type VolumeIdentity,
   VolumeInitializationPhase,
@@ -7,6 +5,7 @@ import {
 } from "@lando/sdk/schema";
 import { type StateStoreShape, type StateWrite, physicalVolumeLockKey } from "@lando/sdk/services";
 import { type TransitionEdge, defineTransitions, planTransition } from "@lando/sdk/transitions";
+import { Effect, Schema, absurd } from "effect";
 
 export const VOLUME_INITIALIZATION_VERSION = 1 as const;
 
@@ -88,7 +87,7 @@ export const planVolumeInitializationWrite = (
   )
     return refused;
   const phase = matchesIdentity(current, identity) ? (current?.state._tag ?? "absent") : "absent";
-  const plan = planTransition(transitions, write.operation, phase, (to): VolumeInitializationRecord => {
+  const plan = planTransition(transitions, write.operation, phase, (_to): VolumeInitializationRecord => {
     switch (write.operation) {
       case "record-creation":
         return { identity, state: { _tag: "fresh" } };

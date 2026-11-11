@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { PreparedFileSyncTarget } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const valid = {
   session: {

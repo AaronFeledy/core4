@@ -17,6 +17,7 @@ import {
   schemaAt,
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
+import { evolveHistoricalComposeKnobValues } from "./x-extension-compose-knob-values-proof.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
@@ -25,14 +26,17 @@ import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
+import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
+import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
   evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 
 const landofileWithUser = (user: JsonValue) => ({
@@ -184,9 +188,18 @@ test.each([
     ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
-  expect(jsonEquals(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected)), current)).toBe(
-    true,
-  );
+  expect(
+    jsonEquals(
+      evolveHistoricalServiceCreds(
+        evolveHistoricalComposeKnobValues(
+          evolveHistoricalSwarmReservations(
+            evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+          ),
+        ),
+      ),
+      current,
+    ),
+  ).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
   const services = properties.services;

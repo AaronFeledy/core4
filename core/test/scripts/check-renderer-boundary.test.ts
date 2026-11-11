@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { rendererRule } from "../../../scripts/boundary/rules/renderer.ts";
 import { checkRendererBoundary } from "../../../scripts/check-renderer-boundary.ts";

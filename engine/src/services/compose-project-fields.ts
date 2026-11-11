@@ -1,5 +1,5 @@
-import { ComposeProjectFieldKey } from "@lando/sdk/schema";
 import type { AppPlan, ProviderCapabilities } from "@lando/sdk/schema";
+import { ComposeProjectFieldKey } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 export type ComposeProjectFieldUse = {

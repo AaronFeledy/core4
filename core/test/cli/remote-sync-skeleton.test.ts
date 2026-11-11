@@ -1,12 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { AbsolutePath } from "@lando/core/schema";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Redacted, Schema, Stream } from "effect";
-
 import {
   AppPlanner,
   DataMover,
@@ -20,6 +16,7 @@ import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/
 import { SnapshotNotFoundError } from "@lando/sdk/errors";
 import { type SyncResult, SyncResult as SyncResultSchema, appIdentityKey } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
+import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { pushSpec } from "../../src/cli/command-specs/app/push.ts";
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";
 
@@ -47,14 +44,14 @@ interface RemoteOperations {
     readonly name: string;
     readonly config: RemoteConfigInput;
   }) => Effect.Effect<unknown, unknown>;
-  readonly appRemoteList: (options?: { readonly cwd?: string; readonly remote?: string }) => Effect.Effect<
-    ReadonlyArray<unknown>,
-    unknown
-  >;
-  readonly appRemoteRemove: (options: { readonly cwd?: string; readonly name: string }) => Effect.Effect<
-    unknown,
-    unknown
-  >;
+  readonly appRemoteList: (options?: {
+    readonly cwd?: string;
+    readonly remote?: string;
+  }) => Effect.Effect<ReadonlyArray<unknown>, unknown>;
+  readonly appRemoteRemove: (options: {
+    readonly cwd?: string;
+    readonly name: string;
+  }) => Effect.Effect<unknown, unknown>;
   readonly appRemoteTest: (options?: {
     readonly cwd?: string;
     readonly remote?: string;

@@ -13,6 +13,41 @@ const withArg = (patch: object) => ({
   args: encodedInput.args.map((arg, index) => (index === 0 ? { ...arg, ...patch } : arg)),
 });
 
+const unavailable = {
+  id: "app:broken",
+  summary: "Unavailable script",
+  hidden: false,
+  source: "bun-script",
+  loadError: {
+    _tag: "BunShellScriptFrontMatterError",
+    message: "Missing front matter",
+    remediation: "Run lando app:config:lint.",
+  },
+} as const;
+test("roundtrips an unavailable script without an executable input declaration", () => {
+  expect(
+    decodeAppCommandIndex(
+      currentAbiBytes("LCAC", {
+        ...app,
+        entries: [unavailable],
+        sourceScripts: [{ relativePath: "broken.bun.sh", invalid: "digest" }],
+      }),
+    )?.entries,
+  ).toEqual([unavailable]);
+});
+test.each([
+  { input: encodedInput },
+  { wrapper: true },
+  { source: undefined },
+  { loadError: null },
+  { loadError: { _tag: "Error", message: "x".repeat(1025) } },
+  { loadError: { _tag: "Error", message: "broken", remediation: "x".repeat(1025) } },
+])("rejects an executable or malformed unavailable script %#", (patch) => {
+  expect(
+    decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [{ ...unavailable, ...patch }] })),
+  ).toBeNull();
+});
+
 for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as const) {
   describe(`${magic} current-ABI validation`, () => {
     test.each([null, [], new Map(), new Set()].map((value) => ({ value })))(
@@ -22,7 +57,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         expect(decode(currentAbiBytes(magic, value))).toBeNull();
       },
     );
-    test.each([1n, 2n, 3n, 4n, 5n, 6n])("rejects old header %s with a current body", (version) => {
+    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n])("rejects old header %s with a current body", (version) => {
       // Given
       const bytes = currentAbiBytes(magic, payload);
       new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, version, true);

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema, SchemaIssue } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { override } from "@lando/sdk/landofile";
 import {
@@ -18,6 +16,7 @@ import {
   suggestionForUnknownKey,
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
+import { Result, Schema, SchemaIssue } from "effect";
 
 const authoredDecode = { onExcessProperty: "error", errors: "all" } as const;
 

@@ -5,8 +5,8 @@ import { displaySource } from "@lando/source-acquisition";
 import type { NpmRegistryTransport } from "@lando/source-acquisition/npm";
 import { Schema } from "effect";
 import { type AuthenticatedArchiveTransport, defaultArchiveTransport } from "./archive-transport";
-import { npmRegistryConfigSnapshot } from "./npm-registry-config";
 import type { NpmRegistryConfig } from "./npm-registry-config";
+import { npmRegistryConfigSnapshot } from "./npm-registry-config";
 
 const Packument = Schema.Struct({
   "dist-tags": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),

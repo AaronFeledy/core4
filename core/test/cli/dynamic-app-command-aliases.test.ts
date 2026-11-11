@@ -2,12 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { decodeAppCommandIndex } from "@lando/engine/cache/command-index";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
 interface CacheFixtureOptions {

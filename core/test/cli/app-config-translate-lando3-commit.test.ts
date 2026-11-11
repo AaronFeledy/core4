@@ -12,7 +12,9 @@ import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragmentNative } from "@
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const { decomposer: wordpressDecomposer } = bundledRecipe("wordpress");
+
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { failure, originals, snapshot, withFixture } from "./translate-lando3-fixture.ts";
 
@@ -163,4 +165,5 @@ test.each([
     );
   }),
 );
+
 import { serviceTypeFacts } from "@lando/service-lando";

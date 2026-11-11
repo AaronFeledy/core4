@@ -1,6 +1,4 @@
 import { dirname, join } from "node:path";
-import { Effect, Predicate, Result } from "effect";
-
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { assertConfigReadable } from "@lando/engine/config-write/readiness";
 import { emitConfigYaml, writeValidationErrorFromIssues } from "@lando/engine/config-write/write-core";
@@ -11,6 +9,7 @@ import { parseLandofile } from "@lando/landofile/parser";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
+import { Effect, Predicate, Result } from "effect";
 
 export const readGlobalText = (filePath: string): Effect.Effect<string, ConfigError> =>
   Effect.tryPromise({

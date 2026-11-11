@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppliedStateInventory, ProviderId } from "@lando/sdk/schema";
 import { PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 import { plan, registryLayer } from "./fixtures/error-registry.ts";
 

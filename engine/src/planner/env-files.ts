@@ -1,14 +1,12 @@
 import { resolve } from "node:path";
+import { parseEnvFile } from "@lando/landofile/env-file";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { type Context, Effect } from "effect";
-
-import { parseEnvFile } from "@lando/landofile/env-file";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig, ValidationIssuePath } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 type EnvFileInput = {
   readonly appRoot: string;

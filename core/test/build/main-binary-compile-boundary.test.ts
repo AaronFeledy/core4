@@ -1,6 +1,5 @@
-import { relative, resolve } from "node:path";
-
 import { expect, test } from "bun:test";
+import { relative, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const wrapperPath = resolve(repoRoot, "scripts/build-compiled-binary.ts");

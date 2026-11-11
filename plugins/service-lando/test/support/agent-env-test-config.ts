@@ -1,7 +1,6 @@
-import { Effect, Layer } from "effect";
-
 import type { AgentEnvConfig, GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 export const configServiceLayer = (config: GlobalConfig): Layer.Layer<ConfigService> => {
   const load = Effect.succeed(config);

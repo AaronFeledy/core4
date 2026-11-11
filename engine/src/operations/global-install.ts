@@ -1,11 +1,10 @@
+import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { canonicalJson } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
-import { Effect, Schema } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
-
-import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import { Effect, Schema } from "effect";
 import { commitGlobalPolicy, prepareGlobalPolicy } from "../global-app/enablement.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";

@@ -1,8 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Exit } from "effect";
-
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type { ServiceRuntimeIdentity } from "@lando/sdk/services";
+import { Effect, Exit } from "effect";
 
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";

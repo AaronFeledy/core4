@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import {
   type LandoEvent,
   TaskCompleteEvent,
@@ -9,6 +7,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { TaskTreeInputController } from "../src/keybindings.ts";
 import { TaskDetailRing } from "../src/task-detail-ring.ts";

@@ -5,8 +5,8 @@ import { makeAdvertisedProxyPortsCheck } from "../src/advertised-proxy-ports.ts"
 import { makeRouterBindAddressCheck } from "../src/doctor-bind-address.ts";
 import { buildTraefikServiceConfig, resolveTraefikPublication } from "../src/global-services/traefik.ts";
 import { persistPortAcquisition, readAcquisitionState } from "../src/port-acquisition-state.ts";
-import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { buildInstallScript } from "../src/socket-proxy-units.ts";
 import { acquisition, app, makeObserveFixture, route } from "./observe-routes-fixture.ts";
 import { makeHarness } from "./proxy-tls-harness.ts";

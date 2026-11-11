@@ -1,5 +1,3 @@
-import { Effect, Result, Schema } from "effect";
-
 import type {
   InfoAppOptions,
   InfoAppResult,
@@ -10,12 +8,13 @@ import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lan
 import {
   type AppPlan,
   type LoadScopedLandofile,
+  type ServiceCreds,
   ServiceInfoConsistent,
   type ServicePlan,
   landoServiceNetworkAttachments,
   serviceAppMount,
 } from "@lando/sdk/schema";
-import { REDACTED } from "@lando/sdk/secrets";
+import { REDACTED, isPublicDefaultCredential } from "@lando/sdk/secrets";
 import {
   type AppPlanner,
   type ConfigService,
@@ -23,6 +22,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
@@ -35,6 +35,7 @@ import { infoLogSources } from "./info-log-sources.ts";
 import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { resolveInfoTarget } from "./info-target.ts";
+import { plannedServiceArtifact } from "./planned-service-artifact.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -44,21 +45,26 @@ type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimePr
 
 const CertsProvenance = Schema.Literals(["none", "custom"]);
 
-const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] => {
-  if (connection === undefined) return undefined;
-  const { user, database, rootPassword } = connection.creds;
-  return {
-    user,
-    password: REDACTED,
-    database,
-    ...(rootPassword === undefined ? {} : { rootPassword: REDACTED }),
-  };
-};
+// A published development default is public as a literal; every deferred
+// descriptor and every other value stays redacted without touching a store.
+const displayedCredential = (value: ServiceCreds["password"]): string =>
+  typeof value === "string" && isPublicDefaultCredential(value) ? value : REDACTED;
 
-const credsFromService = (service: ServicePlan): InfoAppService["creds"] =>
-  service.sqlite === undefined
-    ? credsFromConnection(service.connection)
-    : { engine: "sqlite", path: service.sqlite.path };
+const displayedCreds = (creds: ServiceCreds): InfoAppService["creds"] => ({
+  user: creds.user,
+  password: displayedCredential(creds.password),
+  database: creds.database,
+  ...(creds.rootPassword === undefined ? {} : { rootPassword: displayedCredential(creds.rootPassword) }),
+});
+
+const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] =>
+  connection === undefined ? undefined : displayedCreds(connection.creds);
+
+const credsFromService = (service: ServicePlan): InfoAppService["creds"] => {
+  if (service.sqlite !== undefined) return { engine: "sqlite", path: service.sqlite.path };
+  if (service.connection !== undefined) return credsFromConnection(service.connection);
+  return service.nonSqlCreds === undefined ? undefined : displayedCreds(service.nonSqlCreds);
+};
 
 const serviceInfoMetadata = (
   plan: AppPlan,
@@ -67,21 +73,7 @@ const serviceInfoMetadata = (
 ): Omit<InfoAppService, "status" | "health" | "readiness" | "connections"> => {
   const logSources = infoLogSources(service, capabilities);
   const creds = credsFromService(service);
-  const artifact =
-    service.artifact === undefined
-      ? undefined
-      : service.artifact.kind === "ref"
-        ? {
-            kind: "ref" as const,
-            ref: service.artifact.ref,
-            ...(service.artifact.digest === undefined ? {} : { digest: service.artifact.digest }),
-          }
-        : {
-            kind: "build" as const,
-            ...(service.artifact.contentHash === undefined
-              ? {}
-              : { contentHash: service.artifact.contentHash }),
-          };
+  const artifact = plannedServiceArtifact(service.artifact);
   const hostnames = Array.from(
     new Set(landoServiceNetworkAttachments(plan, service).flatMap((attachment) => attachment.aliases)),
   );

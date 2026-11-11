@@ -25,6 +25,7 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
           "docs:build": { cmd: "echo must-not-run", arguments: false },
           retired: { cmd: "echo must-not-run", disabled: true },
           removed: false,
+          protected: { cmd: "help-token-secret", service: "help-token-secret" },
         },
       }),
       ["docs:build"],
@@ -54,6 +55,7 @@ const invoke = async (root: string, cacheRoot: string, argv: readonly string[]) 
       LANDO_USER_CACHE_ROOT: cacheRoot,
       LANDO_USER_DATA_ROOT: join(root, "data"),
       LANDO_USER_CONF_ROOT: join(root, "conf"),
+      HELP_API_TOKEN: "help-token-secret",
     },
   });
   const [code, stdout, stderr] = await Promise.all([
@@ -72,7 +74,16 @@ test("nested task machine help advertises a token accepted by the unchanged disp
     // Then
     expect(result.code, result.stderr).toBe(0);
     const envelope: unknown = JSON.parse(result.stdout);
-    expect(envelope).toMatchObject({ ok: true, result: { target: { typeable: "app:db:wait", extras: [] } } });
+    expect(envelope).toMatchObject({
+      ok: true,
+      result: {
+        target: {
+          typeable: "app:db:wait",
+          extras: [],
+          runs: { kind: "commands", steps: 1, targets: [{ kind: "primary" }], program: "echo" },
+        },
+      },
+    });
     const { result: help } = Schema.decodeUnknownSync(
       Schema.Struct({ result: Schema.Struct({ target: Schema.Struct({ typeable: Schema.String }) }) }),
     )(envelope);
@@ -93,6 +104,7 @@ test("nested task text help uses its callable canonical id", async () => {
     // Then
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain("\n  lando app:db:wait\n");
+    expect(result.stdout).toContain("Runs `echo` in the primary service.");
   });
 });
 
@@ -131,9 +143,29 @@ test("internal and disabled tasks remain absent from cached listings", async () 
     )(JSON.parse(result.stdout));
     expect(envelope.result.sections.thisApp).toEqual([
       expect.objectContaining({ canonicalId: "app:db:wait", typeable: "app:db:wait" }),
+      expect.objectContaining({ canonicalId: "app:protected", typeable: "app:protected" }),
     ]);
   });
 });
+
+test.each([{ format: [] }, { format: ["--format=json"] }])(
+  "redacts run metadata in targeted help for $format",
+  async ({ format }) => {
+    await withCachedTasks(async (root, cacheRoot) => {
+      const result = await invoke(root, cacheRoot, ["help", "protected", ...format]);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain("help-token-secret");
+      expect(result.stdout).toContain("[redacted]");
+      if (format.length > 0)
+        expect(JSON.parse(result.stdout).result.target.runs).toEqual({
+          kind: "commands",
+          steps: 1,
+          targets: [{ kind: "service", name: "[redacted]" }],
+          program: "[redacted]",
+        });
+    });
+  },
+);
 
 test.each(["retired", "removed"])("disabled declaration %s retains typed help refusal", async (name) => {
   // Given

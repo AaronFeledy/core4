@@ -1,7 +1,6 @@
 import { sep } from "node:path";
-import { mapFailures } from "../command-result/failure.ts";
-
 import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { ToolingExecError } from "../errors/index.ts";
 import type { AppPlan } from "../schema/index.ts";

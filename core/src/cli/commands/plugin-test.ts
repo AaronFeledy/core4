@@ -1,8 +1,7 @@
-import { DateTime, Effect, Schema } from "effect";
+import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 
 import { PluginManifestError } from "@lando/sdk/errors";
-
-import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
+import { DateTime, Effect, Schema } from "effect";
 import { bunSelfRun } from "./bun-self-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import { resolvePluginPackageRoot } from "./plugin-package-root";

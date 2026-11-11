@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option, Schema } from "effect";
+import { composeService } from "@lando/engine/services/feature";
 
 import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
-
-import { composeService } from "@lando/engine/services/feature";
+import { Cause, Effect, Option, Schema } from "effect";
 import { serviceFeatures } from "../src/features/index.ts";
 
 const LANDO_CERTS_FEATURE_ID = "lando.certs";
@@ -126,6 +125,30 @@ describe("lando.certs feature", () => {
       caId: "mkcert",
     });
     expect(plan.extensions).not.toHaveProperty("@lando/core/certs");
+  });
+
+  test("binds generated certificate material strictly so a missing file never becomes a directory", async () => {
+    // Given: generated material that apply writes; When: the feature composes it
+    const plan = await composeCertsPlan({
+      certPath: "/host/certs/generated.crt",
+      keyPath: "/host/certs/generated.key",
+      cn: "web.certs-test.internal",
+      sans: ["web"],
+      caId: "mkcert",
+    });
+
+    // Then: both binds refuse to create their host source, and no file-mode copy is requested
+    const leafMounts = plan.mounts.filter((mount) => mount.target.startsWith("/etc/lando/certs/leaf/"));
+    expect(
+      leafMounts.map((mount) => ({
+        target: String(mount.target),
+        createHostPath: mount.type === "bind" ? mount.createHostPath : undefined,
+      })),
+    ).toEqual([
+      { target: "/etc/lando/certs/leaf/web.crt", createHostPath: false },
+      { target: "/etc/lando/certs/leaf/web.key", createHostPath: false },
+    ]);
+    expect(leafMounts.some((mount) => mount.type === "bind" && mount.fileMode !== undefined)).toBe(false);
   });
 
   test("records the certificate source for user-supplied certs", async () => {

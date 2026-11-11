@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { type ContainerBuildHttpRequest, buildContainerArtifact } from "@lando/container-runtime/image-build";
 import {
   AbsolutePath,
@@ -10,6 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("ref-user-build-app");

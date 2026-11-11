@@ -19,13 +19,13 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
-import { compileGlobalConfigDocument } from "../../../src/cli/commands/meta/global-config-document.ts";
 import {
   globalConfig,
   globalConfigEdit,
   globalConfigSet,
   globalConfigValidate,
 } from "../../../src/cli/commands/meta/global-config.ts";
+import { compileGlobalConfigDocument } from "../../../src/cli/commands/meta/global-config-document.ts";
 import { globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 let root = "";

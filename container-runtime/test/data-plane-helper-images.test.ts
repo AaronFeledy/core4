@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { Redactor } from "@lando/sdk/secrets";
-import { Effect, Stream } from "effect";
-
 import { dataHelperImage, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { AppId } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Effect, Stream } from "effect";
 import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {

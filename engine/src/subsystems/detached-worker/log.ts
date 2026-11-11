@@ -1,6 +1,6 @@
 import {
-  constants,
   closeSync,
+  constants,
   fchmodSync,
   fstatSync,
   ftruncateSync,

@@ -2,15 +2,15 @@ import { expect, test } from "bun:test";
 import { ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { Deferred, Effect, Fiber, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import { listenerDoctorChecks } from "../../src/cli/commands/doctor-listeners.ts";
-import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report-render.ts";
 import {
   DoctorReportSchema,
   doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
-import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report-render.ts";
 import {
   listenerOutput,
   listenerProvider,

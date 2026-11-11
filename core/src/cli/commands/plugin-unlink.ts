@@ -1,10 +1,8 @@
-import { Effect, Schema } from "effect";
-
-import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
-import type { ConfigService } from "@lando/sdk/services";
-
 import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { isPluginUnlinkNotLinkedCause, revertPluginLink } from "@lando/engine/operations/plugin-link";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import type { ConfigService } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { resolvePluginsRoot } from "./plugin-roots";
 
 export class PluginUnlinkNotLinkedError extends Schema.TaggedError<PluginUnlinkNotLinkedError>()(

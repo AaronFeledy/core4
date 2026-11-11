@@ -1,10 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { CacheService, makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import {
   AbsolutePath,
@@ -20,9 +17,9 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { TestRouterService } from "@lando/sdk/test";
+import { Effect, Layer, Schema } from "effect";
 
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 

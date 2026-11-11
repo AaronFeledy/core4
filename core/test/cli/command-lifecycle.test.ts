@@ -1,13 +1,10 @@
 import { describe, expect, test } from "bun:test";
-
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import { Cause, Context, Effect, Layer, Option, Schema } from "effect";
-
-import { StreamFrame } from "@lando/sdk/schema";
-import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
-
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { StreamFrame } from "@lando/sdk/schema";
+import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
+import { Cause, Context, Effect, Layer, Option, Schema } from "effect";
 import {
   type RunWithRendererHandlingOptions,
   runWithRendererHandling,

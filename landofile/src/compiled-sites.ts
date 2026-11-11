@@ -17,7 +17,12 @@ import {
 import { Effect, Result, Schema } from "effect";
 import { type InvocationProgram, evaluateInvocationSite, siteExpression } from "./invocation-sites.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+
 export * from "./invocation-sites.ts";
+export { dynamicToolingNames, dynamicToolingReferenceIssues } from "./tooling-dynamic-references.ts";
+export { consumedToolingInputs, toolingInvocationIssues } from "./tooling-invocation-input.ts";
+export { readsToolingData, toolingDataNames } from "./tooling-provenance.ts";
+export { bindToolingShellSite } from "./tooling-shell-binding.ts";
 
 export const authoredSiteId = (source: ValidationIssueSource): string => JSON.stringify(source);
 

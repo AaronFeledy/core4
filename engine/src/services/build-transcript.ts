@@ -2,11 +2,9 @@ import { Buffer } from "node:buffer";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
-
-import { Effect } from "effect";
-
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 export interface BuildTranscript {
   readonly append: (chunk: Uint8Array) => Effect.Effect<void, ProviderInternalError>;

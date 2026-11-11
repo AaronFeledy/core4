@@ -4,11 +4,17 @@
  * spans parent to the host's current span; operation boundaries report defects
  * (never tagged failures) to the host reporter exactly once.
  */
+
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
+import { makeLandoRuntime, openLandoRuntime } from "@lando/core";
+import { ProviderId } from "@lando/core/schema";
+import { RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import { TestRuntimeProvider } from "@lando/core/testing";
+import { Logger as LandoLogger } from "@lando/sdk/services";
+import { TestRouterService } from "@lando/sdk/test";
 import {
   Cause,
   Effect,
@@ -21,13 +27,6 @@ import {
   Schema,
   Tracer,
 } from "effect";
-
-import { makeLandoRuntime, openLandoRuntime } from "@lando/core";
-import { ProviderId } from "@lando/core/schema";
-import { RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/core/testing";
-import { Logger as LandoLogger } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),

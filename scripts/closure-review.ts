@@ -4,8 +4,11 @@ import { readFile } from "node:fs/promises";
 import { valueAfter } from "./_acceptance-harness.ts";
 
 export {
-  evaluateClosureReviewInput,
-  failedClosureReviewReport,
+  type WriteClosureReviewOutputsInput,
+  renderClosureReviewMarkdown,
+  writeClosureReviewOutputs,
+} from "./closure-review-output.ts";
+export {
   type ClosureDisposition,
   type ClosureFindingReport,
   type ClosureFindingResolution,
@@ -15,12 +18,9 @@ export {
   type ClosureLaneId,
   type ClosureLaneReport,
   type ClosureReviewReport,
+  evaluateClosureReviewInput,
+  failedClosureReviewReport,
 } from "./closure-review-report.ts";
-export {
-  renderClosureReviewMarkdown,
-  writeClosureReviewOutputs,
-  type WriteClosureReviewOutputsInput,
-} from "./closure-review-output.ts";
 
 import { writeClosureReviewOutputs } from "./closure-review-output.ts";
 import { evaluateClosureReviewInput, failedClosureReviewReport } from "./closure-review-report.ts";

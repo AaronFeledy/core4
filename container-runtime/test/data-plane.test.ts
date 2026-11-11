@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { makeRedactionService } from "@lando/redaction/service";
 import { failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
-import type { Redactor } from "@lando/sdk/secrets";
-import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
-
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
@@ -14,6 +11,8 @@ import {
   VolumeOperationError,
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
 import { echoHelperPull } from "./helper-pull-support.ts";
 import { FakeEngine } from "./support/fake-engine.ts";
 

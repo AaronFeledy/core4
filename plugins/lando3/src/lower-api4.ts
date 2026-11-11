@@ -122,7 +122,9 @@ export const lowerApi4Service = (
     });
     for (const key of ["tag", "buildx", "buildkit"]) if (image[key] !== undefined) drop(["image", key]);
     for (const key of ["groups", "steps"])
-      entries(image[key]).forEach((_, index) => drop(["image", key, index]));
+      entries(image[key]).forEach((_, index) => {
+        drop(["image", key, index]);
+      });
   }
   for (const key of ["command", "entrypoint"]) {
     const value = service[key];

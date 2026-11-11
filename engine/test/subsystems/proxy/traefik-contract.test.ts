@@ -1,13 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { makeTraefikRouterService } from "@lando/proxy-traefik";
 import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { type CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 import { makeTestCertificateAuthority, runRouterServiceContractSuite } from "@lando/sdk/test";
+import { Effect, Redacted } from "effect";
 import * as BunFileSystem from "../../../src/services/file-system.ts";
 import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
 
@@ -76,14 +75,16 @@ test("real filesystem status sees configured routing and stop removes route and 
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-proxy-lifecycle-"));
   try {
-    const sourceCert = join(root, "issued.crt");
-    const sourceKey = join(root, "issued.key");
-    await writeFile(sourceCert, "certificate");
-    await writeFile(sourceKey, "private key");
     const certificateAuthority: CertificateAuthorityShape = {
       id: "real-filesystem-ca",
       setup: () => Effect.void,
-      issueCert: () => Effect.succeed({ certPath: sourceCert, keyPath: sourceKey, caPath: sourceCert }),
+      root: Effect.succeed({ certificate: "root", trusted: true }),
+      issueCert: () =>
+        Effect.succeed({
+          certificate: "certificate",
+          privateKey: Redacted.make("private key"),
+          root: { certificate: "root", trusted: true },
+        }),
     };
     const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
     const proxyFileSystem = {

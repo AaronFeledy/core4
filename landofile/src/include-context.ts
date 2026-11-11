@@ -23,8 +23,8 @@ import type {
 } from "@lando/source-acquisition";
 import { Effect } from "effect";
 import { includeError } from "./include-guard.ts";
-import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
+import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";

@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 import { runServiceCompositionContract } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
@@ -48,9 +47,9 @@ import { ruby33ServiceType } from "../src/services/ruby.ts";
 import { solr9ServiceType, solrServiceType } from "../src/services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "../src/services/static.ts";
 import {
-  tomcat9ServiceType,
   tomcat10ServiceType,
   tomcat11ServiceType,
+  tomcat9ServiceType,
   tomcatServiceType,
 } from "../src/services/tomcat.ts";
 import { valkeyServiceType } from "../src/services/valkey.ts";

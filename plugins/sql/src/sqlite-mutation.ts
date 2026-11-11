@@ -2,11 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { mapFailures } from "@lando/sdk/command-result";
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { runProbe } from "@lando/sdk/probe";
-import { type Cause, DateTime, Duration, Effect, Fiber, Queue, Stream } from "effect";
-
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
+import { runProbe } from "@lando/sdk/probe";
 import { ServiceName } from "@lando/sdk/schema";
+import { type Cause, DateTime, Duration, Effect, Fiber, Queue, Stream } from "effect";
 import type { SqlCommandDeps } from "./command-types.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import {

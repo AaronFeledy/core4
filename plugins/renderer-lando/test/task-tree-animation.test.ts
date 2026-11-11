@@ -7,8 +7,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
-import { Schema } from "effect";
-
 import {
   TaskCompleteEvent,
   TaskDetailEvent,
@@ -18,6 +16,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import type { LandoEvent } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { TaskTreeAnimationController } from "../src/task-tree-animation.ts";
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";

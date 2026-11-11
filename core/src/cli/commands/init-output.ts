@@ -1,10 +1,8 @@
-import { Effect } from "effect";
-import { CliInvocation } from "../../runtime/invocation-context";
-
 import { RedactionService } from "@lando/redaction/service";
 import { Renderer } from "@lando/sdk/services";
-
+import { Effect } from "effect";
 import type { PostInitIO } from "../../recipes/post-init/runtime.ts";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags.ts";
 
 /** Capture the command's renderer so recipe output shares its live-region journal. */

@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceName } from "@lando/sdk/schema";
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { ServiceName } from "@lando/sdk/schema";
 import { makeUrlScanner } from "../../../src/subsystems/scanner/live.ts";
 import { appId, endpointsOf, publishedEndpoint, runExitUnderClock, successOf } from "./support.ts";
 

@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { RecipeManifestParseError } from "@lando/sdk/errors";
 import { flowMappingRemediation } from "@lando/sdk/landofile/flow-mapping-remediation";
 import { stripYamlLineComment } from "@lando/sdk/yaml";
+import { Effect } from "effect";
 
 export interface RecipeYamlParseOptions {
   readonly source: string;

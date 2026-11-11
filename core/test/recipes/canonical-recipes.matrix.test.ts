@@ -2,13 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { AppPlanner, LandofileService } from "@lando/core/services";
-import type { LoadScopedLandofile } from "@lando/sdk/schema";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import type { LoadScopedLandofile } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";

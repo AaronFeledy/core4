@@ -12,19 +12,19 @@
  * not pay for OCLIF in its bundle. Enforced by the library import-boundary test.
  */
 
-// Runtime factory.
-export { makeLandoRuntime, type LandoRuntimeOptions } from "./runtime/layer";
 export type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
-
-// App handle convenience API for embedding hosts.
-export { resolveApp } from "./app/resolve";
-export { openLandoRuntime } from "./app/runtime";
-export { AppResolveError } from "@lando/sdk/errors";
 export type {
   App,
   AppConfigApi,
   AppConfigLintOptions,
   AppEventsApi,
+  AppRemoteApi,
+  AppRemoteEntry,
+  AppRemoteMutationOptions,
+  AppRemoteMutationResult,
+  AppRemoteRemoveOptions,
+  AppRemoteSetupOptions,
+  AppRemoteTestOptions,
   AppSelector,
   DestroyAppError,
   DestroyAppOptions,
@@ -36,34 +36,27 @@ export type {
   InfoAppOptions,
   InfoAppResult,
   InfoAppService,
-  PullAppOptions,
-  PullAppError,
-  PushAppOptions,
-  PushAppError,
-  AppRemoteApi,
-  AppRemoteEntry,
-  AppRemoteMutationOptions,
-  AppRemoteMutationResult,
-  AppRemoteRemoveOptions,
-  AppRemoteSetupOptions,
-  AppRemoteTestOptions,
-  RemoteSyncError,
-  ShareAppError,
-  ShareAppOptions,
-  ShareStopAppOptions,
-  ShareStopAppResult,
   InfoServiceStatus,
   LandoRuntime,
   LandoRuntimeServices,
   LogsAppError,
   LogsAppOptions,
+  PullAppError,
+  PullAppOptions,
+  PushAppError,
+  PushAppOptions,
   RebuildAppError,
   RebuildAppOptions,
   RebuildAppResult,
+  RemoteSyncError,
   RestartAppError,
   RestartAppOptions,
   RestartAppResult,
   ScratchAcquireError,
+  ShareAppError,
+  ShareAppOptions,
+  ShareStopAppOptions,
+  ShareStopAppResult,
   StartAppError,
   StartAppOptions,
   StartAppResult,
@@ -74,7 +67,7 @@ export type {
   ToolingOptions,
   ToolingResult,
 } from "@lando/sdk/app";
-
+export { AppResolveError } from "@lando/sdk/errors";
 // Re-export the most commonly-used Effect Service tags so consumers get them
 // without an extra import (`@lando/core/services` exports the full set).
 export {
@@ -95,3 +88,8 @@ export {
   RuntimeProviderRegistry,
   Telemetry,
 } from "@lando/sdk/services";
+// App handle convenience API for embedding hosts.
+export { resolveApp } from "./app/resolve";
+export { openLandoRuntime } from "./app/runtime";
+// Runtime factory.
+export { type LandoRuntimeOptions, makeLandoRuntime } from "./runtime/layer";

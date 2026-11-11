@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName, VarnishServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 
 import {

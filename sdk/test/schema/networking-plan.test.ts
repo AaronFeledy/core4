@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import {
   LANDO_SHARED_CROSS_APP_NETWORK,
   NetworkingPlan,
@@ -16,6 +13,7 @@ import {
   landoServiceNetworkAttachments,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("NetworkingPlan schema", () => {
   test("decodes and round-trips a public service attachment", () => {

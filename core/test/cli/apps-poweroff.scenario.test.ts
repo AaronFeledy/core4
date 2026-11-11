@@ -2,13 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
+import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { ConfigService } from "@lando/sdk/services";
-
-import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { Effect, Layer } from "effect";
 import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.ts";
 
 const noDiscover = async () => [];

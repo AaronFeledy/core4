@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeRuntimeProvider } from "@lando/provider-podman";
+import { Effect } from "effect";
 
 const diedEvent = {
   Type: "container",

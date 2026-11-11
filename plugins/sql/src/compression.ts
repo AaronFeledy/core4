@@ -1,12 +1,10 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, type Scope, Stream, absurd } from "effect";
-
 import { SqlDumpCompressionError } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { Effect, type Scope, Stream, absurd } from "effect";
 
 export type DumpCompression = "gzip" | "zstd" | "none";
 

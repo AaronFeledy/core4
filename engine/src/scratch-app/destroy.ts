@@ -10,9 +10,17 @@ import {
   PreStopEvent,
 } from "@lando/sdk/events";
 import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
-import { DataMover, EventService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  DataMover,
+  EventService,
+  PathsService,
+  RouterService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
+import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
+import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
 import { ScratchRegistry } from "./registry.ts";
@@ -33,6 +41,7 @@ export const makeScratchReaper = Effect.gen(function* () {
   const scanner = yield* ScratchResourceScanner;
   const mover = yield* DataMover;
   const router = yield* Effect.serviceOption(RouterService);
+  const paths = yield* Effect.serviceOption(PathsService);
   return Effect.fn("ScratchApp.reap")(
     function* (input: ScratchReapInput) {
       const entry = yield* registry.get(input.id);
@@ -98,7 +107,14 @@ export const makeScratchReaper = Effect.gen(function* () {
                   { volumes: !keepVolumes, removeState: true },
                 )).kind === "destroyed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
-          if (Option.isSome(router)) yield* router.value.removeRoutes(routeOwnerFromScratch(input.id));
+          yield* withdrawOwnerRoutes(routeOwnerFromScratch(input.id)).pipe(
+            Effect.provideService(EventService, events),
+            Option.isSome(router) ? Effect.provideService(RouterService, router.value) : (effect) => effect,
+          );
+          yield* removeServiceCertificates(routeOwnerFromScratch(input.id).ownerKey).pipe(
+            Effect.provideService(EventService, events),
+            Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
+          );
           return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
         });
         const outcome = yield* reason === "gc"

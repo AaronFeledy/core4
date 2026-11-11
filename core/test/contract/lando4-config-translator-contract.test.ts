@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { plugin } from "@lando/lando4";
 import { ConfigTranslateDetectInput, ConfigTranslateDocumentSetInput } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { type ConfigTranslatorContractHarness, runConfigTranslatorContractSuite } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 const CANONICAL = [
   "name: myapp",

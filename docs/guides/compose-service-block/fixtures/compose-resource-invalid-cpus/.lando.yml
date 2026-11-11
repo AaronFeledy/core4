@@ -1,0 +1,12 @@
+# lando-lint: expect-invalid non-numeric deploy.resources.limits.cpus for the compose-service-block guide
+name: compose-resource-invalid-cpus
+services:
+  worker:
+    type: compose
+    image: alpine:3.20
+    appMount: false
+    command: sleep infinity
+    deploy:
+      resources:
+        limits:
+          cpus: half

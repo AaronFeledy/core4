@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { Effect, Schema } from "effect";
-
 import { LandofileShape } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "../src/tooling-unsupported.ts";
 

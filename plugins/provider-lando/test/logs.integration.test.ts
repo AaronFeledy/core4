@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema, Stream } from "effect";
-
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -19,6 +17,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("logsapp");

@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
-
 import {
   type DockerApiClient,
   type DockerHttpRequest,
@@ -18,6 +15,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { type LogChunk, RuntimeProvider } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");

@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { DownloadFetchError } from "@lando/sdk/errors";
 import { Downloader } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { makeMkcertCertificateAuthority } from "../src/ca.ts";
 import { failure, makeCaHarness, makeFakeMkcertRunner } from "./_fixtures.ts";
 
@@ -20,6 +19,7 @@ test("mkcert provisioning preserves download advice and appends the setup repair
       platform: "linux",
       arch: "x64",
       processRunner: makeFakeMkcertRunner({ caRoot: harness.caRoot }).service,
+      privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
       downloader: Downloader.of({
         id: "provision-failure",
         capabilities: {

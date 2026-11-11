@@ -1,7 +1,6 @@
-import { Effect, Fiber, Layer, Option, Queue } from "effect";
-
 import type { RendererContribution, RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, type Renderer } from "@lando/sdk/services";
+import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import { sanitizeNotificationText } from "./notify-sanitize.ts";
 import { bindIoDesktopNotificationTrigger, flushPendingNotifications } from "./notify-trigger.ts";

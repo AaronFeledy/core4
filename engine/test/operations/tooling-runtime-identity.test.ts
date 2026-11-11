@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
-import { compileToolingInvocations } from "../../src/operations/tooling-compile.ts";
+import { admitAndCompileTooling as compileToolingInvocations } from "./compile-tooling-fixture.ts";
 
 test("preserves authorized invocation identity outside authored tooling env", () => {
   const compiled = Effect.runSync(

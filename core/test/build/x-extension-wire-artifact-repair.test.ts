@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import {
   acceptCompatibilityExceptions,
@@ -20,14 +19,17 @@ import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-
 import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
+import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
+import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
   evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import {
@@ -123,7 +125,9 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
     ),
     source,
   );
-  const evolved = evolveHistoricalSqliteTarget(projected);
+  const evolved = evolveHistoricalServiceCreds(
+    evolveHistoricalSwarmReservations(evolveHistoricalToolingVars(evolveHistoricalSqliteTarget(projected))),
+  );
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };
@@ -186,8 +190,12 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalSqliteTarget(
-      evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services")),
+    const repaired = evolveHistoricalServiceCreds(
+      evolveHistoricalSwarmReservations(
+        evolveHistoricalSqliteTarget(
+          evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services")),
+        ),
+      ),
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),

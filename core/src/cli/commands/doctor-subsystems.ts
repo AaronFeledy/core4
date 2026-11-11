@@ -17,16 +17,12 @@
  * `setup()` recovery step — are never auto-run and always fall back to a manual
  * remediation, matching the no-silent-elevation rule for diagnostics.
  */
+
+import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
+import { RouterService, SshService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 
-import { RouterService, SshService } from "@lando/sdk/services";
-
-import {
-  type CertsDoctorStatus,
-  UNRESOLVED_CERTS_STATUS,
-  certsCheckContext,
-  certsSubsystemId,
-} from "./doctor-certs-status";
+import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsSubsystemCheck } from "./doctor-certs-status";
 import { idleGlobalProvider } from "./doctor-global-runtime";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostDnsCheck } from "./doctor-host-dns-check";
@@ -35,14 +31,14 @@ import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
 import { renderSectionCheck } from "./doctor-section-render";
 import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
-import { CERTS_SPEC, type DoctorSubsystemCheck, buildDegradedCheck } from "./doctor-subsystem-checks";
+import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export {
+  type DoctorSubsystemCheck,
   DoctorSubsystemFailure,
+  type SubsystemRecovery,
   classifySubsystemFailure,
   subsystemFailureDiagnostic,
-  type DoctorSubsystemCheck,
-  type SubsystemRecovery,
 } from "./doctor-subsystem-checks";
 
 export interface SubsystemDoctorResult {
@@ -74,22 +70,14 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   const resolver = yield* Effect.serviceOption(HostDnsResolver);
   const idleProvider = yield* idleGlobalProvider;
 
+  // Router selection is host-side metadata, so an unselectable router is reported even when idle.
+  const routerUnavailable = proxy !== undefined && unavailableRouterReason(proxy) !== undefined;
   const proxyChecks =
-    proxy === undefined || idleProvider !== undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
+    proxy === undefined || (idleProvider !== undefined && !routerUnavailable)
+      ? []
+      : [yield* buildProxyCheck(proxy, fix)];
   const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
-  const certsCheck =
-    certs._tag === "selected"
-      ? undefined
-      : yield* buildDegradedCheck(
-          CERTS_SPEC,
-          {
-            subsystem: "certs",
-            subsystemId: certsSubsystemId(certs),
-            ready: "false",
-            ...certsCheckContext(certs),
-          },
-          fix,
-        );
+  const certsCheck = yield* certsSubsystemCheck(certs, fix);
   const sshChecks =
     ssh === undefined
       ? []
@@ -144,23 +132,13 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
       ...(idleProvider === undefined
         ? []
         : [
-            "router",
+            ...(routerUnavailable ? [] : ["router"]),
             ...(sshChecks.some((check) => check.context.sidecarSkipped === "true") ? ["ssh-sidecar"] : []),
           ].map((section) => ({
             section,
             status: "skipped" as const,
             reason: `Provider ${idleProvider} holding the global app is idle; readiness was not inspected.`,
           }))),
-      ...(certsCheck === undefined
-        ? [
-            {
-              section: "certs",
-              status: "skipped" as const,
-              reason:
-                "A certificate authority was selected, but its installation and trust were not inspected; the certificate authority contract has no read-only inspection operation.",
-            },
-          ]
-        : []),
       ...[["router", proxy] as const, ["ssh", ssh] as const].flatMap(([section, service]) =>
         service === undefined
           ? [

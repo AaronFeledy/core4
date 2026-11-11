@@ -49,6 +49,11 @@ export const ValidationIssueSource = Schema.Union([
     path: ValidationIssuePath,
   }),
   Schema.Struct({
+    layer: Schema.Literal("script"),
+    file: Schema.String,
+    path: ValidationIssuePath,
+  }),
+  Schema.Struct({
     layer: Schema.Literal("env"),
     variable: Schema.String,
     path: ValidationIssuePath,

@@ -1,19 +1,17 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
+import { FailureRoleAnnotation, mergeFailure } from "@lando/sdk/command-result";
+import { HttpTrustError } from "@lando/sdk/errors";
+import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
+import { Downloader, EventService, type LandoEvent, OnlineAcquisition } from "@lando/sdk/services";
 import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Queue, Scope, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
-
-import { FailureRoleAnnotation, mergeFailure } from "@lando/sdk/command-result";
-import { HttpTrustError } from "@lando/sdk/errors";
-import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
-import { Downloader, EventService, type LandoEvent, OnlineAcquisition } from "@lando/sdk/services";
 
 import { layer as DownloaderLayer } from "../src/downloader.ts";
 

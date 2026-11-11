@@ -6,10 +6,10 @@
  * or forced shutdown from a code: 137 may be the OOM killer, an external signal,
  * or the application's own choice, and 0 is not proof of cleanup.
  */
-import { DateTime, Effect } from "effect";
 
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { ServiceShutdownObservation } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 import { escapeDiagnosticText } from "../diagnostic-text";
 import { publishOptionalEvent } from "./optional-event-publish";

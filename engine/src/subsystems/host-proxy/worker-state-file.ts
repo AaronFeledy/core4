@@ -1,13 +1,11 @@
 import { resolve } from "node:path";
+import type { RootOverrides } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Result, Schema } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
-
-import type { RootOverrides } from "@lando/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, Result, Schema } from "effect";
 import { type WorkerClaim, withDetachedWorkerLock } from "../detached-worker/claim.ts";
 import { readDetachedWorkerRecord, writeDetachedWorkerRecord } from "../detached-worker/state-file.ts";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";

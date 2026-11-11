@@ -12,25 +12,28 @@
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, Exit, type Layer, Option, type Result } from "effect";
-import {
-  CliInvocation,
-  type CliInvocationContext,
-  processInvocationDefaults,
-} from "../../../runtime/invocation-context";
-
-import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import type { McpToolInputError, McpTransportError } from "@lando/sdk/errors";
-import type { McpConfig } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
 
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import * as RendererStdio from "@lando/renderer/stdio";
+import type {
+  ConfigError,
+  LandoRuntimeBootstrapError,
+  McpToolInputError,
+  McpTransportError,
+} from "@lando/sdk/errors";
+import type { McpConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { Effect, Exit, type Layer, Option, type Result } from "effect";
 import { serviceLayer } from "../../../mcp-command-executor";
 import { resources } from "../../../mcp-resources";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationDefaults,
+} from "../../../runtime/invocation-context";
 import type { LandoGenerationRuntime } from "../../../runtime/layer";
 import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
@@ -49,6 +52,7 @@ import {
   validateMcpAllowlistIds,
 } from "./mcp-registry";
 import { openMcpSession, sessionAppRegistry } from "./mcp-session";
+
 export {
   type McpCommandRegistry,
   type ResolvedMcpOptions,

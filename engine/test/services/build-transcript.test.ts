@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { relative, resolve } from "node:path";
-
-import { Effect } from "effect";
-
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { makeBuildTranscriptPath, openBuildTranscript } from "../../src/services/build-transcript.ts";
 

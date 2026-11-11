@@ -1,7 +1,6 @@
 import { expect } from "bun:test";
-import { Cause, Exit, Option } from "effect";
-
 import { McpTransportError } from "@lando/sdk/errors";
+import { Cause, Exit, Option } from "effect";
 
 export const expectMcpTransportFailure = (
   exit: Exit.Exit<unknown, unknown>,

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option, Schema } from "effect";
-
 import { AppFeatureSelectorMatchedNothingError, PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import {
   type Environment,
@@ -16,6 +14,7 @@ import type {
   AppFeatureServiceView,
   ServiceType,
 } from "@lando/sdk/services";
+import { Cause, Effect, Option, Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
@@ -197,7 +196,7 @@ const expectHostsCredsFailure = (result: Awaited<ReturnType<typeof Effect.runPro
   expect(error).toBeInstanceOf(PhpMyAdminHostsCredsError);
   if (!(error instanceof PhpMyAdminHostsCredsError)) return;
   expect(error._tag).toBe("PhpMyAdminHostsCredsError");
-  expect(error.remediation).toContain("creds:");
+  expect(error.remediation).toMatch(/creds\.(user|password)/);
 };
 
 describe("phpmyadmin ServiceType", () => {
@@ -524,6 +523,47 @@ describe("phpMyAdmin AppFeature", () => {
     expectHostsCredsFailure(result);
   });
 
+  test("overlays an authored password on credentials agreed by the selected siblings", async () => {
+    const { context, captures } = applyWire([
+      viewOf({
+        serviceName: "pma",
+        serviceType: "phpmyadmin",
+        hosts: "database",
+        creds: { password: "authored-pass" },
+      }),
+      viewOf({
+        serviceName: "database",
+        serviceType: "mysql",
+        creds: { user: "alice", password: "sibling-pass", database: "app" },
+      }),
+    ]);
+
+    await Effect.runPromise(phpMyAdminWireFeature.apply(context));
+
+    expect(captures.get("pma")?.env).toMatchObject({
+      PMA_USER: "alice",
+      PMA_PASSWORD: "authored-pass",
+    });
+  });
+
+  test("names the missing member when an authored block cannot cover an external host", async () => {
+    const { result } = await applyWireExit([
+      viewOf({
+        serviceName: "pma",
+        serviceType: "phpmyadmin",
+        hosts: "remote.example.com",
+        creds: { user: "pmauser" },
+      }),
+    ]);
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") return;
+    const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
+    expect(error).toBeInstanceOf(PhpMyAdminHostsCredsError);
+    if (!(error instanceof PhpMyAdminHostsCredsError)) return;
+    expect(error.remediation).toContain("creds.password");
+  });
+
   test("uses phpmyadmin creds when hosts is unmatched", async () => {
     const { context, captures } = applyWire([
       viewOf({
@@ -561,5 +601,22 @@ describe("phpMyAdmin AppFeature", () => {
     expect(error._tag).toBe("SelectorMatchedNothing");
     expect(error.remediation).toContain("hosts:");
     expect(error.remediation).toContain("mysql");
+  });
+
+  describe("phpmyadmin credential applicability", () => {
+    test.each([
+      ["database", { database: "app" }],
+      ["rootPassword", { rootPassword: "root-secret" }],
+    ] as const)(
+      "rejects creds.%s because phpMyAdmin signs in with user and password",
+      async (member, creds) => {
+        await expect(
+          resolvePhpMyAdminService(phpmyadminServiceType, { type: "phpmyadmin", creds }),
+        ).rejects.toMatchObject({
+          _tag: "ServiceTypeError",
+          issues: [expect.objectContaining({ path: ["creds", member] })],
+        });
+      },
+    );
   });
 });
