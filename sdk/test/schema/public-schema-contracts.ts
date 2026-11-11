@@ -22,6 +22,10 @@ export type PublicSchemaContractFixture = {
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ConfigKeyDescription: "sdk/test/schema/config-key.test.ts",
+  ExecutionSite: "sdk/test/schema/execution-site-contracts.test.ts",
+  ExecutionSiteMatch: "sdk/test/schema/execution-site-contracts.test.ts",
+  ValidationFix: "sdk/test/schema/execution-site-contracts.test.ts",
+  ValidationFixEdit: "sdk/test/schema/execution-site-contracts.test.ts",
   CommandContribution: "sdk/test/schema/command-contribution.test.ts",
   LandofileSourceValue: "sdk/test/schema/landofile-source.test.ts",
   LandofileSourceDocument: "sdk/test/schema/landofile-source.test.ts",

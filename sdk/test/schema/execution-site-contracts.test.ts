@@ -22,7 +22,7 @@ test("execution site matches have a runtime schema contract", () => {
 
 test("execution and fix schemas carry canonical public annotations", () => {
   const issues = validatePublicSchemaAnnotations(
-    { ExecutionSite, ValidationFixEdit, ValidationFix },
+    { ExecutionSite, ExecutionSiteMatch, ValidationFixEdit, ValidationFix },
     { fields: new Set() },
   );
   expect(issues).toEqual([]);
