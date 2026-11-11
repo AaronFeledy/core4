@@ -37,7 +37,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - Throat-clearing: "In this guide we will", "In this document we will", "It's important to note", "Let's explore"
 - Marketing adjectives: robust, seamless, leverage, comprehensive, utilize, empower, unlock, cutting-edge, "Simply just easily"
 - Machine-voice filler: delve, journey, landscape, tapestry, "not just X but Y", "Whether you're"
-- A link to another guide that is not a relative `.mdx` path. Write `./php.mdx` or `../config/offline-dev.mdx`.
+- A link to another guide that is not a relative `.mdx` path. Write `./php-security-updates.mdx` or `../config/offline-dev.mdx`, which the docs build rewrites to the real route. A directory-style link such as `../laravel-workflow/` is not rewritten and only resolves when it happens to match the page URL
 - First-person-plural lecture ("we will now")
 - Invented CLI output, `...`, "output omitted", or empty `<Inspect output />` sold as a transcript
 - Harness placeholders shown as captured output: `expected exit 0`, `event "…" observed`, `command output`
@@ -71,7 +71,7 @@ You, not we. Imperative steps. Contractions in guides.
 
 H1 is the goal or question. First body sentence is the outcome or direct answer, then the minimum context needed to use it. Do not open with implementation machinery unless this is an implementation explanation.
 
-Humor, if already appropriate, is at most one line next to a real command. Do not add decorative analogies, forced friendliness, jokes, or arbitrary banned-word lists. The goal is clarity, not a stylized voice.
+Humor, if already appropriate, is at most one line next to a real command. Do not add decorative analogies, forced friendliness, or jokes. The goal is clarity, not a stylized voice.
 
 Brand shows up in the writing, not as slogans: easy path, full stack when you need it, plugins without starting over, app-level DX.
 
@@ -127,7 +127,7 @@ For a procedure, use this pattern when relevant: Goal → prerequisites → acti
 For every meaningful action:
 
 - State where it happens: host/container/VM, shell, directory, file, or UI. Near the top of a how-to, say once where commands run ("Run the commands from the app directory on your host"), then flag each step that runs elsewhere, such as `lando exec <service> -- ...` inside a container.
-- Put permission fixes such as `chmod` behind the symptom that needs them ("If Laravel reports permission denied for `storage`, run..."). Never make them an unconditional step.
+- Keep a permission change the app genuinely needs as an ordinary step, such as making Laravel's `storage` writable. Behind a symptom, keep a fix that only works around a Lando-owned path, so readers do not apply it blindly.
 - When the page depends on recipe options, say the `recipe:` block stays in the Landofile while the reader adds or replaces services.
 - Tell the reader what to create, save, replace, or run. A code block alone is not an instruction.
 - Define placeholders and distinguish example values from literal required values.
