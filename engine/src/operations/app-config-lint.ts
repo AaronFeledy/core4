@@ -5,6 +5,7 @@ import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/
 import { Effect, Option, Result } from "effect";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
+import { providerAlternatives } from "../planner/compose-capabilities.ts";
 import { readAppDataIdentity } from "../planner/data-identity.ts";
 import { invocationSitesOf, resolveLandofileForPlanning } from "../planner/event-set.ts";
 import { hostShellIssues } from "../planner/host-shell-issues.ts";
@@ -131,7 +132,14 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     ...toolingAndEventIssues(resolution),
     ...toolingDynamicIssues(resolution, invocationSites),
     ...hostShellIssues(resolution, invocationSites),
-    ...(yield* lintCapabilityIssues(resolution)),
+    ...(yield* lintCapabilityIssues(
+      resolution,
+      providerAlternatives(
+        pluginRegistry,
+        resolution.manifests,
+        pathsService?.platform ?? normalizeHostPlatform(),
+      ),
+    )),
   ];
   const evaluated = issues
     .filter(

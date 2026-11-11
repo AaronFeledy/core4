@@ -49,8 +49,6 @@ export {
   ComposeDeployField,
   ComposeDeployResources,
   ComposeDeploymentDevice,
-  ComposeDiscreteResourceSpec,
-  ComposeGenericResource,
   ComposeGpuRequest,
   ComposeGpusField,
   ComposeLogging,

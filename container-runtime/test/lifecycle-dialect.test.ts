@@ -350,6 +350,39 @@ describe("lifecycle dialect", () => {
     expect(fake.requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(2);
   });
 
+  test("fails a missing-image create for a Lando-built image without a forced pull", async () => {
+    // Given Docker reports the built image missing at create time.
+    const fake = makeBringUpApi([{ status: 404, body: '{"message":"No such image: lando-build-web"}' }]);
+    const forces: boolean[] = [];
+    const builtPlan: AppPlan = {
+      ...plan,
+      services: {
+        [serviceName]: { ...service, artifact: { kind: "ref", ref: "lando-build-web", origin: "build" } },
+      },
+    };
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        bringUp(builtPlan, {
+          api: fake.api,
+          ctx,
+          dialect: dockerLifecycleDialect,
+          ensureImage: ({ force }) => Effect.sync(() => forces.push(force)).pipe(Effect.asVoid),
+          retryCreateOnMissingImage: true,
+        }),
+      ),
+    );
+
+    // Then
+    expect(error).toMatchObject({
+      _tag: "ProviderUnavailableError",
+      remediation: "Run `lando rebuild -s web` to build it again.",
+    });
+    expect(forces).toEqual([false]);
+    expect(fake.requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(1);
+  });
+
   test("does not ensure or pull-pin a build-only service", async () => {
     const fake = makeBringUpApi();
     const calls: string[] = [];

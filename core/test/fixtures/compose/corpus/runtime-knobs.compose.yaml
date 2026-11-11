@@ -21,7 +21,6 @@ services:
           memory: 1g
           pids: 256
         reservations:
-          cpus: "0.5"
           memory: 256m
   opted_out:
     image: postgres:17

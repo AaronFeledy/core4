@@ -82,6 +82,14 @@ test("carries v4 plans forward unchanged", () => {
   expect(migrateAppliedPlansRecord({ example: encoded }, 4)).not.toBeNull();
 });
 
+test("carries v5 plans forward unchanged", () => {
+  const result = migrateAppliedPlan(encoded, 5);
+
+  if (result === null) throw new Error("v5 plan did not migrate");
+  expect(Schema.encodeSync(AppPlan)(result)).toEqual(encoded);
+  expect(migrateAppliedPlansRecord({ example: encoded }, 5)).not.toBeNull();
+});
+
 test("refuses a v4 service that pairs a SQLite file with a database connection", () => {
   const contradictory = {
     ...encoded,

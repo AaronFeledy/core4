@@ -2,7 +2,7 @@ import { type ConfigLintViolation, LandofileAuthoringFragmentNative } from "@lan
 import { Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
 import { attributeLintIssue } from "./lint-source.ts";
-import { rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
+import { pruneRejectedKeys, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
 import type { SourceDocument } from "./pipeline/source-table.ts";
 import {
   UNSUPPORTED_REMEDIATION,
@@ -71,18 +71,19 @@ export const unreportedToolingRefusals = (
     .map((finding) => attributeLintIssue(refusalViolation(finding), "effective", documents));
 
 export const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] => {
-  const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragmentNative)(source.document, {
+  const rejections = analyzeComposeRejections(source.document);
+  const pruned = pruneRejectedKeys(source.document, rejections);
+  const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragmentNative)(pruned.document, {
     onExcessProperty: "error",
     errors: "all",
   });
-  const rejections = analyzeComposeRejections(source.document);
   const unsupported = scanToolingForUnsupported(source.document);
   if (Result.isSuccess(decoded) && rejections.length === 0 && unsupported.length === 0) return [];
   const issues = [
     ...rejections.map(rejectionViolation),
     ...(Result.isSuccess(decoded)
       ? []
-      : violationsFromSchema(decoded.failure.issue, source.document, rejections).filter(
+      : violationsFromSchema(decoded.failure.issue, pruned.document, pruned.covered).filter(
           (issue) => !unsupported.some(({ path }) => path.every((part, index) => part === issue.path[index])),
         )),
     ...unsupported.map(refusalViolation),

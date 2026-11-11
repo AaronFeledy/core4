@@ -1,5 +1,5 @@
 import { CapabilityError, PublicationUnsupportedError } from "@lando/sdk/errors";
-import type { ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import type { ProviderCapabilities, ProviderId, ServicePlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import {
@@ -17,6 +17,7 @@ export const serviceResourceCapabilityErrors = (
     readonly bindMounts?: boolean;
     readonly artifactBuild?: boolean;
     readonly persistentStorage?: boolean;
+    readonly pullPolicy?: ServicePlan["pullPolicy"];
   },
 ): readonly CapabilityError[] => {
   const errors: CapabilityError[] = [];
@@ -48,6 +49,16 @@ export const serviceResourceCapabilityErrors = (
         "persistent storage",
         "persistentStorage",
         `Choose a provider with persistent storage support or remove persistent storage from service ${intent.name}.`,
+      ),
+    );
+  if ((intent.pullPolicy === "always" || intent.pullPolicy === "never") && !capabilities.artifactPull)
+    errors.push(
+      missingCapability(
+        provider,
+        intent.name,
+        `pull_policy: ${intent.pullPolicy}`,
+        "artifactPull",
+        `Remove pull_policy from service ${intent.name}, or select a provider that pulls images.`,
       ),
     );
   return errors;

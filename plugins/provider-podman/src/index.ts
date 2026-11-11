@@ -829,6 +829,7 @@ const assembleRuntimeProvider = (
           ctx: PODMAN_CTX,
           dialect: libpodPullDialect,
           ...(spec.policy === undefined ? {} : { policy: spec.policy }),
+          ...(spec.platform === undefined ? {} : { platform: spec.platform }),
           publish: (event) =>
             options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
         }).pipe(

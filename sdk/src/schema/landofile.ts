@@ -9,6 +9,7 @@ import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import {
   ComposeInitServiceField,
+  ComposePullPolicyServiceField,
   ComposeServiceKnobFields,
   ComposeTmpfsServiceField,
 } from "./compose-service-knobs.ts";
@@ -733,6 +734,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
 
     ...ComposeServiceKnobFields,
     init: ComposeInitServiceField,
+    pull_policy: ComposePullPolicyServiceField,
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),

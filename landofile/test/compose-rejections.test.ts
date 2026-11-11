@@ -8,6 +8,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
+  override,
 } from "@lando/sdk/landofile";
 import { compileDispositionTrie, matchDispositionPath } from "../src/compose/rejection-trie.ts";
 import {
@@ -59,6 +60,19 @@ describe("Compose rejection analysis", () => {
       documentPath: "services.web.ports[0].mode",
       service: "web",
     });
+  });
+
+  test("addresses a rejection by structured path, through dotted service names and !override values", () => {
+    // Given
+    const parsed = { services: { "api.v2": { build: override({ context: ".", cache_from: ["x"] }) } } };
+
+    // When
+    const matches = analyzeComposeRejections(parsed);
+
+    // Then
+    expect(matches.map(({ matrixPath, path }) => [matrixPath, path])).toEqual([
+      ["build.cache_from", ["services", "api.v2", "build", "cache_from"]],
+    ]);
   });
 
   test("descends through preserved deploy resources but rejects deploy replicas", () => {

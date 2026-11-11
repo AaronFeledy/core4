@@ -1,0 +1,666 @@
+{
+  "privileged": {
+    "historical": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "current": {
+      "anyOf": [
+        {
+          "pattern": "^(?:[Tt][Rr][Uu][Ee]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Nn]|[Oo][Ff][Ff]|[Yy][Ee][Ss]|[Nn][Oo]|[01])(?![\\s\\S])",
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    }
+  },
+  "read_only": {
+    "historical": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "current": {
+      "anyOf": [
+        {
+          "pattern": "^(?:[Tt][Rr][Uu][Ee]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Nn]|[Oo][Ff][Ff]|[Yy][Ee][Ss]|[Nn][Oo]|[01])(?![\\s\\S])",
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    }
+  },
+  "shm_size": {
+    "historical": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "current": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "stop_grace_period": {
+    "historical": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "current": {
+      "anyOf": [
+        {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "deploy": {
+    "historical": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "resources": {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^x-[\\s\\S]*?$": {}
+              },
+              "properties": {
+                "limits": {
+                  "additionalProperties": false,
+                  "patternProperties": {
+                    "^x-[\\s\\S]*?$": {}
+                  },
+                  "properties": {
+                    "cpus": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "memory": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "pids": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "reservations": {
+                  "additionalProperties": false,
+                  "patternProperties": {
+                    "^x-[\\s\\S]*?$": {}
+                  },
+                  "properties": {
+                    "devices": {
+                      "items": {
+                        "additionalProperties": false,
+                        "patternProperties": {
+                          "^x-[\\s\\S]*?$": {}
+                        },
+                        "properties": {
+                          "capabilities": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "count": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "device_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "driver": {
+                            "type": "string"
+                          },
+                          "options": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "propertyNames": {
+                                  "not": {
+                                    "const": "__proto__"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["capabilities"],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "memory": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "current": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "resources": {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^x-[\\s\\S]*?$": {}
+              },
+              "properties": {
+                "limits": {
+                  "additionalProperties": false,
+                  "patternProperties": {
+                    "^x-[\\s\\S]*?$": {}
+                  },
+                  "properties": {
+                    "cpus": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "pattern": "^\\+?(?:[0-9]+\\.?[0-9]*|\\.[0-9]+)$",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "memory": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "pids": {
+                      "anyOf": [
+                        {
+                          "pattern": "^[+-]?[0-9]+$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "reservations": {
+                  "additionalProperties": false,
+                  "patternProperties": {
+                    "^x-[\\s\\S]*?$": {}
+                  },
+                  "properties": {
+                    "devices": {
+                      "items": {
+                        "additionalProperties": false,
+                        "patternProperties": {
+                          "^x-[\\s\\S]*?$": {}
+                        },
+                        "properties": {
+                          "capabilities": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "count": {
+                            "anyOf": [
+                              {
+                                "pattern": "^(?:[Aa][Ll][Ll]|[+-]?[0-9]+)$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "integer"
+                              }
+                            ]
+                          },
+                          "device_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "driver": {
+                            "type": "string"
+                          },
+                          "options": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": {
+                                  "anyOf": [
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "propertyNames": {
+                                  "not": {
+                                    "const": "__proto__"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["capabilities"],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "memory": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "gpus": {
+    "historical": {
+      "anyOf": [
+        {
+          "enum": ["all"],
+          "type": "string"
+        },
+        {
+          "items": {
+            "additionalProperties": false,
+            "patternProperties": {
+              "^x-[\\s\\S]*?$": {}
+            },
+            "properties": {
+              "capabilities": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "count": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "device_ids": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "driver": {
+                "type": "string"
+              },
+              "options": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "propertyNames": {
+                      "not": {
+                        "const": "__proto__"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "current": {
+      "anyOf": [
+        {
+          "enum": ["all"],
+          "type": "string"
+        },
+        {
+          "items": {
+            "additionalProperties": false,
+            "patternProperties": {
+              "^x-[\\s\\S]*?$": {}
+            },
+            "properties": {
+              "capabilities": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "count": {
+                "anyOf": [
+                  {
+                    "pattern": "^(?:[Aa][Ll][Ll]|[+-]?[0-9]+)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "device_ids": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "driver": {
+                "type": "string"
+              },
+              "options": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "propertyNames": {
+                      "not": {
+                        "const": "__proto__"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      ]
+    }
+  },
+  "ulimits": {
+    "historical": {
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z]+$": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^x-[\\s\\S]*?$": {}
+              },
+              "properties": {
+                "hard": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "soft": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": ["hard", "soft"],
+              "type": "object"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "current": {
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z]+$": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^x-[\\s\\S]*?$": {}
+              },
+              "properties": {
+                "hard": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[+-]?[0-9]+$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "soft": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[+-]?[0-9]+$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                }
+              },
+              "required": ["hard", "soft"],
+              "type": "object"
+            },
+            {
+              "pattern": "^[+-]?[0-9]+$",
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  }
+}

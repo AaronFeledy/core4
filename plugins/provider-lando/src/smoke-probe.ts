@@ -22,6 +22,7 @@ import {
   smokeRemediation,
   startSmokeContainer,
 } from "./smoke-probe-support.ts";
+import { runResourceLimitSmokeProbe } from "./smoke-resource-limits.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
@@ -207,6 +208,7 @@ export const runSmokeReadinessProbe = Effect.fn("ProviderLando.runSmokeReadiness
   yield* runContainerSmokeProbe(deps, baseImage);
   yield* runBuildSmokeProbe(deps, baseImage);
   yield* runHealthSmokeProbe(deps, baseImage);
+  if (deps.resourceLimits === true) yield* runResourceLimitSmokeProbe(deps, baseImage);
 });
 
 export { DEFAULT_BASE_IMAGE, ProviderLandoSmokeError } from "./smoke-probe-support.ts";

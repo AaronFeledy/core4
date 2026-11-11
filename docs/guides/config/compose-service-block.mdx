@@ -39,6 +39,80 @@ A string `command:` or `entrypoint:` on a `type: compose` service splits into ar
 
 A service-level `networks:` key works too, with one difference from Compose: it adds networks and never takes the service off the app network. Declare each network under top-level `networks:` first. If you'd rather not paste at all, top-level `include:` pulls a whole compose file in as services. See [Reach another project's services](./networks.mdx) for both, plus external networks, app-owned networks, and the names you get on them.
 
+## Limit memory, CPU, and processes
+
+Set resource limits under `deploy.resources`, the Compose spelling. The `docker` and `podman` providers apply them. The default `lando` provider applies them on Linux when your user has a systemd user session: Lando then starts its runtime in a systemd user scope where each container gets its own cgroup. On macOS and Windows, and on Linux without a systemd user session, planning fails with `CapabilityError` instead of starting containers without limits. Save this as `.lando.yml`:
+
+```yaml
+name: limits-demo
+services:
+  worker:
+    type: compose
+    image: alpine:3.20
+    appMount: false
+    command: sleep infinity
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+          pids: 200
+        reservations:
+          memory: 256m
+```
+
+`limits.memory` caps the container's memory, `limits.cpus` caps its CPU time as a share of one CPU, and `limits.pids` caps how many processes it can run at once. `reservations.memory` is a soft floor the kernel tries to keep available under memory pressure. As in Compose, `0` means no limit, and so does `pids: -1`.
+
+Run `lando start`, then read the memory cap from inside the service:
+
+```sh
+lando exec worker -- cat /sys/fs/cgroup/memory.max
+```
+
+On a cgroup v2 host the file holds `536870912`, which is 512 MiB. `cpu.max` and `pids.max` in the same directory show the other two limits.
+
+If the `lando` provider rejects the limits on Linux, the remediation says what is missing. Without a systemd user session, run `loginctl enable-linger $USER` (or log in through a systemd session) and start the app again. When the runtime was started before that and still runs containers, the remediation asks you to run `lando poweroff` first, because Lando moves a running runtime only when it has no running containers. The remediation also names each installed provider that applies the limits, with the `lando setup --provider=<id>` command that switches to it. `lando doctor` reports whether the runtime gives containers their own cgroups, and `lando setup --smoke` checks that a container's cgroup holds the limits it asked for.
+
+Lando reads these settings only from `deploy.resources`. The flat Compose keys `mem_limit`, `cpus`, `pids_limit`, and `mem_reservation` are rejected; move each value to `deploy.resources.limits.memory`, `limits.cpus`, `limits.pids`, or `reservations.memory`. `deploy.resources.reservations.cpus` and `reservations.generic_resources` are rejected too, because Compose applies them only to Swarm services. Use `limits.cpus` to cap CPU instead.
+
+`lando app:config:lint` checks these values before anything starts. `limits.cpus` takes a number or a decimal string such as `"0.5"`, from `0` up to `9007199`. `limits.memory` and `reservations.memory` take a byte size such as `512m` or a whole number of bytes. `limits.pids` takes a whole number. Anything else fails lint and `lando start` at the value's own path, such as `services.worker.deploy.resources.limits.cpus`, so you can fix the Landofile before Lando creates a network or a container.
+
+## Give a service a GPU
+
+GPU requests work on the `docker` provider, which hands them to Docker Engine the way Docker Compose does. Docker needs the GPU vendor's container runtime, such as the NVIDIA Container Toolkit, before a container can see the device.
+
+```yaml
+services:
+  ollama:
+    type: compose
+    image: ollama/ollama
+    gpus: all
+```
+
+`gpus: all` requests every GPU. For a specific device, use the list form, or the equivalent `deploy.resources.reservations.devices` entry:
+
+```yaml
+services:
+  ollama:
+    type: compose
+    image: ollama/ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+```
+
+After `lando start`, confirm Docker received the request. Replace `<app>` with your app name:
+
+```sh
+docker inspect lando-<app>--ollama --format '{{json .HostConfig.DeviceRequests}}'
+```
+
+The `lando` and `podman` providers don't apply GPU requests. On them, planning fails with `CapabilityError`, and the remediation names `docker` when that provider is installed. Switch with `lando setup --provider=docker`; see [Pick a container provider](../setup/provider-selection.mdx).
+
 ## Keep Lando features on a custom image
 
 Use `type: lando` instead when you want Lando's environment and app mount. Its
@@ -92,6 +166,31 @@ the Lando feature stack entirely.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup-remediation">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="resource-limits-lint" render>
+    <Step name="lint-resource-limits">
+      <UseFixture name="compose-resource-limits" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="plan-resource-limits">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: compose-resource-limits" } }} />
+    </Step>
+    <Step name="reject-flat-memory-key">
+      <UseFixture name="compose-resource-mem-limit" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"worker\",\\s*\"mem_limit\"\\s*\\][\\s\\S]*\"suggestion\":\\s*\"[^\"]*deploy\\.resources\\.limits\\.memory" } }} />
+    </Step>
+    <Step name="reject-invalid-cpus">
+      <UseFixture name="compose-resource-invalid-cpus" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"worker\",\\s*\"deploy\",\\s*\"resources\",\\s*\"limits\",\\s*\"cpus\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-resource-limits">
       <Cleanup />
     </Step>
   </Scenario>

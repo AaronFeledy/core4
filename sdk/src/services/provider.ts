@@ -154,6 +154,8 @@ export interface ArtifactPullSpec {
    * `never` reuses a provider-local copy and fails without contacting the source when absent.
    */
   readonly policy?: ArtifactPullPolicy;
+  /** Platform to acquire, in os/arch or os/arch/variant form; omitted lets the engine choose its default. */
+  readonly platform?: string;
 }
 
 export interface ApplyOptions {
