@@ -127,6 +127,7 @@ describe("ci workflow", () => {
       "provider-matrix.yml",
       "rails-journey.yml",
       "release.yml",
+      "retarget-action-bump.yml",
       "runtime-bundle.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",
