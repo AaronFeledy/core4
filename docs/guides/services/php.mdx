@@ -309,4 +309,9 @@ setup. You supply the tools, extensions, and serving configuration; see
 [Replace the image](./php-customization.mdx#replace-the-image). Additive
 `build.artifact` and `build.app` steps alone keep the stock PHP setup.
 
+Stock tags are checked against the registry about once a week, so a PHP
+security release usually reaches your app on the next `lando start` or
+`lando restart` after that check is due. `lando rebuild` checks immediately.
+See [Pick up a PHP security release](./php-security-updates.mdx).
+
 </Guide>

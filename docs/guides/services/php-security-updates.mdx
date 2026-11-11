@@ -11,7 +11,7 @@ Stock PHP tags are checked against the registry about once a week. `lando start`
 
 Official images publish a security release under the same tag the service already uses. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. Other minors use the tags in [Pin a PHP version](./php-version-matrix.mdx), including the PHP 8.6 release-candidate tag until GA. A custom `image:` or replacement build is not on this weekly check. Rebuild it yourself when you want a new base.
 
-The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host:
+The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host. `lando exec` needs the app running. Reading the planned tag does not require a running app. The Landofile below is written by hand. On an app created by `lando init`, keep the `recipe:` block and change only the `type:` or `via:` under `services`, so the recipe's other services stay.
 
 ```yaml
 name: php-patch-demo
@@ -20,6 +20,41 @@ services:
     type: "php:8.4"
     primary: true
 ```
+
+## See the planned tag
+
+`app:config` shows the Landofile, and `app:config:lint` validates it. Neither plans an image. `lando app:cache:refresh --format=json` plans the app without starting it. Each service is under `result.services`, and a registry image is `artifact.ref`. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. `artifact.kind` is `build` when Lando builds the service instead of pulling a tag.
+
+```sh
+lando app:config:lint --format=json
+lando app:config --format=json
+lando app:cache:refresh --format=json
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="php-patch-demo" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Run command="lando app:config --format=json" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ref\":\\s*\"php:8\\.4-apache-bookworm\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+```sh
+lando start
+```
+
+`lando info --format=json` reports the running artifact under `services[].artifact`. The ref matches the plan. A digest is there when the pull recorded one.
 
 ## Check the CLI build
 
@@ -53,31 +88,6 @@ lando exec web -- curl -fsS localhost/version.php
 
 With `via: cli` there is no web server. `php -v` is the only check.
 
-## Check the Landofile
-
-Confirm `appserver` still plans `php:8.4` before you rebuild:
-
-```sh
-lando app:config:lint
-lando app:config --format=json
-```
-
-<Guide>
-  <Scenario id="reader-path" render>
-    <Step name="scaffold">
-      <UseFixture name="php-patch-demo" />
-    </Step>
-    <Step name="check-config">
-      <Run command="lando app:config:lint" />
-      <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
-    </Step>
-    <Step name="cleanup">
-      <Cleanup />
-    </Step>
-  </Scenario>
-</Guide>
-
 ## Rebuild the app
 
 Rebuild stops the selected containers, pulls the images they reference, and creates the containers again. When that pull resolves a new digest, Lando rebuilds the service image on that base. Compiling the stock PHP extensions on that new base can take minutes. Named volumes, including database data, stay. `-y` skips the confirmation prompt. Without it, Lando asks before recreating containers.
@@ -105,18 +115,25 @@ With `via: fpm`, repeat the curl check in the nginx service instead of the secon
 
 The version or `built:` date changes when the registry had a newer image. The HTTP check should print that same version. Rebuild replaced the container, so the old server process is gone.
 
-Remove the check file from the app directory on your host:
+Remove the check file from the webroot. With no `webroot:` set, that is the app directory:
 
 ```sh
 rm version.php
 ```
 
+When `webroot:` is `public`, remove it there instead:
+
+```sh
+rm public/version.php
+```
+
 ## If the version didn't change
 
-- Rebuild warned that it could not refresh an image and used the local copy. The registry was not reachable. Fix the network, then run `lando rebuild -y` again. `lando rebuild -y --format=json` puts that warning on the envelope's top-level `warnings` array, next to `result`, with code `LANDO_ARTIFACT_REFRESH_FAILED`. See [Work offline](../config/offline-dev.mdx).
-- There was no warning. The registry does not have the new build under that tag yet. Lando can only pull what is published. Check the tag on Docker Hub, then rebuild.
+- Rebuild warned that it could not refresh an image and used the local copy. That covers an unreachable registry, a rejected credential, and a tag the registry does not have. The warning text names the reason. Fix that, then run `lando rebuild -y` again. `lando rebuild -y --format=json` puts the warning on the envelope's top-level `warnings` array, next to `result`, with code `LANDO_ARTIFACT_REFRESH_FAILED`. See [Work offline](../config/offline-dev.mdx).
+- There was no warning, so the pull succeeded and you are running whatever that tag points at. If the fix still is not there, the registry does not have the new build under that tag yet. Lando can only pull what is published. Check the tag on Docker Hub, then rebuild.
 - `image:` is pinned to a patch tag, such as `php:8.4.12-apache-bookworm`. That tag does not move to a newer patch. A floating tag such as `php:8.4-apache-bookworm` does. Remove `image:` to return to the stock tag for the service `type:`.
 - You need a new minor, such as 8.4 to 8.5. Change `type:`. Rebuild does not do that. See [Pin a PHP version](./php-version-matrix.mdx).
+- Rebuilding to a patched PHP does not drop the `session.upload_progress.enabled = 0` line that Lando adds to stock images. That drop-in belongs to Lando and changes only with a Lando release. [See the security baseline](./php-customization.mdx#see-the-security-baseline) for what it does.
 
 ## Next
 

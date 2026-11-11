@@ -60,7 +60,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 
 | Canonical id | Default alias | Bootstrap | Contract |
 |---|---|---|---|
-| `app:cache:refresh` | none | `app` | Rebuild app plan, tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.bin` without starting services; dispatch and help rebuild them automatically (§8.7) |
+| `app:cache:refresh` | none | `app` | Rebuild app plan, tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.bin` without starting services; JSON `result.services` reports each planned artifact identity; dispatch and help rebuild the caches automatically (§8.7) |
 | `app:check` | `check` | `app` | Run the app's checks without restarting (§8.2.7); repeatable `--only <id>`, `--format json` |
 | `app:config` | none | `plugins` | Read or write the current Landofile (§8.2.1) |
 | `app:config:explain` | none | `plugins` | Report recipe provenance; `--format json` |
@@ -146,7 +146,7 @@ Command-wide rules:
 
 - Tooling narration and scratch acquisition progress MUST use stderr, including the live tree when stderr is a terminal and stdout is redirected to a file (a pipe keeps line mode, §8.9.2). stdout MUST remain the payload channel. Narration terminal selection MUST NOT change the stdin/stdout PTY and keyboard-attachment rules below.
 
-- `app:cache:refresh` performs full app bootstrap and refreshes the plan, tooling graph, and app command index. It MUST NOT contact the provider unless materialization requires a missing managed dependency. Ordinary use never needs it, because dispatch and help rebuild the same caches automatically (§8.7); it exists to warm caches ahead of time, for example in CI, and to report refresh warnings.
+- `app:cache:refresh` performs full app bootstrap and refreshes the plan, tooling graph, and app command index. It MUST NOT contact the provider unless materialization requires a missing managed dependency. Ordinary use never needs it, because dispatch and help rebuild the same caches automatically (§8.7); it exists to warm caches ahead of time, for example in CI, and to report refresh warnings. Its JSON result lists every planned service under `result.services` with `service`, `type`, and the artifact identity `app:info` reports (`kind: ref` with `ref` and optional `digest`, or `kind: build` with optional `contentHash`). Build context, arguments, inline source, and provenance are omitted. The text summary stays the refresh line.
 - `app:info` and `app:rebuild` deduplicate services on first occurrence and validate all names before provider action. `app:info` selects no dependencies. `app:rebuild` selects transitive prerequisites in stable plan order and MUST leave unrelated services and dependents untouched.
 - `app:includes:verify` MUST work offline from warm source-store entries (`<userCacheRoot>/sources/`, §12.8) and MUST NOT resolve floating refs or update the lockfile. Missing pins, selector mismatches, content mismatches, and stale entries report `LandofileLockMismatchError` entries with update remediation. Its `ok: false` report retains load failures in `failures` alongside `mismatches`, preserving each tag, attribution, and remediation. Incomplete traversal MUST NOT classify unreachable descendants as stale. `app:includes:update` collects independent load failures and MUST NOT publish on failure (§7.7.2).
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
