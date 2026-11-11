@@ -117,6 +117,7 @@
     "./operations/info": "./src/operations/info.ts",
     "./operations/logs": "./src/operations/logs.ts",
     "./operations/missing-app-roots": "./src/operations/missing-app-roots.ts",
+    "./operations/planned-service-artifact": "./src/operations/planned-service-artifact.ts",
     "./operations/plugin-install": "./src/operations/plugin-install.ts",
     "./operations/plugin-link": "./src/operations/plugin-link.ts",
     "./operations/plugin-scaffold": "./src/operations/plugin-scaffold.ts",

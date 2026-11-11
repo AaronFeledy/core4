@@ -3,7 +3,14 @@ import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { refreshAppCache, renderAppCacheRefreshResult } from "@lando/core/cli/operations";
-import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type ProviderCapabilities,
+  ProviderId,
+  ServiceName,
+} from "@lando/core/schema";
 import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { appCommandCachePath } from "@lando/engine/cache/paths";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
@@ -102,7 +109,24 @@ describe("lando app:cache:refresh", () => {
             slug: "test-app-cache",
             root: AbsolutePath.make(dir),
             provider: providerId,
-            services: {},
+            services: {
+              [ServiceName.make("web")]: {
+                name: ServiceName.make("web"),
+                type: "node",
+                provider: providerId,
+                primary: true,
+                artifact: { kind: "ref", ref: "node:22-alpine", digest: "sha256:abc", origin: "build" },
+                command: ["node"],
+                environment: {},
+                mounts: [],
+                endpoints: [],
+                routes: [],
+                dependsOn: [],
+                hostAliases: [],
+                metadata,
+                extensions: {},
+              },
+            },
             routes: [],
             stores: [],
             fileSync: [],
@@ -166,6 +190,13 @@ describe("lando app:cache:refresh", () => {
         expect(selectCalls).toBe(0);
         expect(result.app).toBe("test-app-cache");
         expect(result.commandsCompiled).toBe(2);
+        expect(result.services).toEqual([
+          {
+            service: "web",
+            type: "node",
+            artifact: { kind: "ref", ref: "node:22-alpine", digest: "sha256:abc" },
+          },
+        ]);
         expect(result.appCommandCachePath).toMatch(/apps\/test-app-cache-[a-f0-9]{12}\/commands\.bin$/u);
         expect(result).not.toHaveProperty("pluginCommandCachePath");
         expect(renderAppCacheRefreshResult(result)).toBe("refreshed: test-app-cache (2 commands)");

@@ -34,6 +34,7 @@ import { infoLogSources } from "./info-log-sources.ts";
 import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { resolveInfoTarget } from "./info-target.ts";
+import { plannedServiceArtifact } from "./planned-service-artifact.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -66,21 +67,7 @@ const serviceInfoMetadata = (
 ): Omit<InfoAppService, "status" | "health" | "readiness" | "connections"> => {
   const logSources = infoLogSources(service, capabilities);
   const creds = credsFromService(service);
-  const artifact =
-    service.artifact === undefined
-      ? undefined
-      : service.artifact.kind === "ref"
-        ? {
-            kind: "ref" as const,
-            ref: service.artifact.ref,
-            ...(service.artifact.digest === undefined ? {} : { digest: service.artifact.digest }),
-          }
-        : {
-            kind: "build" as const,
-            ...(service.artifact.contentHash === undefined
-              ? {}
-              : { contentHash: service.artifact.contentHash }),
-          };
+  const artifact = plannedServiceArtifact(service.artifact);
   const hostnames = Array.from(
     new Set(landoServiceNetworkAttachments(plan, service).flatMap((attachment) => attachment.aliases)),
   );
