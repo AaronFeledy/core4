@@ -663,8 +663,10 @@ Only acquisition-local cleanup runs after failure: an acquisition that was never
 
 **Failure reporting.** The primary error tag, remediation, and role-annotated additional failures are unchanged, and the machine envelope gains no fields. Human output of `lando start`, `lando restart`, and `lando rebuild` adds exactly one warning after the primary error:
 
+The warning names the command that failed. `lando start` begins `Start did not complete.` `lando restart` and `lando rebuild` begin `Restart did not complete.` and `Rebuild did not complete.` The rerun advice is that same command. A selected restart or rebuild names each service with `-s`, for example `lando rebuild -s web`, and MUST NOT tell the user to run a whole-app command or `lando start`.
+
 > Start did not complete. Resources were left in place. Running: …; created/stopped: …; unverified: …. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; named volumes require `--volumes`.
 
-The inventory uses a one-second best-effort observation budget; anything unobserved is reported as unverified/unknown, never as stopped. A failure before any app resource mutation says `No app resources changed.` instead of the inventory. Machine output (`json`, `yaml`) omits the warning; agents use `lando info`. Pre-events and actual service-start events for phases reached before the failure still publish on a failed attempt, and a launch-preflight failure (§10.3) need not enter later lifecycle brackets; `post-app-start` / `post-start` publishes only after the readiness barrier succeeds.
+The inventory uses a one-second best-effort observation budget; anything unobserved is reported as unverified/unknown, never as stopped. A failure before any app resource mutation says `<Verb> did not complete. No app resources changed.` instead of the inventory, with the same rerun command. Machine output (`json`, `yaml`) omits the warning; agents use `lando info`. Pre-events and actual service-start events for phases reached before the failure still publish on a failed attempt, and a launch-preflight failure (§10.3) need not enter later lifecycle brackets; `post-app-start` / `post-start` publishes only after the readiness barrier succeeds.
 
 ---

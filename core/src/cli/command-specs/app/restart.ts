@@ -35,7 +35,12 @@ export const restartSpec = {
       multiple: true,
     }),
   },
-  run: (input) =>
-    withIncompleteStartNotice(Effect.andThen(refreshAppCache(), restartApp(restartOptionsFromInput(input)))),
+  run: (input) => {
+    const options = restartOptionsFromInput(input);
+    return withIncompleteStartNotice(Effect.andThen(refreshAppCache(), restartApp(options)), {
+      verb: "restart",
+      ...(options.services === undefined ? {} : { services: options.services }),
+    });
+  },
   render: (result, _input, ctx) => renderRestartAppResult(result, ctx),
 } satisfies LandoCommandSpec<RestartAppResult>;
