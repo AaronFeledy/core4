@@ -214,21 +214,56 @@ describe("meta:doctor subsystem checks", () => {
     expect(result.checks.length).toBe(EXPECTED_SUBSYSTEMS.length);
   });
 
-  test("uses the selected certificate authority id from precomputed status", async () => {
-    // Given / When
+  test("passes the certs check when the local root is in the host trust store", async () => {
     const result = await Effect.runPromise(
-      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert" } }).pipe(
+      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert", trusted: true } }).pipe(
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );
-
-    // Then
     const certs = result.checks.find((check) => check.name === "certs");
-    expect(certs).toBeUndefined();
-    expect(result.skipped).toContainEqual({
-      section: "certs",
-      status: "skipped",
-      reason: expect.any(String),
+    expect(certs?.status).toBe("pass");
+    expect(certs?.context.certsTrusted).toBe("true");
+    expect(result.skipped?.some((entry) => entry.section === "certs")).toBe(false);
+  });
+
+  test("warns when the local root is not in the host trust store", async () => {
+    const result = await Effect.runPromise(
+      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert", trusted: false }, fix: true }).pipe(
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
+    const certs = result.checks.find((check) => check.name === "certs");
+    expect(certs?.status).toBe("warn");
+    expect(certs?.context.certsTrusted).toBe("false");
+    expect(certs?.context.fixOutcome).toBe("skipped-manual");
+    expect(certs?.solutions[0]?.description).toContain("--skip-install-ca");
+    expect(certs?.solutions[0]?.command).toBe("lando setup");
+  });
+
+  test("warns with the authority remediation when the local root cannot be read", async () => {
+    // Given a selected authority whose root is missing, and a request to fix.
+    const status = {
+      _tag: "root-unavailable",
+      id: "mkcert",
+      detail: "mkcert has no local CA in /caroot.",
+      remediation: "Run `lando setup` to download mkcert and install the local CA.",
+    } as const;
+
+    // When doctor reports subsystems.
+    const result = await Effect.runPromise(
+      subsystemDoctor({ certs: status, fix: true }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+    );
+
+    // Then the finding uses that remediation and does not run setup.
+    const certs = result.checks.find((check) => check.name === "certs");
+    expect(certs?.status).toBe("warn");
+    expect(certs?.recovery).toBe("manual");
+    expect(certs?.context.subsystemId).toBe("mkcert");
+    expect(certs?.context.fixOutcome).toBe("skipped-manual");
+    expect(certs?.solutions[0]).toEqual({
+      kind: "manual",
+      description: status.remediation,
+      command: "lando setup",
     });
   });
 

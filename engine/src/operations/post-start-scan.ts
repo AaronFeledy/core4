@@ -14,6 +14,7 @@ import {
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
 import { makeTaskTree } from "@lando/sdk/task-progress";
 import { DateTime, Effect } from "effect";
+import { warnIfLocalCaUntrusted } from "../http/local-ca-trust.ts";
 import { endpointScanPolicy } from "../services/endpoint-scan.ts";
 import { scanTargets } from "../subsystems/scanner/connection-targets.ts";
 import { startScanTreeId } from "./start-progress.ts";
@@ -218,11 +219,15 @@ export const runPostStartScan = Effect.fnUntraced(function* (
       const parts: string[] = [];
       if (errors > 0) parts.push(`${urls(errors)} returned errors`);
       if (unreachable > 0) parts.push(`${unreachable} unreachable`);
-      return tree.settleSuccess(
-        redact(
-          parts.length === 0
-            ? `${input.plan.name} answered on ${urls(checks.length)}`
-            : `${input.plan.name} checked · ${parts.join(", ")}`,
+      return warnIfLocalCaUntrusted(input.urls).pipe(
+        Effect.andThen(
+          tree.settleSuccess(
+            redact(
+              parts.length === 0
+                ? `${input.plan.name} answered on ${urls(checks.length)}`
+                : `${input.plan.name} checked · ${parts.join(", ")}`,
+            ),
+          ),
         ),
       );
     }),

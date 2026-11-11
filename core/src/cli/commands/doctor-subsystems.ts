@@ -22,12 +22,7 @@ import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { RouterService, SshService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 
-import {
-  type CertsDoctorStatus,
-  UNRESOLVED_CERTS_STATUS,
-  certsCheckContext,
-  certsSubsystemId,
-} from "./doctor-certs-status";
+import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsSubsystemCheck } from "./doctor-certs-status";
 import { idleGlobalProvider } from "./doctor-global-runtime";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostDnsCheck } from "./doctor-host-dns-check";
@@ -36,7 +31,7 @@ import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
 import { renderSectionCheck } from "./doctor-section-render";
 import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
-import { CERTS_SPEC, type DoctorSubsystemCheck, buildDegradedCheck } from "./doctor-subsystem-checks";
+import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export {
   type DoctorSubsystemCheck,
@@ -82,19 +77,7 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
       ? []
       : [yield* buildProxyCheck(proxy, fix)];
   const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
-  const certsCheck =
-    certs._tag === "selected"
-      ? undefined
-      : yield* buildDegradedCheck(
-          CERTS_SPEC,
-          {
-            subsystem: "certs",
-            subsystemId: certsSubsystemId(certs),
-            ready: "false",
-            ...certsCheckContext(certs),
-          },
-          fix,
-        );
+  const certsCheck = yield* certsSubsystemCheck(certs, fix);
   const sshChecks =
     ssh === undefined
       ? []
@@ -156,16 +139,6 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
             status: "skipped" as const,
             reason: `Provider ${idleProvider} holding the global app is idle; readiness was not inspected.`,
           }))),
-      ...(certsCheck === undefined
-        ? [
-            {
-              section: "certs",
-              status: "skipped" as const,
-              reason:
-                "A certificate authority was selected, but its installation and trust were not inspected; the certificate authority contract has no read-only inspection operation.",
-            },
-          ]
-        : []),
       ...[["router", proxy] as const, ["ssh", ssh] as const].flatMap(([section, service]) =>
         service === undefined
           ? [

@@ -32,6 +32,7 @@ export const runCaContract = Effect.fnUntraced(function* (
     root.certificate.includes("-----BEGIN CERTIFICATE-----"),
     "root is a non-empty PEM certificate",
   );
+  yield* requireCaContract(typeof root.trusted === "boolean", "root reports whether the host trusts it");
 
   const spec = { cn: "test.lndo.site", sans: ["*.test.lndo.site"] };
   const issued = yield* ca
@@ -98,14 +99,14 @@ export const makeTestCertificateAuthority = (): CertificateAuthorityShape & {
       Effect.sync(() => {
         calls.push({ op: "setup", opts });
       }),
-    root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA }),
+    root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
     issueCert: (spec) =>
       Effect.sync((): IssuedCertificate => {
         calls.push({ op: "issueCert", spec });
         return {
           certificate: TEST_CERTIFICATES.contract.certificate,
           privateKey: Redacted.make(TEST_CERTIFICATES.contract.privateKey),
-          root: { certificate: TEST_CERTIFICATES.rootA },
+          root: { certificate: TEST_CERTIFICATES.rootA, trusted: true },
         };
       }),
     calls,

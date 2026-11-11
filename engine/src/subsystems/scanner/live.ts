@@ -96,15 +96,14 @@ export const makeUrlScanner = (
           candidates.map((entry) => [`${entry.target.service}/${entry.target.url}`, entry]),
         ).values(),
       ];
+      const scanDeps = {
+        ...deps,
+        ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }),
+      };
       const scanned = yield* Effect.forEach(
         targets,
         ({ target, config }) =>
-          scanTarget(
-            { ...deps, ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }) },
-            config,
-            redactor,
-            { service: target.service, url: target.url },
-          ),
+          scanTarget(scanDeps, config, redactor, { service: target.service, url: target.url }),
         { concurrency: 4 },
       );
       return { appId, endpoints: scanned };

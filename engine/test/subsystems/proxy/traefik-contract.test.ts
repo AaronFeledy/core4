@@ -78,12 +78,12 @@ test("real filesystem status sees configured routing and stop removes route and 
     const certificateAuthority: CertificateAuthorityShape = {
       id: "real-filesystem-ca",
       setup: () => Effect.void,
-      root: Effect.succeed({ certificate: "root" }),
+      root: Effect.succeed({ certificate: "root", trusted: true }),
       issueCert: () =>
         Effect.succeed({
           certificate: "certificate",
           privateKey: Redacted.make("private key"),
-          root: { certificate: "root" },
+          root: { certificate: "root", trusted: true },
         }),
     };
     const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));

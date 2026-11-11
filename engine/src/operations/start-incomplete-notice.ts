@@ -24,7 +24,30 @@ export const markStartMutation = (plan: AppPlan): Effect.Effect<void> =>
 
 const listed = (names: ReadonlyArray<string>): string => (names.length === 0 ? "none" : names.join(", "));
 
-const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan) {
+export type IncompleteStartVerb = "start" | "restart" | "rebuild";
+
+/** The command the user ran. `services` is set only for a selected restart or rebuild. */
+export interface IncompleteStartCommand {
+  readonly verb: IncompleteStartVerb;
+  readonly services?: readonly string[];
+}
+
+const VERB_LABEL: Readonly<Record<IncompleteStartVerb, string>> = {
+  start: "Start",
+  restart: "Restart",
+  rebuild: "Rebuild",
+};
+
+const rerunCommand = (command: IncompleteStartCommand): string => {
+  const services = command.services ?? [];
+  if (services.length === 0) return `lando ${command.verb}`;
+  return `lando ${command.verb} ${services.map((service) => `-s ${service}`).join(" ")}`;
+};
+
+const unchangedNotice = (command: IncompleteStartCommand): string =>
+  `${VERB_LABEL[command.verb]} did not complete. No app resources changed. Fix the reported error, then run \`${rerunCommand(command)}\`.`;
+
+const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan, command: IncompleteStartCommand) {
   const services = Object.values(plan.services).map((service) => service.name);
   // Keep each completed observation even when the shared deadline interrupts its siblings.
   const observed = new Map<string, ServiceRuntimeInfo>();
@@ -85,7 +108,7 @@ const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan) {
       }
     }
   }
-  return `Start did not complete. Resources were left in place. Running: ${listed(running)}; created/stopped: ${listed(stopped)}; unverified: ${listed(unverified)}. Agent forwarding/file sync remain active where established. Inspect \`lando info\` and \`lando logs\`; fix the reported error, then run \`lando start\`. Run \`lando stop\` to shut down or \`lando destroy\` to remove resources; named volumes require \`--volumes\`.`;
+  return `${VERB_LABEL[command.verb]} did not complete. Resources were left in place. Running: ${listed(running)}; created/stopped: ${listed(stopped)}; unverified: ${listed(unverified)}. Agent forwarding/file sync remain active where established. Inspect \`lando info\` and \`lando logs\`; fix the reported error, then run \`${rerunCommand(command)}\`. Run \`lando stop\` to shut down or \`lando destroy\` to remove resources; named volumes require \`--volumes\`.`;
 });
 
 /**
@@ -94,6 +117,7 @@ const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan) {
  */
 export const withIncompleteStartNotice = Effect.fnUntraced(function* <A, E, R>(
   effect: Effect.Effect<A, E, R>,
+  command: IncompleteStartCommand,
 ): Effect.fn.Return<A, E, R> {
   const owner = yield* IncompleteStartAttempt;
   const warnings = yield* Effect.serviceOption(CommandWarnings);
@@ -107,11 +131,7 @@ export const withIncompleteStartNotice = Effect.fnUntraced(function* <A, E, R>(
         ? Effect.void
         : Ref.get(mutated).pipe(
             Effect.flatMap((plan) =>
-              plan !== undefined
-                ? inventoryNotice(plan)
-                : Effect.succeed(
-                    "Start did not complete. No app resources changed. Fix the reported error, then run `lando start`.",
-                  ),
+              plan !== undefined ? inventoryNotice(plan, command) : Effect.succeed(unchangedNotice(command)),
             ),
             Effect.flatMap(notices.addFailureNotice),
             // Even a defective notice sink must not append to the original command cause.

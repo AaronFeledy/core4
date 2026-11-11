@@ -25,6 +25,7 @@ export const startSpec = {
     const signal = extractSpecAbortSignal(input);
     return withIncompleteStartNotice(
       Effect.andThen(refreshAppCache(), startApp(signal === undefined ? {} : { signal })),
+      { verb: "start" },
     );
   },
   render: (result, _input, ctx) => renderStartAppResult(result, ctx),

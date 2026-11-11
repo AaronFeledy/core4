@@ -54,12 +54,12 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
     const ca = CertificateAuthority.of({
       id: "fake",
       setup: () => Effect.void,
-      root: Effect.sync(() => ({ certificate: authority.root })),
+      root: Effect.sync(() => ({ certificate: authority.root, trusted: true })),
       issueCert: () =>
         Effect.sync(() => ({
           certificate: authority.issue.certificate,
           privateKey: Redacted.make(authority.issue.privateKey),
-          root: { certificate: authority.root },
+          root: { certificate: authority.root, trusted: true },
         })),
     });
     const certificates = Layer.mergeAll(

@@ -46,7 +46,7 @@ const writeDiscoveredAuthority = async (root: string): Promise<string> => {
       "export const ca = Layer.succeed(CertificateAuthority, CertificateAuthority.of({",
       '  id: "custom-ca",',
       "  setup: () => Effect.void,",
-      '  root: Effect.succeed({ certificate: "root" }),',
+      '  root: Effect.succeed({ certificate: "root", trusted: true }),',
       '  issueCert: () => Effect.die("not exercised"),',
       "}));",
       "",

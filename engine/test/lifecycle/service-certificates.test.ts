@@ -140,7 +140,7 @@ const makeHarness = async () => {
     root: Effect.suspend(() => {
       rootReads += 1;
       return authority.rootFailure === undefined
-        ? Effect.succeed({ certificate: authority.root })
+        ? Effect.succeed({ certificate: authority.root, trusted: true })
         : Effect.fail(authority.rootFailure);
     }),
     issueCert: (spec) =>
@@ -150,7 +150,7 @@ const makeHarness = async () => {
         return Effect.succeed({
           certificate: authority.issue.certificate,
           privateKey: Redacted.make(authority.issue.privateKey),
-          root: { certificate: authority.issuedRoot ?? authority.root },
+          root: { certificate: authority.issuedRoot ?? authority.root, trusted: true },
         });
       }),
   });
