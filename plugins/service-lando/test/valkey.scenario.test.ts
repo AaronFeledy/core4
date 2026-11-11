@@ -86,7 +86,7 @@ const makeProvider = (
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -211,7 +211,7 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     ]);
     const volumes = cache.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-valkey-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--valkey-data");
     expect(cache.healthcheck?.kind).toBe("command");
     expect(cache.healthcheck).toEqual(tcpProbe(6379, 30));
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("valkey");

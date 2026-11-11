@@ -1,6 +1,6 @@
 import { dirname, join, resolve } from "node:path";
 
-import type ts from "typescript";
+import type ts from "@typescript/typescript6";
 
 import type { BoundaryRule, FileRecord, ProgramContext } from "../types.ts";
 import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";

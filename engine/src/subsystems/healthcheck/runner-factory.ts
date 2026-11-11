@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Ref, Result } from "effect";
 
 import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
@@ -168,7 +169,7 @@ export const makeHealthcheckRunner: (deps: {
           { id: `healthcheck:${service}`, plan },
           makeAttempt({ attempt: prepared.run, status }),
           Ref.set(status, { _tag: "timeout" }).pipe(Effect.as("red" as const)),
-        ).pipe(Effect.mapError((cause) => toProbeError(service, cause))),
+        ).pipe(mapFailures((cause) => toProbeError(service, cause))),
         deps.signal,
       );
       const finalStatus = yield* Ref.get(status);

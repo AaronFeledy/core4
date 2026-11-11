@@ -70,8 +70,9 @@ describe("nextjs decomposition", () => {
           service: "web",
           description: "Run the Next.js CLI inside the web service.",
           cmds: ["npx next"],
+          wrapper: true,
         },
-        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"] },
+        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"], wrapper: true },
         "nextjs-scaffold": {
           service: "web",
           description: "Scaffold a Next.js app and install dependencies in the mounted app root.",

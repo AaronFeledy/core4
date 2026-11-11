@@ -53,6 +53,7 @@ import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -239,7 +240,7 @@ const makeDestroyLayer = (
         appRoot: plannedApp.root,
         providerId,
         service: ServiceName.make("orphan"),
-        status: "stopped" as const,
+        status: "exited" as const,
         containerId: "orphan-container",
         publications: { status: "unknown" as const },
       },
@@ -274,7 +275,7 @@ const makeDestroyLayer = (
       : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -328,8 +329,7 @@ const makeDestroyLayer = (
         app: plannedApp.id,
         service: ServiceName.make("web"),
         providerId,
-        status: "stopped",
-        state: "stopped",
+        status: "exited" as const,
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
@@ -348,9 +348,10 @@ const makeDestroyLayer = (
       setup: () => Effect.void,
       revalidateStartup: Effect.void,
       observeRoutes: () => Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: (app) =>
-        Effect.sync(() => void routeRemovals.push(String(app))).pipe(
+      applyRoutes: (routes, owner) =>
+        Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
+      removeRoutes: (owner) =>
+        Effect.sync(() => void routeRemovals.push(String(owner.id))).pipe(
           Effect.andThen(options.proxyRemoveEffect ?? Effect.void),
         ),
       status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
@@ -358,6 +359,7 @@ const makeDestroyLayer = (
     }),
   );
   const baseCommandLayer = Layer.mergeAll(
+    layerTransactionGuard,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     stateStore.layer,
@@ -425,7 +427,7 @@ const makeDestroyLayer = (
                           appRoot: plannedApp.root,
                           providerId,
                           service: ServiceName.make("orphan"),
-                          status: "stopped" as const,
+                          status: "exited" as const,
                           containerId: "orphan-container",
                           publications: { status: "unknown" as const },
                         },
@@ -794,10 +796,8 @@ describe("lando destroy", () => {
     await runDestroyCli(["-y"], harness, io, "plain");
 
     // Then
-    expect(io.stderr()).toContain(
-      "Proxy service is unavailable; destroying test-destroy without route cleanup.",
-    );
-    expect(io.stdout()).not.toContain("Proxy service is unavailable");
+    expect(io.stderr()).toMatch(/test-destroy.*not withdrawn/);
+    expect(io.stdout()).not.toContain("not withdrawn");
   });
 
   test("paints a real destroy task tree through the native destroy spec in plain mode", async () => {
@@ -872,12 +872,12 @@ describe("lando destroy", () => {
 
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.routeRemovals).toEqual([]);
-    expect(harness.publishedEvents).toContainEqual(
+    expect(harness.publishedEvents.filter((event) => event._tag === "message.warn")).toEqual([
       expect.objectContaining({
         _tag: "message.warn",
-        body: "Proxy service is unavailable; destroying test-destroy without route cleanup.",
+        body: expect.stringMatching(/test-destroy.*not withdrawn/),
       }),
-    );
+    ]);
   });
 
   test("removes routes when provider destroy fails and reports both failures", async () => {

@@ -6,7 +6,7 @@ import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { ServiceName } from "@lando/sdk/schema";
+import { ServiceName, landoAppStoreName, landoServiceStorageName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
@@ -94,24 +94,32 @@ services:
         ),
       [root],
     );
-    // Then the planner uses store verbatim, without a hidden app prefix.
+    // Then the planner keeps the translated store names, which the SDK naming owner derived.
     expect(lint.valid).toBe(true);
     for (const service of ["web", "worker"]) {
       expect(plan.services[ServiceName.make(service)]?.mounts).toContainEqual(
-        expect.objectContaining({ type: "volume", store: `${slug}-${service}-data`, target: "/data" }),
+        expect.objectContaining({
+          type: "volume",
+          store: landoServiceStorageName(slug, service, "/data"),
+          target: "/data",
+        }),
       );
       expect(plan.services[ServiceName.make(service)]?.mounts).toContainEqual(
-        expect.objectContaining({ type: "volume", store: `${slug}-shared`, target: "/shared" }),
+        expect.objectContaining({
+          type: "volume",
+          store: landoAppStoreName(slug, "/shared"),
+          target: "/shared",
+        }),
       );
       expect(plan.services[ServiceName.make(service)]?.mounts).toContainEqual(
         expect.objectContaining({ type: "volume", store: "authored-volume", target: "/explicit" }),
       );
     }
     expect(plan.services[ServiceName.make("web")]?.mounts).toContainEqual(
-      expect.objectContaining({ store: `${slug}-web-empty` }),
+      expect.objectContaining({ store: landoServiceStorageName(slug, "web", "/empty") }),
     );
     expect(plan.services[ServiceName.make("web")]?.mounts).toContainEqual(
-      expect.objectContaining({ store: `${slug}-web-cache-data` }),
+      expect.objectContaining({ store: landoServiceStorageName(slug, "web", "/cacheData") }),
     );
     const tool = plan.services[ServiceName.make("tool")];
     expect(tool?.readiness).toBeUndefined();

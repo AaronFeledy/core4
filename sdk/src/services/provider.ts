@@ -1,4 +1,4 @@
-import { Context, type Effect, type Redacted, type Scope, type Stream } from "effect";
+import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
 import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 
 import type {
@@ -32,6 +32,7 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
+  AppRef,
   AppliedStateInventory,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
@@ -53,6 +54,7 @@ import type {
   ServiceCopyOutSpec,
   ServiceName,
   ServicePlan,
+  ServiceRunObservation,
   VolumeFilter,
   VolumeIdentity,
   VolumeInfo,
@@ -116,10 +118,12 @@ export interface ProviderSetupOptions {
 
 export type ProviderSetupInspectOptions = Omit<ProviderSetupOptions, "privilege">;
 
-export interface ProviderStatus {
-  readonly running: boolean;
-  readonly message?: string;
-}
+/** Idle proves no workloads are running, but does not describe stored resources. */
+export const ProviderStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("running"), message: Schema.optionalKey(Schema.String) }),
+  Schema.Struct({ state: Schema.Literal("idle"), message: Schema.optionalKey(Schema.String) }),
+]);
+export type ProviderStatus = typeof ProviderStatus.Type;
 
 export interface ProviderVersions {
   readonly provider: string;
@@ -216,7 +220,7 @@ export interface CommandSpec {
   readonly signal?: AbortSignal;
   readonly terminalSize?: { readonly columns: number; readonly rows: number };
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
-  /** Skip exec umask compensation. Internal probes and doctor set this; argv matching must not. */
+  /** Internal operation: skip umask wrapping and process supervision. Never set for user payloads. */
   readonly raw?: boolean;
 }
 
@@ -230,11 +234,29 @@ export type ExecChunk =
   | { readonly kind: "stdout" | "stderr"; readonly chunk: Uint8Array }
   | { readonly exitCode: number };
 
+export const EphemeralBindMount = Schema.Struct({
+  source: Schema.NonEmptyString,
+  target: Schema.NonEmptyString,
+  readOnly: Schema.optionalKey(Schema.Boolean),
+});
+export type EphemeralBindMount = typeof EphemeralBindMount.Type;
+
+export const EphemeralMountSource = Schema.Struct({
+  containerId: Schema.NonEmptyString,
+  readOnly: Schema.Boolean,
+});
+export type EphemeralMountSource = typeof EphemeralMountSource.Type;
+
 export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
   readonly mounts?: ReadonlyArray<VolumeMountPlan>;
+  readonly binds?: ReadonlyArray<EphemeralBindMount>;
+  /** Borrow the realized mounts of an existing service container. */
+  readonly mountsFrom?: EphemeralMountSource;
+  readonly user?: string;
+  readonly entrypoint?: ReadonlyArray<string>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;
@@ -263,18 +285,13 @@ export interface LogChunk {
   readonly timestamp?: Date;
 }
 
-export interface ServiceRuntimeInfo {
+/** Identity and non-run-state evidence from one container inspection or listing. */
+export interface ServiceRuntimeFields {
   readonly app: AppId;
   /** Canonical app root proven by provider-owned runtime metadata. */
   readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
-  readonly status: string;
-  /** Container healthcheck status when the provider exposes one. */
-  readonly health?: "healthy" | "starting" | "unhealthy";
-  readonly state?: string;
-  /** Container exit code of a stopped container, when exposed by the runtime. */
-  readonly exitCode?: number;
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
@@ -289,6 +306,13 @@ export interface ServiceRuntimeInfo {
   /** Inspected network names attached to the container. */
   readonly networkNames?: ReadonlyArray<string>;
 }
+
+/**
+ * One provider observation of a service container. Run state is the closed
+ * {@link ServiceRunObservation} (`status`, plus `health` only while running and `exitCode` only
+ * once exited), normalized by the provider so consumers never reconcile engine spellings.
+ */
+export type ServiceRuntimeInfo = ServiceRuntimeFields & ServiceRunObservation;
 
 export interface ServiceRuntimeIdentity {
   readonly containerId: string;
@@ -343,16 +367,20 @@ export class RuntimeProviderRegistry extends Context.Service<
     /**
      * Applied plans, across every installed provider contribution, whose `identity.appRoot` exactly
      * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
-     * or contacts a runtime.
+     * or contacts a runtime. With `providerId`, only that provider's applied state is read.
      */
     readonly appliedPlansFor: (
       root: AbsolutePath,
+      providerId?: ProviderId,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */
     readonly appliedStateInventory?: (
       providerId: ProviderId,
     ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
+    readonly hasRecordedOwnership?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<boolean, ProviderUnavailableError | NoProviderInstalledError>;
     readonly assertAppliedStateReadable?: (
       plan: Pick<AppPlan, "id" | "provider">,
     ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
@@ -365,9 +393,11 @@ export class RuntimeProviderRegistry extends Context.Service<
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
     readonly resolveAppliedPlan: (
       root: AbsolutePath,
+      app?: Pick<AppRef, "kind" | "id">,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly resolveTeardownEvidence: (
       root: AbsolutePath,
+      app?: Pick<AppRef, "kind" | "id">,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly observeRuntime?: Effect.Effect<
       ReadonlyArray<ProviderRuntimeSnapshot>,

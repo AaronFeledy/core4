@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { ALL_PACKAGE_WALK_ROOTS } from "./boundary/workspace-roots.ts";
 
@@ -333,11 +333,31 @@ const localNoticeBindings = (source: ts.SourceFile): ReadonlyMap<string, NoticeT
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
       const name = propertyNameText(declaration.name);
-      const notice = noticeTextFromObjectLiteral(declaration.initializer);
+      const notice = noticeTextFromObjectLiteral(noticeLiteral(declaration.initializer));
       if (name !== undefined && notice !== undefined) bindings.set(name, notice);
     }
   }
   return bindings;
+};
+
+const calleeName = (expression: ts.Expression): string | undefined => {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return propertyNameText(expression.name);
+  return undefined;
+};
+
+/** Unwraps `Schema.decodeUnknownSync(DeprecationNotice)({ ... })` to its notice literal. */
+const noticeLiteral = (expression: ts.Expression | undefined): ts.Expression | undefined => {
+  if (expression === undefined || !ts.isCallExpression(expression)) return expression;
+  const decoder = expression.expression;
+  if (
+    ts.isCallExpression(decoder) &&
+    ["decodeUnknownSync", "decodeSync"].includes(calleeName(decoder.expression) ?? "") &&
+    decoder.arguments.some((argument) => ts.isIdentifier(argument) && argument.text === "DeprecationNotice")
+  ) {
+    return expression.arguments[0];
+  }
+  return expression;
 };
 
 const noticeTextFromExpression = (
@@ -346,7 +366,7 @@ const noticeTextFromExpression = (
 ): NoticeText | undefined => {
   if (expression === undefined) return undefined;
   if (ts.isIdentifier(expression)) return bindings.get(expression.text);
-  return noticeTextFromObjectLiteral(expression);
+  return noticeTextFromObjectLiteral(noticeLiteral(expression));
 };
 
 const markDeprecatedNoticeText = (
@@ -618,6 +638,33 @@ const collectRegistryReleaseNotices = (
   return uses;
 };
 
+const SCHEMA_DEPRECATION_HELPERS = new Set(["deprecateSchema", "deprecateField"]);
+
+/** Notices attached to schemas through `deprecateSchema(schema, notice)` / `deprecateField(...)`. */
+const collectSchemaReleaseNotices = (
+  source: ts.SourceFile,
+  file: string,
+  bindings: ReadonlyMap<string, NoticeText>,
+): ReadonlyArray<ReleaseNoticeUse> => {
+  const uses: ReleaseNoticeUse[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && SCHEMA_DEPRECATION_HELPERS.has(calleeName(node.expression) ?? "")) {
+      const owner = ts.isVariableDeclaration(node.parent) ? propertyNameText(node.parent.name) : undefined;
+      const use = releaseUse(
+        source,
+        file,
+        node,
+        owner ?? "<schema>",
+        releaseNoticeFromNoticeText(noticeTextFromExpression(node.arguments[1], bindings)),
+      );
+      if (use !== undefined) uses.push(use);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return uses;
+};
+
 const collectReleaseNoticesFromFile = async (file: string): Promise<ReadonlyArray<ReleaseNoticeUse>> => {
   const sourceText = await Bun.file(file).text();
   const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -701,9 +748,11 @@ const collectReleaseNoticesFromFile = async (file: string): Promise<ReadonlyArra
     }
   }
 
-  return [...uses, ...collectRegistryReleaseNotices(source, file, notices)].sort(
-    (left, right) => left.line - right.line || left.exportName.localeCompare(right.exportName),
-  );
+  return [
+    ...uses,
+    ...collectRegistryReleaseNotices(source, file, notices),
+    ...collectSchemaReleaseNotices(source, file, notices),
+  ].sort((left, right) => left.line - right.line || left.exportName.localeCompare(right.exportName));
 };
 
 const releaseOffender = (

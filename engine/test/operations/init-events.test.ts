@@ -179,7 +179,8 @@ describe("app initialization lifecycle events", () => {
     await Effect.runPromise(runAppInitEvents(plan).pipe(Effect.provide(eventRuntime(executed, published))));
 
     // Then
-    expect(executed).toEqual(["pre-init", "post-init"]);
+    // Each step's interpolated tag binds as one quoted shell word.
+    expect(executed).toEqual(["'pre-init'", "'post-init'"]);
     expect(published.filter((tag) => tag === "pre-init" || tag === "post-init")).toEqual([
       "pre-init",
       "post-init",
@@ -210,14 +211,14 @@ describe("app initialization lifecycle events", () => {
 
     // When
     const initCalls = source.match(/runAppInitEvents\(plan\)/gu) ?? [];
-    const preflightIndex = source.indexOf("yield* preflightStopApp(mysqlResolvedTarget)");
+    const preflightIndex = source.indexOf("yield* preflightStopApp(resolvedTarget)");
     const initIndex = source.indexOf("yield* runAppInitEvents(plan)");
 
     // Then
     expect(initCalls).toHaveLength(1);
     expect(preflightIndex).toBeGreaterThan(-1);
     expect(preflightIndex).toBeLessThan(initIndex);
-    expect(source).toContain("stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true })");
-    expect(source).toMatch(/mysqlResolvedTarget,\s+managed,/u);
+    expect(source).toContain("stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true })");
+    expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 });

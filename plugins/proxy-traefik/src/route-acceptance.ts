@@ -1,12 +1,13 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProxyApplyError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
-import type { AppId, RoutePlan } from "@lando/sdk/schema";
+import type { AppId, AppRouteOwner, RoutePlan } from "@lando/sdk/schema";
 import { Duration, Effect } from "effect";
 import { readLiveRouteSnapshot } from "./live-route-snapshot.ts";
 import { readAcquisitionState } from "./port-acquisition-state.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { type RouteSnapshot, matchesLiveRoute } from "./route-evidence-match.ts";
-import { routeSchemes } from "./routing.ts";
+import { routeNamespace, routeSchemes } from "./routing.ts";
 
 export const acceptanceError = (app: AppId, classification: string) =>
   new ProxyApplyError({
@@ -32,10 +33,10 @@ export const requireRouteAcceptance = Effect.fn("TraefikRouter.requireRouteAccep
 
 export const acceptsAllRoutes = (
   snapshot: RouteSnapshot,
-  app: AppId,
+  owner: AppRouteOwner,
   routes: ReadonlyArray<RoutePlan>,
 ): boolean => {
-  const namespace = `route-${encodeURIComponent(String(app))}-`;
+  const namespace = routeNamespace(owner);
   const expected = routes.flatMap((route, index) =>
     routeSchemes(route).map((scheme) => ({
       route,
@@ -43,16 +44,14 @@ export const acceptsAllRoutes = (
       name: `${namespace}${index}-${scheme}@file`,
     })),
   );
-  const owned = Object.keys(snapshot.routers).filter(
-    (name) => name.startsWith(namespace) && /^\d+-(http|https)@file$/.test(name.slice(namespace.length)),
-  );
+  const owned = Object.keys(snapshot.routers).filter((name) => name.startsWith(`route-${owner.ownerKey}-`));
   return (
     owned.length === expected.length &&
     expected.every(({ route, scheme, name }) => {
       const router = snapshot.routers[name];
       return (
         router !== undefined &&
-        matchesLiveRoute({ ...snapshot, routers: { [name]: router } }, app, { route, scheme }) === true
+        matchesLiveRoute({ ...snapshot, routers: { [name]: router } }, owner, { route, scheme }) === true
       );
     })
   );
@@ -60,7 +59,7 @@ export const acceptsAllRoutes = (
 
 export const awaitRouteAcceptance = Effect.fn("TraefikRouter.awaitRouteAcceptance")(function* (
   dependencies: TraefikProxyDependencies,
-  app: AppId,
+  owner: AppRouteOwner,
   routes: ReadonlyArray<RoutePlan>,
 ) {
   const result = yield* runProbe(
@@ -70,11 +69,11 @@ export const awaitRouteAcceptance = Effect.fn("TraefikRouter.awaitRouteAcceptanc
       classify: { success: (accepted) => (accepted ? "green" : "yellow"), failure: () => "yellow" },
     },
     readLiveRouteSnapshot(dependencies, routes).pipe(
-      Effect.map((snapshot) => snapshot !== undefined && acceptsAllRoutes(snapshot, app, routes)),
+      Effect.map((snapshot) => snapshot !== undefined && acceptsAllRoutes(snapshot, owner, routes)),
     ),
-  ).pipe(Effect.mapError(() => acceptanceError(app, "probe-failed")));
+  ).pipe(mapFailures(() => acceptanceError(owner.id, "probe-failed")));
   if (result.outcome !== "green")
     return yield* Effect.fail(
-      acceptanceError(app, `not-converged; routes=${routes.length}; attempts=${result.attempts}`),
+      acceptanceError(owner.id, `not-converged; routes=${routes.length}; attempts=${result.attempts}`),
     );
 });

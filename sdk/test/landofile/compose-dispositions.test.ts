@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  type ComposeDispositionEntry,
+  composeDispositionFor,
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
@@ -25,6 +27,7 @@ describe("Compose disposition matrix", () => {
         expect(rootTargets, `${path} must normalize within its root's plan targets`).toContain(target);
       }
     }
+    expect(composeServiceDispositions.hostname?.disposition).toBe("rejected");
     expect(composeServiceDispositions["build.args"]?.planTarget).toEqual(["artifact"]);
     expect(composeServiceDispositions["depends_on.*.condition"]?.planTarget).toEqual(["dependsOn"]);
     expect(composeServiceDispositions["volumes.target"]?.planTarget).toEqual(["mounts"]);
@@ -85,5 +88,81 @@ describe("Compose disposition matrix", () => {
   test("keeps YAML tags isolated from schema-key disposition matrices", () => {
     expect(Object.keys(composeServiceDispositions).some((path) => path.startsWith("!"))).toBe(false);
     expect(Object.keys(composeTopLevelDispositions).some((path) => path.startsWith("!"))).toBe(false);
+  });
+});
+
+describe("composeDispositionFor", () => {
+  const rejected = { disposition: "rejected", rationale: "r", remediation: "Remove it." } as const;
+  const preserved = { disposition: "preserved", rationale: "p" } as const;
+  const normalized = { disposition: "normalized", rationale: "n", planTarget: ["x"] } as const;
+  const matrix: Readonly<Record<string, ComposeDispositionEntry>> = {
+    hook: rejected,
+    "hook.command": preserved,
+    kept: preserved,
+    mounts: normalized,
+    "mounts.image": rejected,
+    "nets.*": rejected,
+    "x-*": preserved,
+  };
+
+  test("returns the exact entry for a matrix key", () => {
+    expect(composeDispositionFor(matrix, "kept")).toBe(preserved);
+    expect(composeDispositionFor(matrix, "hook.command")).toBe(preserved);
+  });
+
+  test("resolves a nested path to its nearest rejected ancestor", () => {
+    expect(composeDispositionFor(matrix, "hook.environment.*")).toBe(matrix.hook);
+    expect(composeDispositionFor(matrix, "mounts.image.subpath")).toBe(matrix["mounts.image"]);
+  });
+
+  test("leaves an unlisted path under an accepted key unresolved", () => {
+    expect(composeDispositionFor(matrix, "kept.child")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "hook.command.child")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "mounts.source")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "mounts.source.image")).toBeUndefined();
+  });
+
+  test("leaves unknown roots and prototype names unresolved", () => {
+    expect(composeDispositionFor(matrix, "unknown")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "constructor")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "__proto__")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "toString.x")).toBeUndefined();
+  });
+
+  test("treats wildcard and extension segments literally", () => {
+    expect(composeDispositionFor(matrix, "nets.*.aliases")).toBe(matrix["nets.*"]);
+    expect(composeDispositionFor(matrix, "nets.shared.aliases")).toBeUndefined();
+    expect(composeDispositionFor(matrix, "hook.x-*")).toBe(matrix.hook);
+    expect(composeDispositionFor(matrix, "x-custom")).toBeUndefined();
+  });
+
+  test("answers for nested paths that the service matrix does not list", () => {
+    expect(composeServiceDispositions["pre_start.networks.*.aliases"]).toBeUndefined();
+    expect(composeDispositionFor(composeServiceDispositions, "pre_start.networks.*.aliases")).toBe(
+      composeServiceDispositions.pre_start,
+    );
+    expect(composeDispositionFor(composeServiceDispositions, "volumes.image.subpath")).toBe(
+      composeServiceDispositions["volumes.image"],
+    );
+  });
+
+  test("lists no service matrix key under a rejected ancestor", () => {
+    // Given
+    const keys = Object.keys(composeServiceDispositions);
+
+    // When
+    const shadowed = keys.filter((path) => {
+      const segments = path.split(".");
+      return segments
+        .slice(1)
+        .some(
+          (_, index) =>
+            composeServiceDispositions[segments.slice(0, index + 1).join(".")]?.disposition === "rejected",
+        );
+    });
+
+    // Then
+    expect(keys.length).toBeGreaterThan(0);
+    expect(shadowed).toEqual([]);
   });
 });

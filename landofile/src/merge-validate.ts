@@ -48,4 +48,4 @@ export const mergeLandofileRootLayers = Effect.fnUntraced(function* (
     ...(inputs === undefined ? {} : { inputs }),
   });
   return yield* finalizeLandofileRootLayers(evaluated, canonicalPath, inputs);
-});
+}, Effect.scoped);

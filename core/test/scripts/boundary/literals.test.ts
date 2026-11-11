@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { resolveConstString, scanComments, scanLiterals } from "../../../../scripts/boundary/literals.ts";
 

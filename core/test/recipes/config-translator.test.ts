@@ -4,7 +4,7 @@ import { validateConfigTranslateResult } from "@lando/sdk/landofile";
 import { ConfigTranslateDetectInput, ConfigTranslateInput, RecipeProducer } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { RecipeDecomposerFactory, RecipeDecomposerShape } from "@lando/sdk/services";
-import { Effect, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Result, Schema } from "effect";
 import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 import { makeRecipeTranslatorModule } from "../../src/recipes/translator-module.ts";
 
@@ -181,6 +181,25 @@ describe("recipe config translator", () => {
     const translator = makeRecipeConfigTranslator({ ...ports, decomposers: new Map([["example", invalid]]) });
     const error = await Effect.runPromise(Effect.flip(translator.translate(request())));
     expect(error).toBeInstanceOf(ConfigTranslateError);
+  });
+
+  test("does not expose answers carried by a decomposer defect", async () => {
+    const failing: RecipeDecomposerFactory = () => ({
+      producer,
+      decompose: (input) => Effect.die(input.options),
+    });
+    const translator = makeRecipeConfigTranslator({ ...ports, decomposers: new Map([["example", failing]]) });
+
+    const exit = await Effect.runPromiseExit(translator.translate(request()));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(exit.cause.reasons.map((reason) => reason._tag)).toEqual(["Die"]);
+      expect(exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)).toEqual([
+        expect.any(ConfigTranslateError),
+      ]);
+      expect(Cause.pretty(exit.cause)).not.toContain("option-value-must-not-leak");
+    }
   });
 
   test("declares matching contribution ids and reuses a decode-only translator", async () => {

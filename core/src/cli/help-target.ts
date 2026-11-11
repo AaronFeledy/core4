@@ -1,6 +1,11 @@
 import { CORE_VERSION } from "@lando/engine/version";
 import { type CommandResultEnvelopeFormat, encodeCommandResult } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../runtime/invocation-context";
 import { emitResultLine } from "./compiled-runtime";
 import { HelpCommandDescriptor } from "./help-command-descriptor";
 import { helpRedactor } from "./help-redaction";
@@ -17,6 +22,7 @@ type HelpTarget = typeof HelpTargetResult.Type.target;
 export const printMachineHelpTarget = (
   target: HelpTarget,
   format: CommandResultEnvelopeFormat,
+  context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -31,6 +37,6 @@ export const printMachineHelpTarget = (
         redactor,
         format,
       });
-      yield* Effect.promise(() => emitResultLine(line));
-    }),
+      yield* Effect.promise(() => emitResultLine(line, context));
+    }).pipe(Effect.provideService(CliInvocation, context)),
   );

@@ -3,7 +3,7 @@ id: first-run-readiness
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 60000
-tags: [beta, docs, setup, readiness]
+tags: [docs, setup, readiness]
 ---
 
 # Check first-run readiness
@@ -17,11 +17,27 @@ lando doctor
 
 The default provider is `lando` (managed Podman). Setup extracts a private runtime into Lando's own data directory, not into system Podman or Docker paths. On Linux that data root is `$XDG_DATA_HOME/lando` (`~/.local/share/lando`).
 
+## How the managed runtime stays isolated
+
+On Linux, each data root's managed runtime keeps its rootless Podman state (the pause process, user namespace handles, and temporary files) in its own private directory, `/run/user/<uid>/lando-<id>`. The id is derived from the data root's runtime path, so two data roots on one host never share a user namespace or a pause process, and neither shares one with system Podman. Lando creates that directory with mode 0700 and requires `/run/user/<uid>` (or an `XDG_RUNTIME_DIR` you own with the same mode) to exist first.
+
+The managed runtime starts from a fixed environment rather than your shell's. Variables that would redirect or reconfigure Podman, such as `CONTAINER_HOST`, `CONTAINER_CONNECTION`, `CONTAINERS_CONF_OVERRIDE`, and `PODMAN_CONNECTIONS_CONF`, never reach it. Lando does pass through proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY`, and their lowercase forms), locale (`LANG`, `LANGUAGE`, `LC_*`, `TZ`), TLS trust (`SSL_CERT_FILE`, `SSL_CERT_DIR`), and the registry credential variables `REGISTRY_AUTH_FILE` and `DOCKER_CONFIG`.
+
+Registry credentials come from `REGISTRY_AUTH_FILE`, `DOCKER_CONFIG`, or `~/.docker/config.json`. Logins made with system Podman (`podman login`) land in system Podman's own runtime directory, so the managed runtime does not see them. Log in with `docker login`, or point `REGISTRY_AUTH_FILE` at the auth file you want the managed runtime to read.
+
+Setup fails fast in two cases. The managed socket lives at `<userDataRoot>/runtime/run/podman.sock`, and Linux caps a Unix socket path at 107 bytes, so the data root itself can be at most 83 bytes. `lando setup` checks that before it downloads anything; when the path is too long it reports the byte count and asks you to set `LANDO_USER_DATA_ROOT` to a path of at most 83 bytes. `lando doctor` reports the same problem as a failed `managed-runtime-socket-path` check. The second case: if the runtime service exits while starting, setup fails at once instead of waiting for a readiness timeout and names `<userDataRoot>/runtime/run/service.log` to inspect.
+
+When an older Lando build started the runtime service with your session's `XDG_RUNTIME_DIR`, the first command that needs the runtime moves it to the private directory. If containers from that older service are still running or paused, the command refuses, says how many are still running, and asks you to run `lando poweroff` first. Lando keeps their data; it only needs them stopped. After `lando poweroff`, the next `lando start`, `lando restart`, `lando rebuild`, scratch run, or `lando global:start` relaunches the managed runtime itself before it starts containers.
+
 ## When setup fails
 
-Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime.
+Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime.
 
 If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Then run `lando doctor` again.
+
+Setup downloads the runtime bundle and, on Linux, a few pinned helper packages such as nftables. If a download drops, the connection is refused, the server stops sending data for a minute, or the server answers with a temporary error (HTTP 408, 429, 500, 502, 503, or 504), setup tries again, up to three attempts in total. The retry shows under the step that is running, for example `Retrying nftables_1.1.3-1_amd64.deb from https://deb.debian.org (attempt 2 of 3): the connection was reset (ECONNRESET).` If every attempt fails, only that step shows as failed, and the error names the file, the server, what happened, and how many attempts setup made. Check your network, VPN, or proxy settings, then rerun `lando setup`; downloads that already verified are reused. A certificate error is not retried: see [Read certificate errors](../config/corporate-network-trust.mdx#read-certificate-errors).
+
+If you interrupt setup, rerun `lando setup` before relying on its result. Setup saves progress in `<userDataRoot>/setup/readiness.json` with status `in-progress` until the run ends. A completed run records `ready`, `deferred` when an installation was postponed, or `failed` when a step failed or was unavailable. Doctor warns about `in-progress` and tells you to rerun setup, even if the provider step succeeded. A missing or corrupt readiness file provides no setup evidence; rerun setup to recreate it.
 
 Setup waits up to about 30 seconds for the SSH sidecar's agent to answer before recording the `shell` step as ready. An empty but reachable agent is ready too. A sidecar that cannot start, stops before answering, or never answers within that wait does not fail setup by itself. Setup prints a warning with the redacted cause and remediation, finishes everything else, and records `shell` as unavailable. Apps start without SSH agent forwarding until the agent answers. Fix the cause, then rerun `lando setup` to refresh the record. Later app starts also bring the sidecar up and wait for its agent, but `lando doctor` keeps showing setup's record until you rerun setup.
 
@@ -31,11 +47,15 @@ Later commands stay on Docker without repeating the flag. See [What persists](./
 
 ## What doctor checks
 
-Doctor probes the managed runtime. If the runtime stopped, the next command that creates or starts containers, such as `lando start`, starts it again. Commands that only read or remove what already exists, such as `lando logs`, `lando stop`, and `lando destroy`, use the runtime as it is: they never start, repair, or download anything, and they report an unreachable runtime instead of guessing at its state.
+Doctor probes the managed runtime without launching it. On macOS and Windows, an absent API endpoint plus a managed machine inspected as stopped reports `idle (starts on demand)` and passes without setup remediation. Checks that need live containers are skipped; host-side checks continue. HTTP, protocol, permission, and timeout failures remain failures even if the machine appears stopped.
+
+On Linux and WSL, an absent API reports idle when Lando's shutdown receipt records a quiescent shutdown or comes from an earlier boot. Every runtime launch invalidates that evidence before starting the service. Doctor passes `selected-provider` for an idle runtime, and `lando list` reports apps as `stopped`. A missing or unreadable receipt, a launch during this boot without a completed shutdown, or live managed processes leaves runtime state unknown. A process scan alone cannot prove workloads stopped. Observation commands and `lando stop` do not launch the runtime.
+
+When the runtime is positively identified as idle, `lando stop` completes host-side cleanup without launching it. `lando destroy`, including `--root`, prepares the managed provider holding the app's resources whether it reports idle or its status cannot be read. That includes a crash, `wsl --terminate`, or the first poweroff after an upgrade without shutdown evidence. Lando waits for the runtime to answer before inspecting or removing resources; a preparation failure stops cleanup with that error. `lando apps:gc --prune` uses the same behavior. Observation commands such as `lando logs` never launch or repair a runtime; neither does `lando stop`.
 
 `lando poweroff` stops apps and then the managed runtime. Uninstall tears the runtime down before it removes Lando's private runtime directory.
 
-If doctor reports an orphaned runtime process, follow the printed remediation.
+If doctor reports an orphaned runtime process, follow the printed remediation. A rootless child of the verified managed service is part of that service, not an orphan. Doctor gives no kill advice when it cannot read the process ancestry.
 
 ## Verify
 

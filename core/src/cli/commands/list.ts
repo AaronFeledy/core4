@@ -1,12 +1,13 @@
 import { access } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { Effect, Schema } from "effect";
 
 import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
 import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
-import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
+import { ConfigService, PathsService, ProcessRunner, StateStore } from "@lando/sdk/services";
 
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
@@ -17,6 +18,7 @@ import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundar
 import {
   type AppsDiscoveryEvidence,
   type AppsListEntry,
+  containerSocketCandidates,
   discoverRunningAppsEvidenceFromSockets,
   mergeAppsListEntries,
   readAppliedPlansFromUserData,
@@ -57,6 +59,7 @@ export interface ListServicesOptions {
     readonly apps: ReadonlyArray<AppsListEntry>;
     readonly confirmedProviderIds: ReadonlyArray<string>;
     readonly ownedAppIds?: ReadonlyArray<string>;
+    readonly idleProviderIds?: ReadonlyArray<string>;
   }>;
   readonly prune?: boolean;
   readonly pruneLimit?: number;
@@ -125,6 +128,8 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   pruneCandidate?: PruneCandidate<E, R>,
 ): Effect.fn.Return<ListServicesResult, CacheError | E | LandoCommandError, ConfigService | R> {
   const configService = yield* ConfigService;
+  const invocation = yield* CliInvocation;
+  const processRunner = yield* Effect.serviceOption(ProcessRunner);
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
 
@@ -157,8 +162,12 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       }
       return discoverRunningAppsEvidenceFromSockets(
         userDataRoot,
-        undefined,
-        options.includeScratch === true ? { includeScratch: true } : {},
+        containerSocketCandidates(userDataRoot, { env: invocation.env }),
+        {
+          ...(options.includeScratch === true ? { includeScratch: true } : {}),
+          env: invocation.env,
+          ...(processRunner._tag === "Some" ? { processRunner: processRunner.value } : {}),
+        },
       );
     }).pipe(
       Effect.catch(() =>
@@ -176,7 +185,8 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
           (entry) => entry.appId === app.appId && entry.providerId === app.providerId,
         )
           ? "active"
-          : evidence.confirmedProviderIds.includes(app.providerId)
+          : evidence.confirmedProviderIds.includes(app.providerId) ||
+              evidence.idleProviderIds?.includes(app.providerId) === true
             ? "stopped"
             : "unknown";
         const entry = { ...app, status } satisfies typeof AppsListEntrySchema.Type;
@@ -210,7 +220,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const listed = options.includeScratch === true ? apps : apps.filter((app) => app.scratch !== true);
   const pathFilter = options.path;
   const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
-  const cwd = runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd();
+  const cwd = runtimeCwd._tag === "Some" ? runtimeCwd.value : invocation.cwd;
   const pathMatched =
     pathFilter === undefined
       ? listed
@@ -246,7 +256,11 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
   const pruneServices = { paths, privateFileAccess, stateStore } satisfies PruneServices;
   return yield* listServicesInternal({ ...options, prune: true }, ({ discoverEvidence, entry }) =>
     withAppMutationLock(
-      { id: entry.appId, root: entry.appRoot },
+      {
+        id: entry.appId,
+        root: entry.appRoot,
+        kind: entry.scratch === true ? "scratch" : entry.appId === "global" ? "global" : "user",
+      },
       Effect.gen(function* () {
         const currentEvidence = yield* discoverEvidence();
         if (

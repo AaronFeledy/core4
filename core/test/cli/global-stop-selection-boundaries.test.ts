@@ -51,7 +51,7 @@ test("explicit selection with entirely absent evidence succeeds unchanged", asyn
   }
 });
 
-for (const status of ["running", "exited", "created"]) {
+for (const status of ["running", "exited", "created"] as const) {
   test(`selected ${status} container is removed without whole-global teardown`, async () => {
     // Given an applied service with an observed container in the selected state.
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-stop-remove-"));

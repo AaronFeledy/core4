@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { makeTraefikRouterService } from "@lando/proxy-traefik";
-import { AppId, RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { AppId, RoutePlan, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { prioritizeRoutes } from "../../../src/planner/route-identity.ts";
 import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
@@ -101,8 +101,14 @@ test("an exact host in a one-route app outranks a wildcard in a many-route app",
   await Effect.runPromise(
     Effect.gen(function* () {
       yield* service.prepare?.({ defaultDomain: "lndo.site" }) ?? Effect.void;
-      yield* service.applyRoutes(many, AppId.make("many"));
-      yield* service.applyRoutes(one, AppId.make("one"));
+      yield* service.applyRoutes(many, {
+        id: AppId.make("many"),
+        ownerKey: appIdentityKey("owner", "/apps/many"),
+      });
+      yield* service.applyRoutes(one, {
+        id: AppId.make("one"),
+        ownerKey: appIdentityKey("owner", "/apps/one"),
+      });
     }),
   );
 
@@ -124,8 +130,14 @@ test("a longer path prefix outranks a shorter one across apps", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
       yield* service.prepare?.({ defaultDomain: "lndo.site" }) ?? Effect.void;
-      yield* service.applyRoutes(bare, AppId.make("bare"));
-      yield* service.applyRoutes(deep, AppId.make("deep"));
+      yield* service.applyRoutes(bare, {
+        id: AppId.make("bare"),
+        ownerKey: appIdentityKey("owner", "/apps/bare"),
+      });
+      yield* service.applyRoutes(deep, {
+        id: AppId.make("deep"),
+        ownerKey: appIdentityKey("owner", "/apps/deep"),
+      });
     }),
   );
 

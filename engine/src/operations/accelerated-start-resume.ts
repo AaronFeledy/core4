@@ -1,6 +1,7 @@
 import { sameRealpath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import { type AppPlan, type AppRef, fileSyncInvalidationRequired } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
@@ -30,7 +31,7 @@ export const recordedSessionInventory = Effect.fnUntraced(function* (
   if (bundle.kind !== "accelerated" || bundle.id !== record.engineId)
     return yield* Effect.fail(resumeError(record, "The recorded engine disagrees with the executable plan."));
   const engine = yield* acquireFileSyncEngine(record.engineId).pipe(
-    Effect.mapError((cause) => resumeError(record, "Resume requires the recorded file-sync engine.", cause)),
+    mapFailures((cause) => resumeError(record, "Resume requires the recorded file-sync engine.", cause)),
   );
   const sessions = yield* engine.listSessions({ app });
   const identities = new Set<string>();
@@ -109,7 +110,7 @@ export const verifyPendingStartResume = Effect.fnUntraced(function* (app: AppRef
   if (engine.appLifecycle !== undefined) {
     const phase = yield* engine.appLifecycle.disposalPhase(app);
     // A new replacement journal may exist before its first session. Creation clears the completed marker.
-    if (sessions.length > 0 || (phase !== "completed" && phase !== "absent"))
+    if (fileSyncInvalidationRequired(phase, sessions.length > 0))
       yield* engine.appLifecycle.invalidateDrain(app);
   }
   return prepared.targets;

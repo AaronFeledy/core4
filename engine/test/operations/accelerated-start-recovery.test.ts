@@ -168,7 +168,7 @@ test("retained destroy drains before session and target disposal", async () => {
   ]);
   expect(harness.sessions).toEqual([]);
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe("completed");
+  expect(pending).toBeNull();
 });
 
 test("retained destroy refuses an existing prepared volume without session history", async () => {
@@ -192,7 +192,7 @@ test("retained destroy safely cleans partial preparation with no volume or sessi
   await Effect.runPromise(destroyApp({}, target).pipe(Effect.provide(harness.layer)));
   expect(harness.calls).toEqual(["quiesce-retained", "dispose-targets", "destroy:false"]);
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe("completed");
+  expect(pending).toBeNull();
 });
 
 test("stop before any session exists stops writers without draining", async () => {

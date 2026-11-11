@@ -1,17 +1,19 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { Context, DateTime, Effect } from "effect";
 
 import { AppLockTimeoutError, StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 import { EventService, PathsService } from "@lando/sdk/services";
 import { acquireAdvisoryLockAt, peekAdvisoryLockRecord } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 import { PinnedAppRoot } from "./app-root-identity.ts";
 
 export { canonicalAppRoot } from "./app-root-identity.ts";
@@ -46,13 +48,17 @@ export const resolveAppLockTimeoutMs = (env: NodeJS.ProcessEnv = process.env): n
 };
 
 /**
- * Stable operation-locks key: app id plus the canonical (realpath) root at
+ * Stable operation-locks key: user app roots survive renames; scratch and global
+ * identities retain their id plus the canonical (realpath) root at
  * acquire time. If the app directory is moved or its realpath changes mid-flight,
  * a second command against the new path computes a different key and does not
  * wait on the first lock.
  */
-export const appMutationLockKey = (appId: string, canonicalRoot: string): string =>
-  `app-${sha256Hex(`${appId}\0${canonicalRoot}`)}`;
+export const appMutationLockKey = (
+  appId: string,
+  canonicalRoot: string,
+  kind: AppRef["kind"] = appId === "global" || appId === "global-policy" ? "global" : "user",
+): string => `app-${sha256Hex(kind === "user" ? canonicalRoot : `${appId}\0${canonicalRoot}`)}`;
 
 const parseHolderEntries = (raw: string | undefined): ReadonlyArray<readonly [string, string]> => {
   if (raw === undefined || raw === "") return [];
@@ -171,9 +177,18 @@ export const appLockTarget = (app: {
   readonly id: unknown;
   readonly root: unknown;
   readonly identity?: { readonly appRoot?: unknown } | undefined;
-}): { readonly id: string; readonly root: string } => ({
+  readonly kind?: AppRef["kind"];
+  readonly extensions?: Readonly<Record<string, unknown>>;
+}): { readonly id: string; readonly root: string; readonly kind: AppRef["kind"] } => ({
   id: String(app.id),
   root: String(app.identity?.appRoot ?? app.root),
+  kind:
+    app.kind ??
+    (app.extensions !== undefined && Object.hasOwn(app.extensions, SCRATCH_EXTENSION_KEY)
+      ? "scratch"
+      : app.id === "global"
+        ? "global"
+        : "user"),
 });
 
 /** Resolve a missing app root through its nearest existing parent for the lock key. */
@@ -214,6 +229,7 @@ export const canonicalMissingAppRoot = (root: string): Effect.Effect<string, Sta
 export const appMutationLockIdentity = (app: {
   readonly id: string;
   readonly root: string;
+  readonly kind?: AppRef["kind"];
 }): Effect.Effect<
   {
     readonly key: string;
@@ -224,7 +240,7 @@ export const appMutationLockIdentity = (app: {
   canonicalMissingAppRoot(app.root).pipe(
     Effect.map((canonicalRoot) => ({
       canonicalRoot,
-      key: appMutationLockKey(String(app.id), canonicalRoot),
+      key: appMutationLockKey(String(app.id), canonicalRoot, app.kind),
     })),
   );
 
@@ -239,7 +255,7 @@ export const appMutationLockIdentity = (app: {
  * phase only.
  */
 export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
-  app: { readonly id: string; readonly root: string },
+  app: { readonly id: string; readonly root: string; readonly kind?: AppRef["kind"] },
   body: Effect.Effect<A, E, R>,
   options: { readonly lockRoot?: string } = {},
 ): Effect.fn.Return<
@@ -314,7 +330,7 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
       privateFileAccess,
     }).pipe(
       Effect.map((lock) => ({ lock, restore: installHolderEnv(key, lock.token) })),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof StateStoreError && cause.reason === "lock"
           ? timeoutError(String(app.id), timeoutMs, cause)
           : cause,

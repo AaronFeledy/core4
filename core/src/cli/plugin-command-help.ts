@@ -1,16 +1,20 @@
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import { renderPluginTopicHelp } from "./cold-path-output";
 import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
+import { commandHelpInput } from "./help-command-input";
 import { typeableName } from "./help-names";
 import { redactHelpText } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
 import type { PluginCommandCatalog, PluginCommandDiagnostic } from "./plugin-command-catalog";
+import { pluginFlagDefinitions } from "./plugin-flag-definitions";
 import { renderPluginOwnedCommandHelp } from "./plugin-owned-command-input";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 
-const renderHelpFailure = (error: PluginCommandDiagnostic): Promise<void> =>
+const renderHelpFailure = (error: PluginCommandDiagnostic, context?: CliInvocationContext): Promise<void> =>
   renderPreCommandFailure({
+    ...(context === undefined ? {} : { context }),
     commandId: "cli:help",
     error,
     rendererMode: activeRendererMode,
@@ -24,13 +28,13 @@ export const tryPluginCommandHelp = async (
   const row = await catalog.resolve(token);
   if (row === undefined) return false;
   if ("unavailable" in row) {
-    // Unavailable discovery can only explain a colon-form token; a bare token may still be a topic or typo.
-    if (!token.includes(":")) return false;
-    await renderHelpFailure(row.unavailable);
+    // Unavailable discovery can only explain a colon-form token that no other command is spelled close to.
+    if (!token.includes(":") || (await catalog.hasCloseSpelling([token]))) return false;
+    await renderHelpFailure(row.unavailable, catalog.context);
     return true;
   }
   if (row.loadError !== undefined) {
-    await renderHelpFailure(row.loadError);
+    await renderHelpFailure(row.loadError, catalog.context);
     return true;
   }
   const aliases = row.tokens?.filter((token) => token !== row.id) ?? [];
@@ -46,8 +50,12 @@ export const tryPluginCommandHelp = async (
         plugin: row.pluginName,
         provenance: row.source,
         implementation: "validated",
+        ...(row.spec === undefined
+          ? {}
+          : { input: commandHelpInput(row.spec, pluginFlagDefinitions(row.spec)) }),
       },
       activeResultFormat,
+      catalog.context,
     );
   } else if (row.spec !== undefined) {
     await emitResultLine(
@@ -55,13 +63,15 @@ export const tryPluginCommandHelp = async (
         renderPluginOwnedCommandHelp(row.spec, {
           aliases,
           styled: shouldStyleHelp({
-            isTTY: process.stdout.isTTY === true,
-            env: process.env,
+            isTTY: catalog.context?.io.stdoutIsTTY === true,
+            env: catalog.context?.env ?? process.env,
             argv: process.argv.slice(2),
             rendererMode: activeRendererMode,
           }),
         }),
+        catalog.context,
       ),
+      catalog.context,
     );
   }
   return true;
@@ -90,13 +100,15 @@ export const printPluginTopicHelp = async (
     await redactHelpText(
       renderPluginTopicHelp(token, topic.description, pluginHelpRows(listing.rows), {
         style: shouldStyleHelp({
-          isTTY: process.stdout.isTTY === true,
-          env: process.env,
+          isTTY: catalog.context?.io.stdoutIsTTY === true,
+          env: catalog.context?.env ?? process.env,
           argv: process.argv.slice(2),
           rendererMode: activeRendererMode,
         }),
       }),
+      catalog.context,
     ),
+    catalog.context,
   );
   return true;
 };

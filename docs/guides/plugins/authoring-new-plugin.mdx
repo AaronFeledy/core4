@@ -3,7 +3,7 @@ id: authoring-new-plugin
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, plugins, authoring]
+tags: [docs, plugins, authoring]
 ---
 
 # Scaffold a plugin
@@ -64,7 +64,44 @@ export class Greeter extends Context.Service<Greeter, {
 }
 ```
 
-Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and uses TypeScript 5.9 or newer.
+Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and TypeScript 7.
+
+## Use `dataName` for persisted defaults
+
+`ServiceTypeInput` and `ServiceFeatureContext` carry both `appName` and optional
+`dataName`. `appName` is the current Landofile name. `dataName` is the name this
+folder's persisted data was first created under. When `dataName` is absent, it
+matches `appName`.
+
+Derive databases, generated passwords, bucket names, and other values that live
+inside named volumes from `dataName` (or fall back to `appName` when it is
+absent). Use `appName` for runtime identity that should follow a rename:
+container-facing labels you surface only in the current process, diagnostics that
+name the running app, and similar non-persisted strings.
+
+`ServiceFeatureContext.serviceStoreName(role)` already names a store from the
+folder's data identity. Do not rebuild that name from the current `appName`, or a
+rename will point a new empty volume at services that still hold data under the
+old name.
+
+## Supply the service image
+
+If your plugin contributes a service type, its `resolve` method chooses the base,
+normalized configuration, and features. Every planned service needs an artifact:
+the container image reference or build definition that Lando can pull or build.
+You can let the app author supply `image:` or a Compose `build:` block. Core turns
+those into an artifact even when your type requests no artifact-setting feature.
+A versioned type's published image tag works the same way.
+
+To supply an image from your plugin, request a feature whose `apply` callback calls
+`ctx.setArtifact({ kind: "ref", ref: "nginx:alpine" })`. A feature's artifact wins
+over the `image:` fallback; an authored Compose `build:` replaces it. Lando
+`build.artifact` scripts only add steps and still need a base image or build.
+
+If none of these supplies an artifact, planning fails before provider work with
+`LandofileValidationError` at `services.<name>.type`. The message names the service,
+type, and contributing plugin when known. Set `image:` or Compose `build:` in the
+Landofile, or fix your type's requested features, then rerun `lando start`.
 
 ## Declare a feature's endpoints
 
@@ -160,6 +197,104 @@ contributes:
 
 That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fallbacks.
 
+## Certificate authority plugins
+
+`@lando/ca-mkcert` is the bundled example. Declare yours under
+`contributes.certificateAuthorities` and implement the four members of
+`CertificateAuthority` from `@lando/sdk/services`:
+
+| Member | What it does |
+| --- | --- |
+| `id` | The id from your manifest. |
+| `setup(options)` | Installs what you need and creates your root. After it succeeds, `root` must work. Honor `skipTrustInstall` by leaving the host trust store alone. |
+| `root` | Yields `{ certificate }`, the PEM of the root that signs your leaves. Fail with a `CaError` and a remediation when setup hasn't run or there is no root yet. |
+| `issueCert(spec)` | Issues a leaf for `spec.cn` and `spec.sans` and returns PEM values: `{ certificate, privateKey, root: { certificate } }`, with `privateKey` wrapped in `Redacted`. |
+
+Return values, not file paths, and keep no copy of what you issue. Lando and the
+router store their own copies and decide when to ask again, so `issueCert` issues
+fresh material on every call and doesn't need to remember earlier requests. If
+your tool has to write files, use a private temporary directory and remove it
+when issuance completes, fails, or is interrupted.
+
+Keep `root` and `issueCert` in agreement. Lando checks every pair you return
+against the root that came with it, and refuses to use one that doesn't cover the
+requested names, doesn't match its key, is outside its validity window, or isn't
+signed by that root. On later starts it checks the stored pair against `root`, so
+an authority that reports one root and signs with another gets asked for a new
+certificate on every start.
+
+Run `runCaContract` from `@lando/sdk/test` against your authority in your own
+tests. It checks setup, `root`, the shape of what `issueCert` returns, and that
+the issued pair verifies against both the root it came with and `root` read
+afterwards. To make the same judgment yourself, call `certificatePairIsCurrent`
+from `@lando/sdk/certificates`. For tests that only need certificate-shaped
+input, `@lando/sdk/test` exports `TEST_CERTIFICATES`, a set of throwaway PEM
+fixtures you must never trust, and `makeTestCertificateAuthority`, which returns
+one fixed leaf whatever names you request.
+
+## Declare a router's shared services
+
+Declare your router under `contributes.routerServices`. If it needs services in
+the global app, list their contribution ids in `requires.globalServices`. The
+router id and its service ids can differ. For example, this entry declares a
+router named `acme-router` that needs a global service named `acme-gateway`:
+
+```yaml
+contributes:
+  routerServices:
+    - id: acme-router
+      module: ./src/router.ts
+      requires:
+        globalServices:
+          - acme-gateway
+      defaultFor:
+        platform:
+          - linux
+```
+
+Contribute `acme-gateway` under `globalServices` too, or depend on a plugin that
+contributes it. Omit `requires` or use an empty `globalServices` list when the
+router works without the global app. The bundled Traefik router declares
+`requires.globalServices: [traefik]`.
+
+Users select an installed router with `defaultRouterService` in `config.yml`.
+Without that choice, Lando selects one matching `defaultFor.platform` for the
+host family, then a sole installed router. When no router can be chosen, the
+plan records none and Lando keeps working without one: `lando info`, `lando
+logs`, `lando exec`, `lando stop`, `lando destroy`, and apps with no routes all
+run. Only work that needs the router fails, and it fails before Lando changes
+anything. `lando start`, `lando restart`, and `lando rebuild` on an app with
+routes report why no router was selected and how to fix it before running hooks,
+building images, or stopping a service, so a running app stays running. The same
+goes for `lando global:start`, `global:restart`, and `global:rebuild` when the
+global services they start have routes. The router step of `lando setup` reports
+the same reason.
+A `defaultRouterService` that names an uninstalled router reads `Router
+service <id> is not installed` when other routers are installed; with none
+installed Lando says no router is selected, and an ambiguous choice says so.
+For a mistyped id, set `defaultRouterService` to an installed router id or
+remove the setting, then re-run the command.
+
+Teardown still cleans up routes. With no router selected, `lando stop` on an
+idle runtime, `lando destroy`, `lando poweroff`, and `lando global:stop` or
+`global:destroy` ask every installed router to remove the routes, so your
+router's `removeRoutes` can run even when it isn't the selected one. Lando
+builds your router for that only when a withdrawal runs, never at startup, so
+it must be able to remove routes while its proxy is stopped. If every installed
+router removes them, teardown finishes without a warning. Otherwise the routes
+step reads `Routes not withdrawn`, Lando warns and carries on: the warning says
+`no router is available` when none is installed, or `an installed router could
+not remove them` with that router's error and fix.
+Planning reads these manifest declarations without constructing your router or
+running its module.
+
+Lando records the selection in the app plan and invalidates cached plans when
+it changes. At start, Lando ensures the selected router's declared services
+alongside any services required by app features. Disabled routing and apps
+without routes add no router requirements; feature requirements still apply.
+Check the planned `router.id` and `requires.globalServices` when testing your
+plugin, including a start with only its declared global services available.
+
 ## Contribute commands
 
 Describe each command under `contributes.commands` in the manifest. Every entry
@@ -208,6 +343,34 @@ module only when someone runs the command or asks for its `--help`, so a module
 that fails to load still appears in listings; the load error surfaces at that
 point, naming the problem.
 
+`lando <command> --help` and `lando help <command> --format=json` both list the
+flags and positional arguments the module declares. JSON help puts them under
+`result.target.input`, with each input's type, description, choices, and whether
+it's required.
+
+### Accept `-` for stdin or stdout
+
+A command that moves a data payload, like a dump, can let users pass `-` to use
+their shell's stdin or stdout. Declare it on the positional argument:
+
+```ts
+args: {
+  file: { type: "string", description: "Destination dump file.", stdio: "stdout" },
+},
+```
+
+When someone runs the command with `-` for that argument, the CLI hands your
+`run` a byte stream in `input.stdio`: `input.stdio.stdout` writes bytes to stdout
+exactly as given, and `input.stdio.stdin` is a stream you can read once. Write
+nothing else to stdout. Lando refuses `-` before your code runs when that stream
+is a terminal, and with `--format=json` it writes the result envelope to stderr
+so stdout stays yours. MCP rejects `-` for the argument, and event invocations
+get no stream, so when `input.stdio` lacks the stream you asked for, fail with
+`CommandStdioError` (reason `unavailable`) and suggest a file path. Help appends
+"Use - to write to stdout." (or "read from stdin") to the argument's
+description, so leave it out of your own. Each stream can be claimed by one
+argument, which can't be `multiple`.
+
 ## Verify
 
 Check your generated service and package before you start replacing the example.
@@ -217,7 +380,7 @@ Check your generated service and package before you start replacing the example.
     <Step name="scaffold">
       <Run command="lando meta:plugin:new @acme/lando-plugin-demo ./demo --template bare --cspace acme --description Demo-plugin --no-interactive --format=json" />
       <Verify file="demo/src/service.ts" expect={{ regex: "extends Context\\.Service<[\\s\\S]*@acme/lando-plugin-demo/Greeter[\\s\\S]*static readonly layer = Layer\\.effect\\([\\s\\S]*Greeter\\.of\\([\\s\\S]*Effect\\.fn\\(\"Greeter\\.greet\"\\)" }} />
-      <Verify file="demo/package.json" expect={{ regex: "\"name\":\\s*\"@acme/lando-plugin-demo\"[\\s\\S]*\"effect\":\\s*\"4\\.0\\.0\"[\\s\\S]*\"typescript\":\\s*\"\\^5\\.9\\.0\"" }} />
+      <Verify file="demo/package.json" expect={{ regex: "\"name\":\\s*\"@acme/lando-plugin-demo\"[\\s\\S]*\"effect\":\\s*\"4\\.0\\.0\"[\\s\\S]*\"typescript\":\\s*\"\\^7\\.0\\.2\"" }} />
     </Step>
   </Scenario>
 </Guide>

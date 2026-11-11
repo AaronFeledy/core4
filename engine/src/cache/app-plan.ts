@@ -30,7 +30,6 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
-import { routerEnabled } from "../config/router-config.ts";
 import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
 import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
 import { CORE_VERSION } from "../version.ts";
@@ -41,7 +40,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 47n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 50n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -55,11 +54,19 @@ interface AppPlanCachePayload {
 }
 
 export interface AppPlanCacheKeyInput {
+  readonly dataName?: string;
+  readonly kind?: "user" | "scratch" | "global";
   readonly hostProvider: string;
   readonly appRoot: string;
   readonly landofile: LandofileShape;
   readonly providerCapabilities?: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
+  readonly pluginImplementations?: readonly {
+    readonly name: string;
+    readonly source: string;
+    readonly realpath: string;
+    readonly identity: string;
+  }[];
   readonly sourceFingerprint?: AppPlanSourceFingerprint;
   readonly planningRuntime?: string;
   readonly hostHome?: string;
@@ -155,6 +162,7 @@ const compareManifests = (
   compareFingerprintText(a.name, b.name) || compareFingerprintText(a.version, b.version) || a.api - b.api;
 
 export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
+  const pluginImplementations = input.pluginImplementations ?? [];
   // Keep registry list order out of the cache key for equivalent manifests.
   const sortedManifests = input.pluginManifests.map(normalizeManifest).sort(compareManifests);
   return sha256(
@@ -165,6 +173,8 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       planningRuntime: input.planningRuntime ?? defaultPlanningRuntimeIdentity(),
       hostHome: input.hostHome ?? homedir(),
       appRoot: input.appRoot,
+      dataName: input.dataName ?? input.landofile.name ?? "app",
+      kind: input.kind ?? "user",
       hostProvider: input.hostProvider,
       landofile: input.landofile,
       sourceFingerprint:
@@ -185,6 +195,16 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       ].sort(),
       versionConstraints: input.versionConstraints ?? [],
       pluginManifests: sortedManifests,
+      ...(pluginImplementations.length === 0
+        ? {}
+        : {
+            pluginImplementations: [...pluginImplementations].sort(
+              (a, b) =>
+                compareFingerprintText(a.name, b.name) ||
+                compareFingerprintText(a.source, b.source) ||
+                compareFingerprintText(a.realpath, b.realpath),
+            ),
+          }),
       config: input.config ?? null,
       serviceInputs: input.serviceInputs ?? input.landofile.services ?? {},
       appFeatureEnv: input.appFeatureEnv ?? {},
@@ -215,21 +235,6 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   } catch {
     return null;
   }
-};
-
-const withDerivedRouteRequirements = (plan: CurrentExecutableAppPlan): CurrentExecutableAppPlan => {
-  if (plan.routes.length === 0 || !routerEnabled(plan)) return plan;
-
-  const current = plan.requires?.globalServices ?? [];
-  if (current.includes("traefik")) return plan;
-
-  return {
-    ...plan,
-    requires: {
-      ...plan.requires,
-      globalServices: [...current, "traefik"],
-    },
-  };
 };
 
 const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>): boolean => {
@@ -278,7 +283,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
     if (!sameGitDirectories(current, check.directories)) return null;
   }
   return yield* Effect.try({
-    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan)),
+    try: () => Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan),
     catch: (cause) =>
       new CacheError({
         message: `Cached app plan at ${path} failed schema decode.`,

@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 // allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
 import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 
@@ -30,7 +31,6 @@ import { effectiveToolingForPlan, toolingSourcePathForPlan } from "../planner/ef
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
-import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import type {
   ResolvedToolingCmdStepLeaf,
   ResolvedToolingCommandStepLeaf,
@@ -42,6 +42,8 @@ import { publishEventOutputProgress } from "./event-output-progress.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
+import { admitToolingTask } from "./tooling-input-admission.ts";
+import { prepareToolingInvocation } from "./tooling-prepare.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 const OUTPUT_TAIL_LENGTH = 4_000;
@@ -106,6 +108,42 @@ const failureExitCode = (error: unknown): number => {
   return 1;
 };
 
+const wrappedRemediation = (error: unknown): string | undefined => {
+  if (typeof error !== "object" || error === null || !("remediation" in error)) return undefined;
+  const value = error.remediation;
+  return typeof value === "string" && /\S/u.test(value) ? value : undefined;
+};
+
+const leafTargetsHost = (
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  result?: ToolingEngineResult,
+): boolean => {
+  if (leaf.kind === "cmd" && leaf.service === ":host") return true;
+  if (result !== undefined && String(result.service) === ":host") return true;
+  return false;
+};
+
+const lifecycleRemediation = (
+  options: EventRuntimeOptions,
+  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
+  error?: unknown,
+  result?: ToolingEngineResult,
+): string => {
+  if (error instanceof ToolingDisabledError) {
+    return options.redactor.redactString(error.remediation);
+  }
+  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
+  let remediation = `Fix ${label}, then rerun the lifecycle command.`;
+  if (leafTargetsHost(leaf, result)) {
+    remediation += " The step runs in Bun Shell.";
+  }
+  const wrapped = error === undefined ? undefined : wrappedRemediation(error);
+  if (wrapped !== undefined) {
+    remediation += ` ${options.redactor.redactString(wrapped)}`;
+  }
+  return remediation;
+};
+
 const stepFailure = (
   options: EventRuntimeOptions,
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
@@ -120,10 +158,7 @@ const stepFailure = (
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
     outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation:
-      error instanceof ToolingDisabledError
-        ? options.redactor.redactString(error.remediation)
-        : `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, error),
   });
 };
 
@@ -145,7 +180,7 @@ const nonzeroFailure = (
       options.redactor.redactString(output.stdout),
       options.redactor.redactString(output.stderr),
     ),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation: lifecycleRemediation(options, leaf, undefined, result),
   });
 };
 
@@ -182,23 +217,31 @@ const runInvocation = Effect.fnUntraced(function* (
   tool: string,
   task: ToolingTaskShape,
   invocationOptions: {
+    readonly compiled?: Effect.Success<ReturnType<typeof compileToolingInvocations>>;
     readonly user?: string;
     readonly redactionTokens?: ReadonlyArray<string>;
     readonly env?: import("@lando/sdk/schema").Environment;
   } = {},
 ) {
   const runtime = yield* toolingRuntime(tool);
-  const compiled = yield* compileToolingInvocations({
-    name: tool,
-    lookupKey: tool,
-    task,
-    source: {
-      path: toolingSourcePathForPlan(options.plan, tool),
-      task: tool,
-    },
-    ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
-    ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
-  });
+  const compiled =
+    invocationOptions.compiled ??
+    (yield* compileToolingInvocations({
+      admitted: yield* admitToolingTask({
+        name: tool,
+        task,
+        source: { path: toolingSourcePathForPlan(options.plan, tool), task: tool },
+      }),
+      name: tool,
+      lookupKey: tool,
+      task,
+      source: {
+        path: toolingSourcePathForPlan(options.plan, tool),
+        task: tool,
+      },
+      ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
+      ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
+    }));
   if (
     options.hostRunner === undefined &&
     compiled.invocations.some((invocation) => invocation.service === ":host")
@@ -242,7 +285,7 @@ const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: 
     ...(leaf.user === undefined ? {} : { user: leaf.user }),
     redactionTokens,
     ...(env === undefined ? {} : { env }),
-  }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
+  }).pipe(mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)));
   return { leaf, result, startedAt, redactor };
 });
 
@@ -255,10 +298,21 @@ const runTask = Effect.fnUntraced(function* (
   const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
   const variableRedaction = yield* options.redactorFor({ env: [leaf.vars] });
   if (task === undefined) {
+    if (options.hostRunner === undefined)
+      return yield* Effect.fail(
+        new ToolingCompileError({
+          message: "ShellRunner is unavailable for script-backed event execution.",
+          tool: leaf.task,
+          remediation: "Provide the selected ShellRunner in the event runtime.",
+        }),
+      );
     const script = yield* runBunShellTooling(
       { name: leaf.task, cwd: String(options.plan.root) },
       String(options.plan.root),
-    ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
+    ).pipe(
+      Effect.provideService(PrivateFileAccessService, options.privateFileAccess),
+      Effect.provideService(ShellRunner, options.hostRunner),
+    );
     if (script !== undefined) {
       return {
         leaf,
@@ -285,10 +339,31 @@ const runTask = Effect.fnUntraced(function* (
     task,
     sites: sitesUnder(invocationAuthorityForPlan(options.plan)?.sites ?? [], ["tooling", leaf.task]),
   });
-  const resolved = yield* resolveToolingTaskShape(client.task, context, client.sites);
-  const { redactor, redactionTokens } = yield* options.redactorFor({ env: [resolved.env, leaf.vars] });
-  const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
-    Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
+  const compileOptions = {
+    name: leaf.task,
+    lookupKey: leaf.task,
+    task: client.task,
+    source: { path: toolingSourcePathForPlan(options.plan, leaf.task), task: leaf.task },
+  };
+  const runtime = yield* toolingRuntime(leaf.task);
+  const resolution = prepareToolingInvocation({
+    plan: options.plan,
+    options: compileOptions,
+    sites: client.sites,
+    context,
+  }).pipe(
+    Effect.provideService(ToolingEngine, runtime.engine),
+    Effect.provideService(RuntimeProviderRegistry, runtime.registry),
+  );
+  const compiled = yield* options.hostRunner === undefined
+    ? resolution
+    : resolution.pipe(Effect.provideService(ShellRunner, options.hostRunner));
+  const { redactor, redactionTokens } = yield* options.redactorFor({
+    env: [leaf.vars, ...compiled.invocations.map((invocation) => invocation.env)],
+    directTokens: compiled.redactionTokens,
+  });
+  const result = yield* runInvocation(options, leaf.task, client.task, { redactionTokens, compiled }).pipe(
+    mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)),
   );
   return { leaf, result, startedAt, redactor };
 });
@@ -400,7 +475,7 @@ export const makeEventStepRunners = (
             options.redactorFor({ input: [leaf.flags, leaf.args], directTokens: leaf.raw }).pipe(
               Effect.flatMap(({ redactor, redactionTokens }) =>
                 options.runCanonical(leaf, redactionTokens).pipe(
-                  Effect.mapError((error) =>
+                  mapFailures((error) =>
                     isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
                   ),
                   Effect.map((result) => ({ leaf, result, startedAt, redactor })),

@@ -44,6 +44,7 @@ import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { ToolingAuthoredInputFields } from "./tooling-input.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
 export { ToolingFlagShape, ToolingArgShape } from "./tooling-input.ts";
@@ -546,6 +547,29 @@ export const PhpComposerConfig = Schema.Struct({
 export type PhpComposerConfig = typeof PhpComposerConfig.Type;
 
 /**
+ * One `uploadDirs` entry: a webroot-relative directory that must not execute as
+ * PHP. Only allowlisted characters enter server regexes; `*` stays within one
+ * segment. Reject configuration injection and paths a server would normalize
+ * away before making an execution decision.
+ */
+export const UPLOAD_DIR_PATTERN =
+  /^(?!\/)(?!\*$)(?!.*\/\/)(?!.*\.\.)(?!.*\*\*)(?!.*\/$)(?!(?:^|.*\/)\.(?:\/|$))[A-Za-z0-9._/*-]+$/u;
+
+export const isUploadDir = (value: string): boolean => UPLOAD_DIR_PATTERN.test(value);
+
+export const UploadDir = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(UPLOAD_DIR_PATTERN, {
+      message:
+        "uploadDirs entries must be non-empty webroot-relative directory paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include spaces or server metacharacters.",
+    }),
+  ),
+).annotate({
+  description: "Webroot-relative directory that holds user uploads and must never execute PHP.",
+});
+export type UploadDir = typeof UploadDir.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -628,6 +652,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     database: Schema.optionalKey(Schema.String).annotate({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
+    sqlite: Schema.optionalKey(SqliteTargetConfig).annotate({
+      description:
+        "File-backed SQLite database relative to this service's app mount. Use db:import, db:export, db:snapshot, db:restore, and db:reset against the file.",
+    }),
     password: Schema.optionalKey(EnvironmentValue).annotate({
       description:
         "Redis authentication password, passed through the container environment rather than command arguments.",
@@ -668,6 +696,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
+    }),
+    uploadDirs: Schema.optionalKey(Schema.Array(UploadDir)).annotate({
+      description:
+        "Webroot-relative directories that hold user uploads. Lando never runs PHP from them. Each path may use a single-segment '*' and cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include server metacharacters.",
     }),
     allowOverride: Schema.optionalKey(Schema.Boolean).annotate({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
@@ -762,7 +794,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
-    hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
+    hostnames: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Extra provider-network aliases for this service. Other services use these names to reach this one.",
+    }),
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
@@ -850,24 +885,22 @@ const ServiceConfigDecode = ServiceConfigInput.pipe(
 );
 
 /**
- * ToolingVarDefault — `vars.<name>: { default: <literal> }`.
+ * ToolingVarSh — `vars.<name>: { sh: <command> }`. Captured once after input
+ * admission in the task target, unless caller vars supply the name. Shell
+ * command interpolations bind its output as escaped data; results are never cached.
  */
-export const ToolingVarDefault = Schema.Struct({ default: ToolingVarLiteral });
-export type ToolingVarDefault = typeof ToolingVarDefault.Type;
-
-/**
- * ToolingVarSh — `vars.<name>: { sh: <command> }`. Evaluated at task
- * invocation time via the task's selected engine.
- */
-export const ToolingVarSh = Schema.Struct({ sh: Schema.String });
+export const ToolingVarSh = Schema.Struct({
+  sh: Schema.String,
+  service: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Target for this var command: :host, a service name, or :<declared non-boolean flag>. An explicit target resets task user and dir; invocation overrides still apply.",
+  }),
+  sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
+    description:
+      "Protect captured output from diagnostics and task output. Secret-like names are always sensitive; false is not accepted.",
+  }),
+});
 export type ToolingVarSh = typeof ToolingVarSh.Type;
-
-/**
- * ToolingVarPrompt — `vars.<name>: { prompt: <message> }`. Resolved at task
- * invocation time by prompting the user.
- */
-export const ToolingVarPrompt = Schema.Struct({ prompt: Schema.String });
-export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
 
 /**
  * ToolingVar — var forms accepted by this schema. Unsupported
@@ -875,12 +908,7 @@ export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
  * are rejected before schema decode with a tagged
  * `NotImplementedError`.
  */
-export const ToolingVar = Schema.Union([
-  ToolingVarLiteral,
-  ToolingVarDefault,
-  ToolingVarSh,
-  ToolingVarPrompt,
-]);
+export const ToolingVar = Schema.Union([ToolingVarLiteral, ToolingVarSh]);
 export type ToolingVar = typeof ToolingVar.Type;
 
 export const ToolingStepShape = Schema.Struct({
@@ -910,9 +938,10 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * - `cmd:` — single command (string or string array).
  * - `cmds:` — sequential shell commands or command steps with execution overrides.
  * - `arguments: false` — reject caller-supplied positional arguments.
+ * - `wrapper:` — mark a thin wrapper around one CLI tool.
  * - `dir:` — task working directory.
  * - `env:` — task environment overrides.
- * - `vars:` — accepted `ToolingVar` forms only.
+ * - `vars:` — literals and `{ sh: <command> }` only; caller vars win.
  *
  * Supported deprecation metadata:
  * `deprecated:`, `flags.<name>.deprecated:`, and `args.<name>.deprecated:`.
@@ -950,6 +979,10 @@ export const ToolingTaskShape = Schema.Struct({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
   ...ToolingAuthoredInputFields,
+  wrapper: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Mark this task as a thin wrapper around one CLI tool. -h, --help, and --version go to that tool instead of Lando. Requires one command and no declared flags or args.",
+  }),
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",
   }),
@@ -993,8 +1026,6 @@ const ToolingTaskShorthand = Schema.Union([
     ),
   );
 
-// The object member stays outside the shorthand codec so authoring derivation walks the
-// task struct itself and keeps its nested checks instead of a flattened encoded copy.
 export const ToolingTaskInput = Schema.Union([ToolingTaskShape, ToolingTaskShorthand]).annotate({
   identifier: "ToolingTaskInput",
   description:
@@ -1014,8 +1045,9 @@ export const ToolingDefaultsShape = Schema.Struct({
   env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Default environment variables inherited by tooling tasks.",
   }),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
-    description: "Default tooling variables inherited by tooling tasks.",
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)).annotate({
+    description:
+      "Default literal tooling variables inherited by tooling tasks. Shell-computed vars belong on the task that reads them.",
   }),
 });
 export type ToolingDefaultsShape = typeof ToolingDefaultsShape.Type;

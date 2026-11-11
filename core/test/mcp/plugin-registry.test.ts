@@ -88,18 +88,17 @@ test("deny wins over a plugin's explicit allow", async () => {
   ).toEqual([]);
 });
 
-test("invalid loaded specs are excluded with diagnostics, not promoted or accepted as allow ids", async () => {
+test("invalid loaded specs are excluded with diagnostics and an allowance for them stays pending", async () => {
   const registry = await Effect.runPromise(registryFor({ ...spec, namespace: "different" }));
   expect(registry.commandEntries).toEqual([]);
   expect(registry.diagnostics).toContainEqual(
     expect.objectContaining({ _tag: "PluginDescriptorMismatchError" }),
   );
-  const result = await Effect.runPromise(
-    Effect.result(
-      validateMcpAllowlistIds({ allow: [spec.id], deny: [], tooling: false }, knownIdsOf(registry)),
-    ),
+  const pending = await Effect.runPromise(
+    validateMcpAllowlistIds({ allow: [spec.id], deny: [], tooling: false }, knownIdsOf(registry)),
   );
-  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpToolInputError" } });
+  expect(pending).toEqual([spec.id]);
+  expect(buildMcpListResult({ ...registry, defaultAllowlist: [], allow: [spec.id] }).tools).toEqual([]);
 });
 
 test("a failing loader is excluded and reported without losing sibling commands", async () => {

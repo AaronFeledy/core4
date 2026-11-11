@@ -39,6 +39,7 @@ const keyFor = (value: ServiceTypeResolution) => {
         defaultFeatures: [],
       },
       baseKind: value.base,
+      appSlug: "cache-facts",
       appRoot: "/app",
       normalizedConfig: value.normalizedConfig,
       features: [],

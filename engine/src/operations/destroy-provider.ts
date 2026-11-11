@@ -1,8 +1,9 @@
-import { MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan, ServiceShutdownObservation } from "@lando/sdk/schema";
-import { EventService, PathsService, RouterService, type RuntimeProviderShape } from "@lando/sdk/services";
+import type { AppPlan, AppRef, ServiceShutdownObservation } from "@lando/sdk/schema";
+import { PathsService, RouterService, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { TaskTreeController } from "@lando/sdk/task-progress";
-import { DateTime, Effect, Option } from "effect";
+import { Effect, Option } from "effect";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { settleRoutesTask, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
@@ -48,18 +49,22 @@ export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProv
   return shutdownObservations === undefined ? outcome : { ...outcome, shutdownObservations };
 });
 
+export const cleanupAppWorkers = Effect.fn("AppOperation.cleanupAppWorkers")(function* (app: AppRef) {
+  const paths = yield* PathsService;
+  const roots = { ...paths.roots, platform: paths.platform };
+  yield* cleanupAgentRelayState(app, roots, "ssh");
+  yield* cleanupAgentRelayState(app, roots, "gpg");
+  yield* cleanupHostProxyRunLandoState(app, roots);
+});
+
 export const cleanupDestroyWorkers = Effect.fn("AppOperation.cleanupDestroyWorkers")(function* (
   teardown: TeardownPlan,
   tree: TaskTreeController,
 ) {
   const target = teardown.target;
   if (target === undefined) return;
-  const paths = yield* PathsService;
-  const roots = { ...paths.roots, platform: paths.platform };
   yield* tree.startTask("host-proxy");
-  yield* cleanupAgentRelayState(target.app, roots, "ssh");
-  yield* cleanupAgentRelayState(target.app, roots, "gpg");
-  yield* cleanupHostProxyRunLandoState(target.app, roots);
+  yield* cleanupAppWorkers(target.app);
   yield* tree.completeTask("host-proxy");
 });
 
@@ -70,18 +75,11 @@ export const cleanupDestroyHostState = Effect.fn("AppOperation.cleanupDestroyHos
   const target = teardown.target;
   if (target === undefined) return;
   yield* cleanupDestroyWorkers(teardown, tree);
-  const proxy = yield* Effect.serviceOption(RouterService);
-  if (Option.isSome(proxy)) {
-    yield* tree.startTask("routes");
-    yield* proxy.value.removeRoutes(target.plan.id).pipe(Effect.tapError(() => tree.failTask("routes")));
-    yield* tree.completeTask("routes");
-  } else {
-    const events = yield* EventService;
-    yield* events.publish(
-      MessageWarnEvent.make({
-        body: `Proxy service is unavailable; destroying ${target.plan.name} without route cleanup.`,
-        timestamp: DateTime.nowUnsafe(),
-      }),
-    );
-  }
+  // The progress tree declares a routes step only when a router service is in context.
+  const declared = Option.isSome(yield* Effect.serviceOption(RouterService));
+  if (declared) yield* tree.startTask("routes");
+  const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromPlan(target.plan)).pipe(
+    Effect.tapError(() => (declared ? tree.failTask("routes") : Effect.void)),
+  );
+  if (declared) yield* settleRoutesTask(tree, withdrawal);
 });

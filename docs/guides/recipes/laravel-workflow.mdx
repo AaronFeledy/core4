@@ -2,7 +2,7 @@
 id: laravel-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, laravel, php, node, mariadb, redis]
+tags: [docs, recipes, laravel, php, node, mariadb, redis]
 ---
 
 # Run the Laravel recipe
@@ -67,6 +67,8 @@ lando npm run build
 For hot reload through the proxy while you edit, see [Run Vite HMR with the Laravel recipe](./laravel-vite.mdx).
 
 ## See what the recipe writes
+
+The appserver sets `uploadDirs: [storage]` beneath webroot `public` to keep PHP out of uploaded files, including through the `public/storage` symlink.
 
 | Piece | What you get |
 | --- | --- |
@@ -139,6 +141,12 @@ lando logs --service=worker
 
 ## Connect Eloquent and Redis
 
+Lando sets `DB_CONNECTION` to `mysql` for MariaDB or `pgsql` for PostgreSQL,
+and fills `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD`
+from the database service. Laravel preserves these environment values when it
+loads `.env`, so a fresh app's `DB_CONNECTION=sqlite` does not override your
+recipe choice. Point your Redis client at `cache`.
+
 | Setting | MariaDB | Redis |
 | --- | --- | --- |
 | Host | `database` | `cache` |
@@ -147,7 +155,34 @@ lando logs --service=worker
 | Password | `lando` | n/a |
 | Port | `3306` | `6379` |
 
-Put host `database` in your DB config and host `cache` in Redis. Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for Eloquent.
+Use the service key `database`, not `127.0.0.1` or `localhost`, if you author
+connection overrides. Root password is generated; you do not need it for Eloquent.
+
+## Use SQLite
+
+Create a new SQLite app from the parent directory:
+
+```sh
+lando init --recipe laravel --name=laravel-sqlite --answer=database=sqlite --yes
+cd laravel-sqlite
+lando app:config:lint
+```
+
+Follow the Laravel creation steps above, skipping `lando mariadb`. Composer creates and migrates
+`database/database.sqlite`; Lando sets only `DB_CONNECTION=sqlite` and declares
+that file on `appserver`. There is no database service. An optional queue worker
+uses the same file and connection. After the app is running and the file exists,
+these commands export, import, and snapshot it. **Import replaces the database's
+contents with the backup.**
+
+```sh
+lando db:export backup.sql.gz
+lando db:import backup.sql.gz --yes
+lando db:snapshot
+```
+
+See [Manage a SQLite file database](../tooling/sqlite-database.mdx) for file
+backups and restore behavior.
 
 ## Destroy the app
 

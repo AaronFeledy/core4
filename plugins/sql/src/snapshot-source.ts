@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect } from "effect";
 
@@ -9,10 +10,14 @@ import {
   ServiceName,
   type SnapshotFilter,
   appIdentityKey,
+  planDataId,
 } from "@lando/sdk/schema";
+import type { SqlCommandDeps } from "./command-types.ts";
+import { type SqlPlan, sqlPlanDataId } from "./views.ts";
 
 type SnapshotSourceInput = {
-  readonly app: string;
+  readonly plan: SqlPlan;
+  readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
   readonly store?: string;
   readonly ownerKey?: string;
   readonly repoGroupKey?: string;
@@ -47,10 +52,34 @@ export const resolveSnapshotSource = (
         }),
       );
     }
-    return Effect.succeed({
-      app: AppId.make(input.fromApp),
-      service: ServiceName.make(input.service),
-      repoGroupKey: input.repoGroupKey,
+    const fromApp = input.fromApp;
+    const repoGroupKey = input.repoGroupKey;
+    return Effect.gen(function* () {
+      const plans =
+        fromApp === input.plan.id || input.appliedPlans === undefined
+          ? []
+          : yield* input.appliedPlans.pipe(
+              mapFailures(
+                (cause) =>
+                  new SqlRecoveryUnavailableError({
+                    message: `Cannot resolve snapshot source ${fromApp}.`,
+                    service: input.service,
+                    reason: cause.message,
+                    remediation: "Select the exact source app root with --from-path.",
+                  }),
+              ),
+            );
+      const source = plans.find((plan) => plan.id === fromApp);
+      return {
+        app:
+          fromApp === input.plan.id
+            ? sqlPlanDataId(input.plan)
+            : source === undefined
+              ? AppId.make(fromApp)
+              : planDataId(source),
+        service: ServiceName.make(input.service),
+        repoGroupKey,
+      };
     });
   }
   if (input.fromPath !== undefined) {
@@ -62,7 +91,7 @@ export const resolveSnapshotSource = (
     );
   }
   return Effect.succeed({
-    app: AppId.make(input.app),
+    app: sqlPlanDataId(input.plan),
     ...(input.store === undefined ? {} : { store: input.store }),
     ...(input.ownerKey === undefined ? {} : { ownerKey: input.ownerKey }),
   });

@@ -15,6 +15,63 @@ import {
 } from "../../src/cli/tooling-router.ts";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
+test.each([
+  { argv: ["--help"], marker: null, exit: 0 },
+  { argv: ["-h"], marker: null, exit: 0 },
+  { argv: ["value", "--help"], marker: null, exit: 0 },
+  { argv: ["--", "--help"], marker: "first=--help\nsecond=\n", exit: 0 },
+  { argv: ["--version", "--format=json"], marker: null, exit: 1 },
+  { argv: ["--version", "2.0"], marker: "first=--version\nsecond=2.0\n", exit: 0 },
+])(
+  "answers raw script help without executing except after --: $argv",
+  async ({ argv, marker, exit }) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-raw-script-help-"));
+    try {
+      await mkdir(join(root, ".lando/scripts"), { recursive: true });
+      await writeFile(join(root, ".lando.yml"), "name: raw-script-help\n");
+      await writeFile(
+        join(root, ".lando/scripts/wipe.bun.sh"),
+        '# ---\n# desc: Record arguments\n# ---\nprintf "%s\\n" "first=$1" "second=$2" > marker\n',
+      );
+      // When
+      const child = Bun.spawn([process.execPath, cli, "wipe", ...argv], {
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          NO_COLOR: "1",
+          LANDO_USER_CACHE_ROOT: join(root, "cache"),
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+        },
+      });
+      const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      // Then
+      expect(code, stderr).toBe(exit);
+      const file = Bun.file(join(root, "marker"));
+      if (marker === null) {
+        if (exit === 0) expect(stdout).toContain("lando wipe [args...]");
+        else
+          expect(JSON.parse(stdout)).toMatchObject({
+            ok: false,
+            command: "app:wipe",
+            error: { _tag: "ToolingInputError", tool: "app:wipe", field: "version" },
+          });
+        expect(await file.exists()).toBe(false);
+      } else expect(await file.text()).toBe(marker);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);
+
 const declared = [
   "# ---",
   "# desc: Greet a target",
@@ -72,6 +129,7 @@ test.each([true, false])("carries normalized script help metadata when cached=%s
         service: ":host",
         appRoot: root,
         relativePath: "greet.bun.sh",
+        runs: { kind: "script", path: ".lando/scripts/greet.bun.sh" },
         input: {
           flags: [{ name: "name", alias: "n", default: "world", boolean: false, required: false }],
           args: [{ name: "target", order: 0, required: true }],
@@ -95,7 +153,7 @@ test.each([
       const route = await Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot }));
       if (route._tag !== "bun-script") throw new Error(`Expected script, got ${route._tag}`);
       const expected = renderToolingHelp(
-        { ...route, id: route.commandId },
+        { ...route, id: route.commandId, source: "bun-script" },
         {
           styled: false,
           ...(route.aliasPolicy === undefined ? {} : { aliasPolicy: route.aliasPolicy }),
@@ -124,6 +182,7 @@ test.each([
       expect(stdout.trim()).toBe(expected.trim());
       expect(stdout).toContain("--name");
       expect(stdout).toContain("TARGET");
+      expect(stdout).toContain("Runs .lando/scripts/greet.bun.sh on the host.");
       expect(stdout + stderr).not.toContain("must-not-execute");
     });
   },
@@ -135,7 +194,6 @@ test.each([
   { argv: ["-h"], expected: true },
   { argv: ["--", "--help"], expected: false },
   { argv: ["--help"], hidden: true, expected: true },
-  { argv: ["--help"], input: undefined, expected: false },
   {
     argv: ["--help"],
     input: Result.getOrThrowWith(

@@ -2,8 +2,8 @@
 name: workflow-performance
 
 on:
-#   schedule:
-#     - cron: '0 4 * * *'
+  schedule:
+    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       start_samples:
@@ -28,457 +28,403 @@ permissions:
   contents: read
 
 jobs:
-  workflow-performance-blocked:
+  container-helper:
     runs-on: ubuntu-26.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
-      - name: Report missing Docker Hub credentials
-        run: |
-          echo "::error title=workflow-performance blocked::Repository secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are required. Native jobs and the schedule remain commented until WORKFLOW_PERFORMANCE_EXECUTION is enabled."
-          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-# Native workflow-performance execution is blocked until Docker Hub credentials are available.
-# Required repository secrets: DOCKERHUB_USERNAME and DOCKERHUB_TOKEN.
-# To re-enable, set WORKFLOW_PERFORMANCE_EXECUTION to "enabled" in scripts/build-workflow-performance-workflow.ts and run `bun run codegen`.
-# The complete native cell jobs remain commented below for review.
-#   container-helper:
-#     runs-on: ubuntu-26.04
-#     timeout-minutes: 20
-#     steps:
-#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-#
-#       - name: Isolate Lando roots
-#         shell: bash
-#         run: |
-#           echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
-#           echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
-#           echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
-#           echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
-#
-#       - name: Setup Bun
-#         uses: oven-sh/setup-bun@v2
-#         with:
-#           bun-version-file: .bun-version
-#
-#       - name: Install dependencies
-#         run: bun install --frozen-lockfile
-#
-#       - name: Regenerate derived sources
-#         run: bun run codegen
-#
-#       # The builder publishes no routes, so the job skips router setup.
-#       - name: Set up Lando with Docker
-#         run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
-#
-#       - name: Build and test the container helper with Lando
-#         run: |
-#           bun run scripts/build-container-helper.ts --test
-#           bun test core/test/container-helper/helper.integration.test.ts
-#
-#       - name: Upload container helper
-#         uses: actions/upload-artifact@v6
-#         with:
-#           name: container-helper
-#           path: core/container-helper/dist/
-#           if-no-files-found: error
-#           retention-days: 14
-#   workflow-performance-linux-x64:
-#     needs: [container-helper]
-#     runs-on: ubuntu-26.04
-#     timeout-minutes: 360
-#     steps:
-#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-#
-#       - name: Setup Bun
-#         uses: oven-sh/setup-bun@v2
-#         with:
-#           bun-version-file: .bun-version
-#
-#       - name: Install dependencies
-#         run: bun install --frozen-lockfile
-#
-#       - name: Regenerate derived sources
-#         run: bun run codegen
-#
-#       - name: Download container helper
-#         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-#         with:
-#           name: container-helper
-#           path: core/container-helper/dist
-#
-#       - name: Restore container helper permissions
-#         shell: bash
-#         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
-#
-#       - name: Build command registry manifest
-#         run: bun run --filter='@lando/core' build:manifest
-#
-#       - name: Build linux-x64 binary
-#         run: |
-#           mkdir -p dist
-#           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
-#           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
-#
-#       - name: Setup Go for Linux Podman source build
-#         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-#         with:
-#           go-version: 1.25.6
-#
-#       - name: Setup Rust for Linux helper source builds
-#         uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
-#
-#       - name: Install Linux Podman source-build prerequisites
-#         run: |
-#           set -euo pipefail
-#           UBUNTU_SNAPSHOT=20261019T000000Z
-#           printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-#           # Prefer snapshot dependencies even when the runner has newer versions installed.
-#           printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
-#           for DELAY in 0 5 15 45; do
-#             if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-#             if sudo apt-get update --error-on=any; then break; fi
-#             if [ "$DELAY" -eq 45 ]; then
-#               echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-#               exit 1
-#             fi
-#           done
-#           PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
-#           sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
-#           for PACKAGE in "${PACKAGES[@]}"; do
-#             INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
-#             POLICY="$(apt-cache policy "$PACKAGE")"
-#             CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
-#             test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-#             if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
-#               $1 == "***" && $2 == candidate { candidate_block = 1; next }
-#               candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
-#               candidate_block { candidate_block = 0 }
-#               END { exit found ? 0 : 1 }
-#             ' <<< "$POLICY"; then
-#               echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
-#               exit 1
-#             fi
-#           done
-#
-#       - name: Assemble current-commit linux-x64 runtime bundle
-#         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
-#
-#       - name: Build local runtime bundle manifest
-#         run: |
-#           RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
-#           MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
-#           echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
-#           echo "WORKFLOW_PERF_RUNTIME_VERSION=$RUNTIME_VERSION" >> "$GITHUB_ENV"
-#
-#       - name: Provision rootless runtime prerequisites
-#         run: |
-#           sudo apt-get update
-#           sudo apt-get install -y uidmap fuse-overlayfs
-#           if ! grep -q "^$(id -un):" /etc/subuid; then
-#             echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
-#           fi
-#           if ! grep -q "^$(id -un):" /etc/subgid; then
-#             echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
-#           fi
-#           sudo sysctl net.ipv4.ip_unprivileged_port_start=0
-#           if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
-#             sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
-#           fi
-#           if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
-#             echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
-#           fi
-#           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
-#           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
-#
-#       - name: Log in to Docker Hub
-#         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.4.0
-#         env:
-#           DOCKER_CONFIG: ${{ runner.temp }}/workflow-performance-linux-x64-registry
-#         with:
-#           registry: docker.io
-#           username: ${{ secrets.DOCKERHUB_USERNAME }}
-#           password: ${{ secrets.DOCKERHUB_TOKEN }}
-#           logout: true
-#
-#       - name: Run workflow performance samples
-#         id: performance
-#         env:
-#           START_SAMPLES: ${{ inputs.start_samples || '5' }}
-#           HEAVY_SAMPLES: ${{ inputs.heavy_samples || '3' }}
-#           FAILING_FIXTURE_LANE: ${{ inputs.failing_fixture_lane || '' }}
-#           WORKFLOW_PERF_ISOLATION: "1"
-#           REGISTRY_AUTH_FILE: ${{ runner.temp }}/workflow-performance-linux-x64-registry/config.json
-#         run: |
-#           set +e
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
-#           mkdir -p "$ROOT"
-#           BINARY_VERSION="$(dist/lando --version)"
-#           PROVIDER_VERSION="$(bun -e 'const value = await Bun.file("plugins/provider-lando/package.json").json(); process.stdout.write(String(value.version))')"
-#           bun run scripts/workflow-performance.ts \
-#             --binary "$GITHUB_WORKSPACE/dist/lando" \
-#             --report "$ROOT/report.json" \
-#             --root-dir "$ROOT/work" \
-#             --run-id "${{ github.run_id }}.linux-x64" \
-#             --run-attempt "${{ github.run_attempt }}" \
-#             --commit "${{ github.sha }}" \
-#             --platform "linux-x64" \
-#             --architecture "x64" \
-#             --runner "ubuntu-26.04" \
-#             --binary-version "$BINARY_VERSION" \
-#             --runtime-version "$WORKFLOW_PERF_RUNTIME_VERSION" \
-#             --provider-version "$PROVIDER_VERSION" \
-#             --fixture-seed "workflow-performance-v1" \
-#             --start-samples "$START_SAMPLES" \
-#             --heavy-samples "$HEAVY_SAMPLES" \
-#             --failing-fixture-lane "$FAILING_FIXTURE_LANE"
-#           echo "$?" > "$ROOT/exit-code"
-#           exit 0
-#
-#       - name: Download compatible performance history candidates
-#         env:
-#           GH_TOKEN: ${{ github.token }}
-#         run: |
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
-#           mkdir -p "$ROOT/history"
-#           gh api "/repos/${{ github.repository }}/actions/workflows/workflow-performance.yml/runs?status=completed&per_page=30" \
-#             --jq '.workflow_runs[] | [.id, .created_at, .conclusion] | @tsv' > "$ROOT/history-index.tsv"
-#           while IFS=$'	' read -r run_id _created _conclusion; do
-#             test -n "$run_id" || continue
-#             mkdir -p "$ROOT/history/$run_id"
-#             gh run download "$run_id" --name "workflow-performance-linux-x64" --dir "$ROOT/history/$run_id" || true
-#           done < "$ROOT/history-index.tsv"
-#
-#       - name: Render last-30-run trend
-#         if: always()
-#         run: |
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
-#           bun run scripts/workflow-performance-history-cli.ts \
-#             --current "$ROOT/report.json" \
-#             --index "$ROOT/history-index.tsv" \
-#             --artifact-root "$ROOT/history" \
-#             --summary "$ROOT/history-summary.json" \
-#             --markdown "$ROOT/history-summary.md"
-#
-#       - name: Upload workflow performance report and trend
-#         if: always()
-#         uses: actions/upload-artifact@v6
-#         with:
-#           name: workflow-performance-linux-x64
-#           path: |
-#             ${{ runner.temp }}/workflow-performance-linux-x64/report.json
-#             ${{ runner.temp }}/workflow-performance-linux-x64/history-summary.json
-#             ${{ runner.temp }}/workflow-performance-linux-x64/history-summary.md
-#           if-no-files-found: error
-#           retention-days: 90
-#
-#       - name: Enforce workflow correctness
-#         if: always()
-#         run: |
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
-#           test -f "$ROOT/exit-code"
-#           exit "$(cat "$ROOT/exit-code")"
-#
-#       - name: Ownership-scoped cleanup
-#         if: always()
-#         run: rm -rf "$RUNNER_TEMP/workflow-performance-linux-x64" "$RUNNER_TEMP/workflow-performance-linux-x64-registry"
-#
-#   workflow-performance-linux-arm64:
-#     needs: [container-helper]
-#     runs-on: ubuntu-24.04-arm
-#     timeout-minutes: 360
-#     steps:
-#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-#
-#       - name: Setup Bun
-#         uses: oven-sh/setup-bun@v2
-#         with:
-#           bun-version-file: .bun-version
-#
-#       - name: Install dependencies
-#         run: bun install --frozen-lockfile
-#
-#       - name: Regenerate derived sources
-#         run: bun run codegen
-#
-#       - name: Download container helper
-#         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-#         with:
-#           name: container-helper
-#           path: core/container-helper/dist
-#
-#       - name: Restore container helper permissions
-#         shell: bash
-#         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
-#
-#       - name: Build command registry manifest
-#         run: bun run --filter='@lando/core' build:manifest
-#
-#       - name: Build linux-arm64 binary
-#         run: |
-#           mkdir -p dist
-#           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
-#           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
-#
-#       - name: Setup Go for Linux Podman source build
-#         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-#         with:
-#           go-version: 1.25.6
-#
-#       - name: Setup Rust for Linux helper source builds
-#         uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
-#
-#       - name: Install Linux Podman source-build prerequisites
-#         run: |
-#           set -euo pipefail
-#           UBUNTU_SNAPSHOT=20261019T000000Z
-#           printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-#           # Prefer snapshot dependencies even when the runner has newer versions installed.
-#           printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
-#           for DELAY in 0 5 15 45; do
-#             if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-#             if sudo apt-get update --error-on=any; then break; fi
-#             if [ "$DELAY" -eq 45 ]; then
-#               echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-#               exit 1
-#             fi
-#           done
-#           PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
-#           sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
-#           for PACKAGE in "${PACKAGES[@]}"; do
-#             INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
-#             POLICY="$(apt-cache policy "$PACKAGE")"
-#             CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
-#             test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-#             if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
-#               $1 == "***" && $2 == candidate { candidate_block = 1; next }
-#               candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
-#               candidate_block { candidate_block = 0 }
-#               END { exit found ? 0 : 1 }
-#             ' <<< "$POLICY"; then
-#               echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
-#               exit 1
-#             fi
-#           done
-#
-#       - name: Assemble current-commit linux-arm64 runtime bundle
-#         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
-#
-#       - name: Build local runtime bundle manifest
-#         run: |
-#           RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
-#           MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-arm64 --runtime-version "$RUNTIME_VERSION")"
-#           echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
-#           echo "WORKFLOW_PERF_RUNTIME_VERSION=$RUNTIME_VERSION" >> "$GITHUB_ENV"
-#
-#       - name: Provision rootless runtime prerequisites
-#         run: |
-#           sudo apt-get update
-#           sudo apt-get install -y uidmap fuse-overlayfs
-#           if ! grep -q "^$(id -un):" /etc/subuid; then
-#             echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
-#           fi
-#           if ! grep -q "^$(id -un):" /etc/subgid; then
-#             echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
-#           fi
-#           sudo sysctl net.ipv4.ip_unprivileged_port_start=0
-#           if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
-#             sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
-#           fi
-#           if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
-#             echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
-#           fi
-#           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
-#           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
-#
-#       - name: Log in to Docker Hub
-#         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.4.0
-#         env:
-#           DOCKER_CONFIG: ${{ runner.temp }}/workflow-performance-linux-arm64-registry
-#         with:
-#           registry: docker.io
-#           username: ${{ secrets.DOCKERHUB_USERNAME }}
-#           password: ${{ secrets.DOCKERHUB_TOKEN }}
-#           logout: true
-#
-#       - name: Run workflow performance samples
-#         id: performance
-#         env:
-#           START_SAMPLES: ${{ inputs.start_samples || '5' }}
-#           HEAVY_SAMPLES: ${{ inputs.heavy_samples || '3' }}
-#           FAILING_FIXTURE_LANE: ${{ inputs.failing_fixture_lane || '' }}
-#           WORKFLOW_PERF_ISOLATION: "1"
-#           REGISTRY_AUTH_FILE: ${{ runner.temp }}/workflow-performance-linux-arm64-registry/config.json
-#         run: |
-#           set +e
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
-#           mkdir -p "$ROOT"
-#           BINARY_VERSION="$(dist/lando --version)"
-#           PROVIDER_VERSION="$(bun -e 'const value = await Bun.file("plugins/provider-lando/package.json").json(); process.stdout.write(String(value.version))')"
-#           bun run scripts/workflow-performance.ts \
-#             --binary "$GITHUB_WORKSPACE/dist/lando" \
-#             --report "$ROOT/report.json" \
-#             --root-dir "$ROOT/work" \
-#             --run-id "${{ github.run_id }}.linux-arm64" \
-#             --run-attempt "${{ github.run_attempt }}" \
-#             --commit "${{ github.sha }}" \
-#             --platform "linux-arm64" \
-#             --architecture "arm64" \
-#             --runner "ubuntu-24.04-arm" \
-#             --binary-version "$BINARY_VERSION" \
-#             --runtime-version "$WORKFLOW_PERF_RUNTIME_VERSION" \
-#             --provider-version "$PROVIDER_VERSION" \
-#             --fixture-seed "workflow-performance-v1" \
-#             --start-samples "$START_SAMPLES" \
-#             --heavy-samples "$HEAVY_SAMPLES" \
-#             --failing-fixture-lane "$FAILING_FIXTURE_LANE"
-#           echo "$?" > "$ROOT/exit-code"
-#           exit 0
-#
-#       - name: Download compatible performance history candidates
-#         env:
-#           GH_TOKEN: ${{ github.token }}
-#         run: |
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
-#           mkdir -p "$ROOT/history"
-#           gh api "/repos/${{ github.repository }}/actions/workflows/workflow-performance.yml/runs?status=completed&per_page=30" \
-#             --jq '.workflow_runs[] | [.id, .created_at, .conclusion] | @tsv' > "$ROOT/history-index.tsv"
-#           while IFS=$'	' read -r run_id _created _conclusion; do
-#             test -n "$run_id" || continue
-#             mkdir -p "$ROOT/history/$run_id"
-#             gh run download "$run_id" --name "workflow-performance-linux-arm64" --dir "$ROOT/history/$run_id" || true
-#           done < "$ROOT/history-index.tsv"
-#
-#       - name: Render last-30-run trend
-#         if: always()
-#         run: |
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
-#           bun run scripts/workflow-performance-history-cli.ts \
-#             --current "$ROOT/report.json" \
-#             --index "$ROOT/history-index.tsv" \
-#             --artifact-root "$ROOT/history" \
-#             --summary "$ROOT/history-summary.json" \
-#             --markdown "$ROOT/history-summary.md"
-#
-#       - name: Upload workflow performance report and trend
-#         if: always()
-#         uses: actions/upload-artifact@v6
-#         with:
-#           name: workflow-performance-linux-arm64
-#           path: |
-#             ${{ runner.temp }}/workflow-performance-linux-arm64/report.json
-#             ${{ runner.temp }}/workflow-performance-linux-arm64/history-summary.json
-#             ${{ runner.temp }}/workflow-performance-linux-arm64/history-summary.md
-#           if-no-files-found: error
-#           retention-days: 90
-#
-#       - name: Enforce workflow correctness
-#         if: always()
-#         run: |
-#           ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
-#           test -f "$ROOT/exit-code"
-#           exit "$(cat "$ROOT/exit-code")"
-#
-#       - name: Ownership-scoped cleanup
-#         if: always()
-#         run: rm -rf "$RUNNER_TEMP/workflow-performance-linux-arm64" "$RUNNER_TEMP/workflow-performance-linux-arm64-registry"
-#
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      # The builder publishes no routes, so the job skips router setup.
+      - name: Set up Lando with Docker
+        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Build and test the container helper with Lando
+        run: |
+          bun run scripts/build-container-helper.ts --test
+          bun run test:selection container-helper
+
+      - name: Upload container helper
+        uses: actions/upload-artifact@v6
+        with:
+          name: container-helper
+          path: core/container-helper/dist/
+          if-no-files-found: error
+          retention-days: 14
+  workflow-performance-linux-x64:
+    needs: [container-helper]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 360
+    env:
+      WORKFLOW_PERF_DOCKER_HUB_LOGIN: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
+
+      - name: Build linux-x64 binary
+        run: |
+          mkdir -p dist
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
+
+      - name: Derive Linux x64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
+        run: |
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux x64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          key: ${{ steps.runtime-bundle-key.outputs.key }}
+
+      - name: Assemble current-commit Linux x64 runtime bundle
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
+
+      - name: Build local runtime bundle manifest
+        run: |
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+          echo "WORKFLOW_PERF_RUNTIME_VERSION=$RUNTIME_VERSION" >> "$GITHUB_ENV"
+
+      - name: Provision rootless runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Log in to Docker Hub
+        if: env.WORKFLOW_PERF_DOCKER_HUB_LOGIN == 'true'
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.4.0
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/workflow-performance-linux-x64-registry
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          logout: true
+
+      - name: Run workflow performance samples
+        id: performance
+        env:
+          START_SAMPLES: ${{ inputs.start_samples || '5' }}
+          HEAVY_SAMPLES: ${{ inputs.heavy_samples || '3' }}
+          FAILING_FIXTURE_LANE: ${{ inputs.failing_fixture_lane || '' }}
+          WORKFLOW_PERF_ISOLATION: "1"
+        run: |
+          set +e
+          if [ "$WORKFLOW_PERF_DOCKER_HUB_LOGIN" = true ]; then
+            export REGISTRY_AUTH_FILE="$RUNNER_TEMP/workflow-performance-linux-x64-registry/config.json"
+          else
+            echo "::notice title=Docker Hub::Pulling anonymously. Add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets to raise the pull limit."
+          fi
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
+          mkdir -p "$ROOT"
+          BINARY_VERSION="$(dist/lando --version)"
+          PROVIDER_VERSION="$(bun -e 'const value = await Bun.file("plugins/provider-lando/package.json").json(); process.stdout.write(String(value.version))')"
+          bun run scripts/workflow-performance.ts \
+            --binary "$GITHUB_WORKSPACE/dist/lando" \
+            --report "$ROOT/report.json" \
+            --root-dir "$ROOT/work" \
+            --run-id "${{ github.run_id }}.linux-x64" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --commit "${{ github.sha }}" \
+            --platform "linux-x64" \
+            --architecture "x64" \
+            --runner "ubuntu-26.04" \
+            --binary-version "$BINARY_VERSION" \
+            --runtime-version "$WORKFLOW_PERF_RUNTIME_VERSION" \
+            --provider-version "$PROVIDER_VERSION" \
+            --fixture-seed "workflow-performance-v1" \
+            --start-samples "$START_SAMPLES" \
+            --heavy-samples "$HEAVY_SAMPLES" \
+            --failing-fixture-lane "$FAILING_FIXTURE_LANE"
+          echo "$?" > "$ROOT/exit-code"
+          exit 0
+
+      - name: Download compatible performance history candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
+          mkdir -p "$ROOT/history"
+          gh api "/repos/${{ github.repository }}/actions/workflows/workflow-performance.yml/runs?status=completed&per_page=30" \
+            --jq '.workflow_runs[] | [.id, .created_at, .conclusion] | @tsv' > "$ROOT/history-index.tsv"
+          while IFS=$'	' read -r run_id _created _conclusion; do
+            test -n "$run_id" || continue
+            mkdir -p "$ROOT/history/$run_id"
+            gh run download "$run_id" --name "workflow-performance-linux-x64" --dir "$ROOT/history/$run_id" || true
+          done < "$ROOT/history-index.tsv"
+
+      - name: Render last-30-run trend
+        if: always() && steps.performance.outcome != 'skipped'
+        run: |
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
+          bun run scripts/workflow-performance-history-cli.ts \
+            --current "$ROOT/report.json" \
+            --index "$ROOT/history-index.tsv" \
+            --artifact-root "$ROOT/history" \
+            --summary "$ROOT/history-summary.json" \
+            --markdown "$ROOT/history-summary.md"
+
+      - name: Upload workflow performance report and trend
+        if: always() && steps.performance.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: workflow-performance-linux-x64
+          path: |
+            ${{ runner.temp }}/workflow-performance-linux-x64/report.json
+            ${{ runner.temp }}/workflow-performance-linux-x64/history-summary.json
+            ${{ runner.temp }}/workflow-performance-linux-x64/history-summary.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce workflow correctness
+        if: always()
+        run: |
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-x64"
+          test -f "$ROOT/exit-code"
+          exit "$(cat "$ROOT/exit-code")"
+
+      - name: Ownership-scoped cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/workflow-performance-linux-x64" "$RUNNER_TEMP/workflow-performance-linux-x64-registry"
+
+  workflow-performance-linux-arm64:
+    needs: [container-helper]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    env:
+      WORKFLOW_PERF_DOCKER_HUB_LOGIN: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
+
+      - name: Build linux-arm64 binary
+        run: |
+          mkdir -p dist
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
+
+      - name: Derive Linux arm64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
+        run: |
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux arm64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          key: ${{ steps.runtime-bundle-key.outputs.key }}
+
+      - name: Assemble current-commit Linux arm64 runtime bundle
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+
+      - name: Build local runtime bundle manifest
+        run: |
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-arm64 --runtime-version "$RUNTIME_VERSION")"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+          echo "WORKFLOW_PERF_RUNTIME_VERSION=$RUNTIME_VERSION" >> "$GITHUB_ENV"
+
+      - name: Provision rootless runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Log in to Docker Hub
+        if: env.WORKFLOW_PERF_DOCKER_HUB_LOGIN == 'true'
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.4.0
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/workflow-performance-linux-arm64-registry
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          logout: true
+
+      - name: Run workflow performance samples
+        id: performance
+        env:
+          START_SAMPLES: ${{ inputs.start_samples || '5' }}
+          HEAVY_SAMPLES: ${{ inputs.heavy_samples || '3' }}
+          FAILING_FIXTURE_LANE: ${{ inputs.failing_fixture_lane || '' }}
+          WORKFLOW_PERF_ISOLATION: "1"
+        run: |
+          set +e
+          if [ "$WORKFLOW_PERF_DOCKER_HUB_LOGIN" = true ]; then
+            export REGISTRY_AUTH_FILE="$RUNNER_TEMP/workflow-performance-linux-arm64-registry/config.json"
+          else
+            echo "::notice title=Docker Hub::Pulling anonymously. Add DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets to raise the pull limit."
+          fi
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
+          mkdir -p "$ROOT"
+          BINARY_VERSION="$(dist/lando --version)"
+          PROVIDER_VERSION="$(bun -e 'const value = await Bun.file("plugins/provider-lando/package.json").json(); process.stdout.write(String(value.version))')"
+          bun run scripts/workflow-performance.ts \
+            --binary "$GITHUB_WORKSPACE/dist/lando" \
+            --report "$ROOT/report.json" \
+            --root-dir "$ROOT/work" \
+            --run-id "${{ github.run_id }}.linux-arm64" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --commit "${{ github.sha }}" \
+            --platform "linux-arm64" \
+            --architecture "arm64" \
+            --runner "ubuntu-24.04-arm" \
+            --binary-version "$BINARY_VERSION" \
+            --runtime-version "$WORKFLOW_PERF_RUNTIME_VERSION" \
+            --provider-version "$PROVIDER_VERSION" \
+            --fixture-seed "workflow-performance-v1" \
+            --start-samples "$START_SAMPLES" \
+            --heavy-samples "$HEAVY_SAMPLES" \
+            --failing-fixture-lane "$FAILING_FIXTURE_LANE"
+          echo "$?" > "$ROOT/exit-code"
+          exit 0
+
+      - name: Download compatible performance history candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
+          mkdir -p "$ROOT/history"
+          gh api "/repos/${{ github.repository }}/actions/workflows/workflow-performance.yml/runs?status=completed&per_page=30" \
+            --jq '.workflow_runs[] | [.id, .created_at, .conclusion] | @tsv' > "$ROOT/history-index.tsv"
+          while IFS=$'	' read -r run_id _created _conclusion; do
+            test -n "$run_id" || continue
+            mkdir -p "$ROOT/history/$run_id"
+            gh run download "$run_id" --name "workflow-performance-linux-arm64" --dir "$ROOT/history/$run_id" || true
+          done < "$ROOT/history-index.tsv"
+
+      - name: Render last-30-run trend
+        if: always() && steps.performance.outcome != 'skipped'
+        run: |
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
+          bun run scripts/workflow-performance-history-cli.ts \
+            --current "$ROOT/report.json" \
+            --index "$ROOT/history-index.tsv" \
+            --artifact-root "$ROOT/history" \
+            --summary "$ROOT/history-summary.json" \
+            --markdown "$ROOT/history-summary.md"
+
+      - name: Upload workflow performance report and trend
+        if: always() && steps.performance.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: workflow-performance-linux-arm64
+          path: |
+            ${{ runner.temp }}/workflow-performance-linux-arm64/report.json
+            ${{ runner.temp }}/workflow-performance-linux-arm64/history-summary.json
+            ${{ runner.temp }}/workflow-performance-linux-arm64/history-summary.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce workflow correctness
+        if: always()
+        run: |
+          ROOT="$RUNNER_TEMP/workflow-performance-linux-arm64"
+          test -f "$ROOT/exit-code"
+          exit "$(cat "$ROOT/exit-code")"
+
+      - name: Ownership-scoped cleanup
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/workflow-performance-linux-arm64" "$RUNNER_TEMP/workflow-performance-linux-arm64-registry"

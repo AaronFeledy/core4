@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Duration, Effect } from "effect";
 
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 
@@ -15,6 +17,7 @@ import { type PodmanServiceRunner, buildPodmanServiceArgs } from "./podman-servi
 export interface LinuxRuntimeReaperDeps extends LinuxRuntimeGenerationDeps {
   readonly serviceRunner: PodmanServiceRunner;
   readonly podmanBin: string;
+  readonly privateRuntimeDir: string | undefined;
   readonly terminationPolicy?: RetryPolicy;
 }
 
@@ -30,7 +33,7 @@ const reaperError = (message: string, details: object, cause?: unknown) =>
     operation: "setup",
     message,
     remediation: "Stop the managed runtime service, then retry the command.",
-    details,
+    details: redactDetails(details, standaloneSecretsRedactor({ ...process.env })),
     ...(cause === undefined ? {} : { cause }),
   });
 
@@ -88,7 +91,7 @@ const terminateAndWait = (
               return !managed;
             }),
           ).pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               reaperError(`Failed to probe managed Lando runtime service PID ${pid}.`, { pid }, cause),
             ),
           ),

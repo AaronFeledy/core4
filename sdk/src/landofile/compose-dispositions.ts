@@ -51,54 +51,237 @@ const preservedEntry = (path: string): ComposeDispositionEntry =>
         ? PRESERVED_EXACT_PATH_ENTRY
         : PRESERVED_ENTRY;
 
-const rejectedEntry = (path: string): ComposeDispositionEntry => {
-  if (path.startsWith("networks.*.")) {
-    return {
-      disposition: "rejected",
-      rationale: "Lando owns network address and interface settings.",
-      remediation: `Lando doesn't pin network addresses or interface settings. Remove ${path} and reach the service by its name or an alias.`,
-    };
-  }
-  if (path === "extends" || path.startsWith("extends.")) {
-    return {
-      disposition: "rejected",
-      rationale: "Compose service inheritance is replaced by Lando composition primitives.",
-      remediation: `Replace ${path} with Lando type: inheritance.`,
-    };
-  }
-  if (path === "container_name") {
-    return {
-      disposition: "rejected",
+// Advice for rejected matrix paths. Every remediation names a step a user can take today.
+interface RejectedAdvice {
+  readonly rationale: string;
+  readonly remediation: (path: string) => string;
+}
+
+const removePath = (path: string): string => `Remove ${path}.`;
+
+const exactRejectedAdvice: ReadonlyArray<readonly [paths: ReadonlyArray<string>, advice: RejectedAdvice]> = [
+  [
+    ["networks.*.use_service_name_alias"],
+    {
+      rationale: "Lando decides which names a service gets on each network.",
+      remediation: (path) =>
+        `Remove ${path}. Lando registers the service name on the app network only; add a name on another network with aliases.`,
+    },
+  ],
+  [
+    ["container_name"],
+    {
       rationale: "Lando owns container naming for multi-app isolation.",
-      remediation: `Remove ${path} and use the Lando service key as the container identity.`,
-    };
-  }
-  if (path === "network_mode" || path === "links") {
-    return {
-      disposition: "rejected",
-      rationale: "Legacy Compose network shortcuts bypass Lando network planning.",
-      remediation: `Translate ${path} to Lando networks: configuration.`,
-    };
-  }
-  if (path === "configs.uid" || path === "configs.gid") {
-    return {
-      disposition: "rejected",
+      remediation: (path) => `Remove ${path} and use the Lando service key as the container identity.`,
+    },
+  ],
+  [
+    ["hostname", "domainname"],
+    {
+      rationale:
+        "Lando sets each container's hostname to its container name, which resolves only to that container.",
+      remediation: (path) =>
+        `Remove ${path}. Lando sets each container's hostname to its container name, lando-<app>--<service>. Reach the service by its service key or a hostnames: alias.`,
+    },
+  ],
+  [
+    ["network_mode", "links"],
+    {
+      rationale: "Lando plans each service's networks itself.",
+      remediation: (path) =>
+        `Remove ${path}. Services in one app reach each other by service key; to join another network, declare it under top-level networks: and list it on the service.`,
+    },
+  ],
+  [
+    ["configs.uid", "configs.gid"],
+    {
       rationale: "Config grants mount a read-only copy of a host file; Lando cannot change its owner.",
-      remediation: `Remove ${path} and set the grant's mode (for example "0444") so the service user can read the file.`,
-    };
-  }
-  if (path.startsWith("deploy.") && !path.startsWith("deploy.resources")) {
+      remediation: (path) =>
+        `Remove ${path} and set the grant's mode (for example "0444") so the service user can read the file.`,
+    },
+  ],
+  [
+    ["post_start"],
+    {
+      rationale: "Lando runs lifecycle commands from events, not Compose hooks.",
+      remediation: () =>
+        "Remove post_start. Run the command from a post-start event instead: list it under events: post-start with cmd: and service:.",
+    },
+  ],
+  [
+    ["pre_stop"],
+    {
+      rationale: "Lando runs lifecycle commands from events, not Compose hooks.",
+      remediation: () =>
+        "Remove pre_stop. Run the command from a pre-stop event instead: list it under events: pre-stop with cmd: and service:.",
+    },
+  ],
+  [
+    ["pre_start"],
+    {
+      rationale: "Lando does not run Compose init containers.",
+      remediation: () =>
+        "Remove pre_start. Run the setup as its own service that exits when it finishes, and make this service wait for it with depends_on and condition: service_completed_successfully.",
+    },
+  ],
+  [
+    [
+      "cpu_count",
+      "cpu_percent",
+      "cpu_period",
+      "cpu_quota",
+      "cpu_rt_period",
+      "cpu_rt_runtime",
+      "cpu_shares",
+      "cpus",
+      "cpuset",
+      "mem_limit",
+      "mem_reservation",
+      "mem_swappiness",
+      "memswap_limit",
+      "pids_limit",
+      "oom_kill_disable",
+      "oom_score_adj",
+      "blkio_config",
+    ],
+    {
+      rationale: "Lando does not limit service memory, CPU, processes, or block I/O.",
+      remediation: removePath,
+    },
+  ],
+  [
+    ["tty", "stdin_open"],
+    {
+      rationale: "Lando attaches a terminal when you run a command, not to the service process.",
+      remediation: (path) =>
+        `Remove ${path}. Open a shell with lando ssh, or run one interactive command with lando exec --interactive.`,
+    },
+  ],
+  [
+    ["attach"],
+    {
+      rationale: "Lando does not attach to service output on start.",
+      remediation: () => "Remove attach. Read service output with lando logs.",
+    },
+  ],
+  [
+    ["scale"],
+    {
+      rationale: "Lando runs one container per service.",
+      remediation: () => "Remove scale. To run a second copy, declare another service.",
+    },
+  ],
+  [
+    ["develop"],
+    {
+      rationale: "Lando does not use Compose watch rules.",
+      remediation: () =>
+        "Remove develop. Lando shares your project with a service through its app mount (appMount), so no watch rule is needed.",
+    },
+  ],
+  [
+    ["label_file"],
+    {
+      rationale: "Lando reads labels from the Landofile, not from a file.",
+      remediation: () => "Remove label_file and list the labels under labels:.",
+    },
+  ],
+  [
+    ["env_file.format", "env_file.path"],
+    {
+      rationale: "Lando accepts env_file as a path or a list of paths.",
+      remediation: (path) =>
+        `${path} belongs to the long-form env_file entry. Write the entry as a plain path instead.`,
+    },
+  ],
+  [
+    ["env_file.required"],
+    {
+      rationale: "Lando accepts env_file as a path or a list of paths.",
+      remediation: (path) =>
+        `${path} belongs to the long-form env_file entry. Write the entry as a plain path instead; Lando requires every listed env file to exist.`,
+    },
+  ],
+  [
+    ["external_links"],
+    {
+      rationale: "Lando connects services through networks, not links.",
+      remediation: () =>
+        "Remove external_links. To reach a container outside this app, join its network: declare it under top-level networks: with external: true and list it on the service.",
+    },
+  ],
+  [
+    ["volumes_from"],
+    {
+      rationale: "Lando does not copy mounts from another service.",
+      remediation: () => "Remove volumes_from and declare the same volumes: on each service that needs them.",
+    },
+  ],
+  [
+    ["extends"],
+    {
+      rationale: "Lando does not resolve Compose extends.",
+      remediation: () =>
+        "Remove extends. Share settings between services with a YAML anchor and merge key (<<: *name).",
+    },
+  ],
+  [
+    ["jobs"],
+    {
+      rationale: "Lando does not run Compose jobs.",
+      remediation: () =>
+        "Remove jobs. Run on-demand commands as tooling: tasks. For setup that must finish before a service starts, use a service that exits when done and have the other service wait with depends_on and condition: service_completed_successfully.",
+    },
+  ],
+];
+
+const rejectedAdviceByPath: ReadonlyMap<string, RejectedAdvice> = new Map(
+  exactRejectedAdvice.flatMap(([paths, advice]) => paths.map((path) => [path, advice] as const)),
+);
+
+// Checked in order after exact paths; the first matching prefix wins.
+const prefixRejectedAdvice: ReadonlyArray<readonly [prefix: string, advice: RejectedAdvice]> = [
+  [
+    "networks.*.",
+    {
+      rationale: "Lando owns network address and interface settings.",
+      remediation: (path) =>
+        `Lando doesn't pin network addresses or interface settings. Remove ${path} and reach the service by its name or an alias.`,
+    },
+  ],
+  [
+    "deploy.",
+    {
+      rationale: "Lando runs one container per service and has no Swarm deployment settings.",
+      remediation: removePath,
+    },
+  ],
+];
+
+const fallbackRejectedAdvice: RejectedAdvice = {
+  rationale: "Lando has no equivalent for this Compose key.",
+  remediation: removePath,
+};
+
+const rejectedAdviceFor = (path: string): RejectedAdvice => {
+  const exact = rejectedAdviceByPath.get(path);
+  if (exact !== undefined) return exact;
+  const prefixed = prefixRejectedAdvice.find(([prefix]) => path.startsWith(prefix));
+  if (prefixed !== undefined) return prefixed[1];
+  const separator = path.indexOf(".");
+  if (separator > 0) {
+    // A rejected option nested under an accepted key (build, depends_on, healthcheck, ports, volumes).
     return {
-      disposition: "rejected",
-      rationale: "Swarm orchestration is outside the per-service Compose vocabulary.",
-      remediation: `Move ${path} to a provider extension.`,
+      rationale: `Lando does not support this ${path.slice(0, separator)} option.`,
+      remediation: removePath,
     };
   }
-  return {
-    disposition: "rejected",
-    rationale: "This upstream Compose key has no documented Lando plan or preservation contract.",
-    remediation: `Translate ${path} with a Compose-to-Lando config translator.`,
-  };
+  return fallbackRejectedAdvice;
+};
+
+const rejectedEntry = (path: string): ComposeDispositionEntry => {
+  const advice = rejectedAdviceFor(path);
+  return { disposition: "rejected", rationale: advice.rationale, remediation: advice.remediation(path) };
 };
 
 type NormalizedServicePath = readonly [path: string, planTarget?: ReadonlyArray<string>];
@@ -253,7 +436,6 @@ const rejectedServicePaths = [
   "configs.gid",
   "configs.uid",
   "networks.*.driver_opts",
-  "networks.*.driver_opts.*",
   "networks.*.gw_priority",
   "networks.*.interface_name",
   "networks.*.ipv4_address",
@@ -261,36 +443,17 @@ const rejectedServicePaths = [
   "networks.*.link_local_ips",
   "networks.*.mac_address",
   "networks.*.priority",
+  "networks.*.use_service_name_alias",
   "annotations",
-  "annotations.*",
   "attach",
   "blkio_config",
-  "blkio_config.device_read_bps",
-  "blkio_config.device_read_bps.path",
-  "blkio_config.device_read_bps.rate",
-  "blkio_config.device_read_iops",
-  "blkio_config.device_read_iops.path",
-  "blkio_config.device_read_iops.rate",
-  "blkio_config.device_write_bps",
-  "blkio_config.device_write_bps.path",
-  "blkio_config.device_write_bps.rate",
-  "blkio_config.device_write_iops",
-  "blkio_config.device_write_iops.path",
-  "blkio_config.device_write_iops.rate",
-  "blkio_config.weight",
-  "blkio_config.weight_device",
-  "blkio_config.weight_device.path",
-  "blkio_config.weight_device.weight",
   "build.additional_contexts",
-  "build.additional_contexts.*",
   "build.cache_from",
   "build.cache_to",
   "build.entitlements",
   "build.extra_hosts",
-  "build.extra_hosts.*",
   "build.isolation",
   "build.labels",
-  "build.labels.*",
   "build.network",
   "build.no_cache",
   "build.no_cache_filter",
@@ -300,21 +463,10 @@ const rejectedServicePaths = [
   "build.pull",
   "build.sbom",
   "build.secrets",
-  "build.secrets.gid",
-  "build.secrets.mode",
-  "build.secrets.source",
-  "build.secrets.target",
-  "build.secrets.uid",
-  "build.secrets.x-*",
   "build.shm_size",
   "build.ssh",
-  "build.ssh.*",
   "build.tags",
   "build.ulimits",
-  "build.ulimits.*",
-  "build.ulimits.*.hard",
-  "build.ulimits.*.soft",
-  "build.ulimits.*.x-*",
   "build.x-*",
   "cgroup",
   "cgroup_parent",
@@ -329,72 +481,23 @@ const rejectedServicePaths = [
   "cpus",
   "cpuset",
   "credential_spec",
-  "credential_spec.config",
-  "credential_spec.file",
-  "credential_spec.registry",
-  "credential_spec.x-*",
   "depends_on.*.x-*",
   "deploy.endpoint_mode",
   "deploy.labels",
-  "deploy.labels.*",
   "deploy.mode",
   "deploy.placement",
-  "deploy.placement.constraints",
-  "deploy.placement.max_replicas_per_node",
-  "deploy.placement.preferences",
-  "deploy.placement.preferences.spread",
-  "deploy.placement.preferences.x-*",
-  "deploy.placement.x-*",
   "deploy.replicas",
   "deploy.restart_policy",
-  "deploy.restart_policy.condition",
-  "deploy.restart_policy.delay",
-  "deploy.restart_policy.max_attempts",
-  "deploy.restart_policy.window",
-  "deploy.restart_policy.x-*",
   "deploy.rollback_config",
-  "deploy.rollback_config.delay",
-  "deploy.rollback_config.failure_action",
-  "deploy.rollback_config.max_failure_ratio",
-  "deploy.rollback_config.monitor",
-  "deploy.rollback_config.order",
-  "deploy.rollback_config.parallelism",
-  "deploy.rollback_config.x-*",
   "deploy.update_config",
-  "deploy.update_config.delay",
-  "deploy.update_config.failure_action",
-  "deploy.update_config.max_failure_ratio",
-  "deploy.update_config.monitor",
-  "deploy.update_config.order",
-  "deploy.update_config.parallelism",
-  "deploy.update_config.x-*",
   "deploy.x-*",
   "develop",
-  "develop.watch",
-  "develop.watch.action",
-  "develop.watch.exec",
-  "develop.watch.exec.command",
-  "develop.watch.exec.environment",
-  "develop.watch.exec.environment.*",
-  "develop.watch.exec.privileged",
-  "develop.watch.exec.user",
-  "develop.watch.exec.working_dir",
-  "develop.watch.exec.x-*",
-  "develop.watch.ignore",
-  "develop.watch.include",
-  "develop.watch.initial_sync",
-  "develop.watch.path",
-  "develop.watch.target",
-  "develop.watch.x-*",
-  "develop.x-*",
   "device_cgroup_rules",
   "domainname",
   "env_file.format",
   "env_file.path",
   "env_file.required",
   "extends",
-  "extends.file",
-  "extends.service",
   "external_links",
   "healthcheck.x-*",
   "hostname",
@@ -408,10 +511,6 @@ const rejectedServicePaths = [
   "mem_swappiness",
   "memswap_limit",
   "models",
-  "models.*",
-  "models.*.endpoint_var",
-  "models.*.model_var",
-  "models.*.x-*",
   "network_mode",
   "oom_kill_disable",
   "oom_score_adj",
@@ -420,42 +519,16 @@ const rejectedServicePaths = [
   "ports.mode",
   "ports.x-*",
   "post_start",
-  "post_start.command",
-  "post_start.environment",
-  "post_start.environment.*",
-  "post_start.privileged",
-  "post_start.user",
-  "post_start.working_dir",
-  "post_start.x-*",
   "pre_start",
-  "pre_start.command",
-  "pre_start.environment",
-  "pre_start.environment.*",
-  "pre_start.image",
-  "pre_start.per_replica",
-  "pre_start.privileged",
-  "pre_start.user",
-  "pre_start.working_dir",
-  "pre_start.x-*",
   "pre_stop",
-  "pre_stop.command",
-  "pre_stop.environment",
-  "pre_stop.environment.*",
-  "pre_stop.privileged",
-  "pre_stop.user",
-  "pre_stop.working_dir",
-  "pre_stop.x-*",
   "provider",
-  "provider.options",
-  "provider.options.*",
-  "provider.type",
-  "provider.x-*",
   "pull_refresh_after",
   "runtime",
   "scale",
   "stdin_open",
   "storage_opt",
   "tty",
+  "umask",
   "use_api_socket",
   "userns_mode",
   "uts",
@@ -465,10 +538,7 @@ const rejectedServicePaths = [
   "volumes.bind.x-*",
   "volumes.consistency",
   "volumes.image",
-  "volumes.image.subpath",
-  "volumes.image.x-*",
   "volumes.volume.labels",
-  "volumes.volume.labels.*",
   "volumes.volume.nocopy",
   "volumes.volume.x-*",
   "volumes.x-*",
@@ -518,6 +588,27 @@ if (missingPlanTarget !== undefined) {
   );
 }
 
+/**
+ * Resolves the disposition of a matrix path (dot-separated; `*` and `x-*` are literal pattern
+ * segments). An exact key wins; otherwise a rejected key rejects everything nested under it, so the
+ * nearest listed ancestor answers only when it is rejected. Nested keys of a rejected key are not
+ * listed in the matrix.
+ */
+export const composeDispositionFor = (
+  dispositions: Readonly<Record<string, ComposeDispositionEntry>>,
+  path: string,
+): ComposeDispositionEntry | undefined => {
+  if (Object.hasOwn(dispositions, path)) return dispositions[path];
+  for (let end = path.lastIndexOf("."); end > 0; end = path.lastIndexOf(".", end - 1)) {
+    const ancestor = path.slice(0, end);
+    if (Object.hasOwn(dispositions, ancestor)) {
+      const entry = dispositions[ancestor];
+      return entry?.disposition === "rejected" ? entry : undefined;
+    }
+  }
+  return undefined;
+};
+
 export const composeTopLevelDispositions: Readonly<Record<string, ComposeDispositionEntry>> = {
   services: {
     disposition: "normalized",
@@ -559,6 +650,7 @@ export const composeTopLevelDispositions: Readonly<Record<string, ComposeDisposi
       "Preserved losslessly in AppPlan.extensions.compose as inert metadata and never capability-gated.",
   },
   models: rejectedEntry("models"),
+  jobs: rejectedEntry("jobs"),
 };
 
 // YAML tag tokens are not schema key paths. Keep them separate because Compose coverage compares

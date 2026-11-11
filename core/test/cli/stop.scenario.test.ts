@@ -32,9 +32,13 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 
 import { makeLandoPaths } from "@lando/paths";
-const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
+const testStateStoreLayer = Layer.merge(
+  layerTransactionGuard,
+  Layer.succeed(StateStore, makeTestStateStore().service),
+);
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -189,6 +193,7 @@ const makeStopLayer = (
   options: {
     readonly pathsService?: ReturnType<typeof makeLandoPaths>;
     readonly appliedFileSync?: AppliedFileSyncInspection;
+    readonly idle?: boolean;
   } = {},
 ) => {
   const currentPlan = currentTestPlan(plannedApp);
@@ -210,7 +215,7 @@ const makeStopLayer = (
       : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: options.idle ? "idle" : "running" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -251,8 +256,7 @@ const makeStopLayer = (
         app: plannedApp.id,
         service: target.service,
         providerId,
-        status: stopped.has(target.service) ? "stopped" : "running",
-        state: stopped.has(target.service) ? "stopped" : "running",
+        status: stopped.has(target.service) ? ("exited" as const) : ("running" as const),
         publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
@@ -318,6 +322,13 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando stop", () => {
+  test("reports an idle runtime without claiming any services were stopped", async () => {
+    const harness = makeStopLayer(plan, { idle: true });
+    const result = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
+    expect(result.servicesStopped).toEqual([]);
+    expect(harness.destroyCalls).toEqual([]);
+    expect(renderStopAppResult(result)).toBe("stopped: test-stop (runtime idle; nothing was running)");
+  });
   test("plans the app, destroys provider-lando without volumes, publishes stop events, and renders stopped services", async () => {
     const harness = makeStopLayer();
     const result = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
@@ -473,7 +484,7 @@ describe("lando stop", () => {
       capabilities,
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -513,8 +524,7 @@ describe("lando stop", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "stopped",
-          state: "stopped",
+          status: "exited" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -758,7 +768,7 @@ describe("lando stop", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -798,8 +808,7 @@ describe("lando stop", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "stopped",
-          state: "stopped",
+          status: "exited" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),

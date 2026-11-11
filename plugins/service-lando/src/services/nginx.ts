@@ -27,9 +27,11 @@ import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-he
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
+import { uploadDirRegex } from "./upload-dirs.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 export const NGINX_LISTENER = {
@@ -71,15 +73,21 @@ const phpFastcgiCommand = (
   webroot: string,
   ports: { readonly listen: number; readonly fpm: number },
   user: string | undefined,
+  uploadDirs: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> =>
   nginxLauncherCommand({
     user,
-    serverBlock: [
+    httpBlock: [
+      "map $http_x_forwarded_proto $lando_fastcgi_https {",
+      "  default $https;",
+      "  https on;",
+      "}",
       "server {",
       `  listen ${String(ports.listen)};`,
       `  root ${webroot};`,
       "  index index.php index.html;",
       ...nginxErrorPageConfigLines(),
+      ...nginxHiddenPathConfigLines(),
       "  location / {",
       "    try_files $uri $uri/ /index.php?$query_string;",
       "  }",
@@ -88,17 +96,30 @@ const phpFastcgiCommand = (
       // Non-greedy: the first `.php` is the script. A greedy `.+\\.php` lets a
       // later `.php` in the extra path win and run the wrong file.
       "    fastcgi_split_path_info ^(.+?\\.php)(/.*)$;",
+      // Decide on the same variable FastCGI executes, avoiding URI-regex drift
+      // such as the %0A newline bypass.
+      ...(uploadDirs.length === 0
+        ? []
+        : [
+            `    if ($fastcgi_script_name ~* "^/(?:${uploadDirs.map(uploadDirRegex).join("|")})/") { return 403; }`,
+          ]),
       "    if (!-f $document_root$fastcgi_script_name) { return 404; }",
       `    fastcgi_pass ${backend}:${String(ports.fpm)};`,
       "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
       // Absolute: `-c` makes the config file's own directory nginx's
       // configuration prefix, so a bare name would resolve under `/tmp`.
       "    include /etc/nginx/fastcgi_params;",
+      // FPM keeps the last HTTPS parameter, overriding the include's direct-connection value.
+      "    fastcgi_param HTTPS $lando_fastcgi_https if_not_empty;",
       // After the include so this assignment wins. PATH_TRANSLATED is omitted
       // on purpose: setting it can make the extra path look like the script
       // and break Apache-via PATH_INFO parity.
       "    fastcgi_param PATH_INFO $fastcgi_path_info;",
       "    fastcgi_index index.php;",
+      "  }",
+      // Lowercase PHP matched above; deny the remaining variants instead of serving source.
+      "  location ~* \\.php(/|$) {",
+      "    return 403;",
       "  }",
       "}",
     ],
@@ -126,7 +147,13 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
     ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
     ctx.setCommand(
       backend.length > 0
-        ? phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }, service.user)
+        ? phpFastcgiCommand(
+            backend,
+            webroot,
+            { listen: port, fpm: PHP_FPM_PORT },
+            service.user,
+            service.uploadDirs,
+          )
         : defaultStaticCommand("nginx", webroot, port, service.user),
     );
   } else {
@@ -145,7 +172,7 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
     if (service.command !== undefined || service.entrypoint !== undefined)
       return { handledServiceFields: [] };
     resolveWebroot("nginx", service.webroot, service.appMount);
-    return { handledServiceFields: ["webroot"] };
+    return { handledServiceFields: service.backend?.trim() ? ["webroot", "uploadDirs"] : ["webroot"] };
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
@@ -179,7 +206,9 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
     mutator.addBuildStep(landoErrorPagesBuildStep());
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
-    mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user));
+    mutator.setCommand(
+      phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user, service.uploadDirs),
+    );
   });
 };
 

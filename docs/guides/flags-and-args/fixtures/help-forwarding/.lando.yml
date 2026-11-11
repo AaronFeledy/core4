@@ -1,0 +1,12 @@
+name: help-forwarding
+tooling:
+  plain:
+    service: :host
+    cmd: sh record.sh
+  wrapped:
+    service: :host
+    cmd: echo forwarded
+    wrapper: true
+  check-marker:
+    service: :host
+    cmd: sh check-marker.sh

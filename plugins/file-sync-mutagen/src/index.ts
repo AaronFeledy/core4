@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * Mutagen-backed accelerated file sync for the managed Lando provider on
  * native Windows. The production contribution binds verified provider targets
@@ -207,9 +208,10 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 const provisionError = (cause: ToolError): FileSyncStartError =>
   new FileSyncStartError({
     engineId: ENGINE_ID,
-    message: `Failed to provision Mutagen ${MUTAGEN_TOOL_VERSION}.`,
-    remediation:
-      "Re-run `lando setup` after confirming the Mutagen tool manifest entry for this host is present and the download cache is writable.",
+    message: cause.message,
+    remediation: cause._tag.startsWith("Download")
+      ? `${cause.remediation} Then run \`lando setup\`.`
+      : "Re-run `lando setup` after confirming the Mutagen tool manifest entry for this host is present and the download cache is writable.",
     cause,
   });
 
@@ -224,7 +226,7 @@ export const layer = Layer.effect(
           binDir: paths.binDir,
           toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
           force: setupOptions.force,
-        }).pipe(Effect.provideService(Downloader, downloader), Effect.mapError(provisionError)),
+        }).pipe(Effect.provideService(Downloader, downloader), mapFailures(provisionError)),
     });
   }),
 );
@@ -253,7 +255,7 @@ export const layerForContext = (ctx: LandoPluginContext) =>
           ),
           Effect.provideService(Downloader, downloader),
           Effect.provideService(ProcessRunner, runner),
-          Effect.mapError(provisionError),
+          mapFailures(provisionError),
         );
       if (paths.platform !== "win32") return makeFileSyncEngine({ setup });
 

@@ -5,10 +5,18 @@ import {
   type AppPlan,
   ProviderId,
   ServiceName,
+  appIdentityKey,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { DateTime, Effect, Result } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
+import {
+  containerOwnershipLabels,
+  inspectOwnedNativeId,
+  privateNetworkLabels as ownershipPrivateNetworkLabels,
+  ownsServiceContainer,
+  verifiedNativeId,
+} from "../src/native-ownership.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
@@ -53,6 +61,56 @@ const plan: AppPlan = {
 const service = plan.services[web];
 if (service === undefined) throw new TypeError("Missing fixture service");
 const ownedLabels = commonContainerLabels(plan, service);
+
+test.each([
+  { name: "native ownership", labels: ownedLabels, containerId: "owned-id", service: "web", owned: true },
+  { name: "absent labels", labels: {}, containerId: "owned-id", service: "web", owned: false },
+  {
+    name: "role helper",
+    labels: { ...ownedLabels, "dev.lando.role": "helper" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "foreign root",
+    labels: { ...ownedLabels, "dev.lando.app-root": "/other" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "foreign provider",
+    labels: { ...ownedLabels, "dev.lando.provider": "lando" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "foreign owner",
+    labels: { ...ownedLabels, "dev.lando.owner": "other" },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "scratch labels",
+    labels: { ...ownedLabels, "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": plan.id },
+    containerId: "owned-id",
+    service: "web",
+    owned: false,
+  },
+  {
+    name: "different observed service",
+    labels: ownedLabels,
+    containerId: "owned-id",
+    service: "other",
+    owned: false,
+  },
+  { name: "absent identity", labels: ownedLabels, containerId: "", service: "web", owned: false },
+])("service-container mutation requires $name proof", (row) => {
+  expect(ownsServiceContainer(plan, row)).toBe(row.owned);
+});
 const networkLabels = privateNetworkLabels({
   ...planAppIdentity(plan),
   appId: plan.id,
@@ -66,6 +124,9 @@ const fakeApi = (observations: ReadonlyMap<string, object>) => {
     request: (request) =>
       Effect.sync(() => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method !== "GET") return { status: 204, body: "" };
         const observed = observations.get(request.path);
         return observed === undefined
@@ -85,9 +146,9 @@ for (const labels of [
   test(`bring-down refuses replacement container ownership ${JSON.stringify(labels)}`, async () => {
     // Given an owned slot replaced by a different native object at the same name.
     const observations = new Map<string, object>([
-      ["/containers/lando-owned-web/json", { Id: "original", Config: { Labels: ownedLabels } }],
+      ["/containers/lando-owned--web/json", { Id: "original", Config: { Labels: ownedLabels } }],
     ]);
-    observations.set("/containers/lando-owned-web/json", { Id: "replacement", Config: { Labels: labels } });
+    observations.set("/containers/lando-owned--web/json", { Id: "replacement", Config: { Labels: labels } });
     const fake = fakeApi(observations);
     // When
     const result = await Effect.runPromise(bringDown(plan, { api: fake.api, ctx }).pipe(Effect.result));
@@ -103,7 +164,7 @@ for (const labels of [
         ["/networks/private", { Id: "private-id", Labels: networkLabels }],
         ["/networks/shared", { Id: "shared-id" }],
         [
-          "/containers/lando-owned-web/json",
+          "/containers/lando-owned--web/json",
           { Id: "replacement", Config: { Labels: labels }, State: { Running: true } },
         ],
       ]),
@@ -161,7 +222,7 @@ test("bring-up failure retains a legacy unlabeled private network and never muta
     new Map([
       ["/networks/private", { Id: "legacy-network", Name: "private", Labels: {} }],
       ["/networks/shared", { Id: "shared-network", Labels: {} }],
-      ["/containers/lando-owned-web/json", { Id: "foreign", Config: { Labels: {} } }],
+      ["/containers/lando-owned--web/json", { Id: "foreign", Config: { Labels: {} } }],
     ]),
   );
   // When
@@ -184,7 +245,7 @@ for (const path of ["bring-up", "bring-down"] as const) {
         new Map([
           ["/networks/abcdef123456", { Id: "abcdef1234567890", Name: name, Labels: {} }],
           ["/networks/shared", { Id: "shared-network", Labels: {} }],
-          ["/containers/lando-owned-web/json", { Id: "foreign", Config: { Labels: {} } }],
+          ["/containers/lando-owned--web/json", { Id: "foreign", Config: { Labels: {} } }],
         ]),
       );
       // When bring-up fails closed or bring-down validates ownership.
@@ -205,7 +266,7 @@ test("bring-down mutates verified native IDs rather than reusable names", async 
   // Given
   const fake = fakeApi(
     new Map([
-      ["/containers/lando-owned-web/json", { Id: "observed-container", Config: { Labels: ownedLabels } }],
+      ["/containers/lando-owned--web/json", { Id: "observed-container", Config: { Labels: ownedLabels } }],
       ["/networks/private", { Id: "observed-network", Labels: networkLabels }],
     ]),
   );
@@ -264,8 +325,9 @@ for (const name of ["shared", "lando_bridge_network"]) {
       request: (request) =>
         Effect.sync(() => {
           calls.push(request);
+          if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
           if (request.path === "/networks/create") return { status: 201, body: "{}" };
-          if (request.path === "/containers/lando-owned-web/json")
+          if (request.path === "/containers/lando-owned--web/json")
             return { status: 200, body: JSON.stringify({ Id: "foreign", Config: { Labels: {} } }) };
           return { status: 404, body: "" };
         }),
@@ -285,10 +347,109 @@ for (const name of ["shared", "lando_bridge_network"]) {
 
 test("bring-down refuses an owned container without observed native identity", async () => {
   // Given
-  const fake = fakeApi(new Map([["/containers/lando-owned-web/json", { Config: { Labels: ownedLabels } }]]));
+  const fake = fakeApi(new Map([["/containers/lando-owned--web/json", { Config: { Labels: ownedLabels } }]]));
   // When
   const result = await Effect.runPromise(bringDown(plan, { api: fake.api, ctx }).pipe(Effect.result));
   // Then
   expect(Result.isFailure(result)).toBe(true);
   expect(fake.calls.every((call) => call.method === "GET")).toBe(true);
+});
+
+test("verifiedNativeId names a coherent foreign-root container and keeps machine fields", async () => {
+  // Given: a planned name held by another Lando app's coherent ownership labels.
+  const foreignRoot = "/home/me/shop";
+  const name = "lando-owned--web";
+  const labels = {
+    ...containerOwnershipLabels(plan, web),
+    "dev.lando.app-root": foreignRoot,
+    "dev.lando.app": "other-app",
+  };
+  // When
+  const result = await Effect.runPromise(
+    verifiedNativeId(
+      JSON.stringify({ Id: "foreign-id", Name: `/${name}`, Config: { Labels: labels } }),
+      containerOwnershipLabels(plan, web),
+      ctx,
+      { kind: "container", name },
+    ).pipe(Effect.result),
+  );
+  // Then: same error class/operation; message names resource and other root; details carry root.
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ProviderUnavailableError",
+      providerId: "docker",
+      operation: "resource-ownership",
+      message: `Container ${name} already belongs to the Lando app at ${foreignRoot}. Two apps can't use the same name.`,
+      remediation:
+        "Change `name:` in this app's .lando.yml (or destroy the other app) and run `lando start` again.",
+      details: { root: foreignRoot },
+    },
+  });
+});
+
+test("verifiedNativeId keeps the generic refusal for unlabeled or incoherent resources", async () => {
+  // Given: unlabeled and incoherent label sets at the planned name.
+  for (const labels of [
+    {},
+    { "dev.lando.app": "x" },
+    { ...containerOwnershipLabels(plan, web), "dev.lando.app-root": "/other/app", "dev.lando.service": "" },
+  ]) {
+    // When
+    const result = await Effect.runPromise(
+      verifiedNativeId(
+        JSON.stringify({ Id: "unknown-id", Name: "lando-owned-web", Config: { Labels: labels } }),
+        containerOwnershipLabels(plan, web),
+        ctx,
+        { kind: "container", name: "lando-owned-web" },
+      ).pipe(Effect.result),
+    );
+    // Then: today's generic verification message, not the foreign-root remediation.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ProviderUnavailableError",
+        operation: "resource-ownership",
+        message:
+          "Native resource ownership labels or identity could not be verified. No mutation is authorized.",
+      },
+    });
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({
+        remediation:
+          "Inspect the conflicting native resource and restore its verified Lando ownership or move it out of the planned name before retrying. Unlabeled resources cannot be adopted.",
+      });
+      expect(result.failure).not.toHaveProperty("details");
+    }
+  }
+});
+
+test("inspectOwnedNativeId names a coherent foreign-root network", async () => {
+  // Given: another app's coherent private-network ownership at the planned name.
+  const foreignRoot = AbsolutePath.make("/other/app");
+  const foreign = ownershipPrivateNetworkLabels({
+    appId: AppId.make("other"),
+    appRoot: foreignRoot,
+    ownerKey: appIdentityKey("owner", foreignRoot),
+    providerId: plan.provider,
+  });
+  const fake = fakeApi(new Map([["/networks/private", { Id: "net-id", Labels: foreign }]]));
+  // When
+  const result = await Effect.runPromise(
+    inspectOwnedNativeId(
+      fake.api,
+      { kind: "network", name: "private", labels: networkLabels, legacy: "accept" },
+      ctx,
+    ).pipe(Effect.result),
+  );
+  // Then
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ProviderUnavailableError",
+      operation: "resource-ownership",
+      message: `Network private already belongs to the Lando app at ${foreignRoot}. Two apps can't use the same name.`,
+      details: { root: foreignRoot },
+    },
+  });
 });

@@ -1,6 +1,5 @@
 import { compareEnum } from "./enum-classifier.ts";
 import {
-  type CompatibilityException,
   type CompatibilityFinding,
   type JsonSchema,
   type JsonValue,
@@ -10,6 +9,7 @@ import {
   stringArray,
 } from "./model.ts";
 import { normalizeJsonSchema } from "./normalize.ts";
+export { acceptCompatibilityExceptions } from "./accept-exceptions.ts";
 import { compareUnion, compareUnionReplacement } from "./union-classifier.ts";
 
 export type {
@@ -320,20 +320,3 @@ export const classifySchemaChange = (
   jsonEquals(before, after)
     ? []
     : compareNode(normalizeJsonSchema(before), normalizeJsonSchema(after), { polarity, path: "$" });
-
-export const acceptCompatibilityExceptions = (
-  surface: string,
-  findings: ReadonlyArray<CompatibilityFinding>,
-  exceptions: ReadonlyArray<CompatibilityException>,
-): ReadonlyArray<CompatibilityFinding> =>
-  findings.map((entry) => {
-    const exception = exceptions.find(
-      (candidate) =>
-        candidate.surface === surface &&
-        candidate.changeKind === entry.changeKind &&
-        candidate.path === entry.path,
-    );
-    return exception === undefined
-      ? entry
-      : { ...entry, accepted: true, justification: exception.justification };
-  });

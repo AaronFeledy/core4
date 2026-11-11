@@ -4,10 +4,14 @@ import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { dispatchHostOpen } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { openHostProxyTarget } from "@lando/engine/subsystems/host-proxy/open-target";
 import { RedactionService } from "@lando/redaction/service";
-import { writeStdioLine } from "@lando/renderer/io";
 import { AbsolutePath, type HostProxyResponse } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../../runtime/invocation-context";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { BUILT_IN_COMMAND_IDS } from "../generated/command-ids";
 import type { HostProxyCall } from "./call-context";
@@ -32,7 +36,9 @@ export const hostProxyOpenResponse = Effect.fn("HostProxy.openResponse")(functio
   );
   if (result._tag === "Success") return { _tag: "ok" as const };
   const failure = result.failure;
-  const redactor = yield* (yield* RedactionService).forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* (yield* RedactionService).forProfile("secrets", {
+    sourceEnv: (yield* CliInvocation).env,
+  });
   return {
     _tag: "error" as const,
     code:
@@ -64,11 +70,16 @@ export const hostProxyOpenLayer = async (call: OpenCall) => {
   );
 };
 
-export const runHostProxyOpenProcess = async (call: OpenCall, signal: AbortSignal): Promise<void> => {
+export const runHostProxyOpenProcess = async (
+  call: OpenCall,
+  signal: AbortSignal,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
   const layer = await hostProxyOpenLayer(call);
   const response = await Effect.runPromise(
     hostProxyOpenResponse(call).pipe(
       Effect.provide(layer),
+      Effect.provideService(CliInvocation, context),
       Effect.catchCause(() =>
         Effect.succeed({
           _tag: "error" as const,
@@ -81,5 +92,5 @@ export const runHostProxyOpenProcess = async (call: OpenCall, signal: AbortSigna
     ),
     { signal },
   );
-  writeStdioLine("stdout", JSON.stringify(response));
+  context.io.writeStdout(`${JSON.stringify(response)}\n`);
 };

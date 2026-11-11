@@ -35,6 +35,7 @@ const SUPPORTED_TOOLING_FIELDS = [
   "flags",
   "args",
   "arguments",
+  "wrapper",
   "deprecated",
 ] as const;
 
@@ -820,6 +821,18 @@ describe("LandofileShape — tooling: supported schema", () => {
     }
   });
 
+  test("tooling defaults vars accept only literals", () => {
+    const result = Schema.decodeUnknownResult(LandofileShape)({
+      toolingDefaults: { vars: { MODE: "dev", WHO: { sh: "whoami" } } },
+    });
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.map((row) => (row.path ?? []).join("."))).toEqual(["toolingDefaults.vars.WHO"]);
+    }
+  });
+
   test("decodes tooling tasks with cmd, cmds, service, description, and summary", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
@@ -839,7 +852,7 @@ describe("LandofileShape — tooling: supported schema", () => {
     expect(decoded.tooling?.test?.cmds).toEqual(["composer install", "phpunit"]);
   });
 
-  test("decodes supported `vars:` forms: literal, default, sh, and prompt", () => {
+  test("decodes supported `vars:` forms: literal and sh", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({
       tooling: {
         build: {
@@ -848,9 +861,8 @@ describe("LandofileShape — tooling: supported schema", () => {
             MODE: "dev",
             COUNT: 3,
             DEBUG: true,
-            ENV: { default: "development" },
+            ENV: "development",
             SHA: { sh: "git rev-parse HEAD" },
-            TAG: { prompt: "Enter the release tag" },
           },
         },
       },
@@ -859,9 +871,8 @@ describe("LandofileShape — tooling: supported schema", () => {
     expect(vars.MODE).toBe("dev");
     expect(vars.COUNT).toBe(3);
     expect(vars.DEBUG).toBe(true);
-    expect(vars.ENV).toEqual({ default: "development" });
+    expect(vars.ENV).toBe("development");
     expect(vars.SHA).toEqual({ sh: "git rev-parse HEAD" });
-    expect(vars.TAG).toEqual({ prompt: "Enter the release tag" });
   });
 
   test("strict decoding rejects unsupported task fields (`deps`)", () => {
@@ -895,12 +906,21 @@ describe("LandofileShape — tooling: supported schema", () => {
     }
   });
 
-  test("ToolingVar decodes literal, default, sh, and prompt forms", () => {
+  test("ToolingVar decodes literal and sh forms and rejects default and prompt", () => {
     expect(Schema.decodeUnknownSync(ToolingVar)("dev")).toBe("dev");
-    expect(Schema.decodeUnknownSync(ToolingVar)({ default: "latest" })).toEqual({ default: "latest" });
+    expect(Schema.decodeUnknownResult(ToolingVar)({ default: "latest" })._tag).toBe("Failure");
     expect(Schema.decodeUnknownSync(ToolingVar)({ sh: "git rev-parse HEAD" })).toEqual({
       sh: "git rev-parse HEAD",
     });
-    expect(Schema.decodeUnknownSync(ToolingVar)({ prompt: "Tag?" })).toEqual({ prompt: "Tag?" });
+    expect(Schema.decodeUnknownResult(ToolingVar)({ prompt: "Tag?" })._tag).toBe("Failure");
+  });
+
+  test("computed vars accept a target and sensitivity but no false opt-out", () => {
+    expect(
+      Schema.decodeUnknownSync(ToolingVar)({ sh: "git branch", service: ":host", sensitive: true }),
+    ).toEqual({ sh: "git branch", service: ":host", sensitive: true });
+    expect(Schema.decodeUnknownResult(ToolingVar)({ sh: "git branch", sensitive: false })._tag).toBe(
+      "Failure",
+    );
   });
 });

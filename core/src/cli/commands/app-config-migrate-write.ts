@@ -1,10 +1,12 @@
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 import type { ManagedFileTransactionGuard } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { CANONICAL_LANDOFILE } from "./app-config-recipe-analysis.ts";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
@@ -73,7 +75,7 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
   privateFileAccess,
 }: WriteRecipeMigrationRequest) {
   const content = yield* Effect.fromResult(emitLandofileYamlEither(document)).pipe(
-    Effect.mapError(
+    mapFailures(
       () =>
         new AppConfigMigrateError({
           reason: "encode-failed",
@@ -82,9 +84,10 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
         }),
     ),
   );
-  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
+  const env = (yield* CliInvocation).env;
   yield* makeManagedFileTransactions({
-    journalRoot: () => resolveLandoRoots().userDataRoot,
+    journalRoot: () => resolveLandoRoots({ env }).userDataRoot,
     privateFileAccess,
   })
     .run({
@@ -102,7 +105,7 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
       ],
     })
     .pipe(
-      Effect.mapError(
+      mapFailures(
         (error) =>
           new AppConfigMigrateCommitError({
             phase: error.phase,

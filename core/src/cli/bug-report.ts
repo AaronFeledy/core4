@@ -1,5 +1,5 @@
 import { types } from "node:util";
-import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
+import { resolveLandoRoots } from "@lando/paths";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { type ProjectedFailure, taggedErrorJson } from "@lando/sdk/command-result";
 import { type FailureRole, ValidationIssue } from "@lando/sdk/schema";
@@ -91,7 +91,7 @@ export const buildBugReport = (input: {
     current = ownCause(current);
   }
   const ctx = input.context;
-  const cacheDir = ctx.cacheRoot ?? resolveUserCacheRoot();
+  const cacheDir = ctx.cacheRoot ?? resolveLandoRoots({ env: input.sourceEnv ?? process.env }).userCacheRoot;
   const diagnostics = [error, ...causes];
   const app = error.app;
   const appId =
@@ -119,11 +119,24 @@ export const buildBugReport = (input: {
   ).map(([key, value]) => [key, redactor.redactString(value)] as const);
   const issues = diagnostics.flatMap((item) => item.issues ?? []);
   const failures = Array.isArray(error.failures) ? redactor.redactValue(error.failures) : undefined;
+  const text: Record<"message" | "remediation", string[]> = { message: [], remediation: [] };
+  const sentences = (value: string): ReadonlyArray<string> =>
+    value
+      .split(/\n|(?<=[.!?])\s+/u)
+      .map((sentence) => sentence.trim().replace(/\s+/gu, " "))
+      .filter((sentence) => sentence.length > 0);
+  for (const diagnostic of diagnostics) {
+    for (const key of ["message", "remediation"] as const) {
+      const value = diagnostic[key];
+      const keptSentences = new Set(text[key].flatMap(sentences));
+      if (!sentences(value).every((sentence) => keptSentences.has(sentence))) text[key].push(value);
+    }
+  }
   return {
     code: redactor.redactString(error._tag),
     commandId: ctx.commandId,
-    body: redactor.redactString([...new Set(diagnostics.map((item) => item.message))].join("\n")),
-    remediation: redactor.redactString([...new Set(diagnostics.map((item) => item.remediation))].join(" ")),
+    body: redactor.redactString(text.message.join("\n")),
+    remediation: redactor.redactString(text.remediation.join(" ")),
     appId,
     providerId,
     logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,
@@ -174,10 +187,13 @@ export const formatBugReport = (
     readonly rendererMode: RendererMode;
     readonly redactor?: Redactor;
     readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
+    readonly usage?: boolean;
   },
 ): string => {
   const envelope = buildBugReport(input);
-  return input.rendererMode === "json" ? renderJsonBugReport(envelope) : renderPlainBugReport(envelope);
+  return input.rendererMode === "json"
+    ? renderJsonBugReport(envelope)
+    : renderPlainBugReport(envelope, { usage: input.usage === true });
 };
 
 export const redactedErrorDetails = redactDetails;

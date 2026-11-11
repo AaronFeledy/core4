@@ -132,9 +132,9 @@ describe("runToolingStepProgram conditions and leaves", () => {
     // Then
     expect(exit._tag).toBe("Success");
     expect(tools.seen).toEqual([
-      { kind: "cmd", command: "event=pre-start", item: undefined, key: undefined },
-      { kind: "cmd", command: "cmd=a:first", item: "first", key: "a" },
-      { kind: "cmd", command: "cmd=z:last", item: "last", key: "z" },
+      { kind: "cmd", command: "event='pre-start'", item: undefined, key: undefined },
+      { kind: "cmd", command: "cmd='a':'first'", item: "first", key: "a" },
+      { kind: "cmd", command: "cmd='z':'last'", item: "last", key: "z" },
       { kind: "task", command: "task-x", item: undefined, key: undefined },
       { kind: "command", command: "info-x", item: undefined, key: undefined },
     ]);
@@ -154,7 +154,7 @@ describe("runToolingStepProgram conditions and leaves", () => {
     // Then
     expect(exit._tag).toBe("Success");
     expect(tools.seen.map(({ command }) => command)).toEqual([
-      "echo $CONTAINER_VAR done fallback ${ESCAPED}",
+      "echo $CONTAINER_VAR 'done' fallback ${ESCAPED}",
     ]);
   });
 
@@ -303,12 +303,12 @@ describe("runToolingStepProgram conditions and leaves", () => {
     // Then
     expect(exit._tag).toBe("Success");
     expect(tools.seen.map(({ command }) => command)).toEqual([
-      "list=0:b",
-      "list=1:a",
-      "matrix=linux-x64",
-      "matrix=linux-arm64",
-      "matrix=mac-x64",
-      "matrix=mac-arm64",
+      "list='0':'b'",
+      "list='1':'a'",
+      "matrix='linux'-'x64'",
+      "matrix='linux'-'arm64'",
+      "matrix='mac'-'x64'",
+      "matrix='mac'-'arm64'",
     ]);
   });
 

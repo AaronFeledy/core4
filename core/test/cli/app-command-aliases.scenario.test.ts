@@ -193,7 +193,7 @@ test("shipping entry aliases honor app disablement before fast paths", async () 
 
     // Then
     for (const result of results) {
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain("UnknownCommandError");
     }
   } finally {
@@ -230,7 +230,7 @@ test("registered scratch alias honors app disablement while its canonical comman
     ]);
 
     // Then
-    expect(aliasResult.exitCode).toBe(1);
+    expect(aliasResult.exitCode).toBe(2);
     expect(aliasResult.stderr).toContain("UnknownCommandError");
     expect(canonicalResult.exitCode).toBe(0);
     expect(canonicalResult.stdout).toContain("apps:scratch:start");

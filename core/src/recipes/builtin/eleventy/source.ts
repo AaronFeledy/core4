@@ -24,8 +24,14 @@ export const source = {
         service: "builder",
         description: "Run the Eleventy CLI inside the builder service.",
         cmds: ["npx @11ty/eleventy"],
+        wrapper: true,
       },
-      npm: { service: "builder", description: "Run npm inside the builder service.", cmds: ["npm"] },
+      npm: {
+        service: "builder",
+        description: "Run npm inside the builder service.",
+        cmds: ["npm"],
+        wrapper: true,
+      },
     },
   },
   postInit: [

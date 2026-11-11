@@ -1,6 +1,14 @@
 import { Effect, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
-import { AppId, type ProxyApplyResult, RouteEvidence, type RoutePlan, ServiceName } from "../schema/index.ts";
+import {
+  AppId,
+  type AppRouteOwner,
+  type ProxyApplyResult,
+  RouteEvidence,
+  type RoutePlan,
+  ServiceName,
+} from "../schema/index.ts";
 import type { RouterServiceShape } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
 
@@ -16,7 +24,7 @@ const requireContract = (
 
 export interface RouterServiceContractHarness {
   readonly service: RouterServiceShape;
-  readonly readRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
+  readonly readRoutes: (owner: AppRouteOwner) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 }
 
 const contractRoutes = (): ReadonlyArray<RoutePlan> => [
@@ -45,48 +53,46 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
   if (proxy.prepare !== undefined) {
     yield* proxy
       .prepare({ defaultDomain: "lndo.site" })
-      .pipe(Effect.mapError((cause) => failure("prepare resolves before setup", cause)));
+      .pipe(mapFailures((cause) => failure("prepare resolves before setup", cause)));
   }
   yield* Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
-    Effect.mapError((cause) => failure("setup resolves", cause)),
+    mapFailures((cause) => failure("setup resolves", cause)),
   );
   if (proxy.prepare !== undefined) {
     yield* proxy
       .prepare({ defaultDomain: "lndo.site" })
-      .pipe(Effect.mapError((cause) => failure("prepare resolves before setup", cause)));
+      .pipe(mapFailures((cause) => failure("prepare resolves before setup", cause)));
   }
   yield* Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
-    Effect.mapError((cause) => failure("setup is idempotent", cause)),
+    mapFailures((cause) => failure("setup is idempotent", cause)),
   );
+  yield* proxy.revalidateStartup.pipe(mapFailures((cause) => failure("revalidateStartup resolves", cause)));
   yield* proxy.revalidateStartup.pipe(
-    Effect.mapError((cause) => failure("revalidateStartup resolves", cause)),
-  );
-  yield* proxy.revalidateStartup.pipe(
-    Effect.mapError((cause) => failure("revalidateStartup is idempotent", cause)),
+    mapFailures((cause) => failure("revalidateStartup is idempotent", cause)),
   );
   yield* requireContract(proxy.capabilities.wildcardHostnames, "declares wildcard hostname support");
   yield* requireContract(proxy.capabilities.tls, "declares TLS intent support");
   yield* requireContract(proxy.capabilities.pathPrefixes, "declares path-prefix support");
 
-  const app = AppId.make("contract-test-app");
+  const owner: AppRouteOwner = { id: AppId.make("contract-test-app"), ownerKey: "c".repeat(64) };
   const routes = contractRoutes();
-  const beforeObservation = yield* harness.readRoutes(app);
+  const beforeObservation = yield* harness.readRoutes(owner);
   const evidence = yield* proxy
-    .observeRoutes(app, routes)
-    .pipe(Effect.mapError((cause) => failure("read-only route observation resolves", cause)));
+    .observeRoutes(owner, routes)
+    .pipe(mapFailures((cause) => failure("read-only route observation resolves", cause)));
   yield* requireContract(
     Schema.is(RouteEvidence)(evidence),
     "observation returns explicit route evidence",
     evidence,
   );
   yield* requireContract(
-    JSON.stringify(yield* harness.readRoutes(app)) === JSON.stringify(beforeObservation),
+    JSON.stringify(yield* harness.readRoutes(owner)) === JSON.stringify(beforeObservation),
     "observation does not configure requested routes",
   );
   const result = yield* proxy
-    .applyRoutes(routes, app)
-    .pipe(Effect.mapError((cause) => failure("applyRoutes resolves", cause)));
-  yield* requireContract(result.app === app, "apply result identifies the app", result);
+    .applyRoutes(routes, owner)
+    .pipe(mapFailures((cause) => failure("applyRoutes resolves", cause)));
+  yield* requireContract(result.app === owner.id, "apply result identifies the owner app id", result);
   yield* requireContract(result.appliedRoutes.length === 2, "apply result reports every route", result);
   yield* requireContract(
     result.authorities.some((authority) => authority.scheme === "https" && authority.port !== 80),
@@ -94,7 +100,7 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
     result,
   );
 
-  const applied = yield* harness.readRoutes(app);
+  const applied = yield* harness.readRoutes(owner);
   yield* requireContract(
     applied[0]?.backend.port === 8088 && applied[1]?.backend.protocol === "https",
     "preserves named non-80 and HTTPS backends",
@@ -102,41 +108,40 @@ export const runRouterServiceContractSuite = Effect.fnUntraced(function* (
   );
 
   const replacementResult = yield* proxy
-    .applyRoutes(routes.slice(1), app)
-    .pipe(Effect.mapError((cause) => failure("re-apply resolves", cause)));
-  const reconciled = yield* harness.readRoutes(app);
+    .applyRoutes(routes.slice(1), owner)
+    .pipe(mapFailures((cause) => failure("re-apply resolves", cause)));
+  const reconciled = yield* harness.readRoutes(owner);
   yield* requireContract(
     replacementResult.appliedRoutes.length === 1 && reconciled.length === 1,
     "re-apply removes stale routes",
     { replacementResult, reconciled },
   );
 
-  const status = yield* proxy.status.pipe(Effect.mapError((cause) => failure("status resolves", cause)));
+  const status = yield* proxy.status.pipe(mapFailures((cause) => failure("status resolves", cause)));
   yield* requireContract(status.state === "running", "status reports running after setup", status);
-  yield* proxy.stop.pipe(Effect.mapError((cause) => failure("stop resolves", cause)));
+  yield* proxy.stop.pipe(mapFailures((cause) => failure("stop resolves", cause)));
   const stopped = yield* proxy.status.pipe(
-    Effect.mapError((cause) => failure("status resolves after stop", cause)),
+    mapFailures((cause) => failure("status resolves after stop", cause)),
   );
   yield* requireContract(
     stopped.state === "stopped" && stopped.configuredApps.length === 0,
     "stop durably removes configured routing without requiring process-local state",
     stopped,
   );
-  yield* requireContract((yield* harness.readRoutes(app)).length === 0, "stop clears routes");
-  yield* proxy.removeRoutes(app).pipe(Effect.mapError((cause) => failure("removeRoutes resolves", cause)));
-  yield* proxy
-    .removeRoutes(app)
-    .pipe(Effect.mapError((cause) => failure("removeRoutes is idempotent", cause)));
-  yield* requireContract((yield* harness.readRoutes(app)).length === 0, "removeRoutes clears routes");
+  yield* requireContract((yield* harness.readRoutes(owner)).length === 0, "stop clears routes");
+  yield* proxy.removeRoutes(owner).pipe(mapFailures((cause) => failure("removeRoutes resolves", cause)));
+  yield* proxy.removeRoutes(owner).pipe(mapFailures((cause) => failure("removeRoutes is idempotent", cause)));
+  yield* requireContract((yield* harness.readRoutes(owner)).length === 0, "removeRoutes clears routes");
 });
 
 export const makeRouterServiceContractSuite = runRouterServiceContractSuite;
 
 export const makeTestRouterService = (): RouterServiceShape & {
-  readonly routesByApp: ReadonlyMap<string, ReadonlyArray<RoutePlan>>;
-  readonly readRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
+  readonly routesByOwner: ReadonlyMap<string, ReadonlyArray<RoutePlan>>;
+  readonly readRoutes: (owner: AppRouteOwner) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 } => {
-  const routesByApp = new Map<string, ReadonlyArray<RoutePlan>>();
+  const routesByOwner = new Map<string, ReadonlyArray<RoutePlan>>();
+  const ownersByKey = new Map<string, AppRouteOwner>();
   let running = false;
   let observed = false;
   return {
@@ -149,11 +154,12 @@ export const makeTestRouterService = (): RouterServiceShape & {
         observed = true;
       }),
     revalidateStartup: Effect.void,
-    applyRoutes: (routes, app) =>
+    applyRoutes: (routes, owner) =>
       Effect.sync((): ProxyApplyResult => {
-        routesByApp.set(String(app), routes);
+        routesByOwner.set(owner.ownerKey, routes);
+        ownersByKey.set(owner.ownerKey, owner);
         return {
-          app,
+          app: owner.id,
           appliedRoutes: routes,
           authorities: routes.flatMap((route) =>
             (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
@@ -164,10 +170,14 @@ export const makeTestRouterService = (): RouterServiceShape & {
           ),
         };
       }),
-    removeRoutes: (app) => Effect.sync(() => void routesByApp.delete(String(app))),
-    observeRoutes: (app, requestedRoutes) =>
+    removeRoutes: (owner) =>
+      Effect.sync(() => {
+        routesByOwner.delete(owner.ownerKey);
+        ownersByKey.delete(owner.ownerKey);
+      }),
+    observeRoutes: (owner, requestedRoutes) =>
       Effect.sync((): RouteEvidence => {
-        const configured = routesByApp.get(String(app)) ?? [];
+        const configured = routesByOwner.get(owner.ownerKey) ?? [];
         const publications = configured
           .filter((route) =>
             requestedRoutes.some(
@@ -207,15 +217,16 @@ export const makeTestRouterService = (): RouterServiceShape & {
     status: Effect.sync(() => ({
       state: running ? ("running" as const) : ("stopped" as const),
       authorities: [],
-      configuredApps: [...routesByApp.keys()].map((app) => AppId.make(app)),
+      configuredApps: [...ownersByKey.values()].map((entry) => entry.id),
     })),
     stop: Effect.sync(() => {
       running = false;
       observed = true;
-      routesByApp.clear();
+      routesByOwner.clear();
+      ownersByKey.clear();
     }),
-    readRoutes: (app) => Effect.succeed(routesByApp.get(String(app)) ?? []),
-    routesByApp,
+    readRoutes: (owner) => Effect.succeed(routesByOwner.get(owner.ownerKey) ?? []),
+    routesByOwner,
   };
 };
 

@@ -53,7 +53,7 @@ test.each([
     const file = join(root, ".lando.yml");
     await writeFile(
       file,
-      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    home: false\n    ${field}\n`,
+      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n    ${field}\n`,
     );
     const loaded = await Effect.runPromise(
       loadLandofileFile(file, {
@@ -89,7 +89,7 @@ test.each([
     const file = join(root, ".lando.yml");
     await writeFile(
       file,
-      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    home: false\n    ${field}: "{{ ${expression} }}"\n`,
+      `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n    ${field}: "{{ ${expression} }}"\n`,
     );
     const loaded = await Effect.runPromise(loadLandofileFile(file));
     // When
@@ -108,6 +108,7 @@ test("rejects a non-string result at a plan-time text site", async () => {
     services: {
       [ServiceName.make("database")]: {
         type: serviceType.id,
+        image: "alpine:3.22",
         database: "{{ eq(app.name, 'x') }}",
       },
     },
@@ -131,6 +132,7 @@ test("materializes app and proxy expressions before service resolution and tooli
           services: {
             [ServiceName.make("database")]: {
               type: serviceType.id,
+              image: "alpine:3.22",
               home: false as const,
               database: "{{ app.name }}",
             },
@@ -185,6 +187,7 @@ test("expands app.name inside Backdrop settings JSON without changing the author
         services: {
           [ServiceName.make("appserver")]: {
             type: serviceType.id,
+            image: "alpine:3.22",
             home: false as const,
             environment: { BACKDROP_SETTINGS: deferred },
           },
@@ -211,6 +214,7 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
         services: {
           [ServiceName.make("database")]: {
             type: serviceType.id,
+            image: "alpine:3.22",
             home: false as const,
             database: "{{ app.nope }}",
           },

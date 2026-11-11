@@ -37,6 +37,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { layerTransactionGuard } from "../services/landofile-layer.ts";
 
 export { destroyTreeId };
 
@@ -93,6 +94,7 @@ export const makeHarness = (
     readonly dataMover?: typeof DataMover.Service;
     readonly quiesceEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyAvailable?: boolean;
+    readonly router?: typeof RouterService.Service;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly stateStore?: StateStoreShape;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
@@ -128,6 +130,7 @@ export const makeHarness = (
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
+    layerTransactionGuard,
     options.dataMover === undefined ? emptySnapshotsLayer : Layer.succeed(DataMover, options.dataMover),
     PrivateFileAccessService.layer,
     // The app root holds no Landofile, so teardown skips Landofile events before it would plan.
@@ -173,7 +176,9 @@ export const makeHarness = (
         query: () => Effect.succeed([]),
       }),
     ),
-    ...(options.proxyAvailable === false ? [] : [Layer.succeed(RouterService, TestRouterService)]),
+    ...(options.proxyAvailable === false
+      ? []
+      : [Layer.succeed(RouterService, options.router ?? TestRouterService)]),
     ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
   );
   return { layer, events };

@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { DestroyAppOptions } from "@lando/sdk/app";
+import type { DestroyAppError, DestroyAppOptions } from "@lando/sdk/app";
 import { AppResolveError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PreDestroyEvent } from "@lando/sdk/events";
 import {
@@ -12,13 +12,14 @@ import {
 import { type AppliedOrphanGroup, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { pendingStartDisposal, readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { ownedSnapshots } from "./destroy-snapshots.ts";
 import { type LandofileEventPlan, resolveLandofileEventPlan } from "./landofile-events.ts";
+import { prepareMissingRootStartDisposal } from "./missing-root-start-disposal.ts";
+import type { RetirementReceipt } from "./superseded-realizations.ts";
 
-/** Read-only evidence for one invocation, never a fabricated desired/applied plan. */
+/** Verified teardown evidence, after preparing any idle owners for live preflight. */
 export type TeardownPlan = {
   readonly evidence: PreDestroyEvent["evidence"] | undefined;
   readonly root: AbsolutePath;
@@ -38,6 +39,8 @@ export type TeardownPlan = {
   readonly snapshots: ReadonlyArray<SnapshotInfo>;
   readonly followUpOrphans: boolean;
   readonly options: DestroyAppOptions;
+  readonly retire?: Effect.Effect<RetirementReceipt | undefined, DestroyAppError>;
+  readonly missingStart?: Effect.Success<ReturnType<typeof prepareMissingRootStartDisposal>>;
 };
 
 export const uniqueDestroyRefs = (refs: ReadonlyArray<AppRef>): ReadonlyArray<AppRef> => [
@@ -111,9 +114,16 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     readDiscardableStart(app).pipe(Effect.map(({ pending }) => ({ app, pending }))),
   );
   const unfinished = pending.filter(({ pending }) => pending !== null && pending.phase !== "completed");
+  const registry = yield* RuntimeProviderRegistry;
   let retained: ResolvedAppTarget | undefined;
   const first = unfinished[0];
-  if (first !== undefined) {
+  const missingStart =
+    request.missingRoot === true && first?.pending != null
+      ? yield* prepareMissingRootStartDisposal(first.app, first.pending, {
+          volumes: options.volumes === true,
+        })
+      : undefined;
+  if (first !== undefined && missingStart === undefined) {
     retained =
       desiredResult === undefined
         ? yield* request.desired.pipe(Effect.catch(() => Effect.succeed(undefined)))
@@ -148,11 +158,13 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     return yield* Effect.fail(desiredResult.failure);
   const authored =
     applied !== undefined && retained === undefined ? yield* resolveLandofileEventPlan(applied) : undefined;
-  const registry = yield* RuntimeProviderRegistry;
   if (desired !== undefined) yield* registry.assertAppliedStateReadable?.(desired.plan) ?? Effect.void;
-  const disposal = retained ?? applied;
-  const target = disposal === undefined ? undefined : yield* resolveMysqlVolumeTarget(disposal, registry);
-  const refs = uniqueDestroyRefs([...recorded, ...(retained === undefined ? [] : [retained.app])]);
+  const target = retained ?? applied;
+  const refs = uniqueDestroyRefs([
+    ...recorded,
+    ...(retained === undefined ? [] : [retained.app]),
+    ...(missingStart === undefined ? [] : [missingStart.app]),
+  ]);
   if (inventory.length > 0 && refs.length === 0)
     return yield* Effect.fail(
       new AppResolveError({
@@ -164,7 +176,7 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     );
   return {
     evidence:
-      retained !== undefined
+      retained !== undefined || missingStart !== undefined
         ? "retained"
         : applied !== undefined
           ? "applied"
@@ -188,5 +200,6 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
     snapshots,
     followUpOrphans: request.missingRoot === true && applied !== undefined,
     options,
+    ...(missingStart === undefined ? {} : { missingStart }),
   } satisfies TeardownPlan;
 });

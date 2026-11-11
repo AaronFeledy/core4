@@ -24,7 +24,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const service = (input: Partial<Omit<ServicePlan, "nonSqlCreds">>): ServicePlan => ({
+const service = (input: Partial<Omit<ServicePlan, "nonSqlCreds" | "sqlite">>): ServicePlan => ({
   name: serviceName,
   type: "node",
   provider: providerId,

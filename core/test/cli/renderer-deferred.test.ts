@@ -20,7 +20,7 @@ describe("DEFERRED_RENDERER_MODES", () => {
 
   test("any future entry must carry a remediation pointing at the current command list", () => {
     for (const [name, surface] of DEFERRED_RENDERER_MODES.entries()) {
-      expect(surface.remediation).toContain("not available yet");
+      expect(surface.remediation).toContain("not available");
       expect(surface.remediation.length).toBeGreaterThan(40);
       expect(name).toMatch(/^[a-z][a-z0-9-]*$/u);
     }
@@ -54,7 +54,7 @@ describe("DEFERRED_RENDERER_FLAGS (US-040 contract)", () => {
 
   test("every entry carries actionable remediation", () => {
     for (const [flag, surface] of DEFERRED_RENDERER_FLAGS.entries()) {
-      expect(surface.remediation).toContain("not available yet");
+      expect(surface.remediation).toContain("not available");
       expect(surface.remediation.length).toBeGreaterThan(40);
       expect(flag.startsWith("--")).toBe(true);
     }
@@ -75,16 +75,14 @@ describe("deferredRendererFlagError", () => {
     expect(err.commandId).toBe("cli:renderer-selection");
     expect(err.message).toContain("--no-expand");
     expect(err.remediation).toContain("default Enter/Esc task-detail expand/collapse keybindings");
-    expect(err.remediation).toContain(
-      "User-configurable expand/collapse control flags are not available yet",
-    );
+    expect(err.remediation).toContain("User-configurable expand/collapse control flags are not available");
   });
 
   test("--tail remediation says the control flag, not the fixed tail, is unavailable", () => {
     const err = deferredRendererFlagError("--tail");
     expect(err.remediation).toContain("task.detail");
     expect(err.remediation).toContain("fixed `task.detail` tail");
-    expect(err.remediation).toContain("control flag is not available yet");
+    expect(err.remediation).toContain("control flag is not available");
   });
 });
 

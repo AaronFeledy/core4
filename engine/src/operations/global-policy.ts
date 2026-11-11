@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
-import { type AppPlan, type ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServiceConfig, ServicePlan, isActiveRunStatus } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
@@ -19,8 +19,10 @@ import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import {
   GlobalReconciliationPending,
   type GlobalReconciliationTarget,
+  pendingWork,
   readGlobalReconciliation,
   recordGlobalReconciliation,
+  transitionGlobalPending,
 } from "../global-app/reconciliation.ts";
 import {
   GlobalContributionStateSchema,
@@ -28,7 +30,9 @@ import {
   assertGlobalResolution,
   projectEffectiveGlobalResolution,
 } from "../global-app/resolution.ts";
+import { runtimeOnline } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
+import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import { readGlobalConsumerReservations } from "./global-consumer-lease.ts";
 import {
   GlobalConsumerProtectionError,
@@ -76,14 +80,6 @@ export const GlobalPolicyChangeResultSchema = Schema.Struct({
 export type GlobalPolicyChangeResult = typeof GlobalPolicyChangeResultSchema.Type;
 
 type Operation = GlobalPolicyChangeResult["operation"];
-type Pending = typeof GlobalReconciliationPending.Type;
-
-const pendingWork = (phase: Pending["phase"], services: ReadonlyArray<string>, message: string): Pending => ({
-  phase,
-  services: [...services],
-  message,
-});
-
 const dependencyBlockers = (
   resolution: GlobalResolution,
   selected: ReadonlySet<string>,
@@ -309,7 +305,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           Effect.gen(function* () {
             const registry = yield* RuntimeProviderRegistry;
             const provider = yield* registry.select(applied.provider);
-            if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running) return undefined;
+            if (!(yield* runtimeOnline(provider))) return undefined;
             const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
             const active = new Set(
               observations
@@ -317,7 +313,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
                   (service) =>
                     service.appRoot === applied.root &&
                     service.providerId === applied.provider &&
-                    ["running", "paused", "restarting"].includes(service.status),
+                    isActiveRunStatus(service.status),
                 )
                 .map((service) => String(service.service)),
             );
@@ -366,7 +362,9 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           ...(placement._tag === "Success"
             ? { providerId: placement.success.realized ?? placement.success.desired }
             : {}),
-          routerId: (yield* RouterService).id,
+          routerId: yield* Effect.map(RouterService, (router) =>
+            unavailableRouterReason(router) === undefined ? router.id : undefined,
+          ),
         });
   const reservations =
     operation === "enable" ? undefined : yield* Effect.result(readGlobalConsumerReservations(ids));
@@ -529,21 +527,25 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
     plugins: prepared.plugins,
     states: effectiveCandidate.entries.filter((entry) => selected.has(entry.id)),
     servicesRemoved: [],
-    pending: [
-      ...(operation === "enable" || ids.length === 0
-        ? []
-        : [pendingWork("evidence", ids, "Selected cleanup has not yet acquired ownership evidence.")]),
-      ...(priorRouteIds.length === 0
-        ? []
-        : [
-            pendingWork(
-              "routes",
-              priorRouteIds,
-              "Earlier route withdrawal is still unconfirmed; applied-plan changes do not complete it.",
-            ),
-          ]),
-      pendingWork("generation", contributionIds, "Generated configuration has not yet been reconciled."),
-    ],
+    pending: yield* Effect.fromResult(
+      transitionGlobalPending([], "policy", {
+        adds: [
+          ...(operation === "enable" || ids.length === 0
+            ? []
+            : [pendingWork("evidence", ids, "Selected cleanup has not yet acquired ownership evidence.")]),
+          ...(priorRouteIds.length === 0
+            ? []
+            : [
+                pendingWork(
+                  "routes",
+                  priorRouteIds,
+                  "Earlier route withdrawal is still unconfirmed; applied-plan changes do not complete it.",
+                ),
+              ]),
+          pendingWork("generation", contributionIds, "Generated configuration has not yet been reconciled."),
+        ],
+      }),
+    ),
   };
   const causes: unknown[] = supersessionUncertainties.map(
     (message) =>
@@ -599,16 +601,19 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
     receipt = {
       ...receipt,
       dist: generation.success,
-      pending: receipt.pending.filter((entry) => entry.phase !== "generation"),
+      pending: yield* Effect.fromResult(
+        transitionGlobalPending(receipt.pending, "generation", { clears: [{ phase: "generation" }] }),
+      ),
     };
   const recorded = yield* Effect.result(recordProgress(receipt, targets, supersededIds));
   if (recorded._tag === "Failure") {
     receipt = {
       ...receipt,
-      pending: [
-        ...receipt.pending,
-        pendingWork("evidence", ids, "The reconciliation receipt could not be saved."),
-      ],
+      pending: yield* Effect.fromResult(
+        transitionGlobalPending(receipt.pending, "receiptFailure", {
+          adds: [pendingWork("evidence", ids, "The reconciliation receipt could not be saved.")],
+        }),
+      ),
     };
     return yield* Effect.fail(incomplete(receipt, [...causes, recorded.failure]));
   }

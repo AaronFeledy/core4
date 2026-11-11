@@ -3,13 +3,19 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readInstalledPluginRegistry, recordInstalledPlugin } from "@lando/engine/plugins/installed-registry";
+import {
+  mutateInstalledPluginRegistry,
+  readInstalledPluginRegistry,
+  recordInstalledPlugin,
+  removeInstalledPlugin,
+} from "@lando/engine/plugins/installed-registry";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
+import type { NpmRegistryTransport } from "@lando/source-acquisition";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Layer } from "effect";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins";
-import type { NpmRegistryClient } from "../../src/recipes/npm-source";
 
 const roots: string[] = [];
 const name = "review-plugin";
@@ -71,15 +77,20 @@ async function fixture() {
         get: (key) => Effect.succeed((key === "userDataRoot" ? root : undefined) as never),
       }),
     ),
+    makeTestStateStore().layer,
   );
-  const runner = (client: NpmRegistryClient) =>
+  const runner = (client: Pick<NpmRegistryTransport, "packument">) =>
     Effect.runPromise(
       makePluginUpdateRunner({
+        stateStore: makeTestStateStore().service,
         userDataRoot: root,
         pluginsRoot,
         cacheRoot: join(root, "cache"),
-        registryClient: client,
-        fetcher: { fetch: async () => bytes },
+        registryClient: {
+          registryFor: () => "https://registry.example/",
+          tarball: async () => bytes,
+          ...client,
+        },
       }).pipe(Effect.provide(layer)),
     );
   return { pluginsRoot, current, packument, runner };
@@ -93,7 +104,7 @@ test.each([false, true])(
     // Given: a floating plugin is installed.
     const f = await fixture();
     const runner = await f.runner({
-      fetchPackument: async () => {
+      packument: async () => {
         throw new Error("must not resolve candidates");
       },
     });
@@ -115,7 +126,7 @@ test("core closure includes incompatible plugins added after inventory", async (
   const f = await fixture();
   const addedPath = join(f.pluginsRoot, "added", "1.0.0");
   const runner = await f.runner({
-    fetchPackument: async () => {
+    packument: async () => {
       await mkdir(addedPath, { recursive: true });
       await writeFile(
         join(addedPath, "package.json"),
@@ -148,7 +159,7 @@ test("core closure includes incompatible plugins added after inventory", async (
 test("core replacement revalidates changes made after the plugin receipt", async () => {
   // Given: planning and plugin activation finished successfully.
   const f = await fixture();
-  const runner = await f.runner({ fetchPackument: async () => f.packument });
+  const runner = await f.runner({ packument: async () => f.packument });
   const result = await Effect.runPromise(runner(input));
   expect(result.blockCore).toBe(false);
   const active = (await readInstalledPluginRegistry(f.pluginsRoot))[name];
@@ -190,11 +201,26 @@ test.each(["source", "path", "selector"])("same-version %s drift is not overwrit
     version: "1.0.0",
     path: field === "path" ? `${f.current}-other` : f.current,
     requestedSelector: field === "selector" ? "1.0.0" : "latest",
-    ...(field === "source" ? { source: "linked" as const, linkedPath: f.current } : {}),
+    ...(field === "source"
+      ? { source: "linked" as const, linkedPath: f.current }
+      : { source: "installed" as const }),
   };
   const runner = await f.runner({
-    fetchPackument: async () => {
-      await recordInstalledPlugin(f.pluginsRoot, changed);
+    packument: async () => {
+      if (field === "source") {
+        await removeInstalledPlugin(f.pluginsRoot, name);
+        await Effect.runPromise(
+          mutateInstalledPluginRegistry(
+            {
+              pluginsRoot: f.pluginsRoot,
+              mutation: { operation: "link", entry: { ...changed, linkedPath: f.current } },
+            },
+            (commit) => Effect.promise(commit),
+          ),
+        );
+      } else {
+        await recordInstalledPlugin(f.pluginsRoot, changed);
+      }
       return f.packument;
     },
   });
@@ -208,10 +234,10 @@ test.each(["source", "path", "selector"])("same-version %s drift is not overwrit
 test("a stale updater retains the version activated by another updater", async () => {
   // Given: a second updater wins while the first resolves metadata.
   const f = await fixture();
-  const winner = await f.runner({ fetchPackument: async () => f.packument });
+  const winner = await f.runner({ packument: async () => f.packument });
   let completed = false;
   const stale = await f.runner({
-    fetchPackument: async () => {
+    packument: async () => {
       if (!completed) {
         completed = true;
         expect((await Effect.runPromise(winner(input))).updatedPlugins).toEqual([name]);

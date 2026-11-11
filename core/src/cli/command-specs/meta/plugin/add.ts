@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { yesFlag } from "../../../spec/confirmation-flag";
 import { Args, Flags } from "../../../spec/metadata";
 
@@ -32,6 +33,7 @@ const missingSpecError = (): NotImplementedError =>
 export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
   resultSchema: PluginAddResultSchema,
   id: "meta:plugin:add",
+  onlineAcquisition: true,
   summary: "Install a plugin (npm source) with manifest validation and trust prompt.",
   namespace: "meta",
   topLevelAlias: true,
@@ -59,7 +61,7 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
     return yield* pluginAdd({
       spec: parsed.spec,
       trust: parsed.trust || parsed.yes,
-      nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
+      nonInteractive: resolveNonInteractive({ isTTY: (yield* CliInvocation).io.stdinIsTTY === true }),
     });
   }),
   render: (result) => renderPluginAddResult(result),

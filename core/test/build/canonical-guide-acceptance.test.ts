@@ -72,13 +72,13 @@ describe("Canonical guide acceptance path", () => {
     ).toBe(true);
 
     const smokeGenerated = renderScenarioTest(guide, smokeScenario, undefined, "linux");
-    expect(smokeGenerated).toContain("// @tags: beta,docs,recipes,transcripts,@smoke");
+    expect(smokeGenerated).toContain("// @tags: docs,recipes,transcripts,@smoke");
     expect(smokeGenerated).toContain("// @layer: e2e");
     expect(smokeGenerated).toContain('LANDO_GUIDE_E2E === "1"');
     expect(smokeGenerated).toContain("LANDO_SCENARIO_E2E_BINARY === undefined");
     expect(smokeGenerated).toContain("hasLiveProviderSocket()");
     expect(smokeGenerated).toContain(
-      '"beta docs recipes transcripts @smoke canonical-public-transcript:provider-e2e-smoke [e2e]"',
+      '"docs recipes transcripts @smoke canonical-public-transcript:provider-e2e-smoke [e2e]"',
     );
     const smokeTranscript = buildPublicTranscript(guide, smokeScenario, undefined);
     expect(smokeTranscript?.runtime).toBe("e2e");

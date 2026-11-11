@@ -26,11 +26,15 @@ import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
+  evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 
 const landofileWithUser = (user: JsonValue) => ({
   properties: {
@@ -161,7 +165,9 @@ test.each([
                     evolveHistoricalReadiness(
                       evolveHistoricalShorthand(
                         evolveHistoricalNetworks(
-                          evolveHistoricalNativeInit(normalizeJsonSchema(repaired)),
+                          evolveHistoricalNativeInit(
+                            evolveHistoricalSqliteTarget(normalizeJsonSchema(repaired)),
+                          ),
                           "bare",
                         ),
                       ),
@@ -179,7 +185,12 @@ test.each([
     ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
-  expect(jsonEquals(expected, current)).toBe(true);
+  expect(
+    jsonEquals(
+      evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+      current,
+    ),
+  ).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
   const services = properties.services;

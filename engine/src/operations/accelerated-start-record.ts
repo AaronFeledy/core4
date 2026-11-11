@@ -1,7 +1,38 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { PreparedFileSyncTarget } from "@lando/sdk/schema";
+import { defineTransitions } from "@lando/sdk/transitions";
 import { Schema } from "effect";
+
+const PendingStartPhase = Schema.Literals(["preparing", "sessions-ready", "apply-intent", "completed"]);
+
+/**
+ * One attempt's steps. A resumed attempt replays its start steps, so a step whose
+ * effect already holds is settled. Only `lando stop` and `lando destroy` abandon an
+ * open attempt; `lando start` completes only after the provider applied the plan.
+ */
+export const pendingStartTransitions = defineTransitions<
+  typeof PendingStartPhase.Type | "absent" | "foreign"
+>()({
+  "record-sessions": {
+    from: ["preparing"],
+    to: "sessions-ready",
+    settledIn: ["sessions-ready", "apply-intent", "completed"],
+  },
+  "record-apply-intent": {
+    from: ["sessions-ready"],
+    to: "apply-intent",
+    settledIn: ["apply-intent", "completed"],
+  },
+  complete: { from: ["apply-intent", "completed"], to: "absent", settledIn: ["absent"] },
+  abandon: {
+    from: ["preparing", "sessions-ready", "apply-intent", "completed"],
+    to: "absent",
+    settledIn: ["absent"],
+  },
+});
+
+export type PendingStartStep = Exclude<keyof typeof pendingStartTransitions.edges, "abandon">;
 
 export const PendingStart = Schema.Struct({
   attemptId: Schema.String,
@@ -10,7 +41,7 @@ export const PendingStart = Schema.Struct({
   providerId: Schema.String,
   engineId: Schema.String,
   mountPlanDigest: Schema.String,
-  phase: Schema.Literals(["preparing", "sessions-ready", "apply-intent", "completed"]),
+  phase: PendingStartPhase,
   targets: Schema.Array(
     Schema.Struct({
       service: Schema.String,
@@ -27,13 +58,15 @@ const LegacyPendingStart = Schema.Struct({
   phase: Schema.Literals(["preparing", "sessions-ready", "apply-intent", "retained", "completed"]),
   recoveredFrom: Schema.optionalKey(Schema.String),
 });
+export const PENDING_START_VERSION = 2;
+
 export const pendingStartBucketSpec = (key: string) =>
   ({
     root: "userData",
     namespace: "accelerated-starts",
     key,
     schema: PendingStart,
-    version: 2,
+    version: PENDING_START_VERSION,
     codec: "json",
     mode: 0o600,
     lock: "advisory",
@@ -52,8 +85,8 @@ export const pendingStartBucketSpec = (key: string) =>
     },
   }) as const;
 export const digest = (value: unknown): string => sha256Hex(JSON.stringify(value));
-export const journalRecovery = (path: string) =>
-  `Run \`lando start\` (or \`lando restart\` or \`lando rebuild\`) in the app root to finish the attempt. \`lando stop\` and \`lando destroy\` also work from any phase. Journal: \`${path}\`.`;
+export const journalRecovery = (path?: string) =>
+  `Run \`lando start\` (or \`lando restart\` or \`lando rebuild\`) in the app root to finish the attempt. \`lando stop\` and \`lando destroy\` also work from any phase.${path === undefined ? "" : ` Journal: \`${path}\`.`}`;
 
 export const sameStartIdentity = (previous: PendingStart, planned: PendingStart) =>
   previous.providerId === planned.providerId &&

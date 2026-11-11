@@ -124,17 +124,17 @@ test.each([
   30_000,
 );
 
-test("failed script acquisition does not masquerade as an authoritative empty app catalog", async () => {
+test("a broken script stays a known selector target instead of an unknown command", async () => {
   // Given: a deferred selector for a script whose metadata cannot compile.
   const fixture = await fixtureFor("cli-app:broken-run");
   try {
     await mkdir(join(fixture.root, ".lando/scripts"), { recursive: true });
     await writeFile(join(fixture.root, ".lando/scripts/broken.bun.sh"), "");
-    // When: explicit refresh tries to acquire the complete inventory.
-    const error = await Effect.runPromise(Effect.flip(fixture.refresh));
-    // Then: acquisition failure is retained rather than reporting a false unknown selector.
-    expect(error).toMatchObject({ _tag: "BunShellScriptEmptyError" });
-    expect(await Bun.file(fixture.appCache).exists()).toBe(false);
+    // When: explicit refresh acquires the complete inventory.
+    const result = await Effect.runPromise(fixture.refresh);
+    // Then: the script is published as an unavailable command, so its selector is not reported as unknown.
+    expect(result.commandsCompiled).toBe(4);
+    expect(await Bun.file(fixture.appCache).exists()).toBe(true);
   } finally {
     await fixture.cleanup();
   }

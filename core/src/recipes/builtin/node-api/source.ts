@@ -34,8 +34,13 @@ export const source = {
       },
     },
     tooling: {
-      npm: { service: "api", description: "Run npm inside the api service.", cmds: ["npm"] },
-      node: { service: "api", description: "Run Node inside the api service.", cmds: ["node"] },
+      npm: { service: "api", description: "Run npm inside the api service.", cmds: ["npm"], wrapper: true },
+      node: {
+        service: "api",
+        description: "Run Node inside the api service.",
+        cmds: ["node"],
+        wrapper: true,
+      },
     },
   },
   variants: [

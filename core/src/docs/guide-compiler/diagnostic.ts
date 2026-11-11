@@ -75,6 +75,10 @@ export const semanticError = (
       "Remove this declaration or consume it in Run.command, Verify.command/file, or Inspect.file/json; opaque payloads do not consume bindings.",
     "guide.variable.invalid-name":
       "Use a simple token name starting with a letter, underscore or dollar sign, followed by letters, digits, underscores, dollar signs or hyphens.",
+    "guide.event.e2e":
+      "Assert the e2e command's output or exit code instead; events reach <Verify event> only from in-process scenario commands.",
+    "guide.command.syntax":
+      "Quote the argument the way a POSIX shell needs it: close every quote, and wrap operators, redirections, $ or backtick substitution, globs, braces, !, and a leading ~ or # in single quotes. Guide commands run as the argv a reader gets by pasting them into a shell.",
     "guide.runtime.mixed":
       "Split CLI/shell and library execution into separate scenarios, including hidden and cleanup steps.",
     "guide.runtime.e2e-library":

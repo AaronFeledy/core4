@@ -7,7 +7,7 @@ const diedEvent = {
   Type: "container",
   Action: "died",
   OOMKilled: true,
-  Actor: { Attributes: { name: "lando-myapp-web", "dev.lando.app": "myapp" } },
+  Actor: { Attributes: { name: "lando-myapp--web", "dev.lando.app": "myapp" } },
 };
 
 describe("provider-podman container died event provider surface", () => {

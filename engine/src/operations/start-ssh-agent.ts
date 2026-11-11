@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { mapFailures } from "@lando/sdk/command-result";
 import { type SshAgentTransportError, SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
@@ -91,11 +92,11 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
     case "sidecar": {
       const ssh = yield* Effect.serviceOption(SshService);
       if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
-      const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
+      const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(mapFailures(unavailable));
       const globalApp = yield* Effect.serviceOption(GlobalAppService);
       const globalProvider = Option.isSome(globalApp)
         ? yield* globalApp.value.providerId.pipe(
-            Effect.mapError(
+            mapFailures(
               (cause) =>
                 new SshAgentUnavailableError({
                   message: `Unable to resolve the global app provider for the SSH agent sidecar: ${cause.message}`,

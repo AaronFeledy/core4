@@ -1,4 +1,5 @@
 import { isAbsolute, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { type Context, Effect, Layer } from "effect";
 
@@ -55,7 +56,7 @@ export const makeGlobalAppServiceForRoot = (
     Effect.flatMap((globalRoot) => {
       const typescript = AbsolutePath.make(join(globalRoot, ".lando.ts"));
       return fileSystem.exists(typescript).pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           globalAppError(
             "paths",
             `Unable to inspect the global app TypeScript Landofile at ${typescript}.`,
@@ -77,7 +78,7 @@ export const makeGlobalAppServiceForRoot = (
       fileSystem
         .mkdir(path)
         .pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             globalAppError(
               "ensureRoot",
               `Unable to create the global app directory at ${path}.`,
@@ -95,7 +96,7 @@ export const makeGlobalAppServiceForRoot = (
     const existing = yield* fileSystem.lstat(resolved.userLandofile).pipe(
       Effect.map((stats) => ({ _tag: "stat" as const, stats })),
       Effect.catchTag("FileNotFoundError", () => Effect.succeed({ _tag: "missing" as const })),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         globalAppError(
           "ensureUserLandofile",
           `Unable to inspect the global app overlay path at ${resolved.userLandofile}.`,
@@ -109,7 +110,7 @@ export const makeGlobalAppServiceForRoot = (
       yield* fileSystem
         .writeAtomic(resolved.userLandofile, userLandofileContent)
         .pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             globalAppError(
               "ensureUserLandofile",
               `Unable to create the global app overlay file at ${resolved.userLandofile}.`,
@@ -160,7 +161,7 @@ export const makeGlobalAppServiceForRoot = (
         yield* fileSystem
           .mkdir(mountPath)
           .pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               globalAppError(
                 "regenerateDist",
                 `Unable to create the global service bind-mount source at ${mountPath}.`,
@@ -176,7 +177,7 @@ export const makeGlobalAppServiceForRoot = (
     const exists = yield* fileSystem
       .exists(resolved.distLandofile)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           globalAppError(
             "regenerateDist",
             `Unable to check the generated global app Landofile at ${resolved.distLandofile}.`,
@@ -191,7 +192,7 @@ export const makeGlobalAppServiceForRoot = (
       yield* fileSystem
         .writeAtomic(resolved.distLandofile, nextContent)
         .pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             globalAppError(
               "regenerateDist",
               `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,
@@ -213,7 +214,7 @@ export const makeGlobalAppServiceForRoot = (
     yield* fileSystem
       .writeAtomic(resolved.distLandofile, nextContent)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           globalAppError(
             "regenerateDist",
             `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,

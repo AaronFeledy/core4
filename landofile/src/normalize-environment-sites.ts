@@ -5,12 +5,15 @@ import {
   isLandofileReset,
   isPlainRecord,
   override,
+  valueOriginAt,
 } from "@lando/sdk/landofile";
-import type { ValidationIssuePath } from "@lando/sdk/schema";
-import { Predicate } from "effect";
+import { ToolingEnvironment, type ValidationIssuePath } from "@lando/sdk/schema";
+import { Predicate, Result, Schema, SchemaIssue } from "effect";
 import { keyValueEntryPath } from "./load-expression-shape.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import type { AuthoredOrigin, PreparedOverlay } from "./pipeline/prepare.ts";
+import { eligibleBindingPath } from "./secret-reference.ts";
+import { landofileIssuesFromSchema } from "./validation-suggestions.ts";
 
 export const normalizeEnvironmentSites = (
   input: PreparedOverlay & { readonly recorder?: LoadFailureRecorder | undefined },
@@ -32,6 +35,9 @@ export const normalizeEnvironmentSites = (
     if (Array.isArray(value) && keyValueEntryPath([...path, 0])) {
       const children = new Map<string | number, typeof origins>();
       const values: [string, string][] = [];
+      // One canonical environment diagnostic per list; only the invalid entries stop later
+      // load work, so valid siblings still report their own independent failures.
+      let canonical: LandofileValidationError | false | undefined;
       for (const [index, item] of value.entries()) {
         const origin = origins.children.get(index) ?? origins;
         const equal = typeof item === "string" ? item.indexOf("=") : -1;
@@ -41,6 +47,15 @@ export const normalizeEnvironmentSites = (
           continue;
         }
         if (typeof item !== "string" || equal < 0 || item.slice(0, equal) === "__proto__") {
+          if (eligibleBindingPath([...path, index])) {
+            canonical ??= canonicalEnvironmentError(input, value, path, origins.source.file);
+            if (canonical !== false) {
+              if (input.recorder === undefined) throw canonical;
+              if (input.recorder.failures.includes(canonical)) input.recorder.block(origin.source);
+              else input.recorder.record(canonical, origin.source);
+              continue;
+            }
+          }
           const error = new LandofileValidationError({
             file: origin.source.file,
             message: "Environment list entries require a nonreserved KEY=value.",
@@ -81,4 +96,29 @@ export const normalizeEnvironmentSites = (
     return entry;
   };
   return visit(input, []);
+};
+
+const canonicalEnvironmentError = (
+  input: PreparedOverlay,
+  value: readonly unknown[],
+  path: ValidationIssuePath,
+  file: string,
+): LandofileValidationError | false => {
+  const decoded = Schema.decodeUnknownResult(ToolingEnvironment)(value, {
+    errors: "all",
+    onExcessProperty: "error",
+  });
+  if (Result.isSuccess(decoded)) return false;
+  return new LandofileValidationError({
+    file,
+    message: "Environment list entries require a nonreserved KEY=value.",
+    issues: landofileIssuesFromSchema(new SchemaIssue.Pointer(path, decoded.failure.issue), input.value).map(
+      (issue) => ({
+        ...issue,
+        rule: "landofile.validation" as const,
+        source: valueOriginAt(input.origins, issue.path).source,
+      }),
+    ),
+    remediation: "Use KEY=value entries or an environment mapping.",
+  });
 };

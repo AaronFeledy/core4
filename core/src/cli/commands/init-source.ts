@@ -1,5 +1,5 @@
-import { gitCloneUrl, isLiteralGitRef, splitSourceRef } from "@lando/landofile/git-ref";
 import { RecipeSourceError } from "@lando/sdk/errors";
+import { gitCloneUrl, isLiteralGitRef, splitSourceRef } from "@lando/source-acquisition/locator";
 
 export interface InitSourceFlags {
   readonly source?: string | undefined;
@@ -30,7 +30,7 @@ export const parseInitSourceFlags = (flags: InitSourceFlags): ParsedInitSourceFl
       source: flags.source,
       kind: "unsupported-source",
       remediation:
-        "Use --source=git/--source=tarball with --url=<url>, --source=npm with --package=<name>, or --source=registry with --id=<recipe-id>; other recipe source flags are not implemented yet.",
+        "Use --source=git/--source=tarball with --url=<url>, --source=npm with --package=<name>, or --source=registry with --id=<recipe-id>; other recipe source flags are not supported.",
     });
   }
   const source = flags.source as "git" | "tarball" | "npm" | "registry";

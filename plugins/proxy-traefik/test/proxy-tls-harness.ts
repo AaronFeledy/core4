@@ -1,14 +1,15 @@
-import { Effect } from "effect";
+import { Effect, Redacted } from "effect";
 
 import type { CaError } from "@lando/sdk/errors";
-import { AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, CertificateSpec } from "@lando/sdk/services";
 
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { routeOwner } from "./route-owner-fixture.ts";
 
-export const app = AppId.make("demo/app");
+export const app = routeOwner("demo/app");
 export const httpsRoutes: ReadonlyArray<RoutePlan> = [
   {
     hostname: "z.demo.lndo.site",
@@ -29,24 +30,19 @@ export const httpsRoutes: ReadonlyArray<RoutePlan> = [
 export const makeHarness = (issueFailure?: CaError) => {
   const calls: CertificateSpec[] = [];
   const operations: string[] = [];
-  const files = new Map<string, string>([
-    ["/issued/default.crt", "default cert"],
-    ["/issued/default.key", "default key"],
-    ["/issued/app.crt", "app cert"],
-    ["/issued/app.key", "app key"],
-    ["/issued/ca.crt", "issuer cert"],
-  ]);
+  const files = new Map<string, string>();
   const certificateAuthority: CertificateAuthorityShape = {
     id: "test-ca",
     setup: () => Effect.sync(() => void operations.push("ca:setup")),
+    root: Effect.succeed({ certificate: "issuer cert" }),
     issueCert: (spec) => {
       calls.push(spec);
       if (issueFailure !== undefined) return Effect.fail(issueFailure);
       const prefix = spec.cn.startsWith("*.") ? "default" : "app";
       return Effect.succeed({
-        certPath: `/issued/${prefix}.crt`,
-        keyPath: `/issued/${prefix}.key`,
-        caPath: "/issued/ca.crt",
+        certificate: `${prefix} cert`,
+        privateKey: Redacted.make(`${prefix} key`),
+        root: { certificate: "issuer cert" },
       });
     },
   };

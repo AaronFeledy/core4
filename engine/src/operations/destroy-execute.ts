@@ -1,11 +1,15 @@
 import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
-import type { ServiceShutdownObservation } from "@lando/sdk/schema";
+import { type ServiceShutdownObservation, appIdentityKey } from "@lando/sdk/schema";
 import { EventService, RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { TeardownProvider } from "../providers/app-placement.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
+import { clearAppDataIdentityWhenComplete } from "./data-identity-clear.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
 import type { TeardownPlan } from "./destroy-plan.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
@@ -31,7 +35,20 @@ const unchanged = (app: string): DestroyAppResult => ({
 
 const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
   const evidence = plan.evidence;
-  if (evidence === undefined) return unchanged(plan.name);
+  const ownsUserData = plan.refs.length === 0 || plan.refs.some((ref) => ref.kind === "user");
+  if (evidence === undefined) {
+    // Early no-evidence path: clear only when --volumes and data volumes already absent.
+    if (ownsUserData) {
+      yield* clearAppDataIdentityWhenComplete({
+        root: plan.root,
+        volumesRequested: plan.options.volumes === true,
+      });
+    }
+    // A start that failed after certificate preparation leaves only host-side leaf material.
+    if ((yield* TeardownProvider) === undefined)
+      yield* removeServiceCertificates(appIdentityKey("owner", plan.root));
+    return unchanged(plan.name);
+  }
   const registry = yield* RuntimeProviderRegistry;
   const target = plan.target;
   const provider = target === undefined ? undefined : yield* registry.select(target.plan);
@@ -41,7 +58,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
   });
   for (const group of plan.groups) yield* registry.select(group.providerId);
   const fileSync =
-    target === undefined || provider === undefined
+    target === undefined || provider === undefined || plan.missingStart !== undefined
       ? undefined
       : yield* prepareDestroyFileSync(target, provider);
   const events = yield* EventService;
@@ -80,8 +97,11 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       proxy: target !== undefined && Option.isSome(proxy),
     },
     work: Effect.fnUntraced(function* (tree) {
+      yield* plan.missingStart?.terminate ?? Effect.void;
+      const retired = yield* plan.retire ?? Effect.succeed(undefined);
+      const targetRetired = target !== undefined && retired?.appIds.includes(target.app.id) === true;
       if (fileSync?.applicable === true) yield* tree.startTask("file-sync");
-      if (fileSync !== undefined) {
+      if (fileSync !== undefined && !targetRetired) {
         yield* fileSync.quiesceRetained.pipe(Effect.tapError(() => tree.failTask("file-sync")));
       }
       let snapshotsRemoved = 0;
@@ -93,27 +113,36 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         yield* tree.completeTask("snapshots");
       }
       const quiesced =
-        fileSync === undefined
+        fileSync === undefined || targetRetired
           ? undefined
           : yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
       if (fileSync?.applicable === true) yield* tree.completeTask("file-sync");
-      const services = new Set<string>();
+      const services = new Set<string>(retired?.servicesRemoved);
       const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [
+        retired?.shutdownObservations,
         quiesced?.shutdownObservations,
       ];
-      let volumesRemoved = false;
-      let changed = snapshotsRemoved > 0;
+      let volumesRemoved = retired?.volumesRemoved === true;
+      let changed = retired !== undefined || snapshotsRemoved > 0;
+      let skipped: NonNullable<import("@lando/sdk/schema").OwnedResourcesCleanupResult["skipped"]> = [];
+      const ownedCleanup = cleanup.pipe(
+        Effect.tap((removed) =>
+          Effect.sync(() => {
+            skipped = [...skipped, ...(removed.skipped ?? [])];
+          }),
+        ),
+      );
       if (hasProvider) {
         yield* tree.startTask("provider");
         const remove = Effect.gen(function* () {
-          if (target !== undefined && provider !== undefined) {
+          if (target !== undefined && provider !== undefined && !targetRetired) {
             const outcome = yield* destroyPlannedProvider({ ...plan, target }, provider);
             observationSources.push(outcome.shutdownObservations);
             switch (outcome.kind) {
               case "destroyed":
                 for (const service of Object.values(target.plan.services).reverse())
                   services.add(String(service.name));
-                volumesRemoved = plan.options.volumes === true || plan.options.purgeCaches === true;
+                volumesRemoved ||= plan.options.volumes === true || plan.options.purgeCaches === true;
                 changed = true;
                 break;
               case "no-op":
@@ -132,14 +161,14 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
                 volumes: plan.options.volumes === true,
                 purgeCaches: plan.options.purgeCaches === true,
               },
-              ownedCleanup: cleanup,
+              ownedCleanup,
             });
             observationSources.push(removed.shutdownObservations);
             for (const service of removed.services) services.add(service);
             volumesRemoved ||= removed.volumesRemoved;
             changed ||= removed.services.length > 0 || removed.volumesRemoved || removed.ownedChanged;
           } else {
-            const removed = yield* cleanup;
+            const removed = yield* ownedCleanup;
             for (const service of removed.servicesRemoved) services.add(service);
             volumesRemoved ||= removed.volumesRemoved > 0;
             changed ||= ownedCleanupChanged(removed);
@@ -154,7 +183,12 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
           Effect.Services<ReturnType<typeof cleanupDestroyHostState>> | RuntimeProviderRegistry
         >([remove, cleanupDestroyHostState(plan, tree)]);
       }
-      if (fileSync !== undefined) yield* fileSync.complete;
+      if (fileSync !== undefined && !targetRetired) yield* fileSync.complete;
+      if (plan.missingStart !== undefined) {
+        yield* plan.missingStart.removeTargets;
+        yield* plan.missingStart.complete;
+        changed = true;
+      }
       if (plan.followUpOrphans) {
         const remaining = yield* registry.resolveTeardownEvidence(plan.root);
         if (remaining.kind === "orphans") {
@@ -172,7 +206,15 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
           changed ||= removed.ownedChanged || removed.services.length > 0 || removed.volumesRemoved;
         }
       }
-      return withShutdownObservations(
+      // Reached only when every removal step succeeded; a failed teardown keeps the leaf material.
+      // A provider-scoped destroy keeps it: another provider's realization may still mount it.
+      if ((yield* TeardownProvider) === undefined)
+        yield* removeServiceCertificates(
+          target === undefined
+            ? appIdentityKey("owner", plan.root)
+            : routeOwnerFromPlan(target.plan).ownerKey,
+        );
+      const result = withShutdownObservations(
         {
           app: plan.name,
           outcome: changed ? ("destroyed" as const) : ("unchanged" as const),
@@ -182,6 +224,15 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         },
         ...observationSources,
       );
+      // Never trust volumesRemoved: clear only with complete evidence volumes are gone.
+      if (ownsUserData) {
+        yield* clearAppDataIdentityWhenComplete({
+          root: plan.root,
+          volumesRequested: plan.options.volumes === true,
+          ...(skipped.length === 0 ? {} : { skipped }),
+        });
+      }
+      return result;
     }),
   });
   for (const app of plan.refs) {
@@ -201,8 +252,8 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
 export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(function* (plan: TeardownPlan) {
   const target = plan.target;
   const work = Effect.gen(function* () {
-    if (target === undefined) return yield* executeLocked(plan);
     const registry = yield* RuntimeProviderRegistry;
+    if (target === undefined) return yield* executeLocked(plan);
     const provider = yield* registry.select(target.plan);
     const stateStore = yield* StateStore;
     const context = yield* Effect.context<Effect.Services<ReturnType<typeof executeLocked>>>();
@@ -213,7 +264,9 @@ export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(functio
       body: () => executeLocked(plan).pipe(Effect.provide(context)),
     });
   });
-  return yield* [...plan.refs]
+  const refs =
+    plan.refs.length === 0 ? [{ kind: "user" as const, id: plan.name, root: plan.root }] : plan.refs;
+  return yield* [...refs]
     .sort((a, b) => `${a.root}\0${a.id}`.localeCompare(`${b.root}\0${b.id}`))
     .reduceRight((body, ref) => withAppMutationLock(ref, body), work);
 });

@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { VolumeInitializationPhase } from "../schema/volume-initialization.ts";
+
 export class SqlServiceNotFoundError extends Schema.TaggedError<SqlServiceNotFoundError>()(
   "SqlServiceNotFoundError",
   {
@@ -45,10 +47,24 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     exitCode: Schema.optional(Schema.Number),
     reason: Schema.optional(Schema.Literals(["exit", "protocol", "provider", "timeout", "stdout-limit"])),
     stderrTail: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
     recoverySnapshotId: Schema.optional(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
+
+/**
+ * A SQLite target's planned database path cannot be used: the file does not exist yet for a
+ * read, a path component is a symbolic link, the path names something other than a regular
+ * file, or the nearest existing parent of a database to create is not a directory.
+ */
+export class SqlDatabasePathError extends Schema.TaggedError<SqlDatabasePathError>()("SqlDatabasePathError", {
+  message: Schema.String,
+  service: Schema.String,
+  path: Schema.String,
+  reason: Schema.Literals(["missing", "symlink", "not-a-file", "parent-not-directory"]),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+}) {}
 
 export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundError>()("SqlDumpNotFoundError", {
   message: Schema.String,
@@ -56,6 +72,20 @@ export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundErro
   appRoot: Schema.String,
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
+
+/**
+ * An import or seed dump is empty or lacks its dump tool's completion marker.
+ * Raised before the recovery snapshot, so the database is untouched.
+ */
+export class SqlDumpIncompleteError extends Schema.TaggedError<SqlDumpIncompleteError>()(
+  "SqlDumpIncompleteError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    reason: Schema.Literals(["empty", "truncated"]),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
 
 export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressionError>()(
   "SqlDumpCompressionError",
@@ -74,6 +104,7 @@ export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryU
     message: Schema.String,
     service: Schema.String,
     reason: Schema.String,
+    recoveryFile: Schema.optional(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
@@ -93,7 +124,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
 export class SqlSeedStateError extends Schema.TaggedError<SqlSeedStateError>()("SqlSeedStateError", {
   message: Schema.String,
   service: Schema.String,
-  status: Schema.Literals(["unknown", "fresh", "in-progress", "seeded", "failed"]),
+  status: Schema.Literals(["unknown", ...VolumeInitializationPhase.literals]),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 

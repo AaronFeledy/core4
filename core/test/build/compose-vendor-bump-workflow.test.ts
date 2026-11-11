@@ -119,10 +119,10 @@ describe("compose-go bump workflow", () => {
     expect(workflow).not.toContain("--label");
   });
 
-  test("delegates classification to the coverage gate without auto-classifying keys", () => {
+  test("reports the coverage gate result without auto-classifying keys", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
-    expect(workflow).not.toContain("bun run check:compose-coverage");
-    expect(workflow).not.toContain("dispositions");
+    expect(workflow).toContain("if bun run check:compose-coverage");
+    expect(workflow).not.toMatch(/>>? *"?sdk\//);
   });
 });

@@ -181,16 +181,37 @@ const sanitizeWorkflowPerformanceReportForRetention = (
   })),
 });
 
+export type WorkflowPerformanceFailure = {
+  readonly lane: WorkflowPerformanceReport["lanes"][number]["id"];
+  readonly sample: string;
+  readonly step: WorkflowPerformanceSample["steps"][number]["id"];
+  readonly exitCode: number;
+};
+
 export const evaluateWorkflowPerformanceReport = (
   report: WorkflowPerformanceReport,
-): { readonly exitCode: 0 | 1; readonly reason: string } =>
-  (report.status !== undefined && report.status !== "completed") ||
-  report.lanes.some(
-    (laneReport) =>
-      laneReport.outcome === "failed" || laneReport.samples.some((sample) => sample.outcome === "failed"),
-  )
-    ? { exitCode: 1, reason: "workflow correctness or report plumbing failed" }
-    : { exitCode: 0, reason: "all supported workflow samples passed" };
+): {
+  readonly exitCode: 0 | 1;
+  readonly reason: string;
+  readonly failures: readonly WorkflowPerformanceFailure[];
+} => {
+  const failures = report.lanes.flatMap((lane) =>
+    lane.samples.flatMap((sample) =>
+      sample.outcome === "failed"
+        ? sample.steps
+            .filter((step) => step.exitCode !== 0)
+            .map((step) => ({ lane: lane.id, sample: sample.key, step: step.id, exitCode: step.exitCode }))
+        : [],
+    ),
+  );
+  return (report.status !== undefined && report.status !== "completed") ||
+    report.lanes.some(
+      (laneReport) =>
+        laneReport.outcome === "failed" || laneReport.samples.some((sample) => sample.outcome === "failed"),
+    )
+    ? { exitCode: 1, reason: "workflow correctness or report plumbing failed", failures }
+    : { exitCode: 0, reason: "all supported workflow samples passed", failures };
+};
 
 export const writeWorkflowPerformanceReport = async (
   report: WorkflowPerformanceReport,

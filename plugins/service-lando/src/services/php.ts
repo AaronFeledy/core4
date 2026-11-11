@@ -93,7 +93,17 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
         metadata: { [PHP_RUNTIME_POLICY_KEY]: policy },
         logSources: phpLogSources(policy.logMode),
         features: [
-          { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot, policy } },
+          {
+            id: PHP_FEATURE_ID,
+            config: {
+              allowOverride,
+              version: resolvedVersion,
+              via,
+              webroot,
+              policy,
+              uploadDirs: input.service.uploadDirs ?? [],
+            },
+          },
           { id: "lando.env", config: { webroot } },
           { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, workingDirectory: webroot } },
         ],

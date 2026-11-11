@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   type ComposeKeyRejectedError,
@@ -200,7 +201,7 @@ export const loadFragment = (
             return Effect.void;
           const projection = isPlainRecord(materialized) ? mergeLandofiles([materialized]) : materialized;
           return Schema.decodeUnknownEffect(ToolingWire)(projection, { errors: "all" }).pipe(
-            Effect.mapError((cause) => validationErrorFromCause(filePath, materialized, cause)),
+            mapFailures((cause) => validationErrorFromCause(filePath, materialized, cause)),
           );
         }),
         Effect.flatMap((decoded) =>

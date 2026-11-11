@@ -33,7 +33,7 @@ Lando does not collect per-user, per-host, per-app, or per-project stable identi
 
 ## Where it is retained
 
-- In transit and at rest, telemetry is held only in the maintainer-operated telemetry backend for the active release channel. Beta channels report to a staging endpoint until the `next` channel stabilizes; production channels report to the production endpoint.
+- Lando hands redacted events only to the telemetry sinks registered by the host that runs it. The `lando` CLI registers no sink of its own, so its events stay in memory and are dropped at exit. A sink that forwards records off the host delivers them to the maintainer-operated telemetry backend, where they are held in transit and at rest.
 - Nothing is persisted to a local queue across process restarts. Pending in-memory telemetry is dropped rather than delaying process shutdown.
 
 ## Who can access it

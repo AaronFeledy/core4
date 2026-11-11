@@ -19,6 +19,7 @@ export const progressFixture = Effect.fnUntraced(function* () {
       }),
     yield* service.forProfile("secrets", { sourceEnv: {} }),
     yield* service.payloadValues({ sourceEnv: {} }),
+    yield* service.forProfile("secrets", { sourceEnv: {}, excludeWholeTokenValues: true }),
   );
   return {
     sink: owner.sink,

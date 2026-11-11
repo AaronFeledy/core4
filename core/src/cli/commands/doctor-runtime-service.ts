@@ -1,3 +1,4 @@
+import type { ProviderStatus } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import type {
@@ -12,6 +13,7 @@ import type { SetupReadinessRuntimeService } from "./setup-readiness";
 
 export interface RuntimeServiceStatusShape {
   readonly running: boolean;
+  readonly idle?: boolean;
   readonly socketReachable: boolean;
   readonly pid?: number;
   readonly ownedServiceProcess: boolean;
@@ -28,19 +30,21 @@ export interface ContainerDiedEventCapableProvider {
   readonly getContainerDiedEvents?: Effect.Effect<ReadonlyArray<unknown>, unknown>;
 }
 
-export const runtimeServiceStatusFromProviderStatus = (status: {
-  readonly running: boolean;
-}): RuntimeServiceStatusShape => ({
-  running: status.running,
-  socketReachable: status.running,
+export const runtimeServiceStatusFromProviderStatus = (
+  status: ProviderStatus,
+): RuntimeServiceStatusShape => ({
+  running: status.state === "running",
+  idle: status.state === "idle",
+  socketReachable: status.state === "running",
   ownedServiceProcess: false,
 });
 
 export const runtimeServiceStatusFor = (
   provider: RuntimeServiceCapableProvider,
-  status: { readonly running: boolean },
+  status: ProviderStatus,
 ): Effect.Effect<RuntimeServiceStatusShape, unknown> =>
-  provider.getRuntimeServiceStatus ?? Effect.succeed(runtimeServiceStatusFromProviderStatus(status));
+  (status.state === "idle" ? undefined : provider.getRuntimeServiceStatus) ??
+  Effect.succeed(runtimeServiceStatusFromProviderStatus(status));
 
 export const containerDiedEventPayloadsFor = (
   provider: ContainerDiedEventCapableProvider,
@@ -78,7 +82,7 @@ export const buildRuntimeServiceDoctorCheck = (
   selection?: DoctorSelectionRecord,
 ): DoctorCheck => {
   const hasOrphans = status.orphanPids !== undefined && status.orphanPids.length > 0;
-  const checkStatus: DoctorStatus = status.running && !hasOrphans ? "pass" : "warn";
+  const checkStatus: DoctorStatus = (status.running || status.idle === true) && !hasOrphans ? "pass" : "warn";
   const severity: DoctorSeverity = checkStatus === "pass" ? "info" : "warn";
   const context: Record<string, string> = {
     providerId: provider.id,
@@ -109,7 +113,7 @@ export const buildRuntimeServiceDoctorCheck = (
     providerName: provider.displayName,
     providerVersion: provider.version,
     providerKind: providerKindFor(provider.id),
-    runtimeStatus: status.running ? "running" : "stopped",
+    runtimeStatus: status.idle === true ? "idle (starts on demand)" : status.running ? "running" : "stopped",
     runtime: {
       running: status.running,
       ...(runtimeVersion === undefined ? {} : { version: runtimeVersion }),

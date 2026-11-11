@@ -125,7 +125,7 @@ const isBuggyClosedExtension = (schema: JsonSchema): boolean => {
  * exact captured node it changes, preserving all unrelated constraints.
  */
 export const withIntentionalChangesSinceCapture = (landofile: JsonSchema): JsonSchema => {
-  // IncludeEntry.checksum was removed before release; lockfile pins carry include integrity.
+  // IncludeEntry.checksum was removed; lockfile pins carry include integrity.
   const includes = requireObject(requireObject(landofile.properties, "properties").includes, "includes");
   const items = requireObject(includes.items, "includes.items");
   if (!Array.isArray(items.anyOf)) throw new Error("includes.items.anyOf must be an array");

@@ -109,6 +109,34 @@ describe("tunnel SDK schemas", () => {
     expect(loopbackBranch?.properties?.url?.pattern).toContain("[^\\s?#]");
   });
 
+  test("decodes tunnel route targets for route hostnames defaultTunnelTarget copies", () => {
+    const longestExact = [63, 63, 63, 61].map((length) => "a".repeat(length)).join(".");
+    for (const hostname of ["*.app.lndo.site", "*-app.lndo.site", longestExact] as const) {
+      const target = Schema.decodeUnknownSync(TunnelTarget)({
+        _tag: "route",
+        routeId: hostname,
+        hostname,
+      });
+      expect(target).toEqual({ _tag: "route", routeId: hostname, hostname });
+    }
+  });
+
+  test("still rejects tunnel session ids that contain *", () => {
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelSession)({
+          id: "tun*",
+          app: "my-app",
+          provider: "quick",
+          target: { _tag: "route", routeId: "https" },
+          status: "ready",
+          detached: true,
+          startedAt: "2026-06-14T00:00:00.000Z",
+        }),
+      ),
+    ).toBe(true);
+  });
+
   test("rejects invalid tunnel status and malformed target shapes", () => {
     expect(Result.isFailure(Schema.decodeUnknownResult(TunnelStatus)("exposed"))).toBe(true);
     expect(Result.isFailure(Schema.decodeUnknownResult(TunnelTarget)({ _tag: "hostPort", port: 8080 }))).toBe(

@@ -1,6 +1,6 @@
 import { peekAdvisoryLockRecord } from "@lando/state-store/lock";
 import { Effect } from "effect";
-import { withDetachedWorkerLock } from "../../../../src/subsystems/detached-worker/state-file.ts";
+import { withDetachedWorkerLock } from "../../../../src/subsystems/detached-worker/claim.ts";
 
 const [path, userDataRoot] = process.argv.slice(2);
 if (path === undefined || userDataRoot === undefined || process.send === undefined)
@@ -20,9 +20,10 @@ await Effect.runPromise(
         },
       },
     },
-    Effect.sync(() => {
-      process.stdout.write("entered\n");
-    }),
+    () =>
+      Effect.sync(() => {
+        process.stdout.write("entered\n");
+      }),
   ),
 );
 process.disconnect?.();

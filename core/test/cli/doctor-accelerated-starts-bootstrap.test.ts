@@ -41,6 +41,8 @@ test("safe-mode doctor inventories the state store supplied by its provider runt
     Effect.map(FileSystem, (fs) => ({
       ...fs,
       readDir: () => Effect.succeed([key]),
+      // The journal's app root still exists, so doctor reports it as an open start.
+      exists: (path: string) => (path === "/apps/runtime" ? Effect.succeed(true) : fs.exists(path)),
     })),
   ).pipe(Layer.provide(BunFileSystem.layer));
   const config = Schema.decodeUnknownSync(GlobalConfig)({});

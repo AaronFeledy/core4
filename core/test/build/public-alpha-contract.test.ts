@@ -22,17 +22,20 @@ const releasePolicy = (repository: string): string =>
     )?.[0] ?? ""
   ).replace(/\s+/g, " ");
 
-const alphaPlatformScope = (ci: string): string =>
-  ci.match(/^## Alpha platform scope\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
+const releaseStatus = (install: string): string =>
+  (install.match(/^## Release status\n[\s\S]*?(?=^## )/m)?.[0] ?? "").replace(/\s+/g, " ");
+
+const platformAcceptance = (ci: string): string =>
+  ci.match(/^## Platform acceptance\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
 
 describe("public alpha contract", () => {
-  test("names Public Alpha 1 current when contributor release policy is read", async () => {
-    const status = releasePolicy(await readText(repositoryPath));
+  test("names Public Alpha 1 current when the alpha release status is read", async () => {
+    const status = releaseStatus(await readText(installPath));
     expect(status).toContain("Public Alpha 1 is the current milestone");
   });
 
-  test("marks pre-alpha and later Beta when contributor release policy is read", async () => {
-    const status = releasePolicy(await readText(repositoryPath));
+  test("marks pre-alpha and later Beta when the alpha release status is read", async () => {
+    const status = releaseStatus(await readText(installPath));
     expect(status).toContain("pre-alpha");
     expect(status).toContain("Beta follows Alpha");
   });
@@ -116,7 +119,7 @@ describe("public alpha contract", () => {
     expect(manifest.id).toBe("rails");
     expect(manifest.snapshot.identity.sourceKind).toBe("bundled");
     expect(manifest.title).toBe("Ruby on Rails");
-    expect(manifest.prompts).toEqual([]);
+    expect(manifest.prompts?.map((prompt) => prompt.name)).toEqual(["database"]);
     expect(recipe).toContain("PostgreSQL");
     expect(recipe).toContain("Redis");
     expect(recipe).toContain("lando rails");
@@ -149,8 +152,8 @@ describe("public alpha contract", () => {
     expect(readme).toContain("recipes/");
   });
 
-  test("defers signing installers and self-update when contributor release policy is read", async () => {
-    const status = releasePolicy(await readText(repositoryPath));
+  test("defers signing installers and self-update when the alpha release status is read", async () => {
+    const status = releaseStatus(await readText(installPath));
     expect(status).toContain("Signing");
     expect(status).toContain("installers");
     expect(status).toContain("self-update");
@@ -182,7 +185,7 @@ describe("public alpha contract", () => {
   });
 
   test("requires live setup doctor Drupal and Rails on every compile target in CI acceptance", async () => {
-    const criteria = alphaPlatformScope(await readText(ciPath));
+    const criteria = platformAcceptance(await readText(ciPath));
     expect(criteria).toContain("all six compile targets");
     expect(criteria).toContain("Live `lando setup` and `lando doctor`");
     expect(criteria).toContain("Drupal canonical journey");
@@ -190,13 +193,8 @@ describe("public alpha contract", () => {
   });
 
   test("says compilation alone is not an exit in CI acceptance", async () => {
-    const criteria = alphaPlatformScope(await readText(ciPath));
-    expect(criteria).toContain("Compile smoke is not an Alpha exit");
-  });
-
-  test("says a roadmap rewrite is not an Alpha 1 exit in contributor release policy", async () => {
-    const criteria = releasePolicy(await readText(repositoryPath));
-    expect(criteria).toContain("A roadmap rewrite does not satisfy these criteria");
+    const criteria = platformAcceptance(await readText(ciPath));
+    expect(criteria).toContain("Compile smoke is not acceptance");
   });
 
   test("omits signed GA public artifact claims when contributor release policy is read", async () => {
@@ -212,10 +210,10 @@ describe("public alpha contract", () => {
     expect(ciDocs).not.toContain("Historical Alpha CI was Linux x64 only");
   });
 
-  test("names six-target live gates when contributing CI Alpha platform scope is read", async () => {
-    const scope = alphaPlatformScope(await readText(resolve(repoRoot, "docs/contributing/ci.md")));
+  test("names six-target live gates when contributing CI platform acceptance is read", async () => {
+    const scope = platformAcceptance(await readText(resolve(repoRoot, "docs/contributing/ci.md")));
     expect(scope).toContain("six compile targets");
-    expect(scope).toContain("Compile smoke is not an Alpha exit");
+    expect(scope).toContain("Compile smoke is not acceptance");
     expect(scope).toContain("platform-readiness");
     expect(scope).toContain("drupal-journey");
     expect(scope).toContain("rails-journey");

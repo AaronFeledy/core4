@@ -142,6 +142,8 @@ describe("applied plan state layouts", () => {
               exists: Effect.succeed(true),
               set: () => Effect.die("unexpected write"),
               update: () => Effect.die("unexpected update"),
+              mutate: () => Effect.die("this fixture does not support mutate"),
+              transition: () => Effect.die("this fixture does not support transition"),
               modify: () => Effect.die("unexpected modify"),
               remove: Effect.die("unexpected delete"),
             }),
@@ -211,6 +213,8 @@ describe("applied plan state layouts", () => {
             exists: Effect.succeed(true),
             set: () => Effect.die("read-only fixture"),
             update: () => Effect.die("read-only fixture"),
+            mutate: () => Effect.die("this fixture does not support mutate"),
+            transition: () => Effect.die("this fixture does not support transition"),
             modify: () => Effect.die("read-only fixture"),
             remove: Effect.die("read-only fixture"),
           }),
@@ -232,7 +236,7 @@ describe("applied plan state layouts", () => {
     },
   );
 
-  test("per-app layout preserves the namespaced file format at version 3", async () => {
+  test("per-app layout preserves the namespaced file format at the current version", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
     const appId = AppId.make("example");
@@ -250,13 +254,13 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(3);
+    expect(calls[0]?.version).toBe(5);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
     expect(appliedPlansDir("/tmp/plugin-state/")).toBe("/tmp/plugin-state/applied-plans");
     expect(appliedPlanPath("/tmp/plugin-state", appId)).toBe("/tmp/plugin-state/applied-plans/example.json");
   });
 
-  test("record layout preserves the single-file collection format at version 3", async () => {
+  test("record layout preserves the single-file collection format at the current version", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "podman", layout: "record" });
 
@@ -272,7 +276,7 @@ describe("applied plan state layouts", () => {
       onCorrupt: "fail",
       hasDefault: false,
     });
-    expect(calls[0]?.version).toBe(3);
+    expect(calls[0]?.version).toBe(5);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
   });
 });
@@ -561,6 +565,8 @@ describe("applied plan records", () => {
             written.push(value);
           }),
         update: () => Effect.die("not used"),
+        mutate: () => Effect.die("this fixture does not support mutate"),
+        transition: () => Effect.die("this fixture does not support transition"),
         modify: <B>(f: (cur: A | null) => readonly [B, A]) =>
           Effect.sync(() => {
             const [result, next] = f(null);
@@ -608,6 +614,31 @@ describe("applied plan records", () => {
 
     expect(written).toEqual([record]);
   });
+
+  test.each(["per-app", "record"] as const)(
+    "%s persistence retains committed digests when removing events without an injected sanitizer",
+    async (layout) => {
+      const written: unknown[] = [];
+      const annotated = {
+        ...plan,
+        services: {
+          [service.name]: {
+            ...currentService,
+            name: service.name,
+            environment: { API_TOKEN: "private-token" },
+          },
+        },
+        committedLiteralDigests: ["a".repeat(64), "b".repeat(64)],
+      };
+      const store =
+        layout === "per-app"
+          ? makeAppliedPlanStore({ providerId: "lando", layout: "per-app" })
+          : makeAppliedPlanStore({ providerId: "lando", layout: "record" });
+      await Effect.runPromise(store.persistAppliedPlan(writingStateStore(written), annotated));
+      const { events: _events, ...expected } = annotated;
+      expect(written).toEqual([layout === "per-app" ? expected : { [plan.id]: expected }]);
+    },
+  );
 
   test("the record layout persists the plan without its Landofile events", async () => {
     const written: unknown[] = [];

@@ -1,6 +1,7 @@
 import { assessTranslateExpectations } from "@lando/engine/planner/home-expectations";
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { decodeLandofileAuthoringLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import {
@@ -43,19 +44,19 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
       Effect.flatMap((value) =>
         Schema.encodeEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
       ),
-      Effect.mapError(invalidPrefix),
+      mapFailures(invalidPrefix),
     );
     const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
       native,
-    ).pipe(Effect.mapError(invalidPrefix));
-    yield* decodeLandofileAuthoringLayer(entry.layer, mapping).pipe(Effect.mapError(invalidPrefix));
+    ).pipe(mapFailures(invalidPrefix));
+    yield* decodeLandofileAuthoringLayer(entry.layer, mapping).pipe(mapFailures(invalidPrefix));
     merged = mergeLandofiles([merged, mapping]);
     yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(merged, {
       onExcessProperty: "error",
-    }).pipe(Effect.mapError(invalidPrefix));
+    }).pipe(mapFailures(invalidPrefix));
   }
   yield* Schema.decodeUnknownEffect(LandofileAuthoringShape)(merged, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ConfigTranslateError({
           message: "Translation is not a complete Landofile.",

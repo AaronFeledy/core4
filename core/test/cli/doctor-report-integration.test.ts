@@ -210,7 +210,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
 
 const mentionsUnavailableStub = (value: unknown): boolean => {
   const dump = JSON.stringify(value);
-  return dump.includes("full implementation is not available yet") || dump.includes("not available yet");
+  return dump.includes("CertificateAuthority requires @lando/ca-mkcert");
 };
 
 describe("runtime-wired subsystem doctor", () => {

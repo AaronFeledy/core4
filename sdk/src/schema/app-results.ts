@@ -57,6 +57,9 @@ export const StopAppResult = Schema.Struct({
     description: "Name of the stopped app; when only applied state remains, its app id or root.",
   }),
   outcome: Schema.optionalKey(StopAppOutcome),
+  runtimeState: Schema.optionalKey(Schema.Literals(["idle", "running"])).annotate({
+    description: "Provider runtime state observed before stopping the app, when known.",
+  }),
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
   }),
@@ -140,6 +143,10 @@ export type InfoAppHostProxy = typeof InfoAppHostProxy.Type;
 
 export const InfoAppResult = Schema.Struct({
   app: Schema.String.annotate({ description: "Name of the inspected app." }),
+  dataName: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Original name used by this folder's persisted data, present when it differs from the app name.",
+  }),
   services: Schema.Array(ServiceInfo).annotate({
     description: "Observed service status, endpoints, and connection metadata.",
   }),

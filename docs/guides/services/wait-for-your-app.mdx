@@ -2,7 +2,7 @@
 id: wait-for-your-app
 provider: test
 timeout: 90000
-tags: [beta, docs, services, healthcheck]
+tags: [docs, services, healthcheck]
 ---
 
 # Make start wait for your app
@@ -165,7 +165,7 @@ For that host example, the normalized `readiness` configuration value is below. 
 }
 ```
 
-Host probes run with the CLI process's current identity and the app root as their working directory, not in a provider VM or a sandbox. Only use commands you trust. The string above uses Bun Shell's file test, not your interactive login shell. A list passes the program and arguments exactly without shell expansion. For example, `command: [test, -f, .ready]` needs a `test` executable on the CLI machine instead of a shell builtin.
+Host probes run with the CLI process's current identity and the app root as their working directory, not in a provider VM or a sandbox. Only use commands you trust. The string above uses Bun Shell's file test, not your interactive login shell. Write it in [Bun Shell syntax](../tooling/bun-shell-scripts.mdx#write-host-commands-in-bun-shell-syntax): `$NAME` rather than `${NAME}`, and `1>&2` rather than `>&2`. Planning rejects the other forms with `LandofileValidationError`, and `lando app:config:lint` reports them as `landofile.host-shell`. A list passes the program and arguments exactly without shell expansion. For example, `command: [test, -f, .ready]` needs a `test` executable on the CLI machine instead of a shell builtin.
 
 Host readiness runs at the same lifecycle gates, never as permanent host monitoring. Supply its own command through `command` or Compose `test`; it cannot borrow a type's default command, container user, or listener. Do not set `user` on it. Invalid host readiness fails planning with `HealthcheckTargetUnsupportedError` before changing containers. `target: host` under native `healthcheck` also fails with remediation to move the probe to `readiness`; `target: service` is accepted there as a no-op. Neither execution target changes native monitoring policy.
 

@@ -1,8 +1,13 @@
 import { Duration, Effect, Fiber, Result, type Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
+import { mapFailures } from "../command-result/failure.ts";
 
 import type { LandoEvent } from "../services/index.ts";
 import { ContractFailure, bytesEqual, collectByteStream } from "./_shared.ts";
+import {
+  type HttpClientFailureHarness,
+  runHttpClientFailureContract,
+} from "./http-client-failure-contract.ts";
 
 const httpClientContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `HttpClient contract failed: ${assertion}`, assertion, details });
@@ -53,6 +58,7 @@ export interface HttpClientContractHarness<TrustObject = unknown> {
   readonly service: HttpClient.HttpClient;
   readonly serveSource: (url: string, bytes: Uint8Array) => Effect.Effect<void>;
   readonly events: () => Effect.Effect<ReadonlyArray<LandoEvent>>;
+  readonly failures?: HttpClientFailureHarness;
   readonly withPolicy?: <A, E, R>(
     policy: HttpClientContractRequestPolicy,
     effect: Effect.Effect<A, E, R>,
@@ -119,6 +125,7 @@ export const runHttpClientContract: <TrustObject>(
   harness: HttpClientContractHarness<TrustObject>,
 ) {
   const service = harness.service;
+  if (harness.failures !== undefined) yield* runHttpClientFailureContract(service, harness.failures);
   const failWith =
     (assertion: string) =>
     (cause: unknown): ContractFailure =>
@@ -140,9 +147,7 @@ export const runHttpClientContract: <TrustObject>(
   const okUrl = "https://contract.test/resource.bin";
   yield* harness.serveSource(okUrl, payload);
 
-  const response = yield* service
-    .get(okUrl)
-    .pipe(Effect.mapError(failWith("a get to an https source succeeds")));
+  const response = yield* service.get(okUrl).pipe(mapFailures(failWith("a get to an https source succeeds")));
   yield* requireHttpClientContract(
     response.status >= 200 && response.status < 400,
     "get returns a non-error status for a served https source",
@@ -154,7 +159,7 @@ export const runHttpClientContract: <TrustObject>(
   const streamed = yield* Effect.gen(function* () {
     const streamResponse = yield* service.get(streamUrl);
     return yield* collectByteStream(streamResponse.stream);
-  }).pipe(Effect.mapError(failWith("a stream of an https source succeeds")));
+  }).pipe(mapFailures(failWith("a stream of an https source succeeds")));
   yield* requireHttpClientContract(
     bytesEqual(streamed, payload),
     "stream yields the source bytes without buffering loss",
@@ -172,7 +177,7 @@ export const runHttpClientContract: <TrustObject>(
   const secretUrl = `https://user:${secret}@contract.test/s?token=${secret}`;
   yield* harness.serveSource(secretUrl, payload);
   yield* withPolicy({ callerId: `caller-${secret}`, redactionTokens: [secret] }, service.get(secretUrl)).pipe(
-    Effect.mapError(failWith("a secret-bearing request succeeds")),
+    mapFailures(failWith("a secret-bearing request succeeds")),
   );
   const events = yield* harness.events();
   yield* requireHttpClientContract(
@@ -206,7 +211,7 @@ export const runHttpClientContract: <TrustObject>(
     });
     yield* trust
       .withTrust(proxiedTrust, service.get(proxyUrl))
-      .pipe(Effect.mapError(failWith("a proxied request succeeds")));
+      .pipe(mapFailures(failWith("a proxied request succeeds")));
     const proxiedInit = yield* trust.lastInit();
     yield* requireHttpClientContract(
       typeof proxiedInit?.proxy === "object" &&
@@ -228,7 +233,7 @@ export const runHttpClientContract: <TrustObject>(
     });
     yield* trust
       .withTrust(bypassTrust, service.get(proxyUrl))
-      .pipe(Effect.mapError(failWith("a NO_PROXY request succeeds")));
+      .pipe(mapFailures(failWith("a NO_PROXY request succeeds")));
     const bypassInit = yield* trust.lastInit();
     yield* requireHttpClientContract(
       bypassInit?.proxy === false,
@@ -247,7 +252,7 @@ export const runHttpClientContract: <TrustObject>(
     const mergedTrust = trust.make({ proxy: { noProxy: [] }, caPems: [caPem], trustHost: true });
     yield* trust
       .withTrust(mergedTrust, service.get(mergeUrl))
-      .pipe(Effect.mapError(failWith("a trustHost request succeeds")));
+      .pipe(mapFailures(failWith("a trustHost request succeeds")));
     const mergedInit = yield* trust.lastInit();
     const mergedCa = mergedInit?.tls?.ca ?? [];
     yield* requireHttpClientContract(
@@ -266,7 +271,7 @@ export const runHttpClientContract: <TrustObject>(
     const replaceTrust = trust.make({ proxy: { noProxy: [] }, caPems: [caPem], trustHost: false });
     yield* trust
       .withTrust(replaceTrust, service.get(mergeUrl))
-      .pipe(Effect.mapError(failWith("a trustHost:false request succeeds")));
+      .pipe(mapFailures(failWith("a trustHost:false request succeeds")));
     const replaceInit = yield* trust.lastInit();
     yield* requireHttpClientContract(
       (replaceInit?.tls?.ca ?? []).length === 1 && (replaceInit?.tls?.ca ?? []).includes(caPem),

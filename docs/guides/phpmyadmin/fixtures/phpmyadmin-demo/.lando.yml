@@ -7,4 +7,3 @@ services:
       command: [mysqladmin, ping]
   pma:
     type: phpmyadmin
-    certs: false

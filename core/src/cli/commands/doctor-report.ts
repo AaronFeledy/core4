@@ -5,6 +5,7 @@
  * without requiring app bootstrap.
  */
 import { join } from "node:path";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { DateTime, Effect, Layer, Option } from "effect";
 
@@ -228,7 +229,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   tree: TaskTreeController,
 ): Effect.fn.Return<DoctorReport, never, R | ConfigService> {
   const options = input.options;
-  const sourceEnv = { ...(options.env ?? process.env) };
+  const sourceEnv = { ...(options.env ?? (yield* CliInvocation).env) };
   const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
   const budgetMs = doctorSectionBudgetMs(sourceEnv);
   const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];

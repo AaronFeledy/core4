@@ -9,6 +9,7 @@ import { Renderer } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, DateTime, Effect, Layer } from "effect";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor";
+import * as BunShellRunner from "../_support/shell-runner";
 import { environmentResolverLayer } from "../_support/value-contracts";
 
 test("event script maps preserve sparse identity and false without requiring a planner or provider", async () => {
@@ -35,6 +36,9 @@ test("event script maps preserve sparse identity and false without requiring a p
     };
     const layer = Layer.mergeAll(
       BunProcessRunner.layer,
+      BunShellRunner.layer(() => {
+        throw new TypeError("Interactive host tooling is unavailable in tests.");
+      }),
       PrivateFileAccessService.layer,
       environmentResolverLayer(),
       Layer.succeed(

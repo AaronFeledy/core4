@@ -1,4 +1,10 @@
-import type { NormalizedToolingArg, NormalizedToolingFlag, ToolingInputDeclaration } from "@lando/sdk/schema";
+import type {
+  NormalizedToolingArg,
+  NormalizedToolingFlag,
+  ToolingInputDeclaration,
+  ToolingRunSummary,
+  ToolingRunTarget,
+} from "@lando/sdk/schema";
 import * as Predicate from "effect/Predicate";
 import type { AppCommandIndexPayload, CommandIndexEntry } from "./command-index.ts";
 
@@ -68,6 +74,64 @@ const isInput = (value: unknown): value is ToolingInputDeclaration => {
   );
 };
 
+const isRunTarget = (value: unknown): value is ToolingRunTarget => {
+  if (!isCacheMapping(value)) return false;
+  switch (own(value, "kind")) {
+    case "host":
+    case "primary":
+    case "dynamic":
+      return true;
+    case "service":
+      return isString(own(value, "name"));
+    case "flag":
+      return isString(own(value, "flag"));
+    default:
+      return false;
+  }
+};
+
+const isRuns = (value: unknown): value is ToolingRunSummary => {
+  if (!isCacheMapping(value)) return false;
+  switch (own(value, "kind")) {
+    case "script":
+      return isString(value.path) && value.path.length <= 512;
+    case "commands": {
+      const steps = own(value, "steps");
+      const targets = own(value, "targets");
+      return (
+        isFiniteNumber(steps) &&
+        Number.isInteger(steps) &&
+        steps >= 1 &&
+        steps <= 1000 &&
+        isDenseArray(targets) &&
+        targets.length >= 1 &&
+        targets.length <= 32 &&
+        targets.every(isRunTarget) &&
+        new Set(
+          targets.map((target) => {
+            switch (target.kind) {
+              case "service":
+                return `service:${target.name}`;
+              case "flag":
+                return `flag:${target.flag}`;
+              case "host":
+              case "primary":
+              case "dynamic":
+                return target.kind;
+              default:
+                return target satisfies never;
+            }
+          }),
+        ).size === targets.length &&
+        (!Object.hasOwn(value, "program") ||
+          (isString(value.program) && value.program.length >= 1 && value.program.length <= 64))
+      );
+    }
+    default:
+      return false;
+  }
+};
+
 const isEntry = (value: unknown): value is CommandIndexEntry =>
   isCacheMapping(value) &&
   isString(own(value, "id")) &&
@@ -76,6 +140,19 @@ const isEntry = (value: unknown): value is CommandIndexEntry =>
   (!Object.hasOwn(value, "disabled") || (value.disabled === true && value.hidden === true)) &&
   (!Object.hasOwn(value, "service") || isString(value.service)) &&
   (!Object.hasOwn(value, "source") || value.source === "bun-script") &&
+  (!Object.hasOwn(value, "wrapper") || value.wrapper === true) &&
+  (!Object.hasOwn(value, "runs") || isRuns(value.runs)) &&
+  (!Object.hasOwn(value, "loadError") ||
+    (value.source === "bun-script" &&
+      !Object.hasOwn(value, "input") &&
+      !Object.hasOwn(value, "wrapper") &&
+      isCacheMapping(value.loadError) &&
+      isString(value.loadError._tag) &&
+      isString(value.loadError.message) &&
+      Buffer.byteLength(value.loadError.message) <= 1024 &&
+      (!Object.hasOwn(value.loadError, "remediation") ||
+        (isString(value.loadError.remediation) &&
+          Buffer.byteLength(value.loadError.remediation) <= 1024)))) &&
   (!Object.hasOwn(value, "input") || isInput(value.input));
 
 const isAliasPolicy = (value: unknown): boolean => {
@@ -97,7 +174,11 @@ const isReferencedFile = (value: unknown): boolean =>
   isString(own(value, "sha256"));
 
 const isScript = (value: unknown): boolean =>
-  isCacheMapping(value) && isString(own(value, "relativePath")) && isString(own(value, "sha256"));
+  isCacheMapping(value) &&
+  isString(own(value, "relativePath")) &&
+  (Object.hasOwn(value, "invalid")
+    ? isString(value.invalid) && !Object.hasOwn(value, "sha256")
+    : isString(own(value, "sha256")));
 
 const isVersionConstraint = (value: unknown): boolean => {
   if (!isCacheMapping(value) || !isString(own(value, "range")) || !isString(own(value, "source")))

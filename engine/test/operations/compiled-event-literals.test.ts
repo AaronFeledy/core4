@@ -32,6 +32,7 @@ import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as Tooling from "../../src/services/tooling-engine.ts";
 import { planApp } from "../plan-app.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { admitAndCompileTooling } from "./compile-tooling-fixture.ts";
 
 const serviceType: ServiceType = {
   id: "event-literals",
@@ -47,7 +48,7 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
   await writeFile(join(root, "payload.txt"), "{{ env.CANARY }} ${secret:CANARY}");
   await writeFile(
     file,
-    `name: event-literals\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n${source}`,
+    `name: event-literals\nservices:\n  web:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n${source}`,
   );
   const loaded = await Effect.runPromise(
     loadLandofileFile(file, {
@@ -131,7 +132,7 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
         Effect.gen(function* () {
           const task = effectiveToolingForPlan(plan)?.check;
           if (task === undefined) return yield* Effect.die("missing check task");
-          const compiled = yield* Invocation.compileToolingInvocations({
+          const compiled = yield* admitAndCompileTooling({
             name: "check",
             lookupKey: "check",
             task,

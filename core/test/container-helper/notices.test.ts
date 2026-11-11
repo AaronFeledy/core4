@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";
+import { CONTAINER_HELPER_SOURCE_ROOT } from "@lando/container-runtime/container-helper/source";
 import { buildContainerHelperAssets } from "../../../scripts/build-compiled-binary.ts";
 import { releaseGitHubAssetPaths, runRelease } from "../../../scripts/release.ts";
-import { containerHelperNotices } from "../../src/container-helper/notices.ts";
-import { CONTAINER_HELPER_SOURCE_ROOT } from "../../src/container-helper/source.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 import { stubContainerHelperDir } from "../build/fixtures/container-helper-stubs.ts";
 

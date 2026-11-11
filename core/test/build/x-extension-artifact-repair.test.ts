@@ -44,11 +44,15 @@ import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
+  evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -60,33 +64,44 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 };
 
 const repairedLandofile = (): JsonSchema =>
-  normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
+  evolveHistoricalSqliteTarget(
+    normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile")),
+  );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalConsolePort(
-    evolveHistoricalToolingSensitivity(
-      evolveHistoricalAppMountAcceleration(
-        evolveHistoricalToolingShorthand(
-          evolveHistoricalEnvironment(
-            evolveHistoricalEndpointMetadata(
-              evolveHistoricalServicePort(
-                evolveHistoricalTimestamps(
-                  evolveHistoricalContainerUser(
-                    evolveHistoricalReadiness(
-                      evolveHistoricalShorthand(
-                        evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+  evolveHistoricalToolingVars(
+    evolveHistoricalToolingWrapper(
+      evolveHistoricalUploadDirs(
+        evolveHistoricalConsolePort(
+          evolveHistoricalToolingSensitivity(
+            evolveHistoricalAppMountAcceleration(
+              evolveHistoricalToolingShorthand(
+                evolveHistoricalEnvironment(
+                  evolveHistoricalEndpointMetadata(
+                    evolveHistoricalServicePort(
+                      evolveHistoricalTimestamps(
+                        evolveHistoricalContainerUser(
+                          evolveHistoricalReadiness(
+                            evolveHistoricalShorthand(
+                              evolveHistoricalNetworks(
+                                evolveHistoricalNativeInit(repairedLandofile()),
+                                "bare",
+                              ),
+                            ),
+                          ),
+                        ),
+                        "bare",
                       ),
                     ),
                   ),
-                  "bare",
                 ),
+                "bare",
               ),
             ),
+            "bare",
           ),
-          "bare",
         ),
       ),
-      "bare",
     ),
   );
 
@@ -279,6 +294,7 @@ describe("closed x-* extension artifact repair", () => {
       "unsupported-keyword $.landofile.propertyNames",
       "unsupported-keyword $.landofile.services.additionalProperties",
       "unsupported-keyword $.landofile.tooling.additionalProperties",
+      "unsupported-keyword $.landofile.toolingDefaults.vars.additionalProperties",
     ]);
     expect(findings.every((finding) => finding.accepted === false)).toBe(true);
     const exact: CompatibilityException = {

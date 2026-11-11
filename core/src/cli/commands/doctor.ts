@@ -1,4 +1,5 @@
 import { Effect, Option, Result } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -78,7 +79,7 @@ export const doctor = Effect.fn("Doctor.collect")(
     const configService = yield* ConfigService;
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
-    const sourceEnv = { ...(options.env ?? process.env) };
+    const sourceEnv = { ...(options.env ?? (yield* CliInvocation).env) };
     const { redactor, redact } = yield* resolveSecretsRedactor({ sourceEnv });
     const sectionBudget = doctorSectionBudgetMs(sourceEnv);
     const probeBudget = probeBudgetMs(sectionBudget);
@@ -147,7 +148,7 @@ export const doctor = Effect.fn("Doctor.collect")(
         executables,
         platform,
         stateDir,
-        env: options.env ?? process.env,
+        env: sourceEnv,
         userDataRoot,
         binDir: userDataRoot === undefined ? undefined : paths.binDir,
       },
@@ -192,18 +193,25 @@ export const doctor = Effect.fn("Doctor.collect")(
     const provider = selected.success;
     const statusOutcome = yield* isolateDoctorSection({
       section: "provider-status",
-      effect: provider.getStatus,
-      fallback: undefined as ProviderStatusShape | undefined,
+      effect: Effect.result(provider.getStatus),
+      fallback: undefined,
       budgetMs: probeBudget,
       redact,
     });
     if (statusOutcome.self !== undefined) selfChecks.push(statusOutcome.self);
-    const status = statusOutcome.value ?? { running: false };
+    const statusResult = statusOutcome.value;
+    const statusFailure = statusResult?._tag === "Failure" ? statusResult.failure : undefined;
+    const status: ProviderStatusShape =
+      statusResult?._tag === "Success"
+        ? statusResult.success
+        : { state: "running", ...(statusFailure === undefined ? {} : { message: statusFailure.message }) };
+    const idle = status.state === "idle";
     const versions = yield* provider.getVersions.pipe(Effect.catch(() => Effect.succeed(undefined)));
     const diagnosis = diagnosePrimaryProvider({
       provider,
       status,
-      statusProbe: statusOutcome.self?.reason,
+      statusProbe: statusFailure === undefined ? statusOutcome.self?.reason : "failure",
+      ...(statusFailure === undefined ? {} : { statusFailure }),
       runtimeVersion: versions?.runtime,
       bundleVersion: versions?.bundle,
       selection,
@@ -285,10 +293,12 @@ export const doctor = Effect.fn("Doctor.collect")(
     if (execUmaskOutcome.self !== undefined) selfChecks.push(execUmaskOutcome.self);
     const diedEventsOutcome = yield* isolateDoctorSection({
       section: "container-died-events",
-      effect: containerDiedEventPayloadsFor(
-        provider as ContainerDiedEventCapableProvider,
-        options.diedEventPayloads,
-      ),
+      effect: idle
+        ? Effect.succeed([])
+        : containerDiedEventPayloadsFor(
+            provider as ContainerDiedEventCapableProvider,
+            options.diedEventPayloads,
+          ),
       fallback: [] as ReadonlyArray<unknown>,
       budgetMs: probeBudget,
       redact,
@@ -306,6 +316,7 @@ export const doctor = Effect.fn("Doctor.collect")(
     const hostProxyOutcome = yield* isolateDoctorSection({
       section: "host-proxy",
       effect: hostProxyTransportDoctorChecks({
+        runtimeIdle: idle,
         provider: {
           id: provider.id,
           displayName: provider.displayName,
@@ -332,11 +343,20 @@ export const doctor = Effect.fn("Doctor.collect")(
         ...pluginChecks,
         ...setupReadinessChecks,
         ...runtimeServiceChecks,
-        execUmaskOutcome.value,
+        ...(idle ? [] : [execUmaskOutcome.value]),
         ...hostProxyOutcome.value.checks,
         ...oomChecks,
       ]),
-      ...(hostProxyOutcome.value.skipped === undefined ? {} : { skipped: hostProxyOutcome.value.skipped }),
+      skipped: [
+        ...(hostProxyOutcome.value.skipped ?? []),
+        ...(idle
+          ? ["exec-umask", "container-died-events", "oom"].map((section) => ({
+              section,
+              status: "skipped" as const,
+              reason: `Provider ${provider.id} is idle; no live runtime was inspected.`,
+            }))
+          : []),
+      ],
     };
   },
   (effect, options?: DoctorOptions, _modules?: ReadonlyArray<LandoPluginModule>) =>

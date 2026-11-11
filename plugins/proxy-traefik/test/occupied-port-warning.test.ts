@@ -134,6 +134,44 @@ describe("occupiedHopNotices", () => {
   });
 });
 
+describe("Lando socket proxy holder labeling", () => {
+  test("names another Lando install only for lando-proxy units", () => {
+    const body = formatOccupiedPortWarning({
+      preferred: 80,
+      chosen: 8080,
+      kind: "unknown",
+      systemdUnit: "lando-proxy-http",
+      socketProxyMarked: true,
+      identity: { comm: "systemd-socket-", pid: 9 },
+    });
+    expect(body).toContain("another Lando install's socket proxy");
+    expect(body).not.toContain("systemd-socket-");
+  });
+
+  test("does not mislabel truncated systemd-socket- without a lando-proxy unit", () => {
+    const body = formatOccupiedPortWarning({
+      preferred: 80,
+      chosen: 8080,
+      kind: "unknown",
+      identity: { comm: "systemd-socket-", pid: 9 },
+    });
+    expect(body).toContain('process "systemd-socket-"');
+    expect(body).not.toContain("another Lando install");
+  });
+  test("does not call an unmarked lando-proxy unit a Lando install", () => {
+    const body = formatOccupiedPortWarning({
+      preferred: 80,
+      chosen: 8080,
+      kind: "unknown",
+      systemdUnit: "lando-proxy-http",
+      socketProxyMarked: false,
+      identity: { comm: "user-proxy", pid: 9 },
+    });
+    expect(body).toContain('process "user-proxy"');
+    expect(body).not.toContain("another Lando install");
+  });
+});
+
 describe("warningFromHolder", () => {
   test("classifies nginx from comm", () => {
     // Given: holder comm is nginx.

@@ -205,6 +205,11 @@ const INVALID_INPUT_FIXTURES = new Map([
   ["expressions/fixtures/expressions-plan-time-typed-field", "Planner scopes cannot supply typed values."],
   ["scripting-with-json/fixtures/unknown-service-key", "Deliberate misspelled service property."],
   ["networks/fixtures/networks-pinned-address", "Deliberately pins a network address Lando rejects."],
+  [
+    "networks/fixtures/networks-service-name-alias",
+    "Deliberately sets a network attachment option Lando rejects.",
+  ],
+  ["nginx/fixtures/nginx-upload-dirs-inject", "Deliberate config-injection attempt in an upload directory."],
   ["config-translate/fixtures/lando3-compose-arguments", "Legacy Lando 3 source, not v4 input."],
   ["build-steps/fixtures/build-steps-invalid-user", "Deliberately malformed build user."],
   [
@@ -229,6 +234,25 @@ const INVALID_INPUT_FIXTURES = new Map([
 ]);
 
 const inputValid = [
+  {
+    id: "notice-field-expression",
+    input: {
+      name: "demo",
+      tooling: {
+        old: {
+          cmd: "echo",
+          deprecated: { since: "4.2.0", severity: "{{ env.SEVERITY }}", note: "Use new." },
+        },
+      },
+    },
+  },
+  {
+    id: "app-versioned-notice",
+    input: {
+      name: "demo",
+      tooling: { old: { cmd: "echo", deprecated: { since: "1.2.0", note: "Use new." } } },
+    },
+  },
   { id: "recipe-boolean", input: { name: "demo", services: { web: { primary: "{{ recipe.flag }}" } } } },
   { id: "env-boolean", input: { name: "demo", services: { web: { primary: "{{ boolean(env.FLAG) }}" } } } },
   { id: "env-number", input: { name: "demo", router: { httpPort: "{{ number(env.PORT) }}" } } },
@@ -249,6 +273,13 @@ const inputValid = [
   },
 ] as const;
 const inputInvalid = [
+  {
+    id: "notice-removal-not-after-since",
+    input: {
+      name: "demo",
+      tooling: { old: { cmd: "echo", deprecated: { since: "4.2.0", removeIn: "4.2.0", note: "Use new." } } },
+    },
+  },
   { id: "disabled-tooling-string", input: { tooling: { retired: "disabled" } } },
   { id: "empty-tooling-string", input: { tooling: { retired: "" } } },
   { id: "plain-boolean", input: { name: "demo", services: { web: { primary: "maybe" } } } },
@@ -283,6 +314,7 @@ const inputInvalid = [
   ),
 ] as const;
 const INPUT_INEXPRESSIBLE = new Map([
+  ["notice-removal-not-after-since", "JSON Schema cannot compare the removeIn and since versions."],
   [
     "quoted-delimiters",
     "The editor pattern cannot distinguish quoted closing delimiters from an interpolation terminator.",

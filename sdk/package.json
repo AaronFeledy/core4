@@ -19,10 +19,13 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./abortable-promise": "./src/abortable-promise.ts",
     "./app": "./src/app/index.ts",
+    "./certificates": "./src/certificates/index.ts",
     "./command-result": "./src/command-result/index.ts",
     "./database-creds": "./src/database-creds/index.ts",
     "./digest": "./src/digest/index.ts",
+    "./errno": "./src/errors/errno.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/standard": "./src/schema/standard.ts",
     "./schema/services": "./src/schema/services/index.ts",
@@ -49,6 +52,7 @@
     "./log-follow": "./src/log-follow/index.ts",
     "./network-trust": "./src/network-trust/index.ts",
     "./probe": "./src/probe/index.ts",
+    "./transitions": "./src/transitions/index.ts",
     "./recipes": "./src/recipes/index.ts",
     "./task-progress": "./src/task-progress/index.ts",
     "./renderer": "./src/renderer/index.ts",
@@ -65,6 +69,14 @@
   "dependencies": {
     "effect": "catalog:",
     "semver": "^7.8.5"
+  },
+  "peerDependencies": {
+    "@typescript/typescript6": "^6.0.2"
+  },
+  "peerDependenciesMeta": {
+    "@typescript/typescript6": {
+      "optional": true
+    }
   },
   "scripts": {
     "build": "tsc -b",

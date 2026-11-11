@@ -47,6 +47,88 @@ const registryLayer = Layer.effect(
 
 test.each([
   {
+    content: "tooling:\n  t:\n    cmd: echo hi\n    deps: [other]\n    sources: [src]\n",
+    findings: [
+      {
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        path: ["tooling", "t", "deps"],
+        line: 5,
+        column: 5,
+      },
+      {
+        rule: "landofile.load",
+        reason: "NotImplementedError",
+        path: ["tooling", "t", "sources"],
+        line: 6,
+        column: 5,
+      },
+    ],
+  },
+  {
+    content: "toolingIncludes:\n  frag:\n    file: tasks.yml\n    vars:\n      WHO:\n        sh: echo inc\n",
+    findings: [
+      { rule: "landofile.validation", path: ["toolingIncludes", "frag", "vars", "WHO"], line: 6, column: 7 },
+    ],
+  },
+])(
+  "returns located tooling load findings through appConfigLint (#2211, #2212): $content",
+  async ({ content, findings }) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-lint-refused-"));
+    try {
+      await writeFile(join(root, ".lando.yml"), `name: refused\n${content}`);
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)),
+      );
+      expect(result.valid).toBe(false);
+      expect(result.violations).toEqual(
+        findings.map((finding) =>
+          expect.objectContaining({
+            ...finding,
+            source: { file: join(root, ".lando.yml"), layer: "canonical", path: finding.path },
+          }),
+        ),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("lint reports dynamic var reference rules without making them planning checks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-dynamic-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: dynamic",
+        "tooling:",
+        "  inspect:",
+        "    service: ':host'",
+        "    cmd: echo body",
+        "    dir: '{{ vars.V }}'",
+        "    vars:",
+        "      A: '{{ vars.V }}'",
+        "      V:",
+        "        sh: echo computed",
+        "",
+      ].join("\n"),
+    );
+    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
+    expect(result.valid).toBe(false);
+    expect(
+      result.violations.filter((issue) => issue.rule === "landofile.tooling").map((issue) => issue.path),
+    ).toEqual([
+      ["tooling", "inspect", "dir"],
+      ["tooling", "inspect", "vars", "A"],
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  {
     label: "authored task",
     tooling: "tooling:\n  run:\n    cmd: echo authored\n    service: ':host'\n",
     message:
@@ -71,7 +153,7 @@ test.each([
     try {
       await writeFile(
         join(root, ".lando.yml"),
-        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n${tooling}`,
+        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n${tooling}`,
       );
       // When
       const result = await Effect.runPromise(
@@ -106,7 +188,7 @@ test.each(["false", "\n    disabled: true"])(
     try {
       await writeFile(
         join(root, ".lando.yml"),
-        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n`,
+        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    image: alpine:3.22\n    home: false\n`,
       );
       await writeFile(join(root, ".lando.local.yml"), `tooling:\n  run: ${task}\n`);
       // When
@@ -172,6 +254,58 @@ test.each([true, false])("reserved scratch include task with internal=%s", async
     expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual(
       internal ? [] : [{ rule: "landofile.tooling", path: ["tooling", "scratch:check"] }],
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("flags host tooling Bun Shell dialect on cmd path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-host-shell-tooling-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: hostshell\ntooling:\n  bad:\n    service: ":host"\n    cmd: "echo $${NAME}"\n  ok:\n    service: ":host"\n    cmd: "echo $NAME 1>&2"\n  container:\n    service: web\n    cmd: "echo $${NAME}"\n',
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.valid).toBe(false);
+    const hostShell = result.violations.filter((v) => v.rule === "landofile.host-shell");
+    expect(hostShell.map((v) => v.path)).toEqual([["tooling", "bad", "cmd"]]);
+    expect(hostShell[0]?.message).toContain("Column ");
+    expect(hostShell[0]?.suggestion).toBeTruthy();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("skips host tooling cmd that still has pending {{ args.* }} sites", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-host-shell-pending-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: hostshell\ntooling:\n  greet:\n    service: ":host"\n    args:\n      name:\n        order: 0\n        required: true\n    cmd: "echo {{ args.name }} $${BROKEN}"\n',
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.violations.filter((v) => v.rule === "landofile.host-shell")).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("skips argv host tooling commands", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-host-shell-argv-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: hostshell\ntooling:\n  argv:\n    service: ":host"\n    cmd: ["echo", "$${NAME}"]\n',
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.violations.filter((v) => v.rule === "landofile.host-shell")).toEqual([]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

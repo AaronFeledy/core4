@@ -1,8 +1,12 @@
 import { expect, spyOn, test } from "bun:test";
 import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { networkOwnershipLabels } from "@lando/container-runtime/native-ownership";
-import { commonContainerLabels } from "@lando/container-runtime/plan";
 import { bringUp } from "@lando/container-runtime/podman/bring-up";
+import { inspect } from "@lando/container-runtime/podman/inspect";
+import {
+  fixtureContainerLabels as commonContainerLabels,
+  fixtureHelperOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { ServiceName, landoAppNetworkName, landoSharedNetworkName } from "@lando/sdk/schema";
 import { BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -91,15 +95,10 @@ const runRestart = (
     exec: () => Effect.die("Selected restart must not seed a GPG home"),
     inspect: (target) => {
       inspections.push(target.plan);
-      return Effect.succeed({
-        app: applied.id,
-        service: web.name,
-        providerId: applied.provider,
-        status: running ? "running" : "stopped",
-        state: running ? "running" : "stopped",
-        containerId: "retained-container",
-        labels,
-        publications: { status: "present", bindings: [] },
+      return inspect(target.plan ?? current, target, {
+        api,
+        ctx: { providerId: "lando", remediation: "Retry.", env: {} },
+        ...fixtureHelperOptions,
       });
     },
     onStop: () => {
@@ -114,6 +113,7 @@ const runRestart = (
       expect(options.completionPlan).toBe(current);
       expect(Object.keys(runtimePlan.services)).toEqual([web.name]);
       return bringUp(runtimePlan, {
+        ...fixtureHelperOptions,
         ...options,
         api,
         ctx: { providerId: "lando", remediation: "Retry.", env: {} },

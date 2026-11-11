@@ -3,7 +3,6 @@ import type { AppId } from "../schema/primitives.ts";
 
 import type {
   AppPlacementError,
-  CaError,
   HealthcheckError,
   HealthcheckTargetUnsupportedError,
   HealthcheckTimeoutError,
@@ -22,6 +21,7 @@ import type {
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
   AppPlan,
+  AppRouteOwner,
   EndpointRef,
   HealthcheckPlan,
   ProxyApplyResult,
@@ -33,35 +33,6 @@ import type {
   ScanVerdict,
   ServiceName,
 } from "../schema/index.ts";
-import type { PrivilegeService } from "./process.ts";
-
-export interface CaSetupOptions {
-  readonly force: boolean;
-  readonly skipTrustInstall?: boolean;
-  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
-}
-
-export interface CertificateSpec {
-  readonly cn: string;
-  readonly sans: ReadonlyArray<string>;
-}
-
-export interface CertificateResult {
-  readonly certPath: string;
-  readonly keyPath: string;
-  readonly caPath: string;
-}
-
-export class CertificateAuthority extends Context.Service<
-  CertificateAuthority,
-  {
-    readonly id: string;
-    readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
-    readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
-  }
->()("@lando/core/CertificateAuthority") {}
-
-export type CertificateAuthorityShape = CertificateAuthority["Service"];
 
 export class RouterService extends Context.Service<
   RouterService,
@@ -78,6 +49,7 @@ export class RouterService extends Context.Service<
     readonly setup: (
       config: ProxyConfig,
       options?: {
+        readonly intent?: "configure" | "ensure";
         readonly autoApprove?: boolean;
         /** Rescan host ports instead of reusing the persisted pair; set only by explicit `lando setup`. */
         readonly reacquirePorts?: boolean;
@@ -95,11 +67,11 @@ export class RouterService extends Context.Service<
     readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
     readonly applyRoutes: (
       routes: ReadonlyArray<RoutePlan>,
-      appId: AppId,
+      owner: AppRouteOwner,
     ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
-    readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly removeRoutes: (owner: AppRouteOwner) => Effect.Effect<void, ProxyError>;
     readonly observeRoutes: (
-      app: AppId,
+      owner: AppRouteOwner,
       requestedRoutes: ReadonlyArray<RoutePlan>,
     ) => Effect.Effect<RouteEvidence, ProxyError>;
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;

@@ -1,6 +1,6 @@
 // allow: SIZE_OK — Required deferred-swap acceptance matrix stays with its existing lock regressions in this owned test file.
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveOwnedExecutable } from "@lando/engine/install/owned-executable";
@@ -21,8 +21,8 @@ const fixture = async (name = "lando.exe") => {
   await mkdir(pluginsRoot);
   const executablePath = join(root, name);
   const stagedBinaryPath = join(root, "candidate.exe");
-  await writeFile(executablePath, "old");
-  await writeFile(stagedBinaryPath, "new");
+  await writeFile(executablePath, "old", { mode: 0o755 });
+  await writeFile(stagedBinaryPath, "new", { mode: 0o755 });
   const installRecordFile = join(root, "record.json");
   const record = {
     version: 1,
@@ -94,18 +94,18 @@ test.each(["lando.exe", "LANDO.EXE", "lando4.exe", "LANDO4.EXE"])(
     await writeFile(f.input.stagedBinaryPath, "new-version-bytes");
     const finish = spyOn(f.handoff, "finishDeferred");
     const moves: string[][] = [];
-    // When the helper swaps using a copy-backed move fake (no real rename).
+    // When the helper swaps temp fixtures through an observed filesystem adapter.
     await Effect.runPromise(
       runWindowsReplacement(f.input, f.handoff, async (from, to) => {
         moves.push([from, to]);
-        await copyFile(from, to);
+        expect(await Bun.file(f.input.executablePath).text()).toBe("old");
+        expect(await Bun.file(f.input.backupPath).text()).toBe("old");
+        await rename(from, to);
       }),
     );
     // Then only Lando 4 is replaced and its durable ownership follows the new bytes.
-    expect(moves).toEqual([
-      [f.input.executablePath, f.input.backupPath],
-      [f.input.stagedBinaryPath, f.input.executablePath],
-    ]);
+    expect(moves).toEqual([[f.input.stagedBinaryPath, f.input.executablePath]]);
+    expect(await Bun.file(f.input.backupPath).text()).toBe("old");
     expect(await Bun.file(foreign).text()).toBe("lando3");
     expect(await Bun.file(f.input.installRecordFile).json()).toEqual({
       ...f.record,
@@ -168,19 +168,19 @@ test.each(["other.exe", "lando4", "digest-drift", "path-mismatch"])(
   },
 );
 
-test.each(["second-move", "record-refresh"])(
+test.each(["replacement", "record-refresh"])(
   "rolls back without refreshing the record when %s fails",
   async (failure) => {
     // Given an owned binary and a recoverable original record.
     const f = await fixture();
     const before = await Bun.file(f.input.installRecordFile).text();
     const moves: string[][] = [];
-    // When either installation or record persistence fails after the backup move.
+    // When either installation or record persistence fails after backup creation.
     await Effect.runPromise(
       runWindowsReplacement(f.input, f.handoff, async (from, to) => {
         moves.push([from, to]);
-        if (from === f.input.stagedBinaryPath && failure === "second-move") throw new Error("move failed");
-        await copyFile(from, to);
+        if (from === f.input.stagedBinaryPath && failure === "replacement") throw new Error("move failed");
+        await rename(from, to);
         if (from === f.input.stagedBinaryPath && failure === "record-refresh") {
           await rm(f.input.installRecordFile);
           await mkdir(f.input.installRecordFile);
@@ -188,20 +188,46 @@ test.each(["second-move", "record-refresh"])(
       }),
     );
     // Then the backup is restored and a failure receipt is finalized.
-    expect(moves).toEqual([
-      [f.input.executablePath, f.input.backupPath],
-      [f.input.stagedBinaryPath, f.input.executablePath],
-      [f.input.backupPath, f.input.executablePath],
-    ]);
-    expect(await Bun.file(f.input.executablePath).text()).toBe("old");
-    if (failure === "second-move") expect(await Bun.file(f.input.installRecordFile).text()).toBe(before);
-    expect((await Effect.runPromise(f.handoff.consumeDeferred(f.input.token)))?.coreFailure?.tag).toBe(
-      failure === "second-move" ? "UpdatePermissionError" : "InstallOwnershipError",
+    expect(moves).toEqual(
+      failure === "replacement"
+        ? [[f.input.stagedBinaryPath, f.input.executablePath]]
+        : [
+            [f.input.stagedBinaryPath, f.input.executablePath],
+            [f.input.backupPath, f.input.executablePath],
+          ],
     );
+    expect(await Bun.file(f.input.executablePath).text()).toBe("old");
+    if (failure === "replacement") expect(await Bun.file(f.input.installRecordFile).text()).toBe(before);
+    const coreFailure = (await Effect.runPromise(f.handoff.consumeDeferred(f.input.token)))?.coreFailure;
+    expect(coreFailure?.tag).toBe(
+      failure === "replacement" ? "UpdatePermissionError" : "InstallOwnershipError",
+    );
+    // The receipt is all the next command sees, so it must name the move that failed.
+    if (failure === "replacement") {
+      expect(coreFailure?.message).toContain(`${f.input.stagedBinaryPath} to ${f.input.executablePath}`);
+    }
   },
 );
 
-test("holds the mutation lock through both moves and makes the outcome available exactly once", async () => {
+test("reports the original failure and the retained backup when rollback also fails", async () => {
+  const f = await fixture();
+  await Effect.runPromise(
+    runWindowsReplacement(f.input, f.handoff, async (from, to) => {
+      if (from === f.input.backupPath) throw new Error("restore failed");
+      await rename(from, to);
+      if (from === f.input.stagedBinaryPath) {
+        await rm(f.input.installRecordFile);
+        await mkdir(f.input.installRecordFile);
+      }
+    }),
+  );
+  const coreFailure = (await Effect.runPromise(f.handoff.consumeDeferred(f.input.token)))?.coreFailure;
+  expect(coreFailure?.message).toMatch(/failed \(.+\) and its backup could not be restored/u);
+  expect(coreFailure?.remediation).toContain(`restore ${f.input.backupPath} to ${f.input.executablePath}`);
+  expect(await Bun.file(f.input.backupPath).text()).toBe("old");
+});
+
+test("holds the mutation lock through replacement and makes the outcome available exactly once", async () => {
   const f = await fixture();
   expect(await Effect.runPromise(f.handoff.consumeDeferred(f.input.token))).toBeUndefined();
   let moves = 0;
@@ -213,7 +239,7 @@ test("holds the mutation lock through both moves and makes the outcome available
       await rename(from, to);
     }),
   );
-  expect(moves).toBe(2);
+  expect(moves).toBe(1);
   expect(await Bun.file(join(f.input.precondition.pluginsRoot, ".lando-plugin-mutation.lock")).exists()).toBe(
     false,
   );
@@ -231,7 +257,7 @@ test("a competing lock participant cannot mutate between validation and replacem
   const lockPath = join(f.input.precondition.pluginsRoot, ".lando-plugin-mutation.lock");
   await Effect.runPromise(
     runWindowsReplacement(f.input, f.handoff, async (from, to) => {
-      if (from === f.input.executablePath) {
+      if (from === f.input.stagedBinaryPath) {
         competitor = Effect.runPromise(
           Effect.acquireUseRelease(
             acquireAdvisoryLockAt(lockPath, "plugin:add", {

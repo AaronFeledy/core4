@@ -5,13 +5,19 @@ import { AppId, ServiceConnection, ServiceState } from "@lando/sdk/schema";
 import { FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
-import { GlobalReconciliationPending, readGlobalReconciliation } from "../global-app/reconciliation.ts";
+import {
+  GlobalReconciliationPending,
+  pendingWork,
+  readGlobalReconciliation,
+} from "../global-app/reconciliation.ts";
 import { GlobalContributionStateSchema, readGlobalResolution } from "../global-app/resolution.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { observeRuntime } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { type ObservedService, collectObservedConnections, observeService } from "./connection-collector.ts";
+import { serviceStateOf } from "./connection-state.ts";
 import { readGlobalLandofile } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
@@ -39,7 +45,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
   materialized: Schema.Boolean,
   revision: Schema.optionalKey(Schema.Number),
   policyState: Schema.Literals(["available", "unavailable"]),
-  runtimeState: Schema.Literals(["available", "unavailable"]),
+  runtimeState: Schema.Literals(["available", "unavailable", "idle"]),
   services: Schema.Array(GlobalStatusServiceSchema),
   pending: Schema.Array(GlobalReconciliationPending),
   diagnostics: Schema.Array(Schema.String),
@@ -82,13 +88,7 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
   const pending =
     receipt._tag === "Success"
       ? [...receipt.success.pending]
-      : [
-          {
-            phase: "evidence" as const,
-            services: [],
-            message: "Pending reconciliation records could not be read.",
-          },
-        ];
+      : [pendingWork("evidence", [], "Pending reconciliation records could not be read.")];
   const diagnostics: string[] = [];
   if (placement._tag === "Failure")
     diagnostics.push(diagnostic("Applied global placement could not be read.", placement.failure));
@@ -111,13 +111,18 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     provider === undefined
       ? undefined
       : yield* Effect.result(
-          provider.isAvailable.pipe(
-            Effect.flatMap((available) =>
-              available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
+          observeRuntime(provider).pipe(
+            Effect.flatMap((observation) =>
+              observation.kind === "unavailable"
+                ? observation.error === undefined
+                  ? Effect.succeed(undefined)
+                  : Effect.fail(observation.error)
+                : Effect.succeed(observation.kind),
             ),
           ),
         );
-  const online = availability?._tag === "Success" && availability.success;
+  const online = availability?._tag === "Success" && availability.success === "running";
+  const idle = availability?._tag === "Success" && availability.success === "idle";
   const observed =
     provider === undefined || !online
       ? undefined
@@ -147,7 +152,7 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     diagnostics.push(
       "Some global runtime observations have incomplete ownership metadata; their resource state is unknown.",
     );
-  if (observed?._tag !== "Success")
+  if (!idle && observed?._tag !== "Success")
     diagnostics.push(
       diagnostic(
         "The global runtime could not be observed; resource state is unknown.",
@@ -196,31 +201,34 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     const runtime = owned.find((service) => service.service === name);
     const collected = connections.find((row) => row.name === name);
     const ownershipUnknown = uncertain.some((service) => service.service === name);
-    const rawState = runtime?.state ?? runtime?.status;
     const status =
       collected?.state ??
-      (Schema.is(ServiceState)(rawState)
-        ? rawState
-        : observed?._tag === "Success" && !ownershipUnknown
+      (runtime !== undefined
+        ? serviceStateOf(runtime)
+        : (idle || observed?._tag === "Success") && !ownershipUnknown
           ? "stopped"
           : "unknown");
     const work = pending.filter((entry) => entry.services.length === 0 || entry.services.includes(name));
     if (ownershipUnknown)
-      work.push({
-        phase: "evidence",
-        services: [name],
-        message: "Observed resource ownership is incomplete; absence cannot be verified.",
-      });
+      work.push(
+        pendingWork(
+          "evidence",
+          [name],
+          "Observed resource ownership is incomplete; absence cannot be verified.",
+        ),
+      );
     if (
       policy?.state === "disabled" &&
       status !== "stopped" &&
       !work.some((entry) => entry.phase === "containers" || entry.phase === "evidence")
     ) {
-      work.push({
-        phase: status === "unknown" ? "evidence" : "containers",
-        services: [name],
-        message: "Disabled contribution still has running or unverified resources.",
-      });
+      work.push(
+        pendingWork(
+          status === "unknown" ? "evidence" : "containers",
+          [name],
+          "Disabled contribution still has running or unverified resources.",
+        ),
+      );
     }
     return {
       app: "global",
@@ -258,7 +266,11 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
     materialized,
     ...(resolution._tag === "Success" ? { revision: resolution.success.policy.revision } : {}),
     policyState: resolution._tag === "Success" ? ("available" as const) : ("unavailable" as const),
-    runtimeState: observed?._tag === "Success" ? ("available" as const) : ("unavailable" as const),
+    runtimeState: idle
+      ? ("idle" as const)
+      : observed?._tag === "Success"
+        ? ("available" as const)
+        : ("unavailable" as const),
     services,
     pending: allPending,
     diagnostics,

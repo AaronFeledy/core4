@@ -24,7 +24,6 @@ func TestDispatchRoles(t *testing.T) {
 	}{
 		{"lando", []string{"log-file"}, "", 127, "", "Missing LANDO_HOST_PROXY_SOCKET or LANDO_HOST_PROXY_URL for host-proxy runLando.\n"},
 		{"helper", []string{"log-file"}, "{\"op\":\"close\"}\n", 0, "{\"ok\":true}\n", ""},
-		{"helper", []string{"log-file-cleanup", "/invalid"}, "", 0, "{\"ok\":false,\"code\":\"EPROTO\",\"message\":\"invalid helper cleanup path\"}\n", ""},
 	} {
 		t.Run(tc.name+strings.Join(tc.args, " "), func(t *testing.T) {
 			var out, stderr bytes.Buffer
@@ -39,7 +38,7 @@ func TestDispatchRoles(t *testing.T) {
 		if code := dispatch("helper", args, helperIO{stdout: &out, stderr: &stderr}); code != 64 || out.Len() != 0 {
 			t.Fatalf("usage code=%d", code)
 		}
-		for _, role := range []string{"lando", "host-proxy", "log-file", "log-file-cleanup"} {
+		for _, role := range []string{"lando", "host-proxy", "exec-run", "log-file"} {
 			if !strings.Contains(stderr.String(), role) {
 				t.Fatalf("usage missing %q: %s", role, stderr.String())
 			}

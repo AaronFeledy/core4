@@ -105,6 +105,21 @@ test.each([
   expect(runner.calls).toEqual([]);
 });
 
+test("the scheme remediation keeps the schemes already allowed", async () => {
+  const result = await Effect.runPromise(
+    Effect.result(
+      openHostProxyTarget({ _tag: "openUrl", url: "slack:channel" }, mount, ["figma"]).pipe(
+        Effect.provide(recorder().layer),
+      ),
+    ),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure")
+    expect(result.failure.remediation).toBe(
+      `Allow this scheme with: lando config set hostProxy.allowedSchemes '["figma","slack"]'`,
+    );
+});
+
 test("service-level scheme extensions do not replace defaults", async () => {
   const runner = recorder();
   await Effect.runPromise(

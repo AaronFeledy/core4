@@ -12,7 +12,7 @@ import {
 } from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { AGENT_SESSION_LABEL } from "@lando/container-runtime/labels";
-import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import { type AgentSocketBridgeInput, type AgentSocketBridgeResult, ProviderId } from "@lando/sdk/schema";
@@ -107,7 +107,7 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
           duration: Duration.seconds(15),
           orElse: () => Effect.fail((() => failure("Docker agent relay request timed out."))()),
         }),
-        Effect.mapError((cause) => failure("Docker agent relay API request failed.", cause)),
+        mapFailures((cause) => failure("Docker agent relay API request failed.", cause)),
       );
     const checked = (req: EngineHttpRequest) =>
       request(req).pipe(
@@ -209,14 +209,14 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
               env: { ...process.env },
             },
             dialect: dockerPullDialect,
-          }).pipe(Effect.mapError((cause) => failure("Could not pull the Docker agent relay image.", cause)));
+          }).pipe(mapFailures((cause) => failure("Could not pull the Docker agent relay image.", cause)));
         }
         const response = initial.status === 404 ? yield* checked(createRequest) : initial;
         if (response.status !== 201)
           return yield* Effect.fail(failure("Could not create the Docker agent relay container."));
         return yield* Schema.decodeUnknownEffect(Identifier)(response.body).pipe(
           Effect.map((value) => value.Id),
-          Effect.mapError(() => failure("Docker returned an invalid relay container identifier.")),
+          mapFailures(() => failure("Docker returned an invalid relay container identifier.")),
         );
       }),
       (id) =>
@@ -269,7 +269,7 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
         if (status.Running || status.ExitCode !== 0)
           return yield* Effect.fail(failure("Agent relay socket is not ready."));
       }),
-    ).pipe(Effect.mapError(() => failure("Docker agent relay readiness probe failed.")));
+    ).pipe(mapFailures(() => failure("Docker agent relay readiness probe failed.")));
     if (ready.outcome !== "green")
       return yield* Effect.fail(failure("Docker agent relay socket did not become ready."));
     return { _tag: "volume", volume };

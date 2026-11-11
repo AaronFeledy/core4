@@ -6,13 +6,15 @@ description: Find Lando's package boundaries, source-build instructions, and val
 # Contributor source map
 
 Use this page to find the code and checks for a Lando change. To run an app rather
-than work on Lando itself, use the [Alpha install guide](../alpha-install-and-bug-reports.md).
+than work on Lando itself, use the [install guide](../alpha-install-and-bug-reports.md).
 Read the root [repository instructions](../../AGENTS.md) and any package-specific
 `AGENTS.md` before editing.
 
 ## Build from source
 
 You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version); the current minimum is Bun 1.4.3. Node is not a supported host runtime. Use Bun for dependency installation, scripts, and tests.
+
+`bun install` provides TypeScript 7 as `tsc` and the TypeScript 6 compiler API as `@typescript/typescript6`. The [TypeScript 7 toolchain decision](./decisions.md#typescript-7-toolchain-decision) explains the layout.
 
 Follow the [source-build steps](../alpha-install-and-bug-reports.md#option-2-build-from-source)
 to clone the repository, install dependencies, and generate sources. Before
@@ -118,19 +120,21 @@ sources, and building the helper when the selected tests need it.
 
 | Command | Purpose |
 | --- | --- |
-| `bun run gate:pr` | Typecheck, lint, generated-output drift, boundaries, and guide drift against `origin/main` |
+| `bun run gate:pr` | Typecheck, lint, generated-output drift, test ownership, boundaries, and guide drift against `origin/main` |
 | `bun test` | Full test suite; live tests may have additional prerequisites |
-| `bun run test:unit` | Unsharded test pass excluding `*.integration.test.ts` |
+| `bun run test:unit` | Unsharded run of the CI unit file set: every `*.test.ts` outside the dedicated library, recipe, docs and nightly suites |
+| `bun run test:selection <id>` | Run one named CI selection from `scripts/test-selections.ts`, exactly as its workflow job does |
 | `bun run format` | Write Biome formatting changes |
 | `bun run codegen` | Regenerate catalog-owned sources and artifacts |
 | `bun run lint:guides` | Validate executable-guide structure and Landofile examples |
 | `bun run docs:check` / `bun run docs:test` | Check and test the Astro-owned docs tree |
 | `bun run docs:dev` / `bun run docs:build` | Preview or build the documentation site |
 
-The pre-PR gate does not replace tests. Root typechecking covers source and
-non-docs test trees; the docs checks are separate. Fetch `origin/main` before
-checking guide drift. Use the [CI runbook](./ci.md) to reproduce a specific job,
-including focused tests, guide checks, and provider integration tests.
+The pre-PR gate does not replace tests. Root typechecking covers source,
+non-docs test trees, and repository scripts; the docs checks are separate.
+Fetch `origin/main` before checking guide drift. Use the [CI runbook](./ci.md)
+to reproduce a specific job, including focused tests, guide checks, and
+provider integration tests.
 
 Executable guides check reader-facing workflows, while integration tests check
 behavior against external systems. To write or debug one scenario, follow
@@ -151,17 +155,14 @@ and the [release runbook](./release.md).
 The default managed-runtime manifest pins published assets. To test an unpublished
 runtime bundle, build it with `scripts/build-runtime-bundle.ts` and use
 `LANDO_RUNTIME_BUNDLE_MANIFEST` to select that manifest. This override is a
-development tool, not a prerequisite for ordinary Alpha setup.
+development tool, not a prerequisite for ordinary setup.
 
-Public Alpha 1 is the current milestone. Earlier internal phases are pre-alpha;
-Beta follows Alpha. The `dev` channel ships unsigned `4.0.0-dev.N` artifacts.
-Signing, installers, and self-update are later milestones, not Alpha delivery
-claims. The manual signed Beta pipeline is a separate release path.
+The `dev` channel ships unsigned `4.0.0-dev.N` artifacts. The manual signed
+pipeline in the [release runbook](./release.md) is a separate release path.
 
-Compiling six binaries is not Alpha acceptance: the
-[platform criteria](./ci.md#alpha-platform-scope) require live setup, doctor,
-and canonical Drupal and Rails journeys across all six targets. A roadmap
-rewrite does not satisfy these criteria.
+Compiling six binaries is not release acceptance: the
+[platform criteria](./ci.md#platform-acceptance) require live setup, doctor,
+and canonical Drupal and Rails journeys across all six targets.
 
 The public Rails recipe uses an executable `README.mdx` in `recipes/rails/`.
 Extend its existing built-in implementation rather than adding a duplicate recipe.

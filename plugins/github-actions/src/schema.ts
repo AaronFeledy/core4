@@ -1,4 +1,5 @@
-import { Effect, Schema } from "effect";
+import { mapFailures } from "@lando/sdk/command-result";
+import { Schema } from "effect";
 import { inputIssueError } from "./errors.ts";
 
 // ==== Inspection input: no execution, event simulation, or credential options.
@@ -11,7 +12,7 @@ export const ListWorkflowsOptions = Schema.Struct({
 export type ListWorkflowsOptions = typeof ListWorkflowsOptions.Type;
 export const decodeListWorkflowsOptions = (input: unknown) =>
   Schema.decodeUnknownEffect(ListWorkflowsOptions)(input, { onExcessProperty: "error" }).pipe(
-    Effect.mapError((error) => inputIssueError(error.issue)),
+    mapFailures((error) => inputIssueError(error.issue)),
   );
 
 // ==== Safe, source-located observations. No runtime AST or authored scripts.

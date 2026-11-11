@@ -10,6 +10,9 @@ import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
 import { withAuthoredProjectEvents as withProjectEvents } from "./event-plan.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
+// Each event step interpolates its tag, which binds as one quoted shell word.
+const step = (tag: string) => `'${tag}'`;
+
 const recordingEngine = (executed: string[], failure?: string) => ({
   id: "recording",
   run: (invocation: {
@@ -23,7 +26,7 @@ const recordingEngine = (executed: string[], failure?: string) => ({
       return {
         tool: invocation.tool,
         service: invocation.service ?? ":lando",
-        exitCode: name === failure ? 7 : 0,
+        exitCode: failure !== undefined && name === step(failure) ? 7 : 0,
         stdout: "",
         stderr: "",
       };
@@ -66,7 +69,7 @@ const restartHarness = (failure?: string) => {
     Effect.provideService(ToolingEngine, recordingEngine(executed, failure)),
     Effect.provideService(RouterService, {
       ...TestRouterService,
-      removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
+      removeRoutes: (owner) => Effect.sync(() => void routeRemovals.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
   );
@@ -89,7 +92,7 @@ const startHarness = (failure?: string) => {
     Effect.provideService(ToolingEngine, recordingEngine(executed, failure)),
     Effect.provideService(RouterService, {
       ...TestRouterService,
-      removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
+      removeRoutes: (owner) => Effect.sync(() => void routeRemovals.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
   );
@@ -152,16 +155,18 @@ describe("restart lifecycle brackets", () => {
     // When
     await Effect.runPromise(harness.operation);
     // Then
-    expect(harness.executed).toEqual([
-      "pre-init",
-      "post-init",
-      "pre-restart",
-      "pre-stop",
-      "post-stop",
-      "pre-start",
-      "post-start",
-      "post-restart",
-    ]);
+    expect(harness.executed).toEqual(
+      [
+        "pre-init",
+        "post-init",
+        "pre-restart",
+        "pre-stop",
+        "post-stop",
+        "pre-start",
+        "post-start",
+        "post-restart",
+      ].map(step),
+    );
     expect(byTag(harness.events, "pre-restart")).toMatchObject([
       {
         scope: "app",
@@ -189,14 +194,9 @@ describe("restart lifecycle brackets", () => {
     // Then
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
     expect(byTag(harness.events, "post-restart")).toEqual([]);
-    expect(harness.executed).toEqual([
-      "pre-init",
-      "post-init",
-      "pre-restart",
-      "pre-stop",
-      "post-stop",
-      "pre-start",
-    ]);
+    expect(harness.executed).toEqual(
+      ["pre-init", "post-init", "pre-restart", "pre-stop", "post-stop", "pre-start"].map(step),
+    );
   });
 
   test("post-restart failure propagates without removing started app routes", async () => {
@@ -206,7 +206,7 @@ describe("restart lifecycle brackets", () => {
     const error = await Effect.runPromise(Effect.flip(harness.operation));
     // Then
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
-    expect(harness.executed.at(-1)).toBe("post-restart");
+    expect(harness.executed.at(-1)).toBe(step("post-restart"));
     expect(harness.routeRemovals).toEqual([]);
   });
 
@@ -216,7 +216,7 @@ describe("restart lifecycle brackets", () => {
     // When
     await Effect.runPromise(harness.operation);
     // Then
-    expect(harness.executed).toContain("post-start");
+    expect(harness.executed).toContain(step("post-start"));
     expect(byTag(harness.events, "post-restart")).toHaveLength(1);
     expect(byTag(harness.events, "message.warn")).toHaveLength(1);
     expect(harness.routeRemovals).toEqual([]);
@@ -230,7 +230,7 @@ describe("start post-start", () => {
     // When
     await Effect.runPromise(harness.operation);
     // Then
-    expect(harness.executed).toEqual(["pre-init", "post-init", "pre-start", "post-start"]);
+    expect(harness.executed).toEqual(["pre-init", "post-init", "pre-start", "post-start"].map(step));
     expect(harness.routeRemovals).toEqual([]);
     expect(byTag(harness.events, "post-start")).toHaveLength(1);
     expect(byTag(harness.events, "message.warn")).toHaveLength(1);

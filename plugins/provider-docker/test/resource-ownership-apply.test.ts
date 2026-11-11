@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { loadAppliedPlan, makeRuntimeProvider } from "@lando/provider-docker";
+import { loadAppliedPlan } from "@lando/provider-docker";
 import { ServiceName, landoAppNetworkName } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
 
 const CreateBodyLabels = Schema.Struct({
@@ -61,6 +62,9 @@ test("failed apply leaves durable ownership hints for verified later cleanup wit
               if (request.path.startsWith("/images/")) return { status: 200, body: "{}" };
               if (request.path.startsWith("/containers/create"))
                 return { status: 500, body: "container create failed" };
+              if (request.path.startsWith("/containers/json?")) {
+                return { status: 200, body: "[]" };
+              }
               return { status: 404, body: "" };
             }),
         },
@@ -94,7 +98,7 @@ test("destroy of a partial apply is a no-op and ownership inventory removes reta
     const desired = webFor(plan);
     const privateNetwork = landoAppNetworkName(desired);
     if (privateNetwork === undefined) throw new Error("Expected a private network in this fixture");
-    const containerName = "lando-owned-web";
+    const containerName = "lando-owned--web";
     const networks = new Map<
       string,
       { readonly Id: string; readonly Labels: Readonly<Record<string, string>> }
@@ -169,6 +173,19 @@ test("destroy of a partial apply is a no-op and ownership inventory removes reta
                 return { status: 204, body: "" };
               }
               if (request.path.endsWith("/stop")) return { status: 204, body: "" };
+              if (request.path.startsWith("/containers/json?")) {
+                return {
+                  status: 200,
+                  body: JSON.stringify(
+                    [...containers.entries()].map(([name, observed]) => ({
+                      Id: observed.Id,
+                      Names: [`/${name}`],
+                      State: "exited",
+                      Labels: observed.Labels,
+                    })),
+                  ),
+                };
+              }
               return { status: 404, body: "" };
             }),
         },
@@ -211,7 +228,7 @@ test("unknown ownership on retry fails closed without mutating foreign resources
   await withInventory(async ({ plan, state }) => {
     // Given a foreign container already occupying the planned name.
     const desired = webFor(plan);
-    const name = "lando-owned-web";
+    const name = "lando-owned--web";
     const calls: string[] = [];
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
@@ -237,6 +254,19 @@ test("unknown ownership on retry fails closed without mutating foreign resources
                 };
               }
               if (request.path.startsWith("/images/")) return { status: 200, body: "{}" };
+              if (request.path.startsWith("/containers/json?")) {
+                return {
+                  status: 200,
+                  body: JSON.stringify([
+                    {
+                      Id: "foreign-id",
+                      Names: [`/${name}`],
+                      State: "running",
+                      Labels: { "dev.lando.app": "foreign", "dev.lando.app-root": "/foreign" },
+                    },
+                  ]),
+                };
+              }
               return { status: 404, body: "" };
             }),
         },

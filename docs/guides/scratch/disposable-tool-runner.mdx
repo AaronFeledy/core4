@@ -3,7 +3,7 @@ id: disposable-tool-runner
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, scratch, run]
+tags: [docs, scratch, run]
 ---
 
 # Run a command in a disposable scratch
@@ -20,6 +20,10 @@ lando run -- composer --version
 This prints the tool's version and destroys the scratch when the tool exits.
 Without `--from`, Lando uses the bundled `toolbox` recipe. Arguments after `--`
 belong to the tool, not to Lando.
+
+Put Lando options before the command. An unknown option such as `--image` there
+fails with exit code 2 before Lando creates a scratch app. Use `--from` to pick
+a recipe, then pass the tool command after `--`: `lando run -- sh -c 'echo ok'`.
 
 If a healthcheck exhausts its attempts or an unsupervised service exits during
 startup, the tool does not run. Failed or interrupted scratch acquisition cleans
@@ -63,7 +67,7 @@ From a terminal with nothing piped in, the tool gets your keyboard and a real te
 lando run --no-mount -- bash
 ```
 
-Lando paints the scratch's build and start progress first, then hands the terminal over. From there Ctrl+C goes to the tool, the same as in any shell.
+Lando paints the scratch's build and start progress first, then hands the terminal over. From there Ctrl+C goes to the tool, the same as in any shell. Without a terminal, `SIGINT` or `SIGTERM` stops the tool inside the scratch along with everything it started, then Lando exits `130` or `143`.
 
 With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still arrives but the keyboard does not, so a tool that waits for typed input reads end of input instead of hanging an agent.
 
@@ -76,11 +80,11 @@ lando scratch:list
 
 `--keep` detaches the scratch after the command exits and prints its id on stderr, away from the tool's own output. With `--format=json`, the id is `result.scratchId`. Reap leftovers with [Reap orphaned scratch apps](./scratch-gc.mdx).
 
-Normal exit, a non-zero tool exit, and Ctrl+C all run the destroy finalizer unless you passed `--keep`.
+Normal exit, a non-zero tool exit, and an interrupt (Ctrl+C, `SIGINT`, or `SIGTERM`) all run the destroy finalizer unless you passed `--keep`. On an interrupt, Lando waits for the tool and its children to exit before it destroys the scratch.
 
 ## Exit codes
 
-The tool's exit code becomes the CLI exit code. `exit 7` from the tool is `7`, not a tagged Lando error.
+The tool's exit code becomes the CLI exit code. `exit 7` from the tool is `7`, not a tagged Lando error. An interrupted run exits `130` (`SIGINT`) or `143` (`SIGTERM`) with a `CommandInterruptedError`.
 
 ```sh
 lando run -- sh -c 'exit 7'

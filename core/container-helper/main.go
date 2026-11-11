@@ -36,22 +36,18 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 	}
 	if len(args) > 0 {
 		switch args[0] {
+		case "exec-run":
+			return runExecRun(args[1:], streams)
+		case "exec-signal":
+			return runExecSignal(argv0, args[1:])
 		case "log-file":
 			if err := runLogFile(streams.stdin, streams.stdout); err != nil {
 				fmt.Fprintln(streams.stderr, err)
 				return 1
 			}
 			return 0
-		case "log-file-cleanup":
-			if len(args) == 2 {
-				if err := cleanupLogFile(args[1], streams.stdout); err != nil {
-					fmt.Fprintln(streams.stderr, err)
-					return 1
-				}
-				return 0
-			}
 		}
 	}
-	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper log-file | lando-container-helper log-file-cleanup <dir>")
+	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper exec-run -- <argv> | lando-container-helper log-file")
 	return 64
 }

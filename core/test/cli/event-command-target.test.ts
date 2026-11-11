@@ -4,7 +4,7 @@ import { Cause, Context, DateTime, Effect, Exit, Result, Schema } from "effect";
 
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { PluginDescriptorMismatchError, ToolingCommandLookupError } from "@lando/sdk/errors";
+import { PluginDescriptorMismatchError, PluginLoadError, ToolingCommandLookupError } from "@lando/sdk/errors";
 import type { ExecutableCommandLoader, ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ToolingTaskShape } from "@lando/sdk/schema";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
@@ -65,6 +65,23 @@ const makeRuntimeContext = (id: string, load: ExecutableCommandLoader): Context.
   });
 
 describe("resolveEventCommandTarget", () => {
+  test.each([
+    { args: { file: { type: "string", stdio: "stderr" } } },
+    { args: { file: { type: "string", stdio: "stdin", multiple: true } } },
+    { args: { file: { type: "option", stdio: "stdin", valueType: "integer" } } },
+    { args: { file: { type: "number", stdio: "stdin" } } },
+    { args: { file: { type: "string", stdio: "stdout", default: "-" } } },
+    { args: { first: { type: "string", stdio: "stdout" }, second: { type: "string", stdio: "stdout" } } },
+    { flags: { file: { type: "string", stdio: "stdin" } } },
+    { stdio: () => ({ stdout: true }) },
+  ])("rejects an invalid stdio declaration %j", async (declaration) => {
+    const spec = Object.assign(makePluginSpec("db:inspect"), declaration);
+    const exit = await Effect.runPromiseExit(loadPluginSpec(spec.id, "fixture", async () => spec));
+    const error = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+    expect(error).toBeInstanceOf(PluginLoadError);
+    if (error instanceof PluginLoadError) expect(error.remediation).toContain("positional arg");
+  });
+
   test.each(["destroy", "remove", "uninstall", "prune", "gc", "reset", "restore", "rebuild", "poweroff"])(
     "rejects destructive plugin %s without confirmation",
     async (verb) => {

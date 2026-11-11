@@ -1,0 +1,15 @@
+name: whole-token
+services:
+  db:
+    type: "mariadb:11.4"
+    creds:
+      user: wp
+      password: wordpress
+      database: site
+  web:
+    type: compose
+    image: nginx:1.27
+    primary: true
+    environment:
+      DB_PASSWORD: "{{ services.db.creds.password }}"
+      WP_PLUGIN_DIR: /var/www/html/wp-content/plugins/wordpress-seo

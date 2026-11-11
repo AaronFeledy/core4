@@ -3,7 +3,7 @@ id: networks
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 90000
-tags: [beta, docs, config, compose, networking]
+tags: [docs, config, compose, networking]
 ---
 
 # Reach another project's services
@@ -128,6 +128,8 @@ Network keys start with a letter or digit and use only letters, digits, `_`, `.`
 
 `aliases` is the only attachment option. `ipv4_address`, `ipv6_address`, `mac_address`, `link_local_ips`, `driver_opts`, `priority`, `gw_priority`, and `interface_name` fail lint with the remediation `Lando doesn't pin network addresses or interface settings. Remove networks.*.<field> and reach the service by its name or an alias.`
 
+`use_service_name_alias` fails lint too, with its own remediation: `Remove networks.*.use_service_name_alias. Lando registers the service name on the app network only; add a name on another network with aliases.` [Names on an extra network](#names-on-an-extra-network) explains why.
+
 ## Membership is additive
 
 Every service is always on its app network and on Lando's shared proxy network. `networks:` adds memberships; it never removes one. This is different from Docker Compose, where listing networks on a service replaces `default`. It means `networks:` is not an isolation tool: you can't use it to hide one service from another in the same app.
@@ -175,7 +177,7 @@ On every extra network a member is reachable as `<service>.<app>.internal` plus 
 - two joined entries that resolve to the same network, for example two external entries with the same `name`
 - a key with characters outside letters, digits, `_`, `.`, and `-`
 
-Attachment fields other than `aliases` are rejected Compose keys, reported under `landofile.compose-rejection` at the field's path with the remediation above.
+Attachment fields other than `aliases` are rejected Compose keys, reported under `landofile.compose-rejection` at the field's path with its remediation from [How the two spellings relate](#how-the-two-spellings-relate).
 
 Lint also reports provider capability problems under `landofile.capability`, such as a Compose field the selected provider can't realize, without starting anything. When Lando can't determine the provider's capabilities offline, it adds one warning saying those checks run at `lando start`. Whether an external network exists is still a start-time check; lint has no engine to ask.
 
@@ -270,6 +272,21 @@ Lint also reports provider capability problems under `landofile.capability`, suc
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.compose-rejection\"" } }} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"networks\",\\s*\"backend\",\\s*\"ipv4_address\"\\s*\\]" } }} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Lando doesn.t pin network addresses or interface settings\\. Remove networks\\.\\*\\.ipv4_address and reach the service by its name or an alias\\." } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="service-name-alias-fails-lint" render={false} reason="Regression: lint rejects use_service_name_alias at its path with the naming remediation.">
+    <Step name="scaffold">
+      <UseFixture name="networks-service-name-alias" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.compose-rejection\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"networks\",\\s*\"backend\",\\s*\"use_service_name_alias\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Remove networks\\.\\*\\.use_service_name_alias\\. Lando registers the service name on the app network only; add a name on another network with aliases\\." } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

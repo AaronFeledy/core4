@@ -117,19 +117,24 @@ test.each([...policies])(
       expect(outside).not.toContain("THIS APP");
       expect(outside).not.toContain("app:known");
 
-      // A stale index, then a missing index, preserve the built-in-only catalog.
-      await writeFile(landofile, "name: changed-all-help\n");
+      // A Landofile edit rebuilds the index, so help lists the edited tooling.
+      await writeFile(
+        landofile,
+        'name: changed-all-help\ntooling:\n  rebuilt:\n    service: ":host"\n    cmd: echo rebuilt\n',
+      );
       const stale = await runCli(["help", "--all"], root, env);
-      expect(stale).toContain("stale-cache");
+      expect(stale).not.toContain("stale-cache");
       expect(stale).not.toContain("app:known");
+      expect(stale.split("\nTHIS APP\n")[1]).toMatch(/^[ \t]+app:rebuilt(?:[ \t]|$)/mu);
       expect(stale).toContain("app:start");
       expect(cachePath).toBeDefined();
       if (cachePath === undefined) throw new Error("Fixture command index was not written");
       await rm(cachePath);
       await rm(appToolingCompilationCachePath(cacheRoot, root));
       const missing = await runCli(["help", "--all"], root, env);
-      expect(missing).toContain("missing-cache");
+      expect(missing).not.toContain("missing-cache");
       expect(missing).not.toContain("app:known");
+      expect(missing.split("\nTHIS APP\n")[1]).toMatch(/^[ \t]+app:rebuilt(?:[ \t]|$)/mu);
       expect(missing).toContain("app:start");
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -2,7 +2,7 @@
 id: nginx
 provider: test
 timeout: 90000
-tags: [beta, docs, nginx, service, webserver]
+tags: [docs, nginx, service, webserver]
 ---
 
 # Add nginx
@@ -35,6 +35,10 @@ services:
 
 Lando derives an HTTPS hostname from the nginx service's HTTP endpoint, such as `web.<app>.lndo.site`. Use the URL reported by `lando info`, including any fallback port. You only need a `proxy:` block to customize hostnames.
 
+Redirects nginx sends on its own, such as adding the trailing slash to a directory URL, are relative. The browser stays on the HTTPS URL and port it used.
+
+Hidden paths, meaning any path segment that starts with `.` such as `/.git/config` or `/.env`, get Lando's 403 page, so your repository's dotfiles stay private even though the app root is the default webroot. `/.well-known/` stays served.
+
 ## Pair nginx with PHP
 
 nginx is commonly paired with a `php-fpm` service: nginx serves static
@@ -50,6 +54,66 @@ services:
     type: "php:8.3"
     via: fpm
 ```
+
+The generated FastCGI configuration passes `HTTPS=on` to PHP when the browser reached the proxy over HTTPS, so PHP apps build `https://` URLs; see [Get HTTPS URLs behind the proxy](./php.mdx#get-https-urls-behind-the-proxy). It runs PHP only for lowercase `.php` names and answers `.PHP` and other case variants with Lando's 403 page, so a case-insensitive app mount on macOS or Windows can't serve PHP source.
+
+## Stop PHP in upload directories
+
+Set `uploadDirs:` on the nginx service in front of PHP-FPM, not on the FPM service. Lando's generated PHP location blocks execution from these webroot-relative directories:
+
+```yaml
+services:
+  web:
+    type: nginx
+    backend: app
+    uploadDirs:
+      - sites/*/files
+      - uploads
+  app:
+    type: "php:8.3"
+    via: fpm
+```
+
+The nginx service needs a non-empty `backend` and Lando's generated launcher, with no authored `command:` or `entrypoint:`. See [Keep PHP out of upload directories](./php.mdx#keep-php-out-of-upload-directories) for syntax, recipe defaults, Apache support, and how to check or clear the setting.
+
+  <Scenario id="authored-upload-dirs" render>
+    <Step name="scaffold">
+      <UseFixture name="nginx-upload-dirs" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"sites/\\*/files\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-upload-dirs-injection" render={false} reason="Regression for uploadDirs allowlist">
+    <Step name="scaffold">
+      <UseFixture name="nginx-upload-dirs-inject" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"uploadDirs\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unsupported-upload-dirs" render={false} reason="Reject protection that nginx cannot generate">
+    <Step name="lint">
+      <UseFixture name="nginx-upload-dirs-unsupported" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"uploadDirs\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## Serve a subdirectory
 

@@ -19,7 +19,8 @@ import { makeTraefikRouterService } from "../src/proxy.ts";
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
 const HTTPS_TRY_LIST = DEFAULT_HTTPS_TRY_LIST;
-const paths = { platform: "linux" as const, globalAppRoot: "/lando/global" };
+const USER_DATA_ROOT = "/lando/user-data";
+const paths = { platform: "linux" as const, globalAppRoot: "/lando/global", userDataRoot: USER_DATA_ROOT };
 
 const bind = (kind: BindOutcome["kind"]): BindOutcome => {
   switch (kind) {
@@ -168,6 +169,7 @@ const makeDeps = (
   },
   socketProxy: {
     user: "test",
+    userDataRoot: USER_DATA_ROOT,
     hasHostSystemd: () => false,
     exists: () => Effect.succeed(false),
     readText: () => Effect.fail(new Error("missing")),

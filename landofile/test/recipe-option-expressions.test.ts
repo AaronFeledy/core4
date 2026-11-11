@@ -750,7 +750,9 @@ describe("braced shell forms stay unsupported on the load path", () => {
 
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(failureMessage(exit)).toContain("Configuration expressions");
+      expect(failureMessage(exit)).toContain(
+        "`${LANDO_FLAVOR}` at services.appserver.type is shell syntax Lando does not expand.",
+      );
     });
   });
 
@@ -770,7 +772,7 @@ describe("braced shell forms stay unsupported on the load path", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("not supported");
+        expect(failureMessage(exit)).toContain("is shell syntax Lando does not expand");
       },
     );
   });
@@ -782,7 +784,7 @@ describe("braced shell forms stay unsupported on the load path", () => {
 
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(failureMessage(exit)).toContain("Configuration expressions");
+      expect(failureMessage(exit)).toBe("Secret references are not supported at services.appserver.type.");
     });
   });
 

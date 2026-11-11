@@ -47,6 +47,8 @@ test.each(["destroy", "observed"] as const)(
           info: Effect.succeed({}),
           request: (input) => {
             calls.push(input);
+            if (input.path.startsWith("/containers/json?"))
+              return Effect.succeed({ status: 200, body: "[]" });
             if (input.method !== "GET") return Effect.succeed({ status: 204, body: "" });
             if (input.path.startsWith("/networks/")) return Effect.succeed({ status: 404, body: "" });
             return Effect.succeed({

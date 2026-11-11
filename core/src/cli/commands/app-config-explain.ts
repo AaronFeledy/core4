@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { type LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
@@ -260,7 +261,7 @@ const readProvenance = (
 export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* (
   options: AppConfigExplainOptions = {},
 ): Effect.fn.Return<AppConfigExplainResult, AppConfigExplainError, never> {
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.cwd ?? (yield* CliInvocation).cwd;
   const discovered = yield* discoverRecipeAnalysisRoot(cwd);
   const { appRoot, dualForm } = discovered;
 

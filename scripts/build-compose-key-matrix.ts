@@ -44,7 +44,8 @@ const failInvariant = (message: string): never => {
 const assertNever = (value: never): never =>
   failInvariant(`Unexpected Compose disposition: ${String(value)}`);
 
-const escapeCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+const escapeCell = (value: string): string =>
+  value.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
 
 const sortedEntries = (entries: DispositionMap): ReadonlyArray<DispositionRow> =>
   Object.entries(entries).sort(([left], [right]) => left.localeCompare(right));
@@ -187,6 +188,8 @@ const renderComposeKeyMatrixPage = (): string => {
     "- `normalized`: Lando resolves the key into a provider-neutral plan field, or applies the compatibility behavior named in the row.",
     "- `preserved`: Lando accepts the key and carries it in the Compose plan extension. Read the row for provider capability requirements; acceptance does not guarantee every provider can use it.",
     "- `rejected`: Lando stops with a tagged error. The Detail column gives the remediation.",
+    "",
+    "A rejected key rejects everything nested under it, so its nested keys are not listed.",
     "",
     "See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Compose compatibility](../guides/config/compose-compatibility.mdx) for usage guidance.",
     "",

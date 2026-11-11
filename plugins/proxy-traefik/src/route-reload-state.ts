@@ -1,9 +1,9 @@
-import { X509Certificate, createPublicKey } from "node:crypto";
-
 import { Effect, Schema } from "effect";
 
+import { certificatePairIsCurrent as isCurrent } from "@lando/sdk/certificates";
+
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { AppId } from "@lando/sdk/schema";
+import { type AppRouteOwner, type CertificateName, certificateNameForHostname } from "@lando/sdk/schema";
 
 const AckSchema = Schema.Struct({ digest: Schema.String });
 type Ack = typeof AckSchema.Type;
@@ -13,10 +13,10 @@ type Ack = typeof AckSchema.Type;
 // has already replaced the running configuration.
 export const routeReloadLockKey = (): string => "routes.lock";
 
-export const openRouteReloadAck = (stateStore: PluginStateStore, app: AppId) =>
+export const openRouteReloadAck = (stateStore: PluginStateStore, ownerKey: AppRouteOwner["ownerKey"]) =>
   stateStore.open({
     namespace: "route-reloads",
-    key: `app-${encodeURIComponent(String(app))}.json`,
+    key: `owner-${ownerKey}.json`,
     schema: AckSchema,
     version: 1,
     codec: "json",
@@ -36,46 +36,38 @@ export const routeReloadDigest = (values: ReadonlyArray<string | undefined>): st
   return hash.digest("hex");
 };
 
+/**
+ * Whether the router's copy of a pair still serves `hostnames` at `now`. Route hostnames map
+ * through `certificateNameForHostname` (a leftmost partial wildcard becomes `*.<rest>`); a hostname
+ * no certificate can cover is never current. No renewal margin and no root check.
+ */
 export const certificatePairIsCurrent = (
   certificatePem: string,
   privateKeyPem: string,
   hostnames: ReadonlyArray<string>,
   now: number,
 ): boolean => {
-  try {
-    const certificate = new X509Certificate(certificatePem);
-    const validFrom = Date.parse(certificate.validFrom);
-    const validTo = Date.parse(certificate.validTo);
-    if (!Number.isFinite(validFrom) || !Number.isFinite(validTo) || now < validFrom || now >= validTo)
-      return false;
-    // checkHost never matches a literal "*" label, so a wildcard route is
-    // covered only by the same wildcard DNS entry in the certificate.
-    const dnsNames = new Set(
-      (certificate.subjectAltName ?? "")
-        .split(", ")
-        .filter((entry) => entry.startsWith("DNS:"))
-        .map((entry) => entry.slice("DNS:".length).toLowerCase()),
-    );
-    const covers = (hostname: string) =>
-      hostname.startsWith("*.")
-        ? dnsNames.has(hostname.toLowerCase())
-        : certificate.checkHost(hostname) !== undefined;
-    if (!hostnames.every(covers)) return false;
-    const certificateKey = certificate.publicKey.export({ type: "spki", format: "der" });
-    const privateKey = createPublicKey(privateKeyPem).export({ type: "spki", format: "der" });
-    return Buffer.from(certificateKey).equals(Buffer.from(privateKey));
-  } catch {
-    return false;
-  }
+  const names = hostnames.map(certificateNameForHostname);
+  if (!names.every((name): name is CertificateName => name !== undefined)) return false;
+  return isCurrent({ certificate: certificatePem, privateKey: privateKeyPem }, { names, now });
 };
 
-export const isAcknowledged = (stateStore: PluginStateStore, app: AppId, digest: string) =>
-  openRouteReloadAck(stateStore, app).pipe(
+export const isAcknowledged = (
+  stateStore: PluginStateStore,
+  ownerKey: AppRouteOwner["ownerKey"],
+  digest: string,
+) =>
+  openRouteReloadAck(stateStore, ownerKey).pipe(
     Effect.flatMap((bucket) => bucket.get),
     Effect.map((ack: Ack | null) => ack?.digest === digest),
   );
 
-export const acknowledge = (stateStore: PluginStateStore, app: AppId, digest: string) =>
-  openRouteReloadAck(stateStore, app).pipe(Effect.flatMap((bucket) => bucket.set({ digest })));
-export const invalidateAcknowledgement = (stateStore: PluginStateStore, app: AppId) =>
-  openRouteReloadAck(stateStore, app).pipe(Effect.flatMap((bucket) => bucket.remove));
+export const acknowledge = (
+  stateStore: PluginStateStore,
+  ownerKey: AppRouteOwner["ownerKey"],
+  digest: string,
+) => openRouteReloadAck(stateStore, ownerKey).pipe(Effect.flatMap((bucket) => bucket.set({ digest })));
+export const invalidateAcknowledgement = (
+  stateStore: PluginStateStore,
+  ownerKey: AppRouteOwner["ownerKey"],
+) => openRouteReloadAck(stateStore, ownerKey).pipe(Effect.flatMap((bucket) => bucket.remove));

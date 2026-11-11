@@ -1,4 +1,4 @@
-import { appendFile, copyFile, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -17,6 +17,59 @@ import {
 } from "../../../scripts/check-compose-coverage.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
+const smallSchemaPath = resolve(import.meta.dirname, "fixtures/compose-schema.json");
+
+const normalized = { disposition: "normalized", rationale: "Synthetic entry.", planTarget: ["x"] } as const;
+const rejected = {
+  disposition: "rejected",
+  rationale: "Synthetic entry.",
+  remediation: "Remove it.",
+} as const;
+// Every service path of the small schema fixture except the labels subtree.
+const smallServiceMatrix = {
+  depends_on: normalized,
+  "depends_on.*": normalized,
+  "depends_on.*.condition": normalized,
+  image: normalized,
+  volumes: normalized,
+  "volumes.type": normalized,
+  "volumes.volume": normalized,
+  "volumes.volume.subpath": normalized,
+  "x-*": normalized,
+} satisfies Readonly<Record<string, ComposeDispositionEntry>>;
+const smallTopLevelMatrix = {
+  name: normalized,
+  services: normalized,
+  version: normalized,
+  "x-*": normalized,
+};
+
+const checkSmallSchema = async (serviceDispositions: Readonly<Record<string, ComposeDispositionEntry>>) => {
+  const root = await mkdtemp(join(tmpdir(), "lando-compose-coverage-small-"));
+  try {
+    const pinPath = join(root, "pin.json");
+    const sha256 = new Bun.CryptoHasher("sha256")
+      .update(await Bun.file(smallSchemaPath).bytes())
+      .digest("hex");
+    await writeFile(
+      pinPath,
+      JSON.stringify({
+        tag: "v0.0.0",
+        sourceUrl:
+          "https://raw.githubusercontent.com/compose-spec/compose-go/v0.0.0/schema/compose-spec.json",
+        sha256,
+      }),
+    );
+    return await checkComposeCoverage({
+      pinPath,
+      schemaPath: smallSchemaPath,
+      serviceDispositions,
+      topLevelDispositions: smallTopLevelMatrix,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
 
 describe("compose coverage gate", () => {
   test("accepts the committed schema, checksum pin, and disposition matrices", async () => {
@@ -25,8 +78,56 @@ describe("compose coverage gate", () => {
     expect(result).toMatchObject({
       ok: true,
       checksum: { ok: true },
-      service: { missingFromMatrix: [], missingFromSchema: [] },
+      service: { missingFromMatrix: [], missingFromSchema: [], shadowedByRejectedAncestor: [] },
       topLevel: { missingFromMatrix: [], missingFromSchema: [] },
+    });
+  });
+
+  test("classifies an unlisted schema path nested under a rejected matrix key", async () => {
+    // Given a matrix that lists labels as rejected but not labels.*
+    const serviceDispositions = { ...smallServiceMatrix, labels: rejected };
+
+    // When
+    const result = await checkSmallSchema(serviceDispositions);
+
+    // Then
+    expect(result).toMatchObject({
+      ok: true,
+      service: { missingFromMatrix: [], missingFromSchema: [], shadowedByRejectedAncestor: [] },
+    });
+  });
+
+  test("fails on a matrix entry shadowed by a rejected ancestor", async () => {
+    // Given
+    const serviceDispositions = { ...smallServiceMatrix, labels: rejected, "labels.*": rejected };
+
+    // When
+    const result = await checkSmallSchema(serviceDispositions);
+
+    // Then
+    expect(result).toMatchObject({
+      ok: false,
+      service: { missingFromMatrix: [], missingFromSchema: [], shadowedByRejectedAncestor: ["labels.*"] },
+    });
+    expect(formatComposeCoverageFailure(result)).toContain(
+      "Service matrix entries shadowed by a rejected ancestor:\n  - labels.*",
+    );
+  });
+
+  test("still reports an unlisted path nested under an accepted matrix key", async () => {
+    // Given
+    const { "volumes.volume.subpath": _removed, ...serviceDispositions } = {
+      ...smallServiceMatrix,
+      labels: rejected,
+    };
+
+    // When
+    const result = await checkSmallSchema(serviceDispositions);
+
+    // Then
+    expect(result).toMatchObject({
+      ok: false,
+      service: { missingFromMatrix: ["volumes.volume.subpath"], shadowedByRejectedAncestor: [] },
     });
   });
 

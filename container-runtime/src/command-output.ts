@@ -1,4 +1,5 @@
 import { makeDiagnosticTailFactory } from "@lando/redaction";
+import { isProviderError, redactProviderError } from "@lando/redaction/provider-error";
 import {
   annotateFailureRole,
   commandFailureCause,
@@ -8,7 +9,7 @@ import {
 } from "@lando/sdk/command-result";
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import type { FailureRole } from "@lando/sdk/schema";
-import type { ExecChunk, ProcessStreamEvent } from "@lando/sdk/services";
+import type { ExecChunk, ProcessStreamEvent, ProviderError } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Pull, Result, Scope, Stream } from "effect";
 
 export type CommandOutputReason = "exit" | "protocol" | "provider" | "timeout" | "stdout-limit";
@@ -17,6 +18,7 @@ export interface CommandOutputFailure {
   readonly exitCode?: number | undefined;
   readonly stderrTail?: string | undefined;
   readonly role?: FailureRole | undefined;
+  readonly cause?: ProviderError;
 }
 interface CommandOutputOptions<E> {
   readonly failure: (evidence: CommandOutputFailure) => E;
@@ -104,6 +106,9 @@ export const commandOutputStream = <E, R, E2>(
               exitCode,
               stderrTail: tail.finish(),
               role,
+              ...(isProviderError(error)
+                ? { cause: redactProviderError(error, tail.redactor, { cause: "omit" }) }
+                : {}),
             });
           });
           // A producer's inner scope can fail before the completion check runs.

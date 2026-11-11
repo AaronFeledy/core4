@@ -1,4 +1,5 @@
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   type RoutePlan,
@@ -60,7 +61,7 @@ export const resolveRoute = Effect.fnUntraced(function* (
   route: NormalizedRoute,
 ): Effect.fn.Return<RoutePlan, LandofileValidationError> {
   return yield* Effect.fromResult(bindRoute(serviceName, endpoints, route)).pipe(
-    Effect.mapError(
+    mapFailures(
       (issue) =>
         new LandofileValidationError({
           message: issue.message,

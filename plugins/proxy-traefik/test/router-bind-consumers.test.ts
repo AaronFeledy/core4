@@ -234,6 +234,8 @@ test("helper unit forwarding retains a private backend", () => {
       {
         ...acquisition,
         mode: "socket-helper",
+        helperInstalled: true,
+        socketsActive: true,
         bindHttpPort: 38080,
         bindHttpsPort: 38443,
         fingerprint: { ...acquisition.fingerprint, bindAddress: "192.0.2.24" },
@@ -250,6 +252,7 @@ test("helper unit forwarding retains a private backend", () => {
     { bindAddress: "127.0.0.1", hostPort: 38443 },
   ]);
   const script = buildInstallScript({
+    userDataRoot: "/lando",
     user: "test",
     binary: "/usr/lib/systemd/systemd-socket-proxyd",
     serviceType: "notify",

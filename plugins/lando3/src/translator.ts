@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative, ServiceName } from "@lando/sdk/schema";
 /**
  * The `lando3` config translator.
@@ -152,7 +153,7 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           ),
           Effect.tap((value) => decodeLandofileAuthoringLayer(entry.layerId, value)),
           Effect.map((fragment) => ({ layerId: entry.layerId, fragment })),
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new ConfigTranslateError({
                 message: "Invalid established Landofile fragment.",

@@ -102,8 +102,11 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v6.bin",
+      fixture: "app-command-v9.bin",
       previousFixtures: [
+        "app-command-v8.bin",
+        "app-command-v7.bin",
+        "app-command-v6.bin",
         "app-command-v5.bin",
         "app-command-v4.bin",
         "app-command-v3.bin",

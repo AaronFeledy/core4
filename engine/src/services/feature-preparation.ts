@@ -118,6 +118,7 @@ export const declarePreparedServiceEndpoints = Effect.fnUntraced(function* (
         base: prepared.facts.baseKind,
         primary: prepared.facts.base.primary,
         appName: prepared.facts.appName,
+        dataName: prepared.facts.dataName,
         appRoot: prepared.facts.appRoot,
         host: prepared.facts.host,
         normalizedConfig: prepared.facts.normalizedConfig,

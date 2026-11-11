@@ -2,17 +2,25 @@ import type { RecipeSource } from "@lando/sdk/schema";
 import { composerOption, composerTool, phpAppserver, phpOption, webrootOption } from "../source-php.ts";
 import { defaultRoutes } from "../source-web.ts";
 
+const serverEnvironment = {
+  DB_HOST: "database",
+  DB_PORT: "{{ json(services.database.port) }}",
+  DB_DATABASE: "{{ services.database.creds.database }}",
+  DB_USERNAME: "{{ services.database.creds.user }}",
+  DB_PASSWORD: "{{ services.database.creds.password }}",
+} as const;
+
 export const source = {
   id: "laravel",
   title: "Laravel",
-  description: "Laravel with PHP, MariaDB or PostgreSQL, Redis, and an optional queue worker.",
+  description: "Laravel with PHP, MariaDB, PostgreSQL or SQLite, Redis, and an optional queue worker.",
   version: "0.1.0",
   authors: ["Lando Core Team"],
   tags: ["laravel", "php"],
   options: {
     php: phpOption,
     database: {
-      type: { kind: "enum", values: ["mariadb:11.4", "postgres:16"] },
+      type: { kind: "enum", values: ["mariadb:11.4", "postgres:16", "sqlite"] },
       default: "mariadb:11.4",
       prompt: { message: "Database" },
     },
@@ -25,12 +33,13 @@ export const source = {
     services: {
       appserver: {
         ...phpAppserver("laravel"),
+        uploadDirs: ["storage"],
         allowOverride: true,
         port: 80,
-        dependsOn: ["database", "cache"],
+        dependsOn: ["cache"],
+        environment: { DB_CONNECTION: "sqlite" },
         routes: defaultRoutes,
       },
-      database: { type: "{{ recipe.database }}" },
       cache: { type: "redis" },
       node: { type: "node:22", primary: false, endpoints: [] },
     },
@@ -39,9 +48,10 @@ export const source = {
         service: "appserver",
         description: "Run a Laravel Artisan command inside the appserver service.",
         cmds: ["php artisan"],
+        wrapper: true,
       },
       composer: composerTool,
-      npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"] },
+      npm: { service: "node", description: "Run npm inside the node service.", cmds: ["npm"], wrapper: true },
     },
   },
   variants: [
@@ -56,12 +66,44 @@ export const source = {
             via: "cli",
             command: "php artisan queue:work",
             restart: "unless-stopped",
-            dependsOn: ["database", "cache"],
+            dependsOn: ["cache"],
+            environment: { DB_CONNECTION: "sqlite" },
             appMount: { target: "/app", includes: ["vendor"] },
           },
         },
       },
     },
+    {
+      when: '{{ eq(options.database, "sqlite") }}',
+      config: {
+        services: {
+          appserver: { appMount: { target: "/app" }, sqlite: { path: "database/database.sqlite" } },
+        },
+      },
+    },
+    ...(
+      [
+        ["mariadb:11.4", "mysql"],
+        ["postgres:16", "pgsql"],
+      ] as const
+    ).flatMap(([database, connection]) => {
+      const environment = { ...serverEnvironment, DB_CONNECTION: connection };
+      return [
+        {
+          when: `{{ eq(options.database, "${database}") }}`,
+          config: {
+            services: {
+              appserver: { environment, dependsOn: ["database", "cache"] },
+              database: { type: "{{ recipe.database }}" },
+            },
+          },
+        },
+        {
+          when: `{{ and(options.worker, eq(options.database, "${database}")) }}`,
+          config: { services: { worker: { environment, dependsOn: ["database", "cache"] } } },
+        },
+      ];
+    }),
   ],
   postInit: [
     { type: "message", text: "Run 'lando start' inside the new app directory to bring Laravel up." },

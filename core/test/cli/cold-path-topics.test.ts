@@ -28,6 +28,8 @@ const expectedTopics = {
   "meta:events": { description: "Lifecycle event diagnostics." },
   "meta:snapshots": { description: "Inspect and clean up provider snapshot data." },
   snapshots: { description: "Inspect and clean up provider snapshot data." },
+  "meta:sources": { description: "Inspect and clean up the remote source cache." },
+  sources: { description: "Inspect and clean up the remote source cache." },
   "meta:global": { description: "Manage the host-level global Lando app." },
   global: { description: "Manage the host-level global Lando app." },
   "meta:plugin": { description: "Plugin install, remove, and authoring commands." },
@@ -39,6 +41,7 @@ const expectedTopics = {
 const MORE_POINTERS = [
   "lando help app",
   "lando help apps",
+  "lando help meta",
   "lando help plugin",
   "lando help global",
   "lando help recipes",
@@ -101,7 +104,7 @@ describe("cold-path topic and all help", () => {
     expect(isHelpTopic("global")).toBe(true);
     expect(isHelpTopic("recipes")).toBe(true);
     expect(isHelpTopic("scratch")).toBe(true);
-    expect(isHelpTopic("meta")).toBe(false);
+    expect(isHelpTopic("meta")).toBe(true);
     expect(isHelpTopic("nope")).toBe(false);
   });
 

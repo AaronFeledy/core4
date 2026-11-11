@@ -26,6 +26,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
 import { openSnapshot } from "../src/snapshot-catalog.ts";
+import { privateFileAccess } from "./private-file-access.ts";
 import { fixtureVolume } from "./support.ts";
 
 export const store = { app: AppId.make("catalog-app"), store: "database" };
@@ -117,7 +118,7 @@ const catalogFixture = async (root: string) => {
     makeDataMoverService(
       Effect.succeed(selected),
       { publish: () => Effect.void, redactText: (text) => text },
-      { paths, stateStore: storage, providerRegistry: providers },
+      { paths, stateStore: storage, providerRegistry: providers, privateFileAccess },
     );
   const info = (id = "snapshot"): SnapshotInfo => ({
     owner,

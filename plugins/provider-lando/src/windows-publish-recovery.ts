@@ -1,5 +1,6 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { physicalListenerPorts } from "@lando/container-runtime/physical-publications";
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Predicate } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -303,7 +304,7 @@ export const makeWindowsPublishedRecovery = (deps: WindowsPublishedRecoveryDeps)
         }),
       )
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           failure("matchingPublishPorts", "Unable to validate an owned Windows published-port pair.", cause),
         ),
       );
@@ -376,7 +377,7 @@ export const makeWindowsPublishedRecovery = (deps: WindowsPublishedRecoveryDeps)
         }),
       )
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           failure(
             "reconcilePublishedPorts",
             "Unable to reconcile the Lando-owned Windows port mapping.",

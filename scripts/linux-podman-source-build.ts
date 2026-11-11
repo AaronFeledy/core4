@@ -129,9 +129,11 @@ export const buildLinuxHelperFromSource = async (options: LinuxHelperSourceBuild
     ) {
       await options.execute(["tar", "-xzf", inputPath(options.artifactPaths, "vendor"), "-C", sourceDir]);
       await mkdir(join(sourceDir, ".cargo"), { recursive: true });
+      // rustc embeds absolute source paths; remap the random work dir so rebuilds are byte-identical.
+      const rustflags = ["-C", "link-arg=-Wl,--build-id=none", "--remap-path-prefix", `${workDir}=/build`];
       await writeFile(
         join(sourceDir, ".cargo", "config.toml"),
-        `[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n\n[build]\nrustflags = ["-C", "link-arg=-Wl,--build-id=none"]\n`,
+        `[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n\n[build]\nrustflags = ${JSON.stringify(rustflags)}\n`,
       );
       await options.execute(
         ["env", "SOURCE_DATE_EPOCH=0", "cargo", "build", "--release", "--locked", "--offline"],

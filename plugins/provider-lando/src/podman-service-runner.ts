@@ -1,7 +1,11 @@
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
+import { managedPodmanChildEnv } from "@lando/container-runtime/podman/managed-invocation";
+import { prepareManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
+import { readProcessDescendant } from "@lando/container-runtime/podman/managed-status-io";
 import { Effect } from "effect";
 
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
@@ -47,7 +51,7 @@ const readPodmanServiceLogTailSync = (socketPath: string): string | undefined =>
 
 const stderrFromCause = (cause: unknown): string | undefined => {
   if (typeof cause !== "object" || cause === null || !("stderr" in cause)) return undefined;
-  const stderr = (cause as { readonly stderr?: unknown }).stderr;
+  const stderr = cause.stderr;
   return typeof stderr === "string" ? stderr : undefined;
 };
 
@@ -72,7 +76,7 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
     if (typeof this.details !== "object" || this.details === null || !("stderr" in this.details)) {
       return undefined;
     }
-    const stderr = (this.details as { readonly stderr?: unknown }).stderr;
+    const stderr = this.details.stderr;
     return typeof stderr === "string" ? stderr : undefined;
   }
 }
@@ -81,9 +85,11 @@ export interface PodmanServiceRunner {
   readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;
   readonly isAlive: (pid: number) => Effect.Effect<boolean>;
   readonly isServiceProcess?: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<boolean>;
+  readonly isDescendant?: (pid: number, ancestor: number) => Effect.Effect<boolean | undefined>;
   readonly findMatchingServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly findManagedServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
+  readonly waitForExit?: (pid: number) => Effect.Effect<number>;
 }
 
 export interface PodmanServiceLaunchOptions {
@@ -97,6 +103,7 @@ export interface PodmanServiceLaunchOptions {
 export interface PodmanServiceProcess {
   readonly pid: number;
   readonly unref?: () => void;
+  readonly exited?: Promise<number>;
 }
 
 export type PodmanServiceSpawn = (
@@ -186,58 +193,92 @@ const findManagedPodmanServicePidsOnHost = Effect.fnUntraced(function* (
 
 export const makeSystemPodmanServiceRunner = (
   spawn: PodmanServiceSpawn = defaultPodmanServiceSpawn,
-): PodmanServiceRunner => ({
-  launch: (spec) =>
-    Effect.try({
-      try: () => {
-        const logPath = podmanServiceLogPath(spec.socketPath);
-        mkdirSync(dirname(logPath), { recursive: true });
-        if (spec.cwd !== undefined) mkdirSync(spec.cwd, { recursive: true });
-        const logFile = openSync(logPath, "w");
-        const proc = (() => {
-          try {
-            return spawn([spec.command, ...spec.args], {
-              env: { ...process.env, ...spec.env },
-              stdout: logFile,
-              stderr: logFile,
-              detached: true,
-              ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
-            });
-          } finally {
-            closeSync(logFile);
-          }
-        })();
-        proc.unref?.();
-        return proc.pid;
-      },
-      catch: (cause) =>
-        cause instanceof RuntimeLaunchError
-          ? cause
-          : new RuntimeLaunchError(
-              "Failed to launch the Lando runtime service.",
-              cause,
-              readPodmanServiceLogTailSync(spec.socketPath),
-            ),
+  prepare: (
+    runtimeDir: string,
+    resolved: { readonly privateRuntimeDir: string | undefined },
+  ) => Effect.Effect<string, ProviderUnavailableError> = (runtimeDir, resolved) =>
+    prepareManagedRuntimeDir(runtimeDir, {}, resolved),
+): PodmanServiceRunner => {
+  const exits = new Map<number, Promise<number>>();
+  return {
+    launch: Effect.fn("ProviderLando.launchPodmanService")(function* (spec: PodmanServiceSpec) {
+      const runRoot = argvFlagValue(spec.args, "--runroot");
+      const privateRuntimeDir =
+        runRoot === undefined
+          ? undefined
+          : yield* prepare(dirname(runRoot), { privateRuntimeDir: spec.env?.XDG_RUNTIME_DIR }).pipe(
+              mapFailures((cause) => new RuntimeLaunchError(cause.message, cause)),
+            );
+      return yield* Effect.try({
+        try: () => {
+          const logPath = podmanServiceLogPath(spec.socketPath);
+          mkdirSync(dirname(logPath), { recursive: true });
+          if (spec.cwd !== undefined) mkdirSync(spec.cwd, { recursive: true });
+          const logFile = openSync(logPath, "w");
+          const proc = (() => {
+            try {
+              return spawn([spec.command, ...spec.args], {
+                env: managedPodmanChildEnv({
+                  ...spec.env,
+                  ...(privateRuntimeDir === undefined ? {} : { XDG_RUNTIME_DIR: privateRuntimeDir }),
+                }),
+                stdout: logFile,
+                stderr: logFile,
+                detached: true,
+                ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+              });
+            } finally {
+              closeSync(logFile);
+            }
+          })();
+          proc.unref?.();
+          if (proc.exited !== undefined) exits.set(proc.pid, proc.exited);
+          return proc.pid;
+        },
+        catch: (cause) =>
+          cause instanceof RuntimeLaunchError
+            ? cause
+            : new RuntimeLaunchError(
+                "Failed to launch the Lando runtime service.",
+                cause,
+                readPodmanServiceLogTailSync(spec.socketPath),
+              ),
+      });
     }),
-  isAlive: (pid) =>
-    Effect.sync(() => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    }),
-  isServiceProcess: (pid, spec) =>
-    readProcessArgv(pid).pipe(Effect.map((argv) => sameArgv(argv, [spec.command, ...spec.args]))),
-  findMatchingServicePids: findMatchingServicePidsOnHost,
-  findManagedServicePids: findManagedPodmanServicePidsOnHost,
-  terminate: (pid) =>
-    Effect.sync(() => {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {
-        return;
-      }
-    }),
-});
+    waitForExit: (pid) =>
+      Effect.suspend(() => {
+        const exited = exits.get(pid);
+        return exited === undefined
+          ? Effect.never
+          : Effect.promise(() => exited).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  exits.delete(pid);
+                }),
+              ),
+            );
+      }),
+    isDescendant: readProcessDescendant,
+    isAlive: (pid) =>
+      Effect.sync(() => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    isServiceProcess: (pid, spec) =>
+      readProcessArgv(pid).pipe(Effect.map((argv) => sameArgv(argv, [spec.command, ...spec.args]))),
+    findMatchingServicePids: findMatchingServicePidsOnHost,
+    findManagedServicePids: findManagedPodmanServicePidsOnHost,
+    terminate: (pid) =>
+      Effect.sync(() => {
+        try {
+          process.kill(pid, "SIGTERM");
+        } catch {
+          return;
+        }
+      }),
+  };
+};

@@ -20,7 +20,7 @@ import {
   type EventService,
   type LandofileService,
   type RouterService,
-  RuntimeProviderRegistry,
+  type RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
 
@@ -30,23 +30,26 @@ import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
-import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { type PreparedRuntimeProvider, selectPreparedProvider } from "../providers/prepared.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
+import { claimAppDataIdentity, claimDataIdentityBeforeRetirement } from "./data-identity-claim.ts";
+import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import {
   type GlobalConsumerAdmissionServices,
+  requireSelectableRouter,
   withGlobalConsumerAdmission,
 } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
@@ -60,6 +63,11 @@ import {
 import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
+import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
+import {
+  publishPlacementVolumeTransitionNotices,
+  withVolumeTransitionNotices,
+} from "./volume-transition-notice.ts";
 
 export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
@@ -83,11 +91,12 @@ type RebuildAppServices =
   | StateStore;
 
 const rebuildSelectedServices = Effect.fnUntraced(function* (
-  plan: AppPlan,
+  selectedPlan: AppPlan,
   target: ResolvedAppTarget,
   options: Pick<RebuildAppOptions, "signal"> & {
     readonly managed?: StartManagedScope;
     readonly preparedOverlays: PreparedStartOverlays;
+    readonly provider: PreparedRuntimeProvider;
   },
 ): Effect.fn.Return<
   RebuildAppResult["servicesStarted"],
@@ -103,15 +112,19 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | RedactionService
   | GlobalConsumerAdmissionServices
 > {
-  const { signal, managed, preparedOverlays } = options;
-  const registry = yield* RuntimeProviderRegistry;
+  const { signal, managed, preparedOverlays, provider } = options;
+  // Prepare certificates before anything stops, so a CA failure leaves the services running.
+  const plan = yield* prepareServiceCertificates(selectedPlan);
   const builds = yield* BuildOrchestrator;
-  const provider = yield* registry.select(plan);
   const services = Object.values(plan.services);
 
   const stopSelected = Effect.forEach(
     [...services].reverse(),
-    (service) => provider.stop({ app: plan.id, service: service.name, plan }),
+    // A planned service whose container is already gone needs no stop before it is rebuilt.
+    (service) =>
+      provider
+        .stop({ app: plan.id, service: service.name, plan })
+        .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
     { discard: true },
   );
   yield* markStartMutation(target.plan);
@@ -182,90 +195,105 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
     target?: ResolvedAppTarget,
     managed?: StartManagedScope,
   ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
-    const plannedTarget = target ?? (yield* resolveDesiredAppTarget);
-    const placement = yield* ensureAppPlacementState(plannedTarget.app, plannedTarget.plan.provider);
-    const registry = yield* RuntimeProviderRegistry;
-    const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
-    const plan = resolvedTarget.plan;
-    const selectedPlan = yield* selectRebuildPlan(plan, options.services);
-    const scoped = options.services !== undefined && options.services.length > 0;
+    const initialTarget = target ?? (yield* resolveDesiredAppTarget);
     const context = yield* Effect.context<RebuildAppServices>();
     const stateStore = yield* StateStore;
-    const provider = yield* registry.select(plan);
-    const preparedOverlays = yield* prepareStartOverlays({ ...resolvedTarget, plan: selectedPlan }, provider);
     return yield* withAppMutationLock(
-      appLockTarget(plan),
-      withPlanVolumeCoordination({
-        plan,
-        provider,
-        stateStore,
-        body: Effect.fnUntraced(function* () {
-          const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
-          if (pending !== null)
-            yield* startApp(
-              options.signal === undefined ? {} : { signal: options.signal },
-              resolvedTarget,
-              managed?.resume ?? managed,
-              { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
-            );
-          const stopPreflight = yield* preflightStopApp(resolvedTarget);
-          yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
-          yield* ensureStartTransactionConsistent(resolvedTarget);
-          if (pending === null) yield* runAppInitEvents(plan);
-          const ref: AppRef = resolvedTarget.app;
-          const timestamp = () => DateTime.nowUnsafe();
-          const preRebuild = PreRebuildEvent.make({
-            _tag: "pre-rebuild",
-            app: ref,
-            timestamp: timestamp(),
-          });
-          yield* publishAndRunAppEvent(plan, "pre-rebuild", preRebuild);
-          yield* publishHomeTransitionNotices(placement.plan, selectedPlan);
-          const start = scoped
-            ? {
-                app: plan.name,
-                servicesStarted: yield* rebuildSelectedServices(selectedPlan, resolvedTarget, {
-                  ...options,
-                  preparedOverlays,
-                  ...(managed === undefined ? {} : { managed }),
-                }),
-              }
-            : yield* Effect.gen(function* () {
-                yield* markStartMutation(plan);
-                yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
-                yield* managed?.onStopped ?? Effect.void;
-                return yield* startApp(
-                  {
-                    reconcile: true,
-                    ...(options.signal === undefined ? {} : { signal: options.signal }),
-                  },
-                  resolvedTarget,
-                  managed,
-                  {
-                    buildOptions: { refresh: true },
-                    forceAppBuild: true,
-                    skipInitEvents: true,
-                    transactionPreflightDone: true,
+      appLockTarget(initialTarget.plan),
+      Effect.gen(function* () {
+        // FIRST under root lock: reconcile before overlays, placement, retirement, or mutation.
+        const resolvedTarget = yield* reconcileAppDataIdentity(initialTarget);
+        const plan = resolvedTarget.plan;
+        // Refuse a routed rebuild without a selectable router before stopping or building anything.
+        yield* requireSelectableRouter(plan);
+        const selectedPlan = yield* selectRebuildPlan(plan, options.services);
+        const scoped = options.services !== undefined && options.services.length > 0;
+        const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
+        yield* validateSelectedRename(resolvedTarget, placement.superseded, scoped);
+        const provider = yield* selectPreparedProvider(plan);
+        const preparedOverlays = yield* prepareStartOverlays(
+          { ...resolvedTarget, plan: selectedPlan },
+          provider,
+        );
+        if (!scoped) yield* claimDataIdentityBeforeRetirement(resolvedTarget, placement.superseded, provider);
+        const retired = yield* retireSupersededRealizations(resolvedTarget, placement.superseded, {
+          provider,
+          selectedServices: scoped,
+        });
+        return yield* withLaunchVolumeCoordination({
+          plan,
+          provider,
+          stateStore,
+          body: Effect.fnUntraced(function* () {
+            yield* claimAppDataIdentity(resolvedTarget);
+            const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
+            if (pending !== null)
+              yield* startApp(
+                options.signal === undefined ? {} : { signal: options.signal },
+                resolvedTarget,
+                managed?.resume ?? managed,
+                { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
+              );
+            const stopPreflight = yield* preflightStopApp(resolvedTarget);
+            yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
+            if (!retired) yield* ensureStartTransactionConsistent(resolvedTarget);
+            if (pending === null) yield* runAppInitEvents(plan);
+            const ref: AppRef = resolvedTarget.app;
+            const timestamp = () => DateTime.nowUnsafe();
+            const preRebuild = PreRebuildEvent.make({
+              _tag: "pre-rebuild",
+              app: ref,
+              timestamp: timestamp(),
+            });
+            yield* publishAndRunAppEvent(plan, "pre-rebuild", preRebuild);
+            yield* publishPlacementVolumeTransitionNotices(placement, selectedPlan);
+            const start = scoped
+              ? {
+                  app: plan.name,
+                  servicesStarted: yield* rebuildSelectedServices(selectedPlan, resolvedTarget, {
+                    ...options,
+                    provider,
                     preparedOverlays,
-                  },
-                );
-              });
-          const postRebuild = PostRebuildEvent.make({
-            _tag: "post-rebuild",
-            app: ref,
-            timestamp: timestamp(),
-          });
-          yield* publishAndRunAppEvent(plan, "post-rebuild", postRebuild);
-          return {
-            app: start.app,
-            servicesRebuilt: start.servicesStarted.map((service) => service.name),
-            servicesStarted: start.servicesStarted,
-            ...(start.checks === undefined ? {} : { checks: start.checks }),
-          };
-        }, Effect.provide(context)),
+                    ...(managed === undefined ? {} : { managed }),
+                  }),
+                }
+              : yield* Effect.gen(function* () {
+                  yield* markStartMutation(plan);
+                  yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
+                  yield* managed?.onStopped ?? Effect.void;
+                  return yield* startApp(
+                    {
+                      reconcile: true,
+                      ...(options.signal === undefined ? {} : { signal: options.signal }),
+                    },
+                    resolvedTarget,
+                    managed,
+                    {
+                      buildOptions: { refresh: true },
+                      forceAppBuild: true,
+                      skipInitEvents: true,
+                      transactionPreflightDone: true,
+                      preparedOverlays,
+                    },
+                  );
+                });
+            const postRebuild = PostRebuildEvent.make({
+              _tag: "post-rebuild",
+              app: ref,
+              timestamp: timestamp(),
+            });
+            yield* publishAndRunAppEvent(plan, "post-rebuild", postRebuild);
+            return {
+              app: start.app,
+              servicesRebuilt: start.servicesStarted.map((service) => service.name),
+              servicesStarted: start.servicesStarted,
+              ...(start.checks === undefined ? {} : { checks: start.checks }),
+            };
+          }, Effect.provide(context)),
+        });
       }),
     );
   },
   (effect, _options: RebuildAppOptions = {}, _target?: ResolvedAppTarget, _managed?: StartManagedScope) =>
-    withHomeTransitionNotices(effect),
+    withVolumeTransitionNotices(effect),
 );

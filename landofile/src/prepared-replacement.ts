@@ -107,6 +107,6 @@ const prepareReplacement = Effect.fn("Landofile.prepareReplacement")(function* (
 export const prepareLandofileReplacement = (
   replacement: Parameters<typeof prepareReplacement>[0],
   inputs: Parameters<typeof prepareReplacement>[1],
-) => prepareReplacement(replacement, { ...inputs, readOnly: true });
+) => prepareReplacement(replacement, { ...inputs, readOnly: true }).pipe(Effect.scoped);
 
 export const acquireLandofileReplacement = prepareReplacement;

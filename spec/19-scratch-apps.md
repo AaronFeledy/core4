@@ -14,7 +14,7 @@
 A scratch app:
 
 - Has an identity disjoint from user and global apps (§21.2).
-- Has a Lando-managed root at `<userCacheRoot>/scratch/<id>/`, populated from a source app, recipe, or explicit programmatic configuration and workspace.
+- Has a Lando-managed root at `<userDataRoot>/scratch/<id>/`, populated from a source app, recipe, or explicit programmatic configuration and workspace.
 - Uses the standard Landofile, planner, build, provider, router, and certificate contracts.
 - Is owned by a `Scope` whose finalizer destroys containers, applicable volumes, routes, host-proxy state, transcripts, caches, and the materialized root.
 - Is excluded from cwd discovery and is addressable only through `apps:scratch:*` or the library API.
@@ -29,7 +29,7 @@ A scratch app is not a Git worktree, a source-app extension, a persistent projec
 |---|---|
 | `kind` | `scratch` |
 | `id` | A validated, unique `scratch-<base>-<suffix>` identity derived from source or `--name`. The suffix is bounded and collision-resistant. |
-| Root | `<userCacheRoot>/scratch/<id>/` with the materialized app under its managed root. |
+| Root | `<userDataRoot>/scratch/<id>/` with the materialized app under its managed root. |
 | Provider labels | `dev.lando.scratch=TRUE` and `dev.lando.scratch-id=<id>` on every provisioned container, volume, and network, in addition to §6.5 labels. |
 | Environment | `LANDO_PROJECT=<id>`, `LANDO_APP_NAME=<id>`, `LANDO_APP_KIND=scratch`; `LANDO_APP_KIND` applies to every app kind (§6.9). |
 | DNS | `<service>.<id>.internal` |
@@ -38,7 +38,7 @@ Scratch ids MAY appear in user-facing output and are not secrets.
 
 ### 21.3 The scratch app root
 
-Scratch state lives under `<userCacheRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan`, `scratch-app-info`, and `scratch-build-results` caches (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
+Scratch state lives under `<userDataRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan` record, from which `scratch:info` derives its output; build outcomes use the cache-root `scratch-build-results` index (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
 
 The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
 
@@ -60,6 +60,7 @@ The entire scratch tree MUST be excluded from cwd discovery. Scope finalization 
 - The resolved app name is rewritten to the scratch id.
 - Local and user overrides are copied unless `--no-local-overrides` is set.
 - Materialization is atomic. Failure removes the partial root and raises `ScratchMaterializeError`; provider actions MUST NOT begin first.
+- Fork materialization MUST NOT implicitly copy source persisted-home stores (§6.5).
 
 #### 21.4.2 Scratch mode
 
@@ -117,7 +118,7 @@ Destroy payloads carry the teardown plan when one is available, `reason` (`expli
 
 #### 21.6.3 Standard event sequence
 
-Acquisition wraps materialization and start; scratch start wraps the standard App lifecycle and any required global-service start (§20.6.3). Every scratch destroy (explicit `apps:scratch:destroy`, scope close, poweroff, GC reap, and acquisition-failure rollback) nests `pre-scratch-destroy`, the standard stop pair, the standard destroy pair, instance-root and registry cleanup, then `post-scratch-destroy`. A failure at any step keeps the registry entry and skips `post-scratch-destroy`. GC reaps paint no task tree. `apps:poweroff` destroys scratch apps before stopping the global app. `--keep-scratch` suppresses every scratch destroy block and composes with `--keep-global`.
+Acquisition wraps materialization and start; scratch start wraps the standard App lifecycle and any required global-service start (§20.6.3). Every scratch destroy (explicit `apps:scratch:destroy`, scope close, poweroff, GC reap, and acquisition-failure rollback) nests `pre-scratch-destroy`, the standard stop pair, the standard destroy pair, instance-root and registry cleanup, then `post-scratch-destroy`. A failure at any step keeps the registry entry and skips `post-scratch-destroy`. A routed scratch start with no selectable router MUST fail before placement, certificate issuance, builds, and apply with `ScratchAppError` (operation `start`) carrying the selection reason's message and remediation, with the `ProxySetupError` as cause (§10.2). With no selectable router, scratch destroy withdraws routes through every installed router; when that withdrawal is not completed, cleanup still finishes with the §10.2 warning, without asserting route withdrawal. A selected router's failure still keeps the entry. GC reaps paint no task tree. `apps:poweroff` destroys scratch apps before stopping the global app. `--keep-scratch` suppresses every scratch destroy block and composes with `--keep-global`.
 
 ### 21.7 Mount isolation: the `--isolate` knob
 
@@ -183,7 +184,7 @@ Every command uses `scratch` bootstrap. `apps:list --include-scratch` adds runni
 
 Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|baked|cwd`, `--mount-cwd`, `--share-global-storage`, `--no-hostname-suffix`, `--hostname`, `--name`, `--exclude`, `--no-local-overrides`, recipe-answer and interaction flags, `--run-post-init`, `--detach`, `--keep-volumes`, and `--keep-on-failure`.
 
-Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userCacheRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
+Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userDataRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
 
 Scratch startup MUST pass the shared §6.7 readiness barrier before reporting success, returning a started handle, marking the registry running, or executing `apps:scratch:run` tooling. Startup failure and interruption at any phase MUST follow scratch scope cleanup, including routes, containers, applicable volumes, and the materialized root; `--keep-on-failure` retains failed acquisition state. One acquisition-failure cleanup boundary covers apply through startup completion: an ordinary failure, not only interruption, reaps task-owned instance resources unless keep-on-failure applies, and it MUST NOT remove the scratch source root. Successful-scope and detached cleanup behavior is unchanged. The user-app and global-app retention policy of §6.7 does not apply to scratch apps and MUST NOT suppress scratch cleanup. Scratch remediation MUST address the scratch identity and MUST NOT prescribe `lando start`.
 
@@ -199,7 +200,7 @@ Arguments after `--` pass verbatim to provider exec. Stdin and PTY follow the §
 
 ### 21.11 Cleanup, registry, and orphan reaping
 
-The `scratch-registry` at `<userCacheRoot>/scratch/registry.bin` (§12.1) is the active-process source of truth. Entries identify the scratch, source, isolation, global-storage policy, detached and owner state, managed paths, lifecycle status, and timestamps. Acquisition records state before provider operations, marks running after start, and removes the entry after destroy. Failed finalization leaves a cleanup-pending entry: a destroy that fails after `pre-scratch-destroy` records `destroyed-pending-cleanup` best effort, without replacing the original failure, and GC treats that entry as a candidate whatever its owner liveness or detached state.
+The `scratch-registry` at `<userDataRoot>/scratch/registry.bin` (§12.1) is the active-process source of truth. Entries identify the scratch, source, isolation, global-storage policy, detached and owner state, managed paths, lifecycle status, and timestamps. Acquisition records state before provider operations, marks running after start, and removes the entry after destroy. Failed finalization leaves a cleanup-pending entry: a destroy that fails after `pre-scratch-destroy` records `destroyed-pending-cleanup` best effort, without replacing the original failure, and GC treats that entry as a candidate whatever its owner liveness or detached state.
 
 Registry updates MUST use the canonical atomic, lockable `StateStore` contract (§12.7). `apps:scratch:gc` combines two authorities:
 
@@ -237,7 +238,7 @@ Every error is tagged and includes remediation:
 - Scratch fleets are not a primitive; callers may compose independent detached acquisitions.
 - Fork mode has no hot reload from source changes.
 - Scratch apps are not cross-app expression sources.
-- `<userCacheRoot>/scratch/` is not independently relocatable; changing `<userCacheRoot>` relocates it (§7.5).
+- `<userDataRoot>/scratch/` is not independently relocatable; changing `<userDataRoot>` relocates it (§7.5).
 - A persistent agent is a non-goal and does not change scratch lifetime (§14.2).
 - `apps:scratch:run` has no warm toolbox pool; `--keep` or a normal app provides persistence.
 - Plugins MUST NOT acquire scratches during install. They MAY contribute recipes or `globalServices:` that user-initiated scratches consume.

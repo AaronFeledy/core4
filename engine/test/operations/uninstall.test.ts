@@ -28,6 +28,7 @@ import {
 } from "../../src/operations/uninstall.ts";
 import {
   makeUninstallRoots,
+  privateRuntimeTestDeps,
   sandboxUninstallOptions,
   writeFakeManagedPodman,
   writeManagedVolumeTree,
@@ -113,7 +114,7 @@ describe("record-backed uninstall", () => {
             // Then: only proven ownership permits deletion; refusals retain repair evidence.
             const step = result.steps.find((entry) => entry.id === "installed-binary");
             const status =
-              scenario === "owned" || (scenario === "changed-before-remove" && dryRun)
+              scenario === "owned" || scenario === "changed-before-remove"
                 ? "owned"
                 : scenario === "invalid"
                   ? "manual"
@@ -121,6 +122,7 @@ describe("record-backed uninstall", () => {
                     ? "skipped"
                     : "user-owned";
             expect(step?.status).toBe(status);
+            if (scenario === "changed-before-remove" && !dryRun) expect(step?.outcome).toBe("manual");
             expect(result.failed).toBe(false);
             if (scenario === "foreign-basename" || scenario === "digest-mismatch")
               expect(step?.detail).toContain(scenario);
@@ -224,20 +226,38 @@ describe("uninstall runtime overlay removal", () => {
 
   test("managed unshare fallback invokes runtimeDir/bin/podman, never PATH podman", () => {
     const runtimeDir = "/tmp/lando-isolated-runtime";
-    const invocation = managedPodmanUnshareRmInvocation(runtimeDir);
+    const privateRuntimeDir = "/tmp/lando-private-runtime";
+    const invocation = managedPodmanUnshareRmInvocation(runtimeDir, runtimeDir, {
+      privateRuntimeDir,
+      hostEnv: { HOME: "/home/fixture" },
+    });
     expect(invocation.command).toBe(join(runtimeDir, "bin", "podman"));
     expect(invocation.command).not.toBe("podman");
     expect(invocation.args).toEqual([
+      "--root",
+      join(runtimeDir, "storage"),
+      "--runroot",
+      join(runtimeDir, "run"),
       "--config",
       join(runtimeDir, "config"),
+      "--storage-opt",
+      `overlay.mount_program=${join(runtimeDir, "bin")}/fuse-overlayfs`,
       "unshare",
       "rm",
       "-rf",
       runtimeDir,
     ]);
     expect(invocation.env).toEqual({
+      HOME: "/home/fixture",
       CONTAINERS_CONF: join(runtimeDir, "config", "containers.conf"),
+      CONTAINERS_REGISTRIES_CONF: join(runtimeDir, "config", "registries.conf"),
+      XDG_CONFIG_HOME: join(runtimeDir, "config"),
+      DISABLE_HC_SYSTEMD: "true",
+      LANDO_MANAGED_CONFIG_REVISION: "2-native-init",
+      XDG_RUNTIME_DIR: privateRuntimeDir,
+      PATH: join(runtimeDir, "bin"),
     });
+    expect(invocation.env).not.toHaveProperty("CONTAINER_HOST");
   });
 
   test("defaultRemoveRuntimeDir invokes the managed podman unshare binary when present", async () => {
@@ -271,7 +291,7 @@ describe("uninstall runtime overlay removal", () => {
       );
       process.env.PATH = decoyDir;
 
-      await defaultRemoveRuntimeDir(runtimeDir);
+      await defaultRemoveRuntimeDir(runtimeDir, privateRuntimeTestDeps(runtimeDir));
 
       expect(existsSync(runtimeDir)).toBe(false);
       const managed = existsSync(managedLog) ? readFileSync(managedLog, "utf8") : "";
@@ -321,7 +341,7 @@ describe("uninstall runtime overlay removal", () => {
 
       expect(result.failed).toBe(false);
       expect(existsSync(runtimeDir)).toBe(false);
-      await Bun.sleep(100);
+      await child.exited;
       expect(pidIsGone(pid)).toBe(true);
     } finally {
       if (child !== undefined) {
@@ -374,7 +394,12 @@ describe("uninstall managed volume purge", () => {
       mkdirSync(roots.userCacheRoot, { recursive: true });
       const runtimeDir = join(roots.userDataRoot, "runtime");
       const volumeFile = writeManagedVolumeTree(runtimeDir);
-      writeFakeManagedPodman(join(runtimeDir, "bin"), ["#!/bin/sh", 'rm -rf "$6"', "exit 0", ""].join("\n"));
+      writeFakeManagedPodman(
+        join(runtimeDir, "bin"),
+        ["#!/bin/sh", 'target=""', "for arg; do target=$arg; done", 'rm -rf "$target"', "exit 0", ""].join(
+          "\n",
+        ),
+      );
 
       const result = await Effect.runPromise(
         uninstall(
@@ -408,7 +433,9 @@ describe("uninstall managed volume purge", () => {
         join(runtimeDir, "bin"),
         [
           "#!/bin/sh",
-          `if [ "$6" = "${storageDir}" ]; then rm -rf "$6"; exit 0; fi`,
+          'target=""',
+          "for arg; do target=$arg; done",
+          `if [ "$target" = "${storageDir}" ]; then rm -rf "$target"; exit 0; fi`,
           `rm -f "${join(runtimeDir, "bin", "podman")}"`,
           "exit 1",
           "",
@@ -416,6 +443,7 @@ describe("uninstall managed volume purge", () => {
       );
 
       await defaultRemoveRuntimeDir(runtimeDir, {
+        ...privateRuntimeTestDeps(runtimeDir),
         removeTree: async (path) => {
           if (existsSync(volumeFile)) {
             throw Object.assign(new Error("EACCES"), { code: "EACCES" });
@@ -431,6 +459,39 @@ describe("uninstall managed volume purge", () => {
     }
   });
 
+  test("defaultRemoveRuntimeDir terminates private pause and removes private dir after purge", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-private-pause-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      mkdirSync(join(runtimeDir, "bin"), { recursive: true });
+      writeFileSync(join(runtimeDir, "bin", "podman"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      const privateRuntimeDir = join(roots.root, "private-runtime");
+      mkdirSync(privateRuntimeDir, { recursive: true });
+      const pauseCalls: string[] = [];
+      const removed: string[] = [];
+
+      await defaultRemoveRuntimeDir(runtimeDir, {
+        preparePrivateRuntimeDir: async () => privateRuntimeDir,
+        resolvePrivateRuntimeDir: async () => privateRuntimeDir,
+        terminatePause: async (dir) => {
+          pauseCalls.push(dir);
+        },
+        removePrivateRuntimeDir: async (dir) => {
+          removed.push(dir);
+        },
+        unshareRm: async () => {},
+        terminate: async () => {},
+      });
+
+      expect(pauseCalls).toEqual([privateRuntimeDir]);
+      expect(removed).toEqual([privateRuntimeDir]);
+      expect(existsSync(runtimeDir)).toBe(false);
+    } finally {
+      await chmodTreeUserWritable(roots.root);
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
   test("defaultRemoveRuntimeDir reaps runtime/bin processes after the tree is gone", async () => {
     const roots = makeUninstallRoots("lando-uninstall-reap-after-");
     try {
@@ -440,6 +501,7 @@ describe("uninstall managed volume purge", () => {
       const calls: string[] = [];
 
       await defaultRemoveRuntimeDir(runtimeDir, {
+        ...privateRuntimeTestDeps(runtimeDir),
         terminate: async (path) => {
           calls.push(`${existsSync(path) ? "present" : "absent"}:${path}`);
         },
@@ -469,6 +531,7 @@ describe("uninstall managed volume purge", () => {
       const volumeFile = writeManagedVolumeTree(runtimeDir);
       writeFakeManagedPodman(join(runtimeDir, "bin"), "#!/bin/sh\nexit 1\n");
       const heldVolume: RemoveRuntimeDirDeps = {
+        ...privateRuntimeTestDeps(runtimeDir),
         unshareRm: async () => {
           throw new Error("unshare failed");
         },
@@ -509,6 +572,7 @@ describe("uninstall managed volume purge", () => {
       const volumeFile = writeManagedVolumeTree(runtimeDir);
       writeFakeManagedPodman(join(runtimeDir, "bin"), "#!/bin/sh\nexit 1\n");
       const heldVolume: RemoveRuntimeDirDeps = {
+        ...privateRuntimeTestDeps(runtimeDir),
         unshareRm: async () => {
           throw new Error("unshare failed");
         },
@@ -700,8 +764,6 @@ describe("platform-specific uninstall helpers", () => {
       const linuxOnlyPath = join(roots.root, "linux-only-helper");
       const options = sandboxUninstallOptions(roots, {
         cgroupsDelegatePath: linuxOnlyPath,
-        socketProxyUnitPaths: [linuxOnlyPath],
-        socketProxyPolkitPath: linuxOnlyPath,
         exists: (path) => {
           if (path === linuxOnlyPath) throw new Error("Linux helper path was probed");
           return existsSync(path);
@@ -709,7 +771,6 @@ describe("platform-specific uninstall helpers", () => {
       });
       const plan = await buildUninstallPlan(options, "keep-data", platform);
       expect(plan.some((step) => step.id === "cgroups-delegate")).toBe(false);
-      expect(plan.some((step) => step.id === "socket-proxy-helper")).toBe(false);
       if (platform === "win32") {
         expect(plan.find((step) => step.id === "shell-entries")).toMatchObject({
           target: "PowerShell profiles",
@@ -876,7 +937,7 @@ describe("uninstall shellenv profile strip", () => {
         [
           "export USER_LINE=keep-me",
           LANDO_SHELLENV_BEGIN,
-          "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+          `export LANDO_USER_DATA_ROOT='${roots.userDataRoot}'`,
           'export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"',
           LANDO_SHELLENV_END,
           "export AFTER=still-here",
@@ -948,7 +1009,7 @@ describe("uninstall shellenv profile strip", () => {
     const unreadable = join(roots.root, "unreadable.rc");
     const block = [
       LANDO_SHELLENV_BEGIN,
-      "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+      `export LANDO_USER_DATA_ROOT='${roots.userDataRoot}'`,
       LANDO_SHELLENV_END,
       "",
     ].join("\n");
@@ -1000,6 +1061,12 @@ describe("uninstall shellenv profile strip", () => {
       expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
         outcome: "manual",
       });
+      for (const id of ["install-record", "user-data-root"]) {
+        expect(result.steps.find((step) => step.id === id)).toMatchObject({
+          status: "owned",
+          outcome: "manual",
+        });
+      }
       expect(existsSync(record)).toBe(true);
       expect(existsSync(binary)).toBe(false);
     } finally {
@@ -1054,6 +1121,7 @@ describe("uninstall shellenv profile strip", () => {
       expect(existsSync(roots.userDataRoot)).toBe(false);
       expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
       expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        status: "owned",
         outcome: "completed",
       });
       expect(result.steps.filter((step) => step.outcome === "completed").at(-1)?.id).toBe("install-record");
@@ -1197,7 +1265,7 @@ describe("uninstall shellenv profile strip", () => {
     const original = [
       "export USER_LINE=keep-me",
       LANDO_SHELLENV_BEGIN,
-      "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+      `export LANDO_USER_DATA_ROOT='${roots.userDataRoot}'`,
       LANDO_SHELLENV_END,
       "export AFTER=still-here",
       "",
@@ -1219,13 +1287,6 @@ describe("uninstall shellenv profile strip", () => {
           userCacheRoot: roots.userCacheRoot,
           userConfRoot: roots.userConfRoot,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
-          socketProxyUnitPaths: [
-            join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
-            join(roots.socketProxyUnitDir, "lando-proxy-http.service"),
-            join(roots.socketProxyUnitDir, "lando-proxy-https.socket"),
-            join(roots.socketProxyUnitDir, "lando-proxy-https.service"),
-          ],
-          socketProxyPolkitPath: roots.socketProxyPolkitPath,
           yes: true,
           purge: true,
           listDiscoveredApps: async () => [],
@@ -1261,7 +1322,7 @@ describe("uninstall shellenv profile strip", () => {
       [
         "export USER_LINE=keep-me",
         LANDO_SHELLENV_BEGIN,
-        "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+        `export LANDO_USER_DATA_ROOT='${roots.userDataRoot}'`,
         LANDO_SHELLENV_END,
         "",
       ].join("\n"),
@@ -1281,13 +1342,6 @@ describe("uninstall shellenv profile strip", () => {
           userCacheRoot: roots.userCacheRoot,
           userConfRoot: roots.userConfRoot,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
-          socketProxyUnitPaths: [
-            join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
-            join(roots.socketProxyUnitDir, "lando-proxy-http.service"),
-            join(roots.socketProxyUnitDir, "lando-proxy-https.socket"),
-            join(roots.socketProxyUnitDir, "lando-proxy-https.service"),
-          ],
-          socketProxyPolkitPath: roots.socketProxyPolkitPath,
           yes: true,
           purge: true,
           listDiscoveredApps: async () => [],

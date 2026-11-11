@@ -1,11 +1,11 @@
-import { type ComposeDisposition, composeServiceDispositions } from "@lando/sdk/landofile";
+import {
+  type ComposeDisposition,
+  composeDispositionFor,
+  composeServiceDispositions,
+} from "@lando/sdk/landofile";
 
-/** Exact-key projection of the SDK service disposition matrix. Unknown paths stay unknown. */
-export const dispositionOf = (path: string): ComposeDisposition | "unknown" => {
-  if (!Object.hasOwn(composeServiceDispositions, path)) return "unknown";
-  const entry = composeServiceDispositions[path];
-  return entry === undefined ? "unknown" : entry.disposition;
-};
+export const dispositionOf = (path: string): ComposeDisposition | "unknown" =>
+  composeDispositionFor(composeServiceDispositions, path)?.disposition ?? "unknown";
 
 export const COMPOSE_KEY_RENAMES: Readonly<Record<string, string>> = {
   working_dir: "workingDirectory",

@@ -11,8 +11,8 @@ import {
 } from "@lando/sdk/schema";
 import { type LifecycleDialect, dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
@@ -77,6 +77,9 @@ const captureCreateRequest = async (
     ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync(() => {
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const name = decodeURIComponent(request.path.slice("/networks/".length));
           return {

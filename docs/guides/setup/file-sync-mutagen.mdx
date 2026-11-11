@@ -3,7 +3,7 @@ id: file-sync-mutagen
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 120000
-tags: [beta, docs, file-sync, mutagen, setup]
+tags: [docs, file-sync, mutagen, setup]
 ---
 
 # Accelerate Windows project files with Mutagen
@@ -134,7 +134,7 @@ lando stop
 lando start
 ```
 
-Stopping pauses the app's sessions and retains their history. Starting resumes them, including changes made while the app was stopped. Lando uses two-way safe sync: if both sides change the same file incompatibly, it reports a conflict instead of choosing one version silently.
+Stopping pauses the app's sessions and retains their history under the user data root, where clearing Lando's cache doesn't reach it. Starting resumes them, including changes made while the app was stopped. Lando uses two-way safe sync: if both sides change the same file incompatibly, it reports a conflict instead of choosing one version silently.
 
 `lando destroy` removes the app's sync sessions and disposable sync caches after syncing pending changes in included paths back to the project. Resolve reported sync errors before retrying destroy. The normal destroy rules for application data volumes still apply.
 
@@ -163,7 +163,7 @@ lando start
 lando info
 ```
 
-Directory, deletion, and symbolic-link conflicts need a decision about which content to keep; see [Mutagen's conflict resolution guide](https://mutagen.io/documentation/synchronization#conflict-resolution). Keep your backups until the app starts and the files match. Do not reset or terminate Lando's session or remove its cache to bypass a conflict: that can discard the history or the container's unreturned edits.
+Directory, deletion, and symbolic-link conflicts need a decision about which content to keep; see [Mutagen's conflict resolution guide](https://mutagen.io/documentation/synchronization#conflict-resolution). Keep your backups until the app starts and the files match. Do not reset or terminate Lando's session or remove its session data to bypass a conflict: that can discard the history or the container's unreturned edits.
 
 ## Check whether your host can accelerate
 

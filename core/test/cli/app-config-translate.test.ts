@@ -149,15 +149,15 @@ describe("appConfigTranslate", () => {
           outputs: [
             {
               targetLayer: "canonical",
-              fragment: { name: "demo", tooling: { echo: { vars: { VALUE: { sh: "echo hi" } } } } },
+              fragment: { name: "demo", services: { web: { security: { ca: ["/certs/a.pem"] } } } },
               sourceIds,
             },
+            // Valid alone, but `ca` and `cas` are mutually exclusive once merged.
             {
               targetLayer: "local",
-              fragment: { tooling: { echo: { vars: { VALUE: { prompt: "Value" } } } } },
+              fragment: { services: { web: { security: { cas: "/certs/b.pem" } } } },
               sourceIds,
             },
-            { targetLayer: "user", fragment: { tooling: { echo: { vars: { VALUE: "fixed" } } } }, sourceIds },
           ],
           diagnostics: [],
           deletions: [],

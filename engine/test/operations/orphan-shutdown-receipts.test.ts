@@ -129,7 +129,8 @@ test("global selected stop preserves absent removal observations", async () => {
         ...makeTestRouterService(),
         setup: () => Effect.die("selected stop must not set up routes"),
         removeRoutes: () => Effect.die("selected stop must not delete whole route file"),
-        applyRoutes: (routes) => Effect.succeed({ app: globalId, appliedRoutes: routes, authorities: [] }),
+        applyRoutes: (routes, owner) =>
+          Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
       }),
       Effect.provide(h.layer),
     ),

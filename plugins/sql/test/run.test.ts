@@ -244,7 +244,7 @@ describe("executeDbCommand", () => {
                   app: target.app,
                   service: target.service,
                   providerId: source.provider,
-                  status: "stopped",
+                  status: "exited",
                   publications: { status: "unknown" as const },
                 }),
             }
@@ -1300,7 +1300,8 @@ describe("executeDbCommand", () => {
       // Given: a snapshot of a previous generation with one incompatible lineage field.
       const harness = makeSqlTestDeps({ password: SECRET, snapshotVolumeInstance: "previous-generation" });
       const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "seed-source" }));
-      if (source?.metadata === undefined) throw new Error("missing fixture metadata");
+      if (source?.metadata === undefined || source.metadata.volumeInstanceId === undefined)
+        throw new Error("missing fixture metadata");
       const metadata = source.metadata;
       const incompatible = {
         version: { version: "5.7" },

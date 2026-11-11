@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
@@ -58,7 +59,7 @@ export const mailpitServiceType: ServiceType = {
   schema: MailpitServiceConfig,
   resolve: (input) =>
     Schema.decodeUnknownEffect(MailpitServiceName)(input.name).pipe(
-      Effect.mapError(
+      mapFailures(
         () =>
           new ServiceTypeError({
             serviceType: "mailpit",

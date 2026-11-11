@@ -6,13 +6,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
+import type { GitTransport } from "@lando/source-acquisition";
 
-import type { GitIncludeCloner } from "../src/includes.ts";
 import { updateAuthoredIncludes as updateLandofileIncludesPackage } from "./include-pipeline.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore, makeTestPublicationPort } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore, seedGitSourceEntry } from "./support.ts";
 
 const updateLandofileIncludes = (options: Parameters<typeof updateLandofileIncludesPackage>[0]) =>
-  updateLandofileIncludesPackage({ ...options, stateStore: makeTestLandofileStateStore() });
+  updateLandofileIncludesPackage({
+    ...options,
+    stateStore: options.stateStore ?? makeTestLandofileStateStore(options.cacheRoot),
+  });
 
 const lockfile = (source: string, resolved: string, checksum: string) =>
   [
@@ -49,16 +52,16 @@ describe("updateLandofileIncludes", () => {
     await rm(cacheRoot, { recursive: true, force: true });
   });
 
-  const runUpdate = (landofile: LandofileShape, gitCloner?: GitIncludeCloner, check?: boolean) =>
+  const runUpdate = (landofile: LandofileShape, git?: GitTransport, check?: boolean) =>
     Effect.runPromise(
       updateLandofileIncludes({
         landofile,
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
         deps: {
-          ...(gitCloner === undefined ? {} : { gitCloner }),
-          publication: makeTestPublicationPort(),
+          ...(git === undefined ? {} : { git }),
         },
         ...(check === true ? { check: true } : {}),
       }),
@@ -72,17 +75,17 @@ describe("updateLandofileIncludes", () => {
       lockfile(source, "b".repeat(40), "0".repeat(64)),
       "utf8",
     );
-    const gitCloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
-        await mkdir(stagingDir, { recursive: true });
-        await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "c".repeat(40) };
+    const git: GitTransport = {
+      fetch: async ({ dest }) => {
+        await mkdir(dest, { recursive: true });
+        await writeFile(join(dest, "postgres.yml"), fragment, "utf8");
+        return { commit: "c".repeat(40) };
       },
     };
 
     const report = await runUpdate(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      gitCloner,
+      git,
     );
 
     expect(report.entries).toEqual([
@@ -98,17 +101,17 @@ describe("updateLandofileIncludes", () => {
 
   test("adds a missing git include lock", async () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
-    const gitCloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
-        await mkdir(stagingDir, { recursive: true });
-        await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "a".repeat(40) };
+    const git: GitTransport = {
+      fetch: async ({ dest }) => {
+        await mkdir(dest, { recursive: true });
+        await writeFile(join(dest, "postgres.yml"), fragment, "utf8");
+        return { commit: "a".repeat(40) };
       },
     };
 
     const report = await runUpdate(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      gitCloner,
+      git,
     );
 
     expect(report.entries).toEqual([
@@ -132,17 +135,17 @@ describe("updateLandofileIncludes", () => {
       lockfile(source, "a".repeat(40), sha256(fragment)),
       "utf8",
     );
-    const gitCloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
-        await mkdir(stagingDir, { recursive: true });
-        await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "a".repeat(40) };
+    const git: GitTransport = {
+      fetch: async ({ dest }) => {
+        await mkdir(dest, { recursive: true });
+        await writeFile(join(dest, "postgres.yml"), fragment, "utf8");
+        return { commit: "a".repeat(40) };
       },
     };
 
     const report = await runUpdate(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      gitCloner,
+      git,
     );
 
     expect(report.entries[0]?.status).toBe("unchanged");
@@ -156,17 +159,17 @@ describe("updateLandofileIncludes", () => {
     const original = lockfile(source, "b".repeat(40), "0".repeat(64));
     const path = join(appRoot, ".lando.lock.yml");
     await writeFile(path, original, "utf8");
-    const gitCloner: GitIncludeCloner = {
-      clone: async ({ stagingDir }) => {
-        await mkdir(stagingDir, { recursive: true });
-        await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "c".repeat(40) };
+    const git: GitTransport = {
+      fetch: async ({ dest }) => {
+        await mkdir(dest, { recursive: true });
+        await writeFile(join(dest, "postgres.yml"), fragment, "utf8");
+        return { commit: "c".repeat(40) };
       },
     };
 
     const report = await runUpdate(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      gitCloner,
+      git,
       true,
     );
 
@@ -187,12 +190,12 @@ describe("updateLandofileIncludes", () => {
     expect(report.requestedSources).toEqual([]);
   });
 
-  const clonerFor = (fragment: string, commitSha: string, calls: string[]): GitIncludeCloner => ({
-    clone: async ({ url, stagingDir }) => {
+  const gitFor = (fragment: string, commit: string, calls: string[]): GitTransport => ({
+    fetch: async ({ url, dest }) => {
       calls.push(url);
-      await mkdir(stagingDir, { recursive: true });
-      await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-      return { commitSha };
+      await mkdir(dest, { recursive: true });
+      await writeFile(join(dest, "postgres.yml"), fragment, "utf8");
+      return { commit };
     },
   });
 
@@ -228,10 +231,10 @@ describe("updateLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
         sources: ["github:acme/one"],
         deps: {
-          gitCloner: clonerFor(fragOne, "c".repeat(40), calls),
-          publication: makeTestPublicationPort(),
+          git: gitFor(fragOne, "c".repeat(40), calls),
         },
       }),
     );
@@ -254,8 +257,9 @@ describe("updateLandofileIncludes", () => {
         landofile: twoIncludeLandofile,
         appRoot,
         cacheRoot,
+        stateStore: makeTestLandofileStateStore(cacheRoot),
         sources: ["github:acme/nope"],
-        deps: { gitCloner: clonerFor("x", "y", calls) },
+        deps: { git: gitFor("x", "y".repeat(40), calls) },
       }),
     );
 
@@ -270,10 +274,8 @@ describe("updateLandofileIncludes", () => {
     }
   });
 
-  const seedGitCache = async (commitSha: string, fragment: string): Promise<void> => {
-    const dir = join(cacheRoot, "includes", "git", commitSha);
-    await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "postgres.yml"), fragment, "utf8");
+  const seedGitCache = async (commit: string, fragment: string): Promise<void> => {
+    await seedGitSourceEntry(cacheRoot, commit, { "postgres.yml": fragment });
   };
 
   test("--no-network resolves from cache without touching the network", async () => {
@@ -286,8 +288,8 @@ describe("updateLandofileIncludes", () => {
     );
     await seedGitCache("a".repeat(40), fragment);
     const calls: string[] = [];
-    const throwingCloner: GitIncludeCloner = {
-      clone: async ({ url }) => {
+    const throwing: GitTransport = {
+      fetch: async ({ url }) => {
         calls.push(url);
         throw new Error("network access is forbidden in --no-network mode");
       },
@@ -299,8 +301,9 @@ describe("updateLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
         noNetwork: true,
-        deps: { gitCloner: throwingCloner },
+        deps: { git: throwing },
       }),
     );
 
@@ -319,8 +322,8 @@ describe("updateLandofileIncludes", () => {
       "utf8",
     );
     const calls: string[] = [];
-    const throwingCloner: GitIncludeCloner = {
-      clone: async ({ url }) => {
+    const throwing: GitTransport = {
+      fetch: async ({ url }) => {
         calls.push(url);
         throw new Error("network access is forbidden in --no-network mode");
       },
@@ -331,8 +334,10 @@ describe("updateLandofileIncludes", () => {
         landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
         noNetwork: true,
-        deps: { gitCloner: throwingCloner },
+        deps: { git: throwing },
       }),
     );
 
@@ -350,7 +355,7 @@ describe("updateLandofileIncludes", () => {
     try {
       const fragment = "services:\n  stolen:\n    type: postgres\n";
       await writeFile(join(outsideRoot, "postgres.yml"), fragment, "utf8");
-      const gitCacheRoot = join(cacheRoot, "includes", "git");
+      const gitCacheRoot = join(cacheRoot, "sources", "git");
       const escapedResolved = relative(gitCacheRoot, outsideRoot);
       await writeFile(
         join(appRoot, ".lando.lock.yml"),
@@ -358,8 +363,8 @@ describe("updateLandofileIncludes", () => {
         "utf8",
       );
       const calls: string[] = [];
-      const throwingCloner: GitIncludeCloner = {
-        clone: async ({ url }) => {
+      const throwing: GitTransport = {
+        fetch: async ({ url }) => {
           calls.push(url);
           throw new Error("network access is forbidden in --no-network mode");
         },
@@ -370,8 +375,10 @@ describe("updateLandofileIncludes", () => {
           landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
           appRoot,
           cacheRoot,
+          ports: makeTestLandofilePorts(cacheRoot),
+          stateStore: makeTestLandofileStateStore(cacheRoot),
           noNetwork: true,
-          deps: { gitCloner: throwingCloner },
+          deps: { git: throwing },
         }),
       );
 
@@ -389,7 +396,7 @@ describe("updateLandofileIncludes", () => {
   test("--no-network rejects npm lockfile resolved paths that escape the include cache", async () => {
     const source = "npm:@acme/fragments";
     const fragment = "services:\n  stolen:\n    type: postgres\n";
-    const outsidePackage = join(cacheRoot, "includes", "outside-npm", "package");
+    const outsidePackage = join(cacheRoot, "sources", "outside-npm", "package");
     await mkdir(outsidePackage, { recursive: true });
     await writeFile(join(outsidePackage, "postgres.yml"), fragment, "utf8");
     await writeFile(
@@ -404,6 +411,7 @@ describe("updateLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
         noNetwork: true,
       }),
     );
@@ -431,6 +439,7 @@ describe("updateLandofileIncludes", () => {
           appRoot,
           cacheRoot,
           ports: makeTestLandofilePorts(cacheRoot),
+          stateStore: makeTestLandofileStateStore(cacheRoot),
           noNetwork: true,
           check: true,
         }),

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { HttpJsonOptions } from "@lando/engine/services/json-fetch";
 import { DownloadFetchError, RecipeSourceError } from "@lando/sdk/errors";
+import { defaultNpmRegistryClient } from "../../src/recipes/npm-registry-client";
 import { loadNpmRegistryConfig, parseNpmRegistryConfig } from "../../src/recipes/npm-registry-config";
-import { defaultNpmRegistryClient, makeNpmRecipeSourcePort } from "../../src/recipes/npm-source";
 
 const token = "literal-not-an-environment-secret-1489";
 const registry = "https://npm.example.test/acme/";
@@ -25,16 +25,38 @@ const config = () =>
   );
 
 describe("npm registry requests", () => {
-  test("rejects a tarball without its acquisition context instead of silently dropping auth", async () => {
-    const port = makeNpmRecipeSourcePort(
-      defaultNpmRegistryClient(
-        undefined,
-        async () => ({ status: 200, bytes: bytes(metadata) }),
-        async () => config(),
-      ),
-    );
-    const resolved = await port.resolve(packageName);
-    await expect(port.fetchTarball({ ...resolved })).rejects.toMatchObject({ kind: "registry-failed" });
+  test("implements NpmRegistryTransport registryFor/packument/tarball with auth", async () => {
+    const requests: { url: string; options?: HttpJsonOptions }[] = [];
+    const client = defaultNpmRegistryClient({
+      fetchJson: async (url, options) => {
+        requests.push({ url, ...(options === undefined ? {} : { options }) });
+        return { status: 200, bytes: bytes(metadata) };
+      },
+      snapshot: async () => config(),
+      archive: {
+        fetch: async (url, options) => {
+          expect(url).toBe(metadata.versions["1.0.0"].dist.tarball);
+          expect(options?.authorization).toBe(`Bearer ${token}`);
+          expect(options?.redactionTokens).toContain(token);
+          return new Uint8Array([1, 2]);
+        },
+      },
+    });
+    expect(await client.registryFor(packageName)).toBe(registry);
+    const packument = await client.packument(packageName);
+    expect(packument?.["dist-tags"]?.latest).toBe("1.0.0");
+    expect(requests[0]?.url).toBe(`${registry}@acme%2fplugin`);
+    expect(requests[0]?.options?.headers).toEqual([
+      { name: "accept", value: "application/json" },
+      { name: "authorization", value: `Bearer ${token}` },
+    ]);
+
+    const authenticated = await client.tarball({
+      packageName,
+      dist: metadata.versions["1.0.0"].dist,
+    });
+    expect(authenticated).toEqual(new Uint8Array([1, 2]));
+    expect(JSON.stringify(packument)).not.toContain(token);
   });
 
   test("shares one lazy user-config snapshot across metadata and credential-aware tarball requests", async () => {
@@ -52,25 +74,27 @@ describe("npm registry requests", () => {
       return snapshot;
     };
     const requests: { url: string; options?: HttpJsonOptions }[] = [];
-    const client = defaultNpmRegistryClient(
-      undefined,
-      async (url, options) => {
+    const client = defaultNpmRegistryClient({
+      fetchJson: async (url, options) => {
         requests.push({ url, ...(options === undefined ? {} : { options }) });
         return { status: 200, bytes: bytes(metadata) };
       },
-      load,
-    );
-    expect(reads).toEqual([]);
-    const port = makeNpmRecipeSourcePort(client, undefined, {
-      fetch: async (url, options) => {
-        expect(url).toBe(metadata.versions["1.0.0"].dist.tarball);
-        expect(options?.authorization).toBe(`Bearer ${token}`);
-        expect(options?.redactionTokens).toContain(token);
-        return new Uint8Array([1, 2]);
+      snapshot: load,
+      archive: {
+        fetch: async (url, options) => {
+          expect(url).toBe(metadata.versions["1.0.0"].dist.tarball);
+          expect(options?.authorization).toBe(`Bearer ${token}`);
+          expect(options?.redactionTokens).toContain(token);
+          return new Uint8Array([1, 2]);
+        },
       },
     });
-    const resolved = await port.resolve(packageName);
-    const archive = await port.fetchTarball(resolved);
+    expect(reads).toEqual([]);
+    const packument = await client.packument(packageName);
+    const archive = await client.tarball({
+      packageName,
+      dist: metadata.versions["1.0.0"].dist,
+    });
     expect(archive).toEqual(new Uint8Array([1, 2]));
     expect(requests[0]?.url).toBe(`${registry}@acme%2fplugin`);
     expect(requests[0]?.options?.headers).toEqual([
@@ -79,16 +103,15 @@ describe("npm registry requests", () => {
     ]);
     expect(requests[0]?.options?.redactionTokens).toContain(token);
     expect(reads).toEqual(["/home/test/.npmrc"]);
-    expect(JSON.stringify(resolved)).not.toContain(token);
+    expect(JSON.stringify(packument)).not.toContain(token);
   });
 
   test.each([401, 403, 404])("provides safe npmrc remediation for HTTP %i", async (status) => {
-    const client = defaultNpmRegistryClient(
-      undefined,
-      async () => ({ status, bytes: bytes({ error: token }) }),
-      async () => config(),
-    );
-    const error = await client.fetchPackument(packageName).catch((error: unknown) => error);
+    const client = defaultNpmRegistryClient({
+      fetchJson: async () => ({ status, bytes: bytes({ error: token }) }),
+      snapshot: async () => config(),
+    });
+    const error = await client.packument(packageName).catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(RecipeSourceError);
     expect(JSON.stringify(error)).not.toContain(token);
     if (!(error instanceof RecipeSourceError)) throw new Error("Expected registry failure");
@@ -100,12 +123,12 @@ describe("npm registry requests", () => {
   });
 
   test("explains private-package 404s without configured auth", async () => {
-    const client = defaultNpmRegistryClient(
-      registry,
-      async () => ({ status: 404, bytes: new Uint8Array() }),
-      async () => parseNpmRegistryConfig(""),
-    );
-    await expect(client.fetchPackument(packageName)).rejects.toMatchObject({
+    const client = defaultNpmRegistryClient({
+      registryUrl: registry,
+      fetchJson: async () => ({ status: 404, bytes: new Uint8Array() }),
+      snapshot: async () => parseNpmRegistryConfig(""),
+    });
+    await expect(client.packument(packageName)).rejects.toMatchObject({
       kind: "package-not-found",
       remediation: expect.stringContaining("Private packages need a token"),
     });
@@ -114,9 +137,8 @@ describe("npm registry requests", () => {
   test.each(["transport", "json", "schema", "tarball"] as const)(
     "does not expose literal tokens in %s failures",
     async (failure) => {
-      const client = defaultNpmRegistryClient(
-        undefined,
-        async () => {
+      const client = defaultNpmRegistryClient({
+        fetchJson: async () => {
           if (failure === "transport") throw new Error(`connection failed: ${token}`);
           return {
             status: 200,
@@ -126,21 +148,18 @@ describe("npm registry requests", () => {
                 : bytes({ versions: { "1.0.0": token } }),
           };
         },
-        async () => config(),
-      );
+        snapshot: async () => config(),
+        archive: {
+          fetch: async () => {
+            throw new Error(token);
+          },
+        },
+      });
       const request =
         failure === "tarball"
-          ? client.fetchTarball?.(
-              { packageName, dist: metadata.versions["1.0.0"].dist },
-              {
-                fetch: async () => {
-                  throw new Error(token);
-                },
-              },
-            )
-          : client.fetchPackument(packageName);
-      if (request === undefined) throw new Error("Expected tarball method");
-      const error = await request.catch((error: unknown) => error);
+          ? client.tarball({ packageName, dist: metadata.versions["1.0.0"].dist })
+          : client.packument(packageName);
+      const error = await request.catch((cause: unknown) => cause);
       expect(error).toBeInstanceOf(RecipeSourceError);
       expect(String(error)).not.toContain(token);
       expect(JSON.stringify(error)).not.toContain(token);
@@ -152,17 +171,10 @@ describe("npm registry requests", () => {
     [403, "auth"],
     [500, "download-failed"],
   ] as const)("classifies tarball HTTP %i as %s without exposing tokens", async (status, kind) => {
-    const client = defaultNpmRegistryClient(
-      undefined,
-      async () => ({ status: 200, bytes: bytes(metadata) }),
-      async () => config(),
-    );
-    const fetchTarball = client.fetchTarball;
-    if (fetchTarball === undefined) throw new Error("Expected tarball method");
-
-    const error = await fetchTarball(
-      { packageName, dist: metadata.versions["1.0.0"].dist },
-      {
+    const client = defaultNpmRegistryClient({
+      fetchJson: async () => ({ status: 200, bytes: bytes(metadata) }),
+      snapshot: async () => config(),
+      archive: {
         fetch: async () => {
           throw new DownloadFetchError({
             message: `Rejected ${token}`,
@@ -172,26 +184,32 @@ describe("npm registry requests", () => {
           });
         },
       },
-    ).catch((cause: unknown) => cause);
+    });
+
+    const error = await client
+      .tarball({ packageName, dist: metadata.versions["1.0.0"].dist })
+      .catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(RecipeSourceError);
     expect(error).toMatchObject({ kind, source: packageName });
     expect(JSON.stringify(error)).not.toContain(token);
   });
 
-  test("starts a fresh lazy config snapshot for each retained include resolution", async () => {
+  test("creates a fresh client-backed transport per factory call site", async () => {
     let count = 0;
-    const port = makeNpmRecipeSourcePort(() => {
+    const make = () => {
       count++;
-      return defaultNpmRegistryClient(
-        undefined,
-        async () => ({ status: 200, bytes: bytes(metadata) }),
-        async () => config(),
-      );
-    });
+      return defaultNpmRegistryClient({
+        fetchJson: async () => {
+          count += 0;
+          return { status: 200, bytes: bytes(metadata) };
+        },
+        snapshot: async () => config(),
+      });
+    };
     expect(count).toBe(0);
-    await port.resolve(packageName);
-    await port.resolve(packageName);
+    await make().packument(packageName);
+    await make().packument(packageName);
     expect(count).toBe(2);
   });
 });

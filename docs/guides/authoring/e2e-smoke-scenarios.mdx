@@ -2,7 +2,7 @@
 id: e2e-smoke-scenarios
 provider: test
 timeout: 60000
-tags: [beta, docs, authoring, e2e]
+tags: [docs, authoring, e2e]
 ---
 
 # E2E smoke scenarios
@@ -72,4 +72,6 @@ Guides prove promises a reader can see. Tests that drive a provider through
 its library API, inspect containers over the Podman socket, race two
 processes, or send signals mid-run verify the model behind the promise. Keep
 those as `*.integration.test.ts` under the package that owns the code, for
-example `core/test/live/` or `plugins/service-lando/test/`.
+example `core/test/live/` or `plugins/service-lando/test/`. Add each new
+integration suite to a selection in `scripts/test-selections.ts` that a CI job
+runs, or `bun run check:test-ownership` fails.

@@ -3,12 +3,12 @@ id: provider-podman-windows
 provider: test
 platforms: [win32]
 timeout: 120000
-tags: [beta, docs, provider-podman, setup, windows, podman-desktop]
+tags: [docs, provider-podman, setup, windows, podman-desktop]
 ---
 
 # Use Podman Desktop on Windows
 
-Download the unsigned Windows binary from the GitHub `v4.0.0-dev.N` prerelease and put it on PATH. Use `lando setup --provider=podman` when you already have a working Podman Desktop machine. For Lando's managed runtime instead, follow [Lando setup](./provider-selection.mdx).
+[Install Lando on Windows](../install/windows-installer.mdx) first. Use `lando setup --provider=podman` when you already have a working Podman Desktop machine. For Lando's managed runtime instead, follow [Lando setup](./provider-selection.mdx).
 
 After setup succeeds, run `lando doctor`. Confirm Podman is selected and the runtime is running.
 

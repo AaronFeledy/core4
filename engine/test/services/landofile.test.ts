@@ -788,12 +788,9 @@ describe("LandofileService layer — tooling: parsing (US-017)", () => {
           "      MODE: dev",
           "      COUNT: 3",
           "      DEBUG: true",
-          "      ENV:",
-          "        default: development",
+          "      ENV: development",
           "      SHA:",
           "        sh: git rev-parse HEAD",
-          "      TAG:",
-          "        prompt: Enter the release tag",
           "",
         ].join("\n"),
       );
@@ -812,9 +809,8 @@ describe("LandofileService layer — tooling: parsing (US-017)", () => {
       expect(t?.vars?.MODE).toBe("dev");
       expect(t?.vars?.COUNT).toBe(3);
       expect(t?.vars?.DEBUG).toBe(true);
-      expect(t?.vars?.ENV).toEqual({ default: "development" });
+      expect(t?.vars?.ENV).toBe("development");
       expect(t?.vars?.SHA).toEqual({ sh: "git rev-parse HEAD" });
-      expect(t?.vars?.TAG).toEqual({ prompt: "Enter the release tag" });
     });
   });
 });
@@ -824,7 +820,7 @@ describe("LandofileService layer — tooling: unsupported-field rejection (US-01
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
-    expect(error.remediation).toContain("not supported yet");
+    expect(error.remediation).toContain("not supported");
   };
 
   const assertRejectsLandofile = async (content: ReadonlyArray<string>): Promise<void> => {

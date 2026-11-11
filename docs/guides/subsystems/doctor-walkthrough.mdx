@@ -3,7 +3,7 @@ id: doctor-walkthrough
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, doctor, diagnostics]
+tags: [docs, subsystems, doctor, diagnostics]
 ---
 
 # Run lando doctor
@@ -20,12 +20,20 @@ Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names fo
 
 ## Read the report
 
-Doctor runs one section at a time under the same live task list `lando start` paints: `✓` for a clean section, `!` when it passed with warnings, `✗` when a check failed or doctor could not run the section. Below that, the report lists only the checks that need you, each with a `↳` line saying what to do. Most point you at `lando setup`. The `Next` list at the bottom collects those commands.
+Doctor runs one section at a time under the same live task list `lando start` paints: `✓` for a clean section, `!` when it passed with warnings, `✗` when a check failed or doctor could not run the section. The text report shows non-passing checks, skipped sections with their reasons, and any failures of doctor's own checks. Deprecation findings stay visible when requested. Passing checks, including a valid global config, stay out of the default report, whether you read it in a terminal or pipe it to a file.
 
-Passing checks stay out of the way. To see every check, including the ones that passed:
+Repeated findings from the same contributor with the same check name and status appear as one entry with a count and up to three identifying paths or IDs. Long resource lists show a few items and the number left out. Identical remediation appears once; when the remedies differ, the report gives the number of variants and any command they share. The next steps collect distinct commands, with at most one per check name.
+
+To see every record, including passing checks, full context, provider capabilities, and every remediation variant:
 
 ```sh
 lando doctor --all
+```
+
+For a structured report containing every record regardless of `--all`, run:
+
+```sh
+lando doctor --format=json
 ```
 
 A check passes only after doctor inspects it. Loading a healthcheck runner or an
@@ -34,6 +42,12 @@ reports `healthcheck` and `scanner` as `SKIPPED`, with a reason, because it does
 not run service probes or scan app endpoints. `lando start` runs those checks
 against the app's selected provider; rebuild also runs service readiness gates.
 `--fix` does not turn an uninspected check into a pass.
+
+On macOS and Windows, an absent API endpoint and a managed machine inspected as stopped establish idle. Doctor reports `idle (starts on demand)` and passes `selected-provider` and `runtime-service` without asking you to run setup. It skips container exec probes, container event history, router and SSH sidecar readiness, host-proxy reachability, and app listeners on that idle provider. Host SSH and GPG agent checks, host-proxy directory privacy, and saved-state checks still run. Neither doctor nor `--fix` starts an idle runtime.
+
+On Linux and WSL, Lando's shutdown receipt establishes idle after a quiescent `lando poweroff`, or when the receipt comes from an earlier boot, provided the API is absent and no managed processes match. Each launch invalidates the receipt before starting the service. Doctor passes `selected-provider` for idle, and `lando list` reports apps as `stopped`. Without valid receipt evidence, runtime state remains unknown; process observations alone cannot prove workloads stopped. HTTP, protocol, permission, and timeout failures remain failures rather than becoming idle.
+
+To remove an app while runtime state is unknown, use `lando destroy`. It starts or repairs the managed runtime holding that app's resources, then checks the live inventory before cleanup. This also works after a crash, `wsl --terminate`, or the first poweroff after an upgrade without shutdown evidence. `lando destroy --root` and `lando apps:gc --prune` prepare owning runtimes the same way; if preparation fails, cleanup reports that failure. Doctor, other observation commands, and `lando stop` never launch the runtime.
 
 JSON reports keep these entries in the report's `skipped` array, separate from
 `subsystems.checks`. The library `doctorReport()` skips the subsystem section
@@ -52,36 +66,53 @@ inspection is available. Certificate selection errors still appear as findings.
 | Check | What to do |
 | --- | --- |
 | global-config | Your global config does not decode. Doctor prints the `ConfigError` and its fix, marks `provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, and `mcp` as `SKIPPED` (plus `app-config`, `app-version-constraints`, and `deprecations` under `--app` or `--deprecations`), still runs config-independent checks such as `filesystem-watch`, and exits `1`. Run `lando config validate`, repair with `lando config set`, `unset`, or `edit`, then rerun doctor. See [Repair an invalid global config](../config/global-config.mdx#repair-an-invalid-global-config). |
+| selected-provider | Idle passes without repair. For a failure, follow its cause-specific remediation; a missing runtime bundle needs `lando setup`, while a provider API or process-inspection failure names the access or runtime problem. |
+| runtime-service | Idle passes. Descendants of Lando's verified service process belong to it, including its rootless child. Only positively identified unowned processes receive termination advice. |
+| host-proxy-transport | Reachability is skipped on an idle runtime. The separate `host-proxy-privacy` check still reports host run-directory privacy; its pass does not claim reachability. If the runtime is up but the app's worker isn't running, `lando start` in that app restarts it. Ownership or privacy remediation appears only when those checks fail. |
 | provider-bootstrap | Global config passed, but doctor could not build the provider runtime. Read this self check's failure and suggested repair. Doctor marks `provider`, `router`, `ssh`, `healthcheck`, `scanner`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` as `SKIPPED`, plus requested `app-config` and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-dns`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
 | host-dns | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-dns.mdx). |
-| proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
+| proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. When the finding says a router is not installed or not selected, set `defaultRouterService` in `config.yml` to an installed router id or remove the setting; `doctor --fix` leaves that one to you. Until you do, `lando start`, `lando restart`, and `lando rebuild` on an app with routes stop with the same reason before changing anything, so a running app stays up. Apps without routes, `lando info`, `lando logs`, `lando exec`, `lando stop`, and `lando destroy` keep working. |
+| legacy-route-files | Lando removes recognized generated files automatically on the next routed app start; run `lando setup` to clean them up now. The check reports generated and unrecognized counts with bounded evidence lists. Review and manually delete only unrecognized files you no longer need (on Windows, then run `lando global:restart`), then republish needed routes with each owning app's start command. See [Read the legacy route files check](../global/doctor-walkthrough.mdx#read-the-legacy-route-files-check). |
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
-| certs | Run `lando setup` to install and trust the local CA. |
+| certs | Shown as skipped when a certificate authority is selected: doctor can't inspect whether it is installed or trusted. A finding means none could be selected or loaded; follow its remediation. To install and trust the local CA, run `lando setup`. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | filesystem-watch | Read the stage and errno. Windows can also report a missing file event after the watcher opens. On Linux or WSL, close unnecessary watchers first when allocation fails. See [Check filesystem watches on this host](#check-filesystem-watches-on-this-host). |
-| accelerated-start | An accelerated file-sync start didn't finish. In the reported app root, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
-| missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
+| accelerated-start | An accelerated file-sync start didn't finish and its app folder still exists. In that folder, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
+| missing-app-root | Move the folder back to keep using the app, or run the `lando apps:gc --prune` command doctor gives you. It adds `--volumes` only when Lando can remove the recorded file-sync copies. Without `--volumes`, data and file-sync copies are kept. Add `--purge-caches` when doctor lists caches. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
 | orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
-Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
+If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
 
 ## Inspect leftover snapshot images
 
 Read the orphan report before deleting anything. Without `--prune`, this command only reports candidates:
 
 <Guide>
+  <Scenario id="inspect-missing-app-roots" render>
+    <Step name="inspect">
+      <Run command="lando apps:gc --format=json" />
+      <Verify command="lando apps:gc --format=json" expect={{ stdout: { regex: "candidates" } }} />
+    </Step>
+  </Scenario>
   <Scenario id="inspect-snapshot-catalog-orphans" render>
     <Step name="inspect">
       <Run command="lando snapshots:gc --format=json" />
       <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
     </Step>
   </Scenario>
-  <Scenario id="listeners-without-applied-plan" render={false} reason="The test provider cannot observe real container listeners; verify the no-applied-plan skip instead.">
+  <Scenario id="listeners-no-plan" render={false} reason="The test provider cannot observe real container listeners; verify the no-applied-plan skip instead.">
     <Step name="inspect-unstarted-app">
-      <Run command="lando doctor --app --format=json" />
-      <Verify command="lando doctor --app --format=json" expect={{ stdout: { regex: "No applied plan was found" } }} />
+      <UseFixture name="unstarted-app" />
+      <Run runtime="library" displayCode="lando doctor --app --format=json" code={`const run = yield* context.runCli(["doctor", "--app", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.result.appListeners.checks).toEqual([]);
+expect(report.result.skipped).toContainEqual({
+  section: "app-listeners",
+  status: "skipped",
+  reason: "No applied plan was found for the current app; no listeners were observed.",
+});`} />
     </Step>
   </Scenario>
 </Guide>
@@ -98,7 +129,7 @@ The `legacy-snapshot-catalogs` check reads the filesystem only. It finds old `in
 lando doctor --format=json
 ```
 
-An `accelerated-start` warning means provider apply did not finish successfully; some app containers may already have run and written to the sync targets. The check lists the app ID, app root, phase, attempt ID, provider, file-sync engine, recorded sessions and volumes, and the journal path. It scans every app, even without `--app`. `doctor --fix` reports these records; it doesn't start or destroy apps for you.
+An `accelerated-start` warning means provider apply did not finish successfully; some app containers may already have run and written to the sync targets. The check lists the app ID, app root, phase, attempt ID, provider, file-sync engine, recorded sessions and volumes, and the journal path. It scans every app, even without `--app`. An attempt whose folder is gone appears in that root's `missing-app-root` finding instead. `doctor --fix` reports these records; it doesn't start or destroy apps for you.
 
 Change to the reported app root and run:
 
@@ -120,6 +151,8 @@ Start refuses to finish an attempt in three cases:
 | The engine lists a session Lando didn't record for this app | Lando leaves that session untouched. Inspect it, and clear it only once you know what owns it. |
 
 Keep the journal file. It's what tells the next command which sessions and volumes belong to the attempt.
+Once the attempt finishes or its targets have been disposed of, Lando removes the
+journal. Old completed journal documents are swept by `lando apps:gc --prune`.
 
 ## Clean up an app whose folder is gone
 
@@ -131,21 +164,52 @@ A `missing-app-root` warning lists resources recorded against an app folder that
 no longer exists. If you moved the folder and want to keep using the app, move
 it back to the reported path instead of cleaning up its resources.
 
-If `runtimeObserved` is `false`, the runtime wasn't running. The list may omit
-containers and volumes. Check the runtime with `lando setup`, start any app to
-start the runtime, and rerun doctor before cleaning up.
-
-**`--volumes` deletes your app's data volumes.** Drop that flag to keep the data.
-When you're ready to discard the app, replace `<path>` with the reported app
-root. Quote it if it contains spaces or shell metacharacters:
+Inspect all missing roots from any host directory:
 
 ```sh
-lando destroy --root <path> --volumes
+lando apps:gc
 ```
 
-Add `--purge-caches` if you also want to remove the reported cache volumes.
-`lando doctor --fix` never cleans up these resources for you. Check again after
-cleanup:
+Report mode never starts a runtime. An unobserved provider with recorded state is listed explicitly;
+its containers and volumes may be missing from the report. Failures to read state
+are reported even when Lando cannot establish what that provider holds.
+
+If the report says Lando cannot remove a provider's file-sync copies of a deleted
+app yet, run `lando apps:gc --prune` without `--volumes`. Lando cleans up everything
+else selected by your flags and keeps data volumes, file-sync copies, and their
+ownership journals. Those copies keep appearing in doctor. Requesting `--volumes`
+for that root fails before deletion and tells you to rerun without it. This includes
+prepared file-sync targets on the bundled Windows provider.
+
+For roots whose copies can be removed, **`--volumes` deletes data volumes and file-sync copies of app files, which may
+hold the only surviving copy.** Drop that flag to keep them. When you're ready
+to discard the reported apps, run:
+
+```sh
+lando apps:gc --prune --volumes
+```
+
+Lando asks once, listing the roots and what it deletes or keeps. Add
+`--purge-caches` to delete cache volumes, or `--purge` to delete data and
+catalogued snapshots too. Scripts must pass `--yes` to confirm. Before it asks,
+pruning starts the managed runtime that holds the reported resources when it is
+idle or its status is unknown, the same way `lando destroy` does, so the
+confirmation lists what will actually be removed. Each root is checked again under its app lock; a folder that reappears or
+changed evidence is retained. Roots discovered after confirmation are reported
+without being pruned. Data you keep by leaving off `--volumes` is listed in the
+result and isn't a failure; a root whose cleanup fails doesn't stop the others,
+but makes the command exit nonzero. A journal file Lando can't read is reported
+and left in place.
+
+For an unfinished accelerated start, Lando verifies the recorded identity and
+terminates its engine-listed sessions without syncing back into the missing
+folder. Without `--volumes`, file-sync targets and their owning journal stay
+and keep being reported. A target that cannot be verified, or an unavailable
+engine, leaves the targets and journal in place with a reported failure.
+
+To target only one missing root, `lando destroy --root <path> --volumes` remains
+available; replace `<path>` with that root and quote it if needed.
+`lando doctor --fix` never cleans up these resources. Check again after cleanup:
 
 ```sh
 lando doctor --format=json
@@ -186,7 +250,9 @@ The router has its own, separate watcher record. That one reports what the Traef
 lando doctor --app
 ```
 
-That adds Landofile lint, version-constraint checks, and a point-in-time TCP
+That adds Landofile lint (the same pass as
+[`lando app:config:lint`](../landofile/config-lint.mdx), including its offline
+final-planning stage), version-constraint checks, and a point-in-time TCP
 listener check for this app. A missing or invalid Landofile shows up as its own
 section. The rest of the report still runs.
 

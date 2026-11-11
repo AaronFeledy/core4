@@ -598,7 +598,7 @@ describe("Windows named-volume sync helper", () => {
         namespace: "windows-sync-helpers",
         key,
         schema: Schema.Struct({ old: Schema.String }),
-        version: 2,
+        version: 3,
         codec: "json",
         mode: 0o600,
         lock: "advisory",

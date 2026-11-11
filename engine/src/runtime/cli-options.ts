@@ -33,6 +33,8 @@ const DEFAULT_LOWER_TIER_NOTIFY_COMMANDS = new Set(["meta:update"]);
  * that fallible runtime eagerly and defeat the guarantee.
  */
 const BOOTSTRAP_PROMOTION_EXEMPT_COMMANDS = new Set([
+  "app:config:describe",
+  "meta:global:config:describe",
   "meta:doctor",
   "meta:config",
   "meta:version",
@@ -61,9 +63,11 @@ export const effectiveBootstrapForCommand = (
     : declared;
 };
 
-const configuredNotifyCommands = (): ReadonlyArray<string> => {
+const configuredNotifyCommands = (
+  env: Readonly<Record<string, string | undefined>>,
+): ReadonlyArray<string> => {
   const config = mergeGlobalConfigSources(
-    readGlobalConfigSources({ env: process.env, sources: { user: true, env: true } }),
+    readGlobalConfigSources({ env, sources: { user: true, env: true } }),
   ).tree;
   const notify = config.notify;
   if (typeof notify !== "object" || notify === null || Array.isArray(notify)) return [];
@@ -72,24 +76,32 @@ const configuredNotifyCommands = (): ReadonlyArray<string> => {
   return notify.commands.filter((entry): entry is string => typeof entry === "string");
 };
 
-export const resolveEffectiveCliBootstrap = (commandId: string, declared: BootstrapLevel): BootstrapLevel => {
+export const resolveEffectiveCliBootstrap = (
+  commandId: string,
+  declared: BootstrapLevel,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): BootstrapLevel => {
   try {
-    return effectiveBootstrapForCommand(commandId, declared, configuredNotifyCommands());
+    return effectiveBootstrapForCommand(commandId, declared, configuredNotifyCommands(env));
   } catch {
     return DEFAULT_LOWER_TIER_NOTIFY_COMMANDS.has(commandId) ? "commands" : declared;
   }
 };
 
-const telemetryEnabledFromEnvOverlay = (): boolean | undefined => {
-  const telemetry = envOverlay().telemetry;
+const telemetryEnabledFromEnvOverlay = (
+  env: Readonly<Record<string, string | undefined>>,
+): boolean | undefined => {
+  const telemetry = envOverlay(env).telemetry;
   if (typeof telemetry !== "object" || telemetry === null || Array.isArray(telemetry)) return undefined;
   const enabled = (telemetry as { readonly enabled?: unknown }).enabled;
   return typeof enabled === "boolean" ? enabled : undefined;
 };
 
-const telemetryEnabledFromConfigFile = (): boolean | undefined => {
+const telemetryEnabledFromConfigFile = (
+  env: Readonly<Record<string, string | undefined>>,
+): boolean | undefined => {
   const config = mergeGlobalConfigSources(
-    readGlobalConfigSources({ env: process.env, sources: { user: true, env: true } }).filter(
+    readGlobalConfigSources({ env, sources: { user: true, env: true } }).filter(
       (layer) => layer.layer !== "env",
     ),
   ).tree;
@@ -99,14 +111,17 @@ const telemetryEnabledFromConfigFile = (): boolean | undefined => {
   return typeof enabled === "boolean" ? enabled : undefined;
 };
 
-export const resolveCliTelemetryState = (flagEnabled?: boolean): CliTelemetryState => {
+export const resolveCliTelemetryState = (
+  flagEnabled?: boolean,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): CliTelemetryState => {
   if (flagEnabled !== undefined) return { enabled: flagEnabled, source: "flag" };
 
-  const envEnabled = telemetryEnabledFromEnvOverlay();
+  const envEnabled = telemetryEnabledFromEnvOverlay(env);
   if (envEnabled !== undefined) return { enabled: envEnabled, source: "env" };
 
   try {
-    const configEnabled = telemetryEnabledFromConfigFile();
+    const configEnabled = telemetryEnabledFromConfigFile(env);
     if (configEnabled !== undefined) return { enabled: configEnabled, source: "config" };
   } catch {
     return { enabled: true, source: "default" };
@@ -119,6 +134,7 @@ export const resolveCliTelemetryEnabled = (): boolean => resolveCliTelemetryStat
 
 export const cliRuntimeOptions = <TBootstrap extends BootstrapLevel>(
   options: LandoRuntimeOptions & { readonly bootstrap: TBootstrap },
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): LandoRuntimeOptions & {
   readonly bootstrap: TBootstrap;
   readonly interaction: NonNullable<LandoRuntimeOptions["interaction"]>;
@@ -129,7 +145,7 @@ export const cliRuntimeOptions = <TBootstrap extends BootstrapLevel>(
   telemetry:
     options.bootstrap === "none"
       ? (options.telemetry ?? false)
-      : resolveCliTelemetryState(options.telemetry).enabled,
+      : resolveCliTelemetryState(options.telemetry, env).enabled,
   logLevel: options.logLevel ?? activeLogLevel,
   renderer: options.renderer ?? activeRendererMode,
 });

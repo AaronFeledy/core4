@@ -15,10 +15,9 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { identityRedactor, mapFailures } from "@lando/sdk/command-result";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
-import { collectAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
   type ArtifactBuildStep,
@@ -30,6 +29,7 @@ import { buildKeyForService } from "./build-key.ts";
 import { findCompleteBuildResult, openScratchBuildResults, recordBuildResult } from "./build-results.ts";
 import { type BuildTaskProgress, makeBuildTaskProgress } from "./build-task-progress.ts";
 import { makeBuildTranscriptPath } from "./build-transcript.ts";
+import { registerPlanRedaction } from "./plan-redaction.ts";
 
 export { BuildOrchestrator } from "@lando/sdk/services";
 
@@ -168,39 +168,39 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
   readonly stateStore: Context.Service.Shape<typeof StateStore>;
 }) {
   const { events, paths, progress, provider, plan, redactionTokens, service, stateStore } = input;
-  const redaction = yield* Effect.serviceOption(RedactionService);
-  const redactor =
-    redaction._tag === "Some"
-      ? yield* redaction.value.forProfile("secrets", {
-          sourceEnv: process.env,
-          redactionTokens,
-        })
-      : identityRedactor;
-  const context = redactedBuildContext(redactor, plan, service);
-  const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
-    refresh: input.refresh,
-    events,
-    redactor,
-  });
-  const resolvedService = serviceWithResolvedDigest(service, sourceArtifact);
-  const step = yield* buildStepFor(provider, resolvedService);
-  const resolvedPlan =
-    resolvedService === service
-      ? plan
-      : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
-  const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
-  const started = performance.now();
-  yield* progress.startTask(service, transcriptPath);
   return yield* Effect.gen(function* () {
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactor =
+      redaction._tag === "Some"
+        ? yield* redaction.value.forProfile("secrets", {
+            sourceEnv: process.env,
+            redactionTokens,
+          })
+        : identityRedactor;
+    const context = redactedBuildContext(redactor, plan, service);
+    const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
+      refresh: input.refresh,
+      events,
+      redactor,
+    });
+    const resolvedService = serviceWithResolvedDigest(service, sourceArtifact);
+    const step = yield* buildStepFor(provider, resolvedService);
+    const resolvedPlan =
+      resolvedService === service
+        ? plan
+        : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
+    const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
+    const started = performance.now();
+    yield* progress.startTask(service, transcriptPath);
     const bucket = isScratchPlan(plan)
       ? yield* openScratchBuildResults(stateStore).pipe(
-          Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
+          mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
         )
       : undefined;
     const cached =
       bucket === undefined
         ? undefined
-        : yield* bucket.get.pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+        : yield* bucket.get.pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
     if (bucket !== undefined) {
       const complete = findCompleteBuildResult(cached ?? [], {
         buildKey: step.buildKey,
@@ -252,7 +252,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
               durationMs: performance.now() - started,
               transcriptPath,
             }).pipe(
-              Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
+              mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
               Effect.exit,
               Effect.asVoid,
             ),
@@ -279,7 +279,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
                 : { sourceArtifactDigest: sourceArtifact.digest }),
             }),
         transcriptPath,
-      }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+      }).pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
     }
 
     yield* events.publish({
@@ -310,7 +310,7 @@ export const layer = Layer.effect(
         const refresh = options?.refresh === true;
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const servicePlans = Object.values(plan.services);
-        const redactionTokens = collectAppPlanRedactionTokens(plan);
+        const { substring: redactionTokens } = yield* registerPlanRedaction(plan);
         const progress = makeBuildTaskProgress(events, plan);
         yield* progress.startTree;
         const services = yield* Effect.forEach(
@@ -361,13 +361,15 @@ export const layer = Layer.effect(
         };
       }),
       buildApp: Effect.fn("BuildOrchestrator.buildApp")(function* (plan, options) {
+        const values = yield* registerPlanRedaction(plan);
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const redaction = yield* Effect.serviceOption(RedactionService);
         const redactor =
           redaction._tag === "Some"
             ? yield* redaction.value.forProfile("secrets", {
                 sourceEnv: process.env,
-                redactionTokens: collectAppPlanRedactionTokens(plan),
+                redactionTokens: values.substring,
+                wholeTokenValues: values.wholeToken,
               })
             : identityRedactor;
         yield* runAppBuild(

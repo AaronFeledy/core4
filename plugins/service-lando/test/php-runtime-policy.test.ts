@@ -125,6 +125,7 @@ test("PHP application honors feature policy when normalized config suggests the 
   const plan = await Effect.runPromise(
     composeService({
       appRoot: "/srv/apps/php-policy",
+      appSlug: "php-policy",
       base: {
         name: ServiceName.make("web"),
         type: "php:8.3",

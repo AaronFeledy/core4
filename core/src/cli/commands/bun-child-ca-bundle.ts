@@ -2,6 +2,7 @@ import { X509Certificate } from "node:crypto";
 import { dirname } from "node:path";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { networkTrustCaBundlePath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import type { HostPlatform } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
@@ -19,7 +20,7 @@ export const loadBunCaCertificates = Effect.fn("BunChildCaBundle.load")(function
   const seen = new Set<string>();
   for (const path of paths) {
     const text = yield* fs.readText(path).pipe(
-      Effect.mapError(
+      mapFailures(
         () =>
           new BunChildNetworkPolicyError({
             kind: "invalid-ca",
@@ -89,7 +90,7 @@ export const ensureNetworkTrustCaBundle = Effect.fn("BunChildCaBundle.publish")(
     yield* fs.writeAtomic(bundlePath, body);
     return { bundlePath, digest };
   }).pipe(
-    Effect.mapError(
+    mapFailures(
       () =>
         new BunChildNetworkPolicyError({
           kind: "bundle-write",

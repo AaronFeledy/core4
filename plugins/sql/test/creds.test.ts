@@ -30,6 +30,8 @@ describe("applied SQL credentials", () => {
           name: "db",
           type: "mysql:8",
           environment: { MYSQL_PASSWORD: "old-password" },
+          mounts: [],
+          extensions: {},
           storage: [],
         },
         { app: "app", providerId: "docker" },

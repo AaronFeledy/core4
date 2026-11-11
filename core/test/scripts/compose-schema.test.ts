@@ -38,9 +38,12 @@ describe("compose schema walker", () => {
   });
 
   test("reports unclassified schema paths and stale matrix entries", () => {
-    expect(compareComposeCoverage(["image", "working_dir"], ["image", "obsolete"])).toEqual({
+    const entry = { disposition: "normalized", rationale: "Synthetic entry." } as const;
+
+    expect(compareComposeCoverage(["image", "working_dir"], { image: entry, obsolete: entry })).toEqual({
       missingFromMatrix: ["working_dir"],
       missingFromSchema: ["obsolete"],
+      shadowedByRejectedAncestor: [],
     });
   });
 });

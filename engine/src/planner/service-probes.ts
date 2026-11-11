@@ -1,6 +1,7 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { type AppPlan, probeTargetError, serviceListenerTarget, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
+import { bunShellDialectIssues, describeBunShellIssue } from "../services/bun-shell-dialect.ts";
 
 export const validateServiceProbes = Effect.fn("AppPlanner.validateServiceProbes")(function* (plan: AppPlan) {
   for (const service of Object.values(plan.services)) {
@@ -24,6 +25,24 @@ export const validateServiceProbes = Effect.fn("AppPlanner.validateServiceProbes
             remediation: `Supply a command for ${role}, or explicitly disable it with false.`,
           }),
         );
+      if (role === "readiness" && probe.executionTarget === "host" && typeof probe.command === "string") {
+        const dialect = bunShellDialectIssues(probe.command);
+        const first = dialect[0];
+        if (first !== undefined)
+          return yield* Effect.fail(
+            new LandofileValidationError({
+              file: plan.metadata.source,
+              issues: dialect.map((issue) => ({
+                rule: "landofile.host-shell",
+                path: ["services", String(service.name), "readiness", "command"],
+                message: describeBunShellIssue(issue),
+                suggestion: issue.suggestion,
+              })),
+              message: `Service ${service.name} host readiness command uses syntax Bun Shell cannot run.`,
+              remediation: first.suggestion,
+            }),
+          );
+      }
       if (probe.target === undefined) continue;
       // Contributed probes name their own service listener; an `endpoints:` override
       // changes exposure, not the port the daemon still listens on.

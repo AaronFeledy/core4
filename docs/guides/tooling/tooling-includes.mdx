@@ -2,7 +2,7 @@
 id: tooling-includes
 provider: test
 timeout: 60000
-tags: [beta, docs, tooling, includes]
+tags: [docs, tooling, includes]
 ---
 
 # Include tooling fragments
@@ -78,7 +78,7 @@ for failure attribution and lockfile rules.
 
 Included tasks register as `app:<namespace>:<task>`. `flatten: true` drops the namespace prefix. `internal: true` hides tasks from command listings while leaving them callable. `aliases: [documentation]` aliases the include namespace. `excludes: [publish]` removes tasks before flattening or namespace registration.
 
-Include-level `vars:` apply to every included task unless the task defines the same var. `optional: true` suppresses missing-fragment errors. Fragments that include each other fail closed with `LandofileIncludeError` (`kind: "cycle"`), the same error a Landofile include cycle raises. Every tooling include failure names the entry that declared it: `path` is `["includes", <index>]` or `["toolingIncludes", <namespace>]`, next to the file and layer that hold it, so `lando app:config:lint` reports the problem at that entry.
+Include-level `vars:` apply to every included task unless the task defines the same var. They hold literals only; a task inside the fragment can still compute its own var with `vars.<name>: { sh: <command> }` (see [Compute a value with a shell command](./flags-and-args.mdx#compute-a-value-with-a-shell-command)), and that task var wins over the include value. `optional: true` suppresses missing-fragment errors. Fragments that include each other fail closed with `LandofileIncludeError` (`kind: "cycle"`), the same error a Landofile include cycle raises. Every tooling include failure names the entry that declared it: `path` is `["includes", <index>]` or `["toolingIncludes", <namespace>]`, next to the file and layer that hold it, so `lando app:config:lint` reports the problem at that entry.
 
 Independent tooling and Landofile load failures are reported together. A single
 failure keeps its original tagged error; two or more produce `LandofileLoadError`

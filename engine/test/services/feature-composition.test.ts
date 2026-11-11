@@ -19,6 +19,7 @@ const inputFor = (features: ReadonlyArray<ServiceFeatureDefinition>): ComposeSer
   base: { ...base, defaultFeatures: [] },
   baseKind: "lando",
   appRoot: "/tmp/lando-app",
+  appSlug: "lando-app",
   normalizedConfig: {},
   features: features.map((definition) => ({ id: definition.id, definition })),
 });

@@ -2,7 +2,7 @@
 id: backdrop-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, backdrop, php, mariadb, bee]
+tags: [docs, recipes, backdrop, php, mariadb, bee]
 ---
 
 # Run the Backdrop recipe
@@ -21,6 +21,8 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 ## See what the recipe writes
 
+The appserver sets `uploadDirs: [files]` to keep PHP out of uploaded files.
+
 | Piece | What you get |
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: backdrop`, Apache on port `80`, depends on `database` |
@@ -33,7 +35,7 @@ For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for data
 
 `lando bee` runs the `bee` binary on `appserver`. That binary is not in the stock PHP image, so add it (below) before day-to-day Bee commands.
 
-Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON blob with the database credentials. Its `database` field is `{{ app.name }}`, resolved to the app name at start. Backdrop reads it from `$_SERVER` both in the PHP CLI and under Apache, so Bee and the site share it and you don't write credentials into `settings.php` or `settings.local.php`.
+Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON blob with the database credentials. Its `database` field is `{{ services.database.creds.database }}`, so it tracks the MariaDB service's database (the folder's data name) across renames. Backdrop reads it from `$_SERVER` both in the PHP CLI and under Apache, so Bee and the site share it and you don't write credentials into `settings.php` or `settings.local.php`.
 
 The blob overrides `$database` in `settings.php`. If you change the database name, user, or password, change `BACKDROP_SETTINGS` in `.lando.yml` to match; Lando doesn't pick up other credentials on its own.
 
@@ -51,7 +53,7 @@ The blob overrides `$database` in `settings.php`. If you change the database nam
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"backdrop\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"BACKDROP_SETTINGS\":\\s*\"\\{" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS[^}]*database\\W{1,6}\\{\\{ app\\.name \\}\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS[^}]*database\\W{1,6}\\{\\{ services\\.database\\.creds\\.database \\}\\}" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bee\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
@@ -79,7 +81,7 @@ The blob overrides `$database` in `settings.php`. If you change the database nam
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"BACKDROP_SETTINGS\":\\s*\"\\{" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS[^}]*database\\W{1,6}\\{\\{ app\\.name \\}\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS[^}]*database\\W{1,6}\\{\\{ services\\.database\\.creds\\.database \\}\\}" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "BACKDROP_SETTINGS.{0,200}host\\W{1,6}database" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "releases/download/1\\.x-1\\.2\\.0/bee\\.phar" } }} />

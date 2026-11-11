@@ -2,24 +2,36 @@
 id: verify-installer-scripts
 provider: test
 timeout: 60000
-tags: [beta, docs, installer]
+tags: [docs, installer]
 ---
 
 # Verify the installer scripts
 
-> **Alpha status:** Published installer URLs are **not live**. `get.lando.dev` is not serving v4 installers. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+Each installer script is keyless-signed with cosign through the GitHub Actions release workflow. Verify a script before you run it when your policy does not allow piping a download into a shell.
 
-Do not pipe a get.lando.dev URL into a shell. Those hosts are not up.
+## Published URLs
 
-The scripts in this repo (`scripts/install.sh`, `scripts/install.ps1`) will one day fetch a signed channel manifest. They do not work without `https://update.lando.dev`.
+| Script | URL | Signature | Certificate |
+| --- | --- | --- | --- |
+| POSIX installer | `https://get.lando.dev/install.sh` | `https://get.lando.dev/install.sh.sig` | `https://get.lando.dev/install.sh.crt` |
+| Windows installer | `https://get.lando.dev/install.ps1` | `https://get.lando.dev/install.ps1.sig` | `https://get.lando.dev/install.ps1.crt` |
 
-## Published URLs (not live)
+## Verify a script
 
-| Script | Planned URL |
-| --- | --- |
-| POSIX installer | `https://get.lando.dev/install.sh` |
-| Windows installer | `https://get.lando.dev/install.ps1` |
+Download the script, its signature, and its certificate, then verify the blob against the release workflow identity:
 
-Treat those as reserved names, not download links. For a binary you can run today, download the asset for your platform from a `v4.0.0-dev.N` prerelease and check `SHA256SUMS` as [Install from a GitHub release](./github-releases.mdx) describes.
+```sh
+curl -fsSLO https://get.lando.dev/install.sh
+curl -fsSLO https://get.lando.dev/install.sh.sig
+curl -fsSLO https://get.lando.dev/install.sh.crt
+cosign verify-blob \
+  --certificate-identity-regexp '^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --signature install.sh.sig \
+  --certificate install.sh.crt \
+  install.sh
+```
 
-When installer signatures do publish, release notes will carry the exact `cosign` or `gpg` command. Until then, there is no trust root URL to copy from this page.
+Replace `install.sh` with `install.ps1` to verify the Windows script. `cosign verify-blob` prints `Verified OK` when the signature matches. Run the verified file afterwards with `sh install.sh` or `powershell -ExecutionPolicy Bypass -File install.ps1`.
+
+Each release's notes repeat these commands with the exact identity used for that tag. The same keyless signatures cover the release binaries; see [Install from a GitHub release](./github-releases.mdx).

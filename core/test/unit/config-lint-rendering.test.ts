@@ -21,6 +21,38 @@ const excessKey = (overrides: Partial<ConfigLintViolation> = {}): ConfigLintViol
   ...overrides,
 });
 
+test("script findings use the script path relative to the Landofile directory", () => {
+  const text = renderConfigLintResult({
+    app: "demo",
+    file: "/app/.lando.yml",
+    valid: false,
+    violations: [
+      {
+        rule: "script.front-matter",
+        severity: "error",
+        path: ["wrapper"],
+        message: "Unknown key.",
+        line: 2,
+        column: 3,
+        source: { layer: "script", file: "/app/.lando/scripts/ops/deploy.bun.sh", path: ["wrapper"] },
+      },
+      {
+        rule: "script.host-shell",
+        severity: "error",
+        path: [],
+        message: "Invalid shell form.",
+        line: 4,
+        column: 6,
+        source: { layer: "script", file: "/app/.lando/scripts/body.bun.sh", path: [] },
+      },
+    ],
+  });
+  expect(text).toContain("  .lando/scripts/ops/deploy.bun.sh: error [script.front-matter]");
+  expect(text).toContain("at /app/.lando/scripts/ops/deploy.bun.sh:2:3, authored as wrapper (script layer)");
+  expect(text).toContain("  .lando/scripts/body.bun.sh: error [script.host-shell]");
+  expect(text).not.toContain("(root)");
+});
+
 test("config lint text visibly escapes terminal controls", () => {
   // Given
   const violation: ConfigLintViolation = {
@@ -139,7 +171,6 @@ describe("config lint multiline suggestions", () => {
     const [finding] = renderConfigLintViolations([
       excessKey({
         path: ["x\nforged"],
-        rule: "lint\nforged",
         message: "bad\nforged",
         suggestion: "safe\n  value",
         source: { file: "/app/evil\nforged.yml", layer: "canonical", path: ["x\nforged"] },
