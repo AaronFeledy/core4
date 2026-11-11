@@ -1,10 +1,13 @@
 import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
-import type { ServiceShutdownObservation } from "@lando/sdk/schema";
+import { type ServiceShutdownObservation, appIdentityKey } from "@lando/sdk/schema";
 import { EventService, RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { TeardownProvider } from "../providers/app-placement.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import { clearAppDataIdentityWhenComplete } from "./data-identity-clear.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
@@ -41,6 +44,9 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         volumesRequested: plan.options.volumes === true,
       });
     }
+    // A start that failed after certificate preparation leaves only host-side leaf material.
+    if ((yield* TeardownProvider) === undefined)
+      yield* removeServiceCertificates(appIdentityKey("owner", plan.root));
     return unchanged(plan.name);
   }
   const registry = yield* RuntimeProviderRegistry;
@@ -200,6 +206,14 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
           changed ||= removed.ownedChanged || removed.services.length > 0 || removed.volumesRemoved;
         }
       }
+      // Reached only when every removal step succeeded; a failed teardown keeps the leaf material.
+      // A provider-scoped destroy keeps it: another provider's realization may still mount it.
+      if ((yield* TeardownProvider) === undefined)
+        yield* removeServiceCertificates(
+          target === undefined
+            ? appIdentityKey("owner", plan.root)
+            : routeOwnerFromPlan(target.plan).ownerKey,
+        );
       const result = withShutdownObservations(
         {
           app: plan.name,

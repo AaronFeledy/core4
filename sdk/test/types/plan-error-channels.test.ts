@@ -449,6 +449,7 @@ describe("SDK plan-carrying error channels", () => {
       Equal<
         StartAppError,
         | LegacyStartAppError
+        | import("@lando/sdk/errors").CaError
         | ServiceNotReadyError
         | DebuggerHostUnavailableError
         | import("@lando/sdk/errors").AppPlacementError

@@ -23,6 +23,7 @@ import {
   resolveGlobalStopSelection,
   type resolveGlobalTeardown,
 } from "../../src/operations/global-teardown.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 export const root = AbsolutePath.make("/tmp/global-stop-selection");
@@ -144,6 +145,7 @@ export const harness = (
       }),
   };
   const layer = Layer.mergeAll(
+    LandoEventService.layer,
     Layer.succeed(
       PathsService,
       makeLandoPaths({

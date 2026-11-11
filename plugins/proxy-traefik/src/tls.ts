@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Redacted } from "effect";
 
 import { type AppRouteOwner, type RoutePlan, certificateNameForHostname } from "@lando/sdk/schema";
 
@@ -36,16 +36,6 @@ export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<
 export const normalizeDefaultDomain = (defaultDomain: string): string =>
   defaultDomain.trim().toLowerCase().replace(/\.+$/, "");
 
-const copyCertificate = (dependencies: TraefikProxyDependencies, source: string, destination: string) =>
-  dependencies.fileSystem
-    .readText(source)
-    .pipe(Effect.flatMap((content) => dependencies.fileSystem.writeAtomic(destination, content)));
-
-const copyPrivateKey = (dependencies: TraefikProxyDependencies, source: string, destination: string) =>
-  dependencies.fileSystem
-    .readText(source)
-    .pipe(Effect.flatMap((content) => dependencies.fileSystem.writeSecretAtomic(destination, content)));
-
 export const removeAppCertificates = (dependencies: TraefikProxyDependencies, owner: AppRouteOwner) => {
   const files = appCertificateFiles(dependencies.paths, owner);
   return Effect.all(
@@ -80,12 +70,11 @@ export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function
       cn: `*.${input.defaultDomain}`,
       sans: [`*.${input.defaultDomain}`, input.defaultDomain, `traefik.${input.defaultDomain}`],
     });
-    yield* copyCertificate(dependencies, issued.certPath, defaultFiles.cert);
-    yield* copyPrivateKey(dependencies, issued.keyPath, defaultFiles.key);
-    yield* copyCertificate(
-      dependencies,
-      issued.caPath,
+    yield* dependencies.fileSystem.writeAtomic(defaultFiles.cert, issued.certificate);
+    yield* dependencies.fileSystem.writeSecretAtomic(defaultFiles.key, Redacted.value(issued.privateKey));
+    yield* dependencies.fileSystem.writeAtomic(
       defaultIssuerFile(dependencies.paths, input.defaultDomain),
+      issued.root.certificate,
     );
   }
 
@@ -106,8 +95,8 @@ export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function
       cn: input.hostnames[0] ?? input.defaultDomain,
       sans: input.hostnames,
     });
-    yield* copyCertificate(dependencies, issued.certPath, appFiles.cert);
-    yield* copyPrivateKey(dependencies, issued.keyPath, appFiles.key);
+    yield* dependencies.fileSystem.writeAtomic(appFiles.cert, issued.certificate);
+    yield* dependencies.fileSystem.writeSecretAtomic(appFiles.key, Redacted.value(issued.privateKey));
   }
 
   return {

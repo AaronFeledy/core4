@@ -1,10 +1,11 @@
 import { MessageInfoEvent } from "@lando/sdk/events";
 import type { AppPlan, EventStepPlan } from "@lando/sdk/schema";
-import { EventService, PathsService, RouterService } from "@lando/sdk/services";
+import { EventService, PathsService } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { acceleratedStartStopError } from "./accelerated-start-disposal.ts";
@@ -54,12 +55,9 @@ export const stopIdleApp = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   preflight: StopAppPreflight,
 ) {
-  const router = yield* Effect.serviceOption(RouterService);
   const paths = yield* PathsService;
   const hostPaths = { ...paths.roots, platform: paths.platform };
-  yield* (
-    Option.isSome(router) ? router.value.removeRoutes(routeOwnerFromPlan(target.plan)) : Effect.void
-  ).pipe(
+  const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromPlan(target.plan)).pipe(
     Effect.ensuring(cleanupHostProxyRunLandoState(target.app, hostPaths)),
     Effect.ensuring(cleanupAgentRelayState(target.app, hostPaths, "ssh")),
     Effect.ensuring(cleanupAgentRelayState(target.app, hostPaths, "gpg")),
@@ -70,5 +68,5 @@ export const stopIdleApp = Effect.fnUntraced(function* (
       discard: true,
     }).pipe(mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)));
   }
-  return { kind: "unchanged" as const };
+  return { kind: "unchanged" as const, routes: withdrawal.kind };
 });

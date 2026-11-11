@@ -38,6 +38,7 @@ import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
@@ -224,7 +225,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
         remediation: "Restore a provider with the recorded prepared-volume lifecycle before retrying start.",
       }),
     );
-  const plan = resolvedPlan;
+  // Issue and stamp generated certificates before any hook or provider work can fail later on them.
+  const plan = yield* prepareServiceCertificates(resolvedPlan);
   const preparedOverlays =
     execution.preparedOverlays ?? (yield* prepareStartOverlays({ ...target, plan }, provider));
   const engineId = bundle.kind === "accelerated" ? bundle.id : "unknown";

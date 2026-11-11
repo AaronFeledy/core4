@@ -7,6 +7,7 @@ import { FileSystem, PathsService, type RouterService } from "@lando/sdk/service
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
+import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import type { DoctorSolution } from "./doctor-contract";
 import {
   type DoctorSubsystemCheck,
@@ -124,6 +125,19 @@ export const buildProxyCheck = Effect.fnUntraced(function* (
   proxy: typeof RouterService.Service,
   fix: boolean,
 ): Effect.fn.Return<DoctorSubsystemCheck, never> {
+  const unavailable = unavailableRouterReason(proxy);
+  if (unavailable !== undefined)
+    // Setup cannot select a router either, so the selection failure is the only actionable fix.
+    return yield* buildDegradedCheck(
+      {
+        ...PROXY_SPEC,
+        recovery: "manual",
+        manualRemediation: `${unavailable.message} ${unavailable.remediation}`,
+        manualCommand: null,
+      },
+      { subsystem: "router", subsystemId: proxy.id, ready: "false", routerId: unavailable.proxyId },
+      fix,
+    );
   const status = yield* Effect.result(proxy.status);
   const state = Result.isSuccess(status) ? status.success.state : undefined;
   const snapshot = yield* readAcquisitionSnapshot();

@@ -94,6 +94,7 @@ export const makeHarness = (
     readonly dataMover?: typeof DataMover.Service;
     readonly quiesceEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyAvailable?: boolean;
+    readonly router?: typeof RouterService.Service;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly stateStore?: StateStoreShape;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
@@ -175,7 +176,9 @@ export const makeHarness = (
         query: () => Effect.succeed([]),
       }),
     ),
-    ...(options.proxyAvailable === false ? [] : [Layer.succeed(RouterService, TestRouterService)]),
+    ...(options.proxyAvailable === false
+      ? []
+      : [Layer.succeed(RouterService, options.router ?? TestRouterService)]),
     ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
   );
   return { layer, events };

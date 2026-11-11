@@ -20,6 +20,7 @@ test("mkcert provisioning preserves download advice and appends the setup repair
       platform: "linux",
       arch: "x64",
       processRunner: makeFakeMkcertRunner({ caRoot: harness.caRoot }).service,
+      privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
       downloader: Downloader.of({
         id: "provision-failure",
         capabilities: {

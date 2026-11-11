@@ -30,6 +30,7 @@ import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
@@ -45,6 +46,7 @@ import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import {
   type GlobalConsumerAdmissionServices,
+  requireSelectableRouter,
   withGlobalConsumerAdmission,
 } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
@@ -89,7 +91,7 @@ type RebuildAppServices =
   | StateStore;
 
 const rebuildSelectedServices = Effect.fnUntraced(function* (
-  plan: AppPlan,
+  selectedPlan: AppPlan,
   target: ResolvedAppTarget,
   options: Pick<RebuildAppOptions, "signal"> & {
     readonly managed?: StartManagedScope;
@@ -111,6 +113,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | GlobalConsumerAdmissionServices
 > {
   const { signal, managed, preparedOverlays, provider } = options;
+  // Prepare certificates before anything stops, so a CA failure leaves the services running.
+  const plan = yield* prepareServiceCertificates(selectedPlan);
   const builds = yield* BuildOrchestrator;
   const services = Object.values(plan.services);
 
@@ -200,6 +204,8 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
         // FIRST under root lock: reconcile before overlays, placement, retirement, or mutation.
         const resolvedTarget = yield* reconcileAppDataIdentity(initialTarget);
         const plan = resolvedTarget.plan;
+        // Refuse a routed rebuild without a selectable router before stopping or building anything.
+        yield* requireSelectableRouter(plan);
         const selectedPlan = yield* selectRebuildPlan(plan, options.services);
         const scoped = options.services !== undefined && options.services.length > 0;
         const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);

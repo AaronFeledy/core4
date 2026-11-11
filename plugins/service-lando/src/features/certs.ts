@@ -1,6 +1,10 @@
 /**
  * Leaf material lives below `/etc/lando/certs/leaf` because `lando.security`
  * exposes `/etc/lando/certs` as an OpenSSL trusted-CA directory.
+ *
+ * Generated leaf files are written by apply, so their binds never let the
+ * runtime create a missing source: a missing file fails instead of turning
+ * into an empty directory inside the container.
  */
 import { Effect, Schema } from "effect";
 
@@ -37,6 +41,7 @@ export const landoCertsFeature: ServiceFeatureDefinition = {
     Effect.sync(() => {
       const config = ctx.config as LandoCertsFeatureConfig;
       const serviceFileName = leafFileName(ctx.serviceName);
+      const generated = config.cn !== undefined && config.caId !== undefined;
 
       if (config.certPath !== undefined) {
         const target = `${LEAF_CERT_DIRECTORY}/${serviceFileName}.crt`;
@@ -45,6 +50,7 @@ export const landoCertsFeature: ServiceFeatureDefinition = {
           source: config.certPath,
           target: PortablePath.make(target),
           readOnly: true,
+          ...(generated ? { createHostPath: false } : {}),
         });
         ctx.addEnv("LANDO_SERVICE_CERT", target);
       }
@@ -56,11 +62,12 @@ export const landoCertsFeature: ServiceFeatureDefinition = {
           source: config.keyPath,
           target: PortablePath.make(target),
           readOnly: true,
+          ...(generated ? { createHostPath: false } : {}),
         });
         ctx.addEnv("LANDO_SERVICE_KEY", target);
       }
 
-      if (config.cn !== undefined && config.caId !== undefined) {
+      if (generated) {
         ctx.setCerts({ cn: config.cn, sans: config.sans, caId: config.caId });
       } else if (config.certPath !== undefined) {
         ctx.addExtension("@lando/core/certs", "custom");

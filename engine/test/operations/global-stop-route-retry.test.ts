@@ -2,12 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ProxyApplyError } from "@lando/sdk/errors";
+import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { RouterService, RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { globalStop } from "../../src/operations/global-stop.ts";
+import { makeUnavailableRouter } from "../../src/subsystems/proxy/api.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 
 test("selected global stop retries failed route cleanup after its container was removed", async () => {
@@ -115,6 +116,69 @@ test("selected global stop retries failed route cleanup after its container was 
     expect(Array.from(containers.values()).map((container) => container.containerId)).toEqual([
       "sibling-container",
     ]);
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test("selected global stop without a selectable router removes the service and warns instead of republishing", async () => {
+  // Given: a routed global app and a router that cannot be selected.
+  const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-stop-unavailable-router-"));
+  try {
+    const base = globalPlanAt(AbsolutePath.make(join(dataRoot, "global")));
+    const [service] = Object.values(base.services);
+    if (service === undefined) throw new Error("fixture requires an applied service");
+    const names = ["ssh-agent", "sibling"];
+    const plan: AppPlan = {
+      ...base,
+      services: {
+        ...base.services,
+        [ServiceName.make("sibling")]: { ...service, name: ServiceName.make("sibling") },
+      },
+      routes: names.map((name) => ({
+        hostname: `${name}.lndo.site`,
+        priority: 1,
+        scheme: "http",
+        service: ServiceName.make(name),
+        endpoint: 80,
+        backend: { service: ServiceName.make(name), protocol: "http", port: 80 },
+      })),
+    };
+    const services: ServiceRuntimeInfo[] = names.map((name) => ({
+      app: plan.id,
+      appRoot: plan.root,
+      providerId: plan.provider,
+      service: ServiceName.make(name),
+      containerId: `${name}-container`,
+      status: "running",
+      publications: { status: "unknown" },
+    }));
+    const harness = await globalTeardownHarness(dataRoot, { plan, services });
+    const reason = new ProxyError({
+      message: "Router service missing is not installed.",
+      proxyId: "missing",
+      remediation: "Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
+    });
+    const router = makeUnavailableRouter(reason);
+
+    // When
+    const result = await Effect.runPromise(
+      globalStop({ services: ["ssh-agent"] }).pipe(
+        Effect.provideService(RouterService, router),
+        Effect.provide(harness.layer),
+      ),
+    );
+
+    // Then: the selected container is removed and the skipped route update is reported.
+    expect(result).toMatchObject({ outcome: "stopped", servicesStopped: ["ssh-agent"] });
+    expect(harness.removed.map((removed) => removed.containerId)).toEqual(["ssh-agent-container"]);
+    const warnings = harness.events.flatMap((event) => (event._tag === "message.warn" ? [event.body] : []));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("not updated");
+    expect(warnings[0]).toContain(plan.id);
+    expect(warnings[0]).toContain("ssh-agent");
+    expect(warnings[0]).toContain(reason.message);
+    expect(warnings[0]).toContain(reason.remediation);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }

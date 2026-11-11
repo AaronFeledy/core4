@@ -10,6 +10,7 @@ import { captureGlobalStartupAdmission } from "@lando/engine/global-app/startup-
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
+import { requireSelectableGlobalRouter } from "@lando/engine/operations/global-consumer-admission";
 
 import { reconcileGlobalSiblings } from "@lando/engine/operations/global-retained-plan";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
@@ -24,6 +25,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   ProxyApplyError,
+  ProxySetupError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
@@ -56,6 +58,8 @@ export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;
   readonly signal?: AbortSignal;
   readonly preparedOverlays?: import("../subsystems/start-overlay-registry.ts").PreparedDebuggerOverlay;
+  /** A plan restart already installed and checked before stopping; start skips installing it again. */
+  readonly loaded?: Effect.Success<ReturnType<typeof installAndLoadGlobalPlan>>;
 }
 
 export const GlobalStartResultSchema = Schema.Struct({
@@ -65,6 +69,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 
 export type GlobalStartError =
+  | import("@lando/sdk/errors").CaError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>
   | Effect.Error<ReturnType<typeof reconcileGlobalSiblings>>
   | ServiceNotReadyError
@@ -81,6 +86,7 @@ export type GlobalStartError =
   | ProviderError
   | ProviderUnavailableError
   | ProxyApplyError
+  | ProxySetupError
   | SecretStoreUnavailableError
   | SecretReferenceInvalidError
   | ToolingExecError;
@@ -103,7 +109,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
     options: GlobalStartOptions = {},
   ): Effect.fn.Return<GlobalStartResult, GlobalStartError, GlobalStartServices> {
     const selection = options.services === undefined ? {} : { services: options.services };
-    const loaded = yield* installAndLoadGlobalPlan(selection);
+    const loaded = options.loaded ?? (yield* installAndLoadGlobalPlan(selection));
 
     const router = yield* RouterService;
     const initiallySelected = yield* selectGlobalServices({
@@ -122,6 +128,10 @@ export const globalStart = Effect.fn("GlobalStart.start")(
         ? includeAvailableDependencies([...selected, ...backing], available)
         : selected;
     };
+    yield* requireSelectableGlobalRouter(
+      loaded.plan,
+      close(new Set(initiallySelected.map((service) => String(service.name)))),
+    );
     const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
     const selectedProvider = yield* registry.select(loaded.plan.provider);
@@ -164,6 +174,8 @@ export const globalStart = Effect.fn("GlobalStart.start")(
         const selected = new Set(
           retained?.selectedIds ?? initiallySelected.map((service) => String(service.name)),
         );
+        // The first check refuses before lifecycle events; sibling reconciliation can join routed services.
+        yield* requireSelectableGlobalRouter(loaded.plan, selected);
         const services = available.filter((service) => selected.has(service.name));
         const builds = yield* BuildOrchestrator;
         const applied = yield* applyGlobalServiceGroups(

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 // allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
 import { Effect, Layer } from "effect";
 
-import { ProxySetupError } from "@lando/sdk/errors";
+import { ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import {
   CertificateAuthority,
   HealthcheckRunner,
@@ -67,9 +67,77 @@ test("doctor --fix skips idle global router and sidecar readiness", async () => 
   expect(result.checks.find((check) => check.name === "ssh")?.context.fixOutcome).toBeUndefined();
 });
 
-const AUTOMATIC_SUBSYSTEMS = ["router", "ssh"] as const;
-const MANUAL_SUBSYSTEMS = ["certs", "host-dns"] as const;
-const DEGRADED_MANUAL_SUBSYSTEMS = ["certs", "host-dns"] as const;
+for (const fix of [false, true])
+  describe(`doctor on an idle global provider (fix: ${fix})`, () => {
+    const runIdle = (router: typeof RouterService.Service): Promise<SubsystemDoctorResult> => {
+      const provider = {
+        ...TestRuntimeProvider,
+        getStatus: Effect.succeed({ state: "idle" as const }),
+        ensureReady: Effect.die("must not launch"),
+      };
+      return Effect.runPromise(
+        subsystemDoctor({ fix }).pipe(
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([]),
+              capabilities: Effect.succeed(provider.capabilities),
+              appliedPlansFor: () => Effect.die("not requested"),
+              resolveAppliedPlan: () => Effect.die("not requested"),
+              resolveTeardownEvidence: () => Effect.die("not requested"),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
+          Effect.provideService(RouterService, router),
+        ),
+      );
+    };
+
+    test("reports an unselectable router as a manual finding, not as skipped", async () => {
+      // Given: no router can be selected and the provider holding the global app is idle.
+      const router = RouterServiceLayer.makeUnavailableRouter(
+        new ProxyError({
+          message: "Router service missing is not installed.",
+          proxyId: "missing",
+          remediation:
+            "Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
+        }),
+      );
+
+      // When
+      const result = await runIdle(router);
+
+      // Then: selection is host-side metadata, so the finding stands and provisioning never runs.
+      const check = result.checks.find((entry) => entry.name === "router");
+      expect(check).toMatchObject({
+        status: "warn",
+        recovery: "manual",
+        context: { routerId: "missing", ...(fix ? { fixOutcome: "skipped-manual" } : {}) },
+      });
+      expect(result.skipped?.map((entry) => entry.section)).not.toContain("router");
+    });
+
+    test("keeps live readiness of a selected router skipped", async () => {
+      // Given: a selected router whose setup must never run while the provider is idle.
+      const router = RouterService.of({
+        ...makeTestRouterService(),
+        id: "traefik",
+        setup: () => Effect.die("must not start router"),
+      });
+
+      // When
+      const result = await runIdle(router);
+
+      // Then
+      expect(result.checks.find((entry) => entry.name === "router")).toBeUndefined();
+      expect(result.skipped?.map((entry) => entry.section)).toContain("router");
+    });
+  });
+
+// The bundled stubs ship no router plugin, so the router is unselectable and only manually fixable.
+const AUTOMATIC_SUBSYSTEMS = ["ssh"] as const;
+const MANUAL_SUBSYSTEMS = ["router", "certs", "host-dns"] as const;
+const DEGRADED_MANUAL_SUBSYSTEMS = ["router", "certs", "host-dns"] as const;
 const UNINSPECTED_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
 
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
@@ -95,7 +163,7 @@ const expectTaggedDiagnosticForFailure = (
 };
 
 describe("subsystem failure-recovery classification", () => {
-  test("classifies inspected proxy/ssh as automatic and certs/host-dns as manual", async () => {
+  test("classifies inspected ssh as automatic and an unselectable router, certs, and host-dns as manual", async () => {
     const result = await runDefault(false);
     const byName = new Map(result.checks.map((check) => [check.name, check] as const));
 
@@ -125,7 +193,7 @@ describe("subsystem failure-recovery classification", () => {
       expect(check?.status).toBe("warn");
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
-      expect(solution?.command).toBe(name === "host-dns" ? undefined : "lando setup");
+      expect(solution?.command).toBe(name === "certs" ? "lando setup" : undefined);
     }
   });
 

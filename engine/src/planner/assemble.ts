@@ -4,6 +4,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
+import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
@@ -38,14 +39,18 @@ import {
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
-import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import {
+  type CertificateAuthorityCandidateDefinition,
+  manifestCertificateAuthorityCandidates,
+  selectContributedCertificateAuthority,
+} from "../plugins/certificate-authority-resolver.ts";
 import { PluginContributionGraph, loadedPluginImplementations } from "../plugins/contribution-graph.ts";
 import { FileSyncPolicy, fileSyncOrdinaryReason } from "../plugins/file-sync-policy.ts";
 import { applyPreparedAppFeatures } from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import type { ApplicationConfig } from "../services/feature-preparation.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
-import { resolveCertsFeature } from "../services/service-certs.ts";
+import { certificateLeafLocation, resolveCertsFeature } from "../services/service-certs.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
@@ -113,17 +118,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
   const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
   const pluginRegistry = yield* PluginRegistry;
-  const plugins = loadedPluginImplementations(
-    Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph)),
-  );
+  const contributionGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
+  const plugins = loadedPluginImplementations(contributionGraph);
   const policyOwner = yield* FileSyncPolicy;
   const cacheService = Option.getOrUndefined(yield* Effect.serviceOption(CacheService));
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-  const certificateAuthorityResolver = Option.getOrUndefined(
-    yield* Effect.serviceOption(CertificateAuthorityResolver),
-  );
   const {
     landofile,
     appSlug,
@@ -216,6 +217,18 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       : yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
         );
+  const certificateAuthority = selectContributedCertificateAuthority<CertificateAuthorityCandidateDefinition>(
+    contributionGraph,
+    policyOwner.platform,
+    () => manifestCertificateAuthorityCandidates(manifests),
+  );
+  const leafLocation = certificateLeafLocation({
+    certsDir: (pathsService ?? makeLandoPaths()).certsDir,
+    kind: input.kind,
+    id: appId,
+    root: appRoot,
+    identity: input.identity,
+  });
   const preparedApp = endpointProjection.preparedApp;
   const appFeatures = preparedApp.features;
 
@@ -276,21 +289,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             hostnames: pinnedService.hostnames ?? [],
             routes: routes ?? [],
             defaultRouteHostname: routes === undefined ? `${name}.${appSlug}.${defaultDomain}` : undefined,
-            resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
-            ...(input.mode === "validate"
-              ? {
-                  validation: {
-                    authorities: manifests.flatMap((manifest) =>
-                      (manifest.contributes?.certificateAuthorities ?? []).map((authority) => ({
-                        ...authority,
-                        pluginName: String(manifest.name),
-                        source: "manifest",
-                      })),
-                    ),
-                    platform: policyOwner.platform,
-                  },
-                }
-              : {}),
+            certificateAuthority,
+            leafLocation,
             fileSystem,
           })
         : undefined;

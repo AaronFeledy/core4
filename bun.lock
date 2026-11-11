@@ -188,6 +188,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
         "effect": "catalog:",
       },
     },
