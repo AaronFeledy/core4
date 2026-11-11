@@ -126,16 +126,14 @@ export const lowerFlags = (
         case "alias": {
           const aliases = asStringArray(value) ?? [];
           if (aliases[0] !== undefined) out.alias = aliases[0];
-          aliases
-            .slice(1)
-            .forEach((_alias, index) =>
-              report(
-                "dropped",
-                Array.isArray(value) ? [...flagPath, key, index + 1] : [...flagPath, key],
-                "Lando 4 flags take one alias.",
-                "Use the first alias or the full flag name.",
-              ),
+          aliases.slice(1).forEach((_alias, index) => {
+            report(
+              "dropped",
+              Array.isArray(value) ? [...flagPath, key, index + 1] : [...flagPath, key],
+              "Lando 4 flags take one alias.",
+              "Use the first alias or the full flag name.",
             );
+          });
           break;
         }
         case "boolean":

@@ -1,0 +1,208 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  // Markdown and YAML stay outside Biome's scope. They were never checked under
+  // Biome 1, and enabling them would rewrite committed workflow YAML that codegen
+  // owns. Vendored specs and deliberately malformed fixtures are excluded because
+  // their bytes are pinned or intentionally invalid.
+  "files": {
+    "maxSize": 4194304,
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/.local",
+      "!**/*.tsbuildinfo",
+      "!**/bun.lock",
+      "!**/*.md",
+      "!**/*.yaml",
+      "!**/*.yml",
+      "!**/vendor/compose/compose-spec.json",
+      "!**/plugins/github-actions/test/fixtures/actions-language",
+      "!**/docs/test/fixtures/transcripts/corrupt/invalid-json.json",
+      "!**/landofile/test/fixtures/sample.jsonc",
+      "!**/landofile/test/fixtures/bad.jsonc"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 110,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "arrowParentheses": "always"
+    }
+  },
+  // Biome 2's recommended preset stopped raising several rules that were errors
+  // under Biome 1: some became warnings, others turned off. Every rule listed
+  // below is pinned to preserve the enforcement this repository had before the
+  // upgrade. core/test/scripts/biome-config-pins.test.ts fails when a pin is
+  // removed or downgraded, so a future upgrade cannot silently drop one.
+
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "complexity": {
+        "noAdjacentSpacesInRegex": "error",
+        "noArguments": "error",
+        "noBannedTypes": "error",
+        "noCommaOperator": "error",
+        "noEmptyTypeParameters": "error",
+        "noExcessiveNestedTestSuites": "error",
+        "noExtraBooleanCast": "error",
+        "noFlatMapIdentity": "error",
+        "noForEach": "error",
+        "noStaticOnlyClass": "error",
+        "noThisInStatic": "error",
+        "noUselessCatch": "error",
+        "noUselessConstructor": "error",
+        "noUselessContinue": "error",
+        "noUselessEmptyExport": "error",
+        "noUselessFragments": "error",
+        "noUselessLabel": "error",
+        "noUselessLoneBlockStatements": "error",
+        "noUselessRename": "error",
+        "noUselessSwitchCase": "error",
+        "noUselessTernary": "error",
+        "noUselessThisAlias": "error",
+        "noUselessTypeConstraint": "error",
+        "useArrowFunction": "error",
+        "useFlatMap": "error",
+        "useLiteralKeys": "error",
+        "useNumericLiterals": "error",
+        "useOptionalChain": "error",
+        "useRegexLiterals": "error",
+        "useSimpleNumberKeys": "error",
+        "useWhile": "error"
+      },
+      "correctness": {
+        "noChildrenProp": "error",
+        "noRenderReturnValue": "error",
+        // Safe fixes are part of the codegen contract: scripts/_codegen-output.ts
+        // runs `biome check --write` and depends on unused imports being removed
+        // from generated output.
+        "noUnusedImports": {
+          "level": "error",
+          "fix": "safe"
+        },
+        "noUnusedLabels": "error",
+        "noUnusedVariables": "warn",
+        "useExhaustiveDependencies": "error",
+        "useJsxKeyInIterable": "error"
+      },
+      "performance": {
+        "noAccumulatingSpread": "error",
+        "noDelete": "error"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error",
+        "noDangerouslySetInnerHtmlWithChildren": "error"
+      },
+      "style": {
+        "noInferrableTypes": "error",
+        "noNonNullAssertion": "warn",
+        "noParameterAssign": "error",
+        "noUnusedTemplateLiteral": "error",
+        "noUselessElse": "error",
+        "useAsConstAssertion": "error",
+        "useConst": "error",
+        "useDefaultParameterLast": "error",
+        "useEnumInitializers": "error",
+        "useExponentiationOperator": "error",
+        "useExportType": "error",
+        "useImportType": "error",
+        "useLiteralEnumMembers": "error",
+        "useNodejsImportProtocol": "error",
+        "useNumberNamespace": "error",
+        "useSelfClosingElements": "error",
+        "useShorthandFunctionType": "error",
+        "useSingleVarDeclarator": "error",
+        "useTemplate": "error"
+      },
+      "suspicious": {
+        "noApproximativeNumericConstant": "error",
+        "noArrayIndexKey": "error",
+        "noCatchAssign": "error",
+        "noConfusingLabels": "error",
+        "noConfusingVoidType": "error",
+        "noConstEnum": "error",
+        "noDuplicateTestHooks": "error",
+        "noEmptyBlock": "error",
+        "noExplicitAny": "warn",
+        "noExportsInTest": "error",
+        "noExtraNonNullAssertion": "error",
+        "noFocusedTests": "error",
+        "noGlobalIsFinite": "error",
+        "noGlobalIsNan": "error",
+        "noPrototypeBuiltins": "error",
+        "noRedundantUseStrict": "error",
+        "noSuspiciousSemicolonInJsx": "error",
+        // Off by design. Lando writes shell snippets, GitHub expressions, and
+        // ${VAR} placeholders inside string literals on purpose, so this rule
+        // reports intended content as a defect. useTemplate still catches the
+        // opposite mistake of building a string that should be a template.
+        "noTemplateCurlyInString": "off",
+        "noVar": "error",
+        "useDefaultSwitchClauseLast": "error",
+        "useIsArray": "error"
+      }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "identifierOrder": "lexicographic"
+          }
+        }
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["**/package.json"],
+      "json": {
+        "formatter": {
+          "expand": "auto"
+        }
+      }
+    },
+    {
+      "includes": ["**/container-runtime/test/fixtures/applied-state-v3/**/*.json"],
+      "formatter": {
+        "enabled": false
+      }
+    },
+    {
+      "includes": ["**/tsconfig*.json"],
+      "json": {
+        "parser": {
+          "allowComments": true
+        }
+      }
+    },
+    {
+      "includes": ["**/*.astro"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off",
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -197,6 +197,10 @@ const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => 
         case "tabs":
         case "skip":
           return [];
+        default: {
+          const exhaustive: never = item;
+          return exhaustive;
+        }
       }
     }),
   };

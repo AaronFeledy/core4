@@ -1,13 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { Predicate } from "effect";
-import { SchemaTransformation } from "effect";
-
-import { describe, expect, test } from "bun:test";
 import type { JsonSchemaName } from "@lando/sdk/schema";
-import { Schema } from "effect";
-import * as AST from "effect/SchemaAST";
-
 import {
   JSON_SCHEMA_NAMES,
   assertPublicSchemaAnnotations,
@@ -21,6 +15,8 @@ import {
   schemaArtifactFilename,
   validatePublicSchemaAnnotations,
 } from "@lando/sdk/schema";
+import { Predicate, Schema, SchemaTransformation } from "effect";
+import * as AST from "effect/SchemaAST";
 import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
@@ -98,7 +94,9 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
       return;
     }
     if (Array.isArray(target.allOf)) {
-      target.allOf.forEach((branch, index) => visit(ast, branch, `${path}.allOf[${index}]`));
+      target.allOf.forEach((branch, index) => {
+        visit(ast, branch, `${path}.allOf[${index}]`);
+      });
       return;
     }
     if (AST.isDeclaration(ast) && ast.annotations?.toCodecJson !== undefined) {
@@ -116,7 +114,9 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
       }
       if (Array.isArray(branches)) {
         expect(branches.length, `${path}: union alignment`).toBe(members.length);
-        members.forEach((member, index) => visit(member, branches[index], `${path}.anyOf[${index}]`));
+        members.forEach((member, index) => {
+          visit(member, branches[index], `${path}.anyOf[${index}]`);
+        });
       } else {
         // Collapsed literal unions have no child schemas to inspect.
         expect(
@@ -139,9 +139,9 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
         for (const child of targets) visit(signature.type, child, `${path}.*`);
       }
     } else if (AST.isArrays(ast)) {
-      ast.elements.forEach((element, index) =>
-        visit(element, Array.isArray(target.items) ? target.items[index] : target.items, `${path}[${index}]`),
-      );
+      ast.elements.forEach((element, index) => {
+        visit(element, Array.isArray(target.items) ? target.items[index] : target.items, `${path}[${index}]`);
+      });
       for (const rest of ast.rest) {
         visit(rest, Array.isArray(target.items) ? target.additionalItems : target.items, `${path}[]`);
       }

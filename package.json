@@ -62,6 +62,7 @@
     "dedupe": "bun dedupe",
     "prune": "bun prune",
     "format": "biome format --write .",
+    "fix": "biome check --write .",
     "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
     "codegen:check": "bun run codegen && bun run check:codegen-drift",

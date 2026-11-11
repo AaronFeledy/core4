@@ -67,7 +67,9 @@ export const renameMigrationService = (
   let blocked = false;
   const visit = (value: unknown, segments: readonly (string | number)[]): void => {
     if (Array.isArray(value)) {
-      value.forEach((entry: unknown, index) => visit(entry, [...segments, index]));
+      value.forEach((entry: unknown, index) => {
+        visit(entry, [...segments, index]);
+      });
       return;
     }
     if (value !== null && typeof value === "object") {
@@ -102,7 +104,7 @@ export const renameMigrationService = (
   if (blocked) return { kind: "blocking" };
   document = setAtPath(document, target, getAtPath(document, source));
   document = unsetAtPath(document, source).next;
-  if (/^services\.[^.\[]+$/.test(hunk.old) && /^services\.[^.\[]+$/.test(hunk.new)) {
+  if (/^services\.[^.[]+$/.test(hunk.old) && /^services\.[^.[]+$/.test(hunk.new)) {
     document = setAtPath(document, dotPath(["recipe", "services", hunk.old.slice(9)]), target.slice(9));
   }
   return { kind: "applied", document };
@@ -121,7 +123,9 @@ export const renameAfterStateMatches = (
   let matches = true;
   const visit = (value: unknown, segments: readonly (string | number)[]): void => {
     if (Array.isArray(value)) {
-      value.forEach((entry: unknown, index) => visit(entry, [...segments, index]));
+      value.forEach((entry: unknown, index) => {
+        visit(entry, [...segments, index]);
+      });
       return;
     }
     if (value !== null && typeof value === "object") {
@@ -143,7 +147,7 @@ export const renameAfterStateMatches = (
       matches = false;
   };
   visit(context.renderedOld, []);
-  if (/^services\.[^.\[]+$/.test(hunk.old) && /^services\.[^.\[]+$/.test(hunk.new)) {
+  if (/^services\.[^.[]+$/.test(hunk.old) && /^services\.[^.[]+$/.test(hunk.new)) {
     const mapped = getAtPath(context.document, dotPath(["recipe", "services", hunk.old.slice(9)]));
     if (mapped !== hunk.new.slice(9)) matches = false;
   }
