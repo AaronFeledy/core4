@@ -8,12 +8,11 @@
  *   - Subscriber priority bands and types (from `@lando/sdk/events`).
  */
 
+import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";
+import { canonicalSubscriberCommandIds as canonicalEngineSubscriberCommandIds } from "@lando/engine/lifecycle/subscribers";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { PluginManifest } from "@lando/sdk/schema";
 import type { RegisteredCommand } from "@lando/sdk/services";
-
-import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";
-import { canonicalSubscriberCommandIds as canonicalEngineSubscriberCommandIds } from "@lando/engine/lifecycle/subscribers";
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
 import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled";
 

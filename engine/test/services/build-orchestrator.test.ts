@@ -2,25 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-
-import {
-  Cause,
-  type Context,
-  DateTime,
-  Deferred,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Predicate,
-  Queue,
-  Stream,
-} from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
-import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
+import { ProviderInternalError, ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -45,8 +30,23 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import {
+  Cause,
+  type Context,
+  DateTime,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Predicate,
+  Queue,
+  Stream,
+} from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
@@ -172,13 +172,11 @@ const withTempUserRoots = async <T>(run: () => Promise<T>): Promise<T> => {
     return await run();
   } finally {
     if (previousCacheRoot === undefined) {
-      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
       delete process.env.LANDO_USER_CACHE_ROOT;
     } else {
       process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
     }
     if (previousDataRoot === undefined) {
-      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
       delete process.env.LANDO_USER_DATA_ROOT;
     } else {
       process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -337,9 +335,21 @@ describe("BuildOrchestratorLayer.layer", () => {
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) =>
             Effect.map(orchestrator.build(concurrentPlan), (builtPlan) => {
-              expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "web:test" });
-              expect(builtPlan.services[db.name]?.artifact).toEqual({ kind: "ref", ref: "db:test" });
-              expect(builtPlan.services[cache.name]?.artifact).toEqual({ kind: "ref", ref: "cache:test" });
+              expect(builtPlan.services[web.name]?.artifact).toEqual({
+                kind: "ref",
+                ref: "web:test",
+                origin: "build",
+              });
+              expect(builtPlan.services[db.name]?.artifact).toEqual({
+                kind: "ref",
+                ref: "db:test",
+                origin: "build",
+              });
+              expect(builtPlan.services[cache.name]?.artifact).toEqual({
+                kind: "ref",
+                ref: "cache:test",
+                origin: "build",
+              });
             }),
           );
           return yield* Fiber.join(subscriber);
@@ -731,11 +741,13 @@ describe("BuildOrchestratorLayer.layer", () => {
         kind: "ref",
         ref: "php-derived:2",
         digest: "sha256:derived-2",
+        origin: "build",
       });
       expect(result.first.services[web.name]?.artifact).toEqual({
         kind: "ref",
         ref: "php-derived:1",
         digest: "sha256:derived-1",
+        origin: "build",
       });
     });
   });
@@ -1399,6 +1411,125 @@ describe("BuildOrchestratorLayer.layer", () => {
         kind: "ref",
         ref: "php-derived:2",
         digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("marks only an artifact the provider built as produced", async () => {
+    // Given a derived service the provider builds and a source-only service it merely acquires.
+    const derived: ServicePlan = {
+      ...web,
+      artifact: { kind: "ref", ref: "php:8.4-apache-bookworm" },
+      extensions: {
+        "@lando/core/service-features": {
+          buildSteps: [{ id: "php-extension", phase: "build", command: ["echo", "build"] }],
+        },
+      },
+    };
+    const sourceOnly: ServicePlan = { ...db, artifact: { kind: "ref", ref: "postgres:17" } };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: ArtifactPullSpec) =>
+        Effect.succeed({ providerId, ref: spec.ref, digest: `sha256:${spec.ref.length}` }),
+      buildArtifact: () => Effect.succeed({ providerId, ref: "lando-build-test-web-key" }),
+    };
+
+    // When
+    const built = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+        orchestrator.build({ ...plan, services: { [web.name]: derived, [db.name]: sourceOnly } }),
+      ).pipe(Effect.provide(layer(provider))),
+    );
+
+    // Then
+    expect(built.services[web.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "lando-build-test-web-key",
+      origin: "build",
+    });
+    expect(built.services[db.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "postgres:17",
+      digest: "sha256:11",
+    });
+  });
+
+  test.each([
+    ["reuses a scratch build whose produced image is still present", true, 1],
+    ["rebuilds a scratch build whose produced image is gone", false, 2],
+  ] as const)("%s", async (_label, imageRetained, expectedBuilds) => {
+    await withTempUserRoots(async () => {
+      // Given a recorded scratch build of a derived image.
+      const derived: ServicePlan = {
+        ...web,
+        artifact: { kind: "ref", ref: "php:8.4-apache-bookworm" },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [{ id: "php-extension", phase: "build", command: ["echo", "build"] }],
+          },
+        },
+      };
+      const firstPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-produced-first"),
+        slug: "scratch-produced-first",
+        services: { [web.name]: derived },
+      };
+      const repeatPlan: AppPlan = {
+        ...firstPlan,
+        id: AppId.make("scratch-produced-second"),
+        slug: "scratch-produced-second",
+      };
+      const localImages = new Set<string>();
+      const localLookups: string[] = [];
+      let builds = 0;
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: (spec: ArtifactPullSpec) => {
+          if (spec.policy !== "never")
+            return Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:base" });
+          localLookups.push(spec.ref);
+          return localImages.has(spec.ref)
+            ? Effect.succeed({ providerId, ref: spec.ref })
+            : Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: "test",
+                  operation: "pullArtifact",
+                  message: `Container image ${spec.ref} is not present locally.`,
+                  remediation: "Rebuild it.",
+                }),
+              );
+        },
+        buildArtifact: () =>
+          Effect.sync(() => {
+            builds += 1;
+            const ref = `php-derived:${builds}`;
+            localImages.add(ref);
+            return { providerId, ref };
+          }),
+      };
+
+      // When the produced image is kept or removed before the same build runs again.
+      const builtRepeat = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(firstPlan);
+            if (!imageRetained) localImages.clear();
+            return yield* orchestrator.build(repeatPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the cache hit is honored only for an image that still exists, and stays marked produced.
+      expect(builds).toBe(expectedBuilds);
+      expect(localLookups).toEqual(["php-derived:1"]);
+      expect(builtRepeat.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: `php-derived:${expectedBuilds}`,
+        origin: "build",
       });
     });
   });

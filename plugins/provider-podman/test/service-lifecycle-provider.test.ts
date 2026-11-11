@@ -2,8 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
@@ -18,6 +16,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ListFilter } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import { persistAppliedPlan } from "../src/applied-state.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
@@ -25,7 +24,7 @@ const providerId = ProviderId.make("podman");
 const appId = AppId.make("lifecycle-app");
 const missingAppId = AppId.make("missing-lifecycle-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-lifecycle-app-web";
+const containerName = "lando-lifecycle-app--web";
 const lifecycleActions = ["start", "stop", "restart"] as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
@@ -178,7 +177,17 @@ describe("provider-podman service lifecycle", () => {
                       },
                     },
                   ]
-                : { Id: "planned", State: { Running: true } },
+                : {
+                    Id: "planned",
+                    State: { Running: true },
+                    Config: {
+                      Labels: {
+                        "dev.lando.app": appId,
+                        "dev.lando.app-root": plan.root,
+                        "dev.lando.service": "web",
+                      },
+                    },
+                  },
             ),
           });
         },
@@ -189,6 +198,11 @@ describe("provider-podman service lifecycle", () => {
       const plannedRoot = result.find((snapshot) => snapshot.containerId === "planned")?.appRoot;
       if (ids.includes("planned")) {
         expect(plannedRoot === "/relabeled").toBe(filter.includeUnplanned === true);
+        expect(result.find((snapshot) => snapshot.containerId === "planned")?.labels).toEqual({
+          "dev.lando.app": appId,
+          "dev.lando.app-root": plan.root,
+          "dev.lando.service": "web",
+        });
       }
       expect(calls.some((call) => call.path.startsWith("/containers/json?"))).toBe(
         filter.includeUnplanned === true,

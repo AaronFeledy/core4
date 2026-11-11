@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { withHostDumpCompression } from "../src/compression.ts";
 
@@ -19,7 +18,6 @@ describe("compressed export artifact metadata", () => {
           withHostDumpCompression({
             path: file,
             compression,
-            direction: "export",
             transfer: (path) =>
               Effect.promise(async () => {
                 await writeFile(path, payload);

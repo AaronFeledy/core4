@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { resolveWebroot } from "../src/services/_webroot.ts";
 import { apacheServiceType } from "../src/services/apache.ts";
@@ -278,4 +277,5 @@ describe("resolved service document roots", () => {
     });
   }
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

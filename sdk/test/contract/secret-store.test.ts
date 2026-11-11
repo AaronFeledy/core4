@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { SecretNotFoundError, SecretStoreUnavailableError } from "@lando/sdk/errors";
 import { createSecretRedactor, parseSecretReference } from "@lando/sdk/secrets";
 import type { SecretStoreShape } from "@lando/sdk/services";
@@ -10,6 +8,7 @@ import {
   makeSecretStoreContractSuite,
   runSecretStoreContractSuite,
 } from "@lando/sdk/test";
+import { Effect, Result } from "effect";
 
 const makeInMemoryStore = (id: string, secrets: Record<string, string>): SecretStoreShape => {
   const map = new Map(Object.entries(secrets));

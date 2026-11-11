@@ -4,14 +4,14 @@ import { ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import {
-  declarePreparedServiceEndpoints,
-  prepareServiceComposition,
-} from "../../src/services/feature-preparation.ts";
-import {
   type ComposeServiceInput,
   applyPreparedService,
   composeService,
 } from "../../src/services/feature.ts";
+import {
+  declarePreparedServiceEndpoints,
+  prepareServiceComposition,
+} from "../../src/services/feature-preparation.ts";
 
 const inputFor = (definition: ServiceFeatureDefinition): ComposeServiceInput => ({
   base: {
@@ -24,6 +24,7 @@ const inputFor = (definition: ServiceFeatureDefinition): ComposeServiceInput => 
   },
   baseKind: "l337",
   appRoot: "/srv/prepared",
+  appSlug: "prepared",
   normalizedConfig: { environment: { AUTHORED: "yes" } },
   features: [
     { id: definition.id, definition, config: { port: 8123 } },

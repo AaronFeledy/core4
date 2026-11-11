@@ -1,9 +1,4 @@
 import { relative } from "node:path";
-
-import { Effect, Result, Schema } from "effect";
-
-import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
-
 import { findDiscoveredLandofilePath, loadLandofileLayers } from "@lando/engine/services/landofile-live";
 import { CORE_VERSION } from "@lando/engine/version";
 import {
@@ -13,7 +8,10 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
+import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { Effect, Result, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import {
   DoctorSeveritySchema,
   DoctorStatusSchema,
@@ -74,21 +72,23 @@ const MALFORMED_LANDOFILE_SOLUTION = {
   description: "Fix the Landofile syntax or `lando:` range, then rerun `lando doctor --app`.",
 } as const;
 
-const failedLoadResult = (
+const failedLoadResult = Effect.fnUntraced(function* (
   context: Readonly<Record<string, string>>,
   solutions: AppVersionConstraintDoctorCheck["solutions"],
-): AppVersionConstraintDoctorResult => ({
-  checks: [
-    failCheck({
-      name: "app-version-constraint",
-      context: {
-        runningVersion: CORE_VERSION,
-        skipped: String(isVersionConstraintSkipped(process.env)),
-        ...context,
-      },
-      solutions,
-    }),
-  ],
+): Effect.fn.Return<AppVersionConstraintDoctorResult> {
+  return {
+    checks: [
+      failCheck({
+        name: "app-version-constraint",
+        context: {
+          runningVersion: CORE_VERSION,
+          skipped: String(isVersionConstraintSkipped((yield* CliInvocation).env)),
+          ...context,
+        },
+        solutions,
+      }),
+    ],
+  };
 });
 
 const relativeSource = (appRoot: string, source: string): string => {
@@ -109,14 +109,14 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   never,
   never
 > {
-  const cwd = process.cwd();
-  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+  const { cwd, env } = yield* CliInvocation;
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: env });
   const redact = redactor.redactString;
   const discovery = yield* Effect.result(findDiscoveredLandofilePath(cwd));
   if (Result.isFailure(discovery)) {
     if (Schema.is(LandofileNotFoundError)(discovery.failure)) return undefined;
     if (Schema.is(LandofileFormConflictError)(discovery.failure)) {
-      return failedLoadResult(
+      return yield* failedLoadResult(
         {
           declared: "(conflicting Landofile forms)",
           layer: redact(discovery.failure.layer),
@@ -135,7 +135,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "LandofileLoadError") {
       const { failures } = resolved.failure;
-      return failedLoadResult(
+      return yield* failedLoadResult(
         {
           declared: "(Landofile load failures)",
           loadFailure: redact(resolved.failure.message),
@@ -145,7 +145,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
       );
     }
     if (resolved.failure._tag === "LandofileParseError") {
-      return failedLoadResult(
+      return yield* failedLoadResult(
         {
           declared: "(malformed Landofile)",
           loadFailure: redact(resolved.failure.message),
@@ -154,7 +154,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
       );
     }
     if (resolved.failure._tag === "LandofileFormConflictError") {
-      return failedLoadResult(
+      return yield* failedLoadResult(
         {
           declared: "(conflicting Landofile forms)",
           layer: redact(resolved.failure.layer),
@@ -167,7 +167,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
       resolved.failure._tag === "LandofileIncludeError" ||
       resolved.failure._tag === "LandofileLockMismatchError"
     ) {
-      return failedLoadResult(
+      return yield* failedLoadResult(
         {
           declared: "(unresolved includes)",
           includeResolution: redact(resolved.failure.message),
@@ -179,7 +179,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   }
   const landofile = resolved.success.document;
   const entries = getVersionConstraintEntries(landofile, filePath);
-  const skipped = isVersionConstraintSkipped(process.env);
+  const skipped = isVersionConstraintSkipped(env);
   if (entries.length === 0 && !skipped) return undefined;
 
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);

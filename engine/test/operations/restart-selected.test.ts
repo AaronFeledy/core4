@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import { commonContainerLabels } from "@lando/container-runtime/plan";
 import {
   ProviderUnavailableError,
@@ -15,10 +13,12 @@ import {
   PortablePath,
   ServiceName,
   type ServicePlan,
+  type ServiceRunObservation,
 } from "@lando/sdk/schema";
-import { RouterService } from "@lando/sdk/services";
 import type { ApplyOptions, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { RouterService, type ServiceRuntimeFields } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { restartApp } from "../../src/operations/restart.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
@@ -62,13 +62,12 @@ const threeServicePlan = (): AppPlan => ({
 const runtimeFor = (
   plannedApp: AppPlan,
   service: ServiceName,
-  extras: Partial<ServiceRuntimeInfo> = {},
+  extras: Partial<ServiceRuntimeFields> | ServiceRunObservation = {},
 ): ServiceRuntimeInfo => ({
   app: plannedApp.id,
   service,
   providerId: plannedApp.provider,
-  status: "running",
-  state: "running",
+  status: "running" as const,
   containerId: `cid-${String(service)}`,
   publications: {
     status: "present",
@@ -138,11 +137,11 @@ const runSelected = (
   ).pipe(
     Effect.provideService(RouterService, {
       ...TestRouterService,
-      applyRoutes: (routes, app) =>
+      applyRoutes: (routes, owner) =>
         Effect.sync(() => {
           applyRoutes.push(routes.length);
-        }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, app))),
-      removeRoutes: (app) => Effect.sync(() => void removeRoutes.push(String(app))),
+        }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, owner))),
+      removeRoutes: (owner) => Effect.sync(() => void removeRoutes.push(owner.ownerKey)),
     }),
     Effect.provide(harness.layer),
   );
@@ -202,7 +201,7 @@ describe("selected service restart", () => {
           app: plan.id,
           service: target.service,
           providerId: plan.provider,
-          status: "stopped",
+          status: "absent" as const,
           publications: { status: "missing" },
         }),
     });
@@ -299,7 +298,7 @@ describe("selected service restart", () => {
 
   test("refuses before stop when publish-port, bind-source, or network drift would recreate", async () => {
     const cases: Array<{
-      readonly extras: Partial<ServiceRuntimeInfo>;
+      readonly extras: Partial<ServiceRuntimeFields> | ServiceRunObservation;
       readonly reason: ServiceRestartWouldRecreateError["reason"];
     }> = [
       { extras: { publishFingerprint: "8080/tcp@127.0.0.1:18080" }, reason: "publish-port" },

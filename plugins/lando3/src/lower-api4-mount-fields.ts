@@ -1,5 +1,6 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { landoAppStoreName, landoServiceStorageName } from "@lando/sdk/schema";
 import type { Lando3Path } from "./contract.ts";
 import type { LoweringPatch, ServiceLoweringContext, V4Wire } from "./lowering-contract.ts";
 import { hasPlainObjectPrototype } from "./lowering-contract.ts";
@@ -33,14 +34,10 @@ export const lowerApi4StorageFields = (
   const scope = item.scope;
   let store = item.source;
   if (typeof store !== "string" || store.length === 0) {
-    const prefix = scope === "app" || scope === "project" ? "" : `${ctx.serviceName}-`;
-    const target = item.target
-      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-      .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-    store = `${ctx.appSlug ?? "app"}-${prefix}${target}`;
+    store =
+      scope === "app" || scope === "project"
+        ? landoAppStoreName(ctx.appSlug ?? "app", item.target)
+        : landoServiceStorageName(ctx.appSlug ?? "app", ctx.serviceName, item.target);
   }
   const patch: Record<string, unknown> = { store, target: item.target };
   const diagnostics: ConfigTranslateDiagnostic[] = [];

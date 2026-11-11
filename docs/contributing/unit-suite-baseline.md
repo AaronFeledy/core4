@@ -16,9 +16,14 @@ bun run test:unit                     # whole-suite count
 bun --no-orphans test <path>          # per-file reproduction
 ```
 
-`test:unit` excludes only `**/*.integration.test.ts`. It does **not** apply the
-CI shard exclusions, so it also runs the generated guide scenarios that CI gives
-their own job family. Expect it to take roughly 25 minutes.
+The current `test:unit` command uses the same unit file set as CI shards:
+every `*.test.ts` outside the dedicated library, recipe, docs and nightly
+suites. Use the [CI runbook](./ci.md) for those suites and for focused checks.
+
+The 2026-09-20 measurement below used an older collector that excluded only
+`**/*.integration.test.ts`, also ran generated guide scenarios, and took roughly
+25 minutes. Current `test:unit` results are not directly comparable with that
+historical collection; the dated measurements below have not been rerun.
 
 A file that fails under `test:unit` but passes on its own is not a defect in
 that file. It is a victim of something earlier in the run, and the cause belongs
@@ -114,13 +119,23 @@ Neither runtime-service step was at fault. The file's local `sandboxUninstallIo`
 helper redirected only `cgroupsDelegatePath` and `shellProfilePath` into the
 temp root, so the socket-proxy helper step kept its real defaults of
 `/etc/systemd/system/lando-proxy-*.{socket,service}` and
-`/etc/polkit-1/rules.d/10-lando-proxy.rules`. A host carrying Lando-owned proxy
-units — this one does — classifies that step as owned, attempts `systemctl stop`
-without privilege, and fails the whole uninstall run.
+`/etc/polkit-1/rules.d/10-lando-proxy.rules`. At the time, the step classified
+any marker-bearing unit as owned, so a host carrying Lando proxy units (this one
+did) made the step attempt `systemctl stop` without privilege and fail the whole
+uninstall run.
 
 The fix completes the sandbox so every host-reaching path lands in the temp
 root, matching the helper `core/test/cli/uninstall.test.ts` already uses. No
 assertion was weakened: `result.failed === false` still holds.
+
+Ownership has since moved to a per-data-root stamp, and the socket-proxy
+step itself moved out of engine uninstall into the proxy plugin's
+`HostMaintenanceContribution.uninstall`. Engine uninstall no longer knows the
+`/etc` unit paths, so `sandboxUninstallIo` no longer redirects them. The core
+uninstall suites (`core/test/cli/uninstall*.test.ts`) instead provide a fake
+`HostMaintenanceRegistry` layer whose maintainers return canned plan and
+execute results, so the suite never reads host paths and the plugin's real
+ownership logic is covered in `plugins/proxy-traefik/test/`.
 
 ## Cross-file contamination
 

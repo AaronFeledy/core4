@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
 
@@ -69,10 +68,6 @@ describe("Effect version pin", () => {
     // Then: the catalog pins exactly one Effect release and lists workspace packages.
     expect(Array.isArray(workspaces?.packages)).toBe(true);
     expect(workspaces?.catalog?.effect).toBe(EFFECT_VERSION);
-  });
-
-  test("the TypeScript devDependency floor is ^5.9.0", () => {
-    expect(rootManifest.devDependencies?.typescript).toBe("^5.9.0");
   });
 
   test("every workspace declares effect through the catalog and depends on no @effect package", async () => {

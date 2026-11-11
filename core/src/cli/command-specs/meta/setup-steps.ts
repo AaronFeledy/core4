@@ -7,25 +7,24 @@
  * (deferred / installed / unavailable / satisfied) and returns the resulting
  * status. These are the side-effecting "steps" the command orchestration drives.
  */
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 
+import { fileSyncSelectionInput } from "@lando/engine/plugins/file-sync-policy";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { NetworkTrust } from "@lando/http-client/network-trust";
 import {
   RedactionService,
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
-import { Effect, Option, Result, Schema } from "effect";
-
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
 import { type FileSyncEngineShape, type FileSyncError, PathsService } from "@lando/sdk/services";
-
-import { fileSyncSelectionInput } from "@lando/engine/plugins/file-sync-policy";
-import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
-import { NetworkTrust } from "@lando/http-client/network-trust";
+import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
 import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../commands/setup-network-trust";
 import {
   type SetupReadinessRuntimeService,
   type SetupReadinessStep,
+  type SetupReadinessSummary,
+  completedSetupReadinessStatus,
   setupFailureEvidence,
   setupFailureRemediation,
   writeSetupReadiness,
@@ -78,20 +77,6 @@ export class SetupStepFailedError extends Schema.TaggedError<SetupStepFailedErro
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
-export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
-  join(userDataRoot, "setup", "file-sync-deferred.json");
-
-const recordDeferredFileSyncSetup = (userDataRoot: string, engineId?: string): Effect.Effect<void, never> =>
-  Effect.promise(async () => {
-    const markerPath = setupDeferredFileSyncPath(userDataRoot);
-    await mkdir(join(userDataRoot, "setup"), { recursive: true });
-    await writeFile(
-      markerPath,
-      `${JSON.stringify({ status: "deferred", engineId, resumeCommand: "lando setup" })}\n`,
-      "utf-8",
-    );
-  }).pipe(Effect.catch(() => Effect.void));
-
 export interface SetupReadinessRecorder {
   readonly record: (step: SetupReadinessStep) => Effect.Effect<void, never>;
   readonly recordFailure: (id: string, cause: unknown) => Effect.Effect<void, never>;
@@ -101,16 +86,28 @@ export interface SetupReadinessRecorder {
 
 export interface AccumulatingSetupReadinessRecorder extends SetupReadinessRecorder {
   readonly firstFailedStep: () => SetupReadinessStep | undefined;
+  readonly start: Effect.Effect<void>;
+  readonly finish: (exit: Exit.Exit<unknown, unknown>) => Effect.Effect<void>;
+  readonly setProvider: (providerId: string) => void;
 }
 
 export const makeSetupReadinessRecorder = (
   userDataRoot: string | undefined,
   selectedProviderId: string,
   redaction?: RedactionServiceShape,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
 ): AccumulatingSetupReadinessRecorder => {
-  const sourceEnv = { ...process.env };
   const readinessSteps: SetupReadinessStep[] = [];
+  let providerId = selectedProviderId;
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
+  const persist = (status: SetupReadinessSummary["status"]) => {
+    const write = writeSetupReadiness(userDataRoot, providerId, {
+      status,
+      steps: readinessSteps,
+      runtimeService: runtimeServiceReadiness,
+    });
+    return redaction === undefined ? write : write.pipe(Effect.provideService(RedactionService, redaction));
+  };
   const record = Effect.fnUntraced(function* (step: SetupReadinessStep): Effect.fn.Return<void> {
     const inherited = yield* Effect.serviceOption(RedactionService);
     const service = redaction ?? Option.getOrUndefined(inherited);
@@ -126,13 +123,7 @@ export const makeSetupReadinessRecorder = (
     const existingIndex = readinessSteps.findIndex((candidate) => candidate.id === step.id);
     if (existingIndex === -1) readinessSteps.push(safeStep);
     else readinessSteps[existingIndex] = safeStep;
-    const write = writeSetupReadiness(
-      userDataRoot,
-      selectedProviderId,
-      readinessSteps,
-      runtimeServiceReadiness,
-    );
-    yield* service === undefined ? write : write.pipe(Effect.provideService(RedactionService, service));
+    yield* persist("in-progress");
   });
   const recordFailure = Effect.fnUntraced(function* (id: string, cause: unknown) {
     const inherited = yield* Effect.serviceOption(RedactionService);
@@ -164,6 +155,23 @@ export const makeSetupReadinessRecorder = (
     });
   });
   return {
+    start: Effect.suspend(() => persist("in-progress")),
+    finish: (exit) => {
+      if (Exit.isSuccess(exit)) return persist(completedSetupReadinessStatus(readinessSteps));
+      const cancelled =
+        Cause.hasInterrupts(exit.cause) &&
+        !exit.cause.reasons.some(
+          (reason) =>
+            (Cause.isFailReason(reason) || Cause.isDieReason(reason)) &&
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === undefined,
+        );
+      // A cancelled run stays in progress unless a step already failed; then doctor can name that step.
+      if (cancelled && !readinessSteps.some((step) => step.status === "failed")) return Effect.void;
+      return persist("failed");
+    },
+    setProvider: (value) => {
+      providerId = value;
+    },
     record,
     recordFailure,
     recordUnavailable,
@@ -191,13 +199,12 @@ interface FileSyncSetupStepContext {
 export const runFileSyncSetupStep = Effect.fn("SetupCommand.runFileSyncSetupStep")(function* (
   ctx: FileSyncSetupStepContext,
 ): Effect.fn.Return<FileSyncStatus, FileSyncError> {
-  const { provider, input, userDataRoot, network, recorder, defaultEngine } = ctx;
+  const { provider, input, network, recorder, defaultEngine } = ctx;
   let fileSyncStatus: FileSyncStatus = "satisfied";
 
   const bindMountPerformance =
     provider.capabilities.bindMountPerformance === "slow" ? ("slow" as const) : ("native" as const);
   if (inputSkipFileSync(input) && bindMountPerformance === "slow" && defaultEngine !== "passthrough") {
-    if (userDataRoot !== undefined) yield* recordDeferredFileSyncSetup(userDataRoot, defaultEngine);
     yield* recorder.record({
       id: "file-sync",
       status: "deferred",

@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { COMMON_COMMAND_IDS, commonRows, renderColdRootHelp } from "../../src/cli/cold-path-output.ts";

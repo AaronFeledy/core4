@@ -16,8 +16,6 @@ export interface ScratchAppPaths {
   readonly instanceRoot: AbsolutePath;
   readonly root: AbsolutePath;
   readonly planCache: AbsolutePath;
-  readonly infoCache: AbsolutePath;
-  readonly buildResults: AbsolutePath;
 }
 
 export type ScratchSource = { readonly kind: "fork" } | { readonly kind: "recipe"; readonly ref: string };

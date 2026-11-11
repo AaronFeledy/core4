@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, type Exit } from "effect";
-
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { Cause, Effect, type Exit } from "effect";
 
 import {
   type BindOutcome,
@@ -12,14 +11,15 @@ import {
   type SchemeProbe,
 } from "../src/port-acquisition.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
 const HTTPS_TRY_LIST = DEFAULT_HTTPS_TRY_LIST;
-const paths = { platform: "linux" as const, globalAppRoot: "/lando/global" };
+const USER_DATA_ROOT = "/lando/user-data";
+const paths = { platform: "linux" as const, globalAppRoot: "/lando/global", userDataRoot: USER_DATA_ROOT };
 
 const bind = (kind: BindOutcome["kind"]): BindOutcome => {
   switch (kind) {
@@ -168,6 +168,7 @@ const makeDeps = (
   },
   socketProxy: {
     user: "test",
+    userDataRoot: USER_DATA_ROOT,
     hasHostSystemd: () => false,
     exists: () => Effect.succeed(false),
     readText: () => Effect.fail(new Error("missing")),

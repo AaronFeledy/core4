@@ -3,13 +3,11 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer } from "effect";
-
-import { makeDefaultRuntimeBundleDownloader } from "@lando/provider-lando";
-import { Downloader } from "@lando/sdk/services";
-
 import * as LandoHttpClient from "@lando/http-client";
 import * as VerifiedDownloader from "@lando/http-client/downloader";
+import { makeDefaultRuntimeBundleDownloader, makePluginArtifactDownload } from "@lando/provider-lando";
+import { Downloader } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import {
   LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT,
   RUNTIME_BUNDLE_TARGETS,
@@ -19,7 +17,6 @@ import {
   releaseBundleUrl,
   resolveRuntimeBundleRepository,
 } from "../../../scripts/build-runtime-bundle.ts";
-import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -27,7 +24,7 @@ const fileUrl = (path: string): string => new URL(`file://${path}`).href;
 
 const coreArtifactDownload = Effect.gen(function* () {
   const downloader = yield* Downloader;
-  return makeArtifactDownload(downloader);
+  return makePluginArtifactDownload(downloader);
 }).pipe(Effect.provide(VerifiedDownloader.layer.pipe(Layer.provide(LandoHttpClient.layer))));
 
 describe("RUNTIME_BUNDLE_TARGETS", () => {

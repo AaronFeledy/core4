@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
@@ -17,6 +18,7 @@ import type { LandofileEvaluationInputs, LandofileRuntimeInputs } from "./ports.
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
 import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 import { validationErrorFromCause } from "./validation.ts";
+
 export { loadAuthoredDocuments } from "./authored-documents.ts";
 
 const sourceDocument = (
@@ -145,7 +147,7 @@ export const validatePreparedAuthoringLayers = Effect.fnUntraced(function* (
         Schema.decodeUnknownEffect(LandofileAuthoringFragmentNative)(landofile, {
           errors: "all",
           onExcessProperty: "error",
-        }).pipe(Effect.mapError((cause) => validationErrorFromCause(layer.filePath, landofile, cause))),
+        }).pipe(mapFailures((cause) => validationErrorFromCause(layer.filePath, landofile, cause))),
       ),
     );
   }).pipe(
@@ -188,4 +190,4 @@ export const composeLandofileRootLayers = Effect.fn("Landofile.composeLayers")(f
     yield* Effect.forEach(evaluated.runtime.recorder.effectiveChecks, (check) => check);
   }
   return evaluated;
-});
+}, Effect.scoped);

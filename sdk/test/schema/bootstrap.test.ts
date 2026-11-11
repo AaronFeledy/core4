@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema, SchemaIssue } from "effect";
-
 import { BOOTSTRAP_RANK, BootstrapLevel } from "@lando/sdk/schema";
+import { Result, Schema, SchemaIssue } from "effect";
 
 const EXPECTED_LITERALS = [
   "none",

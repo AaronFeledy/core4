@@ -11,6 +11,17 @@
  * Helpers serialize the existing task event schemas. They register no JSON
  * Schema and widen no frozen `@lando/sdk/errors` union.
  */
+
+export type {
+  MakeTaskTreeArgs,
+  TaskFailOptions,
+  TaskSpec,
+  TaskStartOptions,
+  TaskTreeController,
+  TaskTreeSummaries,
+} from "./controller.ts";
+export { makeTaskTree, runWithTaskTree, startChildTaskId } from "./controller.ts";
+export { CurrentTaskDetail, withCurrentTaskDetail } from "./current-detail.ts";
 export type {
   ProgressEmitter,
   TaskCompleteArgs,
@@ -29,12 +40,3 @@ export {
   publishTreeComplete,
   publishTreeStart,
 } from "./publish.ts";
-export type {
-  MakeTaskTreeArgs,
-  TaskFailOptions,
-  TaskSpec,
-  TaskStartOptions,
-  TaskTreeController,
-  TaskTreeSummaries,
-} from "./controller.ts";
-export { makeTaskTree, runWithTaskTree, startChildTaskId } from "./controller.ts";

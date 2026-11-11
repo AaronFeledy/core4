@@ -1,14 +1,10 @@
 import { describe, expect, test } from "bun:test";
-
-import { type Context, DateTime, Effect, Layer, Queue, Schema } from "effect";
-
 import { DownloadProgressEvent } from "@lando/sdk/events";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, EventService } from "@lando/sdk/services";
-import { EventDeliveryMetrics } from "../../src/services/event-service.ts";
-
+import { type Context, DateTime, Effect, Layer, Queue, Schema } from "effect";
 import * as LandoEventService from "../../src/services/event-service.ts";
-import { EventDispatchControl } from "../../src/services/event-service.ts";
+import { EventDeliveryMetrics, EventDispatchControl } from "../../src/services/event-service.ts";
 
 const progressEvent = (bytesDownloaded: number): DownloadProgressEvent =>
   Schema.decodeUnknownSync(DownloadProgressEvent)({

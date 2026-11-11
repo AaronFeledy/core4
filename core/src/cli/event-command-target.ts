@@ -1,6 +1,9 @@
+import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
+import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import { destructiveCommandVerbs } from "@lando/mcp/allowlist";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Context, Effect, Option, Schema } from "effect";
-
 import {
   PluginDescriptorMismatchError,
   PluginLoadError,
@@ -18,15 +21,11 @@ import {
   type CommandContribution,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
-
-import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
-import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
-import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
-import { destructiveCommandVerbs } from "@lando/mcp/allowlist";
+import { Context, Effect, Option, Schema } from "effect";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { resolveEventScriptTarget } from "./event-script-target";
 import type { LandoCommandSpec } from "./spec/command-spec";
+
 export { destructiveCommandVerbs } from "@lando/mcp/allowlist";
 
 const loaderCache = new WeakMap<ExecutableCommandLoader, Promise<ExecutableCommandSpec>>();
@@ -38,6 +37,7 @@ const commandDeclaration = Schema.Struct({
   valueType: Schema.optionalKey(Schema.Literals(["string", "integer"])),
   default: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Undefined])),
   options: Schema.optionalKey(Schema.Array(Schema.String)),
+  stdio: Schema.optionalKey(Schema.Literals(["stdin", "stdout"])),
 });
 const commandMetadata = Schema.Struct({
   summary: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isPattern(/\S/u))),
@@ -80,6 +80,32 @@ export const loadPluginSpec = (
       }
       if (!Schema.is(commandMetadata)(spec) || typeof spec.run !== "function")
         issues.push("summary, run, flags, or args metadata is invalid");
+      const streams = new Set<string>();
+      const invalidStdio =
+        "stdio" in spec ||
+        Object.values(spec.flags ?? {}).some((flag) => "stdio" in flag) ||
+        Object.values(spec.args ?? {}).some((arg) => {
+          if (arg.stdio === undefined) return false;
+          if (
+            (arg.stdio !== "stdin" && arg.stdio !== "stdout") ||
+            (arg.type !== "string" && arg.type !== "option") ||
+            arg.valueType === "integer" ||
+            arg.multiple === true ||
+            // The dash must be the user's explicit choice; a defaulted dash would claim the stream unasked.
+            arg.default === "-" ||
+            streams.has(arg.stdio)
+          )
+            return true;
+          streams.add(arg.stdio);
+          return false;
+        });
+      if (invalidStdio)
+        throw new PluginLoadError({
+          pluginName,
+          message: `Plugin ${pluginName} command ${id} has an invalid stdio declaration.`,
+          remediation:
+            "Declare stdio as stdin or stdout only on a non-multiple string/option positional arg with string values and no - default, at most once per stream. Remove command-level and flag stdio declarations.",
+        });
       if (descriptor !== undefined && spec.summary !== undefined && spec.summary !== descriptor.summary)
         issues.push("module summary differs from the manifest summary");
       const summary = descriptor?.summary ?? spec.summary;

@@ -69,14 +69,19 @@ export const nestedDispositions: readonly DispositionEntry[] = [
     disposition: "target",
     golden: [output(service("home: false"), ["services", "s", "home"], false)],
   },
-  ...rows(
-    ["services", "*", "creds"],
-    ["user", "password", "database"],
-    "lower-catalog-common",
-    output(catalog("creds: {user: app, password: app, database: app}"), ["services", "s", "creds"], {
-      user: "app",
-      password: "app",
-      database: "app",
+  ...["user", "password", "database"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "creds", key],
+      owner: "lower-catalog-common",
+      disposition: "drop",
+      golden: [
+        diagnostic(catalog("creds: {user: app, password: app, database: app}"), [
+          "services",
+          "s",
+          "creds",
+          key,
+        ]),
+      ],
     }),
   ),
   ...rows(

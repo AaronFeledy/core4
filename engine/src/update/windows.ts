@@ -7,6 +7,7 @@ import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect } from "effect";
 import type { CoreReplacementPrecondition } from "./compatibility.ts";
 import { type StoredUpdateResult, makeUpdateHandoff } from "./handoff.ts";
+
 export { runWindowsReplacement, runWindowsReplacementProcess } from "./windows-helper.ts";
 
 export interface UpdateWindowsReplacementInput {
@@ -39,7 +40,7 @@ export const windowsManualFallback = ({
   executablePath,
   stagedBinaryPath,
 }: Pick<UpdateWindowsReplacementInput, "backupPath" | "executablePath" | "stagedBinaryPath">): string =>
-  `Close every running Lando process, move ${executablePath} to ${backupPath}, then move ${stagedBinaryPath} to ${executablePath}. If replacement fails, move ${backupPath} back to ${executablePath}. If Windows requires elevation, open PowerShell as Administrator and run the same moves manually; Lando will not request UAC automatically.`;
+  `Close every running Lando process, then in PowerShell keep a backup with \`Copy-Item -LiteralPath "${executablePath}" -Destination "${backupPath}" -Force\` and replace the executable with \`Move-Item -LiteralPath "${stagedBinaryPath}" -Destination "${executablePath}" -Force\`. If the new binary does not run, restore the backup with \`Move-Item -LiteralPath "${backupPath}" -Destination "${executablePath}" -Force\`. Do not delete ${executablePath} first. If Windows requires elevation, open PowerShell as Administrator and run the same commands; Lando will not request UAC automatically.`;
 
 export const windowsPermissionRemediation = (executablePath: string): string =>
   `Lando will not request UAC automatically. If this install path is correct, open PowerShell as Administrator and replace ${executablePath} manually with the downloaded Lando binary, or reinstall Lando into a user-writable directory.`;

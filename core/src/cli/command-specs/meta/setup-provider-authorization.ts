@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { ProviderSetupConsentDeniedError } from "@lando/sdk/errors";
 import type { ProviderSetupPlan } from "@lando/sdk/schema";
 import type { InteractionError, InteractionServiceShape } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 interface ProviderSetupAuthorizationOptions {
   readonly yes: boolean;

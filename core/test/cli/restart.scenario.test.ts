@@ -3,8 +3,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
-
 import { renderRestartAppResult, restartApp } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -28,14 +26,6 @@ import {
   StateStore,
   ToolingEngine,
 } from "@lando/core/services";
-import type {
-  AppSelector,
-  DestroyOptions,
-  RouterServiceShape,
-  RuntimeProviderShape,
-} from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-
 import { makeTestStateStore } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import {
@@ -47,10 +37,20 @@ import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import type {
+  AppSelector,
+  DestroyOptions,
+  RouterServiceShape,
+  RuntimeProviderShape,
+} from "@lando/sdk/services";
 import { ContainerHelperAssets } from "@lando/sdk/services";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
 import * as BunShellRunner from "../_support/shell-runner.ts";
+
 const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
+
 import "../../src/runtime/engine-composition.ts";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
@@ -256,7 +256,6 @@ const makeRestartLayer = (
         service: target.service,
         providerId,
         status: "running",
-        state: "running",
         containerId: `cid-${String(target.service)}`,
         publications: {
           status: "present",
@@ -496,4 +495,5 @@ describe("lando restart", () => {
     expect(harness.destroyCalls).toEqual([]);
   });
 });
+
 import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";

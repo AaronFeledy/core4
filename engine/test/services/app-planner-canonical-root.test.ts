@@ -3,19 +3,16 @@ import * as fs from "node:fs/promises";
 import { mkdtemp, realpath as realpathNative, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
-
 import { AbsolutePath, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
-import { literalTestLandofile } from "../compiled-landofile.ts";
-
+import { Effect, Layer } from "effect";
 import { validateResolvedAppTarget } from "../../src/operations/applied-state-target.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const slowBindCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -126,4 +123,5 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
     await rm(canonicalRoot, { recursive: true, force: true });
   }
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

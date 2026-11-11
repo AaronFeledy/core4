@@ -1,14 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import { makeLandoRuntime } from "@lando/core";
 import { AbsolutePath } from "@lando/core/schema";
 import { ConfigService, PathsService } from "@lando/core/services";
+import { Effect } from "effect";
 
 describe("library makeLandoRuntime paths surface", () => {
   test("PathsService is available at bootstrap minimal and resolves roots + a derived path", async () => {
@@ -38,7 +35,7 @@ describe("library makeLandoRuntime paths surface", () => {
       expect(paths.managedFileLedger("app-one")).toBe(
         join(dataRoot, "managed-files", "app-one", "ledger.json"),
       );
-      expect(paths.scratchDir).toBe(join(cacheRoot, "scratch"));
+      expect(paths.scratchDir).toBe(join(dataRoot, "scratch"));
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
       await rm(cacheRoot, { recursive: true, force: true });

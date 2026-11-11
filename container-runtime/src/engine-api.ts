@@ -1,11 +1,10 @@
-import type { Redactor } from "@lando/sdk/secrets";
-import type { Effect, Stream } from "effect";
-
 import type {
   ProviderCapabilityError,
   ProviderInternalError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
+import type { Effect, Stream } from "effect";
 
 export type ProviderErrorContext = {
   readonly providerId: string;
@@ -13,6 +12,9 @@ export type ProviderErrorContext = {
   /** Explicit host env snapshot for heuristic secret collection. Never read process.env here. */
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly redactor?: Redactor;
+  readonly redactorFor?: (tokens: {
+    readonly authoritativeTokens: readonly string[];
+  }) => Effect.Effect<Redactor>;
 };
 
 export interface EngineHttpRequest {

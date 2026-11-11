@@ -182,11 +182,11 @@ describe("layer deltas", () => {
       prefix("local", { config: { a: 3, b: 2 }, extra: true }),
     ];
     const result = check(prefixes);
-    prefixes.forEach(({ desired }, index) =>
+    prefixes.forEach(({ desired }, index) => {
       expect(mergeLandofiles(result.emitted.slice(0, index + 1).map(({ fragment }) => fragment))).toEqual(
         desired,
-      ),
-    );
+      );
+    });
     expect(result.emitted[1]?.fragment).toEqual({ config: { b: 2 } });
   });
   test("add/remove/re-add keeps the reset in the removal layer", () => {

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect } from "effect";
-
 import { ServiceStartError } from "@lando/sdk/errors";
-import { type AppId, type AppPlan, ProviderId, type ServiceName } from "@lando/sdk/schema";
+import {
+  type AppId,
+  type AppPlan,
+  ProviderId,
+  type ServiceName,
+  landoServiceContainerName,
+} from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
   ContractFailure,
@@ -10,12 +14,13 @@ import {
   TestRuntimeProvider,
   runProviderStartRetentionContract,
 } from "@lando/sdk/test";
+import { Cause, Effect } from "effect";
 
 const testProviderId = ProviderId.make(TestRuntimeProvider.id);
 
 /** Private mirror of the contract's native container name convention. */
 const retentionContainerName = (slug: string, service: string): string =>
-  `lando-${slug}-${service}`.replace(/[^a-zA-Z0-9_.-]+/gu, "-");
+  landoServiceContainerName(slug, String(service));
 
 /**
  * In-memory provider double that retains resources on start failure / interrupt
@@ -64,7 +69,7 @@ const makeRetentionDouble = (): {
         app: target.app,
         service: target.service,
         providerId: testProviderId,
-        status: "stopped",
+        status: "absent",
         publications: { status: "unknown" },
       };
     }
@@ -72,7 +77,7 @@ const makeRetentionDouble = (): {
       app: record.app,
       service: record.service,
       providerId: testProviderId,
-      status: record.running ? "running" : "stopped",
+      status: record.running ? "running" : "exited",
       publications: { status: "unknown" },
       containerId: record.id,
     };
@@ -187,7 +192,7 @@ describe("runProviderStartRetentionContract", () => {
           app: target.app,
           service: target.service,
           providerId: testProviderId,
-          status: "stopped",
+          status: "absent",
           publications: { status: "unknown" },
         }),
     };

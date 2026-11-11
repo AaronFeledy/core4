@@ -1,6 +1,3 @@
-import { DateTime, Effect, Option, Schema } from "effect";
-import { serviceContainerName } from "../plan.ts";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -9,7 +6,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
-
+import { DateTime, Effect, Option, Schema } from "effect";
+import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import type {
   EngineHttpApi,
   EngineHttpRequest,
@@ -17,9 +15,18 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
-import { fingerprintInspectPublishPorts } from "../plan.ts";
+import type { ExecSupervisionOptions } from "../exec-supervision.ts";
+import { APP_ROOT_LABEL } from "../labels.ts";
+import { containerOwnershipLabels } from "../native-ownership.ts";
+import { fingerprintInspectPublishPorts, serviceContainerName } from "../plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
-import { inspectBindSources, inspectContainerLabels, inspectNetworkNames } from "./bring-up-recreate.ts";
+import { runObservationFromInspectState } from "../run-observation.ts";
+import {
+  inspectBindSources,
+  inspectContainerLabels,
+  inspectNetworkNames,
+  presentLogicalCreateConfig,
+} from "./bring-up-recreate.ts";
 import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
 interface ContainerInspect {
@@ -28,6 +35,8 @@ interface ContainerInspect {
   readonly State?: {
     readonly Health?: { readonly Status?: string };
     readonly Running?: boolean;
+    readonly Paused?: boolean;
+    readonly Restarting?: boolean;
     readonly Status?: string;
     readonly StartedAt?: string;
     readonly ExitCode?: number;
@@ -76,7 +85,8 @@ export const publicationObservationFromInspect = (inspect: unknown): Publication
   return { status: "present", bindings };
 };
 
-export interface InspectOptions {
+export interface InspectOptions
+  extends Pick<ExecSupervisionOptions, "resolveContainerHelper" | "helperTarget"> {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
 }
@@ -89,35 +99,6 @@ const request = (
   operation: string,
 ): Effect.Effect<EngineHttpResponse, ProviderError> =>
   deps.api.request === undefined ? Effect.fail(missingApi(deps.ctx, operation)) : deps.api.request(input);
-
-const statusFromInspect = (inspect: ContainerInspect): string => {
-  if (inspect.State?.Running === true || inspect.State?.Status === "running") {
-    return "running";
-  }
-  if (inspect.State?.Running === false) return "stopped";
-  switch (inspect.State?.Status) {
-    case "created":
-    case "exited":
-    case "dead":
-    case "stopped":
-    case "removing":
-      return "stopped";
-    default:
-      return "unknown";
-  }
-};
-
-const healthFromInspect = (inspect: ContainerInspect): ServiceRuntimeInfo["health"] | undefined => {
-  const status = inspect.State?.Health?.Status?.trim().toLowerCase();
-  switch (status) {
-    case "healthy":
-    case "starting":
-    case "unhealthy":
-      return status;
-    default:
-      return undefined;
-  }
-};
 
 const lastStartedAt = (inspect: ContainerInspect): Date | undefined => {
   const startedAt = inspect.State?.StartedAt;
@@ -159,8 +140,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       appRoot: plan.root,
       service: service.name,
       providerId: plan.provider,
-      status: "stopped",
-      state: "stopped",
+      status: "absent",
       publications: { status: "missing" },
       mounts: { status: "missing" },
     };
@@ -184,26 +164,35 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   }
 
   const decoded = (yield* parseEngineJson(response, ctx, "inspect")) as ContainerInspect;
-  const status = statusFromInspect(decoded);
-  const health = healthFromInspect(decoded);
+  const labels = inspectContainerLabels(decoded);
+  const expectedOwnership = containerOwnershipLabels(plan, service.name);
+  // Even incoherent labels cannot make an explicitly foreign root this plan's service.
+  if (labels[APP_ROOT_LABEL] !== undefined && labels[APP_ROOT_LABEL] !== expectedOwnership[APP_ROOT_LABEL]) {
+    return {
+      app: plan.id,
+      appRoot: plan.root,
+      service: service.name,
+      providerId: plan.provider,
+      status: "unknown",
+      publications: { status: "unknown" },
+      mounts: { status: "unknown" },
+      labels,
+    };
+  }
+  const run = runObservationFromInspectState(decoded.State);
   const startedAt = lastStartedAt(decoded);
   const bindSources = inspectBindSources(decoded);
   const networkNames = inspectNetworkNames(decoded);
+  const physical =
+    options.resolveContainerHelper === undefined || options.helperTarget === undefined
+      ? plan
+      : yield* prepareContainerHelperMounts(plan, options);
   return {
     app: plan.id,
     appRoot: plan.root,
     service: service.name,
     providerId: plan.provider,
-    status,
-    state:
-      decoded.State?.Status === "restarting" || decoded.State?.Status === "paused"
-        ? decoded.State.Status
-        : status,
-    ...((decoded.State?.Status === "exited" || decoded.State?.Status === "dead") &&
-    typeof decoded.State.ExitCode === "number"
-      ? { exitCode: decoded.State.ExitCode }
-      : {}),
-    ...(health === undefined ? {} : { health }),
+    ...run,
     ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
     ...(typeof decoded.Image === "string" && decoded.Image.length > 0
       ? { imageIdentity: decoded.Image }
@@ -212,7 +201,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     mounts: mountObservationFromInspect(decoded),
     ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     publishFingerprint: fingerprintInspectPublishPorts(decoded),
-    labels: inspectContainerLabels(decoded),
+    labels: presentLogicalCreateConfig(labels, { physical, logical: plan, service: service.name }),
     ...(bindSources === undefined ? {} : { bindSources }),
     ...(networkNames === undefined ? {} : { networkNames }),
   };

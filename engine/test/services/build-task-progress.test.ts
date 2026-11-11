@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { AbsolutePath, AppPlan, type ServicePlan } from "@lando/sdk/schema";
 import type { LandoEvent as PublishedEvent } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { makeBuildTaskProgress } from "../../src/services/build-task-progress.ts";
 
@@ -93,6 +92,23 @@ const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
 const parentId = `build-artifact-${String(plan.id)}`;
 
 describe("makeBuildTaskProgress", () => {
+  test("failTask starts an unstarted service before failing it", async () => {
+    const publisher = collectPublisher();
+    const progress = makeBuildTaskProgress(publisher, plan);
+    await Effect.runPromise(progress.startTree);
+
+    await Effect.runPromise(progress.failTask(web));
+
+    expect(
+      publisher.events
+        .filter((event) => event._tag === "task.start" || event._tag === "task.fail")
+        .map((event) => [event._tag, event.taskId]),
+    ).toEqual([
+      ["task.start", "web"],
+      ["task.fail", "web"],
+    ]);
+  });
+
   test("startTree publishes parent identity, label, service-name children, and list mode", async () => {
     // Given
     const publisher = collectPublisher();

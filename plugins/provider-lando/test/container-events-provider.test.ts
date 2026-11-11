@@ -1,16 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { Clock, Effect } from "effect";
-
 import { getContainerDiedEvents, makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
+import { Clock, Effect } from "effect";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
 const diedEvent = {
   Type: "container",
   Action: "died",
   OOMKilled: true,
-  Actor: { Attributes: { name: "lando-myapp-web", "dev.lando.app": "myapp" } },
+  Actor: { Attributes: { name: "lando-myapp--web", "dev.lando.app": "myapp" } },
 };
 const oomEventsEligibility = liveIntegrationEligibility([
   {

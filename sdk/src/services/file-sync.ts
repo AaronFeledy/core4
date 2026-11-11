@@ -4,6 +4,7 @@ import type { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "
 import type {
   AppPlan,
   AppRef,
+  FileSyncDisposalPhase,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionFilter,
@@ -36,16 +37,17 @@ export interface FileSyncEngineShape {
   /**
    * Optional durable app lifecycle. Engines with process-persistent sessions
    * use this to keep a drained app restartable and to retain disposal
-   * receipts until provider cleanup has succeeded.
+   * receipts until provider cleanup has succeeded. Each operation's legal
+   * phases are declared once in `fileSyncDisposalTransitions`
+   * (`@lando/sdk/schema`); `planFileSyncDisposal` lists what remains to reach
+   * `completed` from a phase.
    */
   readonly appLifecycle?: {
     readonly invalidateDrain: (app: AppRef) => Effect.Effect<void, FileSyncStartError>;
     readonly drain: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
     readonly dispose: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
     readonly completeDisposal: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
-    readonly disposalPhase: (
-      app: AppRef,
-    ) => Effect.Effect<"absent" | "active" | "drained" | "disposing" | "completed", FileSyncStopError>;
+    readonly disposalPhase: (app: AppRef) => Effect.Effect<FileSyncDisposalPhase, FileSyncStopError>;
   };
 
   /**

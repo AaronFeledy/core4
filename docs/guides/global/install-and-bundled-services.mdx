@@ -3,7 +3,7 @@ id: install-and-bundled-services
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, global, setup]
+tags: [docs, global, setup]
 ---
 
 # Configure shared global services
@@ -92,7 +92,7 @@ authored configuration can start.
 
 Read a status row's `desired` separately from its `status`. For example, `desired: disabled` with `status: running` means the off choice is saved but its container still needs cleanup. Its `pending` entries explain what remains. A contribution's `policy` includes the same eligibility details as the list. An owned runtime service with no current contribution is `unmanaged`; this doesn't grant permission to remove it as part of another contribution's disablement.
 
-Top-level `policyState` and `runtimeState` report whether each side could be read. `unavailable` and a service's `status: unknown` are missing evidence, not proof that services stopped. `diagnostics` explains those gaps. Status reads observed resources without requiring your desired Landofile to validate.
+Top-level `policyState` and `runtimeState` report whether each side could be read. An installed global provider that is idle reports `runtimeState: idle`, every service as `stopped`, and no runtime observation diagnostic. `unavailable` and a service's `status: unknown` mean evidence is missing, not that services stopped; `diagnostics` explains those gaps. Status reads observed resources without requiring your desired Landofile to validate and never starts an idle runtime.
 
 Repeated required-service checks in the same retained runtime can reuse a verified
 configuration, plan, and completed build. Lando still reads the provider to confirm
@@ -101,6 +101,25 @@ and apply only while its inputs are unchanged and that fresh check passes. A
 changed policy or configuration takes the normal reconciliation path; this reuse
 doesn't require a background daemon. A new CLI process doesn't inherit this
 retained state; it must establish that state again.
+
+Starting an app brings up only the global services it needs, and Lando keeps the
+rest of the global app consistent with that start. After an upgrade changes how
+global services are defined, for example which network they join, a global
+service still running from the old definition is recreated from its current one.
+A stopped container left from the old definition is removed, and that service is
+created fresh the next time it starts. Named volumes and their data stay.
+Services that already match keep running untouched. Lando prints a note for
+each service it recreates or removes this way, naming the service and the older
+setting it still used. `lando global:start --service <name>` follows the same
+rules and lists every service it started in `servicesStarted`.
+
+The start stops instead when Lando can't safely do that work: a conflicting
+service is disabled or no longer configured, or a running container's labels
+don't prove it belongs to this global app. The error names the service and
+container and tells you what to run. If the global app's applied-state file is
+unreadable, the start fails with the provider's `applied-state.read` error and
+its recovery steps, even when a retained runtime could otherwise reuse a
+verified start.
 
 ## Where the global app runs
 

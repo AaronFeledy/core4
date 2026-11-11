@@ -2,11 +2,10 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-
-import { Effect } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { ProcessRunner } from "@lando/sdk/services";
+import { Effect } from "effect";
 import {
   UpdateChecksumSignatureVerificationError,
   UpdateChecksumVerificationError,
@@ -134,7 +133,7 @@ export const verifyManifestSignature = (
   input: UpdateManifestSignatureInput,
 ): Effect.Effect<void, UpdateSignatureVerificationError, ProcessRunner> =>
   verifier(input).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new UpdateSignatureVerificationError({
           message: `Update manifest signature verification failed for ${input.manifestUrl}.`,
@@ -152,7 +151,7 @@ export const verifyChecksumSignature = (
   input: UpdateChecksumSignatureInput,
 ): Effect.Effect<void, UpdateChecksumSignatureVerificationError, ProcessRunner> =>
   verifier(input).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new UpdateChecksumSignatureVerificationError({
           message: `Update checksum signature verification failed for ${input.checksumsUrl}.`,

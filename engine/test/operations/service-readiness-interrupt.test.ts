@@ -61,7 +61,6 @@ for (const mode of ["fiber", "signal"] as const) {
             providerId: plan.provider,
             status: "running",
             publications: { status: "unknown" },
-            state: "running",
             containerId: "container",
             lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
           }),

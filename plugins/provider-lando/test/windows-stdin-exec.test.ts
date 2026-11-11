@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Stream } from "effect";
-
 import type { AppPlan } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
+import { Effect, Stream } from "effect";
 
-import { windowsStdinExec, windowsStdinExecArgs, windowsStdinExecStream } from "../src/windows-stdin-exec.ts";
+import {
+  windowsStdinExec,
+  windowsStdinExecArgs,
+  windowsStdinExecSpawnEnv,
+  windowsStdinExecStream,
+} from "../src/windows-stdin-exec.ts";
 
 const plan = { slug: "demo-app" } as AppPlan;
 const target = { app: "demo-app", service: "db", user: "mysql" } as Parameters<typeof windowsStdinExec>[1];
@@ -34,7 +38,7 @@ describe("managed Windows stdin exec", () => {
       "/app space",
       "--env",
       "FOO",
-      "lando-demo-app-db",
+      "lando-demo-app--db",
       "sh",
       "-c",
       "printf '%s' '$HOME'",
@@ -91,7 +95,8 @@ describe("managed Windows stdin exec", () => {
     );
 
     expect(received).toEqual([65, 66, 67, 65, 66, 67]);
-    expect(receivedEnv).toEqual({ SQL_PASSWORD: "secret value" });
+    expect(receivedEnv?.SQL_PASSWORD).toBe("secret value");
+    expect(receivedEnv).toBeDefined();
     expect(receivedArgs.join(" ")).not.toContain("secret value");
     expect(result).toEqual({ stdout: "after EOF", stderr: "warning", exitCode: 37 });
     expect([...chunks].map((chunk) => ("exitCode" in chunk ? chunk.exitCode : chunk.kind))).toEqual([
@@ -99,5 +104,62 @@ describe("managed Windows stdin exec", () => {
       "stderr",
       37,
     ]);
+  });
+
+  test("windowsStdinExecSpawnEnv strips Podman redirects and keeps command env", () => {
+    const env = windowsStdinExecSpawnEnv(
+      { SQL_PASSWORD: "secret value" },
+      {
+        PATH: "/bin",
+        HOME: "/home/user",
+        CONTAINER_HOST: "unix:///hostile.sock",
+        CONTAINER_CONNECTION: "other",
+        CONTAINERS_CONF_OVERRIDE: "/tmp/override.conf",
+        _PODMAN_PAUSE: "1",
+        HTTP_PROXY: "http://proxy.example",
+      },
+    );
+
+    expect(env.SQL_PASSWORD).toBe("secret value");
+    expect(env.PATH).toBe("/bin");
+    expect(env.HOME).toBe("/home/user");
+    expect(env.HTTP_PROXY).toBe("http://proxy.example");
+    expect(env).not.toHaveProperty("CONTAINER_HOST");
+    expect(env).not.toHaveProperty("CONTAINER_CONNECTION");
+    expect(env).not.toHaveProperty("CONTAINERS_CONF_OVERRIDE");
+    expect(env).not.toHaveProperty("_PODMAN_PAUSE");
+  });
+
+  test("always passes sanitized env even when command.env is omitted", async () => {
+    let receivedEnv: Readonly<Record<string, string>> | undefined;
+    let replaceEnv: boolean | undefined;
+    const runner = {
+      run: (options: { readonly env?: Readonly<Record<string, string>>; readonly replaceEnv?: boolean }) =>
+        Effect.sync(() => {
+          receivedEnv = options.env;
+          replaceEnv = options.replaceEnv;
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }),
+      stream: () => Stream.empty,
+      streamWithExit: () => Stream.empty,
+    } as unknown as Context.Service.Shape<typeof ProcessRunner>;
+
+    await Effect.runPromise(
+      windowsStdinExec(
+        plan,
+        target,
+        { command: ["true"] },
+        {
+          podmanBin: "podman",
+          connectionName: "lando-root",
+          processRunner: runner,
+        },
+      ),
+    );
+
+    expect(receivedEnv).toBeDefined();
+    expect(receivedEnv).not.toHaveProperty("CONTAINER_HOST");
+    // The runner extends the host environment unless told to replace it.
+    expect(replaceEnv).toBe(true);
   });
 });

@@ -9,8 +9,8 @@ import {
   landoSharedNetworkName,
 } from "./app-plan.ts";
 import type { HealthcheckInput } from "./compose-healthcheck.ts";
-import { logicalEndpointIdentity } from "./endpoint-selection.ts";
 import type { EndpointRef } from "./endpoint.ts";
+import { logicalEndpointIdentity } from "./endpoint-selection.ts";
 import type { HealthcheckPlan } from "./healthcheck-plan.ts";
 import { ServiceConfig } from "./landofile.ts";
 import type { ServiceName } from "./primitives.ts";
@@ -39,6 +39,7 @@ export const probeTargetError = (
   return new HealthcheckTargetUnsupportedError({
     service: String(service),
     target: probe.executionTarget ?? "service",
+    role,
     message: nativeUnsupported
       ? "Native healthcheck cannot select a host target or an explicit user."
       : "Host readiness requires its own command without a container user or listener.",

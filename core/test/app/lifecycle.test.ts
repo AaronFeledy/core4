@@ -1,10 +1,7 @@
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, spyOn, test } from "bun:test";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
-
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -35,6 +32,7 @@ import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 import { lifecycleFileSyncPlugin } from "./lifecycle-file-sync-plugin.ts";
 
@@ -433,9 +431,9 @@ describe("App handle managed lifecycle scopes", () => {
             });
             const provider: RuntimeProviderShape = {
               ...TestRuntimeProvider,
-              apply: () =>
+              apply: (plan, options) =>
                 !failApply
-                  ? Effect.succeed({ changed: true })
+                  ? TestRuntimeProvider.apply(plan, options)
                   : resume && mode === "interrupt"
                     ? Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never))
                     : Effect.fail(primary),
@@ -518,9 +516,9 @@ describe("App handle managed lifecycle scopes", () => {
           });
           const provider: RuntimeProviderShape = {
             ...TestRuntimeProvider,
-            apply: () =>
+            apply: (plan, options) =>
               !failApply
-                ? Effect.succeed({ changed: true })
+                ? TestRuntimeProvider.apply(plan, options)
                 : mode === "failure"
                   ? Effect.fail(primary)
                   : Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never)),
@@ -1129,7 +1127,7 @@ describe("App handle managed lifecycle scopes", () => {
       let finalizerCalls = 0;
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        apply: Effect.fnUntraced(function* () {
+        apply: Effect.fnUntraced(function* (plan, options) {
           applyCalls += 1;
           if (applyCalls === 2) {
             return yield* Effect.fail(
@@ -1142,7 +1140,7 @@ describe("App handle managed lifecycle scopes", () => {
               }),
             );
           }
-          return { changed: false };
+          return yield* TestRuntimeProvider.apply(plan, options);
         }),
       };
       const engine: FileSyncEngineShape = {
@@ -1391,4 +1389,5 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 });
+
 import { currentTestPlan } from "../_support/value-contracts.ts";

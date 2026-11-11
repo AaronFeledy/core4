@@ -7,9 +7,9 @@ import {
 import { AppPlan, CurrentExecutableAppPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { containerCreateBodyFragment, mergeAppliedPlan } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { renderCompose } from "../src/podman/compose.ts";
 import { ctx, fakeEngine, legacyPlan, plan, service, withService } from "./fixtures/environment-values.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const bindingService = {
   ...service,
@@ -176,6 +176,8 @@ test("resource-only legacy apply cannot create a missing volume", async () => {
         api: {
           request: (request) => {
             calls.push(request.method);
+            if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+              return Effect.succeed({ status: 200, body: "[]" });
             return Effect.succeed({ status: 404, body: "{}" });
           },
         },
@@ -198,6 +200,8 @@ test("service-less legacy apply creates no network because no service joins one"
       api: {
         request: (request) => {
           calls.push(`${request.method} ${request.path}`);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+            return Effect.succeed({ status: 200, body: "[]" });
           return Effect.succeed({ status: 404, body: "{}" });
         },
       },
@@ -223,6 +227,8 @@ test("resource-only legacy reuse observes existing volumes without recreating th
       api: {
         request: (request) => {
           calls.push(request.method);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+            return Effect.succeed({ status: 200, body: "[]" });
           return Effect.succeed({ status: 200, body: "{}" });
         },
       },

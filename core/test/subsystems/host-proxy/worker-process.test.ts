@@ -2,13 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Option } from "effect";
-
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-
 import { startDetachedHostProxyWorker as startDetachedHostProxyWorkerWithPrivateFileAccess } from "@lando/engine/subsystems/host-proxy/detached-worker";
 import { defaultSpawnWorker as spawnWithPrivateFileAccess } from "@lando/engine/subsystems/host-proxy/worker-process";
 import { workerStatePath } from "@lando/engine/subsystems/host-proxy/worker-state";
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Option } from "effect";
 import "../../../src/runtime/engine-composition.ts";
 import { hostProxyWorkerEntry } from "@lando/engine/composition";
 import * as WorkerConfig from "@lando/engine/services/config";

@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
-
 import { publicationObservationFromInspect } from "@lando/container-runtime/podman/inspect";
 import { invokeOperation } from "@lando/core/cli/operations";
 import {
@@ -54,15 +52,6 @@ import {
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
-import { RedactionService } from "@lando/redaction/service";
-import { PreAppStartEvent } from "@lando/sdk/events";
-import { makeTestRouterService } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import { testStateStoreLayer } from "../_support/landofile-layer.ts";
-import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-
 import * as AppCacheService from "@lando/engine/cache/service";
 import { readGlobalPolicy } from "@lando/engine/global-app/enablement";
 import { withGlobalMutation } from "@lando/engine/global-app/mutation";
@@ -80,10 +69,16 @@ import { globalStop } from "@lando/engine/operations/global-stop";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
+import { RedactionService } from "@lando/redaction/service";
+import { PreAppStartEvent } from "@lando/sdk/events";
+import { makeTestRouterService } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
 import { renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
@@ -91,6 +86,8 @@ import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 interface ApplyCall {
   readonly environments: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -148,6 +145,7 @@ interface HarnessOptions {
   readonly failRemove?: boolean;
   readonly failRemoveServices?: ReadonlyArray<string>;
   readonly missingAppliedState?: boolean;
+  readonly legacyBridge?: boolean;
   readonly incompleteObservationOwnership?: boolean;
   readonly observationProviderId?: ProviderId;
   readonly observationRoot?: AbsolutePath;
@@ -157,6 +155,7 @@ interface HarnessOptions {
   readonly unreadableConsumerState?: boolean;
   readonly beforeApply?: Effect.Effect<void>;
   readonly offline?: boolean;
+  readonly idle?: boolean;
   readonly vanishedServices?: ReadonlyArray<string>;
   readonly failInspect?: boolean;
   readonly exitedServices?: ReadonlyArray<string>;
@@ -195,10 +194,8 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
     process.env.LANDO_USER_CONF_ROOT = confRoot;
     return await run(dataRoot);
   } finally {
-    // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
     if (previousData === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousData;
-    // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
     if (previousConf === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConf;
     await rm(dataRoot, { recursive: true, force: true });
@@ -317,7 +314,18 @@ const makeHarness = async (
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
-    getStatus: Effect.sync(() => ({ running: !options.offline })),
+    getStatus: Effect.suspend(() =>
+      options.offline
+        ? Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation: "getStatus",
+              message: "Runtime is unreachable.",
+              remediation: "Restore runtime access.",
+            }),
+          )
+        : Effect.succeed({ state: options.idle ? ("idle" as const) : ("running" as const) }),
+    ),
     appliedPlans: Effect.sync(() =>
       options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan],
     ),
@@ -337,8 +345,19 @@ const makeHarness = async (
                   providerId: options.observationProviderId ?? providerId,
                   service,
                   containerId: `test-${service}`,
-                  status: "running" as const,
-                  state: "running",
+                  ...(options.incompleteObservationOwnership
+                    ? {}
+                    : {
+                        labels: {
+                          "dev.lando.app": plan.id,
+                          "dev.lando.app-root": options.observationRoot ?? plan.root,
+                          "dev.lando.provider": options.observationProviderId ?? providerId,
+                          "dev.lando.service": service,
+                        },
+                      }),
+                  status: options.exitedServices?.includes(service)
+                    ? ("exited" as const)
+                    : ("running" as const),
                   publications: { status: "unknown" as const },
                 }));
         return [...globalServices, ...(options.consumerObservations ?? [])].filter(
@@ -361,6 +380,10 @@ const makeHarness = async (
           ),
         );
         calls.apply.push({ plan, options: applyOptions, environments });
+        yield* TestRuntimeProvider.apply(plan, {
+          ...applyOptions,
+          resolveServiceEnvironment: (service) => Effect.succeed(environments[service.name] ?? {}),
+        });
         return { changed: true };
       }).pipe(
         Effect.flatMap((result) => {
@@ -374,6 +397,14 @@ const makeHarness = async (
                   ...plan,
                   services: { ...appliedPlan?.services, ...plan.services },
                 };
+                if (options.legacyBridge)
+                  appliedPlan = {
+                    ...appliedPlan,
+                    networking: {
+                      ...appliedPlan.networking,
+                      perAppBridge: { name: "lando-global", driver: "bridge", aliases: {} },
+                    },
+                  };
                 return result;
               })
             : Effect.fail(
@@ -440,9 +471,9 @@ const makeHarness = async (
         app: target.app,
         service: target.service,
         providerId,
-        status: exitCode === undefined ? "running" : "stopped",
-        state: exitCode === undefined ? "running" : "stopped",
-        ...(exitCode === undefined ? {} : { exitCode }),
+        ...(exitCode === undefined
+          ? { status: "running" as const }
+          : { status: "exited" as const, exitCode }),
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
         publications: publicationObservationFromInspect({
           NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "8443" }] } },
@@ -573,9 +604,9 @@ const makeHarness = async (
         applyRoutes: (routes, app) =>
           Effect.sync(() => {
             options.timeline?.push("routes-applied");
-            calls.routes.push({ app: String(app), hostnames: routes.map((route) => route.hostname) });
+            calls.routes.push({ app: String(app.id), hostnames: routes.map((route) => route.hostname) });
             return {
-              app,
+              app: app.id,
               appliedRoutes: [...routes],
               authorities: routes.map((route) => ({
                 scheme: "https" as const,
@@ -589,14 +620,14 @@ const makeHarness = async (
                 ? Effect.fail(
                     new ProxyApplyError({
                       proxyId: "test",
-                      app: String(app),
+                      app: String(app.id),
                       message: "route publication failed",
                       remediation: "Retry route publication.",
                     }),
                   )
                 : Effect.sync(() => {
                     calls.publishedRoutes.push({
-                      app: String(app),
+                      app: String(app.id),
                       hostnames: routes.map((route) => route.hostname),
                     });
                     return result;
@@ -605,9 +636,10 @@ const makeHarness = async (
           ),
         removeRoutes: (app) =>
           Effect.sync(() => {
-            calls.routesRemoved.push(String(app));
-            calls.publishedRoutes.push({ app: String(app), hostnames: [] });
+            calls.routesRemoved.push(String(app.id));
+            calls.publishedRoutes.push({ app: String(app.id), hostnames: [] });
           }),
+        stop: Effect.die("Global lifecycle must not stop the shared router"),
       }),
     ),
     Layer.succeed(BuildOrchestrator, buildOrchestrator),
@@ -727,8 +759,7 @@ const registerConsumer = async (
     providerId: base.provider,
     service: service.name,
     containerId: `${id}-container`,
-    status: "running",
-    state: "running",
+    status: "running" as const,
     publications: { status: "unknown" },
   });
   return consumer;
@@ -1806,6 +1837,23 @@ describe("meta:global command effects", () => {
         result.services.every((service) => service.desired === "enabled" && service.status === "unknown"),
       ).toBe(true);
       expect(result.diagnostics.join(" ")).toContain("resource state is unknown");
+    }, options);
+  });
+
+  test("status reports an idle global provider as stopped without an observation diagnostic", async () => {
+    const options = { idle: false };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.idle = true;
+      harness.calls.inspect.length = 0;
+      const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
+      expect(result.runtimeState).toBe("idle");
+      expect(result.services.map((service) => [service.service, service.status])).toEqual([
+        ["mail", "stopped"],
+        ["proxy", "stopped"],
+      ]);
+      expect(result.diagnostics).toEqual([]);
+      expect(harness.calls.inspect).toEqual([]);
     }, options);
   });
 
@@ -3132,7 +3180,63 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("selected start rejects a route collision with a retained sibling before apply", async () => {
+  test.each(["running", "exited"] as const)(
+    "#2144 selected start reconciles a %s sibling left on the old bridge",
+    async (status) => {
+      const options = { legacyBridge: true, exitedServices: [] as string[] };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.legacyBridge = false;
+        if (status === "exited") options.exitedServices = ["proxy"];
+        const result = await Effect.runPromise(
+          globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(
+          status === "running" ? ["mail", "proxy"] : ["mail"],
+        );
+        expect(harness.calls.removed).toEqual(status === "exited" ? ["proxy"] : []);
+        expect(Object.keys(harness.calls.apply.at(-1)?.plan.services ?? {}).sort()).toEqual(
+          status === "running" ? ["mail", "proxy"] : ["mail"],
+        );
+      }, options);
+    },
+  );
+
+  test("a routed sibling joined after initial selection pulls in the router backing service", async () => {
+    const options = {
+      missingAppliedState: false,
+      vanishedServices: [] as string[],
+      serviceNames: ["mail", "proxy", "router"],
+      routerId: "router",
+    };
+    await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        "services:\n  proxy:\n    routes: [proxy.global.test]\n",
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.missingAppliedState = true;
+      options.vanishedServices = ["router"];
+      const before = harness.calls.apply.length;
+      const result = await Effect.runPromise(
+        globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual([
+        "mail",
+        "proxy",
+        "router",
+      ]);
+      expect(
+        harness.calls.apply
+          .slice(before)
+          .flatMap((call) => Object.keys(call.plan.services))
+          .sort(),
+      ).toEqual(["mail", "proxy", "router"]);
+    }, options);
+  });
+
+  test("selected start joins a running sibling whose prior route conflicts", async () => {
     await withHarness(async (harness) => {
       const local = join(harness.dataRoot, "global", ".lando.local.yml");
       await mkdir(join(harness.dataRoot, "global"), { recursive: true });
@@ -3146,31 +3250,26 @@ describe("meta:global command effects", () => {
         local,
         "services:\n  proxy:\n    routes: [new.proxy.test]\n  mail:\n    routes: [taken.global.test]\n",
       );
-      const failure = await Effect.runPromiseExit(
+      const result = await Effect.runPromise(
         globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
       );
-      expect(failureOf(failure)).toMatchObject({
-        _tag: "GlobalAppError",
-        message: expect.stringContaining("conflicts"),
-      });
-      expect(harness.calls.apply).toHaveLength(applied);
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+      expect(harness.calls.apply).toHaveLength(applied + 1);
+      expect(Object.keys(harness.calls.apply.at(-1)?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
     });
   });
 
-  test("selected start refuses unknown active unselected ownership without an applied snapshot", async () => {
+  test("selected start adopts proven owned active siblings without an applied snapshot", async () => {
     const options = { missingAppliedState: false };
     await withHarness(async (harness) => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
       const applied = harness.calls.apply.length;
       options.missingAppliedState = true;
-      const failure = await Effect.runPromiseExit(
+      const result = await Effect.runPromise(
         globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
       );
-      expect(failureOf(failure)).toMatchObject({
-        _tag: "GlobalAppError",
-        message: expect.stringContaining("ownership"),
-      });
-      expect(harness.calls.apply).toHaveLength(applied);
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+      expect(harness.calls.apply).toHaveLength(applied + 2);
     }, options);
   });
 
@@ -3306,15 +3405,26 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("config rejects an unrecognized subcommand instead of silently validating", async () => {
-    await withHarness(async (harness) => {
-      const exit = await Effect.runPromiseExit(
-        globalConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(harness.layer)),
-      );
-
-      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
-      expect(error._tag).toBe("LandofileWriteValidationError");
-      expect(error.message).toContain("bogus");
+  test("event input rejects an undeclared global config verb before global app resolution", async () => {
+    const { metaGlobalConfigSpec } = await import("../../src/cli/command-specs/meta/global/config.ts");
+    const { validateEventCommandInput } = await import("../../src/cli/event-command-input.ts");
+    const error = await Effect.runPromise(
+      Effect.flip(
+        validateEventCommandInput(metaGlobalConfigSpec, {
+          flags: {},
+          args: { subcommand: "valdiate" },
+          raw: [],
+        }),
+      ),
+    );
+    expect(error).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: "meta:global:config",
+      field: "subcommand",
+      kind: "arg",
+      reason: "option",
+      remediation:
+        'Did you mean "validate"? subcommand takes one of: view, set, unset, edit, validate, describe.',
     });
   });
 

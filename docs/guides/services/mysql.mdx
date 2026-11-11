@@ -2,7 +2,7 @@
 id: mysql
 provider: test
 timeout: 90000
-tags: [beta, docs, mysql, service, database]
+tags: [docs, mysql, service, database]
 ---
 
 # Add MySQL
@@ -16,16 +16,14 @@ services:
     type: mysql
 ```
 
-Set `creds:` when you want explicit values. By default, the username and password are both `lando`, the database is named after the app, and the root password is generated. `creds.user` is the database username. Container `user:` is not.
+Set a member under `creds:` when you want an explicit value. A member you leave out keeps its default. By default, the username, password, and root password are `lando`, and the database is named after the app. `lando info` prints those published defaults. `creds.user` is the database username. Container `user:` is not.
 
 ```yaml
 services:
   db:
     type: mysql
     creds:
-      user: lando
-      password: lando
-      database: mysql-demo
+      database: shop
       rootPassword: secret
 ```
 
@@ -51,10 +49,10 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Setting | Value |
 | --- | --- |
 | Host | `db` |
-| Database | the app name (`mysql-demo`); override with `database:` under `services.db` |
+| Database | the folder's data name (here `mysql-demo`, the name this folder's data was first created under); override with `creds.database` under `services.db` |
 | User | `lando` |
 | Password | `lando` |
-| Root password | derived per app; `LANDO_DB_ROOT_PASSWORD` inside the service |
+| Root password | `lando`; `LANDO_DB_ROOT_PASSWORD` inside the service, and `lando info` prints it |
 
 From inside the app network the connection URL is:
 
@@ -133,7 +131,7 @@ services:
 
 Use unversioned `type: mysql` with `image:` only for a custom image whose compatibility you manage yourself. A versioned type plus `image:` is conflicting intent and fails during planning.
 
-New stores use `<app>-<service>-mysql-data`, independent of the server version. If your app has exactly one MySQL service, its legacy `<app>-mysql-data` volume exists, and its scoped volume does not, Lando keeps using the legacy volume in place. If both volumes exist, the scoped volume wins. With multiple MySQL services, each uses its scoped identity and the legacy volume stays untouched. This selection never renames, copies, migrates, or deletes a volume.
+Each MySQL service keeps its data in its own `lando-<data-name>--<service>--mysql-data` volume, independent of the server version. The data-name slug stays fixed when you rename the app.
 
 Keeping a volume's identity is not an upgrade compatibility check. Existing databases still depend on the SQL recovery guard for changed or unknown initialized series; do not treat a type change as a safe datadir upgrade.
 

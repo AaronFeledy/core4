@@ -1,8 +1,8 @@
-import { Effect, Schema } from "effect";
-
 import type { InvocationProgram } from "@lando/landofile/compiled-sites";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import type { EventForSelector, EventStep, ToolingVarLiteral } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import type {
   ToolingCmdStepLeaf,
@@ -237,7 +237,7 @@ export const compileEventStepProgram = (
           ? Effect.void
           : validateCommand(leaf);
       }),
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new EventStepCompileError({
             message: cause.message,

@@ -5,16 +5,27 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import { ConfigTranslateInput, type RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
-import { drupalCmsInstallCommand } from "../../src/recipes/builtin/drupal-cms/commands.ts";
+import {
+  DRUPAL_CMS_SCAFFOLD_COMMAND,
+  drupalCmsInstallCommand,
+} from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import {
   DRUPAL_CMS_PHP_INI,
   DRUPAL_CMS_PHP_INI_PATH,
   DRUPAL_CMS_PHP_INI_TARGET,
 } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
-const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand("mysql", "{{ app.name }}");
-const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand("pgsql", "{{ app.name }}");
+
+const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
+  "mysql",
+  "{{ services.database.creds.database }}",
+);
+const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
+  "pgsql",
+  "{{ services.database.creds.database }}",
+);
+
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: drupalCmsDecomposer,
   defaults: drupalCmsDefaults,
@@ -23,6 +34,7 @@ const {
   contentDigest: DRUPAL_CMS_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("drupal-cms");
+
 import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 
@@ -93,18 +105,20 @@ describe("drupal-cms decomposition", () => {
           },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
-        database: { type: "{{ recipe.database }}", database: "{{ app.name }}" },
+        database: { type: "{{ recipe.database }}" },
       },
       tooling: {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
           cmds: [DRUSH_TOOLING_COMMAND],
+          wrapper: true,
         },
         composer: {
           service: "appserver",
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
+          wrapper: true,
         },
         "drupal-cms-scaffold": {
           service: "appserver",
@@ -140,7 +154,7 @@ describe("drupal-cms decomposition", () => {
     expect(authoring.services.edge).toMatchObject({ uploadDirs: ["sites/*/files"] });
     expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_PGSQL_INSTALL_COMMAND);
     expect(authoring.tooling["drupal-cms-install"].cmd).toContain('--db-url="pgsql://lando:');
-    expect(authoring.tooling["drupal-cms-install"].cmd).toContain("{{ app.name }}");
+    expect(authoring.tooling["drupal-cms-install"].cmd).toContain("{{ services.database.creds.database }}");
   });
 
   test("includes an editable PHP memory limit asset and mount for Apache and FPM", () => {

@@ -6,9 +6,8 @@ import { AbsolutePath, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Layer } from "effect";
-
-import { collectOpenConnections } from "../../../src/cli/commands/open-connections.ts";
 import { type OpenAppOptions, openApp } from "../../../src/cli/commands/open.ts";
+import { collectOpenConnections } from "../../../src/cli/commands/open-connections.ts";
 import { runOpenForHostProxy } from "../../../src/cli/host-proxy/dispatch.ts";
 import {
   commandServices,
@@ -49,8 +48,7 @@ const fixture = async (failedService = "mailpit") => {
         app: target.app,
         service: target.service,
         providerId: plan.provider,
-        status: "running",
-        state: "running",
+        status: "running" as const,
         publications: { status: "present" as const, bindings: [] },
       });
     },
@@ -246,8 +244,7 @@ test("scoped observations retain completion intent from the full plan", async ()
         app: target.app,
         service: target.service,
         providerId: plan.provider,
-        status: "stopped",
-        state: "stopped",
+        status: "exited" as const,
         exitCode: 0,
         publications: { status: "present" as const, bindings: [] },
       }),

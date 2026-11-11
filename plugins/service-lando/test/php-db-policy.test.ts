@@ -3,9 +3,9 @@ import { AppFeatureMutationConflictError } from "@lando/sdk/errors";
 import { ServiceConfig } from "@lando/sdk/schema";
 import type { AppFeatureServiceView, ServiceBuildStepIntent } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { PHP_FEATURE_ID } from "../src/services/php.ts";
 import { phpDbClientFeature } from "../src/services/php-db-client.ts";
 import { PHP_RUNTIME_POLICY_KEY } from "../src/services/php-runtime-policy.ts";
-import { PHP_FEATURE_ID } from "../src/services/php.ts";
 import { phpResolution } from "./support/php-resolution.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 

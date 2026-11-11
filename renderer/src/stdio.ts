@@ -1,5 +1,6 @@
 import { Effect, Layer, PlatformError, Stdio, Stream } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
+import { RendererHost } from "./host.ts";
 
 export interface StdioOptions {
   readonly stdin: ReadableStream<Uint8Array>;
@@ -38,19 +39,35 @@ export const make = (options: StdioOptions): Stdio.Stdio =>
       ),
   });
 
-export const layer = Layer.sync(Stdio.Stdio, () => {
-  const stdout = Bun.stdout.writer();
-  const stderr = Bun.stderr.writer();
-  return make({
-    stdin: Bun.stdin.stream(),
-    args: Bun.argv,
-    stdout: async (chunk) => {
-      stdout.write(chunk);
-      await stdout.flush();
-    },
-    stderr: async (chunk) => {
-      stderr.write(chunk);
-      await stderr.flush();
-    },
-  });
-});
+export const layer = Layer.effect(
+  Stdio.Stdio,
+  Effect.gen(function* () {
+    const host = yield* RendererHost;
+    if (host !== undefined)
+      return make({
+        stdin:
+          host.io.stdin ??
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          }),
+        stdout: host.io.writeStdout,
+        stderr: host.io.writeStderr,
+      });
+    const stdout = Bun.stdout.writer();
+    const stderr = Bun.stderr.writer();
+    return make({
+      stdin: Bun.stdin.stream(),
+      args: Bun.argv,
+      stdout: async (chunk) => {
+        stdout.write(chunk);
+        await stdout.flush();
+      },
+      stderr: async (chunk) => {
+        stderr.write(chunk);
+        await stderr.flush();
+      },
+    });
+  }),
+);

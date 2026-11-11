@@ -1,13 +1,11 @@
+import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { serialize } from "node:v8";
-
-import { expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import { AbsolutePath, AppId, AppPlan, PluginName, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { DateTime, Effect, Schema } from "effect";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   APP_PLAN_CACHE_MAGIC,
@@ -221,7 +219,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(48n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(52n);
   expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });
@@ -364,7 +362,7 @@ test("does not change the app-plan cache key for unrelated environment variables
 
 for (const router of [undefined, { enabled: true }, { enabled: false }] as const) {
   const label = router === undefined ? "omits router" : `sets router.enabled ${router.enabled}`;
-  test(`derives the shared-router requirement from enablement when a cached plan ${label}`, async () => {
+  test(`preserves declared requirements when a cached plan ${label}`, async () => {
     // Given: a persisted plan that declares a route but no global-service requirement.
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-router-"));
     const appRoot = "/workspace/router-cache";
@@ -402,8 +400,8 @@ for (const router of [undefined, { enabled: true }, { enabled: false }] as const
       readCachedAppPlan({ cacheRoot, appName: "router-cache", appRoot, key: "router-key" }),
     );
 
-    // Then: a disabled router must not auto-start the shared router on the next start.
+    // Then
     expect(read?.routes).toHaveLength(1);
-    expect(read?.requires?.globalServices ?? []).toEqual(router?.enabled === false ? [] : ["traefik"]);
+    expect(read?.requires?.globalServices ?? []).toEqual([]);
   });
 }

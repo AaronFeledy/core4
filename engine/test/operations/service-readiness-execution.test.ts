@@ -28,7 +28,6 @@ test.each(["host", "user"])("readiness dispatch honors %s execution", async (mod
         providerId: plan.provider,
         status: "running" as const,
         publications: { status: "unknown" as const },
-        state: "running",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
       }),
     exec: (

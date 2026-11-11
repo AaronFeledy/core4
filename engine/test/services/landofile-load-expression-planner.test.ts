@@ -1,13 +1,11 @@
+import { expect, test } from "bun:test";
 import { mkdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
+import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
-
-import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
+import { Cause, Effect, Exit, Option } from "effect";
 import { appPlanCachePath } from "../../src/cache/paths";
 import {
   IMPORTED_PEM,

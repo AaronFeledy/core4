@@ -1,15 +1,13 @@
-import { Effect } from "effect";
-import { yesFlag } from "../../../spec/confirmation-flag";
-import { Args, Flags } from "../../../spec/metadata";
-
 import { type PluginAddResult, PluginAddResultSchema } from "@lando/engine/operations/plugin-install";
 import { NotImplementedError } from "@lando/sdk/errors";
-
+import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { pluginAdd, renderPluginAddResult } from "../../../commands/plugin-add";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
-
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { yesFlag } from "../../../spec/confirmation-flag";
 import { specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args, Flags } from "../../../spec/metadata";
 
 const extractInput = (input: unknown): { spec: string; trust: boolean; force: boolean; yes: boolean } => {
   const args = specArgsOf(input);
@@ -32,6 +30,7 @@ const missingSpecError = (): NotImplementedError =>
 export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
   resultSchema: PluginAddResultSchema,
   id: "meta:plugin:add",
+  onlineAcquisition: true,
   summary: "Install a plugin (npm source) with manifest validation and trust prompt.",
   namespace: "meta",
   topLevelAlias: true,
@@ -59,7 +58,7 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
     return yield* pluginAdd({
       spec: parsed.spec,
       trust: parsed.trust || parsed.yes,
-      nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
+      nonInteractive: resolveNonInteractive({ isTTY: (yield* CliInvocation).io.stdinIsTTY === true }),
     });
   }),
   render: (result) => renderPluginAddResult(result),

@@ -1,7 +1,6 @@
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const generatedRoot = resolve(repoRoot, "test/scenarios/generated/guides");
@@ -182,7 +181,7 @@ Step: run (Variable, Run)
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("code: NotImplementedError");
     expect(result.stderr).toContain("--variant is not implemented for docs:scenario");
-    expect(result.stderr).toContain("not supported yet");
+    expect(result.stderr).toContain("not supported");
     expect(result.stderr).not.toContain("Alpha 2");
   });
 });

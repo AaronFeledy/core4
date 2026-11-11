@@ -1,8 +1,5 @@
 import { realpath } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
-
-import { Effect } from "effect";
-
 import {
   NotImplementedError,
   type RecipeExtendsError,
@@ -13,8 +10,8 @@ import {
   causeMessage,
 } from "@lando/sdk/errors";
 import type { RecipeSource } from "@lando/sdk/schema";
-
 import { validationIssue } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { BUNDLED_RECIPES } from "./bundled";
 import type { RecipeTransportEvidence } from "./resolved-source-types";
 import { validateRecipeSourceObject } from "./source-parse";
@@ -63,9 +60,10 @@ const detectScheme = (ref: string): RecipeRefScheme => {
 
 const notImplemented = (scheme: string, ref: string): NotImplementedError =>
   new NotImplementedError({
-    message: `Recipe source scheme "${scheme}" (ref "${ref}") is not supported yet.`,
+    message: `Recipe source scheme "${scheme}" (ref "${ref}") is not supported.`,
     commandId: "recipe.source.resolve",
-    remediation: "Remove the source scheme; remote recipe sources are not supported yet.",
+    remediation:
+      "Use a bundled recipe id or a local path. For a remote recipe, run `lando init --source=git --url=<url>`, `--source=npm --package=<name>`, or `--source=registry --id=<recipe-id>`.",
   });
 
 const resolveBuiltin = (ref: string): Effect.Effect<ResolvedRecipe, RecipeManifestNotFoundError> => {

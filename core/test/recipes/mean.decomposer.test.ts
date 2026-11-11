@@ -6,6 +6,7 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "../../src/recipes/builtin/mean/scaffold.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: meanDecomposer,
   defaults: meanDefaults,
@@ -14,6 +15,7 @@ const {
   contentDigest: MEAN_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("mean");
+
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
 import { renderAuxiliaryScaffold } from "../../src/recipes/init-pipeline/files.ts";
@@ -67,8 +69,13 @@ describe("mean decomposition", () => {
         database: { type: "mongodb" },
       },
       tooling: {
-        npm: { service: "api", description: "Run npm inside the api service.", cmds: ["npm"] },
-        node: { service: "api", description: "Run Node inside the api service.", cmds: ["node"] },
+        npm: { service: "api", description: "Run npm inside the api service.", cmds: ["npm"], wrapper: true },
+        node: {
+          service: "api",
+          description: "Run Node inside the api service.",
+          cmds: ["node"],
+          wrapper: true,
+        },
       },
     });
   });

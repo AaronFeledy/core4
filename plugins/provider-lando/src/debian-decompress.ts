@@ -1,5 +1,5 @@
 import { gunzipSync, zstdDecompressSync } from "node:zlib";
-import { isErrnoCode } from "@lando/sdk/errors";
+import { isErrnoCode } from "@lando/sdk/errno";
 import { DebianArchiveError } from "./debian-archive.ts";
 
 export interface NftDecompressionOptions {

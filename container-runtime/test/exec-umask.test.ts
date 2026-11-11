@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { DateTime, Effect, Stream } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -11,8 +9,10 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Stream } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import { exec } from "../src/podman/exec-transport.ts";
 import {
   EXEC_UMASK_COMPENSATION,
   EXEC_UMASK_PROBE_COMMAND,
@@ -34,15 +34,14 @@ import {
   shellProbeOutcome,
   wrapExecCommand,
 } from "../src/podman/exec-umask.ts";
-import { exec } from "../src/podman/exec.ts";
 
 const ctx = { providerId: "docker", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("exec-umask-app");
 const serviceName = ServiceName.make("web");
 const otherService = ServiceName.make("db");
-const containerName = "lando-exec-umask-app-web";
-const otherContainer = "lando-exec-umask-app-db";
+const containerName = "lando-exec-umask-app--web";
+const otherContainer = "lando-exec-umask-app--db";
 const createPath = `/containers/${containerName}/exec` as const;
 const otherCreatePath = `/containers/${otherContainer}/exec` as const;
 const metadata = {
@@ -386,10 +385,13 @@ describe("exec umask compensation", () => {
         return Stream.never;
       },
     };
-    const pending = runExec(api, { command: ["id"], signal: controller.signal });
+    const pending = Effect.runPromiseExit(
+      exec(plan, target, { command: ["id"], signal: controller.signal }, { api, ctx }),
+    );
     await started;
     controller.abort();
-    await pending;
+    const exit = await pending;
+    expect(exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND]]);
   });
   test("does not reuse shell availability or warnings after container recreation", async () => {
@@ -541,7 +543,7 @@ describe("exec umask compensation", () => {
       services: { [serviceName]: makeService(serviceName) },
     };
     const otherTarget = { app: otherAppId, service: serviceName };
-    const otherContainer = "lando-exec-umask-app-2-web";
+    const otherContainer = "lando-exec-umask-app-2--web";
     const fake = makeScriptedApi((cmd, container) => {
       if (isUmaskProbeCommand(cmd)) return { stdout: umaskStatus("0000"), exitCode: 0 };
       if (isShellProbeCommand(cmd)) return { exitCode: container === otherContainer ? 127 : 0 };

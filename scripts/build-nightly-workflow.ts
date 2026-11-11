@@ -10,6 +10,7 @@ import { serviceListenerMatrixNightlyJob } from "./_service-listener-matrix-nigh
 import { serviceListenerNightlyJob } from "./_service-listener-nightly.ts";
 
 import {
+  landoManagedPodmanRuntimeDirCommands,
   landoManagedPodmanTeardownCommands,
   landoRootlessPrereqSteps,
   landoRuntimeSocketPath,
@@ -20,10 +21,12 @@ import {
   CI_PLATFORMS,
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
+  LINUX_X64_PRIMARY_RUNNER,
   LINUX_X64_TEST_RUNNER,
+  isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import * as supplyChain from "./runtime-bundle-supply-chain.ts";
-import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
+import { testSelectionCommand } from "./test-selections.ts";
+import { TEST_TIMINGS_FILE } from "./test-shards.ts";
 
 const linuxArm64 = CI_PLATFORMS.find((platform) => platform.id === "linux-arm64");
 if (linuxArm64 === undefined) {
@@ -49,7 +52,7 @@ const regenerateDerivedSourcesStep = `      - name: Regenerate derived sources
 
 const contractTestStep = (platform: string): string => `
       - name: Run file-sync contract matrix (${platform})
-        run: bun test plugins/file-sync-mutagen/test/contract.test.ts
+        run: ${testSelectionCommand("nightly-file-sync")}
         env:
           LANDO_TEST_FILE_SYNC_LIVE: "1"`;
 
@@ -88,7 +91,7 @@ ${linuxGuideE2eProviderSetupSteps}
 
       - name: Run live integration suites
         run: |
-          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${testSelectionCommand("nightly-provider-e2e")}
         env:
           LANDO_CONFIG__default_provider_id: lando
 
@@ -170,8 +173,8 @@ ${landoRootlessPrereqSteps}
       - name: Prepare provider via lando setup against the published manifest
         run: |
           test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
-          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
-          mkdir -p "\$XDG_RUNTIME_DIR"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
           dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
       - name: Verify the published bundle downloaded, verified, and installed
@@ -287,7 +290,7 @@ ${regenerateDerivedSourcesStep}
 ${containerHelperDownloadStep}
 
       - name: Run nightly-tier unit tests
-        run: bun test ${NIGHTLY_TIER_TESTS.join(" ")}`;
+        run: ${testSelectionCommand("nightly-tier")}`;
 
 const refreshTestTimingsJob = `
   refresh-test-timings-linux-x64:
@@ -329,9 +332,35 @@ ${bunSetupStep}
       - name: Verify runtime bundle licenses and source links live
         run: bun run check:runtime-bundle-licenses --live`;
 
+// A fresh runner has no BuildKit cache, so this is an independent rebuild of the archive CI cached.
+const runtimeBundleReproducibilityJob = (hostKey: "linux-x64" | "linux-arm64"): string => {
+  const label = hostKey.replace("linux-", "Linux ");
+  const archive = `lando-runtime-${hostKey}.tar.gz`;
+  return `
+  runtime-bundle-reproducibility-${hostKey}:
+    needs: [runtime-bundle-${hostKey}]
+    runs-on: ${hostKey === "linux-x64" ? LINUX_X64_PRIMARY_RUNNER : linuxArm64.runsOn}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${bunSetupStep}
+
+      - name: Download the ${label} runtime bundle CI assembled for this commit
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-${hostKey}-current
+          path: dist/cache/runtime-bundle-reference
+
+      - name: Rebuild the ${label} runtime bundle on this runner
+        run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --engine docker --out-dir dist/cache/runtime-bundle-rebuild
+
+      - name: Compare the rebuild with the CI archive
+        run: bun run scripts/check-runtime-bundle-reproducibility.ts dist/cache/runtime-bundle-reference/${archive} dist/cache/runtime-bundle-rebuild/${archive}`;
+};
+
 const mysqlArmClientLinuxArm64Job = `
   mysql-arm-client-linux-arm64:
-    needs: [${CONTAINER_HELPER_JOB_ID}]
+    needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-arm64]
     runs-on: ${linuxArm64.runsOn}
     timeout-minutes: 120
     steps:
@@ -343,20 +372,11 @@ ${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
 
-      - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
+      - name: Download current-commit Linux arm64 runtime bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
-
-      - name: Assemble current-commit linux-arm64 runtime bundle
-        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle
 
       - name: Report current-commit ARM runtime bundle fingerprints
         run: |
@@ -366,14 +386,6 @@ ${landoRootlessPrereqSteps}
           SIZE="$(wc -c < "$BUNDLE" | tr -d ' ')"
           echo "linux-arm64 sha256=$SHA size=$SIZE"
           echo "::notice title=runtime-bundle-candidate::linux-arm64 sha256=$SHA size=$SIZE"
-
-      - name: Upload current-commit linux-arm64 runtime bundle
-        uses: actions/upload-artifact@v6
-        with:
-          name: runtime-bundle-linux-arm64-current
-          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
-          if-no-files-found: error
-          retention-days: 1
 
       - name: Build local runtime bundle manifest
         run: |
@@ -422,7 +434,7 @@ ${regenerateDerivedSourcesStep}
           test -n "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_URL:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_SHA256:-}"
-          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
           dist/${linuxArm64.binaryName} setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
@@ -444,8 +456,13 @@ ${regenerateDerivedSourcesStep}
         run: |
           wrapper="$RUNNER_TEMP/lando-managed-podman"
           printf '%s\\n' '#!/bin/sh' 'set -eu' \
+            'LAUNCH_STATE="'"$LANDO_USER_DATA_ROOT"'/runtime/run/podman.pid.launch.json"' \
+            'if test -f "$LAUNCH_STATE"; then' \
+            '  XDG_FROM_LAUNCH="$(jq -r ".env.XDG_RUNTIME_DIR // empty" "$LAUNCH_STATE" 2>/dev/null || true)"' \
+            '  if test -n "$XDG_FROM_LAUNCH"; then export XDG_RUNTIME_DIR="$XDG_FROM_LAUNCH"; fi' \
+            'fi' \
             "export CONTAINERS_CONF=\\"$LANDO_USER_DATA_ROOT/runtime/config/containers.conf\\"" \
-            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\\"\\$@\\\"" \
+            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\"\\$@\\"" \
             > "$wrapper"
           chmod 0755 "$wrapper"
           case "$wrapper" in /*) ;; *) echo "wrapper must be absolute" >&2; exit 1 ;; esac
@@ -454,7 +471,7 @@ ${regenerateDerivedSourcesStep}
           echo "LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper" >> "$GITHUB_ENV"
 
       - name: Run native ARM MySQL client tests
-        run: bun test plugins/service-lando/test/mysql-arm-client.integration.test.ts
+        run: ${testSelectionCommand("mysql-arm-client")}
         env:
           LANDO_CONFIG__default_provider_id: lando
 
@@ -462,6 +479,7 @@ ${regenerateDerivedSourcesStep}
         if: always()
         run: |
           dist/${linuxArm64.binaryName} poweroff || true
+${landoManagedPodmanRuntimeDirCommands}
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           if test -x "$LANDO_PODMAN"; then
@@ -490,16 +508,87 @@ ${regenerateDerivedSourcesStep}
           if-no-files-found: ignore
           retention-days: 7`;
 
+const SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS = ["linux-x64", "darwin-arm64", "windows-x64"] as const;
+
+const sourceStoreAcceptancePlatform = (
+  id: (typeof SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS)[number],
+): CiPlatform => {
+  const platform = CI_PLATFORMS.find((candidate) => candidate.id === id);
+  if (platform === undefined) {
+    throw new Error(`CI_PLATFORMS is missing ${id}`);
+  }
+  // Nightly test jobs prefer the current Linux host; portable builds keep the older glibc baseline.
+  if (id === "linux-x64") {
+    return { ...platform, runsOn: LINUX_X64_TEST_RUNNER };
+  }
+  return platform;
+};
+
+const renderSourceStoreAcceptanceJob = (platform: CiPlatform): string => {
+  const binaryPath = `./dist/${platform.binaryName}`;
+  const gitPrereqSteps = isWindowsCiPlatform(platform)
+    ? `
+      - name: Verify git and git-http-backend
+        shell: bash
+        run: |
+          git --version
+          test -x "$(git --exec-path)/git-http-backend.exe" || test -x "$(git --exec-path)/git-http-backend"
+`
+    : `
+      - name: Verify git
+        run: git --version
+`;
+
+  return `
+  source-store-acceptance-${platform.id}:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
+    runs-on: ${platform.runsOn}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${isolateLandoRootsStep}
+${bunSetupStep}
+
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
+${gitPrereqSteps}
+      - name: Build command registry manifest
+        run: bun run --filter='@lando/core' build:manifest
+
+      - name: Build ${platform.id} binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          bun install --frozen-lockfile --os='*' --cpu='*'
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ${binaryPath} --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ${binaryPath}
+
+      - name: Run source-store acceptance
+        env:
+          LANDO_TEST_COMPILED_CLI: ${binaryPath}
+        run: ${testSelectionCommand("source-store-acceptance")}`;
+};
+
+const sourceStoreAcceptanceJobs = SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS.map((id) =>
+  renderSourceStoreAcceptanceJob(sourceStoreAcceptancePlatform(id)),
+);
+
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
     renderContainerHelperJob(),
-    linuxRuntimeBundleJob,
+    linuxRuntimeBundleJob("linux-x64"),
+    linuxRuntimeBundleJob("linux-arm64"),
+    runtimeBundleReproducibilityJob("linux-x64"),
+    runtimeBundleReproducibilityJob("linux-arm64"),
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
     serviceListenerNightlyJob,
     serviceListenerMatrixNightlyJob,
     publishedManifestSetupJob,
     mysqlArmClientLinuxArm64Job,
+    ...sourceStoreAcceptanceJobs,
     nightlyTierUnitTestsJob,
     refreshTestTimingsJob,
     runtimeBundleManifestLiveJob,

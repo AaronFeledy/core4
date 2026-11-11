@@ -1,9 +1,12 @@
 import { type NormalizedRoute, normalizeRoute } from "@lando/landofile/route-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import {
+  type ConfigLintRuleId,
   DomainName,
+  HostAliasName,
   LANDO_SHARED_CROSS_APP_NETWORK,
   type LandofileShape,
+  RouteHostname,
   type RouteInput,
   ServiceName,
   type ValidationIssue,
@@ -12,11 +15,13 @@ import {
   landoAuthoredNetworkName,
 } from "@lando/sdk/schema";
 import { Iterable, Result, Schema } from "effect";
+import { dnsNameIssues } from "./dns-name-validation.ts";
 import { hostReadinessShellIssues } from "./host-shell-issues.ts";
 import { deferredSiteKey } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
+import { httpsAlternative, httpsRouteCoverageGap } from "./route-coverage.ts";
 
-export type PlannerIssue = ValidationIssue & { readonly rule: string };
+export type PlannerIssue = ValidationIssue & { readonly rule: ConfigLintRuleId };
 
 export const attributePlannerIssue = (landofile: LandofileShape, issue: PlannerIssue): PlannerIssue => {
   const source = getLandofileValueSource(landofile, issue.path);
@@ -42,6 +47,26 @@ export const validateResolvedLandofile = (input: {
     const descendant = `${key.slice(0, -1)},`;
     return Iterable.some(blocked, (site) => path.length === 0 || site === key || site.startsWith(descendant));
   };
+  // Certificate coverage depends only on the hostname and scheme, so another failing or unresolved field doesn't hide it.
+  const certificateCoverageIssue = (
+    entry: RouteInput,
+    result: ReturnType<typeof normalizeRoute>,
+    path: ValidationIssuePath,
+  ): PlannerIssue | undefined => {
+    const shorthand = typeof entry === "string";
+    const hostnamePath = shorthand ? path : [...path, "hostname"];
+    if (isBlocked(hostnamePath) || (!shorthand && isBlocked([...path, "scheme"]))) return undefined;
+    const route = shorthand ? (Result.isSuccess(result) ? result.success : undefined) : entry;
+    if (route === undefined || !Schema.is(RouteHostname)(route.hostname)) return undefined;
+    const gap = httpsRouteCoverageGap(route.hostname, route.scheme);
+    if (gap === undefined) return undefined;
+    return {
+      path: hostnamePath,
+      rule: "landofile.route",
+      message: gap.message,
+      suggestion: `${httpsAlternative(gap)}, or keep this pattern ${shorthand ? "in the object form " : ""}with scheme: http.`,
+    };
+  };
   const checkRoutes = (entries: readonly RouteInput[] | undefined, prefix: ValidationIssuePath) => {
     const normalized: NormalizedRoute[] = [];
     for (const [index, entry] of (entries ?? []).entries()) {
@@ -52,6 +77,8 @@ export const validateResolvedLandofile = (input: {
         file: source?.file ?? input.landofilePath,
         ...(source === undefined ? {} : { provenance: source }),
       });
+      const coverage = certificateCoverageIssue(entry, result, path);
+      if (coverage !== undefined) issues.push(coverage);
       // A blocked value still holds expression text; report only the fields that were evaluated.
       if (Result.isFailure(result)) {
         for (const issue of result.failure)
@@ -122,7 +149,20 @@ export const validateResolvedLandofile = (input: {
       );
     else physicalNames.set(name, key);
   }
+  issues.push(...dnsNameIssues({ landofile, isBlocked, appSlug: input.appSlug }));
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
+    for (const hostname of Object.keys(service.extra_hosts ?? {})) {
+      const path = ["services", name, "extra_hosts", hostname];
+      if (isBlocked(path) || hostname.includes("{{")) continue;
+      if (!Schema.is(HostAliasName)(hostname))
+        issues.push({
+          path,
+          rule: "landofile.hostname",
+          message: `Invalid host alias ${JSON.stringify(hostname)}.`,
+          suggestion:
+            "Use labels of at most 63 letters, digits, hyphens, or underscores, with no leading or trailing hyphen and at most 253 characters total; omit wildcards, schemes, ports, paths, whitespace, and trailing dots.",
+        });
+    }
     for (const key of Object.keys(service.networks ?? {})) {
       if (key !== "default" && !Object.hasOwn(landofile.networks ?? {}, key))
         networkIssue(

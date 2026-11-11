@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { Predicate } from "effect";
-
-import { describe, expect, test } from "bun:test";
 
 import { collectShardedTestFiles } from "../../../scripts/test-shards.ts";
 
@@ -109,6 +108,7 @@ describe("Landofile package seam", () => {
     expect(workspaceDependencies).toEqual([
       ["@lando/paths", "workspace:*"],
       ["@lando/sdk", "workspace:*"],
+      ["@lando/source-acquisition", "workspace:*"],
       ["@lando/state-store", "workspace:*"],
     ]);
     expect(workspaceDevDependencies).toEqual([]);
@@ -171,6 +171,7 @@ describe("Landofile package seam", () => {
         "assertLayerMergeCompleteness",
         "compareKeyPaths",
         "compiledLandofileSource",
+        "composeDispositionFor",
         "composeServiceDispositions",
         "composeTagDispositions",
         "composeTopLevelDispositions",

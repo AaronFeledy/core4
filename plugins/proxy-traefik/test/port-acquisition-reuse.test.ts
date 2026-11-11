@@ -1,12 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, type Exit } from "effect";
-
 import * as sdkErrors from "@lando/sdk/errors";
+import type { ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
+import { Cause, Effect, type Exit } from "effect";
 import { buildTraefikServiceConfig } from "../src/global-services/traefik.ts";
-import { stillOwnPersisted } from "../src/port-acquisition-helpers.ts";
-import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
 import {
   type BindOutcome,
   DEFAULT_HTTPS_TRY_LIST,
@@ -15,16 +12,35 @@ import {
   LOOPBACK_HOST,
   type SchemeProbe,
 } from "../src/port-acquisition.ts";
+import { stillOwnPersisted } from "../src/port-acquisition-helpers.ts";
+import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 import { resolvePublishedRouterBindAddress } from "../src/router-bind-address.ts";
+import {
+  LANDO_SOCKET_PROXY_HOLDER_LABEL,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
+} from "../src/socket-proxy-helper.ts";
+import { SOCKET_UNIT_PATHS } from "../src/socket-proxy-units.ts";
+import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
 const HTTPS_TRY_LIST = DEFAULT_HTTPS_TRY_LIST;
-const paths = { platform: "linux" as const, globalAppRoot: "/lando/global" };
+const USER_DATA_ROOT = "/lando/user-data";
+const paths = { platform: "linux" as const, globalAppRoot: "/lando/global", userDataRoot: USER_DATA_ROOT };
+const UNIT_HEADER = socketProxyUnitHeader(USER_DATA_ROOT);
+const POLKIT_HEADER = socketProxyPolkitHeader(USER_DATA_ROOT);
+const POLKIT_PATH = "/etc/polkit-1/rules.d/10-lando-proxy.rules";
+const OWNED_UNIT_PATHS = [
+  "/etc/systemd/system/lando-proxy-http.socket",
+  "/etc/systemd/system/lando-proxy-http.service",
+  "/etc/systemd/system/lando-proxy-https.socket",
+  "/etc/systemd/system/lando-proxy-https.service",
+] as const;
 
 const bind = (kind: BindOutcome["kind"]): BindOutcome => {
   switch (kind) {
@@ -109,6 +125,7 @@ const seedAcquisition = (
   fields: {
     readonly httpPort: number;
     readonly httpsPort: number;
+    readonly mode?: "direct" | "occupied-hop" | "needs-helper" | "socket-helper";
     readonly fingerprint?: {
       readonly http: readonly number[];
       readonly https: readonly number[];
@@ -120,7 +137,7 @@ const seedAcquisition = (
   files.set(
     acquisitionStateFile(paths),
     `${JSON.stringify({
-      mode: "occupied-hop",
+      mode: fields.mode ?? "occupied-hop",
       httpPort: fields.httpPort,
       httpsPort: fields.httpsPort,
       notices: fields.notices ?? [],
@@ -130,6 +147,29 @@ const seedAcquisition = (
     })}\n`,
   );
 };
+
+const seedOwnedHelperUnits = (
+  files: Map<string, string>,
+  hops: { readonly http: number; readonly https: number } = { http: 8080, https: 8443 },
+) => {
+  files.set(OWNED_UNIT_PATHS[0], `${UNIT_HEADER}\n`);
+  files.set(
+    OWNED_UNIT_PATHS[1],
+    `${UNIT_HEADER}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:${hops.http}\n`,
+  );
+  files.set(OWNED_UNIT_PATHS[2], `${UNIT_HEADER}\n`);
+  files.set(
+    OWNED_UNIT_PATHS[3],
+    `${UNIT_HEADER}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:${hops.https}\n`,
+  );
+  files.set(POLKIT_PATH, `${POLKIT_HEADER}\n`);
+  files.set("/usr/lib/systemd/systemd-socket-proxyd", "ok");
+};
+
+const ownedPublishPorts =
+  (ports: readonly number[]) =>
+  (_service: ReturnType<typeof ServiceName.make>, requested: readonly number[]) =>
+    Effect.succeed(requested.filter((port) => ports.includes(port)));
 
 type ClassifyOverride = {
   readonly http: SchemeProbe;
@@ -143,6 +183,8 @@ const overrideFor = (fields: {
   readonly httpsFirstFree: number;
   readonly httpHolder?: string;
   readonly httpsHolder?: string;
+  readonly httpUnit?: string;
+  readonly httpsUnit?: string;
   readonly httpForward?: ForwardOutcome;
   readonly httpsForward?: ForwardOutcome;
 }): ClassifyOverride => {
@@ -153,11 +195,13 @@ const overrideFor = (fields: {
       bind: httpBinds[80] ?? bind("EADDRINUSE"),
       forward: fields.httpForward ?? forward("failure"),
       ...(fields.httpHolder === undefined ? {} : { holder: fields.httpHolder }),
+      ...(fields.httpUnit === undefined ? {} : { holderSystemdUnit: fields.httpUnit }),
     },
     https: {
       bind: httpsBinds[443] ?? bind("EADDRINUSE"),
       forward: fields.httpsForward ?? forward("failure"),
       ...(fields.httpsHolder === undefined ? {} : { holder: fields.httpsHolder }),
+      ...(fields.httpsUnit === undefined ? {} : { holderSystemdUnit: fields.httpsUnit }),
     },
     httpBinds,
     httpsBinds,
@@ -206,6 +250,7 @@ const makeDeps = (
   probeForward: () => Effect.succeed({ kind: "success" as const }),
   socketProxy: {
     user: "test",
+    userDataRoot: USER_DATA_ROOT,
     hasHostSystemd: () => false,
     exists: () => Effect.succeed(false),
     readText: () => Effect.fail(new Error("missing")),
@@ -231,11 +276,59 @@ const failureTag = (exit: Exit.Exit<unknown, unknown>): string | undefined => {
 };
 
 describe("persistPortAcquisition reuse", () => {
+  test("selects 48080 when provider ownership lookup fails for occupied helper backends", async () => {
+    const store = memoryFiles();
+    seedOwnedHelperUnits(store.files);
+    const calls: string[] = [];
+    const override: ClassifyOverride = {
+      http: { bind: bind("EACCES"), forward: forward("failure"), holder: "rootlessport" },
+      https: { bind: bind("EACCES"), forward: forward("failure"), holder: "rootlessport" },
+      httpBinds: { 80: bind("EACCES"), 38080: bind("EADDRINUSE"), 48080: bind("success") },
+      httpsBinds: { 443: bind("EACCES"), 38443: bind("EADDRINUSE"), 48443: bind("success") },
+    };
+    const dependencies = makeDeps(store, override);
+    const decision = await Effect.runPromise(
+      persistPortAcquisition({
+        ...dependencies,
+        globalApp: {
+          ...dependencies.globalApp,
+          ownedPublishPorts: () => Effect.fail(new Error("provider unavailable")),
+        },
+        socketProxy: {
+          user: "test",
+          userDataRoot: USER_DATA_ROOT,
+          hasHostSystemd: () => true,
+          autoApprove: true,
+          exists: (path) => Effect.succeed(store.files.has(path)),
+          readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
+          processRunner: unusedRunner,
+          privilege: {
+            elevate: (command) =>
+              Effect.sync(() => {
+                calls.push(command[2] ?? "");
+                return { exitCode: 0, stdout: "", stderr: "" };
+              }),
+          },
+          classifyOverride: override,
+          probeForward: () => Effect.succeed({ kind: "success" }),
+        },
+      }),
+    );
+    expect(decision.mode).toBe("socket-helper");
+    expect(readJson(store.files).bindHttpPort).toBe(48080);
+    expect(readJson(store.files).bindHttpsPort).toBe(48443);
+    expect(calls).toHaveLength(1);
+  });
+
   test("Given matching fingerprint and owned binds, When persisting, Then the chosen pair is reused", async () => {
-    // Given: persisted 8080/8443, same lists+bindAddress, EADDRINUSE+ours on both.
     const store = memoryFiles();
     seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
-    const deps = makeDeps(store, own8080Override());
+    const deps = makeDeps(store, own8080Override(), {
+      globalApp: {
+        ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+        ownedPublishPorts: ownedPublishPorts([8080, 8443]),
+      },
+    });
 
     // When: persist runs.
     const decision = await Effect.runPromise(persistPortAcquisition(deps));
@@ -265,7 +358,12 @@ describe("persistPortAcquisition reuse", () => {
       httpsPort: 8443,
       notices: ["stale"],
     });
-    const deps = makeDeps(store, own8080Override());
+    const deps = makeDeps(store, own8080Override(), {
+      globalApp: {
+        ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+        ownedPublishPorts: ownedPublishPorts([8080, 8443]),
+      },
+    });
 
     // When: persist reuses the pair.
     const decision = await Effect.runPromise(persistPortAcquisition(deps));
@@ -470,8 +568,7 @@ describe("ownership without HTTP GET", () => {
     expect(decision.httpsPort).toBe(4443);
   });
 
-  test("Given helper TCP forward on the persisted pair, When persisting, Then the pair is reused", async () => {
-    // Given: fingerprint matches; helper forward owns 8080/8443 even though bind is EADDRINUSE.
+  test("Given provider-owned EADDRINUSE on the persisted pair, When persisting, Then the pair is reused", async () => {
     const store = memoryFiles();
     seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
     const httpBinds = { ...portBinds(HTTP_TRY_LIST, 8000) };
@@ -481,23 +578,26 @@ describe("ownership without HTTP GET", () => {
     const classifyOverride: ClassifyOverride = {
       http: {
         bind: bind("EADDRINUSE"),
-        forward: forward("success"),
-        holder: "docker-proxy",
+        forward: forward("failure"),
+        holder: "rootlessport",
       },
       https: {
         bind: bind("EADDRINUSE"),
-        forward: forward("success"),
-        holder: "docker-proxy",
+        forward: forward("failure"),
+        holder: "rootlessport",
       },
       httpBinds,
       httpsBinds,
     };
-    const deps = makeDeps(store, classifyOverride);
+    const deps = makeDeps(store, classifyOverride, {
+      globalApp: {
+        ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+        ownedPublishPorts: ownedPublishPorts([8080, 8443]),
+      },
+    });
 
-    // When: persist checks ownership via EADDRINUSE+ours or helper TCP forward.
     const decision = await Effect.runPromise(persistPortAcquisition(deps));
 
-    // Then: helper TCP forward counts as owned; 8080 is reused.
     expect(decision.httpPort).toBe(8080);
     expect(decision.httpsPort).toBe(8443);
   });
@@ -562,6 +662,124 @@ describe("fallback notice", () => {
     expect(joined).toContain("nginx");
     expect(joined).toContain("lando info");
     expect(joined.match(/alternate URL is available/gu)).toHaveLength(1);
+  });
+
+  test("Given unchanged persisted occupied-hop pair, When ensure setup runs, Then message.warn is suppressed and notices stay persisted", async () => {
+    const store = memoryFiles();
+    const persistedNotice =
+      "Port 80 is occupied by nginx. Lando is using 8080 instead.\nRun lando info for the alternate URL.";
+    seedAcquisition(store.files, {
+      httpPort: 8080,
+      httpsPort: 8443,
+      mode: "occupied-hop",
+      notices: [persistedNotice],
+    });
+    const bodies: string[] = [];
+    const service = makeTraefikRouterService(
+      makeDeps(store, own8080Override(), {
+        globalApp: {
+          ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+          ownedPublishPorts: ownedPublishPorts([8080, 8443]),
+        },
+        events: {
+          publish: (event: { readonly _tag: string; readonly body?: string }) =>
+            Effect.sync(() => {
+              if (event._tag === "message.warn" && event.body !== undefined) {
+                bodies.push(event.body);
+              }
+            }),
+        },
+      }),
+    );
+
+    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+
+    expect(bodies).toEqual([]);
+    const persisted = readJson(store.files);
+    expect(persisted.mode).toBe("occupied-hop");
+    expect(persisted.httpPort).toBe(8080);
+    expect(persisted.httpsPort).toBe(8443);
+    expect(JSON.stringify(persisted.notices)).toContain("8080");
+    expect(JSON.stringify(persisted.notices)).toContain("lando info");
+  });
+
+  test("Given changed persisted pair, When ensure setup runs, Then message.warn publishes the new fallback", async () => {
+    const store = memoryFiles();
+    seedAcquisition(store.files, {
+      httpPort: 8080,
+      httpsPort: 8443,
+      mode: "occupied-hop",
+      notices: ["stale pair"],
+    });
+    const bodies: string[] = [];
+    const service = makeTraefikRouterService(
+      makeDeps(
+        store,
+        overrideFor({
+          httpFirstFree: 8000,
+          httpsFirstFree: 4443,
+          httpHolder: "nginx",
+          httpsHolder: "nginx",
+        }),
+        {
+          events: {
+            publish: (event: { readonly _tag: string; readonly body?: string }) =>
+              Effect.sync(() => {
+                if (event._tag === "message.warn" && event.body !== undefined) {
+                  bodies.push(event.body);
+                }
+              }),
+          },
+        },
+      ),
+    );
+
+    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+
+    const persisted = readJson(store.files);
+    expect(persisted.httpPort).toBe(8000);
+    expect(persisted.httpsPort).toBe(4443);
+    expect(persisted.mode).toBe("occupied-hop");
+    expect(bodies.length).toBe(1);
+    expect(bodies[0]).toContain("8000");
+    expect(bodies[0]).toContain("lando info");
+    expect(JSON.stringify(persisted.notices)).toContain("8000");
+  });
+
+  test("Given unchanged occupied-hop pair, When configure setup runs, Then message.warn always publishes", async () => {
+    const store = memoryFiles();
+    seedAcquisition(store.files, {
+      httpPort: 8080,
+      httpsPort: 8443,
+      mode: "occupied-hop",
+      notices: ["prior occupancy notice with lando info"],
+    });
+    const bodies: string[] = [];
+    const service = makeTraefikRouterService(
+      makeDeps(store, own8080Override(), {
+        globalApp: {
+          ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+          ownedPublishPorts: ownedPublishPorts([8080, 8443]),
+        },
+        events: {
+          publish: (event: { readonly _tag: string; readonly body?: string }) =>
+            Effect.sync(() => {
+              if (event._tag === "message.warn" && event.body !== undefined) {
+                bodies.push(event.body);
+              }
+            }),
+        },
+      }),
+    );
+
+    await Effect.runPromise(
+      Effect.scoped(service.setup({ defaultDomain: "lndo.site" }, { intent: "configure" })),
+    );
+
+    expect(bodies.length).toBe(1);
+    expect(bodies[0]).toContain("8080");
+    expect(bodies[0]).toContain("lando info");
+    expect(JSON.stringify(readJson(store.files).notices)).toContain("8080");
   });
 });
 
@@ -716,19 +934,19 @@ describe("ownership probe bind address", () => {
 });
 
 describe("stillOwnPersisted hop ports", () => {
-  test("rejects reuse when a socket-helper hop port is held by a foreign process", async () => {
-    // Given: helper still owns 80/443; hop 8080/8443 bind as other-error (not free, not EADDRINUSE+ours).
+  test("rejects reuse when a socket-helper hop port is held without provider ownership", async () => {
     const probeBind = (_host: string, port: number) => {
-      if (port === 80 || port === 443) {
+      if (port === 80 || port === 443 || port === 8080 || port === 8443) {
         return Effect.succeed(bind("EADDRINUSE"));
-      }
-      if (port === 8080 || port === 8443) {
-        return Effect.succeed(bind("other-error"));
       }
       return Effect.succeed(bind("success"));
     };
     const { socketProxy: _socketProxy, ...deps } = makeDeps(memoryFiles(), own8080Override(), {
       probeBind,
+      globalApp: {
+        ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+        ownedPublishPorts: ownedPublishPorts([80, 443]),
+      },
     });
 
     // When: ownership includes persisted bind ports.
@@ -748,37 +966,55 @@ describe("stillOwnPersisted hop ports", () => {
       ),
     );
 
-    // Then: a hop that is neither free nor EADDRINUSE+ours is not owned.
+    expect(owned).toBe(false);
+  });
+
+  test("stillOwnPersisted is false for a foreign holder without provider proof", async () => {
+    const probeBind = (_host: string, port: number) =>
+      port === 8080 || port === 8443 ? Effect.succeed(bind("EADDRINUSE")) : Effect.succeed(bind("success"));
+    const { socketProxy: _socketProxy, ...deps } = makeDeps(memoryFiles(), own8080Override(), {
+      probeBind,
+      globalApp: {
+        ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+        ownedPublishPorts: ownedPublishPorts([]),
+      },
+    });
+
+    const owned = await Effect.runPromise(
+      stillOwnPersisted(
+        deps,
+        {
+          httpPort: 8080,
+          httpsPort: 8443,
+          helperInstalled: false,
+          socketsActive: false,
+        },
+        own8080Override(),
+        LOOPBACK,
+      ),
+    );
+
     expect(owned).toBe(false);
   });
 });
 
 describe("persistPortAcquisition helper-owned preferred ports", () => {
   test("Given helper installed and systemd-socket-proxyd on 80/443, When persisting, Then advertised ports are 80/443", async () => {
-    // Given: leftover occupied-hop state, helper units present, preferred ports held by our forwarder.
     const store = memoryFiles();
     seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
+    seedOwnedHelperUnits(store.files, { http: 8080, https: 8443 });
     const classifyOverride = overrideFor({
       httpFirstFree: 8080,
       httpsFirstFree: 8443,
       httpHolder: "systemd-socket-proxyd",
       httpsHolder: "systemd-socket-proxyd",
+      httpUnit: "lando-proxy-http",
+      httpsUnit: "lando-proxy-https",
     });
-    const unitMarker = "# lando-proxy-socket-helper";
-    store.files.set("/etc/systemd/system/lando-proxy-http.socket", `${unitMarker}\n`);
-    store.files.set("/etc/systemd/system/lando-proxy-https.socket", `${unitMarker}\n`);
-    store.files.set(
-      "/etc/systemd/system/lando-proxy-http.service",
-      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`,
-    );
-    store.files.set(
-      "/etc/systemd/system/lando-proxy-https.service",
-      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8443\n`,
-    );
-    store.files.set("/usr/lib/systemd/systemd-socket-proxyd", "ok");
     const deps = makeDeps(store, classifyOverride, {
       socketProxy: {
         user: "test",
+        userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
         exists: (path: string) => Effect.succeed(store.files.has(path)),
         readText: (path: string) =>
@@ -801,30 +1037,95 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
     expect(readJson(store.files).bindHttpsPort).toBe(8443);
   });
 
+  test.each([false, true])(
+    "probes custom unit hop targets before fast reuse (provider owned: %s)",
+    async (owned) => {
+      const store = memoryFiles();
+      seedOwnedHelperUnits(store.files, { http: 60900, https: 60943 });
+      const override = overrideFor({
+        httpFirstFree: 8080,
+        httpsFirstFree: 8443,
+        httpHolder: "systemd-socket-",
+        httpsHolder: "systemd-socket-",
+        httpUnit: "lando-proxy-http",
+        httpsUnit: "lando-proxy-https",
+      });
+      const dependencies = makeDeps(store, override);
+      const probed: number[] = [];
+      const commands: string[][] = [];
+      const decision = await Effect.runPromise(
+        persistPortAcquisition({
+          ...dependencies,
+          probeBind: (_host, port) =>
+            Effect.sync(() => {
+              probed.push(port);
+              return bind("EADDRINUSE");
+            }),
+          globalApp: {
+            ...dependencies.globalApp,
+            ownedPublishPorts: ownedPublishPorts(owned ? [60900, 60943] : []),
+          },
+          socketProxy: {
+            user: "test",
+            userDataRoot: USER_DATA_ROOT,
+            hasHostSystemd: () => true,
+            exists: (path) => Effect.succeed(store.files.has(path)),
+            readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
+            processRunner: {
+              ...unusedRunner,
+              run: (input) =>
+                Effect.sync(() => {
+                  commands.push([...input.args]);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            },
+            privilege: {
+              elevate: (command) =>
+                Effect.sync(() => {
+                  commands.push([...command]);
+                  for (const match of (command[2] ?? "").matchAll(
+                    /cat > (\S+) <<'LANDO_PROXY_EOF'\n([\s\S]*?)LANDO_PROXY_EOF/gu,
+                  )) {
+                    if (match[1] !== undefined && match[2] !== undefined) store.files.set(match[1], match[2]);
+                  }
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            },
+            classifyOverride: override,
+            probeForward: () => Effect.succeed({ kind: "success" }),
+          },
+        }),
+      );
+      expect(probed).toEqual([60900, 60943]);
+      expect(decision.mode).toBe("socket-helper");
+      expect(readJson(store.files).bindHttpPort).toBe(owned ? 60900 : 38080);
+      expect(store.files.get(OWNED_UNIT_PATHS[1])).toContain(`127.0.0.1:${owned ? 60900 : 38080}`);
+      expect(commands.flatMap(socketProxyControlCommands).map((command) => command[0])).toEqual(
+        owned ? [] : ["stop", "start"],
+      );
+    },
+  );
+
   test("Given helper backends occupied by Traefik, When persisting, Then bind ports stay on unit hop targets", async () => {
-    // Given: helper units forward to 8080/8443, those ports are busy (running Traefik), next free is 8000/4443.
     const store = memoryFiles();
     seedAcquisition(store.files, { httpPort: 80, httpsPort: 443 });
+    seedOwnedHelperUnits(store.files, { http: 8080, https: 8443 });
     const classifyOverride = overrideFor({
       httpFirstFree: 8000,
       httpsFirstFree: 4443,
       httpHolder: "systemd-socket-",
       httpsHolder: "systemd-socket-",
+      httpUnit: "lando-proxy-http",
+      httpsUnit: "lando-proxy-https",
     });
-    const unitMarker = "# lando-proxy-socket-helper";
-    store.files.set("/etc/systemd/system/lando-proxy-http.socket", `${unitMarker}\n`);
-    store.files.set("/etc/systemd/system/lando-proxy-https.socket", `${unitMarker}\n`);
-    store.files.set(
-      "/etc/systemd/system/lando-proxy-http.service",
-      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`,
-    );
-    store.files.set(
-      "/etc/systemd/system/lando-proxy-https.service",
-      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8443\n`,
-    );
     const deps = makeDeps(store, classifyOverride, {
+      globalApp: {
+        ensureRunning: () => Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]),
+        ownedPublishPorts: ownedPublishPorts([8080, 8443]),
+      },
       socketProxy: {
         user: "test",
+        userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
         exists: (path: string) => Effect.succeed(store.files.has(path)),
         readText: (path: string) =>
@@ -846,31 +1147,141 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
     expect(readJson(store.files).bindHttpsPort).toBe(8443);
   });
 
-  test("Given truncated systemd-socket- comm on 80/443, When persisting, Then advertised ports are 80/443", async () => {
-    // Given: /proc/comm truncates systemd-socket-proxyd to systemd-socket-.
+  test.each(["refused", "exhausted"] as const)(
+    "stops stale owned forwarding before falling back when helper repair is %s",
+    async (reason) => {
+      const store = memoryFiles();
+      seedOwnedHelperUnits(store.files, { http: 60900, https: 60943 });
+      const override = overrideFor({
+        httpFirstFree: 8080,
+        httpsFirstFree: 8443,
+        httpHolder: "systemd-socket-",
+        httpsHolder: "systemd-socket-",
+        httpUnit: "lando-proxy-http",
+        httpsUnit: "lando-proxy-https",
+      });
+      const unavailable = {
+        ...override,
+        httpBinds: {
+          ...override.httpBinds,
+          ...Object.fromEntries([38080, 48080, 58080].map((port) => [port, bind("EADDRINUSE")])),
+        },
+        httpsBinds: {
+          ...override.httpsBinds,
+          ...Object.fromEntries([38443, 48443, 58443].map((port) => [port, bind("EADDRINUSE")])),
+        },
+      };
+      const selected = reason === "exhausted" ? unavailable : override;
+      const dependencies = makeDeps(store, selected);
+      const controlled: (readonly string[])[] = [];
+      const elevations: (readonly string[])[] = [];
+      const decision = await Effect.runPromise(
+        persistPortAcquisition({
+          ...dependencies,
+          probeBind: () => Effect.succeed(bind("EADDRINUSE")),
+          socketProxy: {
+            user: "test",
+            userDataRoot: USER_DATA_ROOT,
+            hasHostSystemd: () => true,
+            exists: (path) => Effect.succeed(store.files.has(path)),
+            readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
+            processRunner: {
+              ...unusedRunner,
+              run: (input) =>
+                Effect.sync(() => {
+                  controlled.push(input.args);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            },
+            privilege: {
+              elevate: (command) =>
+                Effect.sync(() => {
+                  elevations.push(command);
+                  return { exitCode: 1, stdout: "", stderr: "refused" };
+                }),
+            },
+            classifyOverride: selected,
+            probeForward: () => Effect.succeed({ kind: "failure" }),
+          },
+        }),
+      );
+      expect(decision.mode).toBe("occupied-hop");
+      expect(controlled.flatMap(socketProxyControlCommands)).toEqual([
+        [
+          "stop",
+          "lando-proxy-http.socket",
+          "lando-proxy-http.service",
+          "lando-proxy-https.socket",
+          "lando-proxy-https.service",
+        ],
+      ]);
+      expect(elevations).toHaveLength(reason === "refused" ? 1 : 0);
+      expect(readJson(store.files).helperInstalled).toBe(true);
+      expect(readJson(store.files).socketsActive).toBe(false);
+    },
+  );
+
+  test("fails closed when an owned helper with foreign hops cannot be stopped", async () => {
+    const store = memoryFiles();
+    seedOwnedHelperUnits(store.files, { http: 60900, https: 60943 });
+    const override = overrideFor({
+      httpFirstFree: 8080,
+      httpsFirstFree: 8443,
+      httpHolder: "systemd-socket-",
+      httpsHolder: "systemd-socket-",
+      httpUnit: "lando-proxy-http",
+      httpsUnit: "lando-proxy-https",
+    });
+    const dependencies = makeDeps(store, override);
+    const elevations: (readonly string[])[] = [];
+    const exit = await Effect.runPromiseExit(
+      persistPortAcquisition({
+        ...dependencies,
+        probeBind: () => Effect.succeed(bind("EADDRINUSE")),
+        socketProxy: {
+          user: "test",
+          userDataRoot: USER_DATA_ROOT,
+          hasHostSystemd: () => true,
+          exists: (path) => Effect.succeed(store.files.has(path)),
+          readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
+          processRunner: {
+            ...unusedRunner,
+            run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "refused" }),
+          },
+          privilege: {
+            elevate: (command) =>
+              Effect.sync(() => {
+                elevations.push(command);
+                return { exitCode: 1, stdout: "", stderr: "refused" };
+              }),
+          },
+          classifyOverride: override,
+          probeForward: () => Effect.succeed({ kind: "failure" }),
+        },
+      }),
+    );
+    expect(failureTag(exit)).toBe("ProxyError");
+    expect(elevations).toHaveLength(1);
+    expect(elevations.flatMap(socketProxyControlCommands).map((command) => command[0])).toEqual(["stop"]);
+    expect(store.files.has(acquisitionStateFile(paths))).toBe(false);
+  });
+
+  test("Given truncated systemd-socket- comm with lando-proxy units on 80/443, When persisting, Then advertised ports are 80/443", async () => {
     const store = memoryFiles();
     seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
+    seedOwnedHelperUnits(store.files, { http: 8080, https: 8443 });
     const classifyOverride = overrideFor({
       httpFirstFree: 8080,
       httpsFirstFree: 8443,
       httpHolder: "systemd-socket-",
       httpsHolder: "systemd-socket-",
+      httpUnit: "lando-proxy-http",
+      httpsUnit: "lando-proxy-https",
     });
-    const unitMarker = "# lando-proxy-socket-helper";
-    store.files.set("/etc/systemd/system/lando-proxy-http.socket", `${unitMarker}\n`);
-    store.files.set("/etc/systemd/system/lando-proxy-https.socket", `${unitMarker}\n`);
-    store.files.set(
-      "/etc/systemd/system/lando-proxy-http.service",
-      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080\n`,
-    );
-    store.files.set(
-      "/etc/systemd/system/lando-proxy-https.service",
-      `${unitMarker}\nExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8443\n`,
-    );
-    store.files.set("/usr/lib/systemd/systemd-socket-proxyd", "ok");
     const deps = makeDeps(store, classifyOverride, {
       socketProxy: {
         user: "test",
+        userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
         exists: (path: string) => Effect.succeed(store.files.has(path)),
         readText: (path: string) =>
@@ -913,6 +1324,27 @@ describe("persistPortAcquisition helperOwnsPreferred", () => {
     // Then: foreign rootlessport is occupied-hop, not our helper.
     expect(decision.mode).not.toBe("socket-helper");
   });
+
+  test("Given stale helperInstalled without owned units, When preferred holders look like the helper, Then do not claim socket-helper", async () => {
+    const store = memoryFiles();
+    seedAcquisition(store.files, { httpPort: 8080, httpsPort: 8443 });
+    const raw = store.files.get(acquisitionStateFile(paths));
+    const parsed = JSON.parse(raw ?? "{}") as Record<string, unknown>;
+    parsed.helperInstalled = true;
+    store.files.set(acquisitionStateFile(paths), `${JSON.stringify(parsed)}\n`);
+    const classifyOverride = overrideFor({
+      httpFirstFree: 8080,
+      httpsFirstFree: 8443,
+      httpHolder: "systemd-socket-proxyd",
+      httpsHolder: "systemd-socket-proxyd",
+      httpUnit: "lando-proxy-http",
+      httpsUnit: "lando-proxy-https",
+    });
+    const deps = makeDeps(store, classifyOverride);
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+    expect(decision.mode).not.toBe("socket-helper");
+    expect(readJson(store.files).helperInstalled).toBe(false);
+  });
 });
 
 describe("persistPortAcquisition EACCES helper install", () => {
@@ -935,6 +1367,7 @@ describe("persistPortAcquisition EACCES helper install", () => {
     const deps = makeDeps(store, classifyOverride, {
       socketProxy: {
         user: "test",
+        userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
         exists: (path: string) => Effect.succeed(store.files.has(path)),
         readText: (path: string) =>
@@ -955,5 +1388,117 @@ describe("persistPortAcquisition EACCES helper install", () => {
     expect(decision.httpPort).toBe(80);
     expect(readJson(store.files).bindHttpPort).toBe(38080);
     expect(readJson(store.files).bindHttpsPort).toBe(38443);
+  });
+
+  test.each(["other-root", "missing-root", "unattributed", "mixed"] as const)(
+    "foreign helper %s falls back without host mutations",
+    async (reason) => {
+      const store = memoryFiles();
+      const otherRoot = "/other/lando-root";
+      const foreignHeader = socketProxyUnitHeader(otherRoot);
+      const foreignPolkit = socketProxyPolkitHeader(otherRoot);
+      for (const path of OWNED_UNIT_PATHS) {
+        store.files.set(path, `${foreignHeader}\n`);
+      }
+      store.files.set(POLKIT_PATH, `${foreignPolkit}\n`);
+      if (reason === "other-root") store.files.set(otherRoot, "dir");
+      if (reason === "unattributed") {
+        for (const path of OWNED_UNIT_PATHS) store.files.set(path, "# lando-proxy-socket-helper\n");
+        store.files.set(POLKIT_PATH, "// lando-proxy-socket-helper\n");
+      }
+      if (reason === "mixed") store.files.set(OWNED_UNIT_PATHS[0], `${UNIT_HEADER}\n`);
+      store.files.set("/usr/lib/systemd/systemd-socket-proxyd", "ok");
+      const classifyOverride = {
+        http: { bind: bind("EACCES"), forward: forward("failure") },
+        https: { bind: bind("EACCES"), forward: forward("failure") },
+        httpBinds: {
+          80: bind("EACCES"),
+          8080: bind("success"),
+        },
+        httpsBinds: {
+          443: bind("EACCES"),
+          8443: bind("success"),
+        },
+      };
+      const mutations: string[] = [];
+      const deps = makeDeps(store, classifyOverride, {
+        socketProxy: {
+          user: "test",
+          userDataRoot: USER_DATA_ROOT,
+          hasHostSystemd: () => true,
+          exists: (path: string) => Effect.succeed(store.files.has(path)),
+          readText: (path: string) =>
+            store.files.has(path)
+              ? Effect.succeed(store.files.get(path) ?? "")
+              : Effect.fail(new Error(path)),
+          processRunner: {
+            ...unusedRunner,
+            run: () =>
+              Effect.sync(() => {
+                mutations.push("process");
+                return { exitCode: 0, stdout: "", stderr: "" };
+              }),
+          },
+          privilege: {
+            elevate: () =>
+              Effect.sync(() => {
+                mutations.push("elevate");
+                return { exitCode: 0, stdout: "", stderr: "" };
+              }),
+          },
+          classifyOverride,
+          probeForward: () => Effect.succeed({ kind: "success" as const }),
+          autoApprove: true,
+        },
+      });
+
+      const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+      expect(decision.mode).toBe("occupied-hop");
+      expect(decision.notices.join(" ")).not.toContain("sudo systemctl");
+      if (reason === "other-root") {
+        expect(decision.notices.join(" ")).toContain(otherRoot);
+      } else {
+        expect(decision.notices.join(" ").length).toBeGreaterThan(0);
+      }
+      expect(readJson(store.files).helperInstalled).toBe(false);
+      expect(mutations).toEqual([]);
+    },
+  );
+});
+
+describe("fresh acquisition holder labeling", () => {
+  test("names an older Lando build's socket proxy as the holder when the pair is acquired fresh", async () => {
+    const units = new Map<string, string>(
+      SOCKET_UNIT_PATHS.map((path) => [path, "# lando-proxy-socket-helper\n[Unit]\n"]),
+    );
+    const base = makeDeps(
+      memoryFiles(),
+      overrideFor({
+        httpFirstFree: 8080,
+        httpsFirstFree: 8443,
+        httpsHolder: "systemd-socket-",
+        httpsUnit: "lando-proxy-https",
+      }),
+    );
+    const deps: TraefikProxyDependencies = {
+      ...base,
+      ...(base.socketProxy === undefined
+        ? {}
+        : {
+            socketProxy: {
+              ...base.socketProxy,
+              exists: (path: string) => Effect.succeed(units.has(path)),
+              readText: (path: string) => {
+                const text = units.get(path);
+                return text === undefined ? Effect.fail(new Error(path)) : Effect.succeed(text);
+              },
+            },
+          }),
+    };
+
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+    expect(decision.notices.join("\n")).toContain(LANDO_SOCKET_PROXY_HOLDER_LABEL);
   });
 });

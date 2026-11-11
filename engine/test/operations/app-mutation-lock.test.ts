@@ -2,14 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { AppLockTimeoutError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { EventService, PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import {
   APP_LOCK_HOLDERS_ENV,
@@ -317,7 +315,7 @@ describe("per-app mutation lock", () => {
           let entered = false;
           const started=Date.now();
           const result=await Effect.runPromise(withAppMutationLock(${JSON.stringify(app)},Effect.sync(()=>{entered=true})).pipe(Effect.result,Effect.provide(layer)));
-          const independent=await Effect.runPromise(withAppMutationLock({id:"independent",root:${JSON.stringify(app.root)}},Effect.succeed("own lease")).pipe(Effect.provide(layer)));
+          const independent=await Effect.runPromise(withAppMutationLock({kind:"scratch",id:"independent",root:${JSON.stringify(app.root)}},Effect.succeed("own lease")).pipe(Effect.provide(layer)));
           console.log(JSON.stringify({result,entered,elapsed:Date.now()-started,independent}));
         `,
                 ],

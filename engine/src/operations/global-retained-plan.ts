@@ -1,338 +1,52 @@
-import { canonicalJson } from "@lando/sdk/digest";
+import { ownsServiceContainer } from "@lando/container-runtime/native-ownership";
 import { GlobalAppError } from "@lando/sdk/errors";
-import type { AppPlan, NetworkingPlan, ServicePlan } from "@lando/sdk/schema";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
-import { Effect } from "effect";
-
+import { MessageInfoEvent } from "@lando/sdk/events";
+import { type AppPlan, isActiveRunStatus, isIdleRunStatus } from "@lando/sdk/schema";
+import {
+  EventService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  type ServiceRuntimeInfo,
+} from "@lando/sdk/services";
+import { DateTime, Effect, Option } from "effect";
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import { readGlobalResolution } from "../global-app/resolution.ts";
-import { makeRouteAccumulator } from "../planner/route-identity.ts";
+import { prepareProvider } from "../providers/prepared.ts";
+import { composeGlobalRecordedPlan } from "./global-recorded-plan.ts";
+import { selectGlobalPlan } from "./global-selected-plan.ts";
+import { globalSiblingConflicts } from "./global-sibling-conflicts.ts";
 
-const conflict = (message: string) =>
-  new GlobalAppError({
-    operation: "start",
-    message,
-    remediation:
-      "Include the affected sibling in the start selection, or make the shared resource definitions consistent before retrying.",
-  });
+export { advanceGlobalRecordedPlan } from "./global-recorded-plan.ts";
 
-const retainedNetworking = Effect.fn("GlobalApp.retainNetworking")(function* (
-  desired: NetworkingPlan | undefined,
-  prior: NetworkingPlan | undefined,
-  retained: ReadonlySet<string>,
-) {
-  if (retained.size === 0) return desired;
-  if (desired === undefined && prior === undefined) return undefined;
-  if (desired === undefined || prior === undefined)
-    return yield* Effect.fail(
-      conflict(
-        "Selected global startup cannot replace unknown networking metadata while an unselected sibling still exists.",
-      ),
-    );
-  const bridge = (network: NetworkingPlan) =>
-    network.perAppBridge === null
-      ? null
-      : { name: network.perAppBridge.name, driver: network.perAppBridge.driver };
-  if (
-    canonicalJson(bridge(desired)) !== canonicalJson(bridge(prior)) ||
-    desired.sharedNetworkMembership?.name !== prior.sharedNetworkMembership?.name
-  )
-    return yield* Effect.fail(
-      conflict("Selected global startup changes a network still used by an unselected sibling."),
-    );
-  const aliases = <T>(current: Readonly<Record<string, T>>, previous: Readonly<Record<string, T>>) =>
-    Object.fromEntries([
-      ...Object.entries(current).filter(([id]) => !retained.has(id)),
-      ...Object.entries(previous).filter(([id]) => retained.has(id)),
-    ]);
-  const authored = new Map(
-    (desired.authoredNetworks ?? []).map((network) => [
-      network.name,
-      {
-        ...network,
-        members: Object.fromEntries(Object.entries(network.members).filter(([id]) => !retained.has(id))),
-      },
-    ]),
-  );
-  for (const network of prior.authoredNetworks ?? []) {
-    const members = Object.fromEntries(Object.entries(network.members).filter(([id]) => retained.has(id)));
-    if (Object.keys(members).length === 0) continue;
-    const current = authored.get(network.name);
-    if (
-      current !== undefined &&
-      canonicalJson({ ...current, members: undefined }) !== canonicalJson({ ...network, members: undefined })
-    )
-      return yield* Effect.fail(
-        conflict(`Global network ${network.name} has incompatible definitions for an unselected sibling.`),
-      );
-    authored.set(network.name, { ...network, members: { ...current?.members, ...members } });
-  }
-  return {
-    perAppBridge:
-      desired.perAppBridge === null
-        ? null
-        : {
-            ...desired.perAppBridge,
-            aliases: aliases(desired.perAppBridge.aliases ?? {}, prior.perAppBridge?.aliases ?? {}),
-          },
-    ...(desired.sharedNetworkMembership === undefined
-      ? {}
-      : {
-          sharedNetworkMembership: {
-            ...desired.sharedNetworkMembership,
-            aliases: aliases(
-              desired.sharedNetworkMembership.aliases,
-              prior.sharedNetworkMembership?.aliases ?? {},
-            ),
-          },
-        }),
-    authoredNetworks: [...authored.values()].filter((network) => Object.keys(network.members).length > 0),
-  } satisfies NetworkingPlan;
-});
+export interface GlobalSiblingRemoval {
+  readonly observation: ServiceRuntimeInfo;
+  readonly binding: readonly string[];
+}
 
-/** Route references belong to the recorded route table, even when services were built separately. */
-const remapGlobalRouteReferences = Effect.fn("GlobalApp.remapRouteReferences")(function* (
-  services: AppPlan["services"],
-  routeRefs: ReadonlyArray<ServicePlan["routes"]>,
-) {
-  return Object.fromEntries(
-    yield* Effect.forEach(Object.entries(services), ([id, service]) =>
-      Effect.gen(function* () {
-        const routes: Array<ServicePlan["routes"][number]> = [];
-        for (const ref of service.routes) {
-          const mapped = routeRefs[ref.index];
-          if (mapped === undefined || mapped.length === 0)
-            return yield* Effect.fail(
-              conflict(`Global service ${id} has a route reference absent from the recorded route table.`),
-            );
-          routes.push(...mapped);
-        }
-        return [id, { ...service, routes }] as const;
-      }),
-    ),
-  );
-});
-
-const composeGlobalRecordedPlan = Effect.fn("GlobalApp.composeRecordedPlan")(function* (
+export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(function* (
   desired: AppPlan,
-  prior: AppPlan,
-  retained: ReadonlySet<string>,
-  active: ReadonlySet<string>,
-  disabled: ReadonlySet<string>,
+  selectedProvider: RuntimeProviderShape,
+  request: {
+    readonly selectedIds: readonly string[];
+    readonly close: (ids: ReadonlySet<string>) => Set<string>;
+  },
 ) {
-  const accumulator = makeRouteAccumulator();
-  const routeRefs: Array<ServicePlan["routes"]> = desired.routes.map(() => []);
-  const priorIndexes = new Map<number, ReadonlyArray<number>>();
-  for (const [index, route] of desired.routes.entries()) {
-    if (!Object.hasOwn(desired.services, route.service) || retained.has(String(route.service))) continue;
-    const refs = yield* accumulator
-      .add(route, { key: `selected global route ${route.hostname}` })
-      .pipe(Effect.mapError((cause) => conflict(cause.message)));
-    routeRefs[index] = refs;
-  }
-  for (const [index, route] of prior.routes.entries()) {
-    const id = String(route.service);
-    if (!retained.has(id) || !active.has(id) || disabled.has(id)) continue;
-    const refs = yield* accumulator
-      .add(route, { key: `retained global route for ${id}` })
-      .pipe(Effect.mapError((cause) => conflict(cause.message)));
-    priorIndexes.set(
-      index,
-      refs.map((ref) => ref.index),
-    );
-  }
-  const currentServices = yield* remapGlobalRouteReferences(
-    Object.fromEntries(Object.entries(desired.services).filter(([id]) => !retained.has(id))),
-    routeRefs,
-  );
-  const services: AppPlan["services"] = {
-    ...currentServices,
-    ...Object.fromEntries(
-      Object.entries(prior.services)
-        .filter(([id]) => retained.has(id))
-        .map(([id, service]) => [
-          id,
-          {
-            ...service,
-            routes: service.routes.flatMap((ref) =>
-              (priorIndexes.get(ref.index) ?? []).map((index) => ({ index })),
-            ),
-          },
-        ]),
-    ),
-  };
-  const stores = new Map(desired.stores.map((store) => [store.name, store]));
-  const retainedStores = new Set(
-    Object.values(prior.services)
-      .filter((service) => retained.has(String(service.name)))
-      .flatMap((service) =>
-        service.mounts.flatMap((mount) => (mount.type === "volume" ? [mount.store] : [])),
-      ),
-  );
-  for (const store of prior.stores) {
-    if (!retainedStores.has(store.name)) continue;
-    const current = stores.get(store.name);
-    if (current !== undefined && canonicalJson(current) !== canonicalJson(store))
-      return yield* Effect.fail(
-        conflict(
-          `Global data store ${store.name} has incompatible definitions while an unselected sibling still uses it.`,
-        ),
-      );
-    stores.set(store.name, store);
-  }
-  const networking = yield* retainedNetworking(desired.networking, prior.networking, retained);
-  const plan: AppPlan = {
-    ...desired,
-    services,
-    routes: accumulator.routes,
-    stores: [...stores.values()],
-    ...(networking === undefined ? {} : { networking }),
-    fileSync: [
-      ...desired.fileSync.filter((entry) => !retained.has(String(entry.session.service))),
-      ...prior.fileSync.filter((entry) => retained.has(String(entry.session.service))),
-    ],
-    ...(desired.fileSyncPolicy === undefined
-      ? {}
-      : {
-          fileSyncPolicy: {
-            ...desired.fileSyncPolicy,
-            services: {
-              ...Object.fromEntries(
-                Object.entries(desired.fileSyncPolicy.services).filter(([id]) => !retained.has(id)),
-              ),
-              ...Object.fromEntries(
-                Object.entries(prior.fileSyncPolicy?.services ?? {}).filter(([id]) => retained.has(id)),
-              ),
-            },
-          },
-        }),
-  };
-  return plan;
-});
-
-const selectPlan = (plan: AppPlan, ids: ReadonlySet<string>): AppPlan => {
-  const services = Object.fromEntries(Object.entries(plan.services).filter(([id]) => ids.has(id)));
-  const stores = new Set(
-    Object.values(services).flatMap((service) =>
-      service.mounts.flatMap((mount) => (mount.type === "volume" ? [mount.store] : [])),
-    ),
-  );
-  const networking = plan.networking;
-  return {
-    ...plan,
-    services,
-    stores: plan.stores.filter((store) => stores.has(store.name)),
-    fileSync: plan.fileSync.filter((entry) => ids.has(String(entry.session.service))),
-    ...(plan.fileSyncPolicy === undefined
-      ? {}
-      : {
-          fileSyncPolicy: {
-            ...plan.fileSyncPolicy,
-            services: Object.fromEntries(
-              Object.entries(plan.fileSyncPolicy.services).filter(([id]) => ids.has(id)),
-            ),
-          },
-        }),
-    ...(networking === undefined
-      ? {}
-      : {
-          networking: {
-            ...networking,
-            perAppBridge:
-              networking.perAppBridge === null
-                ? null
-                : {
-                    ...networking.perAppBridge,
-                    aliases: Object.fromEntries(
-                      Object.entries(networking.perAppBridge.aliases ?? {}).filter(([id]) => ids.has(id)),
-                    ),
-                  },
-            ...(networking.sharedNetworkMembership === undefined
-              ? {}
-              : {
-                  sharedNetworkMembership: {
-                    ...networking.sharedNetworkMembership,
-                    aliases: Object.fromEntries(
-                      Object.entries(networking.sharedNetworkMembership.aliases).filter(([id]) =>
-                        ids.has(id),
-                      ),
-                    ),
-                  },
-                }),
-            authoredNetworks: (networking.authoredNetworks ?? [])
-              .map((network) => ({
-                ...network,
-                members: Object.fromEntries(Object.entries(network.members).filter(([id]) => ids.has(id))),
-              }))
-              .filter((network) => Object.keys(network.members).length > 0),
-          },
-        }),
-  };
-};
-
-/** Advance metadata only for the group the provider is about to apply. */
-export const advanceGlobalRecordedPlan = Effect.fn("GlobalApp.advanceRecordedPlan")(function* (
-  recorded: AppPlan,
-  built: AppPlan,
-  disabledIds: ReadonlyArray<string>,
-) {
-  const selected = new Set(Object.keys(built.services));
-  const retained = new Set(Object.keys(recorded.services).filter((id) => !selected.has(id)));
-  return yield* composeGlobalRecordedPlan(
-    selectPlan(built, selected),
-    recorded,
-    retained,
-    new Set(recorded.routes.map((route) => String(route.service))),
-    new Set(disabledIds),
-  );
-});
-
-/** Preserve observed siblings in metadata; desired configuration alone controls execution. */
-export const retainGlobalPlanSiblings = Effect.fn("GlobalApp.retainPlanSiblings")(function* (
-  desired: AppPlan,
-  provider: RuntimeProviderShape,
-  selectedIds: ReadonlyArray<string>,
-) {
+  const registry = yield* RuntimeProviderRegistry;
+  yield* registry.assertAppliedStateReadable?.({ id: desired.id, provider: desired.provider }) ?? Effect.void;
   const { plan: prior } = yield* resolveGlobalPlacement();
   if (prior !== undefined && (prior.provider !== desired.provider || prior.root !== desired.root))
     return yield* Effect.fail(
-      conflict("Prior global applied state does not match selected startup placement."),
+      new GlobalAppError({
+        operation: "start",
+        message: `Global services ${request.selectedIds.join(", ")} have conflicting applied placement at ${prior.root} on ${prior.provider}.`,
+        remediation:
+          "Run `lando global:restart` to recreate every global service from its current definition.",
+      }),
     );
-  if (provider.ensureReady !== undefined) yield* provider.ensureReady;
-  const observed = yield* provider.list({ app: desired.id, includeUnplanned: true });
-  const selected = new Set(selectedIds);
-  const priorNames = new Set(Object.keys(prior?.services ?? {}));
-  const activeStatus = (status: string) => ["running", "paused", "restarting"].includes(status);
-  if (
-    observed.some(
-      (service) =>
-        service.app === desired.id &&
-        !selected.has(String(service.service)) &&
-        activeStatus(service.status) &&
-        (service.appRoot === undefined ||
-          (service.appRoot === desired.root &&
-            (service.providerId !== desired.provider ||
-              service.containerId === undefined ||
-              !priorNames.has(String(service.service))))),
-    )
-  )
-    return yield* Effect.fail(
-      conflict(
-        "An active unselected global service lacks matching applied ownership metadata; restore its state before selected startup.",
-      ),
-    );
-  const owned = observed.filter(
+  const provider = yield* prepareProvider(selectedProvider);
+  const observed = (yield* provider.list({ app: desired.id, includeUnplanned: true })).filter(
     (service) =>
-      service.app === desired.id &&
-      service.appRoot === desired.root &&
-      service.providerId === desired.provider &&
-      service.containerId !== undefined &&
-      priorNames.has(String(service.service)),
-  );
-  const observedIds = new Set(owned.map((service) => String(service.service)));
-  const retained = new Set([...observedIds].filter((id) => !selected.has(id)));
-  const active = new Set(
-    owned.filter((service) => activeStatus(service.status)).map((service) => String(service.service)),
+      service.app === desired.id && (service.appRoot === undefined || service.appRoot === desired.root),
   );
   const resolution = yield* readGlobalResolution({
     providerId: desired.provider,
@@ -340,18 +54,134 @@ export const retainGlobalPlanSiblings = Effect.fn("GlobalApp.retainPlanSiblings"
   });
   const disabledIds = resolution.entries.filter((entry) => !entry.enabled).map((entry) => entry.id);
   const disabled = new Set(disabledIds);
-  const base = prior ?? desired;
-  const empty = { ...selectPlan(base, new Set()), routes: [] };
+  let selected = request.close(new Set(request.selectedIds));
+  const initial = new Set(selected);
+  const candidates = new Set(observed);
+  const bindings: string[][] = [];
+  const removals: GlobalSiblingRemoval[] = [];
+  const joinNotices = new Map<string, string>();
+  const removalNotices = new Map<string, string>();
+  let changed = true;
+  let failure: GlobalAppError | undefined;
+  while (changed) {
+    changed = false;
+    failure = undefined;
+    for (const observation of candidates) {
+      const id = String(observation.service);
+      if (selected.has(id)) continue;
+      const active = isActiveRunStatus(observation.status);
+      if (!ownsServiceContainer(desired, observation)) {
+        if (active)
+          failure = new GlobalAppError({
+            operation: "start",
+            message: `Global service ${id} is running in container ${observation.containerId ?? "(no id)"}, whose labels don't prove it belongs to this global app.`,
+            remediation: `Inspect container ${observation.containerId ?? id} with your container runtime and remove it if it is a leftover, then retry.`,
+          });
+        continue;
+      }
+      const recorded = prior !== undefined && Object.hasOwn(prior.services, id);
+      const selectable = Object.hasOwn(desired.services, id) && !disabled.has(id);
+      const conflicts = recorded
+        ? yield* globalSiblingConflicts(selectGlobalPlan(desired, selected), prior, {
+            id,
+            routes: active && !disabled.has(id),
+          })
+        : [];
+      if (recorded && conflicts.length === 0) continue;
+      const binding = [...new Set([id, ...conflicts.flatMap((conflict) => conflict.with)])];
+      const older = conflicts.map((conflict) => conflict.reason).join(", ");
+      if (active && selectable) {
+        bindings.push(binding);
+        joinNotices.set(
+          id,
+          recorded
+            ? `Global service ${id} still uses ${older} from an older definition, so Lando is recreating it from its current definition.`
+            : `Global service ${id} is running without saved state, so Lando is applying its current definition to it.`,
+        );
+        selected = request.close(new Set([...selected, id]));
+        changed = true;
+      } else if (isIdleRunStatus(observation.status) || (!recorded && active)) {
+        // A leftover that conflicts with nothing is removed with the first requested service's group.
+        const anchor = request.selectedIds[0];
+        const removalBinding =
+          conflicts.length > 0 ? binding : [id, ...(anchor === undefined ? selected : [anchor])];
+        removals.push({ observation, binding: removalBinding });
+        let why = "has no saved state";
+        if (recorded) why = `still uses ${older} from an older definition`;
+        else if (active)
+          why = disabled.has(id)
+            ? "has no saved state and is disabled"
+            : "has no saved state or current definition";
+        removalNotices.set(
+          id,
+          `Lando is removing the ${active ? "running" : "stopped"} ${id} container, which ${why}.${!active && selectable ? ` ${id} is created fresh the next time it starts, keeping its named volumes.` : ""}`,
+        );
+        candidates.delete(observation);
+        changed = true;
+      } else if (recorded) {
+        let blocker = `its container is ${observation.status}`;
+        if (disabled.has(id)) blocker = "it is disabled";
+        else if (!Object.hasOwn(desired.services, id)) blocker = "it has no current definition";
+        failure = new GlobalAppError({
+          operation: "start",
+          message: `Global service ${id} (container ${observation.containerId}) still uses ${older} from an older definition, and Lando can't recreate it because ${blocker}.`,
+          remediation: `Run \`lando global:stop --service ${id}\`, then retry.`,
+        });
+      }
+    }
+  }
+  if (failure !== undefined) return yield* Effect.fail(failure);
+  const selectedPlan = selectGlobalPlan(desired, selected);
+  const finalRemovals = removals.filter(({ observation }) => !selected.has(String(observation.service)));
+  const removedIds = new Set(finalRemovals.map(({ observation }) => String(observation.service)));
+  // Removal targets keep their recorded metadata until the group that removes them succeeds.
+  const owned = observed.filter(
+    (observation) =>
+      ownsServiceContainer(desired, observation) &&
+      Object.hasOwn(prior?.services ?? {}, String(observation.service)),
+  );
+  const recordedIds = new Set(owned.map((observation) => String(observation.service)));
+  const retained = new Set([...recordedIds].filter((id) => !selected.has(id) && !removedIds.has(id)));
+  // Selected services migrating off a shared resource must advance together, however they were selected.
+  if (prior !== undefined)
+    for (const observation of owned) {
+      const id = String(observation.service);
+      if (!selected.has(id)) continue;
+      const conflicts = yield* globalSiblingConflicts(selectedPlan, prior, {
+        id,
+        routes: isActiveRunStatus(observation.status) && !disabled.has(id),
+      });
+      if (conflicts.length > 0)
+        bindings.push([...new Set([id, ...conflicts.flatMap((conflict) => conflict.with)])]);
+    }
+  const active = new Set(
+    owned
+      .filter((observation) => isActiveRunStatus(observation.status))
+      .map((observation) => String(observation.service)),
+  );
+  const empty = { ...selectGlobalPlan(prior ?? desired, new Set()), routes: [] };
   const recordedPlan =
     prior === undefined
       ? empty
-      : yield* composeGlobalRecordedPlan(empty, prior, observedIds, active, disabled);
-  const expected = yield* composeGlobalRecordedPlan(
-    selectPlan(desired, selected),
+      : yield* composeGlobalRecordedPlan(empty, prior, recordedIds, active, disabled);
+  yield* composeGlobalRecordedPlan(selectedPlan, recordedPlan, retained, active, disabled);
+  const events = yield* Effect.serviceOption(EventService);
+  if (Option.isSome(events)) {
+    // A removal candidate later pulled into the selection is started, not removed.
+    const notices = [...joinNotices, ...[...removalNotices].filter(([id]) => removedIds.has(id))];
+    for (const [, body] of notices.sort(([left], [right]) => left.localeCompare(right)))
+      yield* events.value
+        .publish(MessageInfoEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+        .pipe(Effect.ignore);
+  }
+  return {
+    provider,
     recordedPlan,
-    retained,
-    active,
-    disabled,
-  );
-  return { plan: expected, recordedPlan, disabledIds, retainedIds: [...retained].sort() };
+    disabledIds,
+    retainedIds: [...retained].sort(),
+    selectedIds: [...selected],
+    joinedIds: [...selected].filter((id) => !initial.has(id)),
+    bindings: [...bindings, ...finalRemovals.map((removal) => removal.binding)],
+    removals: finalRemovals,
+  };
 });

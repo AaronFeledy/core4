@@ -70,7 +70,10 @@ export const socketHttpConnection = (socket: Socket): SocketHttpConnection => {
   return {
     [Symbol.asyncIterator]: () => iterator,
     write: (data) => {
-      if (socket.writable && !socket.destroyed) socket.write(data);
+      if (!socket.writable || socket.destroyed) return;
+      return new Promise<void>((resolve, reject) => {
+        socket.write(data, (error) => (error == null ? resolve() : reject(error)));
+      });
     },
     end: () => {
       if (socket.writable && !socket.destroyed) socket.end();

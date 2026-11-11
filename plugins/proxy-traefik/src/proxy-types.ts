@@ -1,8 +1,5 @@
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { PortNumber, PublicationObservation, ServiceName, StartedService } from "@lando/sdk/schema";
-import type { Context, Effect } from "effect";
-import type * as HttpClient from "effect/http/HttpClient";
-
 import type {
   CertificateAuthorityShape,
   EventService,
@@ -10,6 +7,8 @@ import type {
   PrivilegeService,
   ProcessRunner,
 } from "@lando/sdk/services";
+import type { Context, Effect } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import type {
   AcquisitionFingerprint,
@@ -33,6 +32,7 @@ export interface ProxyFileSystem {
 export interface ProxyPaths {
   readonly platform: "darwin" | "linux" | "win32" | "wsl";
   readonly globalAppRoot: string;
+  readonly userDataRoot?: string;
 }
 
 export interface ProxyGlobalApp {
@@ -52,6 +52,8 @@ export interface ProxyGlobalApp {
 
 export interface SocketProxyDependencies {
   readonly user: string;
+  readonly userDataRoot: string;
+  readonly realpath?: (path: string) => Effect.Effect<string, unknown>;
   readonly hasHostSystemd: () => boolean;
   readonly exists: (path: string) => Effect.Effect<boolean>;
   readonly readText: (path: string) => Effect.Effect<string, unknown>;
@@ -59,6 +61,11 @@ export interface SocketProxyDependencies {
   readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly interaction?: Pick<Context.Service.Shape<typeof InteractionService>, "confirm" | "isInteractive">;
   readonly autoApprove?: boolean;
+  /** setup intent: ensure (default, start path) never replaces foreign; configure may. */
+  readonly intent?: "configure" | "ensure";
+  /** Ports this data root already owns (provider proof), for missing-root hop free checks. */
+  readonly ownedRouterPorts?: ReadonlySet<number>;
+  readonly probeBind?: (host: string, port: number) => Effect.Effect<BindOutcome>;
   readonly serviceType?: SocketProxyServiceType;
   readonly probeForward?: (
     host: string,

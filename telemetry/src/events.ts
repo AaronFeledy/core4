@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import type { DeprecationUse } from "@lando/sdk/schema";
 import type { Telemetry } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { TELEMETRY_EVENT_FIELD_NAMES } from "./inventory.ts";
 

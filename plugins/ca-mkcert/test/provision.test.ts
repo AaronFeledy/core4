@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect, Exit } from "effect";
-
 import { sha256Hex } from "@lando/sdk/digest";
 import { ToolManifestError } from "@lando/sdk/errors";
+import { Effect, Exit } from "effect";
 
 import {
   MKCERT_TOOL_MANIFEST,

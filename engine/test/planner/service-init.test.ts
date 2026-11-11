@@ -3,8 +3,7 @@ import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
-import { type ProviderCapabilities, ServiceName } from "@lando/sdk/schema";
-import { ProviderId } from "@lando/sdk/schema";
+import { type ProviderCapabilities, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceFeatureDefinition } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
@@ -70,6 +69,7 @@ test.each([true, false])("authored init %s wins over an opposing service feature
       base: { name, type: "node", provider: ProviderId.make("test"), primary: true, defaultFeatures: [] },
       baseKind: "lando",
       appRoot: "/tmp/init",
+      appSlug: "init",
       normalizedConfig: { init },
       features: [{ id: feature.id, definition: feature }],
     }),

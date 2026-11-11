@@ -1,16 +1,13 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Context, Effect, Exit, Layer, Queue, Stream } from "effect";
-
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProcessExecError } from "@lando/sdk/errors";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
-import { withProcess } from "../_support/process-runner.ts";
-
+import { Cause, Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 import { pluginBuild, renderPluginBuildResult } from "../../src/cli/commands/plugin-build.ts";
+import { withProcess } from "../_support/process-runner.ts";
 import { listTree } from "./_util/fs-tree.ts";
 
 let root: string;

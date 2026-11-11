@@ -1,5 +1,8 @@
-import { type Context, Effect, Option, Schema } from "effect";
-
+import { type GlobalStopServices, globalStop } from "@lando/engine/operations/global-stop";
+import { taggedErrorRemediation } from "@lando/engine/providers/managed";
+import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
+import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import type { CacheError, LandoCommandError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
@@ -8,11 +11,9 @@ import {
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
-
-import { type GlobalStopServices, globalStop } from "@lando/engine/operations/global-stop";
-import { taggedErrorRemediation } from "@lando/engine/providers/managed";
-import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
-import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { makeStateStore } from "@lando/state-store/service";
+import { type Context, Effect, Option, Schema } from "effect";
 import { type AppsListEntry, listServices } from "./list";
 
 export interface RuntimeServiceStopResult {
@@ -129,7 +130,18 @@ const stopManagedRuntimeService = (
   const paths = makeLandoPaths({ userDataRoot, platform });
   return Option.match(registry, {
     onNone: () => Promise.resolve({ terminated: false }),
-    onSome: (service) => Effect.runPromise(teardownHostMaintainers(service, { paths, platform })),
+    onSome: (service) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const privateFileAccess = yield* PrivateFileAccessService;
+          return yield* teardownHostMaintainers(service, {
+            paths,
+            platform,
+            privateFileAccess,
+            stateStore: makeStateStore({ privateFileAccess, roots: paths.roots }),
+          });
+        }).pipe(Effect.provide(PrivateFileAccessService.layer)),
+      ),
   });
 };
 
@@ -179,7 +191,7 @@ const poweroffOperation = Effect.fn("AppsPoweroff.poweroff")(function* (
       ? stopDiscoveredApp(app)
       : Effect.tryPromise({ try: () => injectedStop(app), catch: (cause) => cause });
     yield* stop.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof PoweroffStopError
           ? cause
           : new PoweroffStopError({

@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import type { DeprecationContradictionError } from "@lando/sdk/errors";
 import type { DeprecationNotice } from "@lando/sdk/schema";
 import type { DeprecationService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 interface DeprecatedFieldContract {
   readonly deprecated?: DeprecationNotice;

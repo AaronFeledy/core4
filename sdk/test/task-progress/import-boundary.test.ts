@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 const stripComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/(^|[^:])\/\/[^\n]*/gu, "$1");
@@ -49,7 +48,7 @@ describe("@lando/sdk/task-progress import boundary", () => {
       const source = await readFile(join(taskProgressDir.pathname, name), "utf8");
       const code = stripComments(source);
       expect(code).not.toMatch(/\bLandoRuntime\b/u);
-      expect(code).not.toMatch(/\b(?:Layer|Context|ManagedRuntime)\b/u);
+      expect(code).not.toMatch(/\b(?:Layer|ManagedRuntime)\b|\bContext\.(?:Service|make|empty)\b/u);
       expect(code).not.toMatch(/\bConsole\.|\bLogger\b/u);
     }
   });

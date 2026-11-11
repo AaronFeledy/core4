@@ -5,8 +5,8 @@ import { Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import type { GpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { validateGpgAgentOverlay } from "../subsystems/gpg-agent/overlay.ts";
-import { validateSshAgentOverlay } from "../subsystems/ssh-agent/overlay.ts";
 import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
+import { validateSshAgentOverlay } from "../subsystems/ssh-agent/overlay.ts";
 import {
   type PreparedDebuggerOverlay,
   prepareDebuggerOverlay,
@@ -15,11 +15,11 @@ import {
 } from "../subsystems/start-overlay-registry.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
-import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { validateGpgAgentSocketCapability, withStartedGpgAgent } from "./start-gpg-agent.ts";
+import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { validateHostProxyOverlay, withStartedHostProxy } from "./start-host-proxy.ts";
-import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { validateAgentSocketCapability, withStartedSshAgent } from "./start-ssh-agent.ts";
+import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 
 export {
   type PreparedDebuggerOverlay,

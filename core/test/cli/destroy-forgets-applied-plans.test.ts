@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Exit } from "effect";
-
+import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore, stripHostProxyRunLando } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { layer as makeProviderLayer, persistAppliedPlan } from "@lando/provider-lando";
@@ -18,9 +16,9 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
-import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-
+import { DateTime, Effect, Exit } from "effect";
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("us586-verify-lando");
@@ -65,7 +63,12 @@ const plan: AppPlan = {
 const missingPodmanApi = {
   info: Effect.void,
   ping: Effect.void,
-  request: () => Effect.succeed({ status: 404, body: "" }),
+  request: (request: EngineHttpRequest) =>
+    Effect.succeed(
+      request.method === "GET" && request.path.startsWith("/containers/json?")
+        ? { status: 200, body: "[]" }
+        : { status: 404, body: "" },
+    ),
 };
 
 const withUserDataRoot = async <T>(run: (userDataRoot: string) => Promise<T>): Promise<T> => {

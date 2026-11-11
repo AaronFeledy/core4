@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { AppId, AppPlan } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export type AppliedPlanRead =
   | { readonly status: "missing" }
@@ -13,12 +12,14 @@ export const unreadableAppliedStateError = (input: {
   readonly providerId: string;
   readonly path: string;
   readonly layout: "per-app" | "record";
+  /** The app whose record is unreadable; the global app is cleaned up by its own command. */
+  readonly appId?: string;
 }) =>
   new ProviderUnavailableError({
     providerId: input.providerId,
     operation: "applied-state.read",
     message: `The applied provider state file "${input.path}" is unreadable; refusing to mutate runtime resources.${input.layout === "record" ? " This file contains state for several apps; no app in this record can be safely mutated." : ""}`,
-    remediation: `Restore "${input.path}" from backup; or, accepting that unflushed accelerated sync changes may be lost, move it aside and rerun \`lando destroy\`, which then cleans up by ownership labels.${input.layout === "record" ? " Moving this file aside affects every app in the record." : ""}`,
+    remediation: `Restore "${input.path}" from backup; or, accepting that unflushed accelerated sync changes may be lost, move it aside and rerun ${input.appId === "global" ? "`lando global:destroy --yes`" : "`lando destroy`"}, which then cleans up by ownership labels.${input.layout === "record" ? " Moving this file aside affects every app in the record." : ""}`,
   });
 
 const inspectBucket = <A>(bucket: StateBucket<A>) =>

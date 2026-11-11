@@ -2,7 +2,7 @@
 id: import-a-database
 provider: test
 timeout: 60000
-tags: [beta, docs, tooling, database]
+tags: [docs, tooling, database]
 ---
 
 # Import a SQL dump
@@ -17,7 +17,14 @@ Grab the database name and user from `lando info` first. It redacts the password
 lando info
 ```
 
-Use `lando db:import dump.sql.gz --yes` when you want the bundled helper.
+The bundled helper takes a dump file, or `-` to read the dump from stdin. `--yes` skips the confirmation prompt, and stdin imports always need it because stdin carries the dump:
+
+```sh
+lando db:import dump.sql.gz --yes
+lando db:import - --yes < dump.sql
+```
+
+Either way, Lando takes a recovery snapshot before it runs the dump. The stdin form saves the input to a private file in Lando's cache directory first; see [Stream a dump through stdout or stdin](./db-import-export.mdx#stream-a-dump-through-stdout-or-stdin). Use the client commands below when you want to pass the client's own flags.
 
 ## Import into MySQL or MariaDB
 
@@ -28,7 +35,7 @@ lando mysql < dump.sql
 lando mariadb < dump.sql
 ```
 
-To pick the client flags yourself, run it through `lando exec`. The service name is the hostname. Defaults are user `lando`, password `lando`, and database equal to the app name unless you set `database:`.
+To pick the client flags yourself, run it through `lando exec`. The service name is the hostname. Defaults are user `lando`, password `lando`, and database equal to the folder's data name unless you set `creds.database`.
 
 ```sh
 lando exec db -- mysql -u lando -plando myapp < dump.sql

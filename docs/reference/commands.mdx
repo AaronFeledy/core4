@@ -84,8 +84,8 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `key` | Dot-path key for set/unset. |
-| `subcommand` | Subcommand: view (default), set, unset, edit, validate. |
+| `key` | Dot-path key for get/set/unset/describe. |
+| `subcommand` | Subcommand to run (default: view). (one of `view`, `get`, `set`, `unset`, `edit`, `validate`, `describe`) |
 | `value` | Value for set. |
 
 Flags:
@@ -97,6 +97,17 @@ Flags:
 | `--path` | Dot-path key selector. |
 | `--source` | Inspect raw layers, authored composition, or resolved config. (one of `raw`, `merged`, `resolved`) |
 | `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+
+## `lando app:config:describe`
+
+Describe accepted values for a Landofile key.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key; omit to list root keys. |
 
 ## `lando app:config:edit`
 
@@ -114,19 +125,14 @@ Flags:
 
 Report recipe provenance and which generated value sites are still managed.
 
-Aliases: `lando config:explain`
-
 ## `lando app:config:lint`
 
 Check Landofile configuration, declared listeners, routes, and event names.
-
-Aliases: `lando config:lint`
 
 ## `lando app:config:migrate`
 
 Migrate managed recipe configuration through satisfied recipe history.
 
-Aliases: `lando config:migrate`
 
 Flags:
 
@@ -159,7 +165,6 @@ Flags:
 
 Translate a non-canonical config file into a canonical v4 Landofile.
 
-Aliases: `lando config:translate`
 
 Flags:
 
@@ -228,6 +233,7 @@ Flags:
 | --- | --- |
 | `--cwd` | Working directory inside the service. |
 | `--interactive, -i` | Attach your terminal keyboard to the command. Piped stdin is always attached. |
+| `--service, -s` | Service to run the command in (default: the primary service). |
 | `--user, -u` | User to run the command as inside the service. |
 
 ## `lando app:includes:update`
@@ -276,7 +282,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--follow, -f` | Stream new log lines until interrupted. |
-| `--no-viewer` | Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior). |
+| `--no-viewer` | Reserved for the interactive log viewer; accepted as a no-op until the viewer exists (does not change follow behavior). |
 | `--service, -s` | Filter logs to a single planned service. |
 | `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
 | `--source` | Select a declared source id, or `console` for all container logs. Console aliases and redirects select a native stdout/stderr pipe; aliases on the same pipe share its logs. |
@@ -558,6 +564,22 @@ Stop the current Lando app.
 
 Aliases: `lando stop`
 
+## `lando apps:gc`
+
+Report or clean up user apps whose folders no longer exist.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--provider` | Inspect and clean up only this provider. |
+| `--prune` | Confirm once, then clean up the reported missing app roots. |
+| `--purge` | Delete data volumes, file-sync copies of app files, and snapshots. |
+| `--purge-caches` | Delete cache volumes. |
+| `--volumes` | Delete data volumes and file-sync copies of app files. |
+| `--yes, -y` | Skip the confirmation prompt. |
+
 ## `lando apps:init`
 
 Generate a new Lando app.
@@ -690,6 +712,12 @@ Run a one-off command in a disposable scratch app.
 
 Aliases: `lando scratch:run`, `lando run`
 
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `command` | Command argv after `--`. |
+
 Flags:
 
 | Flag | Description |
@@ -758,13 +786,14 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Destination dump file. |
+| `file` | Destination dump file. SQLite: .sqlite, .sqlite3, .db, or .db3 selects a database copy; optional .gz or .zst compresses it. Use - to write to stdout. |
 
 Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--compression-level` | Host dump compression level: gzip 0-9 or zstd 1-22, selected by the file suffix. |
+| `--compression` | Compress a dump written to stdout (-). File exports use the .gz or .zst suffix instead. (one of `gzip`, `zstd`) |
+| `--compression-level` | Host compression level: gzip 0-9 or zstd 1-22, chosen by the .gz or .zst suffix, or by --compression with -. |
 | `--service` | Source database service. |
 | `--yes, -y` | Skip confirmation prompts. |
 
@@ -778,7 +807,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Dump file to import. |
+| `file` | Dump file to import. Use - to read from stdin. |
 
 Flags:
 
@@ -829,7 +858,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `file` | Dump file to seed from. |
+| `file` | Dump file to seed from. Use - to read from stdin. |
 
 Flags:
 
@@ -903,8 +932,8 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `key` | Dot-path key for get/set/unset. |
-| `subcommand` | Subcommand: view (default), get, set, unset, edit, validate, translate. |
+| `key` | Dot-path key for get/set/unset/describe. |
+| `subcommand` | Subcommand to run (default: view). (one of `view`, `get`, `set`, `unset`, `edit`, `validate`, `describe`, `telemetry`, `translate`) |
 | `value` | Value for set. |
 
 Flags:
@@ -949,8 +978,8 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `key` | Dot-path key for set/unset. |
-| `subcommand` | Subcommand: view (default), set, unset, edit, validate. |
+| `key` | Dot-path key for get/set/unset/describe. |
+| `subcommand` | Subcommand to run (default: view). (one of `view`, `set`, `unset`, `edit`, `validate`, `describe`) |
 | `value` | Value for set. |
 
 Flags:
@@ -961,6 +990,18 @@ Flags:
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
 | `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+
+## `lando meta:global:config:describe`
+
+Describe accepted values for a global Landofile key.
+
+Aliases: `lando global:config:describe`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key; omit to list root keys. |
 
 ## `lando meta:global:config:edit`
 
@@ -1362,7 +1403,7 @@ Flags:
 | `--runtime-bundle-sha256` | Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle. |
 | `--runtime-bundle-url` | Override the Lando-managed runtime bundle URL for setup. |
 | `--skip-file-sync` | Skip file-sync engine installation during setup on a slow-mount host. |
-| `--skip-install-ca` | Skip installing certificate authority trust on the host. |
+| `--skip-install-ca` | Create the local certificate authority without adding it to the host trust store. |
 | `--skip-provider` | Skip provider setup; continue the other setup steps. |
 | `--skip-proxy` | Skip router setup. |
 | `--skip-shell-integration` | Skip SSH service setup and shell profile integration. |
@@ -1392,6 +1433,20 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--prune` | Remove orphaned snapshot images after rechecking the snapshot index. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
+## `lando meta:sources:gc`
+
+Inspect unused entries in the remote source cache.
+
+Aliases: `lando sources:gc`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--older-than` | Only consider entries unused for at least this many days (default 30). |
+| `--prune` | Remove eligible source-cache entries after rechecking reachability and leases. |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:uninstall`

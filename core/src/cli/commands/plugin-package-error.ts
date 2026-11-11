@@ -1,6 +1,7 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { PluginPackageOperationError } from "@lando/sdk/errors";
 import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { BunChildNetworkPolicyError } from "./bun-child-network-policy";
 
 export const redactPluginPackageError = Effect.fnUntraced(function* (
@@ -8,10 +9,11 @@ export const redactPluginPackageError = Effect.fnUntraced(function* (
   output?: { readonly stderr: string; readonly stdout: string },
 ) {
   const redaction = yield* Effect.serviceOption(RedactionService);
+  const sourceEnv = (yield* CliInvocation).env;
   const redactor =
     redaction._tag === "None"
-      ? createStandaloneRedactor("secrets", { sourceEnv: process.env })
-      : yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
+      ? createStandaloneRedactor("secrets", { sourceEnv })
+      : yield* redaction.value.forProfile("secrets", { sourceEnv });
   const parts =
     output === undefined
       ? error.detail === undefined

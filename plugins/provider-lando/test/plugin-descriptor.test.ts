@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestDownloader } from "@lando/engine/testing/downloader";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -10,9 +6,11 @@ import { makeLandoPaths } from "@lando/paths";
 import { type LandoPluginContext, definePlugin } from "@lando/sdk/plugins";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { AppPlanSanitizer, ContainerHelperAssets, Downloader, PathsService } from "@lando/sdk/services";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
-
+import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { manifest, plugin } from "../src/index.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
@@ -45,14 +43,17 @@ describe("provider-lando plugin descriptor", () => {
     expect(maintainerIds).toEqual(["lando-runtime-service"]);
   });
 
-  test("contributes the WSL root mount propagation doctor check", () => {
+  test("contributes WSL mount, managed socket path, and container cgroup doctor checks", () => {
     // Given: provider-lando's exported plugin descriptor.
 
     // When: doctor contributions are inspected.
     const doctorCheckIds = plugin.doctorChecks?.map((check) => check.id);
 
-    // Then: the WSL propagation check is wired into the plugin.
-    expect(doctorCheckIds).toEqual(["wsl-root-mount-propagation"]);
+    expect(doctorCheckIds).toEqual([
+      "wsl-root-mount-propagation",
+      "managed-runtime-socket-path",
+      "managed-runtime-container-cgroups",
+    ]);
   });
 
   test("builds the existing provider availability and setup surface when services are provided", async () => {

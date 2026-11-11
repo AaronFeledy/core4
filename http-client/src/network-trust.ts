@@ -19,27 +19,30 @@
  * from `core/src/services/index.ts`: it is the in-process injection mechanism,
  * not a public contract.
  */
+import { X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import tls from "node:tls";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Context, Effect, Schema } from "effect";
-
+import { HttpTrustError } from "@lando/sdk/errors";
 import {
   type NetworkTrustPlan,
   type ResolvedNetworkTrust,
   resolveNetworkTrustPlan,
 } from "@lando/sdk/network-trust";
 import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { Context, Effect, Option, Schema } from "effect";
 
 export type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 export {
-  fetchInitForNetwork,
   NetworkTrustResolutionError,
+  fetchInitForNetwork,
   shouldBypassProxy,
 } from "@lando/sdk/network-trust";
-export { resolveNetworkTrustPlan };
 export type { NetworkTrustPlan };
+export { resolveNetworkTrustPlan };
 
 export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemLoadError", {
   message: Schema.String,
@@ -53,6 +56,24 @@ export interface LoadedCaPem {
   readonly pem: string;
   readonly digest: string;
 }
+
+const PEM_CERTIFICATE = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/gu;
+
+/** True when the text holds at least one PEM certificate and every certificate block parses. */
+const containsCertificate = (pem: string): boolean => {
+  const blocks = pem.match(PEM_CERTIFICATE) ?? [];
+  return (
+    blocks.length > 0 &&
+    blocks.every((block) => {
+      try {
+        new X509Certificate(block);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+  );
+};
 
 export const loadCaPems = (
   paths: ReadonlyArray<string>,
@@ -70,11 +91,18 @@ export const loadCaPems = (
             cause,
           }),
       }).pipe(
-        Effect.map((pem) => ({
-          path,
-          pem,
-          digest: sha256Hex(pem),
-        })),
+        Effect.flatMap((pem) =>
+          containsCertificate(pem)
+            ? Effect.succeed({ path, pem, digest: sha256Hex(pem) })
+            : Effect.fail(
+                new CaPemLoadError({
+                  message: `CA certificate file does not contain a valid PEM certificate: ${path}`,
+                  path,
+                  remediation:
+                    "Point network.ca.certs or LANDO_NETWORK_CA_CERTS at PEM files with at least one -----BEGIN CERTIFICATE----- block (convert DER with `openssl x509 -inform der -in <file> -out <file>.pem`), or fix the Landofile security.ca path.",
+                }),
+              ),
+        ),
       ),
     ),
     { concurrency: "unbounded" },
@@ -155,6 +183,50 @@ export const withWindowsHostTrust = (
     trustHost: false,
   };
 };
+
+/**
+ * Resolve outbound network trust for a request fiber or host-side transport.
+ *
+ * Precedence is fixed: an already-injected {@link ResolvedNetworkTrust} wins;
+ * otherwise load the plan from `ConfigService` in `context` (plus `env`) and
+ * read CA PEMs. Missing config yields `undefined` (bare request / no projection),
+ * not "trust nothing".
+ */
+export const resolveTrust = Effect.fnUntraced(function* (
+  context: Context.Context<never>,
+  injected: ResolvedNetworkTrust | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+) {
+  if (injected !== undefined) return injected;
+  const config = Context.getOption(context, ConfigService);
+  if (Option.isNone(config)) return undefined;
+  const globalConfig = yield* config.value.load;
+  const plan = yield* Effect.try({
+    try: () => resolveNetworkTrustPlan({ network: globalConfig.network }, env),
+    catch: (cause) =>
+      new HttpTrustError({
+        message: cause instanceof Error ? cause.message : "Could not resolve network trust",
+        urlOrigin: "unknown",
+        kind: "missing-custom-ca",
+        remediation:
+          "Check network.ca.certs, LANDO_NETWORK_CA_CERTS, and proxy trust settings (HTTPS_PROXY / network.proxy), then retry.",
+        cause,
+      }),
+  });
+  const loaded = yield* loadCaPems(plan.caCertPaths).pipe(
+    mapFailures(
+      (cause) =>
+        new HttpTrustError({
+          message: cause.message,
+          urlOrigin: "unknown",
+          kind: "missing-custom-ca",
+          remediation: cause.remediation,
+          cause,
+        }),
+    ),
+  );
+  return { proxy: plan.proxy, caPems: loaded.map((cert) => cert.pem), trustHost: plan.trustHost };
+});
 
 /**
  * Optional injected trust for one fiber. Callers that already resolved trust

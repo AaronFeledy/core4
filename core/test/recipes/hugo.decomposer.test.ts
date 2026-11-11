@@ -7,6 +7,7 @@ import { Effect, Result, Schema } from "effect";
 import { HUGO_BUILD_ARTIFACT } from "../../src/recipes/builtin/hugo/install.ts";
 import { HUGO_SCAFFOLD } from "../../src/recipes/builtin/hugo/scaffold.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: hugoDecomposer,
   defaults: hugoDefaults,
@@ -15,6 +16,7 @@ const {
   contentDigest: HUGO_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("hugo");
+
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
 
 const defaults = { ...hugoDefaults };
@@ -76,8 +78,14 @@ describe("hugo decomposition", () => {
           service: "builder",
           description: "Run the Hugo CLI inside the builder service.",
           cmds: ["hugo"],
+          wrapper: true,
         },
-        npm: { service: "builder", description: "Run npm inside the builder service.", cmds: ["npm"] },
+        npm: {
+          service: "builder",
+          description: "Run npm inside the builder service.",
+          cmds: ["npm"],
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({

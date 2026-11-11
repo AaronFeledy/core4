@@ -3,8 +3,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
-
 import { CONTAINER_HELPER_ARCHES, CONTAINER_HELPER_FILE } from "@lando/container-runtime/container-helper";
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
 import {
@@ -47,17 +45,7 @@ import {
   StateStore,
   ToolingEngine,
 } from "@lando/core/services";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
-import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
-
-import * as TestLandofileLayers from "../_support/landofile-layer.ts";
-import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-
-import { makeTestStateStore } from "@lando/core/testing";
+import { makeTestStateStore, resolveLiveProviderSocket } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { readJournal } from "@lando/engine/operations/accelerated-start-journal";
 import { effectiveEventsForPlan, withProjectEvents } from "@lando/engine/planner/effective-events";
@@ -72,6 +60,14 @@ import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/h
 import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
+import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import * as BunShellRunner from "../_support/shell-runner.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -443,8 +439,7 @@ const recordAppliedServices = (observed: Map<string, ServiceRuntimeInfo>, appPla
       service: service.name,
       providerId: appPlan.provider,
       containerId: `scenario-${appPlan.id}-${service.name}`,
-      status: "running",
-      state: "running",
+      status: "running" as const,
       lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
       publications: {
         status: "present",
@@ -536,11 +531,11 @@ const makeStartLayer = (
       Effect.sync(() => void buildOrder.push("proxy-setup")).pipe(
         Effect.andThen(options.proxySetupEffect ?? Effect.void),
       ),
-    applyRoutes: (routes: AppPlan["routes"], app: AppPlan["id"]) =>
+    applyRoutes: (routes, owner) =>
       Effect.sync(() => void buildOrder.push("proxy-apply")).pipe(
         Effect.andThen(options.proxyApplyEffect ?? Effect.void),
         Effect.as({
-          app,
+          app: owner.id,
           appliedRoutes: routes,
           authorities: routes.flatMap((route) =>
             (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
@@ -586,7 +581,7 @@ const makeStartLayer = (
     capabilities: providerCapabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -669,8 +664,7 @@ const makeStartLayer = (
                       app: plannedApp.id,
                       service: target.service,
                       providerId,
-                      status: "running",
-                      state: "running",
+                      status: "running" as const,
                       lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
                       publications: {
                         status: "present",
@@ -945,7 +939,7 @@ const makeAutoStartLayer = async (options: {
     capabilities: { ...capabilities, sharedCrossAppNetwork: true },
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -2492,7 +2486,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -2531,8 +2525,7 @@ describe("lando start", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -2665,7 +2658,7 @@ describe("lando start", () => {
         Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -2700,8 +2693,7 @@ describe("lando start", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -2824,7 +2816,7 @@ describe("lando start", () => {
         Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -2859,8 +2851,7 @@ describe("lando start", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -2987,7 +2978,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -3027,8 +3018,7 @@ describe("lando start", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -3164,7 +3154,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -3204,8 +3194,7 @@ describe("lando start", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -3291,7 +3280,8 @@ describe("lando start", () => {
     ).toMatchObject({
       summary: "test-start file-sync failed",
       succeeded: 0,
-      failed: 2,
+      failed: 1,
+      outcome: "failure",
     });
   });
 
@@ -3373,7 +3363,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -3419,8 +3409,7 @@ describe("lando start", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -3571,7 +3560,7 @@ describe("lando start", () => {
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -3611,8 +3600,7 @@ describe("lando start", () => {
           app: plan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -3675,4 +3663,5 @@ describe("lando start", () => {
     ]);
   });
 });
+
 import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";

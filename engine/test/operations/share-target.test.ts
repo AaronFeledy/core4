@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName, TunnelTarget } from "@lando/sdk/schema";
+import { DateTime, Schema } from "effect";
 
 import { defaultTunnelTarget } from "../../src/operations/share.ts";
 import { web } from "./start-progress-topology-support.ts";
@@ -34,6 +33,19 @@ const routedPlan: AppPlan = {
 };
 
 describe("defaultTunnelTarget", () => {
+  test.each([
+    "*.app.lndo.site",
+    "*-app.lndo.site",
+    `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(61)}`,
+  ])("produces a schema-valid tunnel target for route hostname %s", (hostname) => {
+    const plan: AppPlan = {
+      ...routedPlan,
+      routes: routedPlan.routes.map((route) => ({ ...route, hostname })),
+    };
+    const target = Schema.decodeUnknownSync(TunnelTarget)(defaultTunnelTarget(plan));
+    expect(target).toEqual({ _tag: "route", routeId: hostname, hostname });
+  });
+
   test("shares the app itself when the plan disables the router", () => {
     // Given: a declared route that the disabled router never publishes.
     const plan: AppPlan = { ...routedPlan, router: { enabled: false } };

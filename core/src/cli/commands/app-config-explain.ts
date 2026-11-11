@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-
+import { getAtPath } from "@lando/engine/config-write/dot-path";
+import { parseLandofile } from "@lando/landofile/parser";
 import { type LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
 import {
@@ -11,11 +12,8 @@ import {
 import type { LandofileRecipeProvenance, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
 import { sameRecipeVersion } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
-
-import { getAtPath } from "@lando/engine/config-write/dot-path";
-import { parseLandofile } from "@lando/landofile/parser";
-
 import { lookupRecipeSnapshot } from "../../recipes/builtin/snapshots.ts";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { AppConfigExplainResult, ExplainBlockedReason } from "./app-config-explain-output.ts";
 import {
   CANONICAL_LANDOFILE,
@@ -38,6 +36,7 @@ export const APP_CONFIG_EXPLAIN_MAX_BYTES = 1_048_576;
 const EXPLAIN_MAX_SERVICES = 128;
 const EXPLAIN_MAX_OPTIONS = 128;
 const EXPLAIN_MAX_SITES_PER_OPTION = 128;
+
 export type { AppConfigExplainResult } from "./app-config-explain-output.ts";
 
 export interface AppConfigExplainOptions {
@@ -260,7 +259,7 @@ const readProvenance = (
 export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* (
   options: AppConfigExplainOptions = {},
 ): Effect.fn.Return<AppConfigExplainResult, AppConfigExplainError, never> {
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.cwd ?? (yield* CliInvocation).cwd;
   const discovered = yield* discoverRecipeAnalysisRoot(cwd);
   const { appRoot, dualForm } = discovered;
 

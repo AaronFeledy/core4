@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import {
   HOST_EVENT_NAMES,
   HostEventStep,
@@ -16,6 +14,7 @@ import {
   isLifecycleCommandId,
   resolveLifecycleCommandId,
 } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 test("registers hostEvents schemas for snapshot generation", () => {
   expect(JSON_SCHEMA_NAMES).toContain("HostEvents");

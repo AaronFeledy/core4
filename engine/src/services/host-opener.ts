@@ -1,9 +1,9 @@
 import { posix } from "node:path";
-import { Effect, Schema } from "effect";
-
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { HostProxyOpenUrlSchemeError } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 export interface HostOpenerCapabilityInput {
   readonly platform: NodeJS.Platform;
@@ -57,7 +57,7 @@ const runHostOpener = Effect.fn("HostOpener.run")(function* (
       ...(exitCode === undefined ? {} : { exitCode }),
       remediation: "Check that your host has a working default browser or file manager and desktop session.",
     });
-  const launch = runner.run({ cmd, args }).pipe(Effect.mapError((cause) => failure(undefined, cause)));
+  const launch = runner.run({ cmd, args }).pipe(mapFailures((cause) => failure(undefined, cause)));
   const result = yield* redaction._tag === "Some"
     ? launch.pipe(
         Effect.provideService(RedactionService, {

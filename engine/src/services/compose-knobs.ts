@@ -1,5 +1,5 @@
-import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 import type { ProviderCapabilities, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 export type ComposeKnobUse = {
@@ -24,16 +24,11 @@ export const mergeComposeKnobs = <S extends Pick<ServicePlan, "extensions">>(
   let changed = false;
 
   for (const key of ComposeServiceKnobKey.literals) {
-    if (key === "deploy.resources") {
-      if (serviceConfig.deploy === undefined) continue;
-      compose.deploy = serviceConfig.deploy;
-      changed = true;
-      continue;
-    }
-
-    const value = serviceConfig[key];
+    const field =
+      key === "deploy.resources" || key === "deploy.resources.reservations.devices" ? "deploy" : key;
+    const value = serviceConfig[field];
     if (value === undefined) continue;
-    compose[key] = value;
+    compose[field] = value;
     changed = true;
   }
 
@@ -47,6 +42,19 @@ export const mergeComposeKnobs = <S extends Pick<ServicePlan, "extensions">>(
   };
 };
 
+const has = (record: unknown, key: string): boolean =>
+  Predicate.isObject(record) && record[key] !== undefined;
+
+// `deploy.resources` covers the resource controls; device requests are their own capability.
+const usesResourceControl = (resources: unknown): boolean => {
+  if (!Predicate.isObject(resources)) return false;
+  const { limits, reservations } = resources;
+  return ["memory", "cpus", "pids"].some((key) => has(limits, key)) || has(reservations, "memory");
+};
+
+const usesDeviceReservation = (resources: unknown): boolean =>
+  Predicate.isObject(resources) && has(resources.reservations, "devices");
+
 export const collectComposeKnobs = (
   services: Readonly<Record<string, Pick<ServicePlan, "name" | "extensions">>>,
 ): ReadonlyArray<ComposeKnobUse> => {
@@ -56,16 +64,15 @@ export const collectComposeKnobs = (
     const compose = servicePlan.extensions.compose;
     if (!Predicate.isObject(compose)) continue;
 
+    const resources = Predicate.isObject(compose.deploy) ? compose.deploy.resources : undefined;
     for (const key of ComposeServiceKnobKey.literals) {
-      if (key === "deploy.resources") {
-        const deploy = compose.deploy;
-        if (Predicate.isObject(deploy) && deploy.resources !== undefined) {
-          uses.push({ service: servicePlan.name, key });
-        }
-        continue;
-      }
-
-      if (compose[key] !== undefined) uses.push({ service: servicePlan.name, key });
+      const used =
+        key === "deploy.resources"
+          ? usesResourceControl(resources)
+          : key === "deploy.resources.reservations.devices"
+            ? usesDeviceReservation(resources)
+            : compose[key] !== undefined;
+      if (used) uses.push({ service: servicePlan.name, key });
     }
   }
 

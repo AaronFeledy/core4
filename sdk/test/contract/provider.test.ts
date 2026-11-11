@@ -1,7 +1,4 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Result, Schema, Stream } from "effect";
-
 import {
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -17,6 +14,8 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
+import { Cause, Effect, Result, Schema, Stream } from "effect";
+import { testProviderPlan } from "./test-provider-plan.ts";
 
 const TEST_APP_ID = AppId.make("myapp");
 const TEST_SERVICE_NAME = ServiceName.make("web");
@@ -346,6 +345,7 @@ describe("RuntimeProvider contract", () => {
       true,
     );
 
+    await Effect.runPromise(Effect.scoped(TestRuntimeProvider.apply(testProviderPlan, { reconcile: true })));
     const snapshot = await Effect.runPromise(
       TestRuntimeProvider.inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }),
     );
@@ -359,6 +359,7 @@ describe("RuntimeProvider contract", () => {
   });
 
   test("TestRuntimeProvider merges implicit console and source-tagged follow logs", async () => {
+    await Effect.runPromise(Effect.scoped(TestRuntimeProvider.apply(testProviderPlan, { reconcile: true })));
     const followSource = Schema.decodeUnknownSync(LogSource)({
       id: "slow-query",
       path: "/var/log/app/slow.log",
@@ -402,15 +403,15 @@ describe("RuntimeProvider contract", () => {
     await expectContractFailure(incompleteProvider, "capability matrix decodes");
   });
 
-  test("fails with ContractFailure when getStatus omits the running boolean", async () => {
+  test("fails with ContractFailure when getStatus omits its state", async () => {
     const provider = {
       ...TestRuntimeProvider,
       getStatus: Effect.succeed({ message: "missing-running" } as unknown as {
-        readonly running: boolean;
+        readonly state: "running" | "idle";
       }),
     } as typeof TestRuntimeProvider;
 
-    await expectContractFailure(provider, "getStatus returns a running boolean");
+    await expectContractFailure(provider, "getStatus returns running or idle");
   });
 
   test("fails with ContractFailure when getVersions returns an empty provider string", async () => {

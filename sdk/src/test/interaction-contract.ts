@@ -1,8 +1,8 @@
 import { Cause, type Context, Duration, Effect, Exit, Fiber, Option, Redacted, type Scope } from "effect";
 
 import type { PromptSpec, PromptType } from "../schema/index.ts";
-import { Renderer } from "../services/index.ts";
 import type { InteractionError, InteractionServiceShape } from "../services/index.ts";
+import { Renderer } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
 import { makeInteractionContractRenderer } from "./interaction-renderer.ts";
 

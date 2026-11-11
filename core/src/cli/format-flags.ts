@@ -1,9 +1,7 @@
-import { Flags } from "./spec/metadata";
-
 import { RendererSelectionError } from "@lando/sdk/errors";
-
 import { scanArgvFlags } from "./argv-walk";
 import type { RendererMode } from "./renderer-selection";
+import { Flags } from "./spec/metadata";
 
 export const RESULT_FORMATS = ["text", "json", "table", "yaml", "ndjson"] as const;
 export type ResultFormat = (typeof RESULT_FORMATS)[number];
@@ -106,7 +104,7 @@ export const parseJsonFieldList = (raw: string): readonly string[] => {
   return fields;
 };
 
-const isSpaceFormJsonFieldList = (token: string): boolean =>
+export const isSpaceFormJsonFieldList = (token: string): boolean =>
   !token.startsWith("-") && JSON_FIELD_LIST.test(token) && (token.includes(",") || token.includes("."));
 
 export interface ExtractFormatFlagsResult {

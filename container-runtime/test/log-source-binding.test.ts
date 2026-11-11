@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Option } from "effect";
-
 import type { DataPlaneApiClient } from "@lando/container-runtime/data-plane";
 import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Effect, Option } from "effect";
+
 const target = { os: "linux", arch: "x64" } as const;
 const resolveHelper = () =>
   Effect.succeed({ target, path: AbsolutePath.make(import.meta.filename), digest: "1".repeat(64) });
@@ -76,7 +76,7 @@ describe("provider log source binding", () => {
   });
 
   test("binds the helper to the requested container and provider", async () => {
-    // Given: an API that refuses uploads.
+    // Given: an API that refuses exec creation.
     const calls: string[] = [];
     const binding = makeProviderLogSourceBinding({
       sourceEnv: {},
@@ -98,8 +98,8 @@ describe("provider log source binding", () => {
     if (!Effect.isEffect(access)) throw new Error("Expected scoped helper access");
     // When: the helper attempts to stat a file.
     const result = await Effect.runPromise(Effect.result(Effect.scoped(access)));
-    // Then: upload targets the bound container and failure retains provider identity.
-    expect(calls).toContain("/containers/service%2Fname/archive?path=/tmp");
+    // Then: exec targets the bound container and failure retains provider identity.
+    expect(calls).toContain("/containers/service%2Fname/exec");
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: { providerId: "podman", operation: "logFileAccess" },

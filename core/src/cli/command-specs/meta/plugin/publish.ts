@@ -1,6 +1,6 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Flags } from "../../../spec/metadata";
-
+import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import {
   type PluginPublishOptions,
   type PluginPublishResult,
@@ -11,8 +11,9 @@ import {
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { Flags } from "../../../spec/metadata";
 
-const extractInput = (input: unknown): PluginPublishOptions => {
+const extractInput = (input: unknown, isTTY: boolean): PluginPublishOptions => {
   const flags = specFlagsOf(input);
   const tag = stringFlag(flags, "tag");
   const registry = stringFlag(flags, "registry");
@@ -23,7 +24,7 @@ const extractInput = (input: unknown): PluginPublishOptions => {
     noTest: flags["no-test"] === true,
     nonInteractive: resolveNonInteractive({
       noInteractive: flags["no-interactive"] === true,
-      isTTY: process.stdin.isTTY,
+      isTTY,
     }),
   };
 };
@@ -45,7 +46,10 @@ export const pluginPublishSpec: LandoCommandSpec<PluginPublishResult> = {
     "no-test": Flags.boolean({ description: "Skip retesting before publish.", default: false }),
     "no-interactive": Flags.boolean({ description: "Never prompt for credentials.", default: false }),
   },
-  run: (input) => pluginPublish(extractInput(input)),
+  run: (input) =>
+    Effect.flatMap(CliInvocation, (invocation) =>
+      pluginPublish(extractInput(input, invocation.io.stdinIsTTY === true)),
+    ),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderPluginPublishResult(result),
 };

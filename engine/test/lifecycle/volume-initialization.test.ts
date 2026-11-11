@@ -3,8 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { DateTime, Deferred, Effect, Exit, Fiber } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -18,6 +16,7 @@ import {
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { DateTime, Deferred, Effect, Exit, Fiber } from "effect";
 import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
 import { recordCreatedVolume } from "../../src/lifecycle/volume-initialization.ts";
 
@@ -91,6 +90,7 @@ test.each(["created", "existing", "adopted", "replaced", "identity-less", "sibli
                 }),
               )
             : Effect.sync(() => {
+                expect(ref.app).toBe(AppId.make(kind === "identity-less" ? "test" : "original"));
                 observations += 1;
                 return {
                   coordinationKey: identity.coordinationKey,
@@ -103,16 +103,20 @@ test.each(["created", "existing", "adopted", "replaced", "identity-less", "sibli
                 };
               }),
       };
+      const renamedPlan = {
+        ...plan,
+        identity: { appRoot: identity.ownerRoot, ownerKey: "owner", dataName: "original" },
+      };
       const { identity: _identity, ...identityLessPlan } = plan;
       const receiptPlan =
         kind === "identity-less"
           ? identityLessPlan
           : kind === "sibling-lookup-fails"
             ? {
-                ...plan,
+                ...renamedPlan,
                 stores: [{ name: "sibling", scope: "app" as const, kind: "data" as const }, ...plan.stores],
               }
-            : plan;
+            : renamedPlan;
       const recorded = await Effect.runPromiseExit(
         (kind === "existing" ? Effect.void : recordCreatedVolume(provider, receiptPlan, identity)).pipe(
           Effect.provideService(StateStore, store),
@@ -234,10 +238,10 @@ test("cooperative cancellation waits for the creation receipt persist step", asy
               live.open({ ...spec, root: { path: AbsolutePath.make(root) } }).pipe(
                 Effect.map((bucket) => ({
                   ...bucket,
-                  modify: (update) =>
+                  mutate: (update) =>
                     Deferred.succeed(writing, undefined).pipe(
                       Effect.andThen(Deferred.await(release)),
-                      Effect.andThen(bucket.modify(update)),
+                      Effect.andThen(bucket.mutate(update)),
                     ),
                 })),
               ),

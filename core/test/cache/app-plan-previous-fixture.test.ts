@@ -1,19 +1,17 @@
+import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   APP_PLAN_CACHE_MAGIC,
   readCachedAppPlan,
 } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
+import { Effect } from "effect";
 
-test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35, 38, 39, 41, 44, 45, 46])(
+test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35, 38, 39, 41, 44, 45, 46, 49])(
   "current app-plan cache rejects the persisted revision %i fixture",
   async (revision) => {
     // Given intact versioned bytes at the real cache path.

@@ -4,9 +4,6 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-
-import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { makeRedactionService } from "@lando/redaction/service";
 import type { LandofileEventsOutcome } from "@lando/sdk/app";
@@ -26,6 +23,7 @@ import {
   ProviderId,
   ServiceName,
   type VolumeInfo,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
@@ -40,9 +38,12 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { emptySnapshotsLayer } from "./data-mover-support.ts";
-
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import {
+  serviceCertificatePaths,
+  serviceCertificatesOwnerDir,
+} from "../../src/lifecycle/service-certificate-paths.ts";
 import { beginOrResumeAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import {
   teardownDesiredOrUnchanged,
@@ -59,6 +60,8 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
+import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
@@ -285,10 +288,7 @@ const makeLayer = (input: {
       Effect.sync(() => {
         removedVolumes.push({ store: ref.store, generation: expectedGeneration });
       }),
-    removeObservedService: (observed: {
-      readonly service: string;
-      readonly containerId?: string;
-    }) =>
+    removeObservedService: (observed: { readonly service: string; readonly containerId?: string }) =>
       Effect.sync(() => {
         mutationOrder.push(`remove:${observed.service}`);
         removalAttempts.push({ service: String(observed.service), containerId: observed.containerId });
@@ -346,6 +346,7 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
+    layerTransactionGuard,
     emptySnapshotsLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
@@ -447,7 +448,7 @@ const orphanGroup = (input: {
     appRoot: AbsolutePath.make(input.root),
     service: ServiceName.make(name),
     providerId,
-    status: "running",
+    status: "running" as const,
     publications: { status: "unknown" as const },
     ...((input.withoutContainerId ?? []).includes(name) ? {} : { containerId: `container-${name}` }),
   })),
@@ -458,6 +459,28 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test("Landofile-backed handle destroy preserves orphan evidence", async () => {
+    await withTempRoot(async (root) => {
+      const desired = planAt(root);
+      const harness = makeLayer({
+        desiredPlan: desired,
+        orphans: [orphanGroup({ root, services: ["web"], volumes: ["data"] })],
+      });
+      const result = await Effect.runPromise(
+        destroyAppForTarget(
+          { volumes: true, yes: true },
+          {
+            ...targetFor(desired),
+            landofile: literalTestLandofile({ name: desired.name, services: {} }),
+          },
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.servicesDestroyed).toEqual(["web"]);
+      expect(harness.removedVolumes.map((volume) => volume.store)).toEqual(["data"]);
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
   test("destroy with an explicit provider resolves ambiguous applied state and retains volumes", async () => {
     await withTempRoot(async (root) => {
       const applied = planAt(root);
@@ -516,12 +539,11 @@ describe("applied-state teardown", () => {
             ...observed,
             ...orphanGroup({ root: join(parent, "other"), services: ["other-root"] }).services,
             {
-              ...observed[0],
               app: AppId.make("other-app"),
               service: ServiceName.make("other-app"),
               appRoot: AbsolutePath.make(root),
               providerId,
-              status: "running",
+              status: "running" as const,
               publications: { status: "unknown" },
               containerId: "foreign",
             },
@@ -798,6 +820,7 @@ describe("applied-state teardown", () => {
       expect(result).toEqual({
         app: appliedPlan.name,
         outcome: "stopped",
+        runtimeState: "running",
         servicesStopped: [],
         // This layer has no redactor, so the loader detail stays out of the reason.
         landofileEvents: { status: "skipped", reason: `the Landofile in ${root} could not be loaded` },
@@ -1044,7 +1067,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1077,7 +1102,9 @@ describe("applied-state teardown", () => {
       });
       await Effect.runPromise(
         beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1105,7 +1132,9 @@ describe("applied-state teardown", () => {
           id: oldPlan.id,
           root: oldPlan.root,
         }).pipe(
-          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.flatMap((pending) =>
+            pending.advance("record-sessions").pipe(Effect.andThen(pending.advance("record-apply-intent"))),
+          ),
           Effect.provide(harness.layer),
         ),
       );
@@ -1203,6 +1232,48 @@ describe("applied-state teardown", () => {
     },
   );
 
+  test.each([
+    ["unscoped", false],
+    ["provider-scoped", true],
+  ] as const)(
+    "%s destroy with only leftover leaf certificates reports unchanged without provider calls",
+    async (_label, scoped) => {
+      await withTempRoot(async (root) => {
+        // Given: a first start failed after certificate preparation, so only the leaf directory exists.
+        const certsDir = makeLandoPaths({
+          userDataRoot: isolatedDataRoot,
+          userCacheRoot: join(isolatedDataRoot, "cache"),
+          userConfRoot: join(isolatedDataRoot, "conf"),
+          systemPluginRoot: join(isolatedDataRoot, "sys"),
+          env: {},
+          platform: "linux",
+        }).certsDir;
+        const ownerKey = appIdentityKey("owner", root);
+        const ownerDir = serviceCertificatesOwnerDir(certsDir, ownerKey);
+        const { certPath } = serviceCertificatePaths(certsDir, ownerKey, "web");
+        await Bun.write(certPath, "certificate\n");
+        const harness = makeLayer({});
+
+        try {
+          // When
+          const result = await Effect.runPromise(
+            withResolvedCwd(root, destroyApp(scoped ? { providerId } : {})).pipe(
+              Effect.provide(harness.layer),
+            ),
+          );
+
+          // Then: nothing is torn down, and only an unscoped destroy removes the leaf directory.
+          expect(result.outcome).toBe("unchanged");
+          expect(harness.mutationOrder).toEqual([]);
+          expect(harness.listFilters).toEqual([]);
+          expect(await Bun.file(certPath).exists()).toBe(scoped);
+        } finally {
+          await rm(ownerDir, { recursive: true, force: true });
+        }
+      });
+    },
+  );
+
   test("clears applied state only after destroy succeeds", async () => {
     await withTempRoot(async (root) => {
       const appliedPlan = planAt(root);
@@ -1221,6 +1292,7 @@ describe("applied-state teardown", () => {
     });
   });
 });
+
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { currentTestPlan } from "../current-plan.ts";
 
@@ -1289,11 +1361,12 @@ describe("Landofile events on applied-state teardown", () => {
             teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
           ),
         );
+        // Interpolated data binds as quoted shell words; the escaped caller var stays literal.
         expect(executed).toEqual([
-          `echo pre-${operation}`,
-          "echo {{ event._tag }}",
-          "echo deferred-b",
-          "echo deferred-a",
+          `echo 'pre-${operation}'`,
+          "echo '{{ event._tag }}'",
+          "echo deferred-'b'",
+          "echo deferred-'a'",
         ]);
         expect(harness.destroyCalls).toEqual([appliedPlan]);
         expect(appliedPlan.events).toBeUndefined();

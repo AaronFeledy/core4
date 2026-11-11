@@ -1,12 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
-import { provideFileSyncEngine } from "../file-sync-engine.ts";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
-
 import { containerHostConfigFragment } from "@lando/container-runtime/plan";
 import {
   EventError,
@@ -25,16 +21,18 @@ import {
   PortablePath,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
   fileSyncVolumeName,
   serviceAppMount,
 } from "@lando/sdk/schema";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { TestFileSyncEngine } from "@lando/sdk/test";
-
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
 import { readJournal, readPendingAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import { resolveFileSyncMountPlan } from "../../src/operations/file-sync-plan.ts";
-import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
 import { makeHarness, plan, runStart, web } from "./start-progress-topology-support.ts";
 
 const acceleratedService: ServicePlan = {
@@ -1606,6 +1604,7 @@ describe("pre-apply accelerated mount preparation", () => {
       name: "other-app",
       slug: "other-app",
       root: otherRoot,
+      identity: { appRoot: otherRoot, ownerKey: appIdentityKey("owner", otherRoot), dataName: "other-app" },
       services: {
         [web.name]: {
           ...acceleratedService,
@@ -1763,6 +1762,7 @@ describe("pre-apply accelerated mount preparation", () => {
 
   test("retains a fresh durable start when the session ledger is unavailable, then retries", async () => {
     const actions: string[] = [];
+    const attemptsAtApply: Array<string | undefined> = [];
     const app = { kind: "user", id: acceleratedPlan.id, root: acceleratedPlan.root } as const;
     let ledgerAvailable = false;
     const unavailable = new FileSyncStartError({
@@ -1801,7 +1801,17 @@ describe("pre-apply accelerated mount preparation", () => {
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => actions.push("prepare"),
-      onApply: () => actions.push("apply"),
+      onApply: () =>
+        readJournal(app).pipe(
+          Effect.tap(({ pending }) =>
+            Effect.sync(() => {
+              attemptsAtApply.push(pending?.attemptId);
+              actions.push("apply");
+            }),
+          ),
+          Effect.orDie,
+          Effect.provide(harness.stateStore.layer),
+        ),
       fileSync: {
         ...bound,
         bindPreparedTargets: () =>
@@ -1831,7 +1841,8 @@ describe("pre-apply accelerated mount preparation", () => {
     const completedJournal = await Effect.runPromise(
       readJournal(app).pipe(Effect.provide(harness.stateStore.layer)),
     );
-    expect(completedJournal.pending?.phase).toBe("completed");
+    expect(attemptsAtApply).toEqual([failedJournal.pending?.attemptId]);
+    expect(completedJournal.pending).toBeNull();
   });
 
   test("retains the preparing journal after rejected targets without a rollback path", async () => {

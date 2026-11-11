@@ -1,9 +1,8 @@
 import { readdir } from "node:fs/promises";
-
-import { Effect, Option, Schema } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { type ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { AppId, type AppliedStateInventory } from "@lando/sdk/schema";
+import { Effect, Option, Schema } from "effect";
 import type { AppliedPlanRead } from "./applied-state-read.ts";
 
 export const APPLIED_PLAN_NAMESPACE = "applied-plans";
@@ -24,7 +23,7 @@ export const listAppliedPlanInventory = (
       (cause: unknown) => isErrnoCode(cause, "ENOENT"),
       () => Effect.succeed([]),
     ),
-    Effect.mapError(onError),
+    mapFailures(onError),
     Effect.map((entries) =>
       entries.flatMap((entry) => {
         if (!entry.endsWith(".json")) return [];

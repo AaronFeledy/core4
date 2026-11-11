@@ -1,17 +1,18 @@
 /** Update orchestration, launch probing, and platform apply flows. */
 import { mkdtemp, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { causeMessage } from "@lando/sdk/errors";
-import { Effect, Option } from "effect";
-
 import type { UpdateChannel, UpdateManifestSchema as UpdateManifest } from "@lando/sdk/schema";
 import { Downloader, ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/telemetry/events";
 import { scrubTelemetryValue } from "@lando/telemetry/redaction";
+import { Effect, Option } from "effect";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
 import { CORE_VERSION } from "../version";
+import { binarySwapFileSystem, swapBinary } from "./binary-swap.ts";
 import type { CoreReplacementPrecondition } from "./compatibility.ts";
 import {
   type CoreUpdateFailureSchema,
@@ -34,14 +35,13 @@ import {
   isPlaceholderBinary,
   parseJson,
   platform,
-  readUpdateManifestState,
+  recordUpdateManifestSuccess,
   resolveUpdateManifestUrl,
   updateChannelForVersion,
   updateManifestPlatform,
   updateManifestStatePath,
   updatePlatformId,
   writeUpdateFailureState,
-  writeUpdateManifestState,
 } from "./manifest.ts";
 import type { PluginUpdatePlanRow, UpdateSelection } from "./plugin-plan.ts";
 import {
@@ -51,7 +51,6 @@ import {
   isPermissionCause,
   posixPermissionRemediation,
   reexecUserArgv,
-  renameForUpdate,
   resolveSelfUpdateOptions,
   stringEnv,
   writeDownloadedBinary,
@@ -198,9 +197,7 @@ const runLaunchProbe = Effect.fn("Update.runLaunchProbe")(function* (
   const result = yield* processRunner
     .run({ cmd: path, args: ["--version"], timeoutMs: 15_000 })
     .pipe(
-      Effect.mapError((cause) =>
-        launchProbeError({ path, attemptedVersion, platformId, exitCode: -1, cause }),
-      ),
+      mapFailures((cause) => launchProbeError({ path, attemptedVersion, platformId, exitCode: -1, cause })),
     );
   if (result.exitCode === 0) return;
   return yield* Effect.fail(
@@ -253,55 +250,47 @@ const applyPosixSelfUpdate = ({
               platform: selfUpdate.platform,
               destination: executablePath,
             });
-            yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
-            yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
-              Effect.catch((error) =>
-                renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.catch(() => Effect.void),
-                  Effect.flatMap(() => Effect.fail(error)),
-                ),
-              ),
-            );
-            yield* runLaunchProbe(executablePath, attemptedVersion, platformId).pipe(
-              Effect.catch((error) =>
-                Effect.tryPromise({
-                  try: () => selfUpdate.rename(backupPath, executablePath),
-                  catch: (rollbackFailure) =>
-                    isPermissionCause(rollbackFailure)
-                      ? new UpdatePermissionError({
-                          message: `Failed to restore backup ${backupPath} to ${executablePath}.`,
-                          path: executablePath,
-                          remediation: posixPermissionRemediation(executablePath),
-                          cause: rollbackFailure,
-                        })
-                      : withRollbackFailure(error, rollbackFailure),
-                }).pipe(Effect.flatMap(() => Effect.fail(error))),
-              ),
-            );
-            yield* Effect.tryPromise({
-              try: () => readFile(executablePath),
-              catch: (cause) =>
-                new UpdatePermissionError({
-                  message: `Failed to read updated Lando binary at ${executablePath}.`,
-                  path: executablePath,
-                  remediation: posixPermissionRemediation(executablePath),
-                  cause,
-                }),
-            }).pipe(
-              Effect.flatMap((installedBytes) =>
-                refreshInstallRecord({
+            yield* swapBinary(
+              { executablePath, stagedBinaryPath: tempBinaryPath, backupPath },
+              Effect.gen(function* () {
+                yield* runLaunchProbe(executablePath, attemptedVersion, platformId);
+                const installedBytes = yield* Effect.tryPromise({
+                  try: () => readFile(executablePath),
+                  catch: (cause) =>
+                    new UpdatePermissionError({
+                      message: `Failed to read updated Lando binary at ${executablePath}.`,
+                      path: executablePath,
+                      remediation: posixPermissionRemediation(executablePath),
+                      cause,
+                    }),
+                });
+                yield* refreshInstallRecord({
                   recordFile: selfUpdate.installRecordFile,
                   record: owned.record,
                   sha256: sha256Hex(installedBytes),
                   size: installedBytes.byteLength,
                   releaseVersion: attemptedVersion,
-                }),
-              ),
-              Effect.catch((error) =>
-                renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.andThen(Effect.fail(error)),
-                ),
-              ),
+                });
+              }),
+              {
+                fs: { ...binarySwapFileSystem, rename: selfUpdate.rename },
+                error: (message, cause) =>
+                  new UpdatePermissionError({
+                    message,
+                    path: executablePath,
+                    remediation: posixPermissionRemediation(executablePath),
+                    cause,
+                  }),
+                rollbackError: (error, cause) =>
+                  error instanceof UpdateLaunchProbeError && !isPermissionCause(cause)
+                    ? withRollbackFailure(error, cause)
+                    : new UpdatePermissionError({
+                        message: `Failed to restore backup ${backupPath} to ${executablePath}.`,
+                        path: executablePath,
+                        remediation: `The previous Lando binary is kept at ${backupPath}; move it back over ${executablePath} to restore it. ${posixPermissionRemediation(executablePath)}`,
+                        cause,
+                      }),
+              },
             );
           }),
         );
@@ -312,7 +301,7 @@ const applyPosixSelfUpdate = ({
         yield* selfUpdate
           .execve({ path: executablePath, argv: execArgv, env: stringEnv(selfUpdate.env) })
           .pipe(
-            Effect.mapError(
+            mapFailures(
               (cause) =>
                 new UpdatePermissionError({
                   message: `Failed to exec updated Lando binary at ${executablePath}; the new binary remains installed.`,
@@ -375,7 +364,7 @@ const applyWindowsSelfUpdate = Effect.fn("Update.applyWindowsSelfUpdate")(functi
   );
   yield* guardCoreReplacement(
     selfUpdate.replaceWindows(replacementInput).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new UpdatePermissionError({
             message: `Failed to schedule Windows Lando replacement for ${executablePath}.`,
@@ -581,12 +570,7 @@ const defaultUpdate = Effect.fn("Update.defaultUpdate")(function* (
       );
     }
     if (!options.dryRun) {
-      const state = yield* readUpdateManifestState(options.updateStatePath);
-      const cached = state[manifest.channel];
-      yield* writeUpdateManifestState(options.updateStatePath, {
-        ...state,
-        [manifest.channel]: { ...cached, latest: manifest.latest },
-      });
+      yield* recordUpdateManifestSuccess(options.updateStatePath, manifest.channel, manifest.latest);
     }
     return {
       manifest,
@@ -641,7 +625,9 @@ const resolvedOptions = (options: UpdateOptions): RequiredUpdateOptions => ({
   currentVersion: options.currentVersion ?? CORE_VERSION,
   channel: options.channel ?? updateChannelForVersion(options.currentVersion ?? CORE_VERSION),
   dryRun: options.dryRun === true,
-  fetchManifestBytes: options.fetchManifestBytes ?? defaultFetchManifestBytes,
+  fetchManifestBytes:
+    options.fetchManifestBytes ??
+    ((url, signal) => defaultFetchManifestBytes(url, undefined, undefined, signal)),
   selfUpdate: options.selfUpdate,
   updateStatePath: options.updateStatePath ?? updateManifestStatePath(),
   verifyChecksumSignature: options.verifyChecksumSignature ?? defaultVerifyChecksumSignature,
@@ -656,11 +642,13 @@ export const update = Effect.fn("Update.update")(function* (
 ): Effect.fn.Return<UpdateResult, UpdateError, Telemetry | ProcessRunner> {
   const telemetry = yield* Telemetry;
   const downloader = yield* Effect.serviceOption(Downloader);
+  const requestContext = yield* Effect.context<never>();
   const required = resolvedOptions({
     ...options,
     fetchManifestBytes:
       options.fetchManifestBytes ??
-      ((url) => defaultFetchManifestBytes(url, Option.getOrUndefined(downloader))),
+      ((url, signal) =>
+        defaultFetchManifestBytes(url, Option.getOrUndefined(downloader), requestContext, signal)),
   });
   if (!required.dryRun && options.handoff?.token !== undefined) {
     const receipt = yield* options.handoff.consume(options.handoff.token);

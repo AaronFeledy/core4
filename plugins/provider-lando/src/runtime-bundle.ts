@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-
-import { Effect, Schema } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import manifestData from "../runtime-bundle-versions.json" with { type: "json" };
 
@@ -95,7 +94,7 @@ const loadOverrideManifest = (
     ),
     Effect.flatMap((data) =>
       Schema.decodeUnknownEffect(OverrideRuntimeBundleManifestSchema)(data).pipe(
-        Effect.mapError((cause) => overrideManifestError(path, "failed schema validation", cause)),
+        mapFailures((cause) => overrideManifestError(path, "failed schema validation", cause)),
       ),
     ),
   );

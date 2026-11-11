@@ -2,6 +2,18 @@ import { Effect, Schema } from "effect";
 import { ConfigTranslateDiagnostic } from "../schema/config-translate-diagnostic";
 import { ValidationIssue, ValidationIssuePath, ValidationIssueSource } from "../schema/validation-issue";
 
+export class ConfigKeyNotFoundError extends Schema.TaggedError<ConfigKeyNotFoundError>()(
+  "ConfigKeyNotFoundError",
+  {
+    message: Schema.String,
+    key: Schema.String,
+    document: Schema.String,
+    validKeys: Schema.Array(Schema.String),
+    suggestion: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
   message: Schema.String,
   path: Schema.optional(Schema.String),

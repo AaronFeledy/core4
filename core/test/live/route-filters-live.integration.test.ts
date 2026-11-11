@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE, renderTraefikDynamicConfig } from "@lando/proxy-traefik";
@@ -13,7 +12,9 @@ import {
   type RoutePlan,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
@@ -122,7 +123,10 @@ const nginxService: ServicePlan = {
 const traefikStartScript = [
   `mkdir -p ${TRAEFIK_DYNAMIC_CONFIG_DIR}`,
   `cat > ${TRAEFIK_DYNAMIC_CONFIG_DIR}/route-filters.yml <<'LANDO_TRAEFIK_ROUTES'`,
-  renderTraefikDynamicConfig(routes, AppId.make(SLUG)).trimEnd(),
+  renderTraefikDynamicConfig(routes, {
+    id: AppId.make(SLUG),
+    ownerKey: appIdentityKey("owner", SLUG),
+  }).trimEnd(),
   "LANDO_TRAEFIK_ROUTES",
   [
     "exec traefik",
@@ -191,15 +195,16 @@ describe("route filters — live integration", () => {
       const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath);
+      const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
       const backendPlan = appPlan(SLUG, nginxService, routes);
       const proxyPlan = appPlan(`${SLUG}-proxy`, traefikService, []);
 
       await Effect.runPromise(Effect.result(bringDown(proxyPlan, { api })));
       await Effect.runPromise(Effect.result(bringDown(backendPlan, { api })));
       try {
-        const backendApplied = await Effect.runPromise(bringUp(backendPlan, { api }));
+        const backendApplied = await Effect.runPromise(bringUp(backendPlan, { api, ...helperOptions }));
         expect(backendApplied.changed).toBe(true);
-        const traefikApplied = await Effect.runPromise(bringUp(proxyPlan, { api }));
+        const traefikApplied = await Effect.runPromise(bringUp(proxyPlan, { api, ...helperOptions }));
         expect(traefikApplied.changed).toBe(true);
 
         // When: the same path is requested through each Host-selected route.

@@ -1,14 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Schema } from "effect";
-
-import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/events";
-import { REDACTED, createRedactor } from "@lando/sdk/secrets";
-
-import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "@lando/mcp/dispatch";
+import {
+  type McpDispatchDeps,
+  type McpExecute,
+  type McpProgressFrame,
+  dispatchTool,
+} from "@lando/mcp/dispatch";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import type { CommandResultOutcome } from "@lando/sdk/command-result";
+import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
+import type { LandoEvent } from "@lando/sdk/events";
+import { REDACTED, createRedactor } from "@lando/sdk/secrets";
+import { Cause, Effect, Schema } from "effect";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
@@ -32,7 +35,7 @@ const spec = (
   ...extra,
 });
 
-const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
+const directExecute = (): McpExecute => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) satisfies CommandResultOutcome),
     Effect.catch((error) =>

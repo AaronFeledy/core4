@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-
-import { DateTime, Result, Schema } from "effect";
-
 import {
   BuildStepSkipEvent,
   PostAppStartEvent,
@@ -16,6 +12,7 @@ import {
   PreServiceStartEvent,
   PreServiceStopEvent,
 } from "@lando/sdk/events";
+import { DateTime, Result, Schema, SchemaIssue } from "effect";
 
 const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-05-11T07:30:00Z");
 

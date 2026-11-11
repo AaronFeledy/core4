@@ -2,8 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Result, Schema } from "effect";
-
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { StateStoreError } from "@lando/sdk/errors";
@@ -11,10 +10,10 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-
+import { Effect, Layer, Result, Schema } from "effect";
+import { listServicesWithPrune } from "../../src/cli/commands/list.ts";
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
 import { pruneAppliedPlanState } from "../../src/cli/commands/list-prune-state.ts";
-import { listServicesWithPrune } from "../../src/cli/commands/list.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -35,14 +34,15 @@ const fixture = async (provider: string) => {
   const store = makeStateStore({
     privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
   });
-  const run = (failRemoval = false) =>
+  const run = (failRemoval = false, idle: boolean | "unknown" = false) =>
     Effect.runPromise(
       listServicesWithPrune({
         userDataRoot: root,
         userCacheRoot: root,
         discoverContainersEvidence: async () => ({
           apps: [],
-          confirmedProviderIds: [provider],
+          confirmedProviderIds: idle ? [] : [provider],
+          idleProviderIds: idle === true ? [provider] : [],
           ownedAppIds: [],
         }),
       }).pipe(
@@ -92,6 +92,17 @@ const fixture = async (provider: string) => {
     });
   return { root, paths, legacyDir, legacyPath, legacy, plan, store, run };
 };
+
+test.each([
+  { name: "idle", idle: true, status: "stopped" },
+  { name: "unknown", idle: "unknown", status: "unknown" },
+] as const)("$name never authorizes pruning retained inventory", async ({ idle, status }) => {
+  const f = await fixture("lando");
+  const result = await f.run(false, idle);
+  expect(result.apps).toMatchObject([{ appId: "alpha", status, stale: true }]);
+  expect(result.pruned).toEqual([]);
+  expect(await Bun.file(f.legacyPath).json()).toEqual(f.legacy);
+});
 
 test.each(["lando", "docker"])(
   "removes legacy-only arbitrary filenames when %s confirms empty",
@@ -254,3 +265,45 @@ test("does not delete a live podman record for a stale missing-root candidate", 
   expect(removed).toBe(false);
   expect(await readFile(record, "utf8")).toBe(payload);
 });
+
+test.each(["lando", "podman"])(
+  "prunes a missing-root %s app recorded at the current applied-state version",
+  async (provider) => {
+    // Given: applied state written in the provider's current on-disk version, not the legacy one.
+    const f = await fixture(provider);
+    const stateDir = f.paths.pluginStateDir(`@lando/provider-${provider}`);
+    const plan = {
+      ...f.plan,
+      slug: "alpha",
+      routes: [],
+      stores: [],
+      fileSync: [],
+      extensions: {},
+      metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+    };
+    const other = { ...plan, id: "other", slug: "other", root: f.root };
+    if (provider === "podman") {
+      await mkdir(stateDir, { recursive: true });
+      await writeFile(
+        join(stateDir, "applied-plans.json"),
+        JSON.stringify({ version: APPLIED_STATE_VERSION, data: { alpha: plan, other } }),
+      );
+    } else {
+      await mkdir(join(stateDir, "applied-plans"), { recursive: true });
+      await writeFile(
+        join(stateDir, "applied-plans", "alpha.json"),
+        JSON.stringify({ version: APPLIED_STATE_VERSION, data: plan }),
+      );
+      await writeFile(
+        join(stateDir, "applied-plans", "other.json"),
+        JSON.stringify({ version: APPLIED_STATE_VERSION, data: other }),
+      );
+    }
+    await rm(f.legacyPath);
+    // When
+    const result = await f.run();
+    // Then: the stale app is removed and the live one stays.
+    expect(result.pruned?.map((entry) => entry.appId)).toEqual(["alpha"]);
+    expect((await readAppliedPlansFromUserData(f.root)).map((entry) => entry.appId)).toEqual(["other"]);
+  },
+);

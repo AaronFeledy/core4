@@ -1,8 +1,5 @@
-import { Flags } from "../../../spec/metadata";
-
 import { LogsAppResult } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
-
 import {
   type GlobalLogsResult,
   followGlobalLogs,
@@ -10,6 +7,7 @@ import {
   renderGlobalLogsResult,
 } from "../../../commands/meta/global-logs";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 import {
   logFollowFromInput,
   logLinesToStreamFrames,

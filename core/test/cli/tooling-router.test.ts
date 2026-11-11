@@ -3,9 +3,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { serialize } from "node:v8";
-import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Context, Effect, Result, Schema } from "effect";
-
 import {
   APP_COMMAND_MAGIC,
   COMMAND_INDEX_HEADER_BYTES,
@@ -14,7 +11,9 @@ import {
 } from "@lando/engine/cache/command-index";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { Context, Effect, Result, Schema } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
@@ -24,6 +23,7 @@ import {
   toolingHelpRequested,
   toolingName,
   toolingRouteError,
+  toolingVersionRequested,
 } from "../../src/cli/tooling-router.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
@@ -37,6 +37,33 @@ const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>):
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 };
+
+test.each([
+  { argv: ["--version"], wrapper: false, versionFlag: false, expected: true },
+  { argv: ["--version"], wrapper: true, versionFlag: false, expected: false },
+  { argv: ["--version"], wrapper: false, versionFlag: true, expected: false },
+  { argv: ["--version", "2.0"], wrapper: false, versionFlag: false, expected: false },
+  { argv: ["--", "--version"], wrapper: false, versionFlag: false, expected: false },
+  { argv: ["-v"], wrapper: false, versionFlag: false, expected: false },
+  { argv: ["-V"], wrapper: false, versionFlag: false, expected: false },
+])(
+  "Given version input $argv with wrapper=$wrapper and versionFlag=$versionFlag, when routed, then refusal is $expected",
+  ({ argv, wrapper, versionFlag, expected }) => {
+    const input = Result.getOrThrow(
+      normalizeToolingInput("wipe", versionFlag ? { flags: { version: { boolean: true } } } : {}),
+    );
+    const route: ToolingRoute = {
+      _tag: "tooling",
+      commandId: "app:wipe",
+      name: "wipe",
+      summary: "Record input",
+      hidden: false,
+      input,
+      ...(wrapper ? { wrapper: true } : {}),
+    };
+    expect(toolingVersionRequested(route, argv)).toBe(expected);
+  },
+);
 
 for (const [token, commandId] of [
   ["stop", "app:stop"],
@@ -240,7 +267,7 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
   });
 });
 
-test("Given a schema-version-2 cache blob, when resolving a listed task, then it is a cache-miss not an exception", async () => {
+test("Given a schema-version-2 cache blob, when resolving a listed task, then the index is rebuilt instead of trusted", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given — prior index generation still lists the task; current schema is newer
     expect(Number(COMMAND_INDEX_SCHEMA_VERSION)).toBeGreaterThan(2);
@@ -251,15 +278,8 @@ test("Given a schema-version-2 cache blob, when resolving a listed task, then it
     // When
     const route = await Effect.runPromise(resolveToolingRoute("quality", { cwd: root, cacheRoot }));
 
-    // Then — mismatch is a clean miss (never a thrown decode error, never a usable hit)
-    expect(route).toEqual({
-      _tag: "cache-miss",
-      commandId: "app:quality",
-      name: "quality",
-      reason: "invalid-cache",
-      sourcePath: join(root, ".lando.yml"),
-      remediation: expect.stringContaining("lando app:cache:refresh"),
-    });
+    // Then — mismatch is never a thrown decode error or a usable hit; the rebuilt index has no such task
+    expect(route).toMatchObject({ _tag: "unknown-tooling", commandId: "app:quality", name: "quality" });
   });
 });
 
@@ -272,12 +292,7 @@ test("Given a fresh cache that does not list a token, when resolving it, then it
     const route = await Effect.runPromise(resolveToolingRoute("disabled-now", { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toEqual({
-      _tag: "unknown-tooling",
-      commandId: "app:disabled-now",
-      name: "disabled-now",
-      remediation: expect.stringContaining("lando help"),
-    });
+    expect(route).toEqual({ _tag: "unknown-tooling", commandId: "app:disabled-now", name: "disabled-now" });
   });
 });
 
@@ -318,7 +333,7 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
   });
 });
 
-test("Given an uncached Landofile task, when resolving it, then the router does not parse and register it", async () => {
+test("Given an uncached Landofile task, when resolving it, then the router rebuilds and routes it", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
@@ -331,10 +346,7 @@ test("Given an uncached Landofile task, when resolving it, then the router does 
     const route = await Effect.runPromise(resolveToolingRoute("uncached", { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toMatchObject({
-      _tag: "cache-miss",
-      remediation: expect.stringContaining("lando app:cache:refresh"),
-    });
+    expect(route).toMatchObject({ _tag: "tooling", commandId: "app:uncached" });
   });
 });
 
@@ -347,11 +359,7 @@ test("Given a fresh app cache, when resolving an unknown task, then it returns t
     const route = await Effect.runPromise(resolveToolingRoute("unknown", { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toMatchObject({
-      _tag: "unknown-tooling",
-      commandId: "app:unknown",
-      remediation: expect.stringContaining("lando help"),
-    });
+    expect(route).toMatchObject({ _tag: "unknown-tooling", commandId: "app:unknown" });
   });
 });
 
@@ -361,7 +369,8 @@ test("Given an argv-derived tooling name with terminal controls, when its error 
 
   // When
   const error = toolingRouteError({
-    _tag: "unknown-tooling",
+    _tag: "cache-miss",
+    reason: "missing-cache",
     commandId: `app:${name}`,
     name,
     remediation: "refresh",
@@ -396,7 +405,7 @@ test("Given another namespace or a directory outside an app, when resolving, the
   });
 });
 
-test("Given a stale version-policy cache, when resolving a task, then it requires refresh without running it", async () => {
+test("Given a stale version-policy cache, when resolving a task, then the rebuild's version error is reported without running it", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     const marker = join(root, "task-ran");
@@ -416,13 +425,14 @@ test("Given a stale version-policy cache, when resolving a task, then it require
     // Then
     expect(route).toMatchObject({
       _tag: "cache-miss",
-      remediation: expect.stringContaining("lando app:cache:refresh"),
+      reason: "rebuild-failed",
+      error: { _tag: "LandofileVersionConstraintError" },
     });
     expect(await Bun.file(marker).exists()).toBe(false);
   });
 });
 
-test("Given a missing cache with a remote include, when resolving, then it performs no task or network side effect", async () => {
+test("Given a remote include without a fragment path, rebuilding a missing index reports subpath-invalid without task or network effects", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     let requests = 0;
@@ -450,7 +460,8 @@ test("Given a missing cache with a remote include, when resolving, then it perfo
       // Then
       expect(route).toMatchObject({
         _tag: "cache-miss",
-        remediation: expect.stringContaining("lando app:cache:refresh"),
+        reason: "rebuild-failed",
+        error: { _tag: "LandofileIncludeError", kind: "subpath-invalid" },
       });
       expect(requests).toBe(0);
       expect(await Bun.file(marker).exists()).toBe(false);
@@ -460,7 +471,7 @@ test("Given a missing cache with a remote include, when resolving, then it perfo
   });
 });
 
-test("Given a cache-miss remediation, when extracting backticked lando commands, then each resolves in the built-in registry", async () => {
+test("Given rebuild is disabled, a stale cache reports remediation without a manual refresh command", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
@@ -469,9 +480,11 @@ test("Given a cache-miss remediation, when extracting backticked lando commands,
       ["name: router-test", "tooling:", "  uncached:", "    cmd: echo must-not-run", ""].join("\n"),
     );
 
-    // When
-    const route = await Effect.runPromise(resolveToolingRoute("uncached", { cwd: root, cacheRoot }));
-    if (route._tag !== "cache-miss") {
+    // When — without a rebuild the stale index stays a cache-state miss
+    const route = await Effect.runPromise(
+      resolveToolingRoute("uncached", { cwd: root, cacheRoot, rebuild: false }),
+    );
+    if (route._tag !== "cache-miss" || route.reason === "rebuild-failed") {
       throw new Error(`expected cache-miss, got ${route._tag}`);
     }
     const tokens = [...route.remediation.matchAll(/`lando\s+([^`]+)`/g)].flatMap((match) => {
@@ -479,12 +492,13 @@ test("Given a cache-miss remediation, when extracting backticked lando commands,
       return captured === undefined ? [] : [captured.trim()];
     });
 
-    // Then
-    expect(tokens.length).toBeGreaterThan(0);
+    // Then — automatic rebuild means no manual refresh step is ever named
+    expect(route).toMatchObject({ reason: "stale-cache", staleReason: "source" });
+    expect(route.remediation).toMatch(/\S/u);
     for (const token of tokens) {
       expect(resolveBuiltInCommand(token), `${token} must resolve in the built-in registry`).toBeDefined();
     }
-    expect(tokens).toContain("app:cache:refresh");
+    expect(route.remediation).not.toContain("app:cache:refresh");
   });
 });
 
@@ -578,16 +592,19 @@ test("Given a declared-input task, when help follows the argument terminator, th
   expect(requests).toEqual([false, false]);
 });
 
-test("Given a task with no declared input, when argv asks for help, then the option passes through to the command", () => {
-  // Given — raw argv passthrough is what lets `lando composer --help` show the tool's own help
-  const { input: _input, ...route } = declaredInputRoute();
+test.each([true, false] as const)(
+  "Given a raw task with wrapper=%s, help follows its ownership",
+  (wrapper) => {
+    // Given
+    const { input: _input, ...route } = declaredInputRoute();
 
-  // When
-  const requested = toolingHelpRequested(route, ["--help"]);
+    // When
+    const requested = toolingHelpRequested({ ...route, ...(wrapper ? { wrapper } : {}) }, ["--help"]);
 
-  // Then
-  expect(requested).toBe(false);
-});
+    // Then
+    expect(requested).toBe(!wrapper);
+  },
+);
 
 test("Given a hidden declared-input task, when argv asks for help, then it routes to pre-execution refusal", () => {
   // Given — a disabled task is indexed hidden and must still fail with its tagged error
@@ -622,7 +639,7 @@ test("Given a task that declares its own help flag, when argv asks for help, the
   expect(requests).toEqual([false, false]);
 });
 
-test("Given a route that is not a normalized tooling task, when argv asks for help, then no help is requested", () => {
+test("Given mixed route kinds, help is requested only for the raw script", () => {
   // Given
   const routes: ReadonlyArray<ToolingRoute> = [
     { _tag: "not-tooling" },
@@ -634,14 +651,14 @@ test("Given a route that is not a normalized tooling task, when argv asks for he
       hidden: false,
       appRoot: "/tmp",
     },
-    { _tag: "unknown-tooling", commandId: "app:nope", name: "nope", remediation: "refresh" },
+    { _tag: "unknown-tooling", commandId: "app:nope", name: "nope" },
   ];
 
   // When
   const requests = routes.map((route) => toolingHelpRequested(route, ["--help"]));
 
   // Then
-  expect(requests).toEqual([false, false, false]);
+  expect(requests).toEqual([false, true, false]);
 });
 
 const countingCatalog = () => {

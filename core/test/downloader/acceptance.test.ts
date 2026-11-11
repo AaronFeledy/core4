@@ -1,22 +1,18 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-
-import { describe, expect, test } from "bun:test";
+import { MUTAGEN_TOOL_MANIFEST, mutagenAgentInstallPath, provisionMutagen } from "@lando/file-sync-mutagen";
+import { layer as DownloaderLayer } from "@lando/http-client/downloader";
+import { makePluginArtifactDownload } from "@lando/provider-lando";
+import type { ToolArtifactEntry } from "@lando/sdk/schema";
+import { Downloader } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { Downloader } from "@lando/sdk/services";
-
-import { MUTAGEN_TOOL_MANIFEST, mutagenAgentInstallPath, provisionMutagen } from "@lando/file-sync-mutagen";
-import type { ToolArtifactEntry } from "@lando/sdk/schema";
-
-import { layer as DownloaderLayer } from "@lando/http-client/downloader";
-import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
@@ -117,7 +113,7 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
         const result = await Effect.runPromise(
           Effect.gen(function* () {
             const downloader = yield* Downloader;
-            const artifactDownload = makeArtifactDownload(downloader);
+            const artifactDownload = makePluginArtifactDownload(downloader);
             return yield* artifactDownload({
               url,
               expectedSha256: sha256Hex(bundle),

@@ -1,14 +1,44 @@
 import { describe, expect, test } from "bun:test";
-
-import { Context, Effect, Layer, Option } from "effect";
-
-import { FileSyncEngine } from "@lando/sdk/services";
-
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { ServiceNotReadyError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { FileSyncEngine, ServiceReadiness } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Context, DateTime, Effect, Layer, Option } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 describe("bootstrap plugin services", () => {
+  test("app bootstrap provides planned readiness that rejects an absent service", async () => {
+    const failure = await Effect.runPromise(
+      Effect.flatMap(ServiceReadiness, (readiness) =>
+        readiness.wait({
+          provider: TestRuntimeProvider,
+          plan: {
+            valueModel: 1,
+            id: AppId.make("readiness-port"),
+            name: "readiness-port",
+            slug: "readiness-port",
+            root: AbsolutePath.make("/readiness-port"),
+            provider: ProviderId.make("test"),
+            services: {},
+            routes: [],
+            stores: [],
+            fileSync: [],
+            extensions: {},
+            metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "readiness-test", runtime: 4 },
+          },
+          services: [ServiceName.make("absent")],
+        }),
+      ).pipe(
+        Effect.flip,
+        Effect.provide(makeLandoRuntime({ bootstrap: "app", plugins: { policy: "bundled-only" } })),
+      ),
+    );
+    expect(failure).toBeInstanceOf(ServiceNotReadyError);
+    expect(failure).toMatchObject({ service: "absent", reason: "inspect-failed" });
+  });
+
   test("app bootstrap provides file-sync resolver without an eager engine", async () => {
     // Given: the real app bootstrap layer with bundled plugin descriptors.
     const context = await Effect.runPromise(

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect } from "effect";
-
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { type AppFeatureContractHarness, ContractFailure, runAppFeatureContract } from "@lando/sdk/test";
+import { Cause, Effect } from "effect";
 
 type DeclareEndpoints = NonNullable<AppFeatureDefinition["declareEndpoints"]>;
 

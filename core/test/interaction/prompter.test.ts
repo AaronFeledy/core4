@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Readable, Writable } from "node:stream";
-
-import { type Context, Effect, Layer } from "effect";
-
 import { InteractionService, Renderer } from "@lando/sdk/services";
+import { type Context, Effect, Layer } from "effect";
 
 import { makeInteractionPrompter, makePromiseInteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";

@@ -1,12 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { type HostPlatform, PluginDoctorReport } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { makeRouterBindAddressCheck, routerBindAddressCheck } from "../src/doctor-bind-address.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";

@@ -3,17 +3,15 @@ import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Effect, Layer, Predicate, Stream } from "effect";
-
-import { logFileHelperCleanupArgv, logFileHelperExecArgv } from "@lando/container-runtime/container-helper";
+import { logFileHelperExecArgv } from "@lando/container-runtime/container-helper";
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import { resolveContainerHelper } from "../../src/container-helper/assets.ts";
+import { Effect, Layer, Predicate, Stream } from "effect";
 
 // Drives the real Go helper built by `bun run build:container-helper` so the
 // link-time env policy and both wire protocols stay in sync with TypeScript.
@@ -227,16 +225,6 @@ describe.skipIf(process.platform !== "linux")("log-file role", () => {
       eof: true,
     });
     expect(close).toEqual({ ok: true });
-  });
-
-  test("refuses to clean up a path outside its install directory", async () => {
-    const proc = Bun.spawn({
-      cmd: [...logFileHelperCleanupArgv(await helperPath(), "/tmp")],
-      stdout: "pipe",
-    });
-    const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout)).toEqual({ ok: false, code: "EPROTO", message: "invalid helper cleanup path" });
   });
 });
 

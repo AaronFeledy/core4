@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Effect, Exit } from "effect";
-
-import { SqlSeedStateError } from "@lando/sdk/errors";
+import type { SqlSeedStateError } from "@lando/sdk/errors";
 import {
   AppId,
   type DataTransferSpec,
@@ -12,6 +10,7 @@ import {
   type VolumeRef,
   snapshotHandle,
 } from "@lando/sdk/schema";
+import { Effect, Exit } from "effect";
 
 import { type SqlExec, runImport } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
@@ -19,6 +18,7 @@ import { parseCount } from "./command-input.ts";
 import { registerSqlCredentials, resolveSqlEnvironment } from "./environment.ts";
 import { countCommand, loadCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
+import { seedStateError } from "./seed-state.ts";
 import { requireSeedCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import type { SqlPlan } from "./views.ts";
 
@@ -42,13 +42,7 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
     readonly store: VolumeRef;
   },
 ) {
-  const reject = (status: SqlSeedStateError["status"]) =>
-    new SqlSeedStateError({
-      message: `Cannot seed ${input.service} from state ${status}.`,
-      service: input.service,
-      status,
-      remediation: "Create a fresh database volume or explicitly import into the existing database.",
-    });
+  const reject = (status: SqlSeedStateError["status"]) => seedStateError(input.service, status);
   const identity = context.volumeIdentity;
   if (identity.origin !== "created" || identity.ownerRoot !== context.owner.appRoot)
     return yield* Effect.fail(reject("unknown"));
@@ -64,14 +58,7 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
   });
   const count = parseCount(counted.stdout);
   if (count !== 0) {
-    return yield* Effect.fail(
-      new SqlSeedStateError({
-        message: `Cannot seed ${input.service} from state ${status}.`,
-        service: input.service,
-        status,
-        remediation: "Create a fresh database volume or explicitly import into the existing database.",
-      }),
-    );
+    return yield* Effect.fail(reject(status));
   }
   const seedHandle = input.snapshot === undefined ? undefined : snapshotHandle(input.snapshot);
   if (input.snapshot !== undefined) {

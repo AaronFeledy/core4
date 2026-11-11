@@ -3,7 +3,9 @@ import { Schema } from "effect";
 import { CommandTrace } from "./command-trace.ts";
 import { DeprecationUse } from "./deprecation.ts";
 import { FailureRole } from "./failure-role.ts";
+
 export { FailureRole } from "./failure-role.ts";
+
 import { ValidationIssue } from "./validation-issue.ts";
 
 /** Command output formats; `json` and `ndjson` are machine-readable, others are human encodings. */

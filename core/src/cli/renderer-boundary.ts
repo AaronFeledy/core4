@@ -1,3 +1,32 @@
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { GlobalConfigSnapshot } from "@lando/engine/services/config";
+import { EventPublicationObserver } from "@lando/engine/services/event-service";
+import { HostExecutionDefaults } from "@lando/engine/services/host-execution-context";
+import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
+import {
+  RendererHost,
+  type RendererIO,
+  createStdioRendererIO,
+  isStdioRendererIO,
+  onStdioBrokenPipe,
+  withStdioTerminalNewlines,
+} from "@lando/renderer/io";
+import * as RendererOutput from "@lando/renderer/output";
+import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
+import { makePlainRenderer } from "@lando/renderer/runtime";
+import type { FormatSummaryOptions } from "@lando/renderer/summary";
+import {
+  type CompletedCommandResult,
+  failureOutcomeFromCause,
+  normalizeDefect,
+  primaryFailureReason,
+  resolveCommandCompletion,
+} from "@lando/sdk/command-result";
+import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
+import { EventService, Renderer } from "@lando/sdk/services";
 import {
   Cause,
   Clock,
@@ -12,42 +41,18 @@ import {
   Scope,
   Tracer,
 } from "effect";
-
-import { GlobalConfigSnapshot } from "@lando/engine/services/config";
-import {
-  type CompletedCommandResult,
-  failureOutcomeFromCause,
-  normalizeDefect,
-  primaryFailureReason,
-  resolveCommandCompletion,
-} from "@lando/sdk/command-result";
-import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
-import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
-import { EventService, Renderer } from "@lando/sdk/services";
-import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
-
-import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { EventPublicationObserver } from "@lando/engine/services/event-service";
-import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
-import {
-  type RendererIO,
-  createStdioRendererIO,
-  onStdioBrokenPipe,
-  withStdioTerminalNewlines,
-} from "@lando/renderer/io";
-import * as RendererOutput from "@lando/renderer/output";
-import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
-import type { FormatSummaryOptions } from "@lando/renderer/summary";
+import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 import { ChildOutput, makeChildOutputPolicy } from "./child-output.ts";
+import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
 import {
   type CliInvocationSnapshot,
   newInvocationId,
   runCommandLifecycle,
   withCommandEventService,
 } from "./command-lifecycle";
+import { CommandPayloadStdout, machineOutputOnStderr } from "./command-payload-stdout";
 import { FinishCommandProgress, finishCommandProgress } from "./command-progress";
+import { commandStdioExitCode } from "./command-stdio";
 import { type CommandTraceCapture, formatCommandTrace } from "./command-tracer";
 import { withCommandTracing } from "./command-tracing";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
@@ -123,7 +128,9 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly jqExpression?: string;
   /** Resolved `LandoCommandSpec.documentOutput` match for this invocation. */
   readonly documentOutput?: boolean;
+  readonly payloadStdout?: boolean;
   readonly io?: RendererIO;
+  readonly context?: CliInvocationContext;
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly suppressInterruptionDiagnostics?: boolean;
@@ -191,12 +198,21 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
   const owner = makeRedactionOwner();
-  const sourceEnv = { ...(options.sourceEnv ?? process.env) };
+  const sourceEnv = { ...(options.sourceEnv ?? options.context?.env ?? process.env) };
+  const handlingOptions = {
+    ...options,
+    ...(options.context === undefined
+      ? {}
+      : {
+          io: options.io ?? options.context.io,
+          setExitCode: options.setExitCode ?? options.context.setExitCode,
+        }),
+  };
   try {
-    await runWithInvocationRedaction(effect, { ...options, sourceEnv }, owner.service);
+    await runWithInvocationRedaction(effect, { ...handlingOptions, sourceEnv }, owner.service);
   } catch (cause) {
     const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
-    await renderTerminalFailure(Cause.isCause(cause) ? cause : Cause.die(cause), options, redactor);
+    await renderTerminalFailure(Cause.isCause(cause) ? cause : Cause.die(cause), handlingOptions, redactor);
   } finally {
     owner.dispose();
   }
@@ -235,12 +251,20 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   // which is the bug-report renderer for pre-command failures.
   const reporter = ErrorReporter.make(() => undefined);
   const { landoRenderer } = await import("./renderer/bundled-renderers");
-  const io = withStdioTerminalNewlines(
+  const routing = resolveOutputRouting({
+    rendererMode: options.rendererMode,
+    format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
+    declaresStreaming: options.streaming !== undefined,
+    live: options.streamingMode === "live",
+  });
+  const payloadStdout = options.payloadStdout === true && routing.stdout !== "human";
+  const realIO = withStdioTerminalNewlines(
     options.io ?? createStdioRendererIO(undefined, undefined, undefined, { env: sourceEnv }),
     options.rendererMode !== "json" &&
       options.resultFormat !== "ndjson" &&
       !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT),
   );
+  const io = payloadStdout ? machineOutputOnStderr(realIO) : realIO;
   let brokenPipe = false;
   const brokenPipeSignal = Effect.callback<never>((resume) => {
     const unsubscribe = onStdioBrokenPipe(() => {
@@ -252,9 +276,11 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   });
   const childOutput = makeChildOutputPolicy({
     native:
+      isStdioRendererIO(realIO) &&
       !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) &&
       options.rendererMode !== "json",
-    stdin: true,
+    // Children inherit the host stdin unless the invocation supplies its own.
+    stdin: isStdioRendererIO(realIO) || realIO.stdin === undefined,
     stream:
       isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) || options.rendererMode === "json"
         ? undefined
@@ -272,12 +298,6 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     noColor: io.noColor === true,
   };
   const rendererLayer = RendererOutput.layerServiceForMode(options.rendererMode, landoRenderer, io);
-  const routing = resolveOutputRouting({
-    rendererMode: options.rendererMode,
-    format: renderContext.format,
-    declaresStreaming: options.streaming !== undefined,
-    live: options.streamingMode === "live",
-  });
   const envelopeFormat = routing.stdout !== "human";
   const commandWarnings = makeCommandWarnings(envelopeFormat);
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
@@ -287,6 +307,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     rendererLayer,
     commandWarningsLayer,
     redactionLayer,
+    ...(payloadStdout ? [Layer.succeed(CommandPayloadStdout, makePlainRenderer(realIO).output.stdout)] : []),
   ) as Layer.Layer<R, RE>;
   const command = options.command ?? "cli:unknown";
   // Resolve the invocation id once so the root span and lifecycle events agree.
@@ -341,6 +362,11 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         })
       )(code);
     };
+    // The process exit code and the lifecycle `-error` event report the same code.
+    const errorExitCode = (error: unknown): number =>
+      error instanceof JqExpressionError || error instanceof CommandInputValidationError
+        ? 2
+        : (commandStdioExitCode(error) ?? options.failureExitCode?.(error) ?? 1);
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
         if (Cause.hasInterruptsOnly(cause)) {
@@ -352,15 +378,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           setExitCode(1);
           return;
         }
-        const failure = failureOutcomeFromCause(cause, normalizeDefect);
-        if (
-          failure.error instanceof JqExpressionError ||
-          failure.error instanceof CommandInputValidationError
-        ) {
-          setExitCode(2);
-          return;
-        }
-        setExitCode(options.failureExitCode?.(failure.error) ?? 1);
+        setExitCode(errorExitCode(failureOutcomeFromCause(cause, normalizeDefect).error));
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
@@ -414,7 +432,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
               invocation,
               onInitialized: initStage.end(Exit.void),
               ...(options.completion === undefined ? {} : { completion: options.completion }),
-              ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
+              failureExitCode: errorExitCode,
               interruptionExitCode: () =>
                 options.suppressInterruptionDiagnostics === true
                   ? 0
@@ -543,6 +561,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         );
       }),
     );
+    const observeScenarioEvent = options.context?.observeEvent;
     const commandOutcome = yield* Effect.exit(
       Effect.scoped(
         Effect.gen(function* () {
@@ -561,9 +580,12 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         }),
       ).pipe(
         Effect.provideService(EventPublicationObserver, (event) =>
-          envelopeFormat && isMessageWarnEvent(event)
-            ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
-            : Effect.void,
+          Effect.andThen(
+            observeScenarioEvent === undefined ? Effect.void : Effect.sync(() => observeScenarioEvent(event)),
+            envelopeFormat && isMessageWarnEvent(event)
+              ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
+              : Effect.void,
+          ),
         ),
         Effect.withErrorReporting({ defectsOnly: true }),
       ),
@@ -649,10 +671,23 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     Effect.withErrorReporting({ defectsOnly: true }),
     Effect.provide(Layer.merge(failureDiagnosticsLayer, ErrorReporter.layer([reporter]))),
   );
+  const scopedProgram = (
+    options.context === undefined
+      ? diagnosedProgram
+      : diagnosedProgram.pipe(
+          Effect.provideService(CliInvocation, options.context),
+          Effect.provideService(HostExecutionDefaults, {
+            cwd: options.context.cwd,
+            env: options.context.env,
+            platform: process.platform,
+            ...(!isStdioRendererIO(realIO) && realIO.stdin !== undefined ? { stdin: realIO.stdin } : {}),
+          }),
+        )
+  ).pipe(Effect.provideService(RendererHost, { io: realIO, env: sourceEnv }));
   const exit = await Effect.runPromiseExit(
     options.tracer === undefined
-      ? diagnosedProgram.pipe(Effect.provideService(References.TracerEnabled, false))
-      : diagnosedProgram.pipe(
+      ? scopedProgram.pipe(Effect.provideService(References.TracerEnabled, false))
+      : scopedProgram.pipe(
           Effect.provideService(Tracer.Tracer, options.tracer),
           Effect.provideService(References.TracerEnabled, true),
         ),

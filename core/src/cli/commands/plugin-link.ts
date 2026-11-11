@@ -1,10 +1,4 @@
 import { resolve } from "node:path";
-
-import { Effect, Schema } from "effect";
-
-import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
-import type { ConfigService } from "@lando/sdk/services";
-
 import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import {
@@ -12,7 +6,10 @@ import {
   assertInsidePluginsRoot,
   isPluginLinkConflictCause,
 } from "@lando/engine/operations/plugin-link";
-import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import type { ConfigService } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { resolvePluginsRoot } from "./plugin-roots";
 
 export class PluginLinkConflictError extends Schema.TaggedError<PluginLinkConflictError>()(
@@ -47,7 +44,7 @@ export const PluginLinkResultSchema = Schema.Struct({
 });
 
 const conflictRemediation =
-  "Remove or unlink the existing plugin entry before linking this local authoring checkout. Automatic replacement is deferred to unlink/restore support.";
+  "Remove the installed plugin entry before linking this local authoring checkout. Lando does not replace an installed entry automatically.";
 
 export const pluginLink = Effect.fn("PluginLink.link")(function* (
   options: PluginLinkOptions = {},
@@ -57,7 +54,7 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
   ConfigService
 > {
   const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:link");
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.cwd ?? (yield* CliInvocation).cwd;
   const linkedPath = resolve(cwd, options.path ?? ".");
   const { manifest } = yield* Effect.tryPromise({
     try: () => validatePluginManifest(linkedPath),
@@ -89,41 +86,35 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
           }),
   });
 
-  yield* withPluginMutationLock(
-    pluginsRoot,
-    "meta:plugin:link",
-    Effect.gen(function* () {
-      yield* Effect.tryPromise({
-        try: () =>
-          applyPluginLink({
-            pluginsRoot,
-            linkedPath,
-            pluginName: manifest.name,
-            version: manifest.version,
-          }),
-        catch: (cause) => {
-          if (cause instanceof PluginLinkConflictError || cause instanceof PluginManifestError) return cause;
-          if (isPluginLinkConflictCause(cause)) {
-            return new PluginLinkConflictError({
-              message: cause.message,
-              commandId: "meta:plugin:link",
-              pluginName: cause.pluginName,
-              existingPath: cause.existingPath,
-              remediation: conflictRemediation,
-            });
-          }
-          return new NotImplementedError({
-            message: `Plugin link failed for ${manifest.name}: ${String(cause)}`,
-            commandId: "meta:plugin:link",
-            remediation: "Check the plugin authoring path and retry.",
-          });
-        },
+  yield* Effect.tryPromise({
+    try: () =>
+      applyPluginLink({
+        pluginsRoot,
+        linkedPath,
+        pluginName: manifest.name,
+        version: manifest.version,
+      }),
+    catch: (cause) => {
+      if (cause instanceof PluginLinkConflictError || cause instanceof PluginManifestError) return cause;
+      if (isPluginLinkConflictCause(cause)) {
+        return new PluginLinkConflictError({
+          message: cause.message,
+          commandId: "meta:plugin:link",
+          pluginName: cause.pluginName,
+          existingPath: cause.existingPath,
+          remediation: conflictRemediation,
+        });
+      }
+      return new NotImplementedError({
+        message: `Plugin link failed for ${manifest.name}: ${String(cause)}`,
+        commandId: "meta:plugin:link",
+        remediation: "Check the plugin authoring path and retry.",
       });
-      yield* invalidateAppToolingCaches({
-        ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-      });
-    }),
-  );
+    },
+  });
+  yield* invalidateAppToolingCaches({
+    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+  });
   return { pluginName: manifest.name, linkedPath, registryEntry };
 });
 

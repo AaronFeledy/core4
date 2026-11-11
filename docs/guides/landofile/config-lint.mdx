@@ -3,7 +3,7 @@ id: config-lint
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, landofile, config, lint]
+tags: [docs, landofile, config, lint]
 ---
 
 # Lint a Landofile
@@ -16,7 +16,9 @@ lando app:config:lint
 
 Lint checks each retained root and include fragment against its authoring schema, then validates their effective composition and resolves every service type. It runs the same resolved-Landofile validation stage as `lando start` and `lando app:cache:refresh`, including event names and conflicts between tooling names and built-in commands.
 
-It does not run doctor checks, probe a provider, or start a container runtime. Provider capability checks use the selected provider's offline capability declaration; when a provider has none, lint adds one `landofile.capability` warning that those checks run at `lando start`. Every output format exits `1` when lint finds errors and `0` when it does not. JSON and YAML still return a successful report with `ok: true`: inspect `result.valid` and the violations list. Successful report generation is not itself a clean-lint verdict.
+When that earlier work finds no errors, lint runs the same final planning path `lando start` uses. That pass uses the selected provider's offline capability declaration. It applies features, builds default routes, checks route conflicts and `dependsOn`, and computes certificate plans. It does not construct a provider, contact a container runtime, issue certificates through a CA, or read or write the plan cache. When the provider has no offline declaration, lint skips final planning and adds one `landofile.capability` warning that those checks run at `lando start`.
+
+It does not run doctor checks, probe a live provider, or start a container runtime. Every output format exits `1` when lint finds errors and `0` when it does not. JSON and YAML still return a successful report with `ok: true`: inspect `result.valid` and the violations list. Successful report generation is not itself a clean-lint verdict.
 
 Lint does not save configuration, publish include pins, or recover interrupted file updates. It may fetch remote includes into Lando's cache while checking them. If a managed-file update is unfinished or blocked, lint reports a `landofile.load` finding with recovery guidance instead of changing its files or recovery records.
 
@@ -30,41 +32,32 @@ For example, `tooling.old-build: disabled` is one finding at fragment and effect
 
 Lint reports every independent load failure in one run: broken layers, load expressions, includes, tooling includes, recipe/env expressions, and `lando:` ranges. It skips the failed entries and continues with what loaded, retaining fragment findings from those files. Checks that depend on a failed entry are skipped instead of producing follow-on errors. Effective configuration and service checks run only after the entire load stage succeeds.
 
-| Rule | What it checks | Example path |
-| --- | --- | --- |
-| `landofile.validation` | Unknown keys, wrong literal types, missing required fields | `services.web.imgae` |
-| `landofile.compose-rejection` | Compose keys Lando rejects, including network attachment fields other than `aliases` | `services.web.deploy.replicas`, `services.web.networks.backend.ipv4_address` |
-| `landofile.expression` | Unresolvable `{{ }}` sites, type mismatches after evaluation | `tooling.t.cmd` |
-| `landofile.service` | Service-type configuration: native port vars, reserved ports, unsupported versions, storage scopes, duplicate log source ids, `appMount`, `webroot` on a type without support | `services.db.environment.PGPORT` |
-| `landofile.hostname` | Each `services.<name>.hostnames:` entry is a plain DNS name after evaluation | `services.web.hostnames[0]` |
-| `landofile.route` | Route syntax and authored HTTP endpoint selection in service `routes:` and top-level `proxy:` after evaluation | `services.web.routes[1]`, `proxy.web[0]` |
-| `landofile.network` | Service `networks:` keys are declared at the top level, no `networks.default`, `name` only with `external: true`, no `driver` on an external network, valid keys | `services.web.networks.backend`, `networks.backend.name` |
-| `landofile.capability` | Compose fields, routes, published ports, bind mounts, builds, storage, native `init`, and agent forwarding the selected provider can't realize, checked against its offline capability declaration; one warning when that declaration is missing. An authored `init: true` on a provider without native init is an error; a service that leaves `init` unset on such a provider gets a warning instead, because lint checks authored intent only and `lando start` validates the effective value | `services.web.networks.default.aliases`, `services.web.ports`, `services.web.init` |
-| `landofile.healthcheck` | Authored `kind: http` or `kind: tcp` | `services.web.healthcheck.kind` |
-| `router.bind-address-global-only` | A Landofile `router.bindAddress` does not bind the shared router | `router.bindAddress` |
-| `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
-| `landofile.host-shell` | A `:host` tooling or event command, or a host readiness command, uses a form [Bun Shell](../tooling/bun-shell-scripts.mdx#write-host-commands-in-bun-shell-syntax) can't run, such as `${NAME}`, `$?`, `>&2`, or `>out 2>&1`. The message gives the column and the Bun Shell form to write instead | `tooling.deploy.cmd`, `events.pre-start[0].cmd`, `services.web.readiness.command` |
-| `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
-| `landofile.load` | Layer parse errors, failed load or recipe/env expressions, `${secret:...}` references outside a binding site, invalid include conditions, include and tooling include failures, lock mismatches, and invalid `lando:` ranges; `reason` names the cause | `includes[1].when`, `toolingIncludes.docs`, `lando` |
-| `env-file.read` | A declared env file is missing or cannot be read | `env_file[0]`, `services.web.envFile[0]` |
-| `env-file.syntax` | Invalid env-file entries, including a bare name without `=` or unmatched quotes | `env_file[0]`, `services.web.envFile[0]` |
-| `env-file.literal` | A warning when double-quoted escapes change a value, or an unquoted or double-quoted value contains `${` | `env_file[0]`, `services.web.envFile[0]` |
+Every finding carries a stable `rule` id. The full list of registered ids, the stages that emit them, their severities, and example paths lives in the [config lint rule reference](../../reference/config-lint-rules.mdx). Use that page when you need the complete inventory or a deep link such as [`landofile.hostname`](../../reference/config-lint-rules.mdx#landofile-hostname) or [`env-file.read`](../../reference/config-lint-rules.mdx#env-file-read).
 
 A service-type finding is reported at the field that is wrong, with the remediation in `suggestion`. A postgres service with `environment.PGPORT: "5433"` gets `PGPORT is 5433, but the service listens on 5432.` at `["services", "db", "environment", "PGPORT"]` and the suggestion `Set port: 5433 instead; Lando sets PGPORT from port:.` When a service's type fails to resolve, lint still reports every other service. Services that read its `creds.*` are skipped until you fix it, so you don't get a cascade of follow-on errors.
 
 An include failure points at the entry that declared it: `path` is `["includes", <index>]` and `source.file` is the file holding that list, so a fragment that fails inside a nested include names the fragment and the layer that pulled it in, not your root Landofile. Tooling includes work the same way. A `kind: tooling` entry reports `["includes", <index>]`, and a `toolingIncludes:` entry reports `["toolingIncludes", <namespace>]`, with the file and layer that declared it.
 
+An invalid value within an include declaration points at that value. For example, include-level vars accept only literal strings, numbers, or booleans. Writing `toolingIncludes.frag.vars.WHO: { sh: echo inc }` produces a `landofile.validation` finding at `toolingIncludes.frag.vars.WHO`, with the declaring file and its YAML coordinates. Lint skips the invalid entry and continues checking the entries that can load.
+
 Env-file findings point to the configuration entry that declared the file. Their messages name the resolved env-file path and, for syntax and literal warnings, its line number. Warnings stay in `violations` with `severity: "warning"`; they leave `valid` true when no errors exist. Env-file values are never interpolated. See [Quote env file values](./env-overrides.mdx#quote-env-file-values) for quoting rules and fixes.
 
-## What only planning catches
+## What only start still catches
 
-When the resolve pass completes, `lando start` and `lando app:cache:refresh` run the same shared checks, event and tooling names included, and fail with one `LandofileValidationError` listing the same issues: same `rule`, `path`, `message`, `suggestion`, and `source`. The exception is `landofile.host-shell`: planning fails only for host steps of lifecycle events such as `pre-start` and for host readiness, so a broken host tooling task you never run doesn't stop `lando start`. Planning then goes further than lint can without an engine or an assembled plan:
+When the resolve pass completes with no errors and the selected provider declares offline capabilities, lint runs the same final planning path as `lando start` and `lando app:cache:refresh`. Shared findings keep the same `rule`, `path`, `message`, `suggestion`, and `source`. The exception is `landofile.host-shell`: planning fails only for host steps of lifecycle events such as `pre-start` and for host readiness, so a broken host tooling task you never run doesn't stop `lando start`.
 
-- whether an external network exists on the engine
-- capability checks for a provider that has no offline capability declaration
+Final planning still needs those offline capabilities. Without them, lint skips that stage and leaves these checks for start:
+
 - feature application
 - automatic route selection and route conflicts (`RouteInputError`)
 - `dependsOn` checks
+- capability checks that need a live provider or an offline declaration the provider does not publish
+
+Even after a clean lint with offline capabilities, start can still fail on work lint never does:
+
+- whether an external network exists on the engine
+- provider construction, runtime contact, and image inspection
+- certificate authority issuance
 
 A Landofile that lints clean can still fail there.
 
@@ -86,8 +79,10 @@ services:
       - web.lndo.site
 ```
 
-Lint checks authored routes against service and app features' endpoint declarations,
-without applying those features, issuing certificates, or writing a plan cache.
+Lint checks authored routes against service and app features' endpoint declarations
+during resolve. After a clean resolve with offline provider capabilities, final
+planning applies those features and builds the same default routes start would,
+still without issuing certificates or reading or writing a plan cache.
 An explicit `endpoints:` list replaces those declarations; `endpoints: []` removes
 them all. With multiple HTTP listeners, select one by name or port in the route,
 or mark one listener `primary: true`. A primary TCP listener does not hide the
@@ -145,15 +140,15 @@ A rejected Compose key keeps its full authored path, for example `["services", "
 
 ## Fix healthcheck warnings
 
-`healthcheck.bare-compose-marker` means a bare argv list starts with `CMD`, `CMD-SHELL`, or `NONE`. Bare lists execute literally, including that first item. Remove the marker, or move the list under `test:` in a block YAML healthcheck object.
+[`healthcheck.bare-compose-marker`](../../reference/config-lint-rules.mdx#healthcheck-bare-compose-marker) means a bare argv list starts with `CMD`, `CMD-SHELL`, or `NONE`. Bare lists execute literally, including that first item. Remove the marker, or move the list under `test:` in a block YAML healthcheck object.
 
-`healthcheck.mixed-dialects` means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
+[`healthcheck.mixed-dialects`](../../reference/config-lint-rules.mdx#healthcheck-mixed-dialects) means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
 
-The same checks apply independently to `readiness`, using `readiness.bare-compose-marker` and `readiness.mixed-dialects`. Native `healthcheck` cannot select a host target or an explicit probe user; move that command to `readiness` instead of changing monitoring through execution metadata. Use `lando app:cache:refresh --format=json` to validate the effective plan without starting services. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults and disabling either policy.
+The same checks apply independently to `readiness`, using [`readiness.bare-compose-marker`](../../reference/config-lint-rules.mdx#readiness-bare-compose-marker) and [`readiness.mixed-dialects`](../../reference/config-lint-rules.mdx#readiness-mixed-dialects). Native `healthcheck` cannot select a host target or an explicit probe user; move that command to `readiness` instead of changing monitoring through execution metadata. Use `lando app:cache:refresh --format=json` to validate the effective plan without starting services. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults and disabling either policy.
 
 ## Fix a Landofile router bind
 
-`router.bind-address-global-only` means the Landofile set `router.bindAddress`. That key is installation-wide: set it in `config.yml` or `LANDO_ROUTER_BIND_ADDRESS`, then run `lando start`. The Landofile value is ignored so one app cannot widen the shared listener. The Landofile stays valid.
+[`router.bind-address-global-only`](../../reference/config-lint-rules.mdx#router-bind-address-global-only) means the Landofile set `router.bindAddress`. That key is installation-wide: set it in `config.yml` or `LANDO_ROUTER_BIND_ADDRESS`, then run `lando start`. The Landofile value is ignored so one app cannot widen the shared listener. The Landofile stays valid.
 
 ## Read unknown event names
 
@@ -170,9 +165,47 @@ tooling:
   run: false
 ```
 
+## Read script findings
+
+Lint also checks every `.lando/scripts/**/*.bun.sh` script in the app, and it does so even when the Landofile itself fails to load, so one pass shows you everything that would stop Lando from reading the app's commands. Two rules cover scripts:
+
+- [`script.front-matter`](../../reference/config-lint-rules.mdx#script-front-matter): a missing or malformed `# ---` block (with the YAML line and column), an unknown or unsupported key at its key path, `wrapper`, an empty file, a file name that cannot become a command, two scripts that produce the same command id, or a `service` other than `:host`.
+- [`script.host-shell`](../../reference/config-lint-rules.mdx#script-host-shell): a body form Bun Shell rejects, such as `${HOME}`, with its line and column. Lint checks the body only for enabled scripts that no Landofile task of the same name shadows.
+
+With a script that has no front matter, one that sets `wrapper: true`, and one whose body uses `${HOME}`, lint prints:
+
+```
+/tmp/lint-scripts-demo/.lando.yml: 3 config lint findings.
+  .lando/scripts/bad.bun.sh: error [script.front-matter] .bun.sh script at /tmp/lint-scripts-demo/.lando/scripts/bad.bun.sh is missing the front-matter block.
+    at /tmp/lint-scripts-demo/.lando/scripts/bad.bun.sh (script layer)
+    fix: Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+  .lando/scripts/wrapped.bun.sh: error [script.front-matter] Expected no excess property
+    at /tmp/lint-scripts-demo/.lando/scripts/wrapped.bun.sh:3:3, authored as wrapper (script layer)
+    fix: Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+  .lando/scripts/greet.bun.sh: error [script.host-shell] Bun Shell does not expand ${HOME}.
+    at /tmp/lint-scripts-demo/.lando/scripts/greet.bun.sh:5:6 (script layer)
+    fix: Write $HOME, or "$HOME" when a letter, digit, or underscore follows it.
+```
+
+The location names the script by its path relative to the app. In JSON, each script finding carries `source: { "layer": "script", "file": <absolute path>, "path": <front-matter key path> }`, with `line` and `column` when lint knows them; `path` is the key inside the front matter, such as `["wrapper"]`, or `[]` for a problem with the whole file. A broken script still makes `lando start` and every app command fail while Lando rebuilds the app's command index, so run lint, fix what it names, and run your command again. See [Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts.mdx#write-the-front-matter) for the front-matter keys.
+
+## Read computed var findings
+
+A task var written as `{ sh: <command> }` is computed when the task runs. Two positions cannot read such a value: another var's definition and the task-level `service`, `user`, and `dir`. Lint reports a read from one of those positions as a `landofile.tooling` finding at the var or field that reads it, with the same message `lando <task>` fails with (`ToolingCompileError`):
+
+```
+  tooling.badref.vars.LABEL: error [landofile.tooling] Dynamic tooling vars cannot be read by var definitions or task-level service, user, or dir.
+    at /tmp/lint-dynamic-vars-demo/.lando.yml:9:7 (canonical layer; effective)
+    fix: Use a literal or invocation input in this field; read shell-computed vars in commands or step overrides.
+```
+
+When the task runs on the host (`service: ":host"`), its `vars.<name>.sh` is a host Bun Shell command, so `landofile.host-shell` checks it at `tooling.<task>.vars.<name>.sh` the same way it checks `cmd`. A `{ default: ... }` or `{ prompt: ... }` var is not a var form; it fails the load with `NotImplementedError`, which lint reports as `landofile.load`. See [Compute a value with a shell command](../tooling/flags-and-args.mdx#compute-a-value-with-a-shell-command).
+
+Lint reports every refused tooling key once, with `reason: "NotImplementedError"`, its authored path, and the loader's remediation. For example, `tooling.build.vars.D.default` points at the `default` key and tells you to write the value directly. Refused task fields such as `deps` and `sources`, unsupported flag or arg fields, and event-step `platforms` receive the same treatment. These findings replace the generic unknown-key message for those keys. Running a task still fails with `NotImplementedError` naming the first refused path.
+
 ## Run it from doctor
 
-`lando doctor --app` runs the same lint as part of the combined doctor report, under the `app-config-lint` check name. Both commands call the same pass, so they never disagree about which events exist.
+`lando doctor --app` runs the same lint, including final planning after a clean earlier pass, as part of the combined doctor report under the `app-config-lint` check name. Both commands call the same pass, so they never disagree about which events exist or which final-planning findings appear.
 
 ## Validate as you type
 
@@ -312,6 +345,30 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     <Step name="cleanup-tooling-include">
       <Cleanup />
     </Step>
+  </Scenario>
+  <Scenario id="script-findings-with-location" render>
+    <Step name="lint-scripts">
+      <UseFixture name="config-lint-scripts" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"script\\.front-matter\"[\\s\\S]*\"source\":\\s*\\{\"layer\":\"script\",\"file\":\"[^\"]*bad\\.bun\\.sh\",\"path\":\\[\\]\\}" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\"wrapper\"\\][^}]*\"line\":\\s*3,\\s*\"column\":\\s*3" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"script\\.host-shell\"[\\s\\S]*?\"line\":\\s*5,\\s*\"column\":\\s*6" } }} />
+      <Verify command="lando app:config:lint" expectExit={1} expect={{ stdout: { regex: "\\.lando/scripts/greet\\.bun\\.sh: error \\[script\\.host-shell\\]" } }} />
+    </Step>
+    <Step name="cleanup-scripts"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="computed-var-findings" render>
+    <Step name="lint-computed-vars">
+      <UseFixture name="config-lint-dynamic-vars" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.tooling\"[^}]*\"path\":\\s*\\[\"tooling\",\"badref\",\"vars\",\"LABEL\"\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.host-shell\"[\\s\\S]*?\"path\":\\s*\\[\"tooling\",\"badsh\",\"vars\",\"HOME_DIR\",\"sh\"\\]" } }} />
+    </Step>
+    <Step name="refuse-computed-var-read">
+      <Run command="lando badref --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "tooling\\.badref\\.vars\\.LABEL" }} />
+    </Step>
+    <Step name="cleanup-computed-vars"><Cleanup /></Step>
   </Scenario>
   <Scenario id="warning-only-marker" render>
     <Step name="lint-literal-argv">

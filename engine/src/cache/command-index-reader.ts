@@ -11,15 +11,16 @@ import {
   type LandofileFormConflictError,
   type ToolingCommandUnavailableError,
 } from "@lando/sdk/errors";
+import type { LandoRoots } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { CORE_VERSION } from "../version.ts";
+import { type AppCommandIndexPayload, decodeAppCommandIndex } from "./command-index.ts";
 import {
   type AppCommandCacheSource,
   isMissingFile,
   resolveAppCommandCacheSource,
   sourceContentHash,
 } from "./command-index-source.ts";
-import { type AppCommandIndexPayload, decodeAppCommandIndex } from "./command-index.ts";
 import { commandScriptsFresh } from "./command-script-freshness.ts";
 import { appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
 
@@ -36,6 +37,8 @@ export type AppCommandCacheReadResult =
 export interface ReadAppCommandCacheOptions {
   readonly cwd?: string;
   readonly cacheRoot?: string;
+  /** The invocation's roots; the folder's data identity is read under them when no StateStore is provided. */
+  readonly roots?: LandoRoots;
   readonly includeScriptInventory?: boolean;
 }
 
@@ -98,7 +101,7 @@ const readDetailed = async (
 export const readAppCommandCacheForCwdDetailed = (
   options: ReadAppCommandCacheOptions = {},
 ): Effect.Effect<AppCommandCacheReadResult, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd).pipe(
+  resolveAppCommandCacheSource(options.cwd, options.roots).pipe(
     Effect.flatMap((source) =>
       source === undefined
         ? Effect.succeed<AppCommandCacheReadResult>({ status: "missing" })

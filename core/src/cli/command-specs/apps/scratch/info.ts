@@ -1,5 +1,3 @@
-import { Args } from "../../../spec/metadata";
-
 import type { ScratchInfo } from "@lando/sdk/services";
 import {
   ScratchInfoResultSchema,
@@ -9,6 +7,7 @@ import {
   scratchListFormatFromInput,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Args } from "../../../spec/metadata";
 
 export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   resultSchema: ScratchInfoResultSchema,

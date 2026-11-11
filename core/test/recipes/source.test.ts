@@ -2,17 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import {
   NotImplementedError,
   RecipeManifestNotFoundError,
   RecipeManifestValidationError,
 } from "@lando/sdk/errors";
+import { Cause, Effect, Exit } from "effect";
 
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const { source: nodePostgresRecipeSource, manifestYaml: nodePostgresRecipeYaml } =
   bundledRecipe("node-postgres");
+
 import { resolveRecipeRef } from "../../src/recipes/source.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -183,7 +184,7 @@ describe("resolveRecipeRef — deferred remote sources", () => {
       expect(failure).toBeInstanceOf(NotImplementedError);
       if (failure instanceof NotImplementedError) {
         expect(failure.commandId).toBe("recipe.source.resolve");
-        expect(failure.remediation).toContain("not supported yet");
+        expect(failure.remediation).toContain("--source=git");
         expect(failure.message).toContain(`"${scheme}"`);
         expect(failure.message).toContain(`"${ref}"`);
       }

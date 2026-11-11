@@ -1,5 +1,3 @@
-import { Effect, Layer } from "effect";
-
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
@@ -10,12 +8,13 @@ import {
   type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-
+import { Effect, Layer } from "effect";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);
@@ -30,7 +29,7 @@ export const noCommandsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Tooling task ${tool} has no commands to run.`,
     tool,
-    remediation: `Add at least one command under tooling.${tool}, then run \`lando app:cache:refresh\`.`,
+    remediation: `Add at least one command under tooling.${tool}.`,
   });
 
 const noPrimaryServiceError = (tool: string, services: AppPlan["services"]) => {
@@ -96,6 +95,7 @@ const idleStdin = (): AsyncIterable<Uint8Array> => ({
 });
 
 const execSpec = (input: {
+  readonly hostEnv: Readonly<Record<string, string | undefined>>;
   readonly command: ReadonlyArray<string>;
   readonly cwd: string | undefined;
   readonly env: Readonly<Record<string, string>> | undefined;
@@ -110,7 +110,7 @@ const execSpec = (input: {
   // that case to cat, without overriding service or task env.
   const merged = withTerminalEnv({
     tty: input.tty,
-    hostEnv: process.env,
+    hostEnv: input.hostEnv,
     ...(input.hostTerminal === undefined ? {} : { hostTerminal: input.hostTerminal }),
     serviceEnv: input.serviceEnv,
     env: {
@@ -151,9 +151,11 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     return yield* Effect.fail(noCommandsError(invocation.tool));
   }
   const service = yield* resolveService(invocation, plan);
-  const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
+  const host = yield* HostExecutionDefaults;
+  const hostEnv = host?.env ?? process.env;
+  const cwd = resolveContainerCwd(service, invocation.cwd, host?.cwd ?? process.cwd());
   const session = yield* (yield* EnvironmentValueResolver).openSession();
-  const typedEnv = withAgentContextEnv(invocation.env, process.env, {
+  const typedEnv = withAgentContextEnv(invocation.env, hostEnv, {
     lowerThanEnv: service.environment,
     ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
@@ -174,6 +176,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
       provider.execStream(
         target,
         execSpec({
+          hostEnv,
           command,
           cwd,
           env,

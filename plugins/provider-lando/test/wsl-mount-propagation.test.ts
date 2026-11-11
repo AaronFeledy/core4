@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import type { HostPlatform } from "@lando/sdk/schema";
 import { PluginDoctorReport } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 
 import { makeWslMountPropagationCheck, parseRootMountPropagation } from "../src/wsl-mount-propagation.ts";
 

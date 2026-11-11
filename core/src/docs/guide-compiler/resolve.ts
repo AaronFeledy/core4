@@ -1,4 +1,6 @@
 import type { VariableProps } from "@lando/sdk/docs/components";
+import { Result } from "effect";
+import { guideCommandArgv } from "./command-argv.ts";
 import { semanticError } from "./diagnostic.ts";
 import type {
   GuideScenarioAst,
@@ -77,6 +79,19 @@ const resolveCell = (
           break;
         case "Verify":
           if (component.props.command !== undefined) cliLine = component.line;
+          // Compiled e2e commands publish their events in another process, so nothing could match.
+          if (
+            component.props.event !== undefined &&
+            (scenario.layer ?? guide.frontmatter.defaultLayer) === "e2e"
+          )
+            semanticError(guide, scenario, {
+              ...variantDetail(variant),
+              code: "guide.event.e2e",
+              line: component.line,
+              component: "Verify",
+              prop: "event",
+              name: component.props.event,
+            });
           break;
         case "Cleanup":
         case "Inspect":
@@ -135,25 +150,44 @@ const resolveCell = (
     ...step,
     components: step.components.map((component): GuideStepComponent => {
       const replace = (text: string, prop: string) => interpolate(text, { step, component, prop }, display);
+      const command = (text: string): { readonly command: string; readonly argv?: ReadonlyArray<string> } => {
+        const projected = replace(text, "command");
+        // Readers paste the display projection, so both projections must have one shell-word reading.
+        const argv = guideCommandArgv(projected);
+        if (Result.isFailure(argv))
+          return semanticError(guide, scenario, {
+            ...variantDetail(variant),
+            code: "guide.command.syntax",
+            line: component.line,
+            component: component.kind,
+            prop: "command",
+            name: `${argv.failure.reason} ${JSON.stringify(argv.failure.character)}`,
+          });
+        return display ? { command: projected } : { command: projected, argv: argv.success };
+      };
       switch (component.kind) {
-        case "Run":
-          return "command" in component.props
-            ? {
-                ...component,
-                props: { ...component.props, command: replace(component.props.command, "command") },
-              }
-            : component;
-        case "Verify":
+        case "Run": {
+          if (!("command" in component.props)) return component;
+          const { command: projected, argv } = command(component.props.command);
+          return {
+            ...component,
+            props: { ...component.props, command: projected },
+            ...(argv === undefined ? {} : { argv }),
+          };
+        }
+        case "Verify": {
+          const projected =
+            component.props.command === undefined ? undefined : command(component.props.command);
           return {
             ...component,
             props: {
               ...component.props,
-              ...(component.props.command === undefined
-                ? {}
-                : { command: replace(component.props.command, "command") }),
+              ...(projected === undefined ? {} : { command: projected.command }),
               ...(component.props.file === undefined ? {} : { file: replace(component.props.file, "file") }),
             },
+            ...(projected?.argv === undefined ? {} : { argv: projected.argv }),
           };
+        }
         case "Inspect":
           return {
             ...component,
@@ -168,6 +202,10 @@ const resolveCell = (
         case "Inline":
         case "UseFixture":
           return component;
+        default: {
+          const exhaustive: never = component;
+          return exhaustive;
+        }
       }
     }),
   });

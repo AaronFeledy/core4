@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
@@ -7,6 +5,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
@@ -14,7 +13,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -79,7 +77,6 @@ const opensearchListener = (service: ServiceConfig): ListenerContract => {
 
 const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   assertListenerConfig(service, opensearchListener(service));
   const port = plannedPort(service, OPENSEARCH_LISTENER);
   const transport = transportPort(service);
@@ -92,7 +89,7 @@ const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("transport.port", String(transport));
   ctx.addEnv("OPENSEARCH_JAVA_OPTS", "-Xms512m -Xmx512m");
   ctx.addStorage({
-    store: `${appName}-opensearch-data`,
+    store: ctx.serviceStoreName("opensearch-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

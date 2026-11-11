@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import { ConfigService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor-contract";

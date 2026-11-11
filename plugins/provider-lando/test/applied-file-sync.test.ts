@@ -1,11 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
+import { persistAppliedPlan } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -18,8 +16,7 @@ import {
   fileSyncVolumeName,
 } from "@lando/sdk/schema";
 import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
-
-import { persistAppliedPlan } from "@lando/provider-lando";
+import { DateTime, Effect } from "effect";
 import { inspectAppliedFileSync, verifiedFileSyncSessions } from "../src/applied-file-sync.ts";
 
 import { ownerOnlyFileAccess } from "./private-file-access.ts";

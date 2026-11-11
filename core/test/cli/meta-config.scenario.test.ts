@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect, Layer, Schema } from "effect";
-
 import { ConfigResultSchema, config } from "@lando/engine/operations/config";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import type { GlobalConfig } from "@lando/sdk/schema";
+import { Effect, Layer, Schema } from "effect";
 
+import { metaConfigSpec } from "../../src/cli/command-specs/meta/config.ts";
 import { renderConfigResult } from "../../src/cli/commands/config.ts";
+import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 
 const cliEntry = resolve(import.meta.dirname, "../../bin/lando.ts");
 
@@ -197,33 +198,128 @@ describe("meta:config command", () => {
     }
   });
 
-  test("rejects an unrecognized subcommand instead of silently defaulting to view", async () => {
-    const result = await Effect.runPromiseExit(
-      config({ subcommand: "settt" as never }).pipe(Effect.provide(fakeConfigService({}))),
+  test("event input rejects an undeclared config verb with a suggestion and choices", async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        validateEventCommandInput(metaConfigSpec, {
+          flags: {},
+          args: { subcommand: "settt" },
+          raw: [],
+        }),
+      ),
     );
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      const cause = JSON.stringify(result.cause);
-      expect(cause).toContain("LandofileWriteValidationError");
-      expect(cause).toContain("settt");
-      expect(cause).toContain("remediation");
-    }
+    expect(error).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: "meta:config",
+      field: "subcommand",
+      kind: "arg",
+      reason: "option",
+      remediation:
+        'Did you mean "set"? subcommand takes one of: view, get, set, unset, edit, validate, describe, telemetry, translate.',
+    });
   });
 
-  test("CLI rejects a mistyped subcommand instead of succeeding as a view", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-cli-typo-"));
-    try {
-      const result = await runCli(["meta:config", "settt", "--format", "json"], dir);
-      expect(result.exitCode).not.toBe(0);
-      const envelope = JSON.parse(result.stdout) as {
-        readonly ok?: boolean;
-        readonly error?: { readonly message?: string };
-      };
-      expect(envelope.ok).toBe(false);
-      expect(envelope.error?.message).toContain("settt");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+  test.each([
+    ["meta:config", "meta:config", "view, get, set, unset, edit, validate, describe, telemetry, translate"],
+    ["global:config", "meta:global:config", "view, set, unset, edit, validate, describe"],
+  ])(
+    "CLI %s rejects a mistyped subcommand with exit 2",
+    async (command, target, choices) => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-cli-typo-"));
+      try {
+        const result = await runCli([command, "settt", "--format", "json"], dir);
+        expect(result.exitCode).toBe(2);
+        const envelope = JSON.parse(result.stdout) as {
+          readonly ok?: boolean;
+          readonly error?: { readonly message?: string };
+        };
+        expect(envelope.ok).toBe(false);
+        expect(envelope.error?.message).toContain("subcommand");
+        expect(JSON.parse(result.stdout).error).toMatchObject({
+          _tag: "CommandInputValidationError",
+          target,
+          field: "subcommand",
+          kind: "arg",
+          reason: "option",
+          remediation: `Did you mean "set"? subcommand takes one of: ${choices}.`,
+        });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    15000,
+  );
+
+  test.each(["config", "global:config", "app:config"])(
+    "CLI %s rejects bad verbs before logging",
+    async (command) => {
+      await withTempEnv({}, async (dir) => {
+        await writeFile(join(dir, "config.yml"), "router:\n  httpPort: nonsense\n");
+        const result = await runCli([command, "valdiate", "--renderer=plain"], dir);
+        expect(result.exitCode).toBe(2);
+        expect(result.stderr).toContain("CommandInputValidationError");
+        expect(result.stderr).toContain('Did you mean "validate"? subcommand takes one of:');
+        expect(result.stderr).toContain("reason: option");
+        expect(result.stderr).not.toContain("logsDir:");
+        expect(result.stderr).not.toContain("cacheDir:");
+      });
+    },
+  );
+
+  test("CLI keeps translate accepted so its app-scoped remediation runs", async () => {
+    await withTempEnv({}, async (dir) => {
+      const result = await runCli(["config", "translate", "--format=json"], dir);
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout).error).toMatchObject({
+        _tag: "NotImplementedError",
+        remediation: expect.stringContaining("app-scoped"),
+      });
+    });
+  });
+
+  test.each(["resolved", "raw"] as const)(
+    "CLI missing %s get has no value and empty human output",
+    async (source) => {
+      await withTempEnv({}, async (dir) => {
+        const human = await runCli(["config", "get", "nope.nope", "--source", source], dir);
+        expect(human.exitCode).toBe(0);
+        expect(human.stdout).toBe("");
+        const machine = await runCli(
+          ["config", "get", "nope.nope", "--source", source, "--format=json"],
+          dir,
+        );
+        expect(machine.exitCode).toBe(0);
+        expect(JSON.parse(machine.stdout)).toMatchObject({
+          ok: true,
+          result: { subcommand: "get", key: "nope.nope", format: "json" },
+        });
+        expect(Object.keys(JSON.parse(machine.stdout).result).sort()).toEqual([
+          "format",
+          "key",
+          "subcommand",
+        ]);
+      });
+    },
+    15000,
+  );
+
+  test.each([
+    [undefined, ""],
+    [null, "null"],
+    [false, "false"],
+    [0, "0"],
+    ["hello", "hello"],
+    [{ enabled: true }, "KEY      VALUE\nenabled  true"],
+    [[1, 2], "1,2"],
+  ])("renders a selected value %j explicitly", (value, expected) => {
+    expect(
+      renderConfigResult({
+        subcommand: "get",
+        key: "example",
+        ...(value === undefined ? {} : { value }),
+        format: "table",
+      }),
+    ).toBe(expected);
   });
 
   test("telemetry off writes telemetry.enabled false and reports the effective config source", async () => {

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const input = {
   extra_hosts: [

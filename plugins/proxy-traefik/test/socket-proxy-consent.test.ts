@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema, Stream } from "effect";
-
 import { ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-import type { SocketProxyDependencies } from "../src/proxy-types.ts";
+import { Effect, Schema, Stream } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import type { SocketProxyDependencies } from "../src/proxy-types.ts";
 import { PROXYD_CANDIDATES } from "../src/socket-proxy-install.ts";
 
 const harness = (isInteractive: boolean) => {
@@ -13,6 +12,7 @@ const harness = (isInteractive: boolean) => {
   const files = new Map<string, string>();
   const socketProxy: SocketProxyDependencies = {
     user: "test",
+    userDataRoot: "/lando",
     hasHostSystemd: () => true,
     exists: (path) => Effect.succeed(PROXYD_CANDIDATES.some((candidate) => candidate === path)),
     readText: () => Effect.succeed(""),

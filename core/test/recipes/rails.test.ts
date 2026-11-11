@@ -14,7 +14,7 @@ describe("rails canonical recipe", () => {
     expect(Schema.decodeUnknownSync(RecipeManifest)(recipe.manifest).id).toBe("rails");
   });
   test("has no synthetic app-name option or Landofile asset", () => {
-    expect(recipe.manifest.prompts).toEqual([]);
+    expect(recipe.manifest.prompts?.map(({ name }) => name)).toEqual(["database"]);
     expect(recipe.manifest.files?.map(({ dest }) => dest)).toEqual(["Gemfile"]);
   });
   test("renders ruby, postgres, redis and rails/bundle/rake tooling", () => {
@@ -33,7 +33,7 @@ describe("rails canonical recipe", () => {
         web: {
           build: {
             artifact: [
-              "apt-get update && apt-get install -y --no-install-recommends build-essential",
+              "apt-get update && apt-get install -y --no-install-recommends build-essential git libpq-dev libyaml-dev",
               "gem install rails --no-document",
             ],
           },

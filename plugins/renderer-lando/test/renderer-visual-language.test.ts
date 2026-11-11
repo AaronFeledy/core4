@@ -1,9 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { renderPlain } from "@lando/renderer/runtime";
 import {
   type LandoEvent,
   MessageInfoEvent,
@@ -16,11 +17,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import { EventService, Renderer } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
-import * as RendererRuntime from "@lando/renderer/runtime";
-import { renderPlain } from "@lando/renderer/runtime";
+import { Effect, Layer, Schema } from "effect";
 
 import { renderLandoLine } from "../src/format.ts";
 import { makeLandoEventConsumer, makeLandoService } from "../src/renderer-runtime.ts";

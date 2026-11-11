@@ -1,11 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -17,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ListFilter, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import {
   observeProviderRuntime,
@@ -396,7 +393,7 @@ describe("observeProviderRuntime", () => {
         appRoot: root,
         service: ServiceName.make("web"),
         providerId: plan.provider,
-        status: "running",
+        status: "running" as const,
         publications: { status: "unknown" as const },
       };
       const volume = { ref: { app: plan.id, store: "data" } };
@@ -530,7 +527,7 @@ describe("resolveAppliedPlanEvidence", () => {
                 appRoot: root,
                 service: ServiceName.make("appserver"),
                 providerId: ProviderId.make("lando"),
-                status: "running",
+                status: "running" as const,
                 publications: { status: "unknown" as const },
               },
             ]),
@@ -553,7 +550,7 @@ describe("resolveAppliedPlanEvidence", () => {
                 appRoot: AbsolutePath.make("/tmp/other-app"),
                 service: ServiceName.make("appserver"),
                 providerId: ProviderId.make("lando"),
-                status: "running",
+                status: "running" as const,
                 publications: { status: "unknown" as const },
               },
             ]),
@@ -625,7 +622,7 @@ describe("resolveTeardownEvidence", () => {
       appRoot: root,
       service: ServiceName.make("appserver"),
       providerId: ProviderId.make("lando"),
-      status: "running",
+      status: "running" as const,
       publications: { status: "unknown" as const },
     };
     const result = await Effect.runPromise(
@@ -684,7 +681,7 @@ describe("resolveTeardownEvidence", () => {
                 appRoot: AbsolutePath.make("/tmp/other-app"),
                 service: ServiceName.make("appserver"),
                 providerId: ProviderId.make("lando"),
-                status: "running",
+                status: "running" as const,
                 publications: { status: "unknown" as const },
               },
             ]),
@@ -734,7 +731,7 @@ describe("resolveTeardownEvidence", () => {
         appRoot: canonical,
         service: ServiceName.make("appserver"),
         providerId: planned.provider,
-        status: "running",
+        status: "running" as const,
         publications: { status: "unknown" as const },
       };
       const orphaned = await Effect.runPromise(

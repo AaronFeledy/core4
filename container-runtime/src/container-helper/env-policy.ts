@@ -1,0 +1,35 @@
+import { HOST_PROXY_CREDENTIAL_ENV_NAMES } from "@lando/sdk/secrets";
+
+export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CLAUDE_CODE_IS_COWORK",
+  "CURSOR_AGENT",
+  "OPENCODE",
+  "OPENCODE_CLIENT",
+  "COPILOT_CLI",
+  "GEMINI_CLI",
+  "CODEX_SANDBOX",
+  "CODEX_CI",
+  "AUGMENT_AGENT",
+  "ANTIGRAVITY_AGENT",
+  "PI_CODING_AGENT",
+  "CLINE_ACTIVE",
+  "GOOSE_TERMINAL",
+  "OPENCLAW_SHELL",
+  "GROK_AGENT",
+  "AI_AGENT",
+  "AGENT",
+  "CI",
+];
+export const AGENT_ENV_VALUE_MUST_BE_ONE: ReadonlySet<string> = new Set(["GROK_AGENT"]);
+export const HOST_PROXY_ENV_PREFIXES: ReadonlyArray<string> = ["LC_"];
+export const HOST_PROXY_ENV_NAMES: ReadonlyArray<string> = ["LANG", "TERM"];
+export const HOST_PROXY_RUN_LANDO_ENV_NAMES: ReadonlyArray<string> = [
+  "LANDO_HOST_PROXY_TRANSPORT",
+  "LANDO_HOST_PROXY_SOCKET",
+  "LANDO_HOST_PROXY_URL",
+  ...HOST_PROXY_CREDENTIAL_ENV_NAMES,
+  "LANDO_HOST_PROXY_APP",
+  "LANDO_HOST_PROXY_DEPTH",
+];

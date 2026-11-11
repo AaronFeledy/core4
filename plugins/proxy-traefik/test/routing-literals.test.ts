@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 
-import { AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { type RoutePlan, ServiceName } from "@lando/sdk/schema";
 
 import { DEFAULT_AUTHORITY_PORTS, persistedAuthorities, renderTraefikDynamicConfig } from "../src/routing.ts";
+import { routeObjectName, routeOwner } from "./route-owner-fixture.ts";
 
-const app = AppId.make("literal-test");
+const app = routeOwner("literal-test");
+const router0Http = `${routeObjectName(app, 0)}-http`;
 const base: RoutePlan = {
   hostname: "demo.lndo.site",
   priority: 2,
@@ -29,7 +31,7 @@ test.each([
   const parsed = Bun.YAML.parse(renderTraefikDynamicConfig([route], app));
   // Then
   expect(parsed).toHaveProperty(
-    "http.routers.route-literal-test-0-http.rule",
+    `http.routers.${router0Http}.rule`,
     `Host("demo.lndo.site") && PathPrefix(${literal})`,
   );
 });
@@ -44,8 +46,8 @@ test.each([
   const yaml = renderTraefikDynamicConfig([route], app);
   // Then
   expect(Bun.YAML.parse(yaml)).toHaveProperty(
-    "http.routers.route-literal-test-0-http.rule",
-    `${rule} && PathPrefix("/a\`b\\\"\\\\c")`,
+    `http.routers.${router0Http}.rule`,
+    `${rule} && PathPrefix("/a\`b\\"\\\\c")`,
   );
   expect(persistedAuthorities(yaml, DEFAULT_AUTHORITY_PORTS)).toEqual([
     { scheme: "http", hostname: hostname.toLowerCase(), port: DEFAULT_AUTHORITY_PORTS.http },

@@ -30,7 +30,6 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
   summary: "Migrate managed recipe configuration through satisfied recipe history.",
   namespace: "app",
   topLevelAlias: false,
-  aliases: ["config:migrate"],
   bootstrap: "minimal",
   flags: {
     "dry-run": Flags.boolean({

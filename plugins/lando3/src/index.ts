@@ -1,4 +1,12 @@
 import { ConfigTranslateError } from "@lando/sdk/errors";
+import type {
+  ConfigTranslatorLoader,
+  LandoPluginModule,
+  PluginDoctorCheckContribution,
+} from "@lando/sdk/plugins";
+
+import { definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 /**
  * `@lando/lando3` — the Lando 3 Landofile document-set frontend.
  *
@@ -20,20 +28,12 @@ import { ConfigTranslateError } from "@lando/sdk/errors";
  */
 import { Effect, Schema } from "effect";
 
-import { definePlugin } from "@lando/sdk/plugins";
-import type {
-  ConfigTranslatorLoader,
-  LandoPluginModule,
-  PluginDoctorCheckContribution,
-} from "@lando/sdk/plugins";
-import { PluginManifest } from "@lando/sdk/schema";
-
 import { LANDO3_TRANSLATOR_ID, type Lando3TranslatorPorts } from "./contract.ts";
 
 export const PLUGIN_NAME = "@lando/lando3" as const;
 
-export { LANDO3_TRANSLATOR_ID };
 export type { Lando3TranslatorPorts };
+export { LANDO3_TRANSLATOR_ID };
 
 type Lando3PortsProvider =
   | Lando3TranslatorPorts

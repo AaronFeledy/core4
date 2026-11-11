@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
@@ -19,6 +17,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
@@ -165,7 +164,7 @@ describe("provider-docker waitForExit", () => {
     // Then
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
-      { method: "POST", path: "/containers/lando-wait-for-exit-app-web/wait" },
+      { method: "POST", path: "/containers/lando-wait-for-exit-app--web/wait" },
     ]);
   });
 
@@ -189,7 +188,7 @@ describe("provider-docker waitForExit", () => {
 
     // Then
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
-      { method: "POST", path: "/containers/lando-wait-for-exit-app-web/wait" },
+      { method: "POST", path: "/containers/lando-wait-for-exit-app--web/wait" },
     ]);
   });
 

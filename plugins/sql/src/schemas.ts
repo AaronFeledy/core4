@@ -1,6 +1,5 @@
-import { Schema } from "effect";
-
 import { SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 export const DbCommandStep = Schema.Struct({
   id: Schema.String,
@@ -14,7 +13,11 @@ export const DbCommandResult = Schema.Struct({
   service: Schema.String,
   family: Schema.optionalKey(Schema.String),
   file: Schema.optionalKey(Schema.String),
+  format: Schema.optionalKey(Schema.Literals(["sql", "sqlite"])),
   snapshotId: Schema.optionalKey(Schema.String),
+  recoverySnapshotId: Schema.optionalKey(Schema.String),
+  recoveryPath: Schema.optionalKey(Schema.String),
+  recoverySkipped: Schema.optionalKey(Schema.Literal("database-missing")),
   snapshots: Schema.optionalKey(Schema.Array(SnapshotInfo)),
   pruneCandidates: Schema.optionalKey(Schema.Array(SnapshotId)),
   prunedSnapshotIds: Schema.optionalKey(Schema.Array(SnapshotId)),

@@ -1,7 +1,4 @@
 import { basename, dirname, resolve } from "node:path";
-
-import { Effect, Layer, Semaphore } from "effect";
-
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import {
@@ -10,9 +7,11 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
+import { Effect, Layer, Semaphore } from "effect";
 
 import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
 import { resolveStatePath } from "./paths.ts";
+import { validateCacheSpec } from "./spec.ts";
 
 const textEncoder = new TextEncoder();
 
@@ -59,6 +58,7 @@ const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape
     open: Effect.fn("StateStore.open")(
       <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
         resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
+          Effect.tap(() => validateCacheSpec(spec)),
           Effect.map((resolved) => buildStateBucket(spec, resolved.file, makeMemoryBucketBackend(files))),
         ),
     ),

@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import { AppConfigResultSchema } from "@lando/engine/operations/app-config-result";
 import { type CommandResultOutcome, encodeCommandResult } from "@lando/sdk/command-result";
-import { LandofileValidationError } from "@lando/sdk/errors";
+import {
+  LandofileValidationError,
+  McpToolInputError,
+  McpToolNotAllowedError,
+  McpTransportError,
+} from "@lando/sdk/errors";
 import {
   DeprecationUse,
   ExecAppResult,
@@ -13,8 +18,49 @@ import {
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { compactOutputSchema } from "../src/output-schema";
-import { toolOutputSchema } from "../src/tool-result";
+import { rejectionResult, toolOutputSchema } from "../src/tool-result";
 import { conforms } from "./schema-conformance";
+
+test.each([
+  new McpToolInputError({
+    toolId: "app:info",
+    path: "appPath",
+    message: "Invalid private-path",
+    remediation: "Choose an app.",
+  }),
+  new McpToolNotAllowedError({
+    toolId: "app:info",
+    effectiveAllowlist: [],
+    source: "defaults",
+    message: "Denied private-path",
+    remediation: "Allow the tool.",
+  }),
+  new McpTransportError({ message: "Transport private-path", remediation: "Retry the call." }),
+])("returns schema-valid structured rejection for $_tag", async (error) => {
+  const result = await Effect.runPromise(
+    rejectionResult(error, {
+      toolId: "app:info",
+      redactor: createRedactor("secrets", { values: ["private-path"] }),
+    }),
+  );
+  const envelope = Schema.decodeUnknownSync(Schema.JsonObject)(result.structuredContent);
+  expect(conforms(toolOutputSchema(InfoAppResult), envelope)).toBe(true);
+  expect(JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "null")).toEqual(envelope);
+  expect(JSON.stringify(result)).not.toContain("private-path");
+  expect(result.isError).toBe(true);
+  expect(envelope).toMatchObject({
+    apiVersion: "v4",
+    command: "app:info",
+    ok: false,
+    error: {
+      _tag: error._tag,
+      message: expect.stringContaining("[redacted]"),
+      remediation: error.remediation,
+    },
+    warnings: [],
+    deprecations: [],
+  });
+});
 
 const fixtures: readonly {
   readonly command: string;

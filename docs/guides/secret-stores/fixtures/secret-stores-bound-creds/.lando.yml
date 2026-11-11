@@ -8,6 +8,4 @@ services:
   db:
     type: "postgres:17"
     creds:
-      user: lando
-      database: bound-creds
       password: '${secret:DB_PASSWORD}'

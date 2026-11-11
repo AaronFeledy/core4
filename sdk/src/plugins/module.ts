@@ -1,21 +1,22 @@
 import type { Effect, Layer } from "effect";
-import type { SecretStoreUnavailableError } from "../errors/secret.ts";
-import type { AbsolutePath, ResourceOwnership } from "../schema/index.ts";
-
 import type {
   ProviderCapabilityError,
   ProviderUnavailableError,
   ProxyError,
   SshError,
 } from "../errors/index.ts";
+import type { SecretStoreUnavailableError } from "../errors/secret.ts";
 import type { RendererContribution } from "../renderer/index.ts";
+import type { HostUninstallOutcome, HostUninstallStep } from "../schema/host-maintenance.ts";
 import type {
+  AbsolutePath,
   AppPlan,
   AppliedStateInventory,
   HostPlatform,
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
+  ResourceOwnership,
   ServiceConfig,
 } from "../schema/index.ts";
 import type {
@@ -44,9 +45,10 @@ import type {
   SshService,
 } from "../services/index.ts";
 import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
+import type { PrivilegeService } from "../services/process.ts";
 import type { TemplateEngine } from "../template/index.ts";
 import type { ExecutableCommandLoader } from "./command.ts";
-import type { LandoPluginContext } from "./index.ts";
+import type { LandoPluginContext, PluginStateStore } from "./index.ts";
 
 export type RuntimeProviderFactoryRequirements =
   | PathsService
@@ -79,10 +81,25 @@ export interface RuntimeProviderContribution {
 
 export interface HostMaintenanceContribution {
   readonly id: string;
-  readonly teardown: (input: {
+  readonly teardown?: (input: {
     readonly paths: HostRuntimePaths;
     readonly platform: HostPlatform;
+    readonly stateStore: PluginStateStore;
   }) => Effect.Effect<HostTeardownResult, never>;
+  readonly uninstall?: {
+    readonly plan: (input: HostUninstallInput) => Effect.Effect<ReadonlyArray<HostUninstallStep>, never>;
+    readonly execute: (
+      input: HostUninstallInput & {
+        readonly step: HostUninstallStep;
+        readonly elevate?: PrivilegeService["Service"]["elevate"];
+      },
+    ) => Effect.Effect<HostUninstallOutcome, never>;
+  };
+}
+
+export interface HostUninstallInput {
+  readonly platform: HostPlatform;
+  readonly userDataRoot: string;
 }
 
 export interface HostRuntimePaths {

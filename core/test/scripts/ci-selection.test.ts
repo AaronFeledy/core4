@@ -19,6 +19,26 @@ describe("CI selection", () => {
     ["recipes/drupal/README.mdx", "runtime"],
     ["docs/astro.config.ts", "runtime"],
     ["scripts/build-ci-workflow.ts", "providers"],
+    ["scripts/test-ownership.ts", "providers"],
+    ["scripts/test-selections.ts", "providers"],
+    ["scripts/run-test-selection.ts", "providers"],
+    ["plugins/sql/src/sqlite.ts", "providers"],
+    ["core/test/cli/start-readiness.integration.test.ts", "providers"],
+    ["core/test/services/provider-gate.integration.test.ts", "providers"],
+    ["engine/src/operations/service-readiness.ts", "providers"],
+    ["engine/src/operations/service-readiness-error.ts", "providers"],
+    ["engine/src/operations/service-readiness-progress.ts", "providers"],
+    ["engine/src/operations/service-readiness-supervision.ts", "providers"],
+    ["engine/src/operations/service-readiness-wait.ts", "providers"],
+    ["engine/src/lifecycle/startup-completion.ts", "providers"],
+    ["engine/src/subsystems/healthcheck/runner-factory.ts", "providers"],
+    ["engine/src/testing/live-provider-socket.ts", "providers"],
+    ["sdk/src/services/service-readiness.ts", "providers"],
+    ["sdk/src/errors/provider.ts", "providers"],
+    ["sdk/src/schema/service-probe.ts", "providers"],
+    ["engine/src/operations/start-internal.ts", "runtime"],
+    ["engine/src/operations/stop.ts", "runtime"],
+    ["core/test/live/new-live.integration.test.ts", "providers"],
     ["plugins/service-lando/src/php-baseline.ts", "providers"],
     ["plugins/service-lando/test/php-baseline.integration.test.ts", "providers"],
     ["plugins/provider-lando/src/provider.ts", "providers"],
@@ -308,6 +328,7 @@ describe("CI selection", () => {
       ];
       const runtime = [
         ...guides,
+        "runtime-bundle-linux-arm64",
         "unit-tests-linux-x64-shard",
         "unit-tests-linux-x64",
         "test-isolation-linux-x64",
@@ -320,6 +341,7 @@ describe("CI selection", () => {
         "provider-integration-linux-x64",
       ];
       const expected = { docs, guides, runtime, providers, broad: Object.keys(CI_JOB_TIERS) }[profile];
+      expect(Object.keys(jobs)).toEqual(expect.arrayContaining(expected));
       const needs = {
         ...Object.fromEntries(
           Object.keys(CI_JOB_TIERS).map((id) => [
@@ -353,7 +375,7 @@ describe("CI selection", () => {
     },
   );
 
-  test("typechecks docs-only PRs in the Linux static cell instead of repeating it in guide jobs", () => {
+  test("typechecks docs-only PRs in the static cells instead of repeating it in guide jobs", () => {
     const jobs = Schema.decodeUnknownSync(
       Schema.Struct({
         jobs: Schema.Record(
@@ -372,7 +394,6 @@ describe("CI selection", () => {
     )(Bun.YAML.parse(renderCiWorkflow())).jobs;
     expect(jobs["static-checks-platform"]?.steps.find((step) => step.run === "bun run typecheck")).toEqual({
       name: "Typecheck",
-      if: "matrix.platform == 'linux-x64'",
       run: "bun run typecheck",
     });
     expect(
@@ -386,8 +407,9 @@ describe("CI selection", () => {
 describe("platform build path selection", () => {
   test.each([
     "engine/src/runtime/libc.ts",
-    "core/test/build/host-execution-compiled.test.ts",
-    "core/test/build/opentui-compiled-acceptance.test.ts",
+    "core/test/build/host-execution-compiled.integration.test.ts",
+    "core/test/build/opentui-compiled-acceptance.integration.test.ts",
+    "core/test/build/opentui-source-acceptance.test.ts",
     "core/test/build/support/fixture.ts",
     "scripts/codegen.ts",
     "scripts/build-command-registry-manifest.ts",

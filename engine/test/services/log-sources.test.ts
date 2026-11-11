@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { AbsolutePath, type LogSource, LogSourceId } from "@lando/sdk/schema";
+import { Result } from "effect";
 
 import { mergeLogSources } from "../../src/services/log-sources";
 

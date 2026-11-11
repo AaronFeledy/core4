@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { CommandAliasConflictError } from "@lando/sdk/errors";
 
@@ -161,9 +160,11 @@ describe("built-in command registry contract", () => {
 
     // When: the status gates and catalog execution call sites are located.
     const deferredGate = body.indexOf('if (builtInCommand?.status.kind === "deferred")');
-    const exemptAdapter = body.indexOf("runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal)");
+    const exemptAdapter = body.indexOf(
+      "runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal, context)",
+    );
     const catalogExecution = body.indexOf(
-      "runBuiltInCommand(builtInCommand, argv.slice(1), signal, hostProxy)",
+      "runBuiltInCommand(builtInCommand, argv.slice(1), signal, hostProxy, context)",
     );
 
     // Then: deferred entries fail before explicit exemptions and implemented entries run directly.

@@ -129,6 +129,8 @@ export interface ServiceFeatureContext {
   readonly primary: boolean;
   /** The app name, when known. */
   readonly appName?: string | undefined;
+  /** Derive persisted defaults (databases, passwords, buckets) from this name so they survive a rename. Defaults to appName. */
+  readonly dataName?: string | undefined;
   /** Absolute host path of the app root. */
   readonly appRoot: string;
   /** Host identity facts (os/user/uid/gid/home), when the planner supplied them. */
@@ -139,6 +141,8 @@ export interface ServiceFeatureContext {
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
 
+  /** The name of a data store that belongs to this service alone. */
+  serviceStoreName(role: string): string;
   /** Add or overwrite an environment variable on the draft. */
   addEnv(name: string, value: EnvironmentValue): void;
   /** Add a mount (without a realization decision). */
@@ -217,6 +221,7 @@ export type ServiceEndpointContext = Pick<
   | "base"
   | "primary"
   | "appName"
+  | "dataName"
   | "appRoot"
   | "host"
   | "normalizedConfig"

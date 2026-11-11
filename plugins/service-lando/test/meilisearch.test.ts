@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import {
   MEILISEARCH_DEFAULT_MASTER_KEY,
@@ -58,7 +57,7 @@ describe("meilisearch ServiceType", () => {
         expect(plan.command).toBeUndefined();
         const volumes = plan.mounts.filter((mount) => mount.type === "volume");
         expect(volumes).toHaveLength(1);
-        expect(volumes[0]?.store).toBe("myapp-meilisearch-data");
+        expect(volumes[0]?.store).toBe("lando-myapp--search--meilisearch-data");
         expect(String(volumes[0]?.target)).toBe("/meili_data");
         expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.endpoints).toEqual([

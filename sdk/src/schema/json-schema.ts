@@ -1,25 +1,6 @@
 import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import {
-  AgentSocketBridgeInput,
-  AgentSocketBridgeResult,
-  AgentSocketDelivery,
-  AgentSocketKind,
-  AgentSocketProviderCapabilities,
-  AgentSocketUpstream,
-  GpgAgentConfig,
-  SshAgentConfig,
-} from "./agent-forwarding.ts";
-import {
-  LandofileSourceDocument,
-  LandofileSourceProjection,
-  LandofileSourceValue,
-} from "./landofile-source.ts";
-import { LayerMergeRule } from "./layer-merge.ts";
-import { ListenerObservation } from "./listener-observation.ts";
-import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
-
-import {
   AxisToken,
   CleanupProps,
   ComponentId,
@@ -42,6 +23,7 @@ import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
 import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
 import {
+  AppDataIdentityError,
   AppPlacementError,
   LandofileExpressionEvalError,
   LandofileExpressionForbiddenError,
@@ -157,6 +139,16 @@ import {
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
 import {
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
+  AgentSocketDelivery,
+  AgentSocketKind,
+  AgentSocketProviderCapabilities,
+  AgentSocketUpstream,
+  GpgAgentConfig,
+  SshAgentConfig,
+} from "./agent-forwarding.ts";
+import {
   AppPlan,
   CurrentExecutableAppPlan,
   FileSyncPlan,
@@ -193,9 +185,6 @@ import {
   ServiceScopedLandofile,
   SourceCompiledLandofile,
 } from "./compiled-landofile.ts";
-import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
-import * as ConfigTranslateSchemas from "./config-translate.ts";
-import { GlobalConfigView } from "./config-view.ts";
 import {
   AgentEnvConfig,
   AppEnvironmentDefaults,
@@ -208,6 +197,11 @@ import {
   TelemetryConfig,
   TracingConfig,
 } from "./config.ts";
+import { ConfigKeyDescription } from "./config-key.ts";
+import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
+import { ConfigLintRuleDescriptor, ConfigLintRuleId } from "./config-lint-rules.ts";
+import * as ConfigTranslateSchemas from "./config-translate.ts";
+import { GlobalConfigView } from "./config-view.ts";
 import {
   ContainerHelperArch,
   ContainerHelperArtifact,
@@ -238,7 +232,12 @@ import {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
-import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
+import {
+  DatabaseConnection,
+  ServiceCreds,
+  ServiceCredsConfig,
+  ServiceCredsDisplay,
+} from "./database-connection.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -252,7 +251,6 @@ import {
   DownloaderCapabilities,
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
-import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "./endpoint-selection.ts";
 import {
   BindAddress,
   EndpointRef,
@@ -262,6 +260,7 @@ import {
   PublicationObservation,
   PublishedEndpoint,
 } from "./endpoint.ts";
+import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "./endpoint-selection.ts";
 import {
   BoundText,
   BoundTextReference,
@@ -272,6 +271,7 @@ import {
 } from "./environment-value.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
+  FileSyncDisposalPhase,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionInfo,
@@ -294,7 +294,7 @@ import {
   LifecycleCommandId,
 } from "./host-events.ts";
 import { HostTerminal } from "./host-terminal.ts";
-import { DomainName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { CertificateName, DomainName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
   repairLandofileExtensions,
@@ -307,15 +307,6 @@ import {
   RendererKeyChord,
   RendererKeyName,
 } from "./keymap.ts";
-import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
-import {
-  LandofileAuthoringFragment,
-  LandofileAuthoringFragmentWire,
-  LandofileAuthoringShape,
-  LandofileAuthoringShapeWire,
-} from "./landofile-authoring.ts";
-import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
-import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   AppMountInput,
   CaInput,
@@ -342,7 +333,23 @@ import {
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
+import {
+  LandofileAuthoringFragment,
+  LandofileAuthoringFragmentWire,
+  LandofileAuthoringShape,
+  LandofileAuthoringShapeWire,
+} from "./landofile-authoring.ts";
+import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
+import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
+import { FileRef, StringImportRef } from "./landofile-reference.ts";
+import {
+  LandofileSourceDocument,
+  LandofileSourceProjection,
+  LandofileSourceValue,
+} from "./landofile-source.ts";
+import { LayerMergeRule } from "./layer-merge.ts";
 import { ListenerAuthority } from "./listener.ts";
+import { ListenerObservation } from "./listener-observation.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
 import {
   CommandCompletion,
@@ -368,6 +375,7 @@ import {
   AppRef,
   AuthoredNetworkPlan,
   CertificatePlan,
+  CertificateSpec,
   CheckResult,
   DependencyPlan,
   EndpointPlan,
@@ -384,8 +392,6 @@ import {
   SharedNetworkMembershipPlan,
 } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
-import { PluginDoctorReport } from "./plugin-doctor.ts";
-import { PluginTrustState } from "./plugin-trust.ts";
 import {
   ContributionRef,
   GlobalServiceContribution,
@@ -398,6 +404,8 @@ import {
   RouterServiceContribution,
   SecretStoreContribution,
 } from "./plugin.ts";
+import { PluginDoctorReport } from "./plugin-doctor.ts";
+import { PluginTrustState } from "./plugin-trust.ts";
 import {
   AppId,
   BootstrapLevel,
@@ -416,15 +424,22 @@ import {
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
-import { RouteEvidence } from "./proxy.ts";
 import {
+  AppRouteOwner,
   ProxyApplyResult,
   ProxyAuthority,
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  RouteEvidence,
   RouterConfig,
 } from "./proxy.ts";
+import {
+  RecipeChoicesFrom,
+  RecipeManifest,
+  RecipeRegistryResolution,
+  RecipeRegistryResponse,
+} from "./recipe.ts";
 import { RecipeDecomposeInput, RecipeDecomposeResult } from "./recipe-decompose.ts";
 import {
   RecipeContentDigest,
@@ -450,12 +465,6 @@ import {
   RecipeSourceOption,
   RecipeSourcePrompt,
 } from "./recipe-source.ts";
-import {
-  RecipeChoicesFrom,
-  RecipeManifest,
-  RecipeRegistryResolution,
-  RecipeRegistryResponse,
-} from "./recipe.ts";
 import {
   AppRemoteEntry,
   AppRemoteMutationResult,
@@ -489,6 +498,7 @@ import {
   StyledSpan,
   StyledSpanTone,
 } from "./renderer-panel.ts";
+import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./schedule.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
@@ -516,6 +526,7 @@ import {
   TomcatServiceConfig,
   VarnishServiceConfig,
 } from "./services/index.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -525,6 +536,7 @@ import {
   ToolingInputValues,
   ToolingInvocationInput,
 } from "./tooling-input.ts";
+import { ToolingRunSummary, ToolingRunTarget } from "./tooling-run-summary.ts";
 import {
   ShareStopAppResult,
   TunnelCapabilities,
@@ -598,6 +610,7 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = schemaRegistry({
+  ConfigKeyDescription,
   SecretReference,
   SecretRef,
   BoundTextReference,
@@ -605,6 +618,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   EnvironmentValue,
   Environment,
   ServiceCreds,
+  ServiceCredsConfig,
   DatabaseConnection,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
@@ -700,6 +714,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouteHostname,
   RoutePathPrefix,
   DomainName,
+  HostAliasName,
+  CertificateName,
   InternalEndpoint,
   PublishedEndpoint,
   EndpointPlan,
@@ -711,9 +727,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouteInputError,
   RouteProviderMismatchError,
   AppPlacementError,
+  AppDataIdentityError,
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
+  AppRouteOwner,
   ProxyApplyResult,
   ProxyStatus,
   HealthcheckPlan,
@@ -724,6 +742,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
+  CertificateSpec,
   ListenerAuthority,
   HostAliasPlan,
   ServiceDependencyCondition,
@@ -740,10 +759,13 @@ const basePublicSchemaRegistry = schemaRegistry({
   NormalizedToolingFlag,
   NormalizedToolingArg,
   ToolingInputDeclaration,
+  ToolingRunSummary,
+  ToolingRunTarget,
   ToolingInputValues,
   ToolingInvocationInput,
   ServiceConfigInput,
   ServiceFileConfig,
+  SqliteTargetConfig,
   PhpComposerConfig,
   CronExpression,
   ScheduleConfig,
@@ -786,6 +808,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostEvents,
   LifecycleCommandId,
   ConfigLintViolation,
+  ConfigLintRuleDescriptor,
+  ConfigLintRuleId,
   ConfigLintResult,
   DownloadRequest,
   DownloadResult,
@@ -908,6 +932,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouterServiceContribution,
   PluginTrustState,
   GlobalServiceContribution,
+  FileSyncDisposalPhase,
   FileSyncEngineCapabilities,
   FileSyncSessionSpec,
   PreparedFileSyncTarget,
@@ -1169,11 +1194,13 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouteInputError: "Invalid authored route with its key path and remediation.",
   RouteProviderMismatchError: "Routed app provider differs from the host router provider.",
   AppPlacementError: "App realized on a provider other than the selected provider.",
+  AppDataIdentityError: "The app folder's durable data identity cannot be established safely.",
   RouteObjectInput: "Expanded authored route with optional ordered filters.",
   ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
   ProxyConfig: "Proxy setup configuration supplied by core.",
   RouterConfig: "Shared host-router bind address and port policy.",
   ProxyAuthority: "Externally visible authority selected by a proxy implementation.",
+  AppRouteOwner: "Rename-stable owner of durable router artifacts for one application.",
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
   EndpointScan: "Sparse plan-only startup scan defaults for a logical listener.",
@@ -1210,6 +1237,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
   ServiceShutdownObservation: "Attributed daemon shutdown facts without inferred graceful or forced cleanup.",
   FileSyncQuiesceResult: "File sync writer quiescence receipt with optional shutdown observations.",
+  FileSyncDisposalPhase:
+    "Durable app file-sync disposal progress, including restartable drain and resumed cleanup.",
   DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
   ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
   StartedService: "Service startup result with scoped connection evidence.",
@@ -2322,6 +2351,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RouteInputError._tag",
   "RouteProviderMismatchError._tag",
   "AppPlacementError._tag",
+  "AppDataIdentityError._tag",
   "RoutePlan.hostname",
   "RoutePlan.pathPrefix",
   "RoutePlan.scheme",
@@ -2339,11 +2369,9 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfig.appMount",
   "ServiceConfig.command",
   "ServiceConfig.cores",
-  "ServiceConfig.database",
   "ServiceConfig.endpoints",
   "ServiceConfig.entrypoint",
   "ServiceConfig.framework",
-  "ServiceConfig.hostnames",
   "ServiceConfig.image",
   "ServiceConfig.logs",
   "ServiceConfig.mounts",
@@ -2360,7 +2388,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.build",
   "ServiceConfigInput.command",
   "ServiceConfigInput.cores",
-  "ServiceConfigInput.database",
   "ServiceConfigInput.dependsOn",
   "ServiceConfigInput.endpoints",
   "ServiceConfigInput.entrypoint",
@@ -2368,7 +2395,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.envFile",
   "ServiceConfigInput.expose",
   "ServiceConfigInput.framework",
-  "ServiceConfigInput.hostnames",
   "ServiceConfigInput.image",
   "ServiceConfigInput.labels",
   "ServiceConfigInput.logs",

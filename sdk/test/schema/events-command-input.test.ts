@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { EventStep } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const decodeOptions = [undefined, { onExcessProperty: "error" }] as const;
 

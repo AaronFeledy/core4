@@ -1,11 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option } from "effect";
 import { loadLandofileFile, loadLandofileLayers } from "../src/service.ts";
 
 const withApp = async <A>(files: Readonly<Record<string, string>>, run: (appRoot: string) => Promise<A>) => {
@@ -146,8 +144,8 @@ describe("recipe option expressions in a loaded Landofile", () => {
     },
     {
       options: "    flag: false",
-      field: 'database: "flag={{ recipe.flag }}"',
-      expected: { database: "flag=false" },
+      field: 'bucket: "flag={{ recipe.flag }}"',
+      expected: { bucket: "flag=false" },
     },
   ])("preserves the concrete result before decoding $field", async ({ options, field, expected }) => {
     // Given
@@ -750,7 +748,9 @@ describe("braced shell forms stay unsupported on the load path", () => {
 
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(failureMessage(exit)).toContain("Configuration expressions");
+      expect(failureMessage(exit)).toContain(
+        "`${LANDO_FLAVOR}` at services.appserver.type is shell syntax Lando does not expand.",
+      );
     });
   });
 
@@ -770,7 +770,7 @@ describe("braced shell forms stay unsupported on the load path", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("not supported");
+        expect(failureMessage(exit)).toContain("is shell syntax Lando does not expand");
       },
     );
   });

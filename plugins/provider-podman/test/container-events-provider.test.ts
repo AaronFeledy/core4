@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeRuntimeProvider } from "@lando/provider-podman";
+import { Effect } from "effect";
 
 const diedEvent = {
   Type: "container",
   Action: "died",
   OOMKilled: true,
-  Actor: { Attributes: { name: "lando-myapp-web", "dev.lando.app": "myapp" } },
+  Actor: { Attributes: { name: "lando-myapp--web", "dev.lando.app": "myapp" } },
 };
 
 describe("provider-podman container died event provider surface", () => {

@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
-import { Renderer } from "@lando/sdk/services";
-
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "@lando/renderer/runtime";
+import { Renderer } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
 const makeLandoService = (io: RendererIO) =>

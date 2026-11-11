@@ -16,11 +16,11 @@ import {
   AppPlanner,
   ConfigService,
   LandofileService,
+  ProcessRunner,
   RuntimeProviderRegistry,
   ShellRunner,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
@@ -212,6 +212,18 @@ test("keeps a registered secret masked across separately executed host commands"
   expect(joined(h.frames, "stderr")).toBe("[redacted]");
 });
 
+test("argv host tooling carries plan redaction tiers into the output boundary", async () => {
+  const h = harness({
+    service: ":host",
+    env: { DB_PASSWORD: "wordpress" },
+    cmd: [process.execPath, "-e", 'process.stdout.write("wordpress wordpress-seo override-tail");'],
+  });
+  h.commitLiteral("wordpress");
+  const result = await h.run({ payload: true, env: { OTHER_PASSWORD: "override" } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  expect(joined(h.frames, "stdout")).toBe("[redacted] wordpress-seo [redacted]-tail");
+});
+
 test("delivers a host partial line before the body is allowed to finish", async () => {
   // Given
   const gate = Promise.withResolvers<void>();
@@ -352,5 +364,6 @@ test.each([
   const hasHost = JSON.stringify(task).includes(":host");
   expect(joined(h.frames, "stdout")).toBe(hasHost ? "hostprovider" : "provider");
 });
+
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

@@ -1,11 +1,9 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import { IncludeEntry, type LandofileShape } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 
 import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";

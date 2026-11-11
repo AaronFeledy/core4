@@ -2,6 +2,8 @@ import { lstat, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { RedactionService } from "@lando/redaction/service";
 import { Effect, Option } from "effect";
+import { changeWorkerClaim } from "../detached-worker/claim.ts";
+import { workerSessionLifetime } from "../detached-worker/lifecycle.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
 import type { DetachedHostProxyWorkerOptions } from "./detached-worker.ts";
 import { verifyHostProxyRunDirectory } from "./run-directory.ts";
@@ -55,8 +57,27 @@ export const reuseHostProxyWorker = Effect.fnUntraced(function* (
   }
   if ((yield* probeWorker(record, { requireSessionIdentity: true })) !== "live") return undefined;
   if (!(yield* configureWorker(record, options.plan))) return undefined;
-  const closed = Promise.withResolvers<void>();
-  let closePromise: Promise<void> | undefined;
+  const lifetime = workerSessionLifetime(() =>
+    Effect.runPromise(
+      withWorkerRecordLock(
+        options.app,
+        options.paths,
+        Effect.fnUntraced(function* (claim) {
+          const current = yield* readWorkerRecord(options.app, options.paths);
+          if (current?.sessionId !== record.sessionId) return;
+          const removeRunDir = Effect.promise(() =>
+            rm(dirname(claim.path), { recursive: true, force: true }),
+          );
+          if (!(yield* isOwnerOnlyRecordFile(claim.path, options.privateFileAccess))) {
+            yield* changeWorkerClaim(claim, "reap-stale", removeRunDir);
+            return;
+          }
+          yield* terminateControlRecord(record, { ...options, claim }, removeRunDir);
+        }),
+        options.privateFileAccess,
+      ),
+    ),
+  );
   return {
     appId: record.appId,
     sessionId: record.sessionId,
@@ -68,39 +89,7 @@ export const reuseHostProxyWorker = Effect.fnUntraced(function* (
     ...(record.url === undefined ? {} : { url: record.url }),
     ...(record.containerUrl === undefined ? {} : { containerUrl: record.containerUrl }),
     reused: true,
-    closed: closed.promise,
-    close: () => {
-      if (options.reusePolicy === "adopt") return Promise.resolve();
-      closePromise ??= Effect.runPromise(
-        withWorkerRecordLock(
-          options.app,
-          options.paths,
-          Effect.gen(function* () {
-            const current = yield* readWorkerRecord(options.app, options.paths);
-            if (current?.sessionId !== record.sessionId) return;
-            if (
-              !(yield* isOwnerOnlyRecordFile(
-                workerStatePath(options.app, options.paths),
-                options.privateFileAccess,
-              ))
-            ) {
-              yield* Effect.promise(() =>
-                rm(dirname(workerStatePath(options.app, options.paths)), { recursive: true, force: true }),
-              );
-              return;
-            }
-            yield* terminateControlRecord(
-              record,
-              options,
-              Effect.promise(() =>
-                rm(dirname(workerStatePath(options.app, options.paths)), { recursive: true, force: true }),
-              ),
-            );
-          }),
-          options.privateFileAccess,
-        ),
-      ).finally(closed.resolve);
-      return closePromise;
-    },
+    ...lifetime,
+    ...(options.reusePolicy === "adopt" ? { close: () => Promise.resolve() } : {}),
   };
 });

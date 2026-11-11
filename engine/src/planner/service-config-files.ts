@@ -1,12 +1,10 @@
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { Effect } from "effect";
-
 import { assertUnderRoot } from "@lando/landofile/include-guard";
+import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 export interface ServiceConfigSource {
   readonly key: "server" | "dir";

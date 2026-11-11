@@ -123,6 +123,7 @@ export const toAppFeatureDraft = (
     environment: { ...servicePlan.environment },
     ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
     ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
+    ...(servicePlan.sqlite === undefined ? {} : { sqlite: servicePlan.sqlite }),
     ...(appMount === undefined
       ? {}
       : {
@@ -144,6 +145,10 @@ export const toAppFeatureDraft = (
           return [mount];
         case "volume":
           return [];
+        default: {
+          const exhaustive: never = mount;
+          return exhaustive;
+        }
       }
     }),
     buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),
@@ -175,11 +180,13 @@ export const servicePlanFromDraft = (
   primary: draft.primary,
   ...pickDraftOptionalServicePlanFields(draft),
   environment: sortRecord(draft.environment),
-  ...(draft.connection !== undefined
-    ? { connection: draft.connection }
-    : draft.nonSqlCreds === undefined
-      ? {}
-      : { nonSqlCreds: draft.nonSqlCreds }),
+  ...(draft.sqlite !== undefined
+    ? { sqlite: draft.sqlite }
+    : draft.connection !== undefined
+      ? { connection: draft.connection }
+      : draft.nonSqlCreds === undefined
+        ? {}
+        : { nonSqlCreds: draft.nonSqlCreds }),
   mounts: [
     ...(draft.appMount === undefined
       ? []

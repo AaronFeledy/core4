@@ -63,4 +63,4 @@ export const compileLandofileFile = Effect.fn("Landofile.loadPreparedFile")(func
   );
   yield* publishIncludeProposals(session, inputs?.stateStore);
   return { landofile: rememberLandofileAppRoot(landofile, appRoot), scope: loadScope };
-});
+}, Effect.scoped);

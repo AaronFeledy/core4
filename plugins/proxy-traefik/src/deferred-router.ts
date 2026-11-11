@@ -1,7 +1,7 @@
-import { Effect, Ref, Semaphore } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProxyApplyError, type ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
+import { Effect, Ref, Semaphore } from "effect";
 
 /** Keep provider bootstrap independent of global storage until routing is used. */
 export const deferredRouter = Effect.fnUntraced(function* (
@@ -20,7 +20,7 @@ export const deferredRouter = Effect.fnUntraced(function* (
     }),
   );
   const forSetup = resolve.pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ProxySetupError({
           proxyId: identity.id,
@@ -37,11 +37,11 @@ export const deferredRouter = Effect.fnUntraced(function* (
     revalidateStartup: Effect.flatMap(resolve, (router) => router.revalidateStartup),
     applyRoutes: (routes, app) =>
       resolve.pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ProxyApplyError({
               proxyId: identity.id,
-              app: String(app),
+              app: String(app.id),
               message: cause.message,
               remediation: cause.remediation,
               cause,

@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { AppPlan, landoNetworkingPlan } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
-import { Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
@@ -22,6 +21,8 @@ test.each([false, true])(
           request: (request) =>
             Effect.sync(() => {
               requests.push(`${request.method} ${request.path}`);
+              if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+                return { status: 200, body: "[]" };
               if (request.path.startsWith("/containers/")) return { status: 404, body: "{}" };
               if (request.method === "DELETE") return { status: 204, body: "" };
               if (bridgeMissing && request.path === "/networks/lando-networks")
@@ -72,6 +73,8 @@ test("narrowed teardown retains authored networks with unselected members", asyn
         request: (request) =>
           Effect.sync(() => {
             requests.push(`${request.method} ${request.path}`);
+            if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+              return { status: 200, body: "[]" };
             return { status: 404, body: "{}" };
           }),
       },
@@ -96,6 +99,8 @@ test.each([{ Labels: {} }, { Labels: null }, {}])(
           request: (request) =>
             Effect.sync(() => {
               requests.push(`${request.method} ${request.path}`);
+              if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+                return { status: 200, body: "[]" };
               if (request.path !== "/networks/lando-networks_private") return { status: 404, body: "{}" };
               return {
                 status: 200,
@@ -136,6 +141,8 @@ test("Podman bring-down removes the private network named in the realized plan",
         request: (request) =>
           Effect.sync(() => {
             requests.push(`${request.method} ${request.path}`);
+            if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+              return { status: 200, body: "[]" };
             if (request.method === "GET")
               return {
                 status: 200,
@@ -152,6 +159,7 @@ test("Podman bring-down removes the private network named in the realized plan",
   );
   expect(result.changed).toBe(true);
   expect(requests).toEqual([
+    "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dsite%22%5D%7D",
     "GET /networks/lando-vm-aabbccddeeff-112233445566",
     "DELETE /networks/observed-private-network",
   ]);
@@ -188,12 +196,16 @@ test.each([dockerLifecycleDialect, libpodLifecycleDialect])(
           request: (request) =>
             Effect.sync(() => {
               requests.push(request.path);
+              if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+                return { status: 200, body: "[]" };
               return { status: 404, body: "" };
             }),
         },
       }),
     );
-    expect(requests).toEqual([]);
+    expect(requests).toEqual([
+      "/containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dglobal%22%5D%7D",
+    ]);
     expect(result.changed).toBe(false);
   },
 );

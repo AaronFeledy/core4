@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { Effect } from "effect";
-import type { loadLandofileLayers } from "../../src/services/landofile-live.ts";
-
 import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
@@ -50,7 +47,7 @@ import type {
   TunnelError,
   UserLandofileError,
 } from "@lando/sdk/services";
-
+import type { Effect } from "effect";
 import type { loadUserLandofile } from "../../src/landofile/app-resolution.ts";
 import type { EnsureGlobalServicesError } from "../../src/operations/ensure-global-services.ts";
 import type { globalInstall } from "../../src/operations/global-install.ts";
@@ -59,6 +56,7 @@ import type { OrphanTeardownError } from "../../src/operations/orphan-teardown.t
 import type { RemoteSyncCommandError } from "../../src/operations/remote.ts";
 import type { ShareListCommandError } from "../../src/operations/share.ts";
 import type { planApp } from "../../src/planner/assemble.ts";
+import type { loadLandofileLayers } from "../../src/services/landofile-live.ts";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const assertType = <T extends true>(value: T): T => value;
@@ -67,6 +65,7 @@ type LandofileRootLoadError = Effect.Error<ReturnType<typeof loadLandofileLayers
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | GlobalServiceCollisionError
   | PluginManifestError
   | HealthcheckTargetUnsupportedError
@@ -89,6 +88,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
@@ -124,6 +124,8 @@ type ExpectedGlobalInstallError =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | import("@lando/sdk/errors").AppDataIdentityError
+  | import("@lando/sdk/errors").CaError
   | AppResolveError
   | DebuggerHostUnavailableError
   | StateStoreError
@@ -160,6 +162,7 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
@@ -174,6 +177,7 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
@@ -248,6 +252,7 @@ describe("Engine plan-carrying error channels", () => {
     assertType<
       Equal<
         EnsureGlobalServicesError,
+        | import("@lando/sdk/errors").CaError
         | DebuggerHostUnavailableError
         | ServiceNotReadyError
         | LoadGlobalPlanError

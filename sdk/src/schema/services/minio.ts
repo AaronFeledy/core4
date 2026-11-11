@@ -7,7 +7,7 @@ import { catalogServiceConfig, catalogServiceType } from "./_catalog.ts";
 // ============================================================================
 
 export const MinIOServiceConfig = catalogServiceConfig({
-  extraKeys: ["database", "consolePort", "build"],
+  extraKeys: ["bucket", "consolePort", "build"],
   type: catalogServiceType(Schema.Literal("minio"), "MinIO catalog service type."),
   identifier: "MinIOServiceConfig",
   title: "MinIO Service Config",

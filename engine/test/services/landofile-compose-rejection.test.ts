@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { ComposeKeyRejectedError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
+import { Cause, Effect, Exit } from "effect";
 import { loadLandofileFile, loadLandofileLayers } from "../../src/services/landofile-live";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -198,6 +197,24 @@ describe("Landofile Compose rejection surface", () => {
         remediation: composeServiceDispositions.container_name?.remediation,
         service: "web",
         source: overlayPath,
+      });
+    });
+  });
+
+  test.each(["hostname", "domainname"])("rejects compose %s with its matrix remediation", async (keyPath) => {
+    await withTempDir(async (dir) => {
+      // Given
+      const { source, exit } = await loadYamlExit(dir, yamlService(`    ${keyPath}: broker`));
+
+      // When
+      const error = failureOf(exit);
+
+      // Then
+      expectRejection(error, {
+        keyPath,
+        remediation: composeServiceDispositions[keyPath]?.remediation,
+        service: "web",
+        source,
       });
     });
   });

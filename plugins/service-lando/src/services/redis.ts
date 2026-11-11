@@ -1,11 +1,15 @@
-import { Effect, Schema } from "effect";
-
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { Effect, Schema } from "effect";
+import { REDIS_UNUSED_CREDS, assertCredsMembersUsed, claimsCreds } from "./_creds-helpers.ts";
+import {
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
@@ -28,11 +32,11 @@ export const REDIS_FEATURE_ID = "service-lando.redis";
 
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const port = plannedPort(service, REDIS_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  if (service.password !== undefined) ctx.addEnv("REDISCLI_AUTH", service.password);
+  const password = service.creds?.password;
+  if (password !== undefined) ctx.addEnv("REDISCLI_AUTH", password);
   const command = [
     ...(service.persist === false ? EPHEMERAL_COMMAND : DEFAULT_COMMAND),
     ...(service.port === undefined ? [] : ["--port", String(port)]),
@@ -42,12 +46,12 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setListenerAuthority(launcherAuthority(REDIS_LISTENER, port));
   } else {
     ctx.setCommand(
-      service.password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)],
+      password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)],
     );
   }
   if (service.persist !== false)
     ctx.addStorage({
-      store: `${appName}-redis-data`,
+      store: ctx.serviceStoreName("redis-data"),
       target: DATA_TARGET,
       readOnly: false,
     });
@@ -60,6 +64,7 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   id: REDIS_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(REDIS_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
@@ -75,8 +80,8 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
           ? "entrypoint"
           : undefined;
     const managedOption =
-      ctx.normalizedConfig.password !== undefined
-        ? "password"
+      ctx.normalizedConfig.creds?.password !== undefined
+        ? "creds.password"
         : ctx.normalizedConfig.persist !== undefined
           ? "persist"
           : undefined;
@@ -105,32 +110,35 @@ export const redisServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
   schema: Schema.Unknown,
-  resolve: (input) => {
-    const password = input.service.password;
-    const auth = password === undefined ? {} : { REDISCLI_AUTH: password };
-    return Effect.succeed({
-      base: "lando",
-      ...(password === undefined ? {} : { nonSqlCreds: { user: "default", password, database: "0" } }),
-      normalizedConfig: {
-        ...input.service,
-        type: "redis",
-        ...(input.service.persist === false ? { home: input.service.home ?? false } : {}),
-        ...(password === undefined ? {} : { creds: { user: "default", password, database: "0" } }),
-        environment: { ...input.service.environment, ...auth },
-      },
-      features: [{ id: REDIS_FEATURE_ID }],
-      tooling: {
-        "redis-cli": {
-          service: input.name,
-          cmd: [
-            "redis-cli",
-            ...(input.service.port === undefined
-              ? []
-              : ["-p", String(plannedPort(input.service, REDIS_LISTENER))]),
-          ],
-          ...(password === undefined ? {} : { env: auth }),
+  resolve: (input) =>
+    serviceTypeResolve("redis", "redis service type failed to resolve", () => {
+      assertCredsMembersUsed(input.service.creds, REDIS_UNUSED_CREDS);
+      const password = input.service.creds?.password;
+      const auth = password === undefined ? {} : { REDISCLI_AUTH: password };
+      return {
+        base: "lando",
+        ...(password === undefined ? {} : { nonSqlCreds: { user: "default", password, database: "0" } }),
+        normalizedConfig: {
+          ...input.service,
+          type: "redis",
+          ...(input.service.persist === false ? { home: input.service.home ?? false } : {}),
+          ...(password === undefined ? {} : { creds: { user: "default", password, database: "0" } }),
+          environment: { ...input.service.environment, ...auth },
         },
-      },
-    });
-  },
+        features: [{ id: REDIS_FEATURE_ID }],
+        tooling: {
+          "redis-cli": {
+            service: input.name,
+            cmd: [
+              "redis-cli",
+              ...(input.service.port === undefined
+                ? []
+                : ["-p", String(plannedPort(input.service, REDIS_LISTENER))]),
+            ],
+            wrapper: true,
+            ...(password === undefined ? {} : { env: auth }),
+          },
+        },
+      };
+    }),
 };

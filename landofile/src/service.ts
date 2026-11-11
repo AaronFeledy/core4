@@ -13,9 +13,9 @@ import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
 export { LandofileService } from "@lando/sdk/services";
 export { finishLoadStage } from "./load-failures.ts";
-export { validateLandofileReplacement } from "./replacement.ts";
-export { acquireLandofileReplacement, prepareLandofileReplacement } from "./prepared-replacement.ts";
 export type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
+export { acquireLandofileReplacement, prepareLandofileReplacement } from "./prepared-replacement.ts";
+export { validateLandofileReplacement } from "./replacement.ts";
 export {
   acquireLandofileRootLayers,
   composeLandofileRootLayers,
@@ -82,7 +82,7 @@ const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(function* (
   const session = yield* createIncludeResolutionSession({ appRoot: discovered.appRoot, ...inputs });
   const evaluated = yield* evaluateLandofileRootLayers(discovered.appRoot, { session, inputs });
   return yield* finalizeLandofileRootLayers(evaluated, discovered.filePath, inputs);
-});
+}, Effect.scoped);
 
 export const layer = (inputs: LandofileRuntimeInputs) =>
   Layer.effect(

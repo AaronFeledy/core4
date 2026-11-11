@@ -1,16 +1,17 @@
 import { compileInvocationSites, compiledValueError } from "@lando/landofile/compiled-sites";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   LandofileShape,
   type LoadScopedLandofile,
   type ProviderCapabilities,
   type ProviderId,
+  ServiceName,
   ServiceScopedLandofile,
   authoredProbeTargetError,
 } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
@@ -40,6 +41,7 @@ import { contributionId, resolveHostFacts } from "./service-types.ts";
 import { toolingAndEventIssues } from "./tooling-event-issues.ts";
 
 export interface KnownEventSetInput {
+  readonly dataName?: string;
   readonly landofile: LoadScopedLandofile;
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly configService: Context.Service.Shape<typeof ConfigService> | undefined;
@@ -59,6 +61,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const appRoot = input.appRoot ?? input.landofile.context.appRoot;
   const landofilePath = input.file ?? `${appRoot}/.lando.yml`;
   const appName = landofile.name ?? "app";
+  const dataName = input.dataName ?? appName;
   const host = resolveHostFacts();
   const encodedMetadata = {
     resolvedAt: DateTime.formatIso(yield* DateTime.now),
@@ -79,7 +82,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const provider = landofile.provider ?? hostProvider;
   const capabilities = input.capabilities ?? input.resolveCapabilities?.(provider);
   const manifests = yield* pluginRegistry.list.pipe(
-    Effect.mapError(
+    mapFailures(
       (error) =>
         new LandofileValidationError({
           message: `Failed to enumerate plugin contributions: ${causeMessage(error)}.`,
@@ -90,6 +93,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     ),
   );
   const seeds = yield* resolveServiceSeeds({
+    dataName,
     landofile,
     context: materialized.context,
     landofilePath,
@@ -144,7 +148,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     });
     const decoded = yield* Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(
       serviceScoped.document,
-    ).pipe(Effect.mapError((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
+    ).pipe(mapFailures((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
     landofile = copyLandofileProvenance(landofile, decoded);
     pendingSites = [
       ...pendingSites.filter((site) => blocked.has(deferredSiteKey(site.path))),
@@ -153,6 +157,8 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   }
   const validated = validateResolvedLandofile({ landofile, landofilePath, blocked, appSlug });
   const projection = yield* projectEndpoints({
+    dataName,
+    appSlug,
     services: seeds.services,
     unavailable: seeds.unavailable,
     landofile,
@@ -185,6 +191,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     appRoot,
     appName,
     landofilePath,
+    dataName,
     host,
     encodedMetadata,
     globalConfig,
@@ -254,8 +261,14 @@ const knownEventSetFrom = Effect.fnUntraced(function* (
   };
 });
 
-export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
-  const result = yield* resolveLandofileForPlanning(input);
+export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
+  input: KnownEventSetInput,
+  resolution?: ResolvedLandofile,
+) {
+  const result =
+    resolution === undefined
+      ? yield* resolveLandofileForPlanning(input)
+      : { _tag: "Resolved" as const, resolution };
   for (const [name, service] of Object.entries(result.resolution.landofile.services ?? {})) {
     for (const role of ["healthcheck", "readiness"] as const) {
       const probe = service[role];

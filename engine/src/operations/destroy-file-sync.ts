@@ -1,5 +1,9 @@
 import { FileSyncStopError } from "@lando/sdk/errors";
-import type { FileSyncQuiesceResult } from "@lando/sdk/schema";
+import {
+  type FileSyncQuiesceResult,
+  fileSyncDisposalCommitted,
+  planFileSyncDisposal,
+} from "@lando/sdk/schema";
 import {
   FileSyncEngine,
   type FileSyncEngineShape,
@@ -11,10 +15,10 @@ import {
 import { Effect, Option } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { pendingStartDisposal } from "./accelerated-start-disposal.ts";
+import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
-import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 
 type DestroyFileSync = {
   readonly applicable: boolean;
@@ -67,7 +71,7 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
       : undefined;
   const lifecycle = applied.status === "accelerated" ? engine?.appLifecycle : undefined;
   const phase = lifecycle === undefined ? undefined : yield* lifecycle.disposalPhase(app);
-  const resumed = phase === "disposing" || phase === "completed";
+  const resumed = phase !== undefined && fileSyncDisposalCommitted(phase);
   const applicable =
     applied.status === "accelerated" &&
     (phase === "completed" || (engine !== undefined && (yield* engine.isAvailable)));
@@ -126,11 +130,14 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
   const dispose = Effect.gen(function* () {
     if (phase === "completed") return {};
     const receipt = !retainedUnapplied && quiesce !== undefined ? yield* quiesce({ app: plan.id, plan }) : {};
-    if (lifecycle !== undefined) {
-      if (phase !== "disposing" && phase !== "absent") yield* lifecycle.drain(app);
-      if (phase !== "absent") yield* lifecycle.dispose(app);
+    if (lifecycle !== undefined && phase !== undefined) {
+      // Provider target cleanup sits between disposal and the completed receipt.
+      const remaining = planFileSyncDisposal(phase);
+      for (const operation of remaining) {
+        if (operation !== "completeDisposal") yield* lifecycle[operation](app);
+      }
       if (disposeTargets !== undefined) yield* disposeTargets(plan);
-      if (phase !== "absent") yield* lifecycle.completeDisposal(app);
+      if (remaining.includes("completeDisposal")) yield* lifecycle.completeDisposal(app);
     } else {
       if (engine === undefined) {
         return yield* Effect.fail(failure("An accelerated mount has no matching file sync engine."));

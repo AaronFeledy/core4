@@ -15,9 +15,9 @@ import { Effect, Schema } from "effect";
 import { TRAEFIK_DIAGNOSTICS_ID } from "../diagnostics.ts";
 import { AcquisitionState } from "../port-acquisition-state.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../ports.ts";
+import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
 import { acquisitionStateFile } from "../proxy-paths.ts";
 import type { ProxyPaths } from "../proxy-types.ts";
-import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
 import {
   DEFAULT_ROUTER_BIND_ADDRESS,
   normalizeRouterBindAddress,
@@ -35,9 +35,13 @@ export const TRAEFIK_STATIC_FLAGS: ReadonlyArray<string> = [
   "--log.level=INFO",
   "--api.dashboard=true",
   "--api.insecure=true",
+  // No forwardedHeaders trust: Traefik replaces client X-Forwarded-* with its own.
+  // Generated web servers rely on that X-Forwarded-Proto to report HTTPS to PHP.
   "--entrypoints.web.address=:80",
   "--entrypoints.websecure.address=:443",
   "--entrypoints.traefik.address=:8080",
+  "--ping=true",
+  "--ping.entrypoint=traefik",
   `--providers.file.directory=${TRAEFIK_DYNAMIC_CONFIG_DIR}`,
   "--providers.file.watch=true",
 ];
@@ -88,6 +92,13 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
     // Router infrastructure keeps no per-user state, so there is no home to persist.
     home: false,
     command: ["sh", "-c", TRAEFIK_START_SCRIPT],
+    readiness: {
+      kind: "command",
+      command: ["traefik", "healthcheck", "--ping"],
+      intervalSeconds: 0.25,
+      timeoutSeconds: 1,
+      retries: 120,
+    },
     mounts: [
       {
         type: "bind",

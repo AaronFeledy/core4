@@ -1,12 +1,8 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { cleanupWorkflowPerformanceSample } from "./workflow-performance-cleanup.ts";
-import { recordPerformanceIsolation } from "./workflow-performance-isolation.ts";
-import { imagesFor, landofileFor } from "./workflow-performance-sample-config.ts";
-import { acquirePerformanceStores } from "./workflow-performance-stores.ts";
-
 import type { FileSyncStatus } from "../core/src/cli/command-specs/meta/setup-inputs.ts";
 import { fileSyncStatusLine } from "../core/src/cli/command-specs/meta/setup-summary.ts";
+import { cleanupWorkflowPerformanceSample } from "./workflow-performance-cleanup.ts";
 import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
@@ -14,6 +10,7 @@ import type {
 import { workflowPerformanceDeadlineRunner } from "./workflow-performance-command.ts";
 import { setupFileSyncStatusFromStdout } from "./workflow-performance-diagnostic.ts";
 import { withPodmanServiceEvidence } from "./workflow-performance-failure-evidence.ts";
+import { recordPerformanceIsolation } from "./workflow-performance-isolation.ts";
 import {
   buildMeasuredCommands,
   performanceCommand,
@@ -24,6 +21,8 @@ import {
 import type { WorkflowPerformanceLanePlan } from "./workflow-performance-plan.ts";
 import type { WorkflowPerformanceSample } from "./workflow-performance-report.ts";
 import { boundedPerformanceEvidence } from "./workflow-performance-report.ts";
+import { globalServicesFor, imagesFor, landofileFor } from "./workflow-performance-sample-config.ts";
+import { acquirePerformanceStores } from "./workflow-performance-stores.ts";
 
 type PreparedSample = {
   readonly stagedFixture?: WorkflowPerformanceSample["stagedFixture"];
@@ -148,6 +147,19 @@ const prepareSample = async (
     );
     if (pulled.exitCode !== 0) return { appRoot, env, failure: pulled, fileSyncStatus };
   }
+  const globalServices = globalServicesFor(lane.id);
+  if (globalServices.length > 0) {
+    const started = await runCommand(
+      performanceCommand(
+        "prepare:global",
+        [binary, "meta:global:start", ...globalServices.flatMap((service) => ["--service", service])],
+        cwd,
+        env,
+      ),
+    );
+    if (started.exitCode !== 0)
+      return { appRoot, env, failure: await withPodmanServiceEvidence(started), fileSyncStatus };
+  }
   if (lane.id === "warm-stop-start" || lane.id === "unchanged-rebuild" || lane.fixtureFamily !== undefined) {
     const started = await runCommand(performanceCommand("prepare:start", [binary, "start"], appRoot, env));
     if (started.exitCode !== 0)
@@ -264,13 +276,16 @@ export const runWorkflowPerformanceSample = async (
     appRoot: prepared.appRoot,
     results: measured,
   });
+  const globalServices = globalServicesFor(input.lane.id);
   const sample: WorkflowPerformanceSample = {
     ...(acquired?.stagedFixture === undefined ? {} : { stagedFixture: acquired.stagedFixture }),
     index: input.index,
     key: input.key,
     outcome:
       steps.length === commands.length && steps.every((step) => step.exitCode === 0) ? "passed" : "failed",
-    resetCondition: "fresh Lando config, data, cache, app, and owned volume identities; images pre-pulled",
+    resetCondition: `fresh Lando config, data, cache, app, and owned volume identities; images pre-pulled${
+      globalServices.length === 0 ? "" : `; global ${globalServices.join(", ")} started`
+    }`,
     steps,
   };
   const cleanupFailures = await cleanupWorkflowPerformanceSample(

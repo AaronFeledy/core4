@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect, Fiber, Stream } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -15,15 +13,16 @@ import {
 import { AppPlanner, ConfigService, FileSystem, GlobalAppService } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { TestFileSyncEngine } from "@lando/sdk/test";
+import { Effect, Fiber, Stream } from "effect";
 
 import { makeGlobalAppService } from "../../src/global-app/service.ts";
+import { startApp } from "../../src/operations/start.ts";
 import {
   applyTreeId,
   startFileSyncTreeId,
   startHostProxyTreeId,
   startRoutesTreeId,
 } from "../../src/operations/start-progress.ts";
-import { startApp } from "../../src/operations/start.ts";
 import {
   byTag,
   makeHarness,
@@ -149,7 +148,7 @@ describe("start progress topology", () => {
           app: target.app,
           service: target.service,
           providerId: routedPlan.provider,
-          status: "running",
+          status: "running" as const,
           publications: { status: "unknown" },
         }),
       onApply: (applied) => {
@@ -161,7 +160,7 @@ describe("start progress topology", () => {
               service: service.name,
               providerId: applied.provider,
               containerId: `owned-${service.name}`,
-              status: "running",
+              status: "running" as const,
               publications: { status: "unknown" as const },
             })),
           );
@@ -331,7 +330,8 @@ describe("start progress topology", () => {
       ),
     ).toMatchObject({
       summary: "test-start file-sync failed",
-      failed: 2,
+      failed: 1,
+      outcome: "failure",
     });
   });
 

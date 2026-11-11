@@ -1,6 +1,5 @@
-import { type Context, Effect } from "effect";
-
 import type { PrivilegeService, ProcessResult, ProcessRunner } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import {
   DESIRED_HTTPS_PORT,
@@ -11,24 +10,28 @@ import {
 } from "./port-acquisition.ts";
 import { ProxydBinaryNotFound } from "./socket-proxy-errors.ts";
 import {
+  SOCKET_PROXY_EXIT_FOREIGN,
+  SOCKET_PROXY_EXIT_NEEDS_FLOCK,
+  SOCKET_PROXY_EXIT_SYMLINK,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
+} from "./socket-proxy-helper.ts";
+import { type HostPathAccess, classifySocketProxy, inspectSocketProxy } from "./socket-proxy-ownership.ts";
+import { shQuote, socketProxyArtifactRecheck, socketProxyLockPreamble } from "./socket-proxy-script.ts";
+import {
   POLKIT_RULE_PATH,
   PROXYD_CANDIDATES,
   SOCKET_UNIT_PATHS,
   type SocketProxyServiceType,
-  UNIT_MARKER,
   buildInstallScript,
   renderPolkitRule,
 } from "./socket-proxy-units.ts";
 
-export { POLKIT_RULE_PATH, PROXYD_CANDIDATES, SOCKET_UNIT_PATHS, renderPolkitRule };
 export { ProxydBinaryNotFound } from "./socket-proxy-errors.ts";
+export { classifySocketProxy } from "./socket-proxy-ownership.ts";
+export { POLKIT_RULE_PATH, PROXYD_CANDIDATES, SOCKET_UNIT_PATHS, renderPolkitRule };
 
 const failedResult = (exitCode = 1, stderr = ""): ProcessResult => ({ exitCode, stdout: "", stderr });
-
-export interface HostPathAccess {
-  readonly exists: (path: string) => Effect.Effect<boolean>;
-  readonly readText: (path: string) => Effect.Effect<string, unknown>;
-}
 
 export interface DiscoverProxydInput {
   readonly exists: HostPathAccess["exists"];
@@ -38,6 +41,13 @@ export interface DiscoverProxydInput {
 export type SocketProxyInstallOutcome =
   | { readonly kind: "installed" }
   | { readonly kind: "already-installed" }
+  | { readonly kind: "foreign" }
+  | {
+      readonly kind: "needs-helper";
+      readonly reason: "flock-missing" | "symlink";
+      readonly exitCode: number;
+      readonly stderr: string;
+    }
   | { readonly kind: "elevation-refused"; readonly exitCode: number; readonly stderr: string }
   | { readonly kind: "proxyd-missing" };
 
@@ -52,9 +62,11 @@ export interface InstallSocketProxyInput extends HostPathAccess {
   readonly serviceType?: SocketProxyServiceType;
   readonly httpTarget: number;
   readonly httpsTarget: number;
+  /** Replace a classified foreign helper (missing-root / confirmed unattributed) after digest pin. */
+  readonly replaceForeign?: boolean;
 }
 
-export interface StartSocketsInput {
+export interface StartSocketsInput extends HostPathAccess {
   readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
   readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly probeForward?: (
@@ -88,10 +100,9 @@ export const discoverProxydBinary = Effect.fn("SocketProxy.discoverProxydBinary"
 });
 
 export const isSocketProxyInstalled = Effect.fnUntraced(function* (access: HostPathAccess) {
+  if ((yield* classifySocketProxy(access)).kind !== "owned") return false;
   for (const path of SOCKET_UNIT_PATHS) {
     if (!(yield* access.exists(path))) return false;
-    const text = yield* access.readText(path).pipe(Effect.catch(() => Effect.succeed("")));
-    if (!text.includes(UNIT_MARKER)) return false;
   }
   return true;
 });
@@ -107,6 +118,17 @@ const hopPortFromUnit = (text: string): number | undefined => {
 };
 
 export const readHelperHopTargets = Effect.fnUntraced(function* (access: HostPathAccess) {
+  if ((yield* classifySocketProxy(access)).kind !== "owned") return undefined;
+  const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+  const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+  const httpTarget = hopPortFromUnit(httpUnit);
+  const httpsTarget = hopPortFromUnit(httpsUnit);
+  if (httpTarget === undefined || httpsTarget === undefined) return undefined;
+  return { httpTarget, httpsTarget };
+});
+
+/** Hop targets from any readable service units (for foreign replacement free-port checks). */
+export const readAnyHelperHopTargets = Effect.fnUntraced(function* (access: HostPathAccess) {
   const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
   const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
   const httpTarget = hopPortFromUnit(httpUnit);
@@ -122,50 +144,124 @@ const hopsMatchTargets = Effect.fnUntraced(function* (
 ) {
   const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
   const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
-  const hopPattern = /127\.0\.0\.1:\d+/u;
-  if (!hopPattern.test(httpUnit) && !hopPattern.test(httpsUnit)) return true;
   return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);
 });
+
+const mapElevatedInstall = (elevated: ProcessResult): SocketProxyInstallOutcome => {
+  if (elevated.exitCode === 0) return { kind: "installed" };
+  if (elevated.exitCode === SOCKET_PROXY_EXIT_FOREIGN) return { kind: "foreign" };
+  if (elevated.exitCode === SOCKET_PROXY_EXIT_NEEDS_FLOCK) {
+    return {
+      kind: "needs-helper",
+      reason: "flock-missing",
+      exitCode: elevated.exitCode,
+      stderr: elevated.stderr,
+    };
+  }
+  if (elevated.exitCode === SOCKET_PROXY_EXIT_SYMLINK) {
+    return {
+      kind: "needs-helper",
+      reason: "symlink",
+      exitCode: elevated.exitCode,
+      stderr: elevated.stderr,
+    };
+  }
+  return { kind: "elevation-refused", exitCode: elevated.exitCode, stderr: elevated.stderr };
+};
 
 export const installSocketProxy = Effect.fn("SocketProxy.installSocketProxy")(function* (
   input: InstallSocketProxyInput,
 ): Effect.fn.Return<SocketProxyInstallOutcome> {
-  if (yield* isSocketProxyInstalled(input)) {
-    if (yield* hopsMatchTargets(input, input.httpTarget, input.httpsTarget)) {
+  const inspection = yield* inspectSocketProxy(input);
+  const ownership = inspection.ownership;
+  if (input.replaceForeign !== true) {
+    if (ownership.kind === "foreign" || ownership.kind === "unmarked") return { kind: "foreign" };
+    if (yield* isSocketProxyInstalled(input)) {
+      if (yield* hopsMatchTargets(input, input.httpTarget, input.httpsTarget)) {
+        return { kind: "already-installed" };
+      }
+    }
+  } else if (ownership.kind === "owned") {
+    if (
+      (yield* isSocketProxyInstalled(input)) &&
+      (yield* hopsMatchTargets(input, input.httpTarget, input.httpsTarget))
+    ) {
       return { kind: "already-installed" };
+    }
+  } else if (ownership.kind === "unmarked") {
+    return { kind: "foreign" };
+  } else if (ownership.kind === "foreign") {
+    if (ownership.reason === "other-root" || ownership.reason === "mixed") {
+      return { kind: "foreign" };
     }
   }
   const binary = yield* discoverProxydBinary(input).pipe(
     Effect.catchTag("ProxydBinaryNotFound", () => Effect.succeed(undefined)),
   );
   if (binary === undefined) return { kind: "proxyd-missing" };
+  const priorDigests = inspection.digests;
   const script = buildInstallScript({
     user: input.user,
+    userDataRoot: inspection.currentRoot,
     binary,
     serviceType: input.serviceType ?? "notify",
     httpTarget: input.httpTarget,
     httpsTarget: input.httpsTarget,
+    priorDigests,
+    replaceForeign: input.replaceForeign === true,
+    ...(ownership.kind === "foreign" && ownership.ownerRoot !== undefined
+      ? { priorOwnerRoot: ownership.ownerRoot }
+      : {}),
   });
   const elevated = yield* input.privilege.elevate(["/bin/sh", "-c", script]);
-  if (elevated.exitCode !== 0) {
-    return { kind: "elevation-refused", exitCode: elevated.exitCode, stderr: elevated.stderr };
-  }
-  return { kind: "installed" };
+  return mapElevatedInstall(elevated);
 });
 
 const controlSockets = Effect.fn("SocketProxy.controlSockets")(function* (
   verb: "start" | "stop",
   input: StartSocketsInput,
 ): Effect.fn.Return<SocketProxyStartOutcome> {
-  const args = [verb, ...SOCKET_UNITS];
+  const units =
+    verb === "stop" ? SOCKET_UNIT_PATHS.map((path) => path.slice(path.lastIndexOf("/") + 1)) : SOCKET_UNITS;
+  const snapshot = yield* inspectSocketProxy(input);
+  if (snapshot.ownership.kind !== "owned") {
+    return {
+      kind: "failed",
+      exitCode: SOCKET_PROXY_EXIT_FOREIGN,
+      stderr: "Socket proxy ownership changed; run lando doctor.",
+    };
+  }
+  const checks = [...SOCKET_UNIT_PATHS, POLKIT_RULE_PATH].map((path) =>
+    socketProxyArtifactRecheck({
+      path,
+      priorDigest: snapshot.digests[path],
+      header:
+        path === POLKIT_RULE_PATH
+          ? socketProxyPolkitHeader(snapshot.currentRoot)
+          : socketProxyUnitHeader(snapshot.currentRoot),
+      allowUnknownDigest: path === POLKIT_RULE_PATH,
+      allowUnattributed: false,
+    }),
+  );
+  const script = [
+    ...socketProxyLockPreamble,
+    ...checks,
+    `systemctl ${verb} ${units.map(shQuote).join(" ")}`,
+  ].join("\n");
   const unelevated = yield* input.processRunner
-    .run({ cmd: "systemctl", args })
+    .run({ cmd: "/bin/sh", args: ["-c", script] })
     .pipe(Effect.catch((error) => Effect.succeed(failedResult(1, error.message))));
   const result =
-    unelevated.exitCode === 0 ? unelevated : yield* input.privilege.elevate(["systemctl", ...args]);
+    unelevated.exitCode === 0 ? unelevated : yield* input.privilege.elevate(["/bin/sh", "-c", script]);
   if (result.exitCode !== 0) {
     return { kind: "failed", exitCode: result.exitCode, stderr: result.stderr };
   }
+  return yield* probeSocketProxy(input);
+});
+
+export const probeSocketProxy = Effect.fnUntraced(function* (
+  input: Pick<StartSocketsInput, "probeForward">,
+): Effect.fn.Return<SocketProxyStartOutcome> {
   const probe = input.probeForward ?? probeForward;
   const http = yield* probe("127.0.0.1", DESIRED_HTTP_PORT, "http");
   const https = yield* probe("127.0.0.1", DESIRED_HTTPS_PORT, "https");

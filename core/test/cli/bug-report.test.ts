@@ -31,6 +31,73 @@ const ctx = (overrides: Partial<{ commandId: string; appId: string; providerId: 
 });
 
 describe("buildBugReport: envelope extraction", () => {
+  test.each([
+    [
+      "a cause fragment within a longer sentence",
+      "Download failed: connection reset",
+      " connection reset ",
+      "Retry.",
+      "Retry.",
+      "Download failed: connection reset\n connection reset ",
+      "Retry.",
+    ],
+    [
+      "contained message sentences",
+      "Download failed. Connection reset. Check the proxy.",
+      " Connection   reset.\nCheck the proxy. ",
+      "Retry.",
+      "Retry.",
+      "Download failed. Connection reset. Check the proxy.",
+      "Retry.",
+    ],
+    [
+      "contained remediation",
+      "Setup failed",
+      "CA failed",
+      "Fix the CA. Then rerun setup.",
+      " Fix the CA. ",
+      "Setup failed\nCA failed",
+      "Fix the CA. Then rerun setup.",
+    ],
+    [
+      "distinct texts",
+      "Setup failed",
+      "Download failed",
+      "Retry setup.",
+      "Check the proxy.",
+      "Setup failed\nDownload failed",
+      "Retry setup. Check the proxy.",
+    ],
+    [
+      "download advice followed by the managed artifact repair command",
+      "Couldn't download runtime.tar.gz from https://update.test: the connection was reset.",
+      "Couldn't download runtime.tar.gz from https://update.test: the connection was reset.",
+      "Check the network, VPN, or proxy (HTTPS_PROXY or network.proxy). Then run `lando setup` to finish installing the Lando runtime.",
+      "Check the network, VPN, or proxy (HTTPS_PROXY or network.proxy).",
+      "Couldn't download runtime.tar.gz from https://update.test: the connection was reset.",
+      "Check the network, VPN, or proxy (HTTPS_PROXY or network.proxy). Then run `lando setup` to finish installing the Lando runtime.",
+    ],
+  ])(
+    "keeps outer-first failure text for %s",
+    (_name, message, causeMessage, remediation, causeRemediation, body, expectedRemediation) => {
+      const report = buildBugReport({
+        error: {
+          _tag: "OuterError",
+          message,
+          remediation,
+          cause: {
+            _tag: "InnerError",
+            message: causeMessage,
+            remediation: causeRemediation,
+          },
+        },
+        context: ctx(),
+      });
+      expect(report.body).toBe(body);
+      expect(report.remediation).toBe(expectedRemediation);
+    },
+  );
+
   test("renders attributed issue paths and separate remediation", () => {
     const report = buildBugReport({
       error: {
@@ -270,7 +337,7 @@ describe("buildBugReport: envelope extraction", () => {
         capability: "composeSpec",
         providerId: "lando",
         remediation:
-          "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+          "Remove shm_size from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
       }),
       context: ctx(),
     });
@@ -527,7 +594,7 @@ describe("renderPlainBugReport: stable multi-line output", () => {
         error: new NotImplementedError({
           message: "deferred",
           commandId: "meta:plugin:trust",
-          remediation: "not available yet",
+          remediation: "not available",
         }),
         context: ctx({ commandId: "meta:plugin:trust" }),
       }),
@@ -547,7 +614,7 @@ describe("renderPlainBugReport: stable multi-line output", () => {
           capability: "composeSpec",
           providerId: "lando",
           remediation:
-            "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+            "Remove shm_size from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
         }),
         context: ctx(),
       }),
@@ -689,7 +756,7 @@ describe("renderJsonBugReport: single NDJSON line", () => {
           capability: "composeSpec",
           providerId: "lando",
           remediation:
-            "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+            "Remove shm_size from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
         }),
         context: ctx(),
       }),

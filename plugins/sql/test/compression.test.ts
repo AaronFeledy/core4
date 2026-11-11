@@ -1,11 +1,9 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { SqlDumpCompressionError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import {
   collectDumpPrefix,
@@ -110,7 +108,7 @@ describe("dump compression helpers", () => {
         [1, highLevel].map(async (level) => {
           const destination = join(dir, `level-${level}`);
           const result = await Effect.runPromise(
-            writeDumpTransform(source, destination, compression, "compress", undefined, level),
+            writeDumpTransform(source, destination, compression, "compress", level),
           );
           return { level, destination, ...result };
         }),

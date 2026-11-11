@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema, Stream } from "effect";
-
 import * as PodmanProvider from "@lando/provider-podman";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { AbsolutePath, AppId, type AppPlan, LogSource, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 const FileLogSource = LogSource.members[0];
 
@@ -99,8 +98,8 @@ describe("provider-podman log source binding", () => {
     });
   });
 
-  test("installs helper access in the service container derived from the plan", async () => {
-    // Given: a helper payload and an API that refuses uploads.
+  test("executes the mounted helper in the service container derived from the plan", async () => {
+    // Given: a helper payload and an API that refuses exec creation.
     const paths: string[] = [];
     const provider = await Effect.runPromise(
       PodmanProvider.makeRuntimeProvider({
@@ -117,13 +116,13 @@ describe("provider-podman log source binding", () => {
           Effect.succeed({ target, digest: "1".repeat(64), path: AbsolutePath.make(import.meta.filename) }),
       }),
     );
-    // When: file logs attempt to install the helper.
+    // When: file logs attempt to start the helper.
     await Effect.runPromise(
       Effect.result(
         Stream.runCollect(provider.logs({ app, service, plan }, { follow: false, source: source.id })),
       ),
     );
-    // Then: upload targets this service, not another container.
-    expect(paths).toContain("/containers/lando-bindingapp-web/archive?path=/tmp");
+    // Then: exec targets this service, not another container.
+    expect(paths).toContain("/containers/lando-bindingapp--web/exec");
   });
 });

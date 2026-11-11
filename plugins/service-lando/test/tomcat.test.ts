@@ -1,17 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { composeService } from "@lando/engine/services/feature";
 import { LandofileShape, ProviderId, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   TOMCAT_FEATURE_ID,
-  tomcat9ServiceType,
   tomcat10ServiceType,
   tomcat11ServiceType,
+  tomcat9ServiceType,
   tomcatServiceFeature,
   tomcatServiceType,
 } from "../src/services/tomcat.ts";
@@ -86,6 +85,7 @@ describe("tomcat ServiceType", () => {
             defaultFeatures: [],
           },
           baseKind: "lando",
+          appSlug: "myapp",
           appRoot: "/srv/apps/myapp",
           normalizedConfig: {},
           features: [{ id: TOMCAT_FEATURE_ID, definition: tomcatServiceFeature, config }],
@@ -225,6 +225,23 @@ describe("tomcat ServiceType", () => {
     });
   });
 
+  test.each([{ image: "acme/tomcat:custom" }, { build: { context: "." } }])(
+    "plans %j without an app mount or webroot",
+    async (definition) => {
+      // Given: a Tomcat service whose image configuration the author owns, with no app code mounted.
+      // When: it is planned without a webroot.
+      const plan = await planTomcatService(tomcatServiceType, {
+        type: "tomcat",
+        appMount: false,
+        ...definition,
+      });
+      // Then: Lando neither exports a webroot nor writes Tomcat configuration into the image.
+      expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
+      const features = Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]);
+      expect(features.buildSteps.filter(({ id }) => id.startsWith("service-lando.tomcat:"))).toEqual([]);
+    },
+  );
+
   test.each([undefined, "public"])("rejects appMount false with webroot %s", async (webroot) => {
     // Given: a webroot requiring app code on a service that disables it.
     const definition = { type: "tomcat", appMount: false, ...(webroot === undefined ? {} : { webroot }) };
@@ -261,4 +278,5 @@ describe("tomcat ServiceType", () => {
     });
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

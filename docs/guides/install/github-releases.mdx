@@ -3,31 +3,43 @@ id: github-releases
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 60000
-tags: [beta, docs, install, release]
+tags: [docs, install, release]
 ---
 
 # Install from a GitHub release
 
-> **Alpha status:** Alpha ships six unsigned `v4.0.0-dev.N` GitHub assets
-> (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`,
-> `windows-arm64`). Signed binaries, GPG, SHA512, SBOM, and installers are
-> **not yet implemented**. See [alpha install and bug
-> reports](../../alpha-install-and-bug-reports.md) for current install options.
-
 Every platform target (`linux-x64`, `linux-arm64`, `darwin-x64`,
-`darwin-arm64`, `windows-x64`, and `windows-arm64`) publishes an unsigned
-compiled binary on the GitHub prerelease. Download the one for your platform.
-The binary embeds Bun, so manual installs don't need a separate Bun, Node,
-npm, yarn, or pnpm runtime.
+`darwin-arm64`, `windows-x64`, and `windows-arm64`) publishes a compiled
+binary on the [GitHub release](https://github.com/AaronFeledy/core4/releases).
+Download the one for your platform. The binary embeds Bun, so manual installs
+don't need a separate Bun, Node, npm, yarn, or pnpm runtime.
 
 File sync is the one thing that isn't embedded. Mutagen's host tools and
 agents get pulled in when you run `lando setup`.
 
 ## Verify what you downloaded
 
-Alpha publishes `SHA256SUMS` beside every binary. GPG/cosign
-signatures, SHA512, CycloneDX SBOM, and SLSA provenance stay later. Follow
-[alpha install and bug reports](../../alpha-install-and-bug-reports.md) to
-check only the asset you downloaded (`grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c` for Linux x64).
+Each release publishes `SHA256SUMS` and `SHA512SUMS` beside the binaries, with
+a detached GPG signature (`.asc`) for each, a keyless cosign signature
+(`SHA256SUMS.sig` plus `SHA256SUMS.crt`) for the SHA-256 manifest, a cosign
+signature for each binary, a CycloneDX SBOM, and signed SLSA provenance. The
+release notes carry the exact `cosign verify-blob` command for each asset.
+
+Check only the asset you downloaded. `SHA256SUMS` lists every platform, so
+checking the whole file fails when the other binaries are not in this directory:
+
+```sh
+grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c
+```
+
+Replace `lando-linux-x64` with your asset name. The command must report `OK`
+for that file. If it does not, delete the binary and `SHA256SUMS` and download
+them again from the same release.
+
+To verify the checksum manifest itself, run `cosign verify-blob` with the
+`SHA256SUMS.sig` and `SHA256SUMS.crt` assets and the release workflow identity
+shown in [Verify the installer scripts](./verify-installer-scripts.mdx), or
+`gpg --verify SHA256SUMS.asc SHA256SUMS` after importing the Lando release GPG
+key, the same key the [POSIX installer](./posix-installer.mdx) embeds.
 
 After the checksum matches, follow [Put lando on PATH and run setup](./path-and-setup.mdx) to install the executable, select the provider for your platform, and verify it with `lando doctor`.

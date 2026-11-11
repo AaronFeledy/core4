@@ -2,7 +2,7 @@
 id: php-command-resolution
 provider: test
 timeout: 60000
-tags: [beta, docs, tooling, php, path]
+tags: [docs, tooling, php, path]
 ---
 
 # Resolve PHP commands
@@ -24,7 +24,7 @@ tooling:
     cmd: vendor/bin/phpunit
 ```
 
-The `phpunit` task requires your project’s Composer dependencies to have installed `vendor/bin/phpunit` inside the service. After editing the Landofile, run `lando app:cache:refresh` and `lando app:config:lint --format=json` from the app directory to check the task configuration.
+The `phpunit` task requires your project’s Composer dependencies to have installed `vendor/bin/phpunit` inside the service. After editing the Landofile, run `lando app:config:lint --format=json` from the app directory to check the task configuration; `lando app:cache:refresh` additionally confirms the app plans before you start it.
 
 For a full Drupal setup with Kernel, Functional, and browser tests, see [Run Drupal tests with PHPUnit and headless Chrome](../../recipes/drupal-testing/).
 

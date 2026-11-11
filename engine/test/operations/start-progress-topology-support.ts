@@ -1,9 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
-
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
@@ -13,11 +10,14 @@ import {
   AppId,
   type AppPlan,
   AppPlan as AppPlanSchema,
+  type AppRef,
   LoadScopedLandofile,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -36,8 +36,9 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { applyTreeId } from "../../src/operations/start-progress.ts";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { startApp } from "../../src/operations/start.ts";
+import { applyTreeId } from "../../src/operations/start-progress.ts";
 import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
 import { makeEnvSecretStore } from "../../src/services/secret-store.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -101,6 +102,11 @@ export const plan: AppPlan = {
   name: "test-start",
   slug: "test-start",
   root: AbsolutePath.make(testAppRoot),
+  identity: {
+    appRoot: AbsolutePath.make(testAppRoot),
+    ownerKey: appIdentityKey("owner", testAppRoot),
+    dataName: "test-start",
+  },
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
@@ -276,18 +282,19 @@ export const makeHarness = (
           app: plannedApp.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running",
+          status: "running" as const,
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
           publications: {
             status: "present",
             bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
           },
         })),
-    stop: (target) =>
-      Effect.sync(() => {
-        options.onStop?.(target);
-      }),
+    stop:
+      options.providerOverrides?.stop ??
+      ((target) =>
+        Effect.sync(() => {
+          options.onStop?.(target);
+        })),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),
@@ -309,7 +316,8 @@ export const makeHarness = (
           },
         })),
     execStream: options.providerOverrides?.execStream ?? (() => Stream.empty),
-    exec: options.exec ?? TestRuntimeProvider.exec,
+    // The harness stubs apply and reports every planned service running, so exec answers like one.
+    exec: options.exec ?? (() => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" })),
     logs: options.logs ?? (() => Stream.empty),
   };
   const provider = globalAdmission.wrapProvider(userProvider);
@@ -331,10 +339,10 @@ export const makeHarness = (
         : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
     },
     // What a provider really hands back: a decoded record, never the planner's object, with no events.
-    resolveAppliedPlan: (root: AbsolutePath) =>
+    resolveAppliedPlan: (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
       root === globalAdmission.root
         ? Effect.sync(() => globalAdmission.appliedPlan())
-        : (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root),
+        : (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root, app),
     resolveTeardownEvidence:
       options.resolveTeardownEvidence ??
       ((root: AbsolutePath) =>
@@ -365,11 +373,18 @@ export const makeHarness = (
     Layer.succeed(
       AppPlanner,
       AppPlanner.of({
-        plan: (landofile) =>
+        plan: (landofile, _capabilities, options) =>
           Effect.succeed(
             landofile.document.name === "global"
               ? globalAdmission.globalPlan
-              : { ...plannedApp, valueModel: 1 as const },
+              : {
+                  ...plannedApp,
+                  valueModel: 1 as const,
+                  identity: {
+                    ...planAppIdentity(plannedApp),
+                    dataName: options?.dataName ?? plannedApp.identity?.dataName ?? plannedApp.name,
+                  },
+                },
           ),
       }),
     ),
@@ -407,13 +422,13 @@ export const makeHarness = (
       RouterService,
       RouterService.of({
         ...TestRouterService,
-        applyRoutes: (routes, app) =>
-          TestRouterService.applyRoutes(routes, app).pipe(
+        applyRoutes: (routes, owner) =>
+          TestRouterService.applyRoutes(routes, owner).pipe(
             Effect.tap(() => options.afterApplyRoutes ?? Effect.void),
           ),
-        removeRoutes: (app) =>
+        removeRoutes: (owner) =>
           Effect.sync(() => options.onRemoveRoutes?.()).pipe(
-            Effect.andThen(TestRouterService.removeRoutes(app)),
+            Effect.andThen(TestRouterService.removeRoutes(owner)),
           ),
       }),
     ),
@@ -464,5 +479,6 @@ export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: Ap
       },
     ).pipe(Effect.provide(harness.layer)),
   );
+
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 import { makeGlobalAdmissionFixture } from "./global-admission-support.ts";

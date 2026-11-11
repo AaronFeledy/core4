@@ -1,80 +1,52 @@
 /**
  * mkcert-backed `CertificateAuthority`.
  *
- * `setup` provisions the pinned mkcert binary through `Downloader` and installs
- * the local root CA into the host trust stores unless the caller opts out.
- * mkcert elevates its own trust-store writes on Unix, so elevation through
- * `PrivilegeService` is the fallback for hosts where the unelevated attempt
- * fails; the resolved `CAROOT` is passed explicitly on that retry because
- * elevation does not preserve the invoking user's environment.
+ * `setup` provisions the pinned mkcert binary through `Downloader`, creates the
+ * local root when `CAROOT` has none, and installs that root into the host trust
+ * stores unless the caller opts out. mkcert elevates its own trust-store writes
+ * on Unix, so elevation through `PrivilegeService` is the fallback for hosts
+ * where the unelevated attempt fails; the resolved `CAROOT` is passed
+ * explicitly on that retry because elevation does not preserve the invoking
+ * user's environment.
  *
- * `issueCert` drives the installed binary with explicit `-cert-file` /
- * `-key-file` paths under Lando's certs directory and reports the root CA from
- * `mkcert -CAROOT`.
+ * Any issuing mkcert run creates a root when `CAROOT` has none, without
+ * locking, and every Lando data root on a host shares one `CAROOT`. Only
+ * `setup` creates the root, under an advisory lock inside `CAROOT`; `root` and
+ * `issueCert` check for it first and never create one. Issued pairs are
+ * written to a private temporary directory, read back, and the directory is
+ * removed whether issuance succeeds, fails, or is interrupted: the authority
+ * keeps no copy.
  */
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 
-import { type Context, Effect } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { CaError } from "@lando/sdk/errors";
 import type {
   CaSetupOptions,
   CertificateAuthorityShape,
-  CertificateResult,
-  CertificateSpec,
   ProcessResult,
   ProcessRunner,
 } from "@lando/sdk/services";
 import { CertificateAuthority, Downloader } from "@lando/sdk/services";
 import { type ToolError, resolveHostKey } from "@lando/sdk/tool-provisioning";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { type Context, Effect } from "effect";
 
-import {
-  MKCERT_TOOL_VERSION,
-  mkcertInstallPath,
-  provisionMkcert,
-  readInstalledMkcertStatus,
-} from "./provision.ts";
+import { makeIssueCert, makeIssueInto } from "./issuance.ts";
+import { CA_ID, type MkcertContext, caError, failureDetail, makeRunMkcert } from "./mkcert-command.ts";
+import { MKCERT_TOOL_VERSION, mkcertInstallPath, provisionMkcert } from "./provision.ts";
+import { makeMkcertRoot } from "./root.ts";
 
-export const CA_ID = "mkcert" as const;
-
-const SETUP_REMEDIATION = "Run `lando setup` to download mkcert and install the local CA.";
+export { CA_ID } from "./mkcert-command.ts";
 
 export interface MkcertCertificateAuthorityOptions {
   readonly binDir: string;
-  readonly certsDir: string;
   readonly toolDownloadsDir: string;
   readonly downloader: Context.Service.Shape<typeof Downloader>;
   readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
+  readonly privateFileAccess: PrivateFileAccess;
   readonly platform?: string | undefined;
   readonly arch?: string | undefined;
 }
-
-const caError = (message: string, cause?: unknown): CaError =>
-  new CaError({
-    message,
-    caId: CA_ID,
-    ...(cause === undefined ? {} : { cause }),
-    remediation: `Repair the ${CA_ID} certificate authority (install mkcert via lando setup, trust the CA, then re-run).`,
-  });
-
-/**
- * Map a certificate common name onto a file name contained in the certs
- * directory, following mkcert's own wildcard/colon conventions.
- */
-export const mkcertLeafCertificateName = (cn: string): string => {
-  const mapped = cn
-    .replaceAll("*", "_wildcard")
-    .replaceAll(":", "_")
-    .replace(/[^A-Za-z0-9._-]+/gu, "-")
-    .replace(/^-+|-+$/gu, "");
-  return mapped.length === 0 || /^\.+$/u.test(mapped) ? "certificate" : mapped;
-};
-
-const failureDetail = (result: ProcessResult): string => {
-  const detail = (result.stderr.trim().length > 0 ? result.stderr : result.stdout).trim();
-  return detail.length === 0 ? `exit code ${result.exitCode}` : detail;
-};
 
 export const makeMkcertCertificateAuthority = (
   options: MkcertCertificateAuthorityOptions,
@@ -83,33 +55,30 @@ export const makeMkcertCertificateAuthority = (
   const arch = options.arch ?? process.arch;
   const binary = mkcertInstallPath(options.binDir, platform);
 
-  const runMkcert = Effect.fn("Mkcert.run")(
-    (args: ReadonlyArray<string>, env?: Readonly<Record<string, string>>) =>
-      options.processRunner.run({ cmd: binary, args, ...(env === undefined ? {} : { env }) }),
-    Effect.mapError((cause) => caError(`Failed to run mkcert: ${cause.message}`, cause)),
-  );
-
-  const caRoot: Effect.Effect<string, CaError> = Effect.gen(function* () {
-    const result = yield* runMkcert(["-CAROOT"]);
-    const root = result.stdout.trim();
-    if (result.exitCode !== 0 || root.length === 0) {
-      return yield* Effect.fail(
-        caError(`mkcert could not report its CA root: ${failureDetail(result)}. ${SETUP_REMEDIATION}`),
-      );
-    }
-    return root;
-  });
+  const runMkcert = makeRunMkcert(options.processRunner, binary);
+  const context: MkcertContext = {
+    binDir: options.binDir,
+    platform,
+    arch,
+    binary,
+    privateFileAccess: options.privateFileAccess,
+    runMkcert,
+  };
+  const issueInto = makeIssueInto(context);
+  const { caRoot, currentRoot, ensureRoot } = makeMkcertRoot(context, issueInto);
 
   const provisionError = (cause: ToolError): CaError =>
     cause._tag === "ToolManifestError"
       ? caError(
           `mkcert ${MKCERT_TOOL_VERSION} does not publish a binary for this host (${resolveHostKey(platform, arch)}). Install mkcert manually, or contribute a CertificateAuthority plugin for this platform.`,
-          cause,
+          { cause },
         )
-      : caError(
-          `Failed to provision mkcert ${MKCERT_TOOL_VERSION} for ${resolveHostKey(platform, arch)}: ${cause.message}. ${SETUP_REMEDIATION}`,
+      : new CaError({
+          message: cause.message,
+          caId: CA_ID,
           cause,
-        );
+          remediation: `${cause.remediation} Then run \`lando setup\`.`,
+        });
 
   // CertificateAuthorityShape has no Effect requirements channel; inject Downloader here.
   const provision = (force: boolean): Effect.Effect<void, CaError> =>
@@ -121,7 +90,7 @@ export const makeMkcertCertificateAuthority = (
         arch,
         force,
       }),
-    ).pipe(Effect.provideService(Downloader, options.downloader), Effect.mapError(provisionError));
+    ).pipe(Effect.provideService(Downloader, options.downloader), mapFailures(provisionError));
 
   const trustInstallError = (result: ProcessResult): CaError =>
     caError(
@@ -129,9 +98,9 @@ export const makeMkcertCertificateAuthority = (
     );
 
   const installTrust = Effect.fn("CertificateAuthority.installTrust")(function* (
+    root: string,
     privilege: CaSetupOptions["privilege"],
   ): Effect.fn.Return<void, CaError> {
-    const root = yield* caRoot;
     const attempt = yield* runMkcert(["-install"], { CAROOT: root });
     if (attempt.exitCode === 0) return;
     if (privilege === undefined) return yield* Effect.fail(trustInstallError(attempt));
@@ -140,45 +109,18 @@ export const makeMkcertCertificateAuthority = (
     if (elevated.exitCode !== 0) return yield* Effect.fail(trustInstallError(elevated));
   });
 
-  const issueCert = Effect.fn("CertificateAuthority.issueCert")(function* (
-    spec: CertificateSpec,
-  ): Effect.fn.Return<CertificateResult, CaError> {
-    const installed = yield* Effect.promise(() => readInstalledMkcertStatus(options.binDir, platform, arch));
-    if (!installed.isCurrent) {
-      return yield* Effect.fail(
-        caError(`mkcert ${MKCERT_TOOL_VERSION} is not installed at ${binary}. ${SETUP_REMEDIATION}`),
-      );
-    }
-
-    yield* Effect.tryPromise({
-      try: () => mkdir(options.certsDir, { recursive: true }),
-      catch: (cause) => caError(`Failed to create the certificate directory ${options.certsDir}.`, cause),
-    });
-
-    const root = yield* caRoot;
-    const name = mkcertLeafCertificateName(spec.cn);
-    const certPath = join(options.certsDir, `${name}.pem`);
-    const keyPath = join(options.certsDir, `${name}-key.pem`);
-    const names = [...new Set([...spec.sans, spec.cn])];
-    const result = yield* runMkcert(["-cert-file", certPath, "-key-file", keyPath, "--", ...names], {
-      CAROOT: root,
-    });
-    if (result.exitCode !== 0) {
-      return yield* Effect.fail(
-        caError(`mkcert could not issue a certificate for ${spec.cn}: ${failureDetail(result)}.`),
-      );
-    }
-
-    return { certPath, keyPath, caPath: join(root, "rootCA.pem") };
-  });
+  const issueCert = makeIssueCert(currentRoot, issueInto);
 
   return CertificateAuthority.of({
     id: CA_ID,
     setup: Effect.fn("CertificateAuthority.setup")(function* (setupOptions: CaSetupOptions) {
       yield* provision(setupOptions.force);
+      const caroot = yield* caRoot;
+      yield* ensureRoot(caroot);
       if (setupOptions.skipTrustInstall === true) return;
-      yield* installTrust(setupOptions.privilege);
+      yield* installTrust(caroot, setupOptions.privilege);
     }),
+    root: Effect.map(currentRoot, ({ root }) => root).pipe(Effect.withSpan("CertificateAuthority.root")),
     issueCert,
   });
 };

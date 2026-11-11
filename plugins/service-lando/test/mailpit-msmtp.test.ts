@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option, Schema } from "effect";
-
 import { MailpitMsmtpBaseFamilyError } from "@lando/sdk/errors";
 import { ServiceConfig } from "@lando/sdk/schema";
 import type {
@@ -9,6 +7,7 @@ import type {
   AppFeatureServiceView,
   ServiceBuildStepIntent,
 } from "@lando/sdk/services";
+import { Cause, Effect, Option, Schema } from "effect";
 
 import { mailpitWireFeature } from "../src/app-features/mailpit.ts";
 import { PHP_FEATURE_ID } from "../src/services/php.ts";

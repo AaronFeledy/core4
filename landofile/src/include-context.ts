@@ -14,39 +14,37 @@ import type {
 } from "@lando/sdk/errors";
 import type { IncludeEntry, ParsedPendingSite } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
+import type {
+  ArchiveTransport,
+  GitTransport,
+  NpmRegistryTransport,
+  SourceKey,
+  SourceSession,
+} from "@lando/source-acquisition";
 import { Effect } from "effect";
 import { includeError } from "./include-guard.ts";
-import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
+import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
-import type {
-  GitAcquisitionPort,
-  LandofileRuntimePorts,
-  NpmRecipeSourcePort,
-  PublicationPort,
-  TarballAcquisitionPort,
-} from "./ports.ts";
+import type { LandofileRuntimePorts } from "./ports.ts";
 import type { VersionConstraintEntry } from "./version-constraint.ts";
 
-export type GitIncludeCloner = GitAcquisitionPort;
-export type NpmIncludeRecipeSource = NpmRecipeSourcePort;
-export type NpmIncludeFetcher = Pick<TarballAcquisitionPort, "fetch">;
-export type NpmIncludeExtractor = Pick<TarballAcquisitionPort, "extract">;
+/** Test-seam transport overrides merged over `ports.sources`. */
 export interface LandofileIncludeDeps {
-  readonly gitCloner?: GitIncludeCloner;
-  readonly npmRecipeSource?: NpmIncludeRecipeSource;
-  readonly npmFetcher?: NpmIncludeFetcher;
-  readonly npmExtractor?: NpmIncludeExtractor;
-  readonly publication?: PublicationPort;
+  readonly git?: GitTransport;
+  readonly archive?: ArchiveTransport;
+  readonly npmRegistry?: NpmRegistryTransport;
 }
+
 export interface LandofileRelaxedRead {
   readonly sourcePath: string;
   readonly authoredPath: string;
   readonly absolutePath: string;
   readonly appRoot: string;
 }
+
 export interface ResolveLandofileIncludesOptions {
   readonly recorder?: LoadFailureRecorder | undefined;
   readonly pendingSites?: ParsedPendingSite[] | undefined;
@@ -67,25 +65,30 @@ export interface ResolveLandofileIncludesOptions {
   readonly stateStore?: StateStoreShape;
   readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
 }
+
 export interface NormalizedInclude {
   readonly source: string;
   readonly path?: string;
   readonly version?: string;
 }
+
 export interface LockEntry {
   readonly source: string;
   readonly version?: string;
   readonly resolved: string;
   readonly checksum: string;
 }
+
+/** Remote parent identity; children open `key` directly (R3 physical binding). */
 export interface RemoteIncludeOrigin {
   readonly kind: "git" | "npm";
   readonly identity: string;
   readonly acquisitionSource: string;
   readonly resolved: string;
   readonly snapshotRoot: string;
-  readonly cacheRoot: string;
+  readonly key: SourceKey;
 }
+
 export interface ResolveContext {
   readonly observeInclude?: (
     request: { readonly entry: IncludeEntry; readonly origin: AuthoredOrigin; readonly source: string },
@@ -112,6 +115,7 @@ export interface ResolveContext {
       { readonly status: "missing" | "mismatch"; readonly expected: string | null; readonly actual: string }
     >;
     complete: boolean;
+    rootRegistered?: boolean;
   };
   readonly lockEntries: ReadonlyMap<string, LockEntry>;
   readonly lockAvailable?: boolean;
@@ -119,8 +123,10 @@ export interface ResolveContext {
   readonly noNetwork: boolean;
   readonly loadPolicy: LandofileLoadPolicy;
   readonly ports?: LandofileRuntimePorts;
+  readonly sourceSession?: SourceSession;
   readonly onRelaxedRead?: ResolveLandofileIncludesOptions["onRelaxedRead"];
 }
+
 export interface FragmentResult {
   readonly remoteOrigin?: RemoteIncludeOrigin;
   readonly sourceId: string;
@@ -134,6 +140,7 @@ export interface FragmentResult {
   readonly userOwned: boolean;
   readonly locked: boolean;
 }
+
 export const LOCK_REMEDIATION =
   "Run lando app:includes:update to refresh .lando.lock.yml after reviewing the include change.";
 export const NO_NETWORK_REMEDIATION =

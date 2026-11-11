@@ -1,13 +1,17 @@
 import { describe, expect, it } from "bun:test";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { PortablePath, type ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
+import {
+  PortablePath,
+  type ServiceConfig,
+  type ServicePlan,
+  landoServiceHomeStoreName as homeStoreName,
+} from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
 import {
   applyServiceHome,
   hasCustomImage,
-  homeStoreName,
   resolveHomePath,
   serviceHomeIntent,
 } from "../../src/planner/home.ts";
@@ -184,10 +188,6 @@ describe("applyServiceHome", () => {
     ]);
   });
 
-  it("Given the same plan twice, When applied, Then the generated store name is stable", () => {
-    expect(homeStoreName("myapp", "web")).toBe("lando-myapp-web-home");
-  });
-
   it("Given authored storage already at the home path, When applied, Then the authored mount is kept verbatim", () => {
     const authored = {
       type: "volume" as const,
@@ -213,8 +213,9 @@ describe("applyServiceHome", () => {
       context: { appRoot: "/tmp/app", appSlug: "myapp", serviceName: "web" },
     });
     expect(withStorage).not.toBeInstanceOf(LandofileValidationError);
+    if (withStorage instanceof Error) throw withStorage;
     return applyServiceHome({
-      servicePlan: withStorage as ServicePlan,
+      servicePlan: withStorage.servicePlan,
       serviceName: "web",
       appSlug: "myapp",
       appRoot: "/tmp/app",

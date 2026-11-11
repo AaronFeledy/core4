@@ -1,10 +1,3 @@
-import { Effect, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import type * as HttpClientError from "effect/http/HttpClientError";
-
-import { HttpTrustError } from "@lando/sdk/errors";
-import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
-
 import { RequestPolicy } from "@lando/http-client/live";
 import {
   type LoadedCaPem,
@@ -14,22 +7,18 @@ import {
   loadCaPems,
   resolveNetworkTrustPlan,
 } from "@lando/http-client/network-trust";
-
-export type SetupNetworkFailureKind =
-  | "tls-interception"
-  | "proxy-authentication"
-  | "missing-custom-ca"
-  | "blocked-registry";
+import { mapFailures } from "@lando/sdk/command-result";
+import { HttpTrustError, HttpTrustErrorKind } from "@lando/sdk/errors";
+import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 export class SetupNetworkTrustError extends Schema.TaggedError<SetupNetworkTrustError>()(
   "SetupNetworkTrustError",
   {
-    kind: Schema.Literals([
-      "tls-interception",
-      "proxy-authentication",
-      "missing-custom-ca",
-      "blocked-registry",
-    ]),
+    kind: HttpTrustErrorKind,
     message: Schema.String,
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
@@ -76,11 +65,11 @@ const proxyAuthError = (cause?: unknown): SetupNetworkTrustError =>
     ...(cause === undefined ? {} : { cause }),
   });
 
-const blockedRegistryError = (
+const blockedEndpointError = (
   input: { readonly status?: number; readonly cause?: unknown } = {},
 ): SetupNetworkTrustError =>
   new SetupNetworkTrustError({
-    kind: "blocked-registry",
+    kind: "blocked-endpoint",
     message:
       input.status === undefined
         ? "The setup artifact registry could not be reached through the configured network path."
@@ -101,23 +90,28 @@ export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): Re
 };
 
 const unwrapTransportCause = (error: unknown): unknown => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    (error as { _tag: string })._tag === "HttpClientError"
-  ) {
-    const reason = (error as HttpClientError.HttpClientError).reason;
-    if (reason._tag === "TransportError") return reason.cause ?? error;
-  }
+  if (HttpClientError.isHttpClientError(error) && error.reason._tag === "TransportError")
+    return error.reason.cause ?? error;
   return error;
 };
 
-const tlsInterceptionError = (cause: unknown): SetupNetworkTrustError =>
+const tlsInterceptionError = (
+  kind: "tls-interception" | "missing-custom-ca",
+  cause: unknown,
+): SetupNetworkTrustError =>
   new SetupNetworkTrustError({
-    kind: "tls-interception",
+    kind,
     message: "TLS validation failed while checking setup download access.",
     remediation: `If a corporate TLS interceptor is present, add its root certificate to network.ca.certs or LANDO_NETWORK_CA_CERTS, then rerun \`lando setup\`. ${platformNetworkHint()}`,
+    cause,
+  });
+
+const certificateInvalidError = (cause: unknown): SetupNetworkTrustError =>
+  new SetupNetworkTrustError({
+    kind: "certificate-invalid",
+    message: "The setup download server's TLS certificate failed verification.",
+    remediation:
+      "The certificate is expired, not yet valid, issued for another host, or revoked; adding a CA does not fix it. Check the host clock and whether a captive portal or proxy is rewriting TLS, then rerun `lando setup`.",
     cause,
   });
 
@@ -137,34 +131,39 @@ const classifyTrustError = (trust: HttpTrustError, cause: unknown): SetupNetwork
       const status = proxyReplyStatus(trust);
       return status === 407
         ? proxyAuthError(cause)
-        : blockedRegistryError({ cause, ...(status === undefined ? {} : { status }) });
+        : new SetupNetworkTrustError({
+            kind: trust.kind,
+            message: trust.message,
+            remediation: trust.remediation,
+            cause,
+          });
     }
     case "tls-interception":
     case "missing-custom-ca":
-      return tlsInterceptionError(cause);
+      return tlsInterceptionError(trust.kind, cause);
+    case "certificate-invalid":
+      return certificateInvalidError(cause);
     case "blocked-endpoint":
-      return blockedRegistryError({ cause });
+      return blockedEndpointError({ cause });
   }
 };
 
+/** Trust kinds come only from the HTTP client's `HttpTrustError`; other failures are reachability. */
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
   const unwrapped = unwrapTransportCause(cause);
   if (Schema.is(HttpTrustError)(unwrapped)) return classifyTrustError(unwrapped, cause);
-  const text = unwrapped instanceof Error ? `${unwrapped.name} ${unwrapped.message}` : String(unwrapped);
-  const lower = text.toLowerCase();
-  if (lower.includes("407") || lower.includes("proxy authentication")) return proxyAuthError(cause);
-  if (lower.includes("certificate") || lower.includes("tls") || lower.includes("self signed")) {
-    return tlsInterceptionError(cause);
-  }
-  return blockedRegistryError({ cause });
+  const status = HttpClientError.isHttpClientError(cause) ? cause.response?.status : undefined;
+  if (status === 407) return proxyAuthError(cause);
+  return blockedEndpointError({ cause, ...(status === undefined ? {} : { status }) });
 };
 
 export const resolveSetupNetworkTrust = Effect.fnUntraced(function* (
   config: GlobalConfig,
-  env: NodeJS.ProcessEnv = process.env,
+  env?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<ResolvedSetupNetworkTrust, SetupNetworkTrustError> {
+  const sourceEnv = env ?? (yield* CliInvocation).env;
   const plan = yield* Effect.try({
-    try: () => resolveNetworkTrustPlan({ network: config.network }, env),
+    try: () => resolveNetworkTrustPlan({ network: config.network }, sourceEnv),
     catch: (cause) =>
       cause instanceof NetworkTrustResolutionError
         ? new SetupNetworkTrustError({
@@ -175,7 +174,7 @@ export const resolveSetupNetworkTrust = Effect.fnUntraced(function* (
             cause,
           })
         : new SetupNetworkTrustError({
-            kind: "blocked-registry",
+            kind: "blocked-endpoint",
             message: "Network trust configuration could not be resolved.",
             remediation: platformNetworkHint(),
             cause,
@@ -183,12 +182,12 @@ export const resolveSetupNetworkTrust = Effect.fnUntraced(function* (
   });
 
   const loadedCerts = yield* loadCaPems(plan.caCertPaths).pipe(
-    Effect.mapError(
+    mapFailures(
       (error) =>
         new SetupNetworkTrustError({
           kind: "missing-custom-ca",
           message: error.message,
-          remediation: `${error.remediation} Then rerun \`lando setup\`. ${platformNetworkHint()}`,
+          remediation: `${error.remediation} Then rerun \`lando setup\`.`,
           cause: error,
         }),
     ),
@@ -227,7 +226,7 @@ export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = Effect.fn("
     );
     if (response.status === 407) return yield* Effect.fail(proxyAuthError());
     if (response.status < 200 || response.status >= 400) {
-      return yield* Effect.fail(blockedRegistryError({ status: response.status }));
+      return yield* Effect.fail(blockedEndpointError({ status: response.status }));
     }
   },
 );
@@ -238,7 +237,7 @@ export const validateSetupNetworkTrust = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ResolvedSetupNetworkTrust, SetupNetworkTrustError, HttpClient.HttpClient> {
   const resolved = yield* resolveSetupNetworkTrust(config);
   // The probe returns a classified SetupNetworkTrustError; re-classifying its
-  // message here would downgrade proxy-authentication to blocked-registry.
+  // message here would downgrade proxy-authentication to blocked-endpoint.
   yield* (probe ?? defaultSetupNetworkTrustProbe)(resolved);
   return resolved;
 });

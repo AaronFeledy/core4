@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -27,8 +24,11 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 
@@ -136,6 +136,83 @@ const outputStream = (name: string, delay: number, exitCode: number) =>
   }).pipe(Stream.concat(Stream.fromEffect(Effect.sleep(`${delay} millis`).pipe(Effect.as({ exitCode })))));
 
 describe("BuildOrchestrator app phase", () => {
+  test("#2111 fails the service whose pull fails and aborts its running sibling", async () => {
+    const siblingStarted = Deferred.makeUnsafe<void>();
+    let siblingInterrupted = false;
+    const pullFailure = new ProviderInternalError({
+      providerId: "test",
+      operation: "pullArtifact",
+      message: "Image tag does not exist",
+      remediation: "Choose an existing image tag.",
+    });
+    const failing = service("appserver", 0);
+    const sibling: ServicePlan = {
+      ...service("node", 0),
+      extensions: {
+        "@lando/core/service-features": {
+          buildSteps: [{ id: "dependencies", phase: "build", command: { command: ["true"] } }],
+        },
+      },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (input) =>
+        input.ref === "test/appserver:latest"
+          ? Deferred.await(siblingStarted).pipe(Effect.andThen(Effect.fail(pullFailure)))
+          : Effect.succeed({ providerId, ref: input.ref }),
+      buildArtifact: () =>
+        Deferred.succeed(siblingStarted, undefined).pipe(
+          Effect.andThen(Effect.never),
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              siblingInterrupted = true;
+            }),
+          ),
+        ),
+    } satisfies RuntimeProviderShape;
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const queue = yield* events.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const error = yield* Effect.flip(
+            orchestrator.build({
+              ...plan,
+              services: { [failing.name]: failing, [sibling.name]: sibling },
+            }),
+          );
+          return { error, events: [...(yield* Queue.clear(queue))] };
+        }),
+      ).pipe(Effect.provide(makeLayer(provider))),
+    );
+
+    expect(result.error).toBe(pullFailure);
+    expect(siblingInterrupted).toBe(true);
+    expect(
+      result.events
+        .filter((event) => event._tag === "task.fail")
+        .map((event) => [event.taskId, event.summary])
+        .sort(),
+    ).toEqual([
+      ["appserver", "Build appserver failed"],
+      ["node", "Build node aborted"],
+    ]);
+    expect(
+      result.events
+        .filter((event) => event._tag === "build-step-skip")
+        .map((event) => [event.serviceName, event.reason]),
+    ).toEqual([["node", "phase-aborted"]]);
+    expect(
+      result.events
+        .filter((event) => event._tag === "task.start")
+        .map((event) => event.taskId)
+        .sort(),
+    ).toEqual(["appserver", "node"]);
+  });
+
   test("runs three services concurrently, streams redacted detail, writes raw transcripts, and caches", async () => {
     await withTempRoots(async () => {
       // Given

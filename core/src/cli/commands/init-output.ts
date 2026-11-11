@@ -1,9 +1,8 @@
-import { Effect } from "effect";
-
 import { RedactionService } from "@lando/redaction/service";
 import { Renderer } from "@lando/sdk/services";
-
+import { Effect } from "effect";
 import type { PostInitIO } from "../../recipes/post-init/runtime.ts";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags.ts";
 
 /** Capture the command's renderer so recipe output shares its live-region journal. */
@@ -12,7 +11,7 @@ export const makeInitOutput = Effect.fnUntraced(function* (
 ): Effect.fn.Return<PostInitIO, never, Renderer | RedactionService> {
   const renderer = yield* Renderer;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const machineOutput = isEnvelopeResultFormat(format) || format === "ndjson";
   return {
     out: (line) => {

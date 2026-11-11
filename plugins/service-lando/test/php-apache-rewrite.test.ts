@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { ServiceBuildDirectoryCommand } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { php83ServiceType } from "../src/services/php.ts";
 import { apacheLauncherDirectives } from "./support/apache-directives.ts";
@@ -105,13 +104,13 @@ describe("PHP Apache rewrite setup", () => {
     expect(JSON.stringify(plan.command) ?? "").not.toContain("PassEnv");
   });
 
-  test("enables mod_env at stock Apache image build time", async () => {
+  test("enables environment modules at stock Apache image build time", async () => {
     // Given / When: compose the stock Apache image.
     const { steps } = await planPhp({ environment: { BACKDROP_SETTINGS: "{}" } });
-    // Then: PassEnv's module is explicitly enabled as privileged build work.
-    expect(steps.filter((step) => /a2enmod\b[^\n]*\benv\b/u.test(commandText(step.command)))).toMatchObject([
-      { phase: "build", user: "root" },
-    ]);
+    // Then: PassEnv's and SetEnvIf's modules are explicitly enabled as privileged build work.
+    expect(
+      steps.filter((step) => /a2enmod\b[^\n]*\benv setenvif\b/u.test(commandText(step.command))),
+    ).toMatchObject([{ phase: "build", user: "root" }]);
   });
 
   test.each([

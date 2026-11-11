@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { RedactionService } from "@lando/redaction/service";
 import { Context, Effect, Layer } from "effect";
 import { McpRuntimeConfig, McpService } from "../src/service.ts";
+import { testAppGenerations } from "../src/testing.ts";
 import { TestMcpCommandExecutor } from "./executor.ts";
 
 test("MCP builds once per runtime, reuses it for nested provide, and builds freshly in a new run", async () => {
@@ -14,7 +15,7 @@ test("MCP builds once per runtime, reuses it for nested provide, and builds fres
         Layer.succeed(McpRuntimeConfig, {
           commandEntries: [],
           defaultAllowlist: [],
-          runtimeLayer: Layer.empty,
+          apps: testAppGenerations(),
         }),
         RedactionService.layer,
       ),

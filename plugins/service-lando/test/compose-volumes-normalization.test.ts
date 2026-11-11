@@ -2,10 +2,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
+import { LandofileShape, ServiceName, landoAppStoreName, landoServiceStorageName } from "@lando/sdk/schema";
 import { Schema } from "effect";
-
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -98,7 +96,13 @@ test("normalizes a named Compose volume into app-scoped storage", async () => {
 
   // Then
   expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
-    { type: "volume", store: "us469-db", target: "/data", readOnly: false, origin: "authored" },
+    {
+      type: "volume",
+      store: landoAppStoreName("us469", "db"),
+      target: "/data",
+      readOnly: false,
+      origin: "authored",
+    },
   ]);
   expect(plan.extensions?.compose).toBeUndefined();
 });
@@ -119,7 +123,7 @@ test("carries volume.subpath into storage intent", async () => {
   expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
     {
       type: "volume",
-      store: "us469-db",
+      store: landoAppStoreName("us469", "db"),
       target: "/data",
       readOnly: false,
       subpath: "tenant",
@@ -140,7 +144,7 @@ test("assigns a deterministic store to an anonymous Compose volume", async () =>
   expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
     {
       type: "volume",
-      store: "us469-web-var-lib-mysql",
+      store: landoServiceStorageName("us469", "web", "/var/lib/mysql"),
       target: "/var/lib/mysql",
       readOnly: false,
       origin: "authored",

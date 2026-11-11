@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { serviceAppMount } from "@lando/sdk/schema";
-import { Effect } from "effect";
-
 import { type ServiceFeatureContractHarness, runServiceFeatureContract } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 import { landoAppMountFeature } from "../src/features/app-mount.ts";
 import { serviceTypes } from "../src/index.ts";

@@ -5,6 +5,7 @@ import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: wordpressDecomposer,
   producer: wordpressProducer,
@@ -70,11 +71,17 @@ describe("wordpress decomposition", () => {
           ...(options.redis ? { cache: { type: "redis" } } : {}),
         },
         tooling: {
-          wp: { service: "appserver", description: "Run WP-CLI inside the appserver service.", cmds: ["wp"] },
+          wp: {
+            service: "appserver",
+            description: "Run WP-CLI inside the appserver service.",
+            cmds: ["wp"],
+            wrapper: true,
+          },
           composer: {
             service: "appserver",
             description: "Run Composer inside the appserver service.",
             cmds: ["composer"],
+            wrapper: true,
           },
         },
       },

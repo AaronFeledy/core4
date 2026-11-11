@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import {
   NODE_FEATURE_ID,

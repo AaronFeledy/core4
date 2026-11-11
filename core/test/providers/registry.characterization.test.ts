@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 
-import { type Context, Effect, Layer, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
+import * as RuntimeProviderRegistryLayer from "@lando/engine/providers/registry";
+import { makeLandoPaths } from "@lando/paths";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
@@ -18,9 +16,9 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-
-import * as RuntimeProviderRegistryLayer from "@lando/engine/providers/registry";
-import { makeLandoPaths } from "@lando/paths";
+import { type Context, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

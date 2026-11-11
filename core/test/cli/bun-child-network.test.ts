@@ -11,6 +11,10 @@ import { Effect } from "effect";
 
 import { ensureNetworkTrustCaBundle } from "../../src/cli/commands/bun-child-ca-bundle.ts";
 import {
+  BunChildNetworkPolicyError,
+  projectBunChildNetwork,
+} from "../../src/cli/commands/bun-child-network.ts";
+import {
   BUN_CAFILE_FLAG,
   BUN_CHILD_PROXY_ENV_NAMES,
   BUN_NO_INSTALL_FLAG,
@@ -19,10 +23,6 @@ import {
   applyRemoveEnv,
   resolveBunChildCaMode,
 } from "../../src/cli/commands/bun-child-network-policy.ts";
-import {
-  BunChildNetworkPolicyError,
-  projectBunChildNetwork,
-} from "../../src/cli/commands/bun-child-network.ts";
 
 const PEM_A = new X509Certificate(rootCertificates[0] ?? "").toString();
 const PEM_B = new X509Certificate(rootCertificates[1] ?? "").toString();

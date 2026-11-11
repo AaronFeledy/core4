@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, Effect, Exit, Layer, Stream } from "effect";
-
-import { homeStoreName } from "@lando/engine/planner/home";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import { loadLandofileFile } from "@lando/engine/services/landofile-live";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { AppPlanner } from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
@@ -15,13 +18,15 @@ import {
   providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { CapabilityError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName, landoAppNetworkName, landoAuthoredNetworkName } from "@lando/sdk/schema";
-
-import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
-import * as BunFileSystem from "@lando/engine/services/file-system";
-import { loadLandofileFile } from "@lando/engine/services/landofile-live";
-import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { AppPlanner } from "@lando/engine/services/planner";
+import {
+  type AppPlan,
+  ServiceName,
+  landoServiceHomeStoreName as homeStoreName,
+  landoAppNetworkName,
+  landoAuthoredNetworkName,
+  landoServiceContainerName,
+} from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Layer, Stream } from "effect";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
@@ -279,9 +284,10 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
         initializerContainers.delete(initializerName);
       }
     }
-    await Effect.runPromise(bringUp(plan, { api }));
+    const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
+    await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
 
-    const containerName = `lando-${plan.slug}-${fixture.service}`;
+    const containerName = landoServiceContainerName(plan.slug, fixture.service);
     const response = await Effect.runPromise(
       liveRequest({ method: "GET", path: `/containers/${containerName}/json` }),
     );
@@ -301,18 +307,21 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
           {
             command: ["stat", "-c", "%a", target],
           },
-          { api },
+          { api, ...helperOptions },
         ),
       );
       expect(result).toMatchObject({ exitCode: 0, stdout: `${mode}\n` });
     }
     for (const [service, keys] of Object.entries(fixture.authoredNetworks ?? {})) {
       const response = await Effect.runPromise(
-        liveRequest({ method: "GET", path: `/containers/lando-${plan.slug}-${service}/json` }),
+        liveRequest({
+          method: "GET",
+          path: `/containers/${landoServiceContainerName(plan.slug, service)}/json`,
+        }),
       );
       expect(response.status).toBe(200);
       const serviceInspect: unknown = JSON.parse(response.body);
-      assertServiceContainerRunning(serviceInspect, `lando-${plan.slug}-${service}`);
+      assertServiceContainerRunning(serviceInspect, landoServiceContainerName(plan.slug, service));
       const networks = field(field(serviceInspect, "NetworkSettings"), "Networks");
       const names = typeof networks === "object" && networks !== null ? Object.keys(networks) : [];
       const appNetwork = landoAppNetworkName(plan);

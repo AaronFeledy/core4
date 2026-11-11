@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Schema } from "effect";
-
 import { LandoEvent } from "@lando/sdk/events";
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
+import { Deferred, Effect, Fiber, Schema } from "effect";
 
 import { runPostStartScan } from "../../src/operations/post-start-scan.ts";
 import { byTag, plan, web } from "./start-progress-topology-support.ts";

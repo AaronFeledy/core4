@@ -1,15 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import type { AbsolutePath } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
 import { type ManagedFileContractHarness, runManagedFileContract } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 import { makeDiskBackend, makeManagedFileService } from "../src/service.ts";
 import { makeTestManagedFileStore } from "../src/testing.ts";

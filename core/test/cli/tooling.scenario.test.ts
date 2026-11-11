@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
-
 import { runTooling } from "@lando/core/cli/operations";
 import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
 import {
@@ -30,8 +28,6 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
-import * as BunProcessRunner from "@lando/engine/services/process-runner";
-
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -40,11 +36,14 @@ import {
 import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 import { currentTestPlan, environmentResolverLayer } from "../_support/value-contracts.ts";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -207,10 +206,14 @@ const makeLayer = (options: {
     AppPlanner.of({
       plan: () => {
         options.planCalls?.push(1);
-        options.planCwds?.push(process.cwd());
-        return options.planError === undefined
-          ? Effect.succeed(currentTestPlan(options.plan))
-          : Effect.fail(options.planError);
+        return discoveryCwd().pipe(
+          Effect.tap((cwd) => Effect.sync(() => options.planCwds?.push(cwd))),
+          Effect.andThen(
+            options.planError === undefined
+              ? Effect.succeed(currentTestPlan(options.plan))
+              : Effect.fail(options.planError),
+          ),
+        );
       },
     }),
   );
@@ -227,6 +230,9 @@ const makeLayer = (options: {
   );
   return Layer.mergeAll(
     BunProcessRunner.layer,
+    BunShellRunner.layer(() => {
+      throw new TypeError("Interactive host tooling is unavailable in tests.");
+    }),
     PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,

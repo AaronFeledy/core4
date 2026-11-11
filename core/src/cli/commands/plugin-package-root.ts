@@ -1,8 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-
 import { PluginManifestError, isErrnoCode } from "@lando/sdk/errors";
 import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 const parsePackageJson = async (
   packagePath: string,
@@ -53,7 +53,7 @@ export const resolvePluginPackageRoot = Effect.fnUntraced(function* (
   cwd: string | undefined,
   commandId: string,
 ) {
-  const directory = cwd ?? process.cwd();
+  const directory = cwd ?? (yield* CliInvocation).cwd;
   return yield* Effect.tryPromise({
     try: () => findNearestPluginPackageRoot(directory, commandId),
     catch: (cause) =>

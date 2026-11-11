@@ -1,9 +1,10 @@
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
 import { CommandContribution } from "./command-contribution.ts";
+
 export { CommandContribution } from "./command-contribution.ts";
+
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
 import { FileSyncEngineCapabilities } from "./file-sync-engine.ts";
@@ -178,6 +179,15 @@ export const RouterServiceContribution = Schema.Struct({
   }),
   module: Schema.String.annotateKey({
     description: "Contained plugin module exporting the RouterService Layer.",
+  }),
+  requires: Schema.optionalKey(
+    Schema.Struct({
+      globalServices: Schema.Array(Schema.String).annotate({
+        description: "Global service ids required by this router; independent of its implementation id.",
+      }),
+    }),
+  ).annotate({
+    description: "Static startup requirements; omitted when the router needs no global services.",
   }),
   capabilities: Schema.optionalKey(ProxyCapabilities).annotate({
     description: "Static capability declaration available before loading the implementation.",

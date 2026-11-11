@@ -91,37 +91,41 @@ describe("lando init git source native CLI dispatch", () => {
   test("initApp rejects invalid git config before writing", async () => {
     await withTempCwd(async (dir) => {
       const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
+      const { makeGitRecipeTransport, withRecipeSources } = await import(
+        "../_support/recipe-source-session.ts"
+      );
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
       try {
-        let clonedUrl = "";
-        try {
-          await initApp({
-            cwd: dir,
-            full: false,
-            source: "git",
-            url: "https://example.test/recipe.git",
-            userDataRoot: join(dir, "data"),
-            name: "git-app",
-            nonInteractive: true,
-            gitRecipeCloner: {
-              clone: async ({ url, stagingDir }) => {
-                clonedUrl = url;
-                await Bun.write(
-                  join(stagingDir, "recipe.yml"),
-                  "id: git-recipe\ntitle: Git Recipe\ndescription: Parsed before render.\nversion: 0.0.1\nconfig: invalid\n",
-                );
-                return { commitSha: "a".repeat(40) };
-              },
-            },
-          });
-          throw new Error("expected initApp to reject invalid config");
-        } catch (error) {
-          expect(error).toBeInstanceOf(RecipeManifestValidationError);
-          if (!(error instanceof RecipeManifestValidationError)) throw error;
-          expect(error.source).toContain("recipe.yml");
-        }
-        expect(clonedUrl).toBe("https://example.test/recipe.git");
+        await withRecipeSources(
+          {
+            root: join(dir, "sources"),
+            git: makeGitRecipeTransport({
+              commitSha: "a".repeat(40),
+              manifest:
+                "id: git-recipe\ntitle: Git Recipe\ndescription: Parsed before render.\nversion: 0.0.1\nconfig: invalid\n",
+            }),
+          },
+          async ({ session, store }) => {
+            try {
+              await initApp({
+                cwd: dir,
+                full: false,
+                source: "git",
+                url: "https://example.test/recipe.git",
+                name: "git-app",
+                nonInteractive: true,
+                sources: session,
+                recipeSourceStore: store,
+              });
+              throw new Error("expected initApp to reject invalid config");
+            } catch (error) {
+              expect(error).toBeInstanceOf(RecipeManifestValidationError);
+              if (!(error instanceof RecipeManifestValidationError)) throw error;
+              expect(error.source).toContain("recipe.yml");
+            }
+          },
+        );
         expect(await Bun.file(join(dir, "git-app", ".lando.yml")).exists()).toBe(false);
       } finally {
         if (previousDataRoot === undefined) process.env.LANDO_USER_DATA_ROOT = undefined;

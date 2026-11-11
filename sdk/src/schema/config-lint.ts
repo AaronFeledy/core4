@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { ConfigLintRuleId } from "./config-lint-rules.ts";
 import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
 
 // Config-lint result shapes — the stable, editor/LSP-facing output of
@@ -13,10 +14,10 @@ import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
  * diagnostics.
  */
 export const ConfigLintViolation = Schema.Struct({
-  rule: Schema.String.annotate({ description: "Stable diagnostic rule identifier." }),
+  rule: ConfigLintRuleId.annotate({ description: "Registered diagnostic rule identifier." }),
   reason: Schema.optionalKey(Schema.String).annotate({
     description:
-      "Machine-readable cause within rule. landofile.load findings carry the failing validation issue's rule, or the load failure's tag when the issue has none.",
+      "Machine-readable cause within a registered rule. landofile.load findings carry a nested diagnostic rule or the load failure's tag; reasons are not restricted to registered rule identifiers.",
   }),
   severity: Schema.Literals(["error", "warning"]).annotate({
     description: "Whether the finding prevents configuration validity.",

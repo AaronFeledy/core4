@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 import { runScopedExit } from "./scope-helpers.ts";
 
 const providerId = ProviderId.make("lando");
@@ -80,7 +83,7 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
     return output;
   };
 
-  return {
+  const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request: EngineHttpRequest) =>
@@ -89,12 +92,20 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
           return { status: 201, body: JSON.stringify({ Id: "exec-fake-1" }) };
         }
         if (request.method === "GET" && request.path.includes("/exec/")) {
-          return { status: 200, body: JSON.stringify({ ExitCode: 0 }) };
+          return { status: 200, body: JSON.stringify({ Running: false, ExitCode: 0 }) };
         }
+        if (
+          request.method === "GET" &&
+          request.path.startsWith("/containers/") &&
+          request.path.endsWith("/json")
+        )
+          return { status: 200, body: JSON.stringify({ Id: "no-plan-container" }) };
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
     stream: (_request: EngineHttpRequest) => Stream.make(frame("ok\n")),
   };
+  installSupervisedExecFixture(api);
+  return api;
 };
 
 describe("provider-lando no-plan error messages", () => {
@@ -196,6 +207,7 @@ describe("provider-lando no-plan error messages", () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         podmanApi: fakeApi,
+        ...supervisedExecFixtureOptions(fakeApi),
         sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
       }),

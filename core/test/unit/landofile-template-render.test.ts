@@ -2,18 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Exit, Result } from "effect";
-
 import { LandofileParseError } from "@lando/core/errors";
 import type { TemplateRenderContext } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
-
 import { landofileRuntimeInputs } from "@lando/engine/composition";
 import {
   makeBundledTemplateEngineRegistry,
   renderLandofileTemplate,
 } from "@lando/engine/services/landofile-live";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
+import { Effect, Exit, Result } from "effect";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const ctx = (env: Record<string, string> = {}): TemplateRenderContext => ({

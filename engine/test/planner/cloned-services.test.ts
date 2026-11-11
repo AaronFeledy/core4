@@ -18,6 +18,7 @@ const parentDraft = (overrides: Partial<PlannedServiceDraft["draft"]> = {}): Pla
   name: "web",
   hostnames: [],
   authoredArtifact: { kind: "ref", ref: "alpine:3.22" },
+  pullPolicy: undefined,
   authored: { byStore: new Map() },
   authoredStorage: undefined,
   homeIntent: { serviceType: "compose", home: false as const },
@@ -73,6 +74,7 @@ describe("cloned services", () => {
     expect(sidecar?.mounts).toEqual(parent.draft.mounts);
     expect(sidecar?.environment).toEqual(parent.draft.environment);
     expect(sidecar?.user).toBe("1001");
+    expect(cloned.drafts[0]?.pullPolicy).toEqual(parent.pullPolicy);
     expect(sidecar?.command).toEqual(request().command);
     expect(sidecar?.dependsOn).toEqual([
       { service: ServiceName.make("web"), condition: "service_started", required: true },

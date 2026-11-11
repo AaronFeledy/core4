@@ -6,6 +6,7 @@ import { appAgentSkillsRemoveSpec } from "./command-specs/app/agent/skills/remov
 import { appAgentSkillsUpdateSpec } from "./command-specs/app/agent/skills/update";
 import { appCacheRefreshSpec } from "./command-specs/app/cache/refresh";
 import { appConfigSpec } from "./command-specs/app/config";
+import { appConfigDescribeSpec } from "./command-specs/app/config/describe";
 import { appConfigExplainSpec } from "./command-specs/app/config/explain";
 import { appConfigLintSpec } from "./command-specs/app/config/lint";
 import { appConfigMigrateSpec } from "./command-specs/app/config/migrate";
@@ -40,6 +41,7 @@ import { appShellSpec } from "./command-specs/app/shell";
 import { sshSpec } from "./command-specs/app/ssh";
 import { startSpec } from "./command-specs/app/start";
 import { stopSpec } from "./command-specs/app/stop";
+import { appsGcSpec } from "./command-specs/apps/gc";
 import { initSpec } from "./command-specs/apps/init";
 import { listSpec } from "./command-specs/apps/list";
 import { poweroffSpec } from "./command-specs/apps/poweroff";
@@ -56,6 +58,7 @@ import { metaConfigSpec } from "./command-specs/meta/config";
 import { metaDoctorSpec } from "./command-specs/meta/doctor";
 import { metaEventsFollowSpec } from "./command-specs/meta/events/follow";
 import { metaGlobalConfigSpec } from "./command-specs/meta/global/config";
+import { metaGlobalConfigDescribeSpec } from "./command-specs/meta/global/config-describe";
 import {
   metaGlobalConfigEditSpec,
   metaGlobalConfigSetSpec,
@@ -91,6 +94,7 @@ import { metaRecipesValidateSpec } from "./command-specs/meta/recipes/validate";
 import { setupSpec } from "./command-specs/meta/setup";
 import { shellenvSpec } from "./command-specs/meta/shellenv";
 import { metaSnapshotsGcSpec } from "./command-specs/meta/snapshots/gc";
+import { metaSourcesGcSpec } from "./command-specs/meta/sources/gc";
 import { metaUninstallSpec } from "./command-specs/meta/uninstall";
 import { updateSpec } from "./command-specs/meta/update";
 import { versionSpec } from "./command-specs/meta/version";
@@ -150,6 +154,7 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       appAgentSkillsRemoveSpec,
       appCacheRefreshSpec,
       appConfigSpec,
+      appConfigDescribeSpec,
       appConfigLintSpec,
       appConfigExplainSpec,
       appConfigMigrateSpec,
@@ -188,6 +193,7 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
         "Run `lando init` through the native CLI.",
       ),
       listSpec,
+      appsGcSpec,
       poweroffSpec,
       appsScratchDestroySpec,
       appsScratchGcSpec,
@@ -201,8 +207,10 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       metaConfigSpec,
       metaDoctorSpec,
       metaSnapshotsGcSpec,
+      metaSourcesGcSpec,
       metaEventsFollowSpec,
       metaGlobalConfigSpec,
+      metaGlobalConfigDescribeSpec,
       metaGlobalConfigSetSpec,
       metaGlobalConfigUnsetSpec,
       metaGlobalConfigEditSpec,
@@ -300,8 +308,7 @@ export const notImplementedErrorForCommand = (commandId: string): NotImplemented
     ? new NotImplementedError({
         message: `Command ${commandId} is not implemented.`,
         commandId,
-        remediation:
-          "This command is not available yet. Run `lando --help` to see currently available commands.",
+        remediation: "This command is not available. Run `lando --help` to see available commands.",
       })
     : notImplementedErrorForSpec(entry.spec);
 };

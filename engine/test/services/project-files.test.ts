@@ -3,9 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { Effect, Result } from "effect";
-
 import { FileSystem } from "@lando/sdk/services";
+import { Effect, Result } from "effect";
 
 import { loadServiceTypeProjectFiles } from "../../src/planner/project-files.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";

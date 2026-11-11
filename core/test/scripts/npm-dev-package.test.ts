@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import rootManifest from "../../../package.json";
 import {
@@ -45,6 +44,26 @@ describe("npm dev package preparation", () => {
     );
     expect(releasePackageNames.indexOf("@lando/managed-file")).toBeLessThan(
       releasePackageNames.indexOf("@lando/engine"),
+    );
+  });
+
+  test("includes @lando/source-acquisition before its landofile, engine, and core dependents", () => {
+    expect(releasePackageWorkspaces).toContain("source-acquisition");
+    expect(releasePackageNames).toContain("@lando/source-acquisition");
+    expect(releasePackageWorkspaces.indexOf("source-acquisition")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("landofile"),
+    );
+    expect(releasePackageNames.indexOf("@lando/source-acquisition")).toBeLessThan(
+      releasePackageNames.indexOf("@lando/landofile"),
+    );
+    expect(releasePackageWorkspaces.indexOf("source-acquisition")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("engine"),
+    );
+    expect(releasePackageNames.indexOf("@lando/source-acquisition")).toBeLessThan(
+      releasePackageNames.indexOf("@lando/engine"),
+    );
+    expect(releasePackageWorkspaces.indexOf("source-acquisition")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("core"),
     );
   });
 

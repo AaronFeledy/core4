@@ -1,18 +1,19 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { LandofileShape } from "@lando/sdk/schema";
+import type { GitTransport } from "@lando/source-acquisition";
 import { Effect } from "effect";
 
-import type { LandofileShape } from "@lando/sdk/schema";
-
-import type { GitIncludeCloner } from "../src/includes.ts";
 import { verifyAuthoredIncludes as verifyLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const verifyLandofileIncludes = (options: Parameters<typeof verifyLandofileIncludesPackage>[0]) =>
-  verifyLandofileIncludesPackage({ ...options, stateStore: makeTestLandofileStateStore() });
+  verifyLandofileIncludesPackage({
+    ...options,
+    stateStore: options.stateStore ?? makeTestLandofileStateStore(options.cacheRoot),
+  });
 
 const lockfile = (source: string, resolved: string, checksum: string) =>
   [
@@ -28,11 +29,11 @@ const sha256 = (content: string): string => new Bun.CryptoHasher("sha256").updat
 
 const FRAGMENT = "services:\n  database:\n    type: postgres\n";
 
-const clonerFor = (fragment: string, commitSha: string): GitIncludeCloner => ({
-  clone: async ({ stagingDir }) => {
-    await mkdir(stagingDir, { recursive: true });
-    await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-    return { commitSha };
+const gitFor = (fragment: string, commit: string): GitTransport => ({
+  fetch: async ({ dest }) => {
+    await mkdir(dest, { recursive: true });
+    await writeFile(join(dest, "postgres.yml"), fragment, "utf8");
+    return { commit };
   },
 });
 
@@ -54,14 +55,15 @@ describe("verifyLandofileIncludes", () => {
     await rm(cacheRoot, { recursive: true, force: true });
   });
 
-  const runVerify = (landofile: LandofileShape, gitCloner?: GitIncludeCloner) =>
+  const runVerify = (landofile: LandofileShape, git?: GitTransport) =>
     Effect.runPromise(
       verifyLandofileIncludes({
         landofile,
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
-        ...(gitCloner === undefined ? {} : { deps: { gitCloner } }),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
+        ...(git === undefined ? {} : { deps: { git } }),
       }),
     );
 
@@ -73,7 +75,7 @@ describe("verifyLandofileIncludes", () => {
     );
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }, "./missing.yml"] },
-      clonerFor(FRAGMENT, "a".repeat(40)),
+      gitFor(FRAGMENT, "a".repeat(40)),
     );
     expect(report.ok).toBe(false);
     expect(report.mismatches).toHaveLength(1);
@@ -99,7 +101,7 @@ describe("verifyLandofileIncludes", () => {
 
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      clonerFor(FRAGMENT, "a".repeat(40)),
+      gitFor(FRAGMENT, "a".repeat(40)),
     );
 
     expect(report.ok).toBe(true);
@@ -128,7 +130,7 @@ describe("verifyLandofileIncludes", () => {
 
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      clonerFor(FRAGMENT, "a".repeat(40)),
+      gitFor(FRAGMENT, "a".repeat(40)),
     );
 
     expect(report.ok).toBe(false);
@@ -158,7 +160,7 @@ describe("verifyLandofileIncludes", () => {
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
       {
-        clone: async () => {
+        fetch: async () => {
           throw new Error("missing pins must not acquire");
         },
       },

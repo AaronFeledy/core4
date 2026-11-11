@@ -6,8 +6,14 @@
  * matching `--skip-*` flag. They are pulled out of the command orchestration so
  * each service concern reads as one unit.
  */
-import { type Context, DateTime, Duration, Effect, Result } from "effect";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import {
+  SSH_SIDECAR_READINESS_POLICY,
+  awaitRuntimeSshAgent,
+} from "@lando/engine/subsystems/ssh-agent/session";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
@@ -17,15 +23,8 @@ import {
   RouterService,
   SshService,
 } from "@lando/sdk/services";
-
-import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import {
-  SSH_SIDECAR_READINESS_POLICY,
-  awaitRuntimeSshAgent,
-} from "@lando/engine/subsystems/ssh-agent/session";
+import { type Context, DateTime, Duration, Effect, Result } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
@@ -151,7 +150,10 @@ export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(fun
     const { router, routerPin } = yield* resolveRouterConfigForApp();
     const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
     yield* Effect.scoped(
-      proxy.value.setup({ defaultDomain, router, routerPin }, { autoApprove, reacquirePorts: true }),
+      proxy.value.setup(
+        { defaultDomain, router, routerPin },
+        { intent: "configure", autoApprove, reacquirePorts: true },
+      ),
     ).pipe(Effect.tapError((cause) => recorder.recordFailure("proxy", cause)));
     yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });
   } else {
@@ -198,7 +200,7 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
       }),
     );
     if (Result.isFailure(setup)) {
-      const { redact } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+      const { redact } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
       const evidence = redact(setup.failure.message);
       const setupCommand =
         selectedProviderId in SYSTEM_RUNTIME_PROVIDERS

@@ -83,6 +83,7 @@ const clonePlannedDraft = (
     authoredStorage: parent.authoredStorage,
     hostnames: [],
     authoredArtifact: parent.authoredArtifact,
+    pullPolicy: parent.pullPolicy,
     authored: parent.authored,
     homeIntent: parent.homeIntent,
     logSources: parent.logSources,

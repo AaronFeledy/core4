@@ -1,20 +1,29 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
+import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 
 import { AppIncludesUpdateResultSchema, renderIncludesUpdateResult } from "@lando/core/cli/operations";
-import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 import { LandofileFormConflictError } from "@lando/core/errors";
-import type { GitIncludeCloner } from "@lando/landofile/includes";
+import type { GitTransport } from "@lando/source-acquisition";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { appIncludesUpdateSpec } from "../../src/cli/command-specs/app/includes/update.ts";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
+import { invocationParityError } from "../../src/cli/compiled-invocation-parity.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+
+test("includes update accepts multiple sources with a trailing check flag", () => {
+  const argv = ["a", "b", "--check"];
+  expect(invocationParityError(appIncludesUpdateSpec.id, argv)).toBeUndefined();
+  const input = compiledCommandInputFromArgv(appIncludesUpdateSpec.id, argv);
+  expect(input.args.source).toEqual(["a", "b"]);
+  expect(input.flags.check).toBe(true);
+});
 
 interface RunResult {
   readonly exitCode: number;
@@ -64,10 +73,9 @@ test("app:includes:update consumes its structured declared source argument", asy
       const exit = await Effect.runPromiseExit(
         appIncludesUpdateSpec
           .run({
-            args: { source: "declared-source" },
+            args: { source: ["declared-source"] },
             flags: { "no-network": true },
             argv: [],
-            parsedArgv: ["declared-source"],
           })
           .pipe(Effect.provide(testStateStoreLayer)),
       );
@@ -307,17 +315,17 @@ describe("lando app:includes:update (source dispatch)", () => {
         ].join("\n"),
       );
       const cloneUrls: string[] = [];
-      const gitCloner: GitIncludeCloner = {
-        clone: async ({ url, stagingDir }) => {
+      const git: GitTransport = {
+        fetch: async ({ url, dest }) => {
           cloneUrls.push(url);
-          await mkdir(stagingDir, { recursive: true });
-          await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: (url.includes("/base.git") ? "a" : "b").repeat(40) };
+          await mkdir(dest, { recursive: true });
+          await writeFile(join(dest, "fragment.yml"), "services: {}\n", "utf8");
+          return { commit: (url.includes("/base.git") ? "a" : "b").repeat(40) };
         },
       };
       await withUserCacheRoot(join(dir, ".cache"), async () => {
         const report = await Effect.runPromise(
-          appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+          appIncludesUpdate({ cwd: dir, deps: { git } }).pipe(Effect.provide(testStateStoreLayer)),
         );
 
         expect(report.entries.map((entry) => entry.source).sort()).toEqual([
@@ -339,18 +347,18 @@ describe("lando app:includes:update (source dispatch)", () => {
         "name: compose-app\ninclude:\n  - github:acme/compose/fragment.yml\n",
       );
       const cloneUrls: string[] = [];
-      const gitCloner: GitIncludeCloner = {
-        clone: async ({ url, stagingDir }) => {
+      const git: GitTransport = {
+        fetch: async ({ url, dest }) => {
           cloneUrls.push(url);
-          await mkdir(stagingDir, { recursive: true });
-          await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: "c".repeat(40) };
+          await mkdir(dest, { recursive: true });
+          await writeFile(join(dest, "fragment.yml"), "services: {}\n", "utf8");
+          return { commit: "c".repeat(40) };
         },
       };
 
       await withUserCacheRoot(join(dir, ".cache"), async () => {
         const report = await Effect.runPromise(
-          appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+          appIncludesUpdate({ cwd: dir, deps: { git } }).pipe(Effect.provide(testStateStoreLayer)),
         );
 
         expect(report.entries.map((entry) => entry.source)).toEqual(["github:acme/compose/fragment.yml"]);
@@ -371,18 +379,18 @@ describe("lando app:includes:update (source dispatch)", () => {
         "includes:\n  - source: github:acme/shared@v2\n    path: fragment.yml\n",
       );
       const refs: Array<string | undefined> = [];
-      const gitCloner: GitIncludeCloner = {
-        clone: async ({ dest, ref }) => {
+      const git: GitTransport = {
+        fetch: async ({ dest, ref }) => {
           refs.push(ref);
           await writeFile(join(dest, "fragment.yml"), "services: {}\n");
-          return { commitSha: "a".repeat(40) };
+          return { commit: "a".repeat(40) };
         },
       };
       await withUserCacheRoot(join(dir, ".cache"), async () => {
         // When
         const error = await Effect.runPromise(
           Effect.flip(
-            appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+            appIncludesUpdate({ cwd: dir, deps: { git } }).pipe(Effect.provide(testStateStoreLayer)),
           ),
         );
         // Then

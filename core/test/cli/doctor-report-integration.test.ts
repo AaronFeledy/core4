@@ -3,9 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { type Context, Effect, Layer, Schema } from "effect";
-
 import {
   ConfigService,
   PathsService,
@@ -14,15 +11,14 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
+import { type Context, Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
-import { makeLandoRuntime } from "../../src/runtime/layer";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import {
   DoctorReportSchema,
   collectDoctorReport,
@@ -32,6 +28,7 @@ import {
 } from "../../src/cli/commands/doctor-report.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer";
 import { CORE_VERSION } from "../../src/version.ts";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
@@ -84,18 +81,20 @@ describe("combined doctor certificate and network-trust wiring", () => {
     // Then
     expect(report.subsystems.checks.map((check) => check.name)).toEqual([
       "router",
+      "certs",
       "ssh",
       "host-dns",
       "network-trust",
       "legacy-snapshot-catalogs",
       "filesystem-watch",
     ]);
-    expect(report.skipped).toContainEqual({
-      section: "certs",
-      status: "skipped",
-      reason: expect.any(String),
+    expect(report.subsystems.checks.find((check) => check.name === "certs")).toMatchObject({
+      name: "certs",
+      status: "pass",
+      context: { subsystemId: "mkcert-selected", ready: "true", certsTrusted: "true" },
     });
-    expect(report.subsystems.checks[3]).toMatchObject({
+    expect(report.skipped?.some((entry) => entry.section === "certs")).toBe(false);
+    expect(report.subsystems.checks[4]).toMatchObject({
       name: "network-trust",
       status: "pass",
       severity: "info",
@@ -113,7 +112,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
         options: {},
         provider: Effect.succeed({ checks: [] }),
         deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "injected-ca" }),
+        certs: Effect.succeed({ _tag: "selected", id: "injected-ca", trusted: true }),
         subsystems: (options) => subsystemDoctor(options).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
       }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
     );
@@ -121,12 +120,12 @@ describe("combined doctor certificate and network-trust wiring", () => {
     // Then
     expect(report.version).toBe(CORE_VERSION);
     expect(renderDoctorReport(report)).toContain(`version: ${CORE_VERSION}`);
-    expect(report.subsystems.checks.find((check) => check.name === "certs")).toBeUndefined();
-    expect(report.skipped).toContainEqual({
-      section: "certs",
-      status: "skipped",
-      reason: expect.any(String),
+    expect(report.subsystems.checks.find((check) => check.name === "certs")).toMatchObject({
+      name: "certs",
+      status: "pass",
+      context: { subsystemId: "injected-ca", ready: "true", certsTrusted: "true" },
     });
+    expect(report.skipped?.some((entry) => entry.section === "certs")).toBe(false);
   });
 
   test("DoctorReportSchema requires version", () => {
@@ -210,7 +209,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
 
 const mentionsUnavailableStub = (value: unknown): boolean => {
   const dump = JSON.stringify(value);
-  return dump.includes("full implementation is not available yet") || dump.includes("not available yet");
+  return dump.includes("CertificateAuthority requires @lando/ca-mkcert");
 };
 
 describe("runtime-wired subsystem doctor", () => {

@@ -2,10 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 import { commandAliasRegistrationError } from "../../src/cli/command-alias-policy.ts";
 import { resolveAppCommandHelpAliases, resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
@@ -202,7 +201,7 @@ test("unknown custom targets fail with close matches and remediation", async () 
       alias: "hi",
       target: "app:grete",
       closeMatches: expect.arrayContaining(["app:greet"]),
-      remediation: expect.stringContaining("app:cache:refresh"),
+      remediation: expect.stringContaining("app:greet"),
     });
   });
 });

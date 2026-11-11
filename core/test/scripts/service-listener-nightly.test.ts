@@ -46,7 +46,7 @@ test("requires successful tests plus four-case evidence instead of accepting an 
     "service-listeners-linux-x64"
   ];
   const acceptance = job.steps.find((step) =>
-    step.run?.includes("service-listener-journeys.integration.test.ts"),
+    step.run?.includes("bun run test:selection nightly-service-listeners"),
   );
   // Then: pipefail preserves failures and a separate completion check rejects all-skipped runs.
   expect(acceptance?.shell).toBe("bash");
@@ -67,7 +67,7 @@ test("provisions rootless user namespaces before managed setup and image prepara
   const setup = steps.findIndex((step) => step.run?.includes("dist/lando setup --yes --provider=lando"));
   const image = steps.findIndex((step) => step.run?.includes("build-service-listener-qa-image.ts"));
   const journeys = steps.findIndex((step) =>
-    step.run?.includes("service-listener-journeys.integration.test.ts"),
+    step.run?.includes("bun run test:selection nightly-service-listeners"),
   );
   // Then: user namespace permissions are ready before Podman's reexec.
   expect(prereqs).toBeGreaterThanOrEqual(0);

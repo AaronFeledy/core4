@@ -1,9 +1,8 @@
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { afterEach, describe, expect, test } from "bun:test";
 
 const roots: string[] = [];
 type CodegenModule = {

@@ -1,7 +1,7 @@
-import { Effect, Schema } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { GlobalAppError, type StateStoreError } from "@lando/sdk/errors";
 import { StateStore } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import type { PendingGlobalServiceContribution } from "../services/global-services.ts";
 
@@ -48,6 +48,8 @@ const selectionError = (message: string): GlobalAppError =>
       "Run `lando global:list` and select an exact contribution id or plugin package, or use --all.",
   });
 
+export const GLOBAL_POLICY_VERSION = 1;
+
 export const globalPolicyBucket = Effect.fn("GlobalApp.policyBucket")(function* () {
   const store = yield* StateStore;
   return yield* store
@@ -55,7 +57,7 @@ export const globalPolicyBucket = Effect.fn("GlobalApp.policyBucket")(function* 
       root: "userConf",
       key: "global.config.yml",
       schema: GlobalPolicy,
-      version: 1,
+      version: GLOBAL_POLICY_VERSION,
       codec: {
         encode: (policy) => Bun.YAML.stringify(policy),
         decode: (raw) =>
@@ -67,13 +69,13 @@ export const globalPolicyBucket = Effect.fn("GlobalApp.policyBucket")(function* 
       onCorrupt: "fail",
       default: emptyGlobalPolicy(),
     })
-    .pipe(Effect.mapError(policyError));
+    .pipe(mapFailures(policyError));
 });
 
 export const readGlobalPolicy = Effect.fn("GlobalApp.readPolicy")(function* () {
   const bucket = yield* globalPolicyBucket();
-  if (!(yield* bucket.exists.pipe(Effect.mapError(policyError)))) return emptyGlobalPolicy();
-  return (yield* bucket.get.pipe(Effect.mapError(policyError))) ?? emptyGlobalPolicy();
+  if (!(yield* bucket.exists.pipe(mapFailures(policyError)))) return emptyGlobalPolicy();
+  return (yield* bucket.get.pipe(mapFailures(policyError))) ?? emptyGlobalPolicy();
 });
 
 export const globalContributionPolicy = (
@@ -255,7 +257,7 @@ export const commitGlobalPolicy = Effect.fn("GlobalApp.commitPolicy")(function* 
       }),
     );
   const bucket = yield* globalPolicyBucket();
-  const current = (yield* bucket.get.pipe(Effect.mapError(policyError))) ?? emptyGlobalPolicy();
+  const current = (yield* bucket.get.pipe(mapFailures(policyError))) ?? emptyGlobalPolicy();
   if (current.revision === expectedRevision && JSON.stringify(current) === JSON.stringify(next))
     return current;
   if (next.revision !== expectedRevision + 1)
@@ -273,7 +275,7 @@ export const commitGlobalPolicy = Effect.fn("GlobalApp.commitPolicy")(function* 
         return [{ committed: false as const, policy: actual }, actual] as const;
       return [{ committed: true as const, policy: next }, next] as const;
     })
-    .pipe(Effect.mapError(policyError));
+    .pipe(mapFailures(policyError));
   if (!result.committed)
     return yield* Effect.fail(
       new GlobalAppError({

@@ -1,8 +1,4 @@
-import type {
-  UninstallPlanStep,
-  UninstallResult,
-  UninstallStepStatus,
-} from "@lando/engine/operations/uninstall";
+import type { UninstallResult, UninstallStepStatus } from "@lando/engine/operations/uninstall";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "@lando/renderer/summary";
 import { type RenderContext, summaryPaintOptions } from "../renderer-boundary";
 
@@ -19,7 +15,7 @@ const statusLabel = (status: UninstallStepStatus): string => {
   }
 };
 
-const uninstallStepTone = (step: UninstallPlanStep): SummaryTone => {
+const uninstallStepTone = (step: UninstallResult["steps"][number]): SummaryTone => {
   if (step.outcome === "failed") return "error";
   if (step.outcome === "completed") return "ok";
   if (step.status === "skipped") return "skipped";

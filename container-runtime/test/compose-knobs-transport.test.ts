@@ -1,12 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -15,10 +12,11 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 interface CreateRequest {
   readonly url: string;
@@ -93,6 +91,10 @@ const withIpcServer = async <A>(action: (fixture: IpcFixture) => Promise<A>): Pr
   let running = false;
   const server = createServer(async (request, response) => {
     const url = request.url ?? "";
+    if (request.method === "GET" && url.includes("/containers/json?")) {
+      respond(response, 200, "[]");
+      return;
+    }
     if (request.method === "GET" && url.includes("/networks/")) {
       const name = decodeURIComponent(url.slice(url.indexOf("/networks/") + "/networks/".length));
       respond(response, 200, JSON.stringify(ownedNetworkInspection(plan, name)));
@@ -143,7 +145,7 @@ describe("Podman Compose knob transport", () => {
 
       // Then
       expect(createRequests).toHaveLength(1);
-      expect(createRequests[0]?.url).toBe("/v6.0.0/containers/create?name=lando-compose-knob-transport-web");
+      expect(createRequests[0]?.url).toBe("/v6.0.0/containers/create?name=lando-compose-knob-transport--web");
       expect(field(field(createRequests[0]?.body, "HostConfig"), "Privileged")).toBe(true);
     });
   });

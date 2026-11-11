@@ -7,7 +7,6 @@
  * renderer preset → library renderer mode, and validation of host-supplied
  * plugin layers. No layer composition happens here.
  */
-import { Layer, Result, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
@@ -19,10 +18,11 @@ import {
   type ResolvedPluginInput as ResolvedPluginInputType,
 } from "@lando/sdk/schema";
 import type { RootOverrides } from "@lando/sdk/services";
+import { Layer, Result, Schema } from "effect";
 
 import type { LoggerMode } from "../logging/service.ts";
-import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
+import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 
 // Differences from CLI defaults:
 // - logger: "silent" in library mode (CLI: "none" unless --log-level)

@@ -2,9 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Queue, Stream } from "effect";
-import * as ContainerHelperAssetsLayer from "../../src/container-helper/assets.ts";
-
+import * as ContainerHelperAssetsLayer from "@lando/container-runtime/container-helper/assets";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import {
   appCommandCachePath,
@@ -44,6 +42,7 @@ import {
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { Effect, Layer, Queue, Stream } from "effect";
 import { appConfig } from "../../src/cli/commands/app-config.ts";
 import * as BunShellRunner from "../_support/shell-runner.ts";
 
@@ -103,7 +102,6 @@ test.each([
           service: target.service,
           providerId: ProviderId.make("lando"),
           status: "running",
-          state: "running",
           publications: { status: "present", bindings: [] },
         }),
       execStream: () => {

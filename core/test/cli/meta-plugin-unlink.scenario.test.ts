@@ -1,11 +1,9 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { ConfigService } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import { pluginLink } from "../../src/cli/commands/plugin-link.ts";
 import {
   type PluginUnlinkOptions,
@@ -106,14 +104,13 @@ describe("meta:plugin:unlink command", () => {
     expect(await lexists(registryEntry)).toBe(false);
     const registry = await readJson<Record<string, unknown>>(join(pluginsRoot, "registry.json"));
     expect(registry["@acme/lando-plugin-unlink"]).toBeUndefined();
-    const linkedState = await readJson<Record<string, unknown>>(join(pluginsRoot, ".lando-linked.json"));
-    expect(linkedState["@acme/lando-plugin-unlink"]).toBeUndefined();
+    expect(await exists(join(pluginsRoot, ".lando-linked.json"))).toBe(false);
     expect(await exists(toolingCacheDir)).toBe(false);
     expect(await readFile(sourceSentinel, "utf8")).toBe("unchanged");
     expect(await readFile(join(pluginRoot, "package.json"), "utf8")).toContain("@acme/lando-plugin-unlink");
   });
 
-  test("restores the prior registry copy atomically when the lockfile recorded one", async () => {
+  test("ignores a stray restore record and leaves its bytes alone", async () => {
     const pluginRoot = await makePluginRoot("@acme/lando-plugin-restore", "restore");
     const pluginsRoot = join(userDataRoot, "plugins");
     const registryEntry = join(pluginsRoot, "@acme/lando-plugin-restore");
@@ -159,22 +156,21 @@ describe("meta:plugin:unlink command", () => {
       )}\n`,
     );
 
+    const strayBytes = await readFile(join(pluginsRoot, ".lando-linked.json"), "utf8");
     const result = await runPluginUnlink({ name: "@acme/lando-plugin-restore", cacheRoot });
 
     expect(result).toEqual({
       pluginName: "@acme/lando-plugin-restore",
       registryEntry,
-      action: "restored",
-      restoredPath: priorCopyPath,
+      action: "removed",
     });
-    expect(renderPluginUnlinkResult(result)).toContain("result: restored");
+    expect(renderPluginUnlinkResult(result)).toContain("result: removed");
     expect(await lexists(registryEntry)).toBe(false);
     const registry = await readJson<Record<string, typeof previousRegistry>>(
       join(pluginsRoot, "registry.json"),
     );
-    expect(registry["@acme/lando-plugin-restore"]).toEqual(previousRegistry);
-    const linkedState = await readJson<Record<string, unknown>>(join(pluginsRoot, ".lando-linked.json"));
-    expect(linkedState["@acme/lando-plugin-restore"]).toBeUndefined();
+    expect(registry["@acme/lando-plugin-restore"]).toBeUndefined();
+    expect(await readFile(join(pluginsRoot, ".lando-linked.json"), "utf8")).toBe(strayBytes);
     expect(await readFile(join(pluginRoot, "package.json"), "utf8")).toContain("@acme/lando-plugin-restore");
   });
 

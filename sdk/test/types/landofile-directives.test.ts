@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import * as sdk from "@lando/sdk";
-import * as landofile from "@lando/sdk/landofile";
 import type { LandofileOverlayInput } from "@lando/sdk/landofile";
-import * as schema from "@lando/sdk/schema";
+import * as landofile from "@lando/sdk/landofile";
 import type { LandofileOverride, LandofileReset, LandofileShape } from "@lando/sdk/schema";
+import * as schema from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;

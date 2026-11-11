@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 
@@ -89,7 +88,7 @@ describe("help dispatcher special", () => {
     const result = await runCli(["help", "does-not-exist"]);
 
     // Then
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("UnknownCommandError");
   });
 

@@ -4,7 +4,7 @@ services:
     type: minio
     image: registry.example.com/team/minio:approved
     appMount: false
-    database: uploads
+    bucket: uploads
     routes:
       - hostname: console.minio-demo.lndo.site
         endpoint: console

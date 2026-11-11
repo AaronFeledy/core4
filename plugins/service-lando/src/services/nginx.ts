@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import {
   AbsolutePath,
   type LogSource,
@@ -15,18 +13,19 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { tcpProbe } from "./_tcp-probe.ts";
-
 import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
@@ -76,12 +75,17 @@ const phpFastcgiCommand = (
 ): ReadonlyArray<string> =>
   nginxLauncherCommand({
     user,
-    serverBlock: [
+    httpBlock: [
+      "map $http_x_forwarded_proto $lando_fastcgi_https {",
+      "  default $https;",
+      "  https on;",
+      "}",
       "server {",
       `  listen ${String(ports.listen)};`,
       `  root ${webroot};`,
       "  index index.php index.html;",
       ...nginxErrorPageConfigLines(),
+      ...nginxHiddenPathConfigLines(),
       "  location / {",
       "    try_files $uri $uri/ /index.php?$query_string;",
       "  }",
@@ -103,11 +107,17 @@ const phpFastcgiCommand = (
       // Absolute: `-c` makes the config file's own directory nginx's
       // configuration prefix, so a bare name would resolve under `/tmp`.
       "    include /etc/nginx/fastcgi_params;",
+      // FPM keeps the last HTTPS parameter, overriding the include's direct-connection value.
+      "    fastcgi_param HTTPS $lando_fastcgi_https if_not_empty;",
       // After the include so this assignment wins. PATH_TRANSLATED is omitted
       // on purpose: setting it can make the extra path look like the script
       // and break Apache-via PATH_INFO parity.
       "    fastcgi_param PATH_INFO $fastcgi_path_info;",
       "    fastcgi_index index.php;",
+      "  }",
+      // Lowercase PHP matched above; deny the remaining variants instead of serving source.
+      "  location ~* \\.php(/|$) {",
+      "    return 403;",
       "  }",
       "}",
     ],

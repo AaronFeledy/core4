@@ -1,18 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
+import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
-import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
+import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
+import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE, globalServices } from "@lando/proxy-traefik";
 import {
   AbsolutePath,
   AppId,
   type CurrentExecutableAppPlan,
+  HealthcheckPlan,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-
-import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "@lando/proxy-traefik";
+import { DateTime, Effect, Schema } from "effect";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
@@ -119,18 +120,21 @@ const traefikStartScript = [
     "--api.insecure=true",
     `--entrypoints.web.address=:${TRAEFIK_WEB_PORT}`,
     "--entrypoints.traefik.address=:8080",
+    "--ping=true",
+    "--ping.entrypoint=traefik",
     `--providers.file.directory=${TRAEFIK_DYNAMIC_CONFIG_DIR}`,
     "--providers.file.watch=true",
   ].join(" "),
 ].join("\n");
 
-const traefikService = (): ServicePlan => ({
+const traefikService = (readiness: HealthcheckPlan): ServicePlan => ({
   name: ServiceName.make("traefik"),
   type: "compose",
   provider: providerId,
   primary: true,
   artifact: { kind: "ref", ref: TRAEFIK_IMAGE },
   command: ["sh", "-c", traefikStartScript],
+  readiness,
   environment: {},
   mounts: [],
   endpoints: [
@@ -175,18 +179,40 @@ describe("global Traefik routing — live integration", () => {
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);
+      const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
       const shopPlan = appPlan("shop", nginxService());
-      const traefikPlan = appPlan(TRAEFIK_APP_SLUG, traefikService());
+      const contribution = globalServices.get("traefik");
+      if (contribution === undefined) throw new Error("Missing bundled Traefik service");
+      const config = await Effect.runPromise(contribution);
+      const readiness = Schema.decodeUnknownSync(HealthcheckPlan)(config.readiness);
+      const probeCommand = readiness.command;
+      if (probeCommand === undefined || typeof probeCommand === "string")
+        throw new Error("Traefik readiness requires an argv command");
+      const traefikPlan = appPlan(TRAEFIK_APP_SLUG, traefikService(readiness));
 
       await Effect.runPromise(Effect.result(bringDown(traefikPlan, { api })));
       await Effect.runPromise(Effect.result(bringDown(shopPlan, { api })));
 
       try {
-        const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api }));
+        const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api, ...helperOptions }));
         expect(shopApplied.changed).toBe(true);
 
-        const traefikApplied = await Effect.runPromise(bringUp(traefikPlan, { api }));
+        const traefikApplied = await Effect.runPromise(bringUp(traefikPlan, { api, ...helperOptions }));
         expect(traefikApplied.changed).toBe(true);
+
+        const ready = await Effect.runPromise(
+          runHealthcheckProbe(
+            { id: "traefik-live:readiness", plan: readiness },
+            exec(
+              traefikPlan,
+              { app: traefikPlan.id, service: ServiceName.make("traefik") },
+              { command: probeCommand },
+              { api, raw: true },
+            ).pipe(Effect.map((result) => (result.exitCode === 0 ? ("green" as const) : ("red" as const)))),
+            Effect.succeed("red" as const),
+          ),
+        );
+        expect(ready.outcome).toBe("green");
 
         const response = await fetchThroughTraefik(120_000);
         expect(response.status).toBe(200);

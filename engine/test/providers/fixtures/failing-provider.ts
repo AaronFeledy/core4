@@ -16,6 +16,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
   const stream = () => Stream.fail(memberError);
   return {
     ...TestRuntimeProvider,
+    runtimeIdentity: "test-runtime",
     isAvailable: Effect.fail(availabilityError),
     appliedPlans: fail(),
     cleanupOwnedResources: fail,

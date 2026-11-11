@@ -1,6 +1,5 @@
-import { Effect, Predicate, Schema } from "effect";
-
 import type { PluginStateStore } from "@lando/sdk/plugins";
+import { Effect, Predicate, Schema } from "effect";
 
 import { validIpv4Address } from "./windows-publish-claims.ts";
 
@@ -178,6 +177,7 @@ export const PublishedContainerReceiptSchema = Schema.Struct({
 });
 export type PublishedContainerReceipt = typeof PublishedContainerReceiptSchema.Type;
 
+export const PUBLISHED_CONTAINER_RECEIPT_VERSION = 1;
 export const publishedReceiptKey = (appId: string, serviceId: string): string =>
   `${new Bun.CryptoHasher("sha256").update(JSON.stringify([appId, serviceId])).digest("hex")}.json`;
 export const openPublishedContainerReceipt = (
@@ -189,7 +189,7 @@ export const openPublishedContainerReceipt = (
     namespace: "windows-published-containers",
     key: publishedReceiptKey(appId, serviceId),
     schema: PublishedContainerReceiptSchema,
-    version: 1,
+    version: PUBLISHED_CONTAINER_RECEIPT_VERSION,
     codec: "json",
     mode: 0o600,
     lock: "advisory",

@@ -9,8 +9,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import {
   TaskCompleteEvent,
   TaskDetailEvent,
@@ -21,6 +19,7 @@ import {
 } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 
@@ -78,13 +77,19 @@ const taskFail = (taskId: string, summary: string, exitCode: number, remediation
     timestamp: ts,
   });
 
-const treeComplete = (summary: string, succeeded: number, failed: number): LandoEvent =>
+const treeComplete = (
+  summary: string,
+  succeeded: number,
+  failed: number,
+  outcome?: "failure" | "interrupted",
+): LandoEvent =>
   Schema.decodeUnknownSync(TaskTreeCompleteEvent)({
     _tag: "task.tree.complete",
     parentId: "build",
     summary,
     succeeded,
     failed,
+    ...(outcome === undefined ? {} : { outcome }),
     timestamp: ts,
   });
 
@@ -99,6 +104,22 @@ const assertNoControlBytes = (lines: ReadonlyArray<string>): void => {
 };
 
 describe("TaskTreeViewModel — apply + frameLines content", () => {
+  test.each([
+    ["failure", "╰─ failed"],
+    ["interrupted", "╰─ interrupted"],
+  ] as const)(
+    "a %s tree with no failed child never reads done and hides pending children",
+    (outcome, footer) => {
+      // Given: the tree's work failed before any child started.
+      const vm = new TaskTreeViewModel({ color: false });
+      vm.apply(treeStart("build", "Building", ["web", "db"]));
+      // When
+      vm.apply(treeComplete("Build failed", 0, 0, outcome));
+      // Then
+      expect(vm.snapshot().frameLines).toEqual(["╭─ Build failed", footer]);
+    },
+  );
+
   test("apply(tree.start) yields a skeleton with parent line and pending placeholders; no control bytes", () => {
     const vm = new TaskTreeViewModel({ color: true });
     vm.apply(treeStart("build", "Building", ["web", "db", "cache"]));

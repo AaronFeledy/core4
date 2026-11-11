@@ -2,7 +2,7 @@
 id: fastapi-workflow
 provider: test
 timeout: 90000
-tags: [beta, docs, recipes, fastapi, python, postgres, redis]
+tags: [docs, recipes, fastapi, python, postgres, redis]
 ---
 
 # Run the FastAPI recipe
@@ -164,7 +164,7 @@ lando info
 | Host | `database` | `cache` |
 | Database | app name (here `fastapi-demo`) | n/a |
 | User | `lando` | n/a (no auth) |
-| Password | generated per app; read it with `{{ services.database.creds.password }}` | n/a |
+| Password | `lando`; another service reads `{{ services.database.creds.password }}` | n/a |
 | Port | `5432` | `6379` |
 
 Put host `database` in your SQLAlchemy / psycopg DSN, not `127.0.0.1` or `localhost`. Redis is host `cache` on `6379` with no password.

@@ -1,17 +1,15 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
+import type { NpmPackument, NpmRegistryTransport } from "@lando/source-acquisition";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { Effect, Layer } from "effect";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins.ts";
-import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
-import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 
 let root: string;
 let pluginsRoot: string;
@@ -63,6 +61,7 @@ const layerFor = (trustStore: typeof PluginTrustStore.Service) =>
       } as never),
     ),
     Layer.succeed(PluginTrustStore, trustStore),
+    makeTestStateStore().layer,
   );
 
 const packumentFor = (
@@ -108,16 +107,17 @@ describe("registry plugin update adapter", () => {
     await Effect.runPromise(trustStore.trustPlugin(name));
     const bytes = await makeTarball(name, "1.1.0");
     const tarballCalls: string[] = [];
-    const registryClient: NpmRegistryClient = { fetchPackument: async () => packumentFor(name, bytes) };
-    const fetcher: TarballRecipeFetcher = {
-      fetch: async (url) => {
-        tarballCalls.push(url);
+    const registryClient: NpmRegistryTransport = {
+      registryFor: () => "https://registry.example/",
+      packument: async () => packumentFor(name, bytes),
+      tarball: async (input) => {
+        tarballCalls.push(input.dist.tarball);
         return bytes;
       },
     };
     const before = await readFile(join(pluginsRoot, "registry.json"), "utf8");
     const runner = await Effect.runPromise(
-      makePluginUpdateRunner({ pluginsRoot, registryClient, fetcher }).pipe(
+      makePluginUpdateRunner({ stateStore: makeTestStateStore().service, pluginsRoot, registryClient }).pipe(
         Effect.provide(layerFor(trustStore)),
       ),
     );
@@ -144,10 +144,13 @@ describe("registry plugin update adapter", () => {
     const trustStore = makePluginTrustStore(join(root, "trust.yml"));
     await Effect.runPromise(trustStore.trustPlugin(name));
     const bytes = await makeTarball(name, "1.1.0");
-    const registryClient: NpmRegistryClient = { fetchPackument: async () => packumentFor(name, bytes) };
-    const fetcher: TarballRecipeFetcher = { fetch: async () => bytes };
+    const registryClient: NpmRegistryTransport = {
+      registryFor: () => "https://registry.example/",
+      packument: async () => packumentFor(name, bytes),
+      tarball: async () => bytes,
+    };
     const runner = await Effect.runPromise(
-      makePluginUpdateRunner({ pluginsRoot, registryClient, fetcher }).pipe(
+      makePluginUpdateRunner({ stateStore: makeTestStateStore().service, pluginsRoot, registryClient }).pipe(
         Effect.provide(layerFor(trustStore)),
       ),
     );
@@ -176,14 +179,15 @@ describe("registry plugin update adapter", () => {
     const trustStore = makePluginTrustStore(join(root, "trust.yml"));
     await Effect.runPromise(trustStore.trustPlugin(name));
     const bytes = await makeTarball(name, "1.1.0");
-    const registryClient: NpmRegistryClient = {
-      fetchPackument: async () => packumentFor(name, bytes, { "@lando/core": ">=4 <6" }),
-    };
-    const fetcher: TarballRecipeFetcher = {
-      fetch: () => Promise.reject(new Error("fixture download failure")),
+    const registryClient: NpmRegistryTransport = {
+      registryFor: () => "https://registry.example/",
+      packument: async () => packumentFor(name, bytes, { "@lando/core": ">=4 <6" }),
+      tarball: async () => {
+        throw new Error("fixture download failure");
+      },
     };
     const runner = await Effect.runPromise(
-      makePluginUpdateRunner({ pluginsRoot, registryClient, fetcher }).pipe(
+      makePluginUpdateRunner({ stateStore: makeTestStateStore().service, pluginsRoot, registryClient }).pipe(
         Effect.provide(layerFor(trustStore)),
       ),
     );
@@ -217,9 +221,10 @@ describe("registry plugin update adapter", () => {
     const trustStore = makePluginTrustStore(join(root, "trust.yml"));
     await Effect.runPromise(trustStore.trustPlugin(name));
     const bytes = await makeTarball(name, "1.1.0");
-    const registryClient: NpmRegistryClient = { fetchPackument: async () => packumentFor(name, bytes) };
-    const fetcher: TarballRecipeFetcher = {
-      fetch: async () => {
+    const registryClient: NpmRegistryTransport = {
+      registryFor: () => "https://registry.example/",
+      packument: async () => packumentFor(name, bytes),
+      tarball: async () => {
         await writeFile(
           join(pluginsRoot, "registry.json"),
           `${JSON.stringify({ [name]: { name, version: "1.0.1", path: driftedPath, requestedSelector: "latest" } })}\n`,
@@ -228,7 +233,7 @@ describe("registry plugin update adapter", () => {
       },
     };
     const runner = await Effect.runPromise(
-      makePluginUpdateRunner({ pluginsRoot, registryClient, fetcher }).pipe(
+      makePluginUpdateRunner({ stateStore: makeTestStateStore().service, pluginsRoot, registryClient }).pipe(
         Effect.provide(layerFor(trustStore)),
       ),
     );
@@ -262,16 +267,20 @@ describe("registry plugin update adapter", () => {
       const trustStore = makePluginTrustStore(join(root, "trust.yml"));
       await Effect.runPromise(trustStore.trustPlugin(name));
       const bytes = await makeTarball(name, "1.1.0", postinstall);
-      const registryClient: NpmRegistryClient = {
-        fetchPackument: async () => {
+      const registryClient: NpmRegistryTransport = {
+        registryFor: () => "https://registry.example/",
+        packument: async () => {
           await Effect.runPromise(trustStore.untrustPlugin(name));
           return packumentFor(name, bytes);
         },
+        tarball: async () => bytes,
       };
       const runner = await Effect.runPromise(
-        makePluginUpdateRunner({ pluginsRoot, registryClient, fetcher: { fetch: async () => bytes } }).pipe(
-          Effect.provide(layerFor(trustStore)),
-        ),
+        makePluginUpdateRunner({
+          stateStore: makeTestStateStore().service,
+          pluginsRoot,
+          registryClient,
+        }).pipe(Effect.provide(layerFor(trustStore))),
       );
 
       // When
@@ -307,18 +316,18 @@ describe("registry plugin update adapter", () => {
     await Effect.runPromise(trustStore.trustPlugin(name));
     const bytes = await makeTarball(name, "1.1.0");
     const tarballCalls: string[] = [];
-    const registryClient: NpmRegistryClient = { fetchPackument: async () => packumentFor(name, bytes) };
+    const registryClient: NpmRegistryTransport = {
+      registryFor: () => "https://registry.example/",
+      packument: async () => packumentFor(name, bytes),
+      tarball: async (input) => {
+        tarballCalls.push(input.dist.tarball);
+        return bytes;
+      },
+    };
     const runner = await Effect.runPromise(
-      makePluginUpdateRunner({
-        pluginsRoot,
-        registryClient,
-        fetcher: {
-          fetch: async (url) => {
-            tarballCalls.push(url);
-            return bytes;
-          },
-        },
-      }).pipe(Effect.provide(layerFor(trustStore))),
+      makePluginUpdateRunner({ stateStore: makeTestStateStore().service, pluginsRoot, registryClient }).pipe(
+        Effect.provide(layerFor(trustStore)),
+      ),
     );
 
     // When

@@ -1,16 +1,14 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Schema, Stream } from "effect";
-
 import {
   VerifiedStreamError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
+import { Effect, Fiber, Schema, Stream } from "effect";
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

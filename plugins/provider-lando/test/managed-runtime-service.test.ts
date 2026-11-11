@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
+import { makeLandoPaths } from "@lando/paths";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
+import { makePluginStateStore } from "@lando/state-store/plugin";
+import { makeStateStore } from "@lando/state-store/service";
 
 import { Deferred, Duration, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
-
-import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { makeLandoPaths } from "@lando/paths";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ExecConmonReaper } from "../src/exec-conmon.ts";
 import {
   type FsSeam,
@@ -15,6 +20,9 @@ import {
   terminateOwnedRuntimeService,
   verifyOwnedRuntimePid,
 } from "../src/managed-runtime-service.ts";
+import { makeRuntimeShutdownStore } from "../src/runtime-shutdown.ts";
+import { withRuntimeShutdownReceipt } from "../src/runtime-shutdown-teardown.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const run = <A>(effect: Effect.Effect<A, never>): Promise<A> => Effect.runPromise(effect);
 
@@ -38,13 +46,23 @@ const baseSpec: ManagedRuntimeServiceSpec = {
   pidPath: "/tmp/udr/runtime/run/podman.pid",
 };
 
-const makeProcessSeam = (overrides: Partial<ProcessSeam> = {}): ProcessSeam => ({
-  readPid: () => Effect.succeed("123\n"),
-  isAlive: () => Effect.succeed(true),
-  readCmdline: () => Effect.succeed([baseSpec.command, ...baseSpec.args]),
-  terminate: () => Effect.void,
-  ...overrides,
-});
+const makeProcessSeam = (overrides: Partial<ProcessSeam> = {}): ProcessSeam => {
+  let terminated = false;
+  return {
+    readPid: () => Effect.succeed("123\n"),
+    isAlive: () => Effect.sync(() => !terminated),
+    readCmdline: () => Effect.succeed([baseSpec.command, ...baseSpec.args]),
+    ...overrides,
+    terminate: (pid) =>
+      (overrides.terminate?.(pid) ?? Effect.void).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            terminated = true;
+          }),
+        ),
+      ),
+  };
+};
 
 describe("managed runtime service spec", () => {
   test("builds the canonical managed Podman service argv from Lando paths", () => {
@@ -110,6 +128,132 @@ describe("verifyOwnedRuntimePid", () => {
 });
 
 describe("terminateOwnedRuntimeService", () => {
+  test.each([
+    "running",
+    "paused",
+    "created",
+    "list-failure",
+    "exited",
+    "service-alive",
+    "pause-failure",
+    "concurrent-admission",
+  ])("private pause teardown with %s", async (state) => {
+    const actions: string[] = [];
+    const dir = await mkdtemp(join(tmpdir(), "lando-quiesce-"));
+    try {
+      const stateStore = makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(dir),
+        ownerOnlyFileAccess,
+      );
+      const receipt = await Effect.runPromise(
+        makeRuntimeShutdownStore(stateStore, () => Effect.succeed("boot")),
+      );
+      await Effect.runPromise(receipt.admit);
+      const result = await run(
+        withRuntimeShutdownReceipt(
+          stateStore,
+          terminateOwnedRuntimeService(baseSpec, {
+            process: makeProcessSeam({
+              ...(state === "service-alive" ? { isAlive: () => Effect.succeed(true) } : {}),
+              terminate: () =>
+                Effect.sync(() => {
+                  actions.push("SIGTERM");
+                }),
+            }),
+            fs: { unlink: () => Effect.void },
+            terminationPolicy: { maxAttempts: 1, delay: Duration.zero, timeout: Duration.seconds(1) },
+            apiClient: () => ({
+              request: () =>
+                Effect.gen(function* () {
+                  if (state === "concurrent-admission") yield* receipt.admit;
+                  return yield* state === "list-failure"
+                    ? Effect.fail(
+                        new ProviderUnavailableError({
+                          providerId: "lando",
+                          operation: "cleanup",
+                          message: "list failed",
+                          remediation: "test",
+                        }),
+                      )
+                    : Effect.succeed({
+                        status: 200,
+                        body: JSON.stringify([
+                          {
+                            Id: "container",
+                            State: ["service-alive", "pause-failure", "concurrent-admission"].includes(state)
+                              ? "exited"
+                              : state,
+                          },
+                        ]),
+                      });
+                }),
+            }),
+            execConmon: {
+              listArgv: Effect.sync(() => {
+                actions.push("conmons");
+                return [];
+              }),
+              kill: () => Effect.void,
+            },
+            privateRuntimeDir: () => Effect.succeed("/private/this-root"),
+            terminatePause: (path) =>
+              Effect.sync(() => {
+                actions.push(`pause ${path}`);
+                return state !== "pause-failure";
+              }),
+          }),
+        ),
+      );
+      expect(result).toEqual({
+        terminated: true,
+        pid: 123,
+        ...(["exited", "concurrent-admission"].includes(state) ? { quiescent: true } : {}),
+      });
+      expect(await Effect.runPromise(receipt.read)).toMatchObject({
+        state: state === "exited" ? "stopped" : "admitted",
+      });
+      expect(actions).toEqual(
+        ["exited", "pause-failure", "concurrent-admission"].includes(state)
+          ? ["SIGTERM", "conmons", "pause /private/this-root"]
+          : ["SIGTERM", "conmons"],
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  test("stops the runtime even when the shutdown receipt lock cannot be taken", async () => {
+    const actions: string[] = [];
+    const lockFailure = new StateStoreError({
+      reason: "lock",
+      operation: "withLock",
+      path: "/plugin-state",
+      remediation: "test",
+    });
+    const result = await run(
+      withRuntimeShutdownReceipt(
+        {
+          open: () => Effect.fail(lockFailure),
+          withLock: () => Effect.fail(lockFailure),
+        },
+        terminateOwnedRuntimeService(baseSpec, {
+          process: makeProcessSeam({
+            terminate: () =>
+              Effect.sync(() => {
+                actions.push("SIGTERM");
+              }),
+          }),
+          fs: { unlink: () => Effect.void },
+          terminationPolicy: { maxAttempts: 1, delay: Duration.zero, timeout: Duration.seconds(1) },
+          apiClient: () => ({ request: () => Effect.succeed({ status: 200, body: "[]" }) }),
+          execConmon: { listArgv: Effect.succeed([]), kill: () => Effect.void },
+          privateRuntimeDir: () => Effect.succeed(undefined),
+        }),
+      ),
+    );
+    expect(result).toMatchObject({ terminated: true, pid: 123 });
+    expect(actions).toEqual(["SIGTERM"]);
+  });
   test("removes only storage containers sequentially before SIGTERM", async () => {
     const actions: string[] = [];
     const result = await run(
@@ -153,6 +297,7 @@ describe("terminateOwnedRuntimeService", () => {
       "GET /libpod/containers/json?all=true&external=true",
       "DELETE /libpod/containers/build%2Fone?force=true",
       "DELETE /libpod/containers/build-two?force=true",
+      "GET /libpod/containers/json?all=true",
       "SIGTERM",
       `unlink ${baseSpec.socketPath}`,
       `unlink ${baseSpec.pidPath}`,
@@ -250,9 +395,15 @@ describe("terminateOwnedRuntimeService", () => {
           },
           execConmon: { listArgv: Effect.succeed([]), kill: () => Effect.void },
           apiClient: () => ({ request: respond }),
+          privateRuntimeDir: () => Effect.succeed("/private/this-root"),
+          terminatePause: () => Effect.succeed(true),
         }),
       );
-      expect(result).toEqual({ terminated: true, pid: 123 });
+      expect(result).toEqual({
+        terminated: true,
+        pid: 123,
+        ...(["delete", "delete-status"].includes(failure) ? { quiescent: true } : {}),
+      });
       expect(actions).toEqual(["SIGTERM", baseSpec.socketPath, baseSpec.pidPath]);
     });
   }
@@ -267,7 +418,7 @@ describe("terminateOwnedRuntimeService", () => {
         { pid: 10, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "orphaned-id", "--exec-attach"] },
         {
           pid: 11,
-          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global-traefik"],
+          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global--traefik"],
         },
         { pid: 12, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "--exec-attach"] },
       ]),

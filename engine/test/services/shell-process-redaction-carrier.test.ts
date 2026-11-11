@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { EventService, ProcessRunner, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
+import { EventService, ProcessRunner, ShellRunner } from "@lando/sdk/services";
 import { type Context, Effect, Layer, Queue, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { type ShellRedactionCarrier, withShellRedactionTokens } from "../../src/services/shell-runner.ts";

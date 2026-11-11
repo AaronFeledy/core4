@@ -5,29 +5,29 @@ import { join } from "node:path";
 import { valueAfter } from "./_acceptance-harness.ts";
 
 export {
-  buildProviderAcceptancePlan,
   PROVIDER_ACCEPTANCE_CELLS,
-  UnknownProviderAcceptanceCellError,
   type ProviderAcceptanceCellId,
   type ProviderAcceptanceCellPlan,
   type ProviderAcceptanceCheckPlan,
   type ProviderId,
+  UnknownProviderAcceptanceCellError,
+  buildProviderAcceptancePlan,
 } from "./provider-matrix-plan.ts";
 export {
-  evaluateProviderAcceptanceReport,
-  preflightProviderAcceptanceCell,
-  runBunCommand,
-  runProviderAcceptanceCell,
-  writeProviderAcceptanceReport,
   type CommandResult,
   type ProviderAcceptanceCheckReport,
   type ProviderAcceptanceEvaluation,
   type ProviderAcceptanceEvidence,
   type ProviderAcceptanceOutcome,
-  type ProviderAcceptancePrerequisites,
   type ProviderAcceptancePreflightInput,
+  type ProviderAcceptancePrerequisites,
   type ProviderAcceptanceReport,
   type ProviderAcceptanceSkip,
+  evaluateProviderAcceptanceReport,
+  preflightProviderAcceptanceCell,
+  runBunCommand,
+  runProviderAcceptanceCell,
+  writeProviderAcceptanceReport,
 } from "./provider-matrix-report.ts";
 
 import { type ProviderAcceptanceCellId, buildProviderAcceptancePlan } from "./provider-matrix-plan.ts";

@@ -1,13 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { renderConfigLintResult } from "@lando/core/cli/operations";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { ConfigLintResult, formatValidationIssuePath } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -274,12 +272,12 @@ describe("lando app:config:lint (source dispatch)", () => {
       ]);
     });
   });
-  test("help --all names the typeable lint command and its canonical id", async () => {
+  test("help --all lists lint under app:config:lint with no bare config:lint alias", async () => {
     await withTempCwd(async (dir) => {
       const help = await runCli(["help", "--all"], dir);
       expect(help.exitCode).toBe(0);
-      expect(help.stdout).toMatch(/^\s+config:lint\s+.*\(app:config:lint\)/mu);
-      expect(help.stdout).not.toMatch(/^\s+app:config:lint\s/mu);
+      expect(help.stdout).toMatch(/^\s+app:config:lint\s/mu);
+      expect(help.stdout).not.toMatch(/^\s+config:lint\s/mu);
     });
   });
 

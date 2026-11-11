@@ -9,18 +9,17 @@ import {
 } from "../src/lib/titles.ts";
 
 // Compile-time contract: title is required and result stays a Record.
-type _TitleIsRequired = NormalizedContentMetadata<{ id: string }> extends { readonly title: unknown }
-  ? true
-  : false;
-type _ResultIsRecord = NormalizedContentMetadata<{ id: string }> extends Record<string, unknown>
-  ? true
-  : false;
-type _OptionalTitleWouldPass = Partial<Pick<NormalizedContentMetadata<{ id: string }>, "title">> extends Pick<
-  NormalizedContentMetadata<{ id: string }>,
-  "title"
->
-  ? true
-  : false;
+type _TitleIsRequired =
+  NormalizedContentMetadata<{ id: string }> extends { readonly title: unknown } ? true : false;
+type _ResultIsRecord =
+  NormalizedContentMetadata<{ id: string }> extends Record<string, unknown> ? true : false;
+type _OptionalTitleWouldPass =
+  Partial<Pick<NormalizedContentMetadata<{ id: string }>, "title">> extends Pick<
+    NormalizedContentMetadata<{ id: string }>,
+    "title"
+  >
+    ? true
+    : false;
 const _titleRequired = true satisfies _TitleIsRequired;
 const _assignableToRecord = true satisfies _ResultIsRecord;
 // If title were optional, Partial<Pick> would extend Pick — require false.

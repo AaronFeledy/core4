@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const decodeLandofile = Schema.decodeUnknownSync(LandofileShape);
 

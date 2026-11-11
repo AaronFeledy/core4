@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
-import { DateTime, Effect } from "effect";
-
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -11,6 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { postExactServiceLifecycle, postServiceLifecycle } from "../src/service-lifecycle.ts";
@@ -84,7 +83,7 @@ describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (p
       // Then
       expect(calls).toHaveLength(1);
       expect(calls[0]?.method).toBe("POST");
-      expect(calls[0]?.path).toBe(`/containers/lando-lifecycle-app-web/${action}`);
+      expect(calls[0]?.path).toBe(`/containers/lando-lifecycle-app--web/${action}`);
       expect(calls.some((call) => call.method === "DELETE")).toBe(false);
     });
 

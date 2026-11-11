@@ -7,16 +7,16 @@
  * emitters) plus the streaming `StreamFrameSink` layer used by the command
  * boundary. The JSON branch of the stream sink is byte-stable machine output.
  */
-import { Effect, Layer, Option } from "effect";
 
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { RedactionService } from "@lando/redaction/service";
 import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "@lando/sdk/command-result";
 import { type RendererContribution, narrationIO } from "@lando/sdk/renderer";
 import type { CommandResultFormat } from "@lando/sdk/schema";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { type EventService, Renderer } from "@lando/sdk/services";
-
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService } from "@lando/redaction/service";
+import { Effect, Layer, Option } from "effect";
+import { RendererHost } from "./host.ts";
 import { type RendererIO, createStdioRendererIO } from "./io.ts";
 import * as RendererRuntime from "./runtime.ts";
 
@@ -129,12 +129,13 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
 export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandResultFormat) {
   const renderer = yield* Renderer;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const sourceEnv = (yield* RendererHost)?.env ?? process.env;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv });
   const bodyRedactor = yield* redaction.forProfile("secrets", {
-    sourceEnv: process.env,
+    sourceEnv,
     excludeWholeTokenValues: true,
   });
-  const values = yield* redaction.payloadValues({ sourceEnv: process.env });
+  const values = yield* redaction.payloadValues({ sourceEnv });
   const encoder = new TextEncoder();
   const states = new Map<
     string,

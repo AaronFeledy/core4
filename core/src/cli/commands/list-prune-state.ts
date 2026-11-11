@@ -1,14 +1,15 @@
 import { join } from "node:path";
-import { Effect, Schema } from "effect";
+import { APPLIED_STATE_VERSION, migrateAppliedPlansRecord } from "@lando/container-runtime/applied-state";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, AppPlan } from "@lando/sdk/schema";
 import type { LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { FileSystem } from "@lando/sdk/services";
+import { Effect, Option, Schema } from "effect";
 
 import type { AppsListEntry } from "./list-discovery";
 
-const APPLIED_STATE_VERSION = 1;
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
 const AppliedPlanIdentity = Schema.Struct({
   id: AppId,
@@ -58,7 +59,7 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
         mode: 0o600,
         lock: "advisory",
         onCorrupt: "discard",
-        onVersionMismatch: "discard",
+        onVersionMismatch: (raw, fromVersion) => migrateAppliedPlansRecord(raw, fromVersion) ?? {},
         default: {},
       })
       .pipe(
@@ -86,7 +87,7 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
   const directory = join(paths.roots.userDataRoot, namespace);
   const names = yield* fs.readDir(directory).pipe(
     Effect.catchTag("FileNotFoundError", () => Effect.succeed([])),
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new StateStoreError({
           reason: "io",
@@ -143,7 +144,8 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
       mode: 0o600,
       lock: "advisory",
       onCorrupt: "discard",
-      onVersionMismatch: "discard",
+      // Pruning needs only the identity, which every stored version keeps at the top level.
+      onVersionMismatch: (raw) => Option.getOrNull(Schema.decodeUnknownOption(AppliedPlanIdentity)(raw)),
     })
     .pipe(
       Effect.flatMap((bucket) =>

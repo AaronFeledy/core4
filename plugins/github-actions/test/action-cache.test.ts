@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { FailureRoleAnnotation, mergeFailure } from "@lando/sdk/command-result";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { StateStoreError } from "@lando/sdk/errors";
-import type { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { type StateBucketSpec, StateStore } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { Cause, Context, Effect, Exit, Schema } from "effect";
 import {
   cacheVerifiedSource,
   loadActionMetadata,
@@ -55,6 +57,8 @@ const storeFixture = () => {
               records.set(path, next);
               return next;
             }),
+          mutate: () => Effect.die("this fixture does not support mutate"),
+          transition: () => Effect.die("this fixture does not support transition"),
           modify: <B>(f: (value: A | null) => readonly [B, A]) =>
             Effect.sync(() => {
               const [result, next] = f(read());
@@ -107,6 +111,57 @@ const fixture = async (ref = "v1", resolvedCommit = commit, repository = "owner/
 };
 
 describe("controlled verified fixture cache orchestration", () => {
+  it.each(["open", "get", "modify"] as const)(
+    "hides cached payloads in %s defects while preserving mixed failure reasons",
+    async (operation) => {
+      const { resolved, manifest, verified } = await fixture();
+      const secret = "private-cached-action-payload";
+      const cause = Cause.combine(
+        mergeFailure(
+          Cause.fail(new StateStoreError({ reason: "io", operation, cause: secret, remediation: "Retry." })),
+          Cause.die(secret),
+          "cleanup",
+        ),
+        Cause.interrupt(7),
+      );
+      const store = storeFixture().service;
+      const failing = StateStore.of({
+        ...store,
+        open: (spec) =>
+          operation === "open"
+            ? Effect.failCause(cause)
+            : store.open(spec).pipe(
+                Effect.map((bucket) => ({
+                  ...bucket,
+                  get: operation === "get" ? Effect.failCause(cause) : bucket.get,
+                  modify: operation === "modify" ? () => Effect.failCause(cause) : bucket.modify,
+                })),
+              ),
+      });
+
+      const exit = await Effect.runPromiseExit(
+        (operation === "modify"
+          ? cacheVerifiedSource(verified).pipe(Effect.asVoid)
+          : loadCachedSource(resolved, manifest).pipe(Effect.asVoid)
+        ).pipe(Effect.provideService(StateStore, failing)),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(exit.cause.reasons.map((reason) => reason._tag)).toEqual(["Fail", "Die", "Interrupt"]);
+        expect(exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)).toEqual([
+          expect.objectContaining({ _tag: "ActionSourceError", reason: "cache-failed" }),
+        ]);
+        expect(
+          exit.cause.reasons.map((reason) =>
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+          ),
+        ).toEqual([undefined, "cleanup", undefined]);
+        expect(Cause.pretty(exit.cause)).not.toContain(secret);
+      }
+    },
+  );
+
   it("stores with owner namespace, version, 0600 and advisory locking, then verifies an offline hit", async () => {
     const store = storeFixture();
     const { resolved, manifest, verified } = await fixture();
@@ -119,7 +174,8 @@ describe("controlled verified fixture cache orchestration", () => {
       version: 1,
       mode: 0o600,
       lock: "advisory",
-      onCorrupt: "fail",
+      onCorrupt: "quarantine",
+      default: { selections: {} },
     });
     const loaded = await run(provide(loadCachedSource(resolved, manifest)));
     expect(loaded.receipt).toEqual(verified.receipt);
@@ -131,6 +187,23 @@ describe("controlled verified fixture cache orchestration", () => {
     expect(
       await failure(Effect.provideService(loadCachedSource(resolved, manifest), StateStore, store.service)),
     ).toMatchObject({ reason: "offline-miss", source: location });
+  });
+  it("quarantines a malformed envelope and reports an offline miss through the real backend", async () => {
+    const store = makeTestStateStore();
+    const { resolved, manifest, verified } = await fixture();
+    await run(Effect.provideService(cacheVerifiedSource(verified), StateStore, store.service));
+    const storedPath = store.snapshot().keys().next().value;
+    if (storedPath === undefined) throw new Error("Expected stored source");
+    const path = Schema.decodeUnknownSync(AbsolutePath)(storedPath);
+    await run(store.writeRaw(path, "malformed envelope"));
+
+    expect(
+      await failure(Effect.provideService(loadCachedSource(resolved, manifest), StateStore, store.service)),
+    ).toMatchObject({ reason: "offline-miss", source: location });
+    const quarantined = [...store.snapshot().entries()];
+    expect(quarantined).toEqual([
+      [expect.stringContaining(`${storedPath}.corrupt-`), new TextEncoder().encode("malformed envelope")],
+    ]);
   });
   it("does not alias tag movement, subpaths, repositories or origins", async () => {
     const first = await fixture();

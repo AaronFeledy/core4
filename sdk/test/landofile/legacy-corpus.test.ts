@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { isLegacyTagged, parseLegacyLandofile } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 const FIXTURES = `${import.meta.dir}/../fixtures/lando3`;
 

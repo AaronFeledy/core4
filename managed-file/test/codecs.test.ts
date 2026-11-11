@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { ManagedFileError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { decode, encode } from "../src/codecs.ts";
 
@@ -34,7 +33,7 @@ describe("managed-file codecs", () => {
     for (const format of ["toml", "ini"] as const) {
       const error = await failure(encode(format, { value: 1 }));
       expect(error.reason).toBe("format");
-      expect(error.remediation).toContain("4.x");
+      expect(error.remediation).toContain("not supported");
     }
   });
 

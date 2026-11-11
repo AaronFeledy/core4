@@ -89,9 +89,7 @@ export const unsupportedVersion = (
     } Lando will not build an image for an unavailable version.`,
   });
 
-export const missingImage = (args: {
-  readonly ctx: ServiceLoweringContext;
-}): ConfigTranslateDiagnostic =>
+export const missingImage = (args: { readonly ctx: ServiceLoweringContext }): ConfigTranslateDiagnostic =>
   unsupportedServiceKey({
     ...args,
     relative: [],

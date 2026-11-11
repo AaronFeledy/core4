@@ -7,6 +7,7 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { RAILS_GEMFILE } from "../../src/recipes/builtin/rails/scaffold.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: railsDecomposer,
   defaults: railsDefaults,
@@ -15,6 +16,7 @@ const {
   contentDigest: RAILS_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("rails");
+
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 
 const defaults = { ...railsDefaults };
@@ -62,13 +64,13 @@ describe("rails decomposition", () => {
     );
   });
 
-  test("returns the exact authoring fragment for the recipe's only option set", () => {
+  test("returns the exact authoring fragment for the default PostgreSQL choice", () => {
     const result = decompose(defaults);
     expect(result.provenance).toEqual({
       id: "rails",
       version: "0.1.0",
       producer: railsProducer,
-      options: {},
+      options: { database: "postgres" },
     });
     expect(authoringOf(defaults)).toEqual({
       runtime: 4,
@@ -87,20 +89,35 @@ describe("rails decomposition", () => {
           },
           build: {
             artifact: [
-              "apt-get update && apt-get install -y --no-install-recommends build-essential",
+              "apt-get update && apt-get install -y --no-install-recommends build-essential git libpq-dev libyaml-dev",
               "gem install rails --no-document",
             ],
           },
-          dependsOn: ["database", "cache"],
+          dependsOn: [{ service: "cache" }, { service: "database" }],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "postgres" },
         cache: { type: "redis" },
       },
       tooling: {
-        rails: { service: "web", description: "Run the Rails CLI inside the web service.", cmds: ["rails"] },
-        bundle: { service: "web", description: "Run Bundler inside the web service.", cmds: ["bundle"] },
-        rake: { service: "web", description: "Run Rake inside the web service.", cmds: ["rake"] },
+        rails: {
+          service: "web",
+          description: "Run the Rails CLI inside the web service.",
+          cmds: ["rails"],
+          wrapper: true,
+        },
+        bundle: {
+          service: "web",
+          description: "Run Bundler inside the web service.",
+          cmds: ["bundle"],
+          wrapper: true,
+        },
+        rake: {
+          service: "web",
+          description: "Run Rake inside the web service.",
+          cmds: ["rake"],
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({
@@ -112,12 +129,12 @@ describe("rails decomposition", () => {
 
   test("accepts the app-name answer the translator forwards and omits it from provenance", () => {
     const result = decompose({ name: "probe" });
-    expect(result.provenance.options).toEqual({});
+    expect(result.provenance.options).toEqual({ database: "postgres" });
     expect(authoringOf({ name: "probe" })).toEqual(authoringOf(defaults));
   });
 
   test.each([{ ruby: "3.3" }, { database: "mysql" }, { composer: false }])(
-    "rejects an undeclared option key when input is %j",
+    "rejects invalid options when input is %j",
     (options) => {
       const failure = Effect.runSync(
         Effect.result(decomposer.decompose({ producer: railsProducer, options, secrets: {} })),
@@ -126,7 +143,11 @@ describe("rails decomposition", () => {
       if (Result.isFailure(failure)) {
         expect(failure.failure.reason).toBe("option-type");
         expect(failure.failure.path).toBe(`options.${Object.keys(options)[0] ?? ""}`);
-        expect(failure.failure.remediation).toContain("declares no options");
+        expect(failure.failure.remediation).toBe(
+          "database" in options
+            ? "Supply one of the declared choices: postgres, sqlite."
+            : "Supply only declared recipe options.",
+        );
       }
     },
   );
@@ -155,7 +176,10 @@ describe("rails decomposition", () => {
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 
-  test("renders the same authoring data from the snapshot", () => {
-    expect(Result.getOrThrow(renderRecipeSnapshot(railsSnapshot, defaults))).toEqual(authoringOf(defaults));
-  });
+  test.each([defaults, { database: "sqlite" }])(
+    "renders the same authoring data from the snapshot for %j",
+    (options) => {
+      expect(Result.getOrThrow(renderRecipeSnapshot(railsSnapshot, options))).toEqual(authoringOf(options));
+    },
+  );
 });

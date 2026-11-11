@@ -1,8 +1,8 @@
-import { type Context, Effect } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AppPlan, type ServiceShutdownObservation, landoOwnedNetworkNames } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -21,9 +21,15 @@ import {
 } from "../ephemeral-data-helpers.ts";
 import { inspectOwnedNativeId, isSharedNetwork, networkOwnershipLabels } from "../native-ownership.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
+import { removeAllStaleVolumeHolders } from "../stale-data-helpers.ts";
 import { retainShutdownObservations } from "../stop-container.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
+import {
+  listLabeledServiceContainers,
+  removeStaleServiceContainers,
+  selectStaleServiceContainers,
+} from "./stale-service-containers.ts";
 import { stopService } from "./stop-service.ts";
 import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
@@ -159,6 +165,45 @@ const removeVolume = Effect.fnUntraced(function* (
   if (isVolumeInUse(response)) {
     const redactor = redactorFor(deps.options.ctx);
     const holders = deps.api.request === undefined ? [] : yield* listVolumeHolders(deps.api.request, name);
+    const recovered = yield* removeAllStaleVolumeHolders(deps.api.request, {
+      providerId: deps.options.ctx.providerId,
+      holders,
+      redactor,
+    });
+    if (recovered) {
+      const retry = yield* request(deps, {
+        method: "DELETE",
+        path: `/volumes/${encodeURIComponent(name)}`,
+      });
+      if (retry.status === 200 || retry.status === 204) return true;
+      if (retry.status === 404) return false;
+      if (!isVolumeInUse(retry)) {
+        return yield* Effect.fail(
+          podmanFailure(
+            deps,
+            "bringDown.volume",
+            `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${retry.status}.`,
+            { name, body: retry.body },
+          ),
+        );
+      }
+      const remaining =
+        deps.api.request === undefined ? holders : yield* listVolumeHolders(deps.api.request, name);
+      return yield* Effect.fail(
+        new ProviderUnavailableError({
+          providerId: deps.options.ctx.providerId,
+          operation: "bringDown.volume",
+          message: volumeInUseMessage(
+            `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${retry.status}.`,
+            remaining,
+            retry,
+            redactor,
+          ),
+          remediation: volumeInUseRemediation(redactor),
+          details: redactDetails({ name, body: retry.body, status: retry.status }, redactor),
+        }),
+      );
+    }
     return yield* Effect.fail(
       new ProviderUnavailableError({
         providerId: deps.options.ctx.providerId,
@@ -227,14 +272,33 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
 
   let changed = false;
   const shutdownObservations: ServiceShutdownObservation[] = [];
+  const stopCtx = { ...options.ctx, remediation: deps.remediation };
+  // Whole-app stop shares stale-name selection with bring-up: list once, remove owned
+  // plan-service containers whose native name is not the current planned name.
+  const containers = yield* listLabeledServiceContainers(api, stopCtx, plan.id).pipe(
+    mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
+  );
+  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+  const stale = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
+    mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
+  );
+  changed = changed || stale.changed;
+  shutdownObservations.push(...stale.shutdownObservations);
+  const observedStale = new Set(stale.shutdownObservations.map((observation) => String(observation.service)));
   for (const service of Object.values(plan.services).reverse()) {
     const result = yield* stopService(plan, service, {
       ...options,
       api,
-      ctx: { ...options.ctx, remediation: deps.remediation },
-    }).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
+      ctx: stopCtx,
+    }).pipe(mapFailures((error) => retainShutdownObservations(error, shutdownObservations)));
     changed = changed || result.changed;
-    shutdownObservations.push(...result.shutdownObservations);
+    // The removed old-named container already reported this service; its absent planned name adds nothing.
+    shutdownObservations.push(
+      ...result.shutdownObservations.filter(
+        (observation) =>
+          !(observedStale.has(String(observation.service)) && observation.reason === "container-absent"),
+      ),
+    );
   }
   let networkRemoved = false;
   for (const name of landoOwnedNetworkNames(plan)) {
@@ -242,18 +306,18 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     if (authored !== undefined && Object.keys(authored.members).some((member) => !(member in plan.services)))
       continue;
     const removed = yield* removeNetwork(deps, plan, name).pipe(
-      Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+      mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
     );
     networkRemoved = networkRemoved || removed;
   }
   let volumesRemoved = false;
   if (options.volumes === true || options.purgeCaches === true) {
     volumesRemoved = yield* removeAppScopedVolumes(deps, plan).pipe(
-      Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+      mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
     );
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
       const pruned = yield* pruneAppScopedVolumes(deps, plan).pipe(
-        Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+        mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
       );
       volumesRemoved = volumesRemoved || pruned;
     }

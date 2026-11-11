@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import {
   type ProgressEmitter,
   type TaskSpec,
@@ -8,6 +6,7 @@ import {
   makeTaskTree,
   runWithTaskTree,
 } from "@lando/sdk/task-progress";
+import { Effect } from "effect";
 
 import { applyTreeId, startGlobalTreeId, startRoutesTreeId } from "./start-progress.ts";
 

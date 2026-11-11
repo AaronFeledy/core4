@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { APPLIED_STATE_VERSION, inspectAppliedPlan, migrateAppliedPlan } from "../src/applied-state.ts";
 
 describe("provider-lando applied plan inspection versioning", () => {
-  test("opens the applied-plan bucket at version 3 with the shared migrator", async () => {
+  test("opens the applied-plan bucket at version 4 with the shared migrator", async () => {
     const opens: Array<{ version: number; onVersionMismatch: unknown }> = [];
     const state: PluginStateStore = {
       open: (spec) => {
@@ -20,7 +19,7 @@ describe("provider-lando applied plan inspection versioning", () => {
 
     expect(opens).toHaveLength(1);
     expect(opens[0]?.version).toBe(APPLIED_STATE_VERSION);
-    expect(APPLIED_STATE_VERSION).toBe(3);
+    expect(APPLIED_STATE_VERSION).toBe(6);
     // Same migration function identity as container-runtime export.
     expect(opens[0]?.onVersionMismatch).toBe(migrateAppliedPlan);
   });
@@ -88,6 +87,8 @@ describe("provider-lando applied plan inspection versioning", () => {
           }),
           set: () => Effect.die("unused"),
           update: () => Effect.die("unused"),
+          mutate: () => Effect.die("this fixture does not support mutate"),
+          transition: () => Effect.die("this fixture does not support transition"),
           modify: () => Effect.die("unused"),
           remove: Effect.die("unused"),
         }),
@@ -166,6 +167,8 @@ describe("provider-lando applied plan inspection versioning", () => {
           }),
           set: () => Effect.die("unused"),
           update: () => Effect.die("unused"),
+          mutate: () => Effect.die("this fixture does not support mutate"),
+          transition: () => Effect.die("this fixture does not support transition"),
           modify: () => Effect.die("unused"),
           remove: Effect.die("unused"),
         }),

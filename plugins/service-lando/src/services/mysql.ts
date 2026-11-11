@@ -1,8 +1,3 @@
-import { sha256Hex } from "@lando/sdk/digest";
-import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
-
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -11,10 +6,15 @@ import {
   PortablePath,
   type ServiceConfig,
   type ServiceCreds,
+  ServiceName,
 } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { dataNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
+import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
@@ -22,10 +22,6 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
-import { appNameFor } from "../app-name.ts";
-import { connectionFor } from "./_connection-helpers.ts";
-import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
@@ -71,10 +67,7 @@ const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
   },
 ];
 
-const defaultRootPassword = (appId: string, serviceName: string): string =>
-  `lando-${sha256Hex(`${appId}:${serviceName}:root`).slice(0, 24)}`;
-
-const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceConfig): ServiceCreds => {
+const mysqlCredsFor = (appName: string, service: ServiceConfig): ServiceCreds => {
   const authored = service.creds;
   return resolveServiceCreds({
     family: "mysql",
@@ -82,26 +75,15 @@ const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceCon
       user: "lando",
       password: DEFAULT_PASSWORD,
       database: appName,
-      rootPassword: defaultRootPassword(appName, serviceName),
+      rootPassword: DEFAULT_PASSWORD,
     },
-    ...(authored === undefined
-      ? {}
-      : {
-          authored: {
-            user: authored.user,
-            password: authored.password,
-            database: authored.database,
-            ...(authored.rootPassword === undefined ? {} : { rootPassword: authored.rootPassword }),
-          },
-        }),
+    ...(authored === undefined ? {} : { authored }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
-    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
 
 const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -109,7 +91,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   addEnvRecord(ctx, landoDbEnvFor(creds, port));
   ctx.addEnv("MYSQL_TCP_PORT", String(port));
   ctx.addStorage({
-    store: `${appName}-${ctx.serviceName}-mysql-data`,
+    store: ctx.serviceStoreName("mysql-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -141,6 +123,7 @@ export const mysqlServiceFeature: ServiceFeatureDefinition = {
   id: MYSQL_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(MYSQL_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(MYSQL_FEATURE_ID, "mysql service feature failed to apply", applyMysqlFeature),
@@ -164,6 +147,7 @@ const mysqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]
             connection.creds.user,
             connection.creds.database,
           ],
+          wrapper: true,
           env: { MYSQL_PWD: connection.creds.password },
         },
       };
@@ -195,7 +179,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
       );
     }
     return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
-      const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
+      const creds = mysqlCredsFor(dataNameFor(input), input.service);
       const port = plannedPort(input.service, MYSQL_LISTENER);
       assertListenerConfig(input.service, MYSQL_LISTENER);
       return {

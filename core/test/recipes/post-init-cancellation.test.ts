@@ -3,14 +3,17 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import { ProcessRunner } from "@lando/sdk/services";
+import { ProcessRunner, StateStore } from "@lando/sdk/services";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Exit, Stream } from "effect";
 import { initApp } from "../../src/cli/commands/init";
 import { RecipeInitPostInitError } from "../../src/recipes/init-pipeline";
 import { runBoundPostInit } from "../../src/recipes/init-pipeline/post-init";
 import * as postInitRuntime from "../../src/recipes/post-init/runtime";
-import { createDefaultChoicesCommandRunner } from "../../src/recipes/prompts/choices-command";
-import { defaultChoicesCommandSpawner } from "../../src/recipes/prompts/choices-command";
+import {
+  createDefaultChoicesCommandRunner,
+  defaultChoicesCommandSpawner,
+} from "../../src/recipes/prompts/choices-command";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { prepareTestSource, testSource } from "./fixtures/prepared-source";
 
@@ -61,7 +64,12 @@ test("initApp cancellation kills and reaps its post-init child", async () => {
     signal: controller.signal,
     privateFileAccess: ownerOnlyFileAccess,
   };
-  const completion = Effect.runPromise(initApp(options).pipe(Effect.provide(BunProcessRunner.layer))).then(
+  const completion = Effect.runPromise(
+    initApp(options).pipe(
+      Effect.provide(BunProcessRunner.layer),
+      Effect.provideService(StateStore, makeTestStateStore().service),
+    ),
+  ).then(
     () => "success",
     () => "failure",
   );

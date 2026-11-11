@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
+import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "@lando/renderer-lando/keybindings";
+import { TASK_DETAIL_TAIL_CAPACITY, TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
 import {
   type LandoEvent,
   TaskCompleteEvent,
@@ -9,9 +9,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
-
-import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "@lando/renderer-lando/keybindings";
-import { TASK_DETAIL_TAIL_CAPACITY, TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
+import { Schema } from "effect";
 
 const ts = "2026-05-19T12:00:00.000Z";
 

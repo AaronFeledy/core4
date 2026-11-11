@@ -1,8 +1,8 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { Duration, Effect, Redacted, Result, Schema, Stream } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import {
   AbsolutePath,
@@ -15,6 +15,7 @@ import {
   ProviderId,
 } from "../schema/index.ts";
 import type { LogChunk, RuntimeProviderShape } from "../services/index.ts";
+import { ProviderStatus } from "../services/provider.ts";
 import {
   CONTRACT_LONG_LINE,
   CONTRACT_SPLIT_LINE,
@@ -131,7 +132,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* requireContract(Effect.isEffect(provider.getVersions), "getVersions is Effect-typed");
   const beforeApply = yield* provider
     .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["REQUESTED"] })
-    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves without creating resources")));
+    .pipe(mapFailures(mapProviderFailure("readAppEnvironment resolves without creating resources")));
   yield* requireContract(beforeApply.length === 0, "readAppEnvironment returns no values before apply");
   yield* requireContract(
     Effect.isEffect(provider.apply(testAppPlan, { reconcile: true })),
@@ -284,22 +285,23 @@ export const runProviderContract = Effect.fnUntraced(function* (
     "importArtifact is Effect-typed",
   );
 
-  const available = yield* provider.isAvailable.pipe(
-    Effect.mapError(mapProviderFailure("isAvailable resolves")),
-  );
+  const available = yield* provider.isAvailable.pipe(mapFailures(mapProviderFailure("isAvailable resolves")));
   yield* requireContract(typeof available === "boolean", "isAvailable resolves to a boolean", available);
 
-  const status = yield* provider.getStatus.pipe(Effect.mapError(mapProviderFailure("getStatus resolves")));
-  yield* requireContract(typeof status.running === "boolean", "getStatus returns a running boolean", status);
+  const status = yield* provider.getStatus.pipe(mapFailures(mapProviderFailure("getStatus resolves")));
+  yield* requireContract(Schema.is(ProviderStatus)(status), "getStatus returns running or idle", status);
+  yield* requireContract(
+    status.state !== "idle" || provider.ensureReady !== undefined,
+    "idle providers can ensureReady",
+    status,
+  );
   yield* requireContract(
     status.message === undefined || typeof status.message === "string",
     "getStatus message is a string when present",
     status,
   );
 
-  const versions = yield* provider.getVersions.pipe(
-    Effect.mapError(mapProviderFailure("getVersions resolves")),
-  );
+  const versions = yield* provider.getVersions.pipe(mapFailures(mapProviderFailure("getVersions resolves")));
   yield* requireContract(
     isNonEmptyString(versions.provider),
     "getVersions returns a non-empty provider version",
@@ -316,7 +318,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
     yield* requireContract(digest !== undefined, "pull fixture is digest-qualified", digestQualifiedRef);
     const artifact = yield* provider
       .pullArtifact({ ref: digestQualifiedRef })
-      .pipe(Effect.mapError(mapProviderFailure("pullArtifact succeeds for the digest-qualified fixture")));
+      .pipe(mapFailures(mapProviderFailure("pullArtifact succeeds for the digest-qualified fixture")));
     yield* requireContract(artifact.digest === digest, "pullArtifact reports the requested digest", {
       reference: digestQualifiedRef,
       artifact,
@@ -324,7 +326,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
   }
 
   const applyResult = yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
-    Effect.mapError(mapProviderFailure("apply succeeds for the contract fixture")),
+    mapFailures(mapProviderFailure("apply succeeds for the contract fixture")),
   );
   yield* requireContract(
     typeof applyResult.changed === "boolean",
@@ -334,7 +336,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
 
   const environment = yield* provider
     .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["REQUESTED"] })
-    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves after apply")));
+    .pipe(mapFailures(mapProviderFailure("readAppEnvironment resolves after apply")));
   yield* requireContract(
     environment.length === 1 && environment.every(Redacted.isRedacted),
     "readAppEnvironment returns exactly one Redacted requested value after apply",
@@ -345,19 +347,19 @@ export const runProviderContract = Effect.fnUntraced(function* (
   );
   const missingEnvironment = yield* provider
     .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["MISSING"] })
-    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves for missing names")));
+    .pipe(mapFailures(mapProviderFailure("readAppEnvironment resolves for missing names")));
   yield* requireContract(
     missingEnvironment.length === 0,
     "readAppEnvironment excludes unrequested applied names",
   );
 
   yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
-    Effect.mapError(mapProviderFailure("re-apply under reconcile succeeds")),
+    mapFailures(mapProviderFailure("re-apply under reconcile succeeds")),
   );
 
   const snapshot = yield* provider
     .inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })
-    .pipe(Effect.mapError(mapProviderFailure("inspect returns a structured snapshot")));
+    .pipe(mapFailures(mapProviderFailure("inspect returns a structured snapshot")));
 
   yield* requireContract(snapshot.app === TEST_APP_ID, "inspect snapshot includes app id", snapshot);
   yield* requireContract(
@@ -374,7 +376,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
 
   const execResult = yield* provider
     .exec({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { command: ["echo", "ok"] })
-    .pipe(Effect.mapError(mapProviderFailure("exec returns a structured result")));
+    .pipe(mapFailures(mapProviderFailure("exec returns a structured result")));
   yield* requireContract(
     typeof execResult.exitCode === "number",
     "exec result includes a numeric exitCode",
@@ -397,7 +399,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
         return sawSplitLine && sawLongLine;
       }),
       Stream.runDrain,
-      Effect.mapError(mapProviderFailure("logs emits structured chunks")),
+      mapFailures(mapProviderFailure("logs emits structured chunks")),
     ),
     {
       duration: Duration.seconds(30),
@@ -426,7 +428,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
 
   const listed = yield* provider
     .list({ app: TEST_APP_ID })
-    .pipe(Effect.mapError(mapProviderFailure("list resolves for the contract fixture")));
+    .pipe(mapFailures(mapProviderFailure("list resolves for the contract fixture")));
   yield* requireContract(Array.isArray(listed), "list returns an array of service runtime snapshots", listed);
 
   const declaresConfigs =
@@ -462,9 +464,9 @@ export const runProviderContract = Effect.fnUntraced(function* (
     };
     yield* provider
       .destroy({ app: TEST_APP_ID }, { volumes: false })
-      .pipe(Effect.mapError(mapProviderFailure("destroy before configs realization")));
+      .pipe(mapFailures(mapProviderFailure("destroy before configs realization")));
     yield* Effect.scoped(provider.apply(configPlan, { reconcile: true })).pipe(
-      Effect.mapError(mapProviderFailure("apply succeeds for the configs realization fixture")),
+      mapFailures(mapProviderFailure("apply succeeds for the configs realization fixture")),
     );
     const copied = yield* Effect.scoped(
       collectByteStream(
@@ -473,7 +475,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
           { sourcePath: Schema.decodeUnknownSync(PortablePath)("/etc/php.ini") },
         ),
       ),
-    ).pipe(Effect.mapError(mapProviderFailure("copyFromService reads realized config content")));
+    ).pipe(mapFailures(mapProviderFailure("copyFromService reads realized config content")));
     yield* requireContract(
       bytesEqual(copied, payload),
       "apply materializes configs file content at the grant target",
@@ -481,7 +483,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
     );
     yield* provider
       .destroy({ app: TEST_APP_ID }, { volumes: false })
-      .pipe(Effect.mapError(mapProviderFailure("destroy after configs realization")));
+      .pipe(mapFailures(mapProviderFailure("destroy after configs realization")));
     yield* Effect.promise(() => rm(directory, { recursive: true, force: true }));
   }
 
@@ -497,13 +499,13 @@ export const runProviderContract = Effect.fnUntraced(function* (
   };
   yield* provider
     .destroy({ app: TEST_APP_ID }, { volumes: false })
-    .pipe(Effect.mapError(mapProviderFailure("destroy resets the running contract fixture")));
+    .pipe(mapFailures(mapProviderFailure("destroy resets the running contract fixture")));
   yield* Effect.scoped(provider.apply(completingAppPlan, { reconcile: true })).pipe(
-    Effect.mapError(mapProviderFailure("apply succeeds for the completing service fixture")),
+    mapFailures(mapProviderFailure("apply succeeds for the completing service fixture")),
   );
   const exitResult = yield* Effect.scoped(
     provider.waitForExit({ app: TEST_APP_ID, service: TEST_SERVICE_NAME, plan: completingAppPlan }),
-  ).pipe(Effect.mapError(mapProviderFailure("waitForExit resolves for a completing service")));
+  ).pipe(mapFailures(mapProviderFailure("waitForExit resolves for a completing service")));
   yield* requireContract(
     exitResult.exitCode === 0,
     "waitForExit resolves with the service exit code",
@@ -512,11 +514,11 @@ export const runProviderContract = Effect.fnUntraced(function* (
 
   yield* provider
     .destroy({ app: TEST_APP_ID }, { volumes: false })
-    .pipe(Effect.mapError(mapProviderFailure("destroy accepts volumes:false")));
+    .pipe(mapFailures(mapProviderFailure("destroy accepts volumes:false")));
 
   yield* provider
     .destroy({ app: TEST_APP_ID }, { volumes: true })
-    .pipe(Effect.mapError(mapProviderFailure("destroy succeeds for the contract fixture")));
+    .pipe(mapFailures(mapProviderFailure("destroy succeeds for the contract fixture")));
 
   yield* requireContract(
     typeof provider.planSetup === "function",
@@ -525,7 +527,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
   );
   const setupPlan = yield* provider
     .planSetup({ force: false })
-    .pipe(Effect.mapError(mapProviderFailure("planSetup returns a setup plan")));
+    .pipe(mapFailures(mapProviderFailure("planSetup returns a setup plan")));
   yield* requireContract(typeof provider.setup === "function", "setup is callable", provider.setup);
   const setupEffect = provider.setup(setupPlan, { force: false });
   yield* requireContract(Effect.isEffect(setupEffect), "setup returns an Effect", setupEffect);
@@ -599,7 +601,7 @@ export const runProviderContractMatrix = Effect.fnUntraced(function* (
 
       const provider = yield* cell
         .factory()
-        .pipe(Effect.mapError(mapProviderFailure(`matrix cell ${cell.platform} factory resolves`)));
+        .pipe(mapFailures(mapProviderFailure(`matrix cell ${cell.platform} factory resolves`)));
 
       yield* requireContract(
         provider.platform === cell.platform,

@@ -1,19 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-
+import { Schema } from "effect";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
+import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import {
   STATIC_FEATURE_ID,
   staticCaddyServiceType,
   staticNginxServiceType,
   staticServiceFeature,
 } from "../src/services/static.ts";
-
-import { tcpProbe } from "../src/services/_tcp-probe.ts";
-import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
@@ -160,6 +157,8 @@ describe("static ServiceType", () => {
     const plan = await composeStaticPlan({ type: "static" });
 
     const command = Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command ?? "");
+    expect(command).toContain("absolute_redirect off;");
+    expect(command).toContain("location ~ /\\.(?!well-known(?:/|$)) {\n    return 403;\n  }");
     expectSharedErrorPagesBuildStep(plan);
     expect(command).toContain("alias /usr/share/lando/errors/;");
     expect(command).toContain("error_page 403 /_lando/errors/403.html;");
@@ -305,4 +304,5 @@ describe("static ServiceType", () => {
     );
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

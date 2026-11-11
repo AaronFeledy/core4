@@ -6,6 +6,7 @@
 
 import type { RunCliOptions } from "./run";
 
+export type { CliInvocationContext } from "../runtime/invocation-context";
 export type { RunCliOptions } from "./run";
 
 export const runCli = async (options: RunCliOptions): Promise<void> => {

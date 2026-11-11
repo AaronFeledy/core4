@@ -475,6 +475,7 @@ test("failed first registration stays closed and cached while protecting known n
               name: "database",
               type: "mysql",
               environment: { MYSQL_PASSWORD: "private-literal" },
+              mounts: [],
               extensions: {},
               connection: {
                 family: "mysql",

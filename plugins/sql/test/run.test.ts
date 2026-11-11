@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
-
 import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import {
   SnapshotAmbiguousError,
@@ -25,6 +23,7 @@ import {
   appIdentityKey,
   planAppIdentity,
 } from "@lando/sdk/schema";
+import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
 
 import { dumpCommand, loadCommand } from "../src/families.ts";
 import { type SqlCommandDeps, dbInputFromCommand, executeDbCommand } from "../src/run.ts";
@@ -244,7 +243,7 @@ describe("executeDbCommand", () => {
                   app: target.app,
                   service: target.service,
                   providerId: source.provider,
-                  status: "stopped",
+                  status: "exited",
                   publications: { status: "unknown" as const },
                 }),
             }
@@ -1300,7 +1299,8 @@ describe("executeDbCommand", () => {
       // Given: a snapshot of a previous generation with one incompatible lineage field.
       const harness = makeSqlTestDeps({ password: SECRET, snapshotVolumeInstance: "previous-generation" });
       const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "seed-source" }));
-      if (source?.metadata === undefined) throw new Error("missing fixture metadata");
+      if (source?.metadata === undefined || source.metadata.volumeInstanceId === undefined)
+        throw new Error("missing fixture metadata");
       const metadata = source.metadata;
       const incompatible = {
         version: { version: "5.7" },

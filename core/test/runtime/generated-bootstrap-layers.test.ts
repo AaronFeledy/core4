@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { BOOTSTRAP_RANK } from "@lando/sdk/schema";
 
@@ -13,7 +12,11 @@ const countOccurrences = (source: string, target: string): number => source.spli
 describe("generated bootstrap layers", () => {
   test("commits one generated module for every BootstrapLevel", async () => {
     const files = await readdir(generatedLayersDir);
-    const expected = [...Object.keys(BOOTSTRAP_RANK).map((level) => `${level}.ts`), "index.ts"].sort();
+    const expected = [
+      ...Object.keys(BOOTSTRAP_RANK).map((level) => `${level}.ts`),
+      "generation.ts",
+      "index.ts",
+    ].sort();
 
     expect(files.toSorted()).toEqual(expected);
   });
@@ -58,9 +61,13 @@ describe("generated bootstrap layers", () => {
     );
     expect(commands).toContain("EngineLandofileServiceLayer.layer");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
-    expect(commands).toContain("Effect.map(EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
-    expect(commands).toContain("const landofileServiceLayer = Layer.unwrap(");
-    expect(commands).toContain(").pipe(Layer.provide(pluginsBase));");
+    expect(
+      countOccurrences(
+        commands,
+        "const landofileServiceLayer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(pluginsBase));",
+      ),
+    ).toBe(1);
+    expect(commands).not.toContain("Effect.map(EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
     expect(countOccurrences(commands, subscriberInstall)).toBe(1);
@@ -102,7 +109,7 @@ describe("generated bootstrap layers", () => {
     const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
 
     expect(provider).toContain("ProviderUrlScanner.layer");
-    expect(provider).toContain("Layer.provide(Layer.mergeAll(providerRegistryLayer, pluginsRuntimeLayer))");
+    expect(provider).toContain("Layer.provide(Layer.mergeAll(providerRegistryLayer, commandsRuntimeLayer))");
     expect(provider).toContain("urlScannerLayer");
   });
 
@@ -143,6 +150,6 @@ describe("generated bootstrap layers", () => {
     expect(combined).not.toContain("plugins/generated/bundled");
     expect(combined).not.toContain("coreLandofileRuntimeInputs");
     expect(combined).toContain("bundledPluginModules()");
-    expect(combined).toContain("EngineLandofileServiceLayer.scopedLandofileRuntimeInputs");
+    expect(combined).toContain("EngineLandofileServiceLayer.layerDefault");
   });
 });

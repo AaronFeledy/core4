@@ -1,6 +1,13 @@
-import { type Context, Effect, Layer, Scope } from "effect";
-
+import type { AppHandleRuntimeServices } from "@lando/engine/app/handle";
+import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
+import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { provideRuntime, runtimeServiceContext } from "@lando/engine/runtime/observability";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
 import type { App, AppSelector, LandoRuntime, ScratchAcquireError } from "@lando/sdk/app";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   type AppResolveError,
   type ConfigError,
@@ -10,15 +17,8 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services";
-
-import type { AppHandleRuntimeServices } from "@lando/engine/app/handle";
-import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
-import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import { provideRuntime, runtimeServiceContext } from "@lando/engine/runtime/observability";
-import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
-import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
-import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
-import { acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
+import { type Context, Effect, Layer, Scope } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer";
 import * as ScratchInitAppPortLayer from "../runtime/scratch-init-port.ts";
 import { buildAppHandle, resolveApp } from "./resolve";
@@ -49,13 +49,13 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
   Scope.Scope
 > {
   const { scratch: scratchInput, ...runtimeOptions } = options;
-  const capturedCwd = AbsolutePath.make(runtimeOptions.cwd ?? process.cwd());
+  const capturedCwd = AbsolutePath.make(runtimeOptions.cwd ?? (yield* CliInvocation).cwd);
   const appLayer = makeLandoRuntime({ bootstrap: "app", ...runtimeOptions } as LandoRuntimeOptions & {
     readonly bootstrap: "app";
   });
   const scratchDeps = Layer.mergeAll(
     appLayer,
-    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(appLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
     ScratchInitAppPortLayer.layer.pipe(Layer.provide(appLayer)),
   );
@@ -71,7 +71,7 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
           Effect.suspend(() => acquireScratchAppWithPlan(scratchInput)),
         ).pipe(
           Effect.map(({ handle, plan }) => ({ plan, root: plan.root, app: handle.app })),
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof LandofileParseError
               ? new ScratchAppError({
                   message: `Unable to acquire scratch app from runtime cwd ${capturedCwd}.`,

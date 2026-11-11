@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import type { GlobalConfig, RouterConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import {
   extractRouterPins,

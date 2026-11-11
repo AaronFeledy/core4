@@ -1,13 +1,10 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-import { Args } from "../../spec/metadata";
-
 import { CommandInputValidationError } from "@lando/sdk/errors";
-
+import { Effect } from "effect";
 import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../commands/bun";
-
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
+import { Args } from "../../spec/metadata";
 
 const splitSpecAndArgs = (
   argv: ReadonlyArray<string>,

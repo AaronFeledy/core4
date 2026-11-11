@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
-
 import { DataTransferError } from "@lando/sdk/errors";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { execStdoutStream } from "../src/exec-stream.ts";
 

@@ -4,6 +4,7 @@ import { makeStdioClient } from "@lando/mcp/testing";
 import { Deferred, Effect, Exit, Fiber, Layer, Stdio, Stream } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
 import { TestClock } from "effect/testing";
+import { testAppGenerations } from "../src/testing.ts";
 import { serverLayer } from "./server";
 
 for (const shutdown of ["EOF", "interrupt"] as const) {
@@ -48,11 +49,13 @@ for (const shutdown of ["EOF", "interrupt"] as const) {
             const service = yield* McpService.pipe(
               Effect.provide(
                 serverLayer({
-                  runtimeLayer: Layer.effectDiscard(
-                    Effect.addFinalizer(() =>
-                      Effect.sync(() => {
-                        order.push("runtime-finalizer");
-                      }),
+                  apps: testAppGenerations(
+                    Layer.effectDiscard(
+                      Effect.addFinalizer(() =>
+                        Effect.sync(() => {
+                          order.push("runtime-finalizer");
+                        }),
+                      ),
                     ),
                   ),
                 }),

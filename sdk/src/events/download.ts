@@ -34,6 +34,10 @@ export const PostDownloadEvent = Schema.TaggedStruct("post-download", {
   durationMs: Schema.optional(Schema.Number),
   outcome: Schema.Literals(["success", "failure"]),
   failureDetail: Schema.optional(Schema.String),
+  attempts: Schema.optional(Schema.Int).annotate({
+    description:
+      "Transfer attempts begun through HttpClient for this download, including transient-failure retries and client-side rejections; redirects add none. Absent for cache hits and failures before any transfer (offline, rejected source or destination).",
+  }),
   timestamp: Timestamp,
 });
 export type PostDownloadEvent = typeof PostDownloadEvent.Type;

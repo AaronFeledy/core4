@@ -7,7 +7,7 @@ and storage to the Landofile as your app needs them.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -17,7 +17,7 @@ The Node major version is resolved from `LANDO_NODE_VERSION` at
 `LandofileService` load time, with `24` as the default. `NODE_ENV`
 defaults to `development` and can be overridden the same way.
 
-## Alpha limitations
+## Limitations
 
 - No tooling or storage scaffolding. Edit `.lando.yml` to add the
   rest of your stack.

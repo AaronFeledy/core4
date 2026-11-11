@@ -1,6 +1,9 @@
 import { rm } from "node:fs/promises";
-
-import { Effect } from "effect";
+import {
+  type PluginAddResult,
+  finalizePluginInstall,
+  validatePluginManifest,
+} from "@lando/engine/operations/plugin-install";
 
 import {
   InteractionRequiredError,
@@ -9,18 +12,10 @@ import {
   PluginPackageOperationError,
 } from "@lando/sdk/errors";
 import { PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
-
-import {
-  type PluginAddResult,
-  finalizePluginInstall,
-  validatePluginManifest,
-} from "@lando/engine/operations/plugin-install";
-import { retainedRecipeSources } from "../../recipes/runtime-sources";
+import { SourceAcquisitionError } from "@lando/source-acquisition";
+import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
+import { Effect, Schema } from "effect";
 import { bunSelfInstall } from "./bun-self-runner";
-import { failPluginNetworkPolicy, redactPluginPackageError } from "./plugin-package-error";
-import { resolvePluginsRoot } from "./plugin-roots";
-
-import { parseNpmPackageSpec } from "../../recipes/npm-source";
 import type { PluginAddOptions } from "./plugin-add-options";
 import { ensureTrust, globalTrustStore } from "./plugin-add-trust";
 import {
@@ -28,6 +23,10 @@ import {
   ensurePluginsRoot,
   packageDeclaresPostinstall,
 } from "./plugin-package-acquisition";
+import { failPluginNetworkPolicy, redactPluginPackageError } from "./plugin-package-error";
+import { resolvePluginsRoot } from "./plugin-roots";
+import { withPluginSourceSession } from "./plugin-source-session";
+
 export type { PluginAddOptions, PluginAddPrompter, PluginTrustStore } from "./plugin-add-options";
 export { globalTrustStore } from "./plugin-add-trust";
 
@@ -46,12 +45,7 @@ const equalRequirements = (
 
 export const pluginAdd = Effect.fn("PluginAdd.add")(
   function* (inputOptions: PluginAddOptions) {
-    const sources = yield* retainedRecipeSources(inputOptions.registryUrl);
-    const options = {
-      ...inputOptions,
-      registryClient: inputOptions.registryClient ?? sources.npmRegistryClient,
-      fetcher: inputOptions.fetcher ?? sources.tarballRecipeFetcher,
-    };
+    const options: PluginAddOptions = { ...inputOptions };
     if (typeof options.spec !== "string" || options.spec.trim().length === 0) {
       return yield* Effect.fail(
         new NotImplementedError({
@@ -75,40 +69,37 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(
     const pluginsRoot = options.pluginsRoot ?? (yield* resolvePluginsRoot(options, "meta:plugin:add"));
     yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
 
-    const { name: packageName, version } = parseNpmPackageSpec(options.spec);
-    const requestedSelector = options.requestedSelector ?? version ?? "latest";
-    let createdPackageDir: string | undefined;
-    let targetDir: string | undefined;
-    const packageDir = yield* Effect.acquireRelease(
-      Effect.tryPromise({
-        try: async () => {
-          const installed = await acquirePluginPackage(options, pluginsRoot);
-          if (installed.created) createdPackageDir = installed.stagingRoot;
-          targetDir = installed.targetDir;
-          return installed.packageDir;
-        },
-        catch: (cause) =>
-          cause instanceof PluginManifestError || cause instanceof PluginPackageOperationError
-            ? cause
-            : new PluginPackageOperationError({
-                message: "Could not prepare plugin acquisition.",
-                commandId: PLUGIN_ADD_COMMAND_ID,
-                operation: "resolve",
-                packageSpec: options.spec,
-                cwd: pluginsRoot,
-                remediation: "Check the package specification and plugin directory permissions.",
-              }),
-      }),
-      () =>
-        Effect.promise(async () => {
-          if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+    const installScope = yield* Effect.scope;
+    const parsedSpec = yield* Effect.try({
+      try: () => parseNpmPackageSpec(options.spec),
+      catch: (cause) =>
+        new PluginPackageOperationError({
+          message: `Plugin package resolve failed for ${options.spec}.`,
+          commandId: PLUGIN_ADD_COMMAND_ID,
+          operation: "resolve",
+          packageSpec: options.spec,
+          cwd: pluginsRoot,
+          detail: cause instanceof Error ? cause.message : String(cause),
+          remediation: Schema.is(SourceAcquisitionError)(cause)
+            ? cause.remediation
+            : "Pass a package name with an optional exact version or dist-tag.",
         }),
-    ).pipe(
-      Effect.catchIf(
-        (cause): cause is PluginPackageOperationError => cause instanceof PluginPackageOperationError,
-        (cause) => redactPluginPackageError(cause).pipe(Effect.flip),
+    });
+    const packageName = parsedSpec.name;
+    const requestedSelector = options.requestedSelector ?? parsedSpec.version ?? "latest";
+    // Session Scope spans materialize + copy only; plugin staging outlives the
+    // source lease and is cleaned by the install scope's finalizer.
+    const installed = yield* withPluginSourceSession(options, (session) =>
+      acquirePluginPackage({ options, pluginsRoot, session, installScope }).pipe(
+        Effect.catchIf(
+          (cause): cause is PluginPackageOperationError => cause instanceof PluginPackageOperationError,
+          (cause) => redactPluginPackageError(cause).pipe(Effect.flip),
+        ),
       ),
     );
+    const createdPackageDir = installed.created ? installed.stagingRoot : undefined;
+    const targetDir = installed.targetDir;
+    const packageDir = installed.packageDir;
 
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(packageDir),

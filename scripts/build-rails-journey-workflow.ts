@@ -48,9 +48,9 @@ ${renderSetupStep(cell, binary)}
       - name: Teardown
         if: always()
         run: |
-          BINARY="\$GITHUB_WORKSPACE/${binary}"
-          (cd "\${{ runner.temp }}/rails-app/rails-journey" && "\$BINARY" destroy -y) || true
-          "\$BINARY" poweroff || true
+          BINARY="$GITHUB_WORKSPACE/${binary}"
+          (cd "\${{ runner.temp }}/rails-app/rails-journey" && "$BINARY" destroy -y) || true
+          "$BINARY" poweroff || true
 
       - name: Upload evidence
         if: always()

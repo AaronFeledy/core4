@@ -5,6 +5,7 @@ import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema"
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: sveltekitDecomposer,
   defaults: sveltekitDefaults,
@@ -67,8 +68,9 @@ describe("sveltekit decomposition", () => {
           service: "web",
           description: "Run the Svelte CLI inside the web service.",
           cmds: ["npx svelte-kit"],
+          wrapper: true,
         },
-        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"] },
+        npm: { service: "web", description: "Run npm inside the web service.", cmds: ["npm"], wrapper: true },
       },
     });
     expect<unknown>(result.fragment).toEqual({

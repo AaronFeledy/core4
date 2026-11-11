@@ -1,10 +1,8 @@
-import { type Context, Effect } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
-import type { FileSystem, ServiceType, ServiceTypeProjectFileInput } from "@lando/sdk/services";
-
 import { validationIssue } from "@lando/sdk/schema";
+import type { FileSystem, ServiceType, ServiceTypeProjectFileInput } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 import { loadServiceTypeProjectFiles } from "./project-files.ts";
 import { unsupportedServiceType } from "./service-types.ts";
 

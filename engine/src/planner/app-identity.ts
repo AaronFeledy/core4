@@ -1,11 +1,9 @@
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { type Context, Effect } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppIdentity, appIdentityKey, validationIssue } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 const canonicalPath = (path: string): Effect.Effect<string, LandofileValidationError> =>
   Effect.tryPromise({

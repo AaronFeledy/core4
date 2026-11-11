@@ -5,6 +5,7 @@ import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema"
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: jekyllDecomposer,
   defaults: jekyllDefaults,
@@ -78,11 +79,13 @@ describe("jekyll decomposition", () => {
           service: "builder",
           description: "Run the Jekyll CLI inside the builder service.",
           cmds: ["bundle exec jekyll"],
+          wrapper: true,
         },
         bundle: {
           service: "builder",
           description: "Run Bundler inside the builder service.",
           cmds: ["bundle"],
+          wrapper: true,
         },
       },
     });

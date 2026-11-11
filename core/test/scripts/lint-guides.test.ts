@@ -1,12 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
-
 import { buildPublicTranscript, parseGuideScenarioAst } from "../../../scripts/build-guide-scenarios.ts";
-import { classifiedFormFor, validateClassified } from "../../../scripts/lint-guides-yaml-fence.ts";
-import { lintFixtureLandofiles } from "../../../scripts/lint-guides-yaml-fixtures.ts";
 import {
   type GuideFixtureInventoryEntry,
   checkScenarioSourceMap,
@@ -16,6 +13,8 @@ import {
   lintGuideTranscripts,
   lintGuides,
 } from "../../../scripts/lint-guides.ts";
+import { classifiedFormFor, validateClassified } from "../../../scripts/lint-guides-yaml-fence.ts";
+import { lintFixtureLandofiles } from "../../../scripts/lint-guides-yaml-fixtures.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixturesRoot = resolve(repoRoot, "core/test/lint/guides");
@@ -176,7 +175,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("unsupported-component");
 
     expect(diagnostics[0]).toBe(
-      "core/test/lint/guides/unsupported-component.mdx:7:3: guide.component.unsupported: <Bogus> is not supported yet.",
+      "core/test/lint/guides/unsupported-component.mdx:7:3: guide.component.unsupported: <Bogus> is not supported.",
     );
   });
 
@@ -263,7 +262,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("unsupported-inline-component");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/unsupported-inline-component.mdx:9:33: guide.component.unsupported: <Bogus> is not supported yet.",
+      "core/test/lint/guides/unsupported-inline-component.mdx:9:33: guide.component.unsupported: <Bogus> is not supported.",
     ]);
   });
 

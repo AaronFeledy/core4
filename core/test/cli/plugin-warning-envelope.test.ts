@@ -1,14 +1,12 @@
 import { expect, test } from "bun:test";
-import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
-
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { EventError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { recordCommandWarning } from "../../src/cli/command-warnings.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 

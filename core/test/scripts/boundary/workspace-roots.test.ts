@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { BOUNDARY_RULES, BOUNDARY_RULE_IDS } from "../../../../scripts/boundary/registry.ts";
 import {
@@ -108,6 +107,14 @@ describe("workspace source-root drift gate", () => {
     expect(NON_PLUGIN_SOURCE_ROOTS).toContain("managed-file/src");
   });
 
+  test("covers source-acquisition implementation code in every primitive source tier", () => {
+    // Given / When / Then
+    expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("source-acquisition/src");
+    expect(ALL_PACKAGE_SOURCE_ROOTS).toContain("source-acquisition/src");
+    expect(ALL_PACKAGE_WALK_ROOTS).toContain("source-acquisition/src");
+    expect(NON_PLUGIN_SOURCE_ROOTS).toContain("source-acquisition/src");
+  });
+
   test("classifies narrow-by-design rules with their exact current roots", () => {
     // Given: rules that are deliberately scoped narrower than the shared tiers
     for (const [id, expectedRoots] of NARROW_BY_DESIGN) {
@@ -120,7 +127,7 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
-  test("routes runtime boundary rules through the core-and-plugin source tier", () => {
+  test("routes runtime boundary rules through the shared tier with the provider mapping extension", () => {
     // Given: residual rules whose behavior applies across every shipped runtime source tier
     for (const id of CORE_AND_PLUGIN_RULE_IDS) {
       // When: reading each rule's declared scope from the live registry
@@ -128,7 +135,11 @@ describe("workspace source-root drift gate", () => {
 
       // Then: every scope consumes the shared core-and-plugin roots exactly
       expect(rule).toBeDefined();
-      expect(rule?.scope.roots).toEqual(CORE_AND_PLUGIN_SOURCE_ROOTS);
+      expect(rule?.scope.roots).toEqual(
+        id === "effect-idioms"
+          ? [...CORE_AND_PLUGIN_SOURCE_ROOTS, "container-runtime/src", "sdk/src"]
+          : CORE_AND_PLUGIN_SOURCE_ROOTS,
+      );
     }
   });
 

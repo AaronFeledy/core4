@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
 
@@ -65,7 +64,7 @@ describe("ci workflow", () => {
     expect(end).toBeGreaterThan(start);
     expect(step).toContain("LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando");
     expect(step).toContain('LANDO_NATIVE_INIT_E2E: "1"');
-    expect(step).toContain("bun test core/test/live");
+    expect(step).toContain("bun run test:selection providers-core-live");
   });
 
   test("runs deterministic cross-file isolation regressions in one Bun process", async () => {
@@ -76,7 +75,7 @@ describe("ci workflow", () => {
 
     // Then
     expect(isolationJob).toContain("      - name: Run cross-file isolation regressions");
-    expect(isolationJob).toContain("        run: bun run test:unit:isolation");
+    expect(isolationJob).toContain("        run: bun run test:selection unit-isolation");
   });
 
   test("regenerates derived sources before every source-consuming CI job", async () => {
@@ -94,7 +93,7 @@ describe("ci workflow", () => {
       2,
     );
     const signalCodegen = signalJob.indexOf("run: bun run codegen");
-    const signalTests = signalJob.indexOf("run: bun test core/test/cli/process-signals.test.ts");
+    const signalTests = signalJob.indexOf("run: bun run test:selection process-signals");
     expect(signalJob).toContain("needs.selection.outputs.profile == 'providers'");
     expect(signalCodegen).toBeGreaterThanOrEqual(0);
     expect(signalTests).toBeGreaterThan(signalCodegen);
@@ -127,6 +126,7 @@ describe("ci workflow", () => {
       "provider-matrix.yml",
       "rails-journey.yml",
       "release.yml",
+      "retarget-action-bump.yml",
       "runtime-bundle.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",
@@ -331,7 +331,7 @@ describe("ci workflow", () => {
     expect(providerLandoE2e).toContain("          LANDO_CONFIG__default_provider_id: lando");
     expect(providerLandoE2e).toContain("      - name: Run live integration suites");
     expect(providerLandoE2e).toContain(
-      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts',
+      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run test:selection nightly-provider-e2e',
     );
     expect(providerLandoE2e).not.toContain("LANDO_MVP_BINARY_PATH");
     expect(providerLandoE2e).not.toContain("core/test/scenario");
@@ -376,10 +376,11 @@ describe("ci workflow", () => {
 
     expect(arm).toContain("    runs-on: ubuntu-24.04-arm");
     expect(arm).toContain("    timeout-minutes: 120");
-    expect(arm).toContain("      - name: Setup Go for Linux Podman source build");
-    expect(arm).toContain("      - name: Setup Rust for Linux helper source builds");
-    expect(arm).toContain("      - name: Assemble current-commit linux-arm64 runtime bundle");
-    expect(arm).toContain("        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
+    expect(arm).not.toContain("actions/setup-go@");
+    expect(arm).not.toContain("dtolnay/rust-toolchain@");
+    expect(arm).toContain("    needs: [container-helper, runtime-bundle-linux-arm64]");
+    expect(arm).toContain("      - name: Download current-commit Linux arm64 runtime bundle");
+    expect(arm).not.toContain("scripts/assemble-runtime-bundle.ts");
     expect(arm).toContain("      - name: Report current-commit ARM runtime bundle fingerprints");
     expect(arm).toContain("          name: runtime-bundle-linux-arm64-current");
     expect(arm).toContain("      - name: Build local runtime bundle manifest");
@@ -406,15 +407,13 @@ describe("ci workflow", () => {
     expect(arm).toContain("libgpgme|libassuan|not found");
     expect(arm).toContain("      - name: Wrap managed Podman for ARM MySQL client tests");
     expect(arm).toContain('          echo "LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper" >> "$GITHUB_ENV"');
-    expect(arm).toContain(
-      "        run: bun test plugins/service-lando/test/mysql-arm-client.integration.test.ts",
-    );
+    expect(arm).toContain("        run: bun run test:selection mysql-arm-client");
     expect(arm).toContain("      - name: Teardown managed Lando runtime");
     expect(arm).toContain("name=lando-mysql-arm-");
     expect(arm).not.toContain("podman system prune");
     expect(arm).not.toContain('          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
     expect(arm).not.toContain("      - name: Install Podman 6 toolchain");
-    expect(arm.indexOf("Assemble current-commit linux-arm64 runtime bundle")).toBeLessThan(
+    expect(arm.indexOf("Download current-commit Linux arm64 runtime bundle")).toBeLessThan(
       arm.indexOf("Build local runtime bundle manifest"),
     );
     expect(arm.indexOf("Build local runtime bundle manifest")).toBeLessThan(
@@ -531,14 +530,11 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecksPlatform).toContain("      - name: Native Windows private-file ACL tests");
     expect(staticChecksPlatform).toContain("        if: startsWith(matrix.platform, 'windows-')");
-    expect(staticChecksPlatform).toContain(
-      "        run: bun test state-store/test/state-store/private-file-access.test.ts",
-    );
+    expect(staticChecksPlatform).toContain("        run: bun run test:selection windows-private-file-access");
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-    expect(staticChecksPlatform.match(/^ {8}run: bun run check:types$/gm) ?? []).toHaveLength(1);
-    expect(staticChecksPlatform).toContain("        run: bun run typecheck");
-    expect(staticChecksPlatform).toContain("        if: matrix.platform == 'linux-x64'");
+    expect(staticChecksPlatform).toContain("      - name: Typecheck\n        run: bun run typecheck\n");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
+    expect(staticChecksPlatform.match(/^ {8}run: bun run check:test-ownership$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform.match(/^ {6}- name: Boundary gates$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform.match(/^ {8}run: bun run check:boundaries$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
@@ -554,10 +550,8 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).not.toContain(
       "bun test core/test/services core/test/cli core/test/scenario",
     );
-    expect(staticChecksPlatform).not.toContain(
-      "bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
-    );
-    expect(staticChecksPlatform).not.toContain("bun test core/test/library sdk/test/library");
+    expect(staticChecksPlatform).not.toContain("bun run test:selection recipes");
+    expect(staticChecksPlatform).not.toContain("bun run test:selection library");
     expect(staticChecksPlatform).toContain(
       "::notice title=ci-timing::static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
     );
@@ -605,7 +599,7 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: bun install --frozen-lockfile");
     expect(docsBuild).toContain("        run: bun run codegen");
     expect(docsBuild).toContain("        run: bun run docs:check");
-    expect(docsBuild).toContain("        run: bun run docs:test");
+    expect(docsBuild).toContain("        run: bun run test:selection docs");
     expect(docsBuild).toContain("        run: bun run docs:build");
     expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
     expect(docsBuild).toContain(
@@ -617,8 +611,12 @@ describe("ci workflow", () => {
       docsBuild.indexOf("bun run docs:check"),
     );
     expect(docsBuild.indexOf("bun run codegen")).toBeLessThan(docsBuild.indexOf("bun run docs:check"));
-    expect(docsBuild.indexOf("bun run docs:check")).toBeLessThan(docsBuild.indexOf("bun run docs:test"));
-    expect(docsBuild.indexOf("bun run docs:test")).toBeLessThan(docsBuild.indexOf("bun run docs:build"));
+    expect(docsBuild.indexOf("bun run docs:check")).toBeLessThan(
+      docsBuild.indexOf("bun run test:selection docs"),
+    );
+    expect(docsBuild.indexOf("bun run test:selection docs")).toBeLessThan(
+      docsBuild.indexOf("bun run docs:build"),
+    );
     expect(docsBuild.indexOf("bun run docs:build")).toBeLessThan(
       docsBuild.indexOf("docs/dist/reference/schemas/app-plan/index.html"),
     );
@@ -716,13 +714,11 @@ describe("ci workflow", () => {
       const build = findIndentedBlock(jobs, `build-${target}`, 2);
       expect(build).toContain(`          LANDO_RELEASE_TARGET: ${target}`);
       expect(build).toContain(`          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${binary}`);
-      expect(build).toContain("        run: bun test core/test/build/opentui-compiled-acceptance.test.ts");
+      expect(build).toContain("        run: bun run test:selection compiled-opentui");
       expect(build).toContain(`          LANDO_TEST_COMPILED_CLI: ./dist/${binary}`);
-      expect(build).toContain("        run: bun test core/test/build/host-execution-compiled.test.ts");
+      expect(build).toContain("        run: bun run test:selection compiled-host-execution");
       // Native FFI calling conventions differ per platform, so every build lane round-trips them.
-      expect(build).toContain(
-        "        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts",
-      );
+      expect(build).toContain("        run: bun run test:selection compiled-renderer-output");
       expect(build.indexOf(`Build ${target} binary`)).toBeLessThan(
         build.indexOf("Verify compiled host execution"),
       );
@@ -738,7 +734,7 @@ describe("ci workflow", () => {
       "        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync",
     );
     expect(helper).toContain("          bun run scripts/build-container-helper.ts --test");
-    expect(helper).toContain("          bun test core/test/container-helper/helper.integration.test.ts");
+    expect(helper).toContain("          bun run test:selection container-helper");
     expect(helper).toContain("          path: core/container-helper/dist/");
     expect(helper).not.toContain("setup-go");
     for (const platform of CI_PLATFORMS) {
@@ -768,8 +764,10 @@ describe("ci workflow", () => {
     expect(helper).toContain(
       "        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper",
     );
-    expect(helper).toContain("        run: bun test core/test/container-helper/helper.integration.test.ts");
-    expect(helper.indexOf("Download container helper")).toBeLessThan(helper.indexOf("bun test "));
+    expect(helper).toContain("        run: bun run test:selection container-helper");
+    expect(helper.indexOf("Download container helper")).toBeLessThan(
+      helper.indexOf("bun run test:selection container-helper"),
+    );
     expect(helper).not.toContain("setup-go");
     expect(helper).not.toContain("lando.ts setup");
     expect(helper).not.toContain("build-container-helper.ts");
@@ -986,16 +984,14 @@ describe("ci workflow", () => {
     expect(libraryApiTestsRunner).toContain("        runs-on: [ubuntu-26.04]");
     expect(libraryApiTestsRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(libraryApiTestsRunner).toContain("      - name: Run library API tests");
-    expect(libraryApiTestsRunner).toContain("        run: bun test core/test/library sdk/test/library");
+    expect(libraryApiTestsRunner).toContain("        run: bun run test:selection library");
     expect(libraryApiTests).toContain("    needs: [selection, library-api-tests-runner]");
     expect(libraryApiTests).toContain("always() && !cancelled()");
 
     expect(recipeTestsRunner).toContain("        runs-on: [ubuntu-26.04]");
     expect(recipeTestsRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(recipeTestsRunner).toContain("      - name: Run recipe test layer");
-    expect(recipeTestsRunner).toContain(
-      "        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
-    );
+    expect(recipeTestsRunner).toContain("        run: bun run test:selection recipes");
     expect(recipeTests).toContain("    needs: [selection, recipe-tests-runner]");
     expect(recipeTests).toContain("always() && !cancelled()");
   });
@@ -1177,7 +1173,7 @@ describe("ci workflow", () => {
       "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
     );
     expect(providerIntegration).toContain("        runs-on: [ubuntu-26.04]");
-    expect(providerIntegration).toContain("        suite: [providers, services]");
+    expect(providerIntegration).toContain("        suite: [providers, engine, services]");
     expect(providerIntegration).toContain("      fail-fast: false");
     expect(providerIntegration).toContain("          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}");
     expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
@@ -1191,18 +1187,9 @@ describe("ci workflow", () => {
       providerIntegration.indexOf("Run provider contract tests"),
     );
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
-    expect(providerIntegration).toContain(
-      "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-lando/test/contract.integration.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-docker/test/contract.integration.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-podman/test/contract.integration.test.ts",
-    );
+    for (const provider of ["sdk", "lando", "docker", "podman"]) {
+      expect(providerIntegration).toContain(`          bun run test:selection provider-contract-${provider}`);
+    }
 
     expect(providerIntegration).toContain("      - name: Provision rootless runtime prerequisites");
     expect(providerIntegration).toContain("          sudo apt-get install -y uidmap fuse-overlayfs");
@@ -1286,18 +1273,12 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");
     expect(providerIntegration).toContain(
-      "          bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log",
+      "          bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log",
     );
     expect(providerIntegration).not.toContain("LANDO_MVP_BINARY_PATH");
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-lando/test/*.integration.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-docker/test/*.integration.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/service-lando/test/*.integration.test.ts",
-    );
+    for (const selection of ["providers-lando", "providers-docker", "services-lando"]) {
+      expect(providerIntegration).toContain(`          bun run test:selection ${selection}`);
+    }
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
     expect(providerIntegration).toContain("          for attempt in 1 2 3; do");
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:24");
@@ -1341,10 +1322,10 @@ describe("ci workflow", () => {
       providerIntegration.indexOf("Prepare provider via lando setup"),
     );
     expect(providerIntegration.indexOf("LANDO_TEST_PODMAN_SOCKET")).toBeLessThan(
-      providerIntegration.indexOf("bun test plugins/provider-lando/test"),
+      providerIntegration.indexOf("bun run test:selection provider-contract-lando"),
     );
     expect(providerIntegration.indexOf("Teardown Lando runtime")).toBeGreaterThan(
-      providerIntegration.indexOf("bun test plugins/provider-docker/test"),
+      providerIntegration.indexOf("bun run test:selection provider-contract-docker"),
     );
     expect(providerIntegration.indexOf("Upload provider integration diagnostics")).toBeGreaterThan(
       providerIntegration.indexOf("Collect provider diagnostics"),
@@ -1397,17 +1378,29 @@ describe("ci workflow", () => {
         };
         const providers = await runSuite("providers");
         expect(providers.status).toBe(0);
-        expect(providers.commands).toEqual([
-          "test core/test/live",
-          "test plugins/provider-lando/test/*.integration.test.ts",
-          "test plugins/provider-docker/test/*.integration.test.ts",
+        const providerCommands = [
+          "run test:selection providers-engine-parity",
+          "run test:selection providers-core-live",
+        ];
+        expect(providers.commands).toEqual(providerCommands);
+        const engine = await runSuite("engine");
+        expect(engine.status).toBe(0);
+        expect(engine.commands).toEqual([
+          "run test:selection providers-lando",
+          "run test:selection providers-docker",
+          "run test:selection providers-readiness",
+          "run test:selection providers-ephemeral-data",
+          "run test:selection providers-host-reachability",
+          "run test:selection providers-listener-observation",
+          "run test:selection providers-sqlite-integrity",
+          "run test:selection providers-sqlite-borrowed-mounts",
         ]);
         const services = await runSuite("services");
         expect(services.status).toBe(0);
-        expect(services.commands).toEqual(["test plugins/service-lando/test/*.integration.test.ts"]);
+        expect(services.commands).toEqual(["run test:selection services-lando"]);
         const failed = await runSuite("providers", 23);
         expect(failed.status).toBe(23);
-        expect(failed.commands).toEqual(["test core/test/live"]);
+        expect(failed.commands).toEqual(providerCommands);
         expect(failed.stream).toContain("simulated Bun stderr");
         const unknown = await runSuite("unknown");
         expect(unknown.status).toBe(1);
@@ -1448,18 +1441,9 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("    runs-on: ubuntu-24.04-arm");
     expect(providerIntegration).toContain("    timeout-minutes: 25");
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
-    expect(providerIntegration).toContain(
-      "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-lando/test/contract.integration.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-docker/test/contract.integration.test.ts",
-    );
-    expect(providerIntegration).toContain(
-      "          bun test plugins/provider-podman/test/contract.integration.test.ts",
-    );
+    for (const provider of ["sdk", "lando", "docker", "podman"]) {
+      expect(providerIntegration).toContain(`          bun run test:selection provider-contract-${provider}`);
+    }
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
@@ -1469,33 +1453,41 @@ describe("ci workflow", () => {
     expect(providerIntegration).not.toContain("      - name: Pre-pull container images");
     expect(providerIntegration).not.toContain("          docker pull node:22-alpine");
     expect(providerIntegration).not.toContain("      - name: Run provider integration tests");
-    expect(providerIntegration).not.toContain("          bun test core/test/live");
-    expect(providerIntegration).not.toContain(
-      "          bun test plugins/provider-lando/test/*.integration.test.ts",
-    );
-    expect(providerIntegration).not.toContain(
-      "          bun test plugins/provider-docker/test/*.integration.test.ts",
-    );
-    expect(providerIntegration).not.toContain(
-      "          bun test plugins/service-lando/test/*.integration.test.ts",
-    );
+    expect(providerIntegration).not.toContain("          bun run test:selection providers-core-live");
+    expect(providerIntegration).not.toContain("          bun run test:selection providers-lando");
+    expect(providerIntegration).not.toContain("          bun run test:selection providers-docker");
+    expect(providerIntegration).not.toContain("          bun run test:selection services-lando");
   });
 
-  test("assembles the current-commit Linux x64 runtime bundle once for provider and guide setup", async () => {
+  test("caches native Linux runtime bundles and shares x64 with provider and guide setup", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
-    const runtimeBundle = findIndentedBlock(jobs, "runtime-bundle-linux-x64", 2);
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
     const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64-runner", 2);
 
-    expect(runtimeBundle).toContain("    runs-on: ubuntu-24.04");
-    expect(runtimeBundle).toContain("      - name: Assemble current-commit Linux x64 runtime bundle");
-    expect(runtimeBundle).toContain(
-      "        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64",
-    );
-    expect(runtimeBundle).toContain("          name: runtime-bundle-linux-x64-current");
-    expect(runtimeBundle).toContain("      - name: Setup Go for Linux Podman source build");
-    expect(runtimeBundle).toContain("      - name: Setup Rust for Linux helper source builds");
+    for (const [hostKey, runner] of [
+      ["linux-x64", "ubuntu-24.04"],
+      ["linux-arm64", "ubuntu-24.04-arm"],
+    ]) {
+      const runtimeBundle = findIndentedBlock(jobs, `runtime-bundle-${hostKey}`, 2);
+      expect(runtimeBundle).toContain(`    runs-on: ${runner}\n`);
+      expect(runtimeBundle).toContain(
+        `        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'\n        run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey}\n`,
+      );
+      expect(runtimeBundle).toContain(`          name: runtime-bundle-${hostKey}-current`);
+      expect(runtimeBundle).toContain(
+        `          path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz`,
+      );
+      expect(runtimeBundle).not.toContain("actions/setup-go@");
+      expect(runtimeBundle).not.toContain("dtolnay/rust-toolchain@");
+      expect(runtimeBundle).toContain(
+        `          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key)"`,
+      );
+      expect(runtimeBundle).toContain("          key: ${{ steps.runtime-bundle-key.outputs.key }}");
+      expect(runtimeBundle.indexOf("--cache-key")).toBeLessThan(
+        runtimeBundle.indexOf("id: runtime-bundle-cache"),
+      );
+    }
     expect(providerIntegration).toContain(
       "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
     );
@@ -1580,9 +1572,7 @@ describe("ci workflow", () => {
     expect(workflow).toContain(
       '--target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external',
     );
-    expect(workflow).toContain(
-      "bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
-    );
+    expect(workflow).toContain("bun run test:selection provider-contract-sdk");
   });
 
   test("builds and smokes the windows-arm64 binary on windows-11-arm without live provider integration", async () => {
@@ -1613,9 +1603,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("    needs: [selection, build-windows-arm64, container-helper]");
     expect(providerIntegration).toContain("    runs-on: windows-11-arm");
     expect(providerIntegration).toContain("    timeout-minutes: 20");
-    expect(providerIntegration).toContain(
-      "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
-    );
+    expect(providerIntegration).toContain("          bun run test:selection provider-contract-sdk");
     expect(providerIntegration).not.toContain("windows-managed-setup-acceptance.ts");
     expect(providerIntegration).not.toContain("runtime-bundle-win32");
     expect(providerIntegration).not.toContain("win32-arm64");

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
-
 import {
   type MemoryPressureLevel,
   attachMemoryPressureListener,
@@ -10,6 +8,8 @@ import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
+import { testAppGenerations } from "../src/testing.ts";
 import { TestMcpCommandExecutor } from "./executor";
 
 const spec = (id: string, run: McpCommandSpec["run"] = () => Effect.void): McpCommandSpec => ({
@@ -69,7 +69,7 @@ describe("McpService.handleMemoryPressure", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [{ spec: spec("app:info") } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const { first, second, third } = await Effect.runPromise(
@@ -104,7 +104,7 @@ describe("McpService.handleMemoryPressure", () => {
         } satisfies McpCommandEntry,
       ],
       defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
+      apps: testAppGenerations(),
     };
 
     const before = process.listenerCount("memoryPressure");

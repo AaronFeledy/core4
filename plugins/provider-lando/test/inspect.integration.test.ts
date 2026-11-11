@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { DateTime, Effect } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { bringDown, bringUp, inspect, makePodmanApiClient } from "@lando/provider-lando";
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { bringDown, inspect, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -19,8 +18,9 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 import { decodeNetworkCreate } from "./network-fixture.ts";
-import { makeProviderLayer } from "./provider-fixture.ts";
+import { bringUp, makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("inspectapp");
@@ -162,6 +162,9 @@ const makeFakeApi = () => {
           running.delete(name);
           return { status: 204, body: "" };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
   };
@@ -190,9 +193,8 @@ describe("provider-lando inspect", () => {
     expect(snapshots).toHaveLength(2);
     expect(snapshots.map((snapshot) => String(snapshot.service)).sort()).toEqual(["database", "node"]);
     for (const snapshot of snapshots) {
-      expect(snapshot.state).toBe("running");
       expect(snapshot.status).toBe("running");
-      expect(snapshot.containerId).toBe(`lando-inspectapp-${snapshot.service}-id`);
+      expect(snapshot.containerId).toBe(`lando-inspectapp--${snapshot.service}-id`);
       expect(snapshot.publications).toEqual({ status: "unknown" });
     }
     const callsBeforeInspect = fake.calls.length;
@@ -204,7 +206,7 @@ describe("provider-lando inspect", () => {
 
   test("reports a stopped service without starting or removing it", async () => {
     const fake = makeFakeApi();
-    fake.existing.add("lando-inspectapp-node");
+    fake.existing.add("lando-inspectapp--node");
 
     const snapshot = await Effect.runPromise(
       inspect(plan, { app: appId, service: node.name }, { api: fake.api }),
@@ -214,12 +216,11 @@ describe("provider-lando inspect", () => {
       app: appId,
       service: node.name,
       providerId,
-      state: "stopped",
-      status: "stopped",
-      containerId: "lando-inspectapp-node-id",
+      status: "exited",
+      containerId: "lando-inspectapp--node-id",
       publications: { status: "unknown" },
     });
-    expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp-node/json" }]);
+    expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp--node/json" }]);
   });
 
   test.skipIf(resolveLiveProviderSocket() === undefined)(
@@ -229,11 +230,12 @@ describe("provider-lando inspect", () => {
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 
-      await Effect.runPromise(bringUp(plan, { api }));
+      const helper = await Effect.runPromise(containerHelperTestOptions(api));
+      await Effect.runPromise(bringUp(plan, { api, ...helper }));
       try {
         const snapshot = await Effect.runPromise(inspect(plan, { app: appId, service: node.name }, { api }));
 
-        expect(snapshot.state).toBe("running");
+        expect(snapshot.status).toBe("running");
         expect(snapshot.publications).toEqual({
           status: "present",
           bindings: [

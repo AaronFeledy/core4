@@ -1,5 +1,6 @@
-import { Effect, type Scope } from "effect";
-
+import { makeLandoPaths } from "@lando/paths";
+import type { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { type ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -12,21 +13,19 @@ import {
 } from "@lando/sdk/schema";
 import { EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
-
-import { makeLandoPaths } from "@lando/paths";
-import type { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, type Scope } from "effect";
 import { resolveContainerHelper } from "../composition.ts";
-import {
-  HOST_PROXY_CONTAINER_SOCKET,
-  HOST_PROXY_MOUNT_TARGETS,
-} from "../subsystems/host-proxy/transport-feature.ts";
-import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
   hostProxyRunLandoFeature,
   isHostProxyRunLandoEnvName,
 } from "../subsystems/host-proxy/transport.ts";
+import {
+  HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_MOUNT_TARGETS,
+} from "../subsystems/host-proxy/transport-feature.ts";
+import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
   hostProxyEligibleServices,
   serviceHasHostProxyFeature,
@@ -204,7 +203,7 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
         yield* tree.startTask("session");
         const helper = yield* resolveContainerHelper(shimTarget, {
           cacheRoot: landoPaths.toolDownloadsDir("container-helper"),
-        }).pipe(Effect.mapError(helperUnavailable));
+        }).pipe(mapFailures(helperUnavailable));
         return yield* withRetainedSession(
           (publish: PublishSession<HostProxyRunLandoSession & { readonly reused?: boolean }>) =>
             startDetachedHostProxyWorker({

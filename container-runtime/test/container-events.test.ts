@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 import type { EngineHttpApi, ProviderErrorContext } from "../src/engine-api.ts";
 import { getContainerDiedEvents, parseContainerEventPayloads } from "../src/podman/container-events.ts";
@@ -10,7 +9,7 @@ const diedEvent = {
   Type: "container",
   Action: "died",
   OOMKilled: true,
-  Actor: { Attributes: { name: "lando-myapp-web", "dev.lando.app": "myapp" } },
+  Actor: { Attributes: { name: "lando-myapp--web", "dev.lando.app": "myapp" } },
 };
 
 const landoCtx: ProviderErrorContext = {

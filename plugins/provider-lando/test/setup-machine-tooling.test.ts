@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit } from "effect";
 
 import {
   type PodmanCommandRunner,
@@ -139,7 +137,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
           _machineToolingExists: () => true,
           _machineRunnerFactory: (command) => {
             commands.push(command);
-            return machineRunner("missing", calls);
+            return { ...machineRunner("missing", calls), createdAt: Effect.succeed("2026-09-22T12:00:00Z") };
           },
         }),
       );
@@ -148,7 +146,11 @@ describe("provider-lando bundled machine tooling resolution", () => {
       expect(calls).toEqual(["inspect", "create", "start"]);
 
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
-      expect(state.machine).toEqual({ name: "lando", createdByLando: true });
+      expect(state.machine).toEqual({
+        name: "lando",
+        createdByLando: true,
+        createdAt: "2026-09-22T12:00:00Z",
+      });
       expect(state.socketPath).toBe("/tmp/lando-managed.sock");
     } finally {
       await rm(runtimeBinDir, { recursive: true, force: true });

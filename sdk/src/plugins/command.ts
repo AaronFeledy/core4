@@ -1,5 +1,6 @@
-import type { Effect, Schema } from "effect";
+import type { Effect, Schema, Stream } from "effect";
 
+import type { CommandStdioError } from "../errors/command.ts";
 import type { CommandCompletion } from "../schema/machine-output.ts";
 import type { BootstrapLevel } from "../schema/primitives.ts";
 
@@ -41,6 +42,24 @@ export interface ExecutableCommandArgSpec {
   readonly default?: ExecutableCommandValue | undefined;
   readonly options?: ReadonlyArray<string>;
   readonly multiple?: boolean;
+  /**
+   * The bare value `-` selects the CLI process stream as the command's data payload.
+   * Only non-multiple string/option args may declare this, once per stream per command.
+   * Only the CLI grants streams; MCP rejects `-`, and event/library calls never grant them.
+   * Commands must fail with CommandStdioError reason "unavailable" when a grant is absent.
+   * Granted stdout is byte-exact without payload redaction; write nothing else to stdout.
+   */
+  readonly stdio?: "stdin" | "stdout";
+}
+
+/**
+ * Streams granted only by the CLI. MCP, event, and library invocations never grant them.
+ * A command must fail with CommandStdioError reason "unavailable" when a requested stream is absent.
+ * Granted stdout is byte-exact, without payload redaction; the command must write nothing else to stdout.
+ */
+export interface ExecutableCommandStdio {
+  readonly stdin?: Stream.Stream<Uint8Array, CommandStdioError>;
+  readonly stdout?: (chunk: Uint8Array) => Effect.Effect<void>;
 }
 
 export interface ExecutableCommandInput {
@@ -48,6 +67,7 @@ export interface ExecutableCommandInput {
   readonly parsedArgv: ReadonlyArray<string>;
   readonly flags: Readonly<Record<string, unknown>>;
   readonly args: Readonly<Record<string, unknown>>;
+  readonly stdio?: ExecutableCommandStdio;
 }
 
 /**

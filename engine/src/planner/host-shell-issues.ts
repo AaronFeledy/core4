@@ -2,6 +2,7 @@ import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import type {
+  ConfigLintRuleId,
   EventStep,
   HostEvents,
   LandofileShape,
@@ -72,14 +73,26 @@ export const hostToolingCommands = (
     if (task.disabled === true) return [];
     const normalized = normalizeToolingTask(name, task);
     if (Result.isFailure(normalized)) return [];
-    return normalized.success.steps.flatMap((step, index) => {
-      const path = toolingCommandPath(name, task, index);
-      return (step.service ?? normalized.success.service)?.kind === "host" &&
-        step.argv === undefined &&
+    const variables = Object.entries(task.vars ?? {}).flatMap(([key, value]) => {
+      const path = ["tooling", name, "vars", key, "sh"];
+      return typeof value === "object" &&
+        (value.service === ":host" ||
+          (value.service === undefined && normalized.success.service?.kind === "host")) &&
         !isDynamic(sites, path)
-        ? [{ path, command: step.cmd }]
+        ? [{ path, command: value.sh }]
         : [];
     });
+    return [
+      ...variables,
+      ...normalized.success.steps.flatMap((step, index) => {
+        const path = toolingCommandPath(name, task, index);
+        return (step.service ?? normalized.success.service)?.kind === "host" &&
+          step.argv === undefined &&
+          !isDynamic(sites, path)
+          ? [{ path, command: step.cmd }]
+          : [];
+      }),
+    ];
   });
 
 /** Host string commands of event steps, as the event step compiler sees them. */
@@ -100,7 +113,7 @@ export const hostEventCommands = (
 const findings = (
   command: HostCommand,
   keep: (issue: BunShellDialectIssue) => boolean = () => true,
-): ReadonlyArray<ValidationIssue & { readonly rule: string }> =>
+): ReadonlyArray<ValidationIssue & { readonly rule: ConfigLintRuleId }> =>
   bunShellDialectIssues(command.command)
     .filter(keep)
     .map((dialect) => ({
@@ -167,9 +180,9 @@ export const hostReadinessShellIssues = (
 };
 
 /**
- * The text a host-wide `hostEvents` command hands to Bun Shell. Lando resolves `${NAME}` and
- * `${secret:NAME}` there itself, so each becomes a placeholder; `$${` is already literal text.
- * A command with a `{{ ... }}` interpolation is checked when it runs instead.
+ * The text a host-wide `hostEvents` command hands to Bun Shell. `${secret:NAME}` becomes a
+ * placeholder (and `${NAME}` too, which `hostEventExpressionIssues` reports separately); `$${` is
+ * already literal text. A command with a `{{ ... }}` interpolation is checked when it runs instead.
  */
 const hostEventRunText = (command: string): string | undefined => {
   const parsed = parseExpressionEither(command, { filePath: "config.yml", bareShellParameters: "preserve" });
@@ -180,15 +193,72 @@ const hostEventRunText = (command: string): string | undefined => {
 };
 
 /**
- * Findings for `:host` commands in global `hostEvents`, at `hostEvents.<event>[i].cmd`. Config
- * loading already rejects an unbalanced quote in any step, so that finding isn't repeated here.
+ * `${NAME}` forms and unreadable expressions in any `hostEvents` step. Lando never expands `${NAME}`
+ * there, as in a Landofile, so the step would otherwise run with the text removed.
+ */
+const hostEventExpressionIssues = (
+  hostEvents: HostEvents,
+): ReadonlyArray<ValidationIssue & { readonly rule: ConfigLintRuleId }> =>
+  Object.entries(hostEvents).flatMap(([event, steps]) =>
+    (steps ?? []).flatMap((step, index) => {
+      const command = typeof step === "string" ? step : "cmd" in step ? step.cmd : undefined;
+      if (command === undefined || (!command.includes("${") && !command.includes("{{"))) return [];
+      const path =
+        typeof step === "string" ? ["hostEvents", event, index] : ["hostEvents", event, index, "cmd"];
+      const parsed = parseExpressionEither(command, {
+        filePath: "config.yml",
+        bareShellParameters: "preserve",
+      });
+      if (Result.isFailure(parsed))
+        return [
+          {
+            rule: "unsupported-expression",
+            path,
+            message: parsed.failure.message,
+            suggestion: parsed.failure.remediation,
+          },
+        ];
+      const parameter = parsed.success.segments.find((segment) => segment.kind === "ShellParamSegment");
+      if (parameter === undefined) return [];
+      const { name } = parameter;
+      const shell =
+        typeof step !== "string" && step.service === ":host" ? "the host shell" : "the service shell";
+      const hostValue =
+        parameter.operator === "plain" ? `{{ env.${name} }}` : `{{ default(env.${name}, 'fallback') }}`;
+      return [
+        {
+          rule: "unsupported-expression",
+          path,
+          message: `Lando does not expand \${${name}${parameter.operator === "plain" ? "" : "..."}} in hostEvents.`,
+          suggestion: `Write $${name} for ${shell} to read it when the step runs, or ${hostValue} for your host's value when Lando plans the app.`,
+        },
+      ];
+    }),
+  );
+
+/**
+ * Findings for `hostEvents`: unsupported `${NAME}` forms in any step, and Bun Shell dialect issues in
+ * `:host` commands at `hostEvents.<event>[i].cmd`. Config loading already rejects an unbalanced
+ * quote in any step, so that finding isn't repeated here.
  */
 export const hostEventsShellIssues = (
   hostEvents: HostEvents,
-): ReadonlyArray<ValidationIssue & { readonly rule: string }> =>
-  hostEventCommands(hostEvents, [], "hostEvents").flatMap((command) => {
-    const text = hostEventRunText(command.command);
-    return text === undefined
-      ? []
-      : findings({ path: command.path, command: text }, (issue) => issue.text !== "'" && issue.text !== '"');
-  });
+): ReadonlyArray<ValidationIssue & { readonly rule: ConfigLintRuleId }> => {
+  const events = Object.keys(hostEvents);
+  return [
+    ...hostEventExpressionIssues(hostEvents),
+    ...hostEventCommands(hostEvents, [], "hostEvents").flatMap((command) => {
+      const text = hostEventRunText(command.command);
+      return text === undefined
+        ? []
+        : findings(
+            { path: command.path, command: text },
+            (issue) => issue.text !== "'" && issue.text !== '"',
+          );
+    }),
+  ].sort(
+    (left, right) =>
+      events.indexOf(String(left.path[1])) - events.indexOf(String(right.path[1])) ||
+      Number(left.path[2]) - Number(right.path[2]),
+  );
+};

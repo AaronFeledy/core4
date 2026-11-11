@@ -12,8 +12,6 @@
  * missing key renders empty (its documented logic-less behavior); only
  * malformed tags fail, at compile time, with a template-source location.
  */
-import { Effect } from "effect";
-import Mustache from "mustache";
 
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import {
@@ -23,6 +21,8 @@ import {
   type TemplateEngine,
   TemplateRenderError,
 } from "@lando/sdk/template";
+import { Effect } from "effect";
+import Mustache from "mustache";
 
 const ENGINE_ID = "mustache" as const;
 const EXTENSIONS = [".mustache"] as const;

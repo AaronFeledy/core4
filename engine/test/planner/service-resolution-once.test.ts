@@ -34,8 +34,8 @@ test("planApp resolves each service exactly once", async () => {
     {
       name: "counted",
       services: {
-        [ServiceName.make("web")]: { type: "counted", home: false as const },
-        [ServiceName.make("worker")]: { type: "counted", home: false as const },
+        [ServiceName.make("web")]: { type: "counted", image: "alpine:3.22", home: false as const },
+        [ServiceName.make("worker")]: { type: "counted", image: "alpine:3.22", home: false as const },
       },
       events: { "pre-inspect": ["echo ready"] },
     },
@@ -64,4 +64,5 @@ test("planApp resolves each service exactly once", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
 import { compileTestLandofile } from "../compiled-landofile.ts";

@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
-import { DateTime, Duration, Effect, Stream } from "effect";
-
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -12,9 +10,10 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
+import { DateTime, Duration, Effect, Stream } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
-import { exec, execStream } from "../src/podman/exec.ts";
+import { exec, execStream } from "../src/podman/exec-transport.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
 
@@ -34,7 +33,7 @@ beforeEach(() => {
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-exec-stdin-app-web";
+const containerName = "lando-exec-stdin-app--web";
 const createPath = `/containers/${containerName}/exec` as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
@@ -131,6 +130,27 @@ describe("podman exec user", () => {
     await runExec(fake.api, { command: ["id"] });
 
     expect(createBody(fake.calls)).not.toHaveProperty("User");
+  });
+});
+
+describe("podman exec terminal validation", () => {
+  test.each([1.5, -1, 256, "Infinity", null])("rejects malformed inspect exit %s", async (exitCode) => {
+    const fake = makeFakeApi();
+    const original = fake.api.request;
+    const api: EngineHttpApi = {
+      ...fake.api,
+      request: (request) =>
+        request.path === "/exec/exec-1/json"
+          ? Effect.succeed({ status: 200, body: JSON.stringify({ Running: false, ExitCode: exitCode }) })
+          : original === undefined
+            ? Effect.succeed({ status: 500, body: "missing fixture request" })
+            : original(request),
+    };
+    const failure = await Effect.runPromise(
+      exec(plan, target, { command: ["id"], tty: true }, { api, ctx }).pipe(Effect.flip),
+    );
+    expect(failure).toBeInstanceOf(ServiceExecError);
+    expect(failure.message).toContain("exit code");
   });
 });
 

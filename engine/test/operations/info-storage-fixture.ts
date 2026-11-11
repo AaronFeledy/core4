@@ -76,7 +76,7 @@ export const runInfo = async (
           app: selectedPlan.id,
           service: target.service,
           providerId: selectedPlan.provider,
-          status: "running",
+          status: "running" as const,
           publications: { status: "present" as const, bindings: [] },
           ...(health === undefined ? {} : { health }),
           ...(mounts === undefined ? {} : { mounts }),

@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { makeRuntimeProvider } from "@lando/provider-docker";
 import { landoNetworkingPlan } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
 
 const NetworkBody = Schema.Struct({
@@ -43,6 +43,7 @@ test.each([204, 403, 409])(
             request: (request) =>
               Effect.sync((): EngineHttpResponse => {
                 calls.push(request);
+                if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
                 if (request.path === "/networks/create") {
                   const body = Schema.decodeUnknownSync(NetworkBody)(request.body);
                   networks.set(body.Name, { ...body, Id: `id-${body.Name}` });

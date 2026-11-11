@@ -8,10 +8,11 @@ import { ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
-import { compileToolingInvocations } from "../../src/operations/tooling-compile.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine.ts";
 import * as ProcessRunner from "../../src/services/process-runner.ts";
+import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
+import { admitAndCompileTooling as compileToolingInvocations } from "./compile-tooling-fixture.ts";
 
 const plan: AppPlan = {
   id: AppId.make("preflight"),
@@ -28,7 +29,13 @@ const plan: AppPlan = {
 };
 const layer = HostToolingEngine.layer.pipe(
   Layer.provide(
-    Layer.mergeAll(ProcessRunner.layer, PrivateFileAccessService.layer, testEnvironmentResolverLayer),
+    Layer.mergeAll(
+      ProcessRunner.layer,
+      BunShellRunner.layerWithPrivateFileAccess(() => {
+        throw new TypeError("Interactive host tooling is unavailable in tests.");
+      }).pipe(Layer.provide(Layer.merge(ProcessRunner.layer, PrivateFileAccessService.layer))),
+      testEnvironmentResolverLayer,
+    ),
   ),
 );
 

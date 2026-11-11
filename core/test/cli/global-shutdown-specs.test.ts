@@ -16,6 +16,7 @@ import { Effect, Layer } from "effect";
 import { metaGlobalDestroySpec } from "../../src/cli/command-specs/meta/global/destroy.ts";
 import { metaGlobalStopSpec } from "../../src/cli/command-specs/meta/global/stop.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+
 for (const spec of [metaGlobalStopSpec, metaGlobalDestroySpec]) {
   test.each(["text", "json"] as const)(`${spec.id} receipts in %s output`, async (format) => {
     // Given an applied global app whose provider observed OOM and an inspect failure.

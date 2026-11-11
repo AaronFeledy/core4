@@ -1,7 +1,5 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
-import { Context, Effect, Layer, Predicate, Result, Schema, Scope } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { type FileSyncSelectionError, FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineContribution, FileSyncEngineContributionLayer } from "@lando/sdk/plugins";
 import {
@@ -19,6 +17,8 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, Layer, Predicate, Result, Schema, Scope } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { makeLandoPluginContext } from "./context.ts";
 import { PluginContributionGraph } from "./contribution-graph.ts";
@@ -27,6 +27,7 @@ import {
   collectFileSyncCandidates,
   fileSyncCandidateMetadata,
 } from "./file-sync-candidates.ts";
+
 export { collectFileSyncCandidates } from "./file-sync-candidates.ts";
 
 import {
@@ -34,6 +35,7 @@ import {
   type FileSyncSelectionPolicy,
   selectFileSyncCandidate,
 } from "./file-sync-selection.ts";
+
 export {
   type FileSyncBindMountPerformance,
   type FileSyncCandidateDefinition,
@@ -133,7 +135,7 @@ export class FileSyncResolver extends Context.Service<FileSyncResolver, FileSync
         });
         const provided = layer.pipe(Layer.provide(engineDeps));
         const built = yield* Layer.buildWithScope(provided, scope).pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof FileSyncStartError
               ? cause
               : new FileSyncStartError({
@@ -249,7 +251,7 @@ const loadContributionLayer = (
     const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
       deps.paths.pluginStateDir(pluginName),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new FileSyncStartError({
             engineId: candidate.id,

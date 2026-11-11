@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
-
 import {
   type DockerApiClient,
   type DockerHttpRequest,
@@ -18,6 +15,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { type LogChunk, RuntimeProvider } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -125,7 +123,7 @@ describe("provider-docker logs", () => {
   test.each([true, false])("reassembles multiplexed lines and flushes EOF with plan=%s", async (withPlan) => {
     const fake = makeFakeApi({
       containers: [
-        { name: "lando-myapp-web", labels: { "dev.lando.app": appId, "dev.lando.service": serviceName } },
+        { name: "lando-myapp--web", labels: { "dev.lando.app": appId, "dev.lando.service": serviceName } },
       ],
       logFrames: [
         consoleFrame(1, "2026-05-17T12:00:00.000Z is"),
@@ -174,7 +172,7 @@ describe("provider-docker logs", () => {
       },
     ]);
     expect(fake.calls.find((call) => call.path.includes("/logs?"))?.path).toBe(
-      "/containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true&tail=20&since=1778371200",
+      "/containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true&tail=20&since=1778371200",
     );
     expect(fake.calls.some((call) => call.path.startsWith("/containers/json?"))).toBe(false);
     expect(provider.capabilities.serviceLogs).toBe(true);
@@ -184,7 +182,7 @@ describe("provider-docker logs", () => {
     const fake = makeFakeApi({
       containers: [
         {
-          name: "lando-myapp-web",
+          name: "lando-myapp--web",
           labels: { "dev.lando.app": appId, "dev.lando.service": serviceName },
         },
       ],
@@ -199,7 +197,7 @@ describe("provider-docker logs", () => {
     expect(logs.map((chunk) => chunk.line)).toEqual(["discovered"]);
     expect(fake.calls.some((call) => call.path.startsWith("/containers/json?"))).toBe(true);
     expect(fake.calls.find((call) => call.path.includes("/logs?"))?.path).toContain(
-      "/containers/lando-myapp-web/logs?",
+      "/containers/lando-myapp--web/logs?",
     );
     expect(fake.calls.find((call) => call.path.includes("/logs?"))?.path).toContain("tail=20");
   });

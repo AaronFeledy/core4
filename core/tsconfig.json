@@ -10,7 +10,9 @@
       "@lando/paths": ["../paths/src/paths.ts"],
       "@lando/paths/*": ["../paths/src/*.ts"],
       "@lando/state-store": ["../state-store/src/index.ts"],
-      "@lando/state-store/*": ["../state-store/src/*.ts"]
+      "@lando/state-store/*": ["../state-store/src/*.ts"],
+      "@lando/source-acquisition": ["../source-acquisition/src/index.ts"],
+      "@lando/source-acquisition/*": ["../source-acquisition/src/*.ts"]
     }
   },
   "include": ["./src/**/*.ts", "./bin/**/*.ts", "./package.json"],
@@ -30,6 +32,9 @@
     },
     {
       "path": "../managed-file"
+    },
+    {
+      "path": "../source-acquisition"
     },
     {
       "path": "../data-mover"

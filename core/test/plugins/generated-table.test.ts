@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";

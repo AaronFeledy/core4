@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
+import { Effect, Schema } from "effect";
 
 import {
   LOCALSTACK_FEATURE_ID,
@@ -73,7 +72,7 @@ describe("localstack ServiceType", () => {
       {
         origin: "service",
         type: "volume",
-        store: "myapp-localstack-data",
+        store: "lando-myapp--cloud--localstack-data",
         target: PortablePath.make("/var/lib/localstack"),
         readOnly: false,
       },
@@ -216,7 +215,7 @@ describe("localstack ServiceType", () => {
 
     expect(resolution.base).toBe("lando");
     expect(resolution.features).toEqual([{ id: LOCALSTACK_FEATURE_ID }]);
-    expect(resolution.tooling?.awslocal).toEqual({ service: "cloud", cmd: "awslocal" });
+    expect(resolution.tooling?.awslocal).toEqual({ service: "cloud", cmd: "awslocal", wrapper: true });
   });
 
   test("publishes the LocalStack authoring schema", () => {

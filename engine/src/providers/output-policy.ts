@@ -9,15 +9,16 @@ type OutputPolicy =
   | "artifact-bytes"
   | "environment-read";
 
-type ErrorChannel<T> = NonNullable<T> extends Effect.Effect<infer _A, infer _E, infer _R>
-  ? "effect"
-  : NonNullable<T> extends Stream.Stream<infer _A, infer _E, infer _R>
-    ? "stream"
-    : NonNullable<T> extends (...args: never[]) => Effect.Effect<infer _A, infer _E, infer _R>
-      ? "effect"
-      : NonNullable<T> extends (...args: never[]) => Stream.Stream<infer _A, infer _E, infer _R>
-        ? "stream"
-        : "none";
+type ErrorChannel<T> =
+  NonNullable<T> extends Effect.Effect<infer _A, infer _E, infer _R>
+    ? "effect"
+    : NonNullable<T> extends Stream.Stream<infer _A, infer _E, infer _R>
+      ? "stream"
+      : NonNullable<T> extends (...args: never[]) => Effect.Effect<infer _A, infer _E, infer _R>
+        ? "effect"
+        : NonNullable<T> extends (...args: never[]) => Stream.Stream<infer _A, infer _E, infer _R>
+          ? "stream"
+          : "none";
 type MemberPolicy<K extends keyof RuntimeProviderShape> = readonly [
   OutputPolicy,
   ErrorChannel<RuntimeProviderShape[K]>,
@@ -28,6 +29,7 @@ export const providerMemberPolicy = {
   displayName: ["metadata", "none"],
   version: ["metadata", "none"],
   platform: ["metadata", "none"],
+  runtimeIdentity: ["metadata", "none"],
   capabilities: ["metadata", "none"],
   isAvailable: ["lifecycle", "effect"],
   appliedPlans: ["metadata", "effect"],

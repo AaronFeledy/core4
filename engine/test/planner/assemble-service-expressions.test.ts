@@ -2,12 +2,16 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
-import { FileSystem, PluginRegistry, type ServiceType } from "@lando/sdk/services";
+import {
+  FileSystem,
+  PluginRegistry,
+  type ServiceFeatureDefinition,
+  type ServiceType,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
@@ -37,7 +41,7 @@ const databaseType: ServiceType = {
         creds,
         environment: { ...input.service.environment, DB_PASSWORD: creds.password },
       },
-      features: [],
+      features: [{ id: "expression-database.creds" }],
       connection: { family: "postgres", port: PortNumber.make(5432), creds },
     });
   },
@@ -73,6 +77,13 @@ const appType: ServiceType = {
 };
 
 const serviceTypes = new Map([databaseType, appType].map((type) => [type.id, type]));
+const credentialFeature: ServiceFeatureDefinition = {
+  id: "expression-database.creds",
+  schema: Schema.Unknown,
+  priority: 600,
+  validateEffective: () => Effect.succeed({ handledServiceFields: ["creds"] }),
+  apply: () => Effect.void,
+};
 
 const plan = Effect.fnUntraced(
   function* (landofile: LandofileShape, withFileSystem = false) {
@@ -90,6 +101,8 @@ const plan = Effect.fnUntraced(
             const type = serviceTypes.get(id);
             return type === undefined ? registry.loadServiceType(id) : Effect.succeed(type);
           },
+          loadServiceFeature: (id) =>
+            id === credentialFeature.id ? Effect.succeed(credentialFeature) : registry.loadServiceFeature(id),
         }),
         fileSystem === undefined ? Layer.empty : Layer.succeed(FileSystem, fileSystem),
       ),
@@ -127,10 +140,11 @@ test("rejects non-string results in the deferred service-credential pass", () =>
       {
         name: "typed",
         services: {
-          [ServiceName.make("database")]: { type: databaseType.id },
+          [ServiceName.make("database")]: { type: databaseType.id, image: "alpine:3.22" },
           [ServiceName.make("web")]: {
             type: appType.id,
-            database: "{{ eq(services.database.creds.user, 'lando') }}",
+            image: "alpine:3.22",
+            framework: "{{ eq(services.database.creds.user, 'lando') }}",
           },
         },
       },
@@ -139,7 +153,7 @@ test("rejects non-string results in the deferred service-credential pass", () =>
     // When
     const error = await failure(landofile);
     // Then
-    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "web", "database"] });
+    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "web", "framework"] });
     expect(error.message).toContain("Expected string");
   }));
 
@@ -152,6 +166,7 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
           // Declared before the database it reads from.
           [ServiceName.make("web")]: {
             type: appType.id,
+            image: "alpine:3.22",
             home: false as const,
             environment: {
               DATABASE_URL,
@@ -159,7 +174,11 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
               DB_LABEL: "{{ app.name }}:{{ services.database.creds.user }}",
             },
           },
-          [ServiceName.make("database")]: { type: databaseType.id, home: false as const },
+          [ServiceName.make("database")]: {
+            type: databaseType.id,
+            image: "alpine:3.22",
+            home: false as const,
+          },
         },
         tooling: {
           psql: { service: "web", cmd: "psql -U {{ services.database.creds.user }}" },
@@ -199,6 +218,7 @@ test("lets authored creds: win, including creds derived from another service's",
         services: {
           [ServiceName.make("replica")]: {
             type: databaseType.id,
+            image: "alpine:3.22",
             home: false as const,
             creds: {
               user: "replicator",
@@ -208,11 +228,13 @@ test("lets authored creds: win, including creds derived from another service's",
           },
           [ServiceName.make("primary")]: {
             type: databaseType.id,
+            image: "alpine:3.22",
             home: false as const,
             creds: { user: "owner", password: "pw-{{ app.slug }}", database: "main" },
           },
           [ServiceName.make("web")]: {
             type: appType.id,
+            image: "alpine:3.22",
             home: false as const,
             environment: {
               REPLICA_URL:
@@ -239,6 +261,7 @@ test("fails at the value path when the referenced service does not exist", () =>
           services: {
             [ServiceName.make("web")]: {
               type: appType.id,
+              image: "alpine:3.22",
               home: false as const,
               environment: { DATABASE_URL: "{{ services.nope.creds.user }}" },
             },
@@ -265,10 +288,11 @@ test("fails when the referenced service publishes no credentials", () =>
           services: {
             [ServiceName.make("web")]: {
               type: appType.id,
+              image: "alpine:3.22",
               home: false as const,
               environment: { CACHE_PASSWORD: "{{ services.cache.creds.password }}" },
             },
-            [ServiceName.make("cache")]: { type: appType.id, home: false as const },
+            [ServiceName.make("cache")]: { type: appType.id, image: "alpine:3.22", home: false as const },
           },
         },
         root,
@@ -289,6 +313,7 @@ test("rejects a service that reads its own credentials and a pair that read each
           services: {
             [ServiceName.make("database")]: {
               type: databaseType.id,
+              image: "alpine:3.22",
               home: false as const,
               environment: { SELF: "{{ services.database.creds.user }}" },
             },
@@ -307,11 +332,13 @@ test("rejects a service that reads its own credentials and a pair that read each
           services: {
             [ServiceName.make("a")]: {
               type: databaseType.id,
+              image: "alpine:3.22",
               home: false as const,
               creds: { user: "a", password: "{{ services.b.creds.password }}", database: "a" },
             },
             [ServiceName.make("b")]: {
               type: databaseType.id,
+              image: "alpine:3.22",
               home: false as const,
               creds: { user: "b", password: "{{ services.a.creds.password }}", database: "b" },
             },
@@ -333,6 +360,7 @@ test("requires a literal service name in a services reference", () =>
           services: {
             [ServiceName.make("web")]: {
               type: appType.id,
+              image: "alpine:3.22",
               home: false as const,
               environment: { USER: "{{ services[app.name].creds.user }}" },
             },
@@ -353,11 +381,13 @@ test("keeps a literal credential that happens to contain an expression opener", 
         services: {
           [ServiceName.make("database")]: {
             type: databaseType.id,
+            image: "alpine:3.22",
             home: false as const,
             creds: { user: "lando", password: "pw{{{{literal", database: "appdb" },
           },
           [ServiceName.make("web")]: {
             type: appType.id,
+            image: "alpine:3.22",
             home: false as const,
             environment: { PW: "{{ services.database.creds.password }}" },
           },
@@ -378,11 +408,16 @@ test("never interpolates values that arrive through env files, even when they eq
         services: {
           [ServiceName.make("web")]: {
             type: appType.id,
+            image: "alpine:3.22",
             home: false as const,
             envFile: ["web.env"],
             environment: { DATABASE_URL },
           },
-          [ServiceName.make("database")]: { type: databaseType.id, home: false as const },
+          [ServiceName.make("database")]: {
+            type: databaseType.id,
+            image: "alpine:3.22",
+            home: false as const,
+          },
         },
       },
       root,
@@ -407,13 +442,18 @@ test("treats a value the identity pass produced as data, not as a second express
           services: {
             [ServiceName.make("web")]: {
               type: appType.id,
+              image: "alpine:3.22",
               home: false as const,
               environment: {
                 FROM_HOST: "{{ env.LANDO_TEST_NESTED_EXPRESSION }}:{{ app.slug }}",
                 DIRECT: "{{ services.database.creds.user }}",
               },
             },
-            [ServiceName.make("database")]: { type: databaseType.id, home: false as const },
+            [ServiceName.make("database")]: {
+              type: databaseType.id,
+              image: "alpine:3.22",
+              home: false as const,
+            },
           },
         },
         root,

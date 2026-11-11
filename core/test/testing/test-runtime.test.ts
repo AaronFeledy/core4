@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-
-import { Context, Effect, Fiber, Layer, Queue, Schema } from "effect";
-
 import {
   AppPlanner,
   CacheService,
@@ -38,23 +35,22 @@ import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, Fiber, Layer, Queue, Schema } from "effect";
 
 const CacheValue = Schema.Struct({
   name: Schema.String,
   count: Schema.Number,
 });
 
-type LayerOutput<LayerValue> = LayerValue extends Layer.Layer<infer Output, infer _Error, infer _Input>
-  ? Output
-  : never;
+type LayerOutput<LayerValue> =
+  LayerValue extends Layer.Layer<infer Output, infer _Error, infer _Input> ? Output : never;
 
-type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends <
-  Value,
->() => Value extends Right ? 1 : 2
-  ? (<Value>() => Value extends Right ? 1 : 2) extends <Value>() => Value extends Left ? 1 : 2
-    ? true
-    : false
-  : false;
+type TypeEquals<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+    ? (<Value>() => Value extends Right ? 1 : 2) extends <Value>() => Value extends Left ? 1 : 2
+      ? true
+      : false
+    : false;
 
 type AssertType<Value extends true> = Value;
 
@@ -466,6 +462,36 @@ describe("@lando/core/testing", () => {
       expect(first.calls.renderer).toEqual([{ stream: "stdout", chunk: "content=payload" }]);
       expect(existsSync(virtualPath)).toBe(false);
     });
+  });
+
+  test("scratch registry double preserves detach through stale writes and rejects illegal transitions", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* ScratchRegistry;
+        const original = {
+          id: "scratch-detach",
+          source: { kind: "fork" as const },
+          isolate: "full" as const,
+          detached: false,
+          rootPath: "/scratch/root",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        };
+        yield* registry.upsert("acquire", original);
+        yield* registry.upsert("detach", original);
+        yield* registry.upsert("mark-running", original);
+        const running = yield* registry.get(original.id);
+        yield* registry.upsert("mark-pending-cleanup", original);
+        const rejected = yield* registry.upsert("mark-running", original).pipe(Effect.result);
+        return { running, rejected };
+      }).pipe(Effect.provide(provideTestRuntime({ bootstrap: "scratch" }))),
+    );
+
+    expect(result.running).toMatchObject({ detached: true, status: "running" });
+    expect(result.rejected._tag).toBe("Failure");
+    if (result.rejected._tag === "Failure") {
+      expect(result.rejected.failure).toMatchObject({ _tag: "ScratchAppError", operation: "registry.write" });
+    }
   });
 
   test("scratch bootstrap keeps scratch service and registry doubles consistent", async () => {

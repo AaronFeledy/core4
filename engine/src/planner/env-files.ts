@@ -1,13 +1,12 @@
 import { resolve } from "node:path";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { type Context, Effect } from "effect";
-
 import { parseEnvFile } from "@lando/landofile/env-file";
+import { mapFailures } from "@lando/sdk/command-result";
+import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig, ValidationIssuePath } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 type EnvFileInput = {
   readonly appRoot: string;
@@ -48,7 +47,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
   for (const [index, authoredPath] of input.envFiles.entries()) {
     const source = resolve(input.appRoot, authoredPath);
     const content = yield* input.fileSystem.readText(source).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new LandofileValidationError({
             message: `Unable to read env file ${source} ${input.readContext}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,

@@ -4,10 +4,6 @@ import { mkdtemp, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
-import { TestClock } from "effect/testing";
-
-import { Cause, DateTime, Effect, Exit, Layer, Option, Schema } from "effect";
-
 import { CacheError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -23,6 +19,8 @@ import {
 } from "@lando/sdk/schema";
 import { CacheService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   type AppPlanCacheKeyInput,
@@ -508,12 +506,14 @@ describe("AppCacheService.layer", () => {
     expect(read).toBeNull();
   });
 
-  test("derives route global-service requirements when reading cached app plans", async () => {
+  test("preserves custom router requirements when reading cached app plans", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-routed-cache-"));
     const appRoot = "/workspace/routed-cache-plan";
     const key = "app-plan-key";
     const routedPlan = {
       ...appPlanFixture,
+      router: { enabled: true, id: "custom-router" },
+      requires: { globalServices: ["custom-gateway"] },
       root: AbsolutePath.make(appRoot),
       routes: [
         {
@@ -542,7 +542,7 @@ describe("AppCacheService.layer", () => {
     );
 
     expect(read?.routes).toHaveLength(1);
-    expect(read?.requires?.globalServices).toEqual(["traefik"]);
+    expect(read?.requires?.globalServices).toEqual(["custom-gateway"]);
   });
 
   test("namespaces app-plan caches per app root to prevent cross-project collisions", async () => {

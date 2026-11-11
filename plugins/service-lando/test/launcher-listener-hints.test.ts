@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
-import type { ListenerAuthority } from "@lando/sdk/schema";
-import type { ServiceConfig } from "@lando/sdk/schema";
+import type { ListenerAuthority, ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { serviceTypes } from "../src/index.ts";
 
 import { imageAuthority, launcherAuthority } from "../src/services/_port-helpers.ts";
@@ -16,8 +14,8 @@ import {
 import { MINIO_LISTENER, minioServiceFeature, minioServiceType } from "../src/services/minio.ts";
 import { MONGODB_LISTENER, mongodbServiceFeature, mongodbServiceType } from "../src/services/mongodb.ts";
 import { NGINX_LISTENER, nginxServiceFeature, nginxServiceType } from "../src/services/nginx.ts";
-import { PHP_LISTENERS } from "../src/services/php-via.ts";
 import { php83ServiceType, phpServiceFeature } from "../src/services/php.ts";
+import { PHP_LISTENERS } from "../src/services/php-via.ts";
 import { REDIS_LISTENER, redisServiceFeature, redisServiceType } from "../src/services/redis.ts";
 import { SOLR_LISTENER, solrServiceFeature, solrServiceType } from "../src/services/solr.ts";
 import {

@@ -3,13 +3,13 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import type { EngineApiClient, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { volumeCreationLabels } from "../src/volume-creation.ts";
-import { storageLifecycleFixture } from "./support/storage-lifecycle-fixture.ts";
 import { runStorageLifecycle, storageLifecycleClient } from "./support/storage-lifecycle.ts";
+import { storageLifecycleFixture } from "./support/storage-lifecycle-fixture.ts";
 
 const recordingApi = (respond: (input: EngineHttpRequest) => EngineHttpResponse) => {
   const calls: EngineHttpRequest[] = [];
   const api: EngineApiClient = {
-    info: Effect.succeed({}),
+    info: Effect.succeed({ Architecture: "amd64" }),
     request: (input) =>
       Effect.sync(() => {
         calls.push(input);

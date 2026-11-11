@@ -1,10 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { EventService, SecretStore } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import { scanModuleEdges } from "../../scripts/module-edge-scan.ts";
 
@@ -42,8 +40,6 @@ const coreRuntimeAllowlist = new Set([
   "app/resolve.ts",
   "app/runtime.ts",
   "config/paths.ts",
-  // Resolves the compiled binary's embedded in-container helper; engine reaches it through composition.
-  "container-helper",
   "errors/index.ts",
   "landofile/index.ts",
   "lifecycle/index.ts",
@@ -51,6 +47,8 @@ const coreRuntimeAllowlist = new Set([
   "runtime/generated",
   "runtime/bundled-plugins.ts",
   "runtime/engine-composition.ts",
+  // The host's cwd, env, IO, and runtime substitutions for one invocation, shared by the CLI and App API.
+  "runtime/invocation-context.ts",
   "runtime/layer.ts",
   "runtime/scratch-init-port.ts",
   "schema/index.ts",

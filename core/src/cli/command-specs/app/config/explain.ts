@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import {
   type AppConfigExplainResult,
   AppConfigExplainResultSchema,
@@ -7,6 +5,7 @@ import {
   renderAppConfigExplainResult,
 } from "../../../commands/app-config-explain";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 
 export const appConfigExplainSpec: LandoCommandSpec<AppConfigExplainResult> = {
   resultSchema: AppConfigExplainResultSchema,
@@ -14,7 +13,6 @@ export const appConfigExplainSpec: LandoCommandSpec<AppConfigExplainResult> = {
   summary: "Report recipe provenance and which generated value sites are still managed.",
   namespace: "app",
   topLevelAlias: false,
-  aliases: ["config:explain"],
   // Reads and parses one Landofile. No translator, planner, or provider is involved.
   bootstrap: "minimal",
   flags: {

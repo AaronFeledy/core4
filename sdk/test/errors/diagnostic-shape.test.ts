@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema, SchemaAST } from "effect";
-
 import * as errors from "@lando/sdk/errors";
 import { ValidationIssue } from "@lando/sdk/schema";
+import { Result, Schema, SchemaAST } from "effect";
 
 describe("public diagnostic contracts", () => {
   for (const [name, exported] of Object.entries(errors)) {
@@ -54,7 +53,12 @@ describe("public diagnostic contracts", () => {
         properties: { remediation: { type: "string", minLength: 1, pattern: "\\S" } },
         required: ["remediation"],
       });
-      expect("suggestion" in fields).toBe(false);
+      expect("suggestion" in fields).toBe(name === "ConfigKeyNotFoundError");
+      if ("suggestion" in fields) {
+        expect(Schema.is(fields.suggestion)(undefined)).toBe(true);
+        expect(Schema.is(fields.suggestion)('Did you mean "httpPort"?')).toBe(true);
+        expect(Schema.is(fields.suggestion)(42)).toBe(false);
+      }
     });
 
     if ("detail" in fields) {

@@ -1,7 +1,6 @@
-import { Schema } from "effect";
-
 import { isCoreServiceEnvKey } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";

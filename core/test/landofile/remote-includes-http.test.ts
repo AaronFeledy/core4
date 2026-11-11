@@ -2,14 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { service as processRunner } from "@lando/engine/services/process-runner";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import type { LandofileRuntimePorts } from "@lando/landofile/ports";
+import { makeLandoPaths } from "@lando/paths";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
+import type { GitTransport } from "@lando/source-acquisition";
+import { makeGitTransport } from "@lando/source-acquisition/git";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
-
-import { type GitRecipeCloneInput, defaultGitRecipeCloner, publish } from "../../src/recipes/git-source.ts";
 import { startGitHttpServer } from "../_support/git-http-server.ts";
 import { createGitRepository } from "../_support/git-repository.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
@@ -35,7 +37,7 @@ const withRepository = async (
     readonly url: string;
     readonly server: ReturnType<typeof startGitHttpServer>;
     readonly repository: Awaited<ReturnType<typeof createGitRepository>>;
-    readonly acquisitions: readonly GitRecipeCloneInput[];
+    readonly acquisitions: ReadonlyArray<Parameters<GitTransport["fetch"]>[0]>;
     readonly load: (includes: readonly Include[], cacheRoot?: string) => Promise<LandofileShape>;
     readonly lock: () => Promise<typeof Lock.Type>;
   }) => Promise<void>,
@@ -60,31 +62,33 @@ const withRepository = async (
       { kind: "commit", message: "v2", files: { "fragment.yml": SECOND, "extra.yml": SECOND } },
       { kind: "git", args: ["tag", "v2"] },
     ]);
-    const acquisitions: GitRecipeCloneInput[] = [];
+    const acquisitions: Array<Parameters<GitTransport["fetch"]>[0]> = [];
+    const transport = makeGitTransport(processRunner);
     const unused = async (): Promise<never> => {
       throw new Error("Unexpected non-git acquisition");
     };
     const ports: LandofileRuntimePorts = {
       resolveUserCacheRoot: () => join(root, "cache"),
       resolveUserIncludesDir: () => join(root, "user-includes"),
-      git: {
-        clone: (input) => {
-          acquisitions.push(input);
-          return defaultGitRecipeCloner.clone(input);
+      sources: {
+        git: {
+          fetch: (input) => {
+            acquisitions.push(input);
+            return transport.fetch(input);
+          },
         },
+        archive: { fetch: unused },
       },
-      npmRecipeSource: { resolve: unused, fetchTarball: unused },
-      tarball: { fetch: unused, extract: unused },
-      publication: { publish },
     };
-    const stateStore = makeStateStore({
-      privateFileAccess: {
-        enforce: async () => undefined,
-        verify: async () => undefined,
-      },
-    });
     const load = (includes: readonly Include[], cacheRoot = join(root, "cache")) => {
       const landofile = { includes: [...includes] };
+      const stateStore = makeStateStore({
+        roots: makeLandoPaths({ userCacheRoot: cacheRoot }).roots,
+        privateFileAccess: {
+          enforce: async () => undefined,
+          verify: async () => undefined,
+        },
+      });
       return Effect.runPromise(
         buildLandofileLoadScope([{ file: join(appRoot, ".lando.yml"), value: landofile }]).pipe(
           Effect.flatMap((loadScope) =>

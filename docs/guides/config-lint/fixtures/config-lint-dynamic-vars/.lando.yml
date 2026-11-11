@@ -1,0 +1,17 @@
+name: lint-dynamic-vars-demo
+tooling:
+  badref:
+    description: A var that reads a computed var
+    service: ":host"
+    vars:
+      BRANCH:
+        sh: git rev-parse --abbrev-ref HEAD
+      LABEL: "release-{{ vars.BRANCH }}"
+    cmd: echo "{{ vars.LABEL }}"
+  badsh:
+    description: A computed var written in POSIX syntax
+    service: ":host"
+    vars:
+      HOME_DIR:
+        sh: echo $${HOME}
+    cmd: echo "{{ vars.HOME_DIR }}"

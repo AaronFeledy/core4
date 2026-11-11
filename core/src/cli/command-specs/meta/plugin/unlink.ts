@@ -1,14 +1,12 @@
-import { Args } from "../../../spec/metadata";
-
 import {
   type PluginUnlinkResult,
   PluginUnlinkResultSchema,
   pluginUnlink,
   renderPluginUnlinkResult,
 } from "../../../commands/plugin-unlink";
-
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args } from "../../../spec/metadata";
 
 const extractName = (input: unknown): string => stringFlag(specArgsOf(input), "name") ?? "";
 

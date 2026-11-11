@@ -2,14 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
-
-import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
-
 import { uninstall as uninstallEffect } from "@lando/engine/operations/uninstall";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer } from "effect";
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
   uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessService.layer));
@@ -21,20 +18,10 @@ const makeRoots = () => {
   return { root, userDataRoot, userCacheRoot };
 };
 
-// Every host-reaching uninstall path has to land inside the temp root. The
-// socket-proxy helper step defaults to the real `/etc` unit and polkit paths,
-// so a host that still carries Lando-owned proxy units classifies the step as
-// owned, tries to `systemctl stop` them without privilege, and fails the run.
+// Every host-reaching uninstall path has to land inside the temp root.
 const sandboxUninstallIo = (root: string) => ({
   cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
-  socketProxyUnitPaths: [
-    join(root, "lando-proxy-http.socket"),
-    join(root, "lando-proxy-http.service"),
-    join(root, "lando-proxy-https.socket"),
-    join(root, "lando-proxy-https.service"),
-  ],
-  socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
   listDiscoveredApps: async () => [],
 });
 
@@ -42,7 +29,7 @@ describe("runtime-service uninstall execution", () => {
   test("runs teardown from the host maintenance registry", async () => {
     // Given: an owned runtime directory and a host maintainer fake.
     const { root, userDataRoot, userCacheRoot } = makeRoots();
-    const teardownInputs: Parameters<HostMaintenanceContribution["teardown"]>[0][] = [];
+    const teardownInputs: Parameters<NonNullable<HostMaintenanceContribution["teardown"]>>[0][] = [];
     const maintainer: HostMaintenanceContribution = {
       id: "fake-runtime",
       teardown: (input) => {
@@ -63,7 +50,10 @@ describe("runtime-service uninstall execution", () => {
           ...sandboxUninstallIo(root),
         }).pipe(
           Effect.provide(
-            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+            Layer.succeed(
+              HostMaintenanceRegistry,
+              HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+            ),
           ),
         ),
       );

@@ -1,20 +1,20 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import {
+  LandofileShape,
+  PortablePath,
+  ServiceName,
+  landoServiceHomeStoreName as homeStoreName,
+} from "@lando/sdk/schema";
 import { AppPlanner, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { literalTestLandofile } from "../compiled-landofile.ts";
-
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import { DATA_TREE_OWNERSHIP_STEP_ID } from "../../src/planner/data-tree.ts";
 import { serviceFeatureBuildSteps } from "../../src/planner/extensions.ts";
-import { homeStoreName } from "../../src/planner/home.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -23,6 +23,7 @@ import {
   HOST_INTERNAL_ALIAS,
   HOST_IP_ENV_KEY,
 } from "../../src/subsystems/networking.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const capabilities = {
   ...TestRuntimeProvider.capabilities,

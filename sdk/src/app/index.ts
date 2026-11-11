@@ -18,6 +18,7 @@ import type {
   AppResolveError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
+  CaError,
   CacheError,
   CommandAliasConflictError,
   DebuggerHostUnavailableError,
@@ -83,6 +84,7 @@ import type {
 } from "../errors/index.ts";
 
 type LandofileNotFoundError = LandofileMissingError | LandofileFormConflictError;
+
 import type {
   AbsolutePath,
   AppPlan,
@@ -114,11 +116,12 @@ import type {
   TunnelTarget,
 } from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
-export type { EndpointRef, ServiceConnection, ServiceState, StartedService } from "../schema/index.ts";
+
 export type {
   AppRemoteEntry,
   AppRemoteMutationResult,
   DestroyAppResult,
+  EndpointRef,
   ExecAppResult,
   InfoAppAgentEnv,
   InfoAppHostProxy,
@@ -126,11 +129,15 @@ export type {
   LandofileEventsOutcome,
   RebuildAppResult,
   RestartAppResult,
+  ServiceConnection,
+  ServiceState,
   ShareStopAppResult,
   StartAppResult,
+  StartedService,
   StopAppResult,
   ToolingResult,
 } from "../schema/index.ts";
+
 import type {
   AppPlanner,
   CacheService,
@@ -236,6 +243,7 @@ export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError
 export type StartAppError =
   | AppPlacementError
   | AppResolveError
+  | CaError
   | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError
@@ -274,6 +282,7 @@ export type StartAppError =
 export type StopAppOptions = {};
 
 export type StopAppError =
+  | ProxyError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | AppPlannerError
@@ -543,7 +552,10 @@ export interface AppConfigApi {
     options?: AppConfigLintOptions,
   ) => Effect.Effect<
     ConfigLintResult,
-    LandofileNotFoundError | LandofileValidationError | NotImplementedError
+    | LandofileNotFoundError
+    | LandofileValidationError
+    | NotImplementedError
+    | import("../errors/app.ts").AppDataIdentityError
   >;
 }
 

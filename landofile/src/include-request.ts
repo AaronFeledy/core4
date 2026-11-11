@@ -1,14 +1,16 @@
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileIncludeError, LandofileLockMismatchError, causeMessage } from "@lando/sdk/errors";
 import type { IncludeEntry } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
-import type { ResolveContext } from "./include-context.ts";
+import type { FragmentResult, ResolveContext } from "./include-context.ts";
 import { parseFragment } from "./include-fragment.ts";
 import { hasIncludeCycle } from "./include-graph.ts";
 import { attributeIncludeError, includeError } from "./include-guard.ts";
 import { fetchLocal, fetchUser } from "./include-local.ts";
 import { stageFragmentLock } from "./include-lockfile.ts";
-import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { fetchGit, fetchNpm } from "./include-remote.ts";
+import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { classify, normalizeInclude } from "./include-source.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 
@@ -20,8 +22,9 @@ export const acquireIncludeRequest = Effect.fnUntraced(
     const entry = normalizeInclude(request.entry);
     const kind = classify(entry.source);
     if (ctx.lockAvailable === false && (kind === "git" || kind === "npm")) return;
-    const fragment = yield* Effect.tryPromise({
-      try: async () => {
+    // Join the aborted acquisition so its staging cleanup finishes before the walk's lease closes.
+    const fragment = yield* tryPromiseSettled({
+      try: async (signal): Promise<FragmentResult | undefined> => {
         if (ctx.userOwned && (kind === "git" || kind === "npm"))
           throw includeError({
             message: `User Landofile profile ${request.source} must not declare remote include ${entry.source}.`,
@@ -31,13 +34,15 @@ export const acquireIncludeRequest = Effect.fnUntraced(
           });
         switch (kind) {
           case "local":
-            return ctx.remoteOrigin === undefined ? fetchLocal(entry, ctx) : fetchRemoteRelative(entry, ctx);
+            return ctx.remoteOrigin === undefined
+              ? fetchLocal(entry, ctx)
+              : fetchRemoteRelative(entry, ctx, signal);
           case "user":
             return fetchUser(entry, ctx);
           case "git":
-            return fetchGit(entry, ctx);
+            return fetchGit(entry, ctx, signal);
           case "npm":
-            return fetchNpm(entry, ctx);
+            return fetchNpm(entry, ctx, signal);
           default: {
             const exhaustive: never = kind;
             return exhaustive;
@@ -72,7 +77,7 @@ export const acquireIncludeRequest = Effect.fnUntraced(
     );
     return { fragment, parsed };
   },
-  (effect, request) => effect.pipe(Effect.mapError((error) => attributeIncludeError(error, request.origin))),
+  (effect, request) => effect.pipe(mapFailures((error) => attributeIncludeError(error, request.origin))),
   (effect, request, ctx) =>
     ctx.observeInclude === undefined
       ? effect

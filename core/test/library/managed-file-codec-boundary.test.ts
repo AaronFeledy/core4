@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 // Import-boundary assertion for `managed-file/codecs.ts`: no `LandoRuntime`,
 // Effect bootstrap layers, or `@oclif/core` in the static import graph.
@@ -147,7 +146,13 @@ describe("managed-file codec import boundary (constructs no LandoRuntime)", () =
     const source = readFileSync(codecEntry, "utf8");
     const directImports = scanStaticImports(source);
 
-    const allowed = new Set(["effect", "@lando/sdk/landofile", "@lando/sdk/errors", "@lando/sdk/schema"]);
+    const allowed = new Set([
+      "effect",
+      "@lando/sdk/command-result",
+      "@lando/sdk/landofile",
+      "@lando/sdk/errors",
+      "@lando/sdk/schema",
+    ]);
     for (const specifier of directImports) {
       expect(allowed.has(specifier), `unexpected codec import: "${specifier}"`).toBe(true);
     }

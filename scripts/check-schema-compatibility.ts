@@ -1,22 +1,24 @@
 import { resolve } from "node:path";
-
-import {
-  type SchemaArtifactFamily,
-  type SchemaArtifactSet,
-  SchemaCompatibilityInputError,
-  loadCompatibilityExceptions,
-  loadWorkingSchemaArtifacts,
-} from "./schema-compatibility-artifacts.ts";
-import {
-  SCHEMA_SNAPSHOT_GENERATOR_PATH,
-  regenerateBaseSchemaArtifacts,
-} from "./schema-compatibility-baseline.ts";
+import { buildPersistedSchemaSnapshot } from "./build-persisted-schema-snapshot.ts";
+import type { AcceptCompatibilityOptions } from "./schema-compatibility/accept-exceptions.ts";
 import {
   type CompatibilityException,
   type CompatibilityFinding,
   acceptCompatibilityExceptions,
   classifySchemaChange,
 } from "./schema-compatibility/classifier.ts";
+import { loadCompatibilityExceptions } from "./schema-compatibility/exceptions.ts";
+import type { JsonSchema } from "./schema-compatibility/model.ts";
+import { buildPersistedSurfaceStores, readPersistedStoreVersions } from "./schema-compatibility/persisted.ts";
+import { loadBasePersistedStoreVersions } from "./schema-compatibility/store-versions.ts";
+import {
+  SCHEMA_ARTIFACT_FAMILIES,
+  type SchemaArtifactFamily,
+  type SchemaArtifactSet,
+  SchemaCompatibilityInputError,
+  loadWorkingSchemaArtifacts,
+} from "./schema-compatibility-artifacts.ts";
+import { regenerateBaseSchemaArtifacts } from "./schema-compatibility-baseline.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_BASE_REF = "origin/main";
@@ -40,14 +42,6 @@ export interface SchemaCompatibilitySkip {
   readonly baseRef: string;
 }
 
-const FAMILY_METADATA = {
-  sdk: { prefix: "schema:", label: "SDK schemas" },
-  command: {
-    prefix: "command:",
-    label: "command schemas",
-  },
-} as const satisfies Record<SchemaArtifactFamily, { readonly prefix: string; readonly label: string }>;
-
 export const skippedFamilyNotices = (
   after: SchemaArtifactSet,
   baseRef: string,
@@ -55,8 +49,9 @@ export const skippedFamilyNotices = (
 ): ReadonlyArray<SchemaCompatibilitySkip> =>
   unavailableFamilies.map((family) => ({
     family,
-    count: [...after.keys()].filter((surface) => surface.startsWith(FAMILY_METADATA[family].prefix)).length,
-    generatorPath: SCHEMA_SNAPSHOT_GENERATOR_PATH,
+    count: [...after.keys()].filter((surface) => surface.startsWith(SCHEMA_ARTIFACT_FAMILIES[family].prefix))
+      .length,
+    generatorPath: SCHEMA_ARTIFACT_FAMILIES[family].generatorPath,
     baseRef,
   }));
 
@@ -64,17 +59,41 @@ const comparableArtifacts = (
   after: SchemaArtifactSet,
   unavailableFamilies: ReadonlyArray<SchemaArtifactFamily>,
 ): SchemaArtifactSet => {
-  const unavailablePrefixes = unavailableFamilies.map((family) => FAMILY_METADATA[family].prefix);
+  const unavailablePrefixes = unavailableFamilies.map((family) => SCHEMA_ARTIFACT_FAMILIES[family].prefix);
   return new Map(
     [...after].filter(([surface]) => !unavailablePrefixes.some((prefix) => surface.startsWith(prefix))),
   );
 };
 
-const compareArtifactSets = (
+const rootSchemasFromArtifacts = (artifacts: SchemaArtifactSet): Map<string, JsonSchema> => {
+  const roots = new Map<string, JsonSchema>();
+  for (const [surface, artifact] of artifacts) {
+    if (!surface.startsWith("schema:")) continue;
+    roots.set(surface.slice("schema:".length), artifact.schema);
+  }
+  return roots;
+};
+
+export const compareArtifactSets = (
   before: SchemaArtifactSet,
   after: SchemaArtifactSet,
-  exceptions: ReadonlyArray<CompatibilityException>,
+  policy: AcceptCompatibilityOptions & { readonly exceptions: ReadonlyArray<CompatibilityException> },
 ): ReadonlyArray<SurfaceCompatibilityFinding> => {
+  const persistedStoresBySurface = new Map(policy.persistedStoresBySurface);
+  const storeVersions = { ...policy.storeVersions };
+  const baseStoreVersions = { ...policy.baseStoreVersions };
+  for (const artifact of before.values()) {
+    if (artifact.persistedState === undefined) continue;
+    const { store, version } = artifact.persistedState;
+    persistedStoresBySurface.set(artifact.surface, new Set([store]));
+    baseStoreVersions[store] = version;
+  }
+  for (const artifact of after.values()) {
+    if (artifact.persistedState === undefined) continue;
+    const { store, version } = artifact.persistedState;
+    persistedStoresBySurface.set(artifact.surface, new Set([store]));
+    storeVersions[store] = version;
+  }
   const surfaces = [...new Set([...before.keys(), ...after.keys()])].sort();
   return surfaces.flatMap((surface) => {
     const oldArtifact = before.get(surface);
@@ -105,7 +124,11 @@ const compareArtifactSets = (
     } else {
       findings = [];
     }
-    return acceptCompatibilityExceptions(surface, findings, exceptions).map((entry) => ({
+    return acceptCompatibilityExceptions(surface, findings, policy.exceptions, {
+      persistedStoresBySurface,
+      storeVersions,
+      baseStoreVersions,
+    }).map((entry) => ({
       ...entry,
       surface,
     }));
@@ -115,16 +138,26 @@ const compareArtifactSets = (
 export const checkSchemaCompatibility = async (
   baseRef = process.env.LANDO_SCHEMA_COMPATIBILITY_BASE_REF ?? DEFAULT_BASE_REF,
 ): Promise<SchemaCompatibilityResult> => {
+  await buildPersistedSchemaSnapshot();
   const [after, exceptions] = await Promise.all([
     loadWorkingSchemaArtifacts(REPO_ROOT),
     loadCompatibilityExceptions(EXCEPTIONS_PATH),
   ]);
+  const storeVersions = readPersistedStoreVersions();
   const before = await regenerateBaseSchemaArtifacts({ repoRoot: REPO_ROOT, baseRef });
+  const baseStoreVersions = await loadBasePersistedStoreVersions(REPO_ROOT, baseRef, before.artifacts);
   const skips = skippedFamilyNotices(after, baseRef, before.unavailableFamilies);
+  const afterRoots = rootSchemasFromArtifacts(after);
+  const beforeRoots = rootSchemasFromArtifacts(before.artifacts);
+  const persistedStoresBySurface = buildPersistedSurfaceStores(
+    afterRoots,
+    new Set([...afterRoots.keys(), ...beforeRoots.keys()]),
+    beforeRoots,
+  );
   const findings = compareArtifactSets(
     before.artifacts,
     comparableArtifacts(after, before.unavailableFamilies),
-    exceptions,
+    { exceptions, persistedStoresBySurface, storeVersions, baseStoreVersions },
   );
   return {
     baseRef,
@@ -144,7 +177,7 @@ const main = async (): Promise<void> => {
   const result = await checkSchemaCompatibility();
   for (const skip of result.skips) {
     process.stdout.write(
-      `SKIPPED ${FAMILY_METADATA[skip.family].label}: base ${skip.baseRef} predates ${skip.generatorPath}; skipped ${skip.count} current surfaces.\n`,
+      `SKIPPED ${SCHEMA_ARTIFACT_FAMILIES[skip.family].label}: base ${skip.baseRef} predates ${skip.generatorPath}; skipped ${skip.count} current surfaces. Compare against a base containing this generator once it lands (LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>).\n`,
     );
   }
   for (const entry of result.findings) process.stdout.write(`${formatFinding(entry)}\n`);

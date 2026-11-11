@@ -15,20 +15,27 @@ afterEach(() => rm(root, { recursive: true, force: true }));
 
 const content = (version = "main") =>
   `name: candidate\nincludes:\n  - source: github:acme/shared\n    path: fragment.yml\n    version: ${version}\n`;
-const inputs = () => ({
-  ports: {
-    ...makeTestLandofilePorts(join(root, "cache")),
-    git: {
-      clone: async ({ dest, ref }: { readonly dest: string; readonly ref?: string }) => {
-        await mkdir(dest, { recursive: true });
-        await writeFile(join(dest, "fragment.yml"), "services:\n  web:\n    image: alpine\n");
-        return { commitSha: (ref === "next" ? "b" : "a").repeat(40) };
+const inputs = () => {
+  const cacheRoot = join(root, "cache");
+  const basePorts = makeTestLandofilePorts(cacheRoot);
+  return {
+    ports: {
+      ...basePorts,
+      sources: {
+        ...basePorts.sources,
+        git: {
+          fetch: async ({ dest, ref }: { readonly dest: string; readonly ref?: string }) => {
+            await mkdir(dest, { recursive: true });
+            await writeFile(join(dest, "fragment.yml"), "services:\n  web:\n    image: alpine\n");
+            return { commit: (ref === "next" ? "b" : "a").repeat(40) };
+          },
+        },
       },
     },
-  },
-  stateStore: makeTestLandofileStateStore(),
-  templates: { modules: [] },
-});
+    stateStore: makeTestLandofileStateStore(cacheRoot),
+    templates: { modules: [] },
+  };
+};
 const replace = (candidate: string) =>
   validateLandofileReplacement(
     { appRoot: join(root, "app"), targetFile: join(root, "app/.lando.yml"), content: candidate },

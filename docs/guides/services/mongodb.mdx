@@ -2,7 +2,7 @@
 id: mongodb
 provider: test
 timeout: 300000
-tags: [beta, docs, mongodb, service]
+tags: [docs, mongodb, service]
 ---
 
 # Add MongoDB
@@ -16,15 +16,14 @@ services:
     type: mongodb
 ```
 
-Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the app name.
+Set a member under `creds:` when you want an explicit value. A member you leave out keeps its default. `creds.user` and `creds.password` are the root account, so MongoDB takes no `creds.rootPassword`. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the folder's data name (the name this folder's data was first created under).
 
 ```yaml
 services:
   db:
     type: mongodb
     creds:
-      user: lando
-      password: lando
+      database: catalog
 ```
 
 Check the resolved Landofile before starting the app:
@@ -72,17 +71,17 @@ lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="write">
-      <Verify command="lando mongosh --eval db.notes.insertOne({_id:'guide',value:'persisted'})" expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.insertOne({_id: 'guide', value: 'persisted'})"`} expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
     </Step>
     <Step name="read">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="stop-and-start">
       <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"command\":\"app:stop\",\"ok\":true" } }} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="read-persisted">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -210,20 +209,20 @@ That prints `27018`, through a client that found the server on the planned port 
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="write">
-      <Verify command="lando mongosh --eval db.notes.insertOne({_id:'guide',value:'persisted'})" expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.insertOne({_id: 'guide', value: 'persisted'})"`} expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
     </Step>
     <Step name="read">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="listener">
-      <Verify command="lando mongosh --eval db.serverCmdLineOpts().parsed.net.port" expect={{ stdout: { regex: "\\b27018\\b" } }} />
+      <Verify command={`lando mongosh --eval "db.serverCmdLineOpts().parsed.net.port"`} expect={{ stdout: { regex: "\\b27018\\b" } }} />
     </Step>
     <Step name="stop-and-start">
       <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"command\":\"app:stop\",\"ok\":true" } }} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
     </Step>
     <Step name="read-persisted">
-      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+      <Verify command={`lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"`} expect={{ stdout: { regex: "persisted" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

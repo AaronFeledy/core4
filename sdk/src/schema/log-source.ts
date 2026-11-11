@@ -1,9 +1,7 @@
 import { posix } from "node:path";
-import { SchemaIssue } from "effect";
-import { Effect } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
-import { Schema, SchemaTransformation } from "effect";
-
+import { withDefaultKey } from "./default-key.ts";
 import { AbsolutePath } from "./primitives.ts";
 
 /**
@@ -102,17 +100,21 @@ const LogSourceInputFields = Schema.Struct({
     description: "Optional human-readable label for this Landofile log source.",
   }),
   /** Render/exit classification; defaults to stderr. */
-  stream: LogSourceStream.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "stderr" as const))).annotate({
-    description: "Render and exit classification for this source's lines; defaults to stderr.",
-  }),
+  stream: LogSourceStream.pipe(
+    withDefaultKey("stderr", {
+      description: "Render and exit classification for this source's lines; defaults to stderr.",
+    }),
+  ),
   /** Source id; defaults to the path basename. */
   id: Schema.optionalKey(LogSourceId).annotate({
     description: "Optional source id; defaults to the path basename.",
   }),
-  timestamps: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description:
-      "Whether lines carry parseable leading timestamps so `--since` filtering can apply; defaults to false.",
-  }),
+  timestamps: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description:
+        "Whether lines carry parseable leading timestamps so `--since` filtering can apply; defaults to false.",
+    }),
+  ),
 }).annotate({
   identifier: "LogSourceInput",
   expected: "a log source object with an absolute path",

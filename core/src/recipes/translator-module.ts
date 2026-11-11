@@ -4,10 +4,10 @@
  * Built by the private init pipeline and injected through
  * `ConfigTranslatorRegistryLayer.layerWith([module])`; not a separate workspace package.
  */
-import { Schema } from "effect";
 
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import {
   RECIPE_TRANSLATOR_ID,

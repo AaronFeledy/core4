@@ -1,15 +1,15 @@
-import { Clock, Duration, Effect, Ref } from "effect";
-import type * as HttpClient from "effect/http/HttpClient";
-import type * as HttpClientError from "effect/http/HttpClientError";
-
+import { RequestPolicy } from "@lando/http-client/live";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ScannerError } from "@lando/sdk/errors";
 import { type ProbeOutcome, ProbeTimeoutError, runProbe } from "@lando/sdk/probe";
 import type { AppId, AppPlan, ScanPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanAttempt, ScanEndpoint, ScanVerdict } from "@lando/sdk/services";
-
-import { RequestPolicy } from "@lando/http-client/live";
+import { Clock, Duration, Effect, Ref } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
+import type * as HttpClientError from "effect/http/HttpClientError";
 import type { ScanSourceEndpoint } from "./connection-targets.ts";
+
 export { type ScanSourceEndpoint, publishedHostPort, scanTargets } from "./connection-targets.ts";
 
 export const SCANNER_ID = "http-probe";
@@ -229,7 +229,7 @@ export const scanTarget = Effect.fnUntraced(function* (
       },
     },
     makeAttempt(deps, config, { target, status, attempts, redactor, verdict: verdictRef, startedAt }),
-  ).pipe(Effect.mapError((cause) => probeRunError(target.url, cause, redactor)));
+  ).pipe(mapFailures((cause) => probeRunError(target.url, cause, redactor)));
   const finalStatus = yield* Ref.get(status);
   const statusCode = finalStatus._tag === "response" ? finalStatus.status : undefined;
 

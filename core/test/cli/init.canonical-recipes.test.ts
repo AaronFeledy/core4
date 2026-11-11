@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
+import { Effect } from "effect";
 
 import {
   BUILTIN_RECIPE_DECOMPOSERS,
@@ -280,8 +279,17 @@ describe("BUILTIN_RECIPE_DECOMPOSERS — bundled set", () => {
 });
 
 describe("lando init — canonical common-stack recipes", () => {
-  for (const canonical of CANONICAL_CASES) {
-    test(`renders the ${canonical.recipe} recipe with canonical answers`, async () => {
+  for (const canonical of [
+    ...CANONICAL_CASES,
+    ...CANONICAL_CASES.filter(({ recipe }) => ["laravel", "django", "rails"].includes(recipe)).map(
+      (entry) => ({
+        ...entry,
+        answers: { ...entry.answers, name: `${entry.recipe}-sqlite`, database: "sqlite" },
+        expectedServices: entry.expectedServices.filter(({ name }) => name !== "database"),
+      }),
+    ),
+  ]) {
+    test(`renders the ${canonical.recipe} recipe with ${canonical.answers.name} answers`, async () => {
       await withTempCwd(async (dir) => {
         const result = await initApp({
           cwd: dir,

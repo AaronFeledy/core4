@@ -5,8 +5,30 @@
  * treated as conforming to the SDK surface.
  */
 export { ContractFailure } from "./_shared.ts";
-export { yamlRoundTripCorpus, yamlRoundTripRecord } from "./yaml-round-trip-corpus.ts";
-export { type PluginContractInput, TestPluginManifest } from "./plugin-contract.ts";
+export * from "./ca-pem-fixture.ts";
+export * from "./certificate-authority-contract.ts";
+export * from "./certificate-fixtures.ts";
+export * from "./config-translator-route-filter.ts";
+export * from "./doctor-tooling-plugin-source.ts";
+export * from "./downloader-contract.ts";
+export * from "./file-sync-contract.ts";
+export * from "./http-client-contract.ts";
+/**
+ * collectImportBoundaryViolations arguments:
+ * - packageRoot: plugin package directory (has package.json + src/).
+ * - sourceRoot / repoRoot / packageJson: optional fixture overrides.
+ * - alwaysAllowed: defaults to @lando/sdk + @lando/container-runtime.
+ * Parsing uses the TypeScript 6 compiler API, so install the optional
+ * `@typescript/typescript6` peer dependency next to TypeScript 7.
+ */
+export {
+  type CollectImportBoundaryViolationsOptions,
+  type ImportBoundaryViolation,
+  collectImportBoundaryViolations,
+} from "./import-boundary.ts";
+export * from "./interaction-contract.ts";
+export * from "./managed-file-contract.ts";
+export * from "./network-service-fixtures.ts";
 /**
  * runPluginContract arguments:
  * - manifest: decoded or encoded plugin manifest object to validate.
@@ -15,7 +37,7 @@ export { type PluginContractInput, TestPluginManifest } from "./plugin-contract.
  * - serviceTypes: static service-type map keyed by contributed service type id.
  * - templateEngines: static template-engine map keyed by contributed engine id.
  */
-export { runPluginContract } from "./plugin-contract.ts";
+export { type PluginContractInput, TestPluginManifest, runPluginContract } from "./plugin-contract.ts";
 export {
   type ContractMatrixCell,
   type ContractMatrixCellResult,
@@ -28,36 +50,18 @@ export {
   runProviderContractMatrix,
 } from "./provider-contract.ts";
 export * from "./provider-data-plane.ts";
-export { runProviderVolumeCreationContract } from "./provider-volume-creation.ts";
 export {
   type ProviderStartRetentionHooks,
   runProviderStartRetentionContract,
 } from "./provider-start-retention.ts";
-export * from "./service-contract.ts";
-export * from "./file-sync-contract.ts";
-export * from "./network-service-fixtures.ts";
-export * from "./router-service-contract.ts";
-export * from "./managed-file-contract.ts";
-export * from "./remote-source-dataset-tunnel.ts";
-export * from "./state-store-contract.ts";
-export * from "./downloader-contract.ts";
-export * from "./interaction-contract.ts";
+export { runProviderVolumeCreationContract } from "./provider-volume-creation.ts";
 export * from "./recipe-decomposer.ts";
 export * from "./redaction-secret-store.ts";
-export * from "./config-translator-route-filter.ts";
-export * from "./doctor-tooling-plugin-source.ts";
-export * from "./http-client-contract.ts";
-export * from "./renderer-panel-protocol.ts";
-export * from "./renderer-panel-contract.ts";
+export * from "./remote-source-dataset-tunnel.ts";
 export * from "./renderer-contract.ts";
-/**
- * collectImportBoundaryViolations arguments:
- * - packageRoot: plugin package directory (has package.json + src/).
- * - sourceRoot / repoRoot / packageJson: optional fixture overrides.
- * - alwaysAllowed: defaults to @lando/sdk + @lando/container-runtime.
- */
-export {
-  type CollectImportBoundaryViolationsOptions,
-  type ImportBoundaryViolation,
-  collectImportBoundaryViolations,
-} from "./import-boundary.ts";
+export * from "./renderer-panel-contract.ts";
+export * from "./renderer-panel-protocol.ts";
+export * from "./router-service-contract.ts";
+export * from "./service-contract.ts";
+export * from "./state-store-contract.ts";
+export { yamlRoundTripCorpus, yamlRoundTripRecord } from "./yaml-round-trip-corpus.ts";

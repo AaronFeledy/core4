@@ -29,7 +29,7 @@ export const lintComponentSyntax = (
     } catch (error) {
       if (!(error instanceof NotImplementedError)) throw error;
       diagnostics.push(
-        diagnostic(sourcePath, node, "guide.component.unsupported", `<${node.name}> is not supported yet.`),
+        diagnostic(sourcePath, node, "guide.component.unsupported", `<${node.name}> is not supported.`),
       );
       return;
     }

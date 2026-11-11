@@ -1,5 +1,8 @@
-import { DateTime, Effect, Exit, Schema } from "effect";
-
+import { routerEnabled } from "@lando/engine/config/router-config";
+import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
+import { observedAppPlan } from "@lando/engine/providers/app-placement";
+import { type HostProxyOpenerError, canOpenHost, openUrl } from "@lando/engine/services/host-opener";
+import { RedactionService } from "@lando/redaction/service";
 import type { InfoAppError } from "@lando/sdk/app";
 import type {
   ComposeKeyRejectedError,
@@ -10,6 +13,7 @@ import type {
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
+import type { ProcessRunner } from "@lando/sdk/services";
 import {
   AppPlanner,
   EventService,
@@ -17,21 +21,17 @@ import {
   type RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import type { ProcessRunner } from "@lando/sdk/services";
-
-import { routerEnabled } from "@lando/engine/config/router-config";
-import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
-import { observedAppPlan } from "@lando/engine/providers/app-placement";
-import { type HostProxyOpenerError, canOpenHost, openUrl } from "@lando/engine/services/host-opener";
-import { RedactionService } from "@lando/redaction/service";
+import { DateTime, Effect, Exit, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import { isEnvelopeResultFormat } from "../format-flags";
 import type { RenderContext } from "../renderer-boundary";
 import { appendTerminalQr } from "../terminal-qr";
 import { collectOpenConnections } from "./open-connections";
 import { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
-export { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
+
 export type { OpenTarget, OpenTargetSelection } from "./open-targets";
+export { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
 
 export const OpenLaunchOutcome = Schema.Literals(["opened", "printed", "headless-degraded"]);
 export type OpenLaunchOutcome = typeof OpenLaunchOutcome.Type;
@@ -87,7 +87,6 @@ export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
     ...(flags.print === undefined ? {} : { print: flags.print }),
     ...(flags.qr === true ? { qr: true } : {}),
     json: isEnvelopeResultFormat(flags.format),
-    ttyPresent: process.stdout.isTTY === true,
   };
 };
 
@@ -174,19 +173,23 @@ export const openForPlan = Effect.fnUntraced(function* (
     return { app: plan.name, targets, launch: "printed" as const };
 
   const platform = options.platform ?? process.platform;
-  const env = options.env ?? process.env;
+  const invocation = yield* CliInvocation;
+  const env = options.env ?? invocation.env;
   if (!canOpenHost({ platform, env })) {
     return { app: plan.name, targets, launch: "headless-degraded" as const, note: HEADLESS_NOTE };
   }
 
   const explicitSelection = options.service !== undefined || options.route !== undefined;
-  if (options.json === true && !(explicitSelection && options.ttyPresent === true)) {
+  if (
+    options.json === true &&
+    !(explicitSelection && (options.ttyPresent ?? invocation.io.stdoutIsTTY) === true)
+  ) {
     return { app: plan.name, targets, launch: "printed" as const };
   }
 
   const events = yield* EventService;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: env });
   const ref = openAppRef(plan);
   for (const target of targets) {
     const summary = redactor.redactString(target.url);

@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type {
   AppFeatureContext,
@@ -10,7 +8,8 @@ import type {
   ServiceBuildStepIntent,
   ServiceType,
 } from "@lando/sdk/services";
-
+import { Effect, Schema } from "effect";
+import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import {
   PHP_DB_CLIENT_FEATURE_ID,
   PHP_DB_CLIENT_REMEDIATION,
@@ -20,7 +19,6 @@ import {
   phpDbClientFeature,
   resolvePhpDbClient,
 } from "../src/services/php-db-client.ts";
-import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { phpResolution } from "./support/php-resolution.ts";
 

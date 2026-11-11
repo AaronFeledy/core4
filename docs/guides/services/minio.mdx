@@ -2,7 +2,7 @@
 id: minio
 provider: test
 timeout: 90000
-tags: [beta, docs, minio, service]
+tags: [docs, minio, service]
 ---
 
 # Run your MinIO image
@@ -29,7 +29,7 @@ services:
     type: minio
     image: registry.example.com/team/minio:approved
     appMount: false
-    database: uploads
+    bucket: uploads
     routes:
       - hostname: console.minio-demo.lndo.site
         endpoint: console
@@ -67,7 +67,7 @@ both App Network connections and the console route.
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"minio\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"uploads\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bucket\":\\s*\"uploads\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -78,8 +78,12 @@ both App Network connections and the console route.
 
 Lando prepares the bucket directory under `/data` before its default server
 command starts.
-`database: uploads` becomes the `uploads` bucket. If you omit it, Lando uses
-the app name.
+`bucket: uploads` names that bucket `uploads`, exactly as written. A bucket name
+is 3 to 63 characters long, uses only lowercase letters, digits, and hyphens,
+and starts and ends with a letter or digit. Any other name fails planning at
+`services.object-store.bucket`. If you omit `bucket:`, Lando derives the name
+from the folder's data name (the name this folder's data was first created
+under).
 
 ### Run MinIO as another user
 
@@ -94,7 +98,7 @@ services:
     type: minio
     image: registry.example.com/team/minio:approved
     appMount: false
-    database: uploads
+    bucket: uploads
     user: "10001"
 ```
 

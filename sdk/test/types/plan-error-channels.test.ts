@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { Context, Effect } from "effect";
-
 import type {
   AppPlanResolutionError,
   ExecAppError,
@@ -99,6 +97,7 @@ import type {
   ShellInteractiveSpec,
   UserLandofileError,
 } from "@lando/sdk/services";
+import type { Context, Effect } from "effect";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const assertType = <T extends true>(value: T): T => value;
@@ -108,6 +107,7 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 // allow: SIZE_OK — independent verbatim union fixtures must stay in the requested single SDK test file.
 // Given: these member lists are frozen from the pre-refactor contracts, not derived from them.
 type LegacyAppPlannerChannel =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
@@ -157,6 +157,7 @@ type LegacyDiscoverChannel =
 
 // The app contract's local LandofileNotFoundError alias includes LandofileFormConflictError.
 type LegacyStartAppError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
@@ -216,6 +217,7 @@ type LegacyStartAppError =
   | VolumeOperationError;
 
 type LegacyStopAppError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
@@ -257,6 +259,7 @@ type LegacyStopAppError =
   | VolumeOperationError;
 
 type LegacyInfoAppError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
@@ -289,6 +292,7 @@ type LegacyInfoAppError =
   | ProviderUnavailableError;
 
 type LegacyExecAppError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
@@ -320,6 +324,7 @@ type LegacyExecAppError =
   | ToolingExecError;
 
 type LegacyToolingError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | FileSyncSelectionError
   | CommandAliasConflictError
   | RouteProviderMismatchError
@@ -362,6 +367,7 @@ type LegacyToolingError =
   | ToolingExecError;
 
 type LegacyLogsAppError =
+  | import("@lando/sdk/errors").AppDataIdentityError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
@@ -442,6 +448,7 @@ describe("SDK plan-carrying error channels", () => {
       Equal<
         StartAppError,
         | LegacyStartAppError
+        | import("@lando/sdk/errors").CaError
         | ServiceNotReadyError
         | DebuggerHostUnavailableError
         | import("@lando/sdk/errors").AppPlacementError
@@ -452,7 +459,7 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("StopAppError retains its pre-refactor members", () => {
-    assertType<Equal<StopAppError, LegacyStopAppError>>(true);
+    assertType<Equal<StopAppError, LegacyStopAppError | import("@lando/sdk/errors").ProxyError>>(true);
     expect(true).toBe(true);
   });
 

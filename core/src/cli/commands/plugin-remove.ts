@@ -1,16 +1,17 @@
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
-
-import { Effect, Schema } from "effect";
-
-import { NotImplementedError, PluginManifestError, PluginPackageOperationError } from "@lando/sdk/errors";
-
 import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
-import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry";
-import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
+import {
+  isInstalledPluginRegistryRejection,
+  mutateInstalledPluginRegistry,
+} from "@lando/engine/plugins/installed-registry";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { parseNpmPackageSpec } from "../../recipes/npm-source";
+import { mapFailures } from "@lando/sdk/command-result";
+import { NotImplementedError, PluginManifestError, PluginPackageOperationError } from "@lando/sdk/errors";
+import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
+import { Effect, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { bunSelfRun } from "./bun-self-runner";
 import { redactPluginPackageError } from "./plugin-package-error";
 import { updateManagedRootManifest } from "./plugin-remove-manifest";
@@ -18,6 +19,8 @@ import { resolvePluginsRoot } from "./plugin-roots";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 const RESERVED_PLUGIN_ROOT_NAMES = new Set([
+  ".lando-plugin-mutation",
+  ".lando-plugin-mutation.lock",
   "node_modules",
   "package.json",
   "package-lock.json",
@@ -215,53 +218,66 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (options:
     );
   }
 
-  const activeRefusal = yield* activeLandofileRefusal(options.name, options.cwd ?? process.cwd());
+  const activeRefusal = yield* activeLandofileRefusal(
+    options.name,
+    options.cwd ?? (yield* CliInvocation).cwd,
+  );
   if (activeRefusal !== undefined) return yield* Effect.fail(activeRefusal);
 
   if (!existsSync(pluginsRoot)) return { pluginName: options.name, removed: false };
 
-  return yield* withPluginMutationLock(
-    pluginsRoot,
-    "meta:plugin:remove",
-    Effect.gen(function* () {
-      const hasModuleDir = existsSync(moduleDir);
-      const hasVersionedDir = existsSync(versionedDir);
-      if (!hasModuleDir && !hasVersionedDir) {
-        yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
+  return yield* mutateInstalledPluginRegistry(
+    { pluginsRoot, mutation: { operation: "remove", name: options.name } },
+    (commit) =>
+      Effect.gen(function* () {
+        const hasModuleDir = existsSync(moduleDir);
+        const hasVersionedDir = existsSync(versionedDir);
+        if (!hasModuleDir && !hasVersionedDir) {
+          yield* Effect.promise(commit);
+          yield* invalidateAppToolingCaches({
+            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+          });
+          return { pluginName: options.name, removed: false };
+        }
+
+        if (hasModuleDir) {
+          yield* uninstallViaBunSelf(options.name, pluginsRoot);
+          yield* Effect.tryPromise({
+            try: () => updateManagedRootManifest(pluginsRoot, options.name),
+            catch: (cause) =>
+              cause instanceof NotImplementedError
+                ? cause
+                : new NotImplementedError({
+                    message: `Failed to update managed plugin root package.json: ${String(cause)}`,
+                    commandId: PLUGIN_REMOVE_COMMAND_ID,
+                    remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
+                  }),
+          });
+          yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
+        }
+        if (hasVersionedDir) {
+          yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
+        }
+
+        yield* Effect.promise(commit);
+
+        const trustStore = options.trustStore;
+        if (trustStore !== undefined) trustStore.delete(options.name);
         yield* invalidateAppToolingCaches({
           ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
         });
-        return { pluginName: options.name, removed: false };
-      }
-
-      if (hasModuleDir) {
-        yield* uninstallViaBunSelf(options.name, pluginsRoot);
-        yield* Effect.tryPromise({
-          try: () => updateManagedRootManifest(pluginsRoot, options.name),
-          catch: (cause) =>
-            cause instanceof NotImplementedError
-              ? cause
-              : new NotImplementedError({
-                  message: `Failed to update managed plugin root package.json: ${String(cause)}`,
-                  commandId: PLUGIN_REMOVE_COMMAND_ID,
-                  remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
-                }),
-        });
-        yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
-      }
-      if (hasVersionedDir) {
-        yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
-      }
-
-      yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
-
-      const trustStore = options.trustStore;
-      if (trustStore !== undefined) trustStore.delete(options.name);
-      yield* invalidateAppToolingCaches({
-        ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-      });
-      return { pluginName: options.name, removed: true };
-    }),
+        return { pluginName: options.name, removed: true };
+      }),
+  ).pipe(
+    mapFailures((cause) =>
+      isInstalledPluginRegistryRejection(cause)
+        ? new NotImplementedError({
+            message: cause.message,
+            commandId: PLUGIN_REMOVE_COMMAND_ID,
+            remediation: "Inspect the plugin registry entry, then retry plugin removal.",
+          })
+        : cause,
+    ),
   );
 }, Effect.scoped);
 

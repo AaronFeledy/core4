@@ -1,20 +1,10 @@
 import { sha256Hex } from "@lando/sdk/digest";
 
+export { normalizeAppSlug } from "@lando/sdk/schema";
+
 export const DEFAULT_PROXY_DOMAIN = "lndo.site";
 
-export const APP_SLUG_MAX_LENGTH = 57;
-
 export const shortHash = (input: string): string => sha256Hex(input).slice(0, 8);
-
-export const normalizeAppSlug = (name: string, appRoot: string): string => {
-  const normalized = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, APP_SLUG_MAX_LENGTH)
-    .replace(/-+$/g, "");
-  return normalized.length > 0 ? normalized : shortHash(appRoot);
-};
 
 export const kebab = (raw: string): string => {
   const ascii = raw

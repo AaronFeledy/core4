@@ -1,8 +1,7 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 

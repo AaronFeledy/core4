@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   POSTGRES_CONFIG_TARGET,
@@ -17,7 +16,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const DEFAULT_PASSWORD = "lando-c1b70247946b2297";
+const DEFAULT_PASSWORD = "lando";
 const featureOverrides = new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]);
 
 const serviceConfig = (definition: Record<string, unknown>): ServiceConfig => {
@@ -68,7 +67,7 @@ describe("postgres ServiceType", () => {
     });
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-postgresql-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--postgresql-data");
     expect(String(volumes[0]?.target)).toBe("/var/lib/postgresql/data");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
@@ -82,7 +81,7 @@ describe("postgres ServiceType", () => {
     const plan = await planPostgres({
       type: "postgres",
       image: "postgres:17",
-      database: "appdb",
+      creds: { database: "appdb" },
       port: 15432,
       environment: { POSTGRES_USER: "appuser", POSTGRES_PASSWORD: "secret" },
     });
@@ -204,6 +203,7 @@ describe("postgres ServiceType", () => {
     });
 
     expect(resolution.tooling?.psql).toEqual({
+      wrapper: true,
       description: "Open the PostgreSQL client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
@@ -310,5 +310,24 @@ describe("postgres ServiceType", () => {
       realization: "passthrough",
     });
     expect(plan.command).toEqual(["postgres", "-c", "max_connections=200"]);
+  });
+
+  test("a password-only creds block keeps the default user and database", async () => {
+    const plan = await planPostgres({ type: "postgres", creds: { password: "hunter2" } });
+
+    expect(plan.environment).toMatchObject({
+      POSTGRES_USER: "lando",
+      POSTGRES_PASSWORD: "hunter2",
+      POSTGRES_DB: "myapp",
+    });
+  });
+
+  test("rejects creds.rootPassword because the superuser password is creds.password", async () => {
+    await expect(
+      resolvePostgres({ type: "postgres", creds: { rootPassword: "root-secret" } }),
+    ).rejects.toMatchObject({
+      _tag: "ServiceTypeError",
+      issues: [expect.objectContaining({ path: ["creds", "rootPassword"] })],
+    });
   });
 });

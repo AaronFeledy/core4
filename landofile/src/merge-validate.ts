@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { createIncludeResolutionSession, publishIncludeProposals } from "./include-session.ts";
 import { ensureConsistentRoot } from "./load-context.ts";
-import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
+import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
 import { getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
@@ -48,4 +48,4 @@ export const mergeLandofileRootLayers = Effect.fnUntraced(function* (
     ...(inputs === undefined ? {} : { inputs }),
   });
   return yield* finalizeLandofileRootLayers(evaluated, canonicalPath, inputs);
-});
+}, Effect.scoped);

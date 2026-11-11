@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-
+import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import {
   OOM_CHECK_NAME,
   buildOomDoctorCheck,
   classifyDiedEvent,
   collectOomDoctorChecks,
 } from "../../src/cli/commands/doctor-oom.ts";
-import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 
 const PROVIDER = { id: "lando", displayName: "Lando Managed Runtime", version: "0.0.0" } as const;
 const CONTEXT = { provider: PROVIDER, providerKind: "managed" as const, platform: "linux" as const };
@@ -25,7 +24,7 @@ const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unkn
   Actor: {
     ID: "abc123",
     Attributes: {
-      name: "lando-myapp-web",
+      name: "lando-myapp--web",
       image: "docker.io/library/php:8.3",
       containerExitCode: "137",
       "dev.lando.app": "myapp",
@@ -40,7 +39,7 @@ describe("classifyDiedEvent", () => {
     const result = classifyDiedEvent(diedEvent({ OOMKilled: true }));
     expect(result.kind).toBe("oom");
     if (result.kind !== "oom") throw new Error("expected oom");
-    expect(result.correlation.containerName).toBe("lando-myapp-web");
+    expect(result.correlation.containerName).toBe("lando-myapp--web");
     expect(result.correlation.app).toBe("myapp");
     expect(result.correlation.service).toBe("web");
     expect(result.correlation.image).toBe("docker.io/library/php:8.3");
@@ -52,7 +51,7 @@ describe("classifyDiedEvent", () => {
       diedEvent({
         Actor: {
           Attributes: {
-            name: "lando-x-db",
+            name: "lando-x--db",
             OOMKilled: "true",
             "dev.lando.app": "x",
             "dev.lando.service": "db",
@@ -227,7 +226,7 @@ describe("buildOomDoctorCheck", () => {
         OOMKilled: true,
         Actor: {
           Attributes: {
-            name: "lando-secret-web",
+            name: "lando-secret--web",
             image: "oci://user:s3cr3t@registry.example.com/team/app:latest",
             "dev.lando.app": "https://user:pw@app.example.com",
             "dev.lando.service": "web",
@@ -279,7 +278,7 @@ describe("doctor rendering of oom checks", () => {
           OOMKilled: true,
           Actor: {
             Attributes: {
-              name: "lando-x-web",
+              name: "lando-x--web",
               image: "oci://user:s3cr3t@r.example.com/a",
               "dev.lando.app": "x",
               "dev.lando.service": "web",
@@ -304,7 +303,7 @@ describe("doctor rendering of oom checks", () => {
           OOMKilled: true,
           Actor: {
             Attributes: {
-              name: "lando-x-web",
+              name: "lando-x--web",
               image: "oci://user:s3cr3t@r.example.com/a",
               "dev.lando.app": "x",
               "dev.lando.service": "web",

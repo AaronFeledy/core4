@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
-
-import { Effect, Schema } from "effect";
-
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { parseLandofile } from "@lando/landofile/parser";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { AppPlanResolutionError, PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import {
@@ -40,10 +40,7 @@ import {
   type RemoteSourceShape,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { parseLandofile } from "@lando/landofile/parser";
-import { findDiscoveredLandofilePath } from "@lando/landofile/service";
+import { Effect, Schema } from "effect";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 
 export const RemoteListResultSchema = Schema.Array(AppRemoteEntry);
@@ -116,8 +113,7 @@ const unavailable = (requested?: string): RemoteProviderUnavailableError =>
       "lando plugin:add <remote-source-plugin>",
       "lando setup --provider=<provider-with-remotes>",
     ],
-    remediation:
-      "Install a RemoteSource plugin for this remote, then rerun the command. Bundled remotes ship in Lando 4.1.",
+    remediation: "Install a RemoteSource plugin for this remote, then rerun the command.",
   });
 
 const outputRedactor = Effect.fnUntraced(function* (profile: RedactionProfile) {

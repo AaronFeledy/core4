@@ -5,6 +5,7 @@ import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema"
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: eleventyDecomposer,
   defaults: eleventyDefaults,
@@ -72,8 +73,14 @@ describe("eleventy decomposition", () => {
           service: "builder",
           description: "Run the Eleventy CLI inside the builder service.",
           cmds: ["npx @11ty/eleventy"],
+          wrapper: true,
         },
-        npm: { service: "builder", description: "Run npm inside the builder service.", cmds: ["npm"] },
+        npm: {
+          service: "builder",
+          description: "Run npm inside the builder service.",
+          cmds: ["npm"],
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({

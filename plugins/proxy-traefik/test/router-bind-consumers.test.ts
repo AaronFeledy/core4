@@ -5,8 +5,8 @@ import { makeAdvertisedProxyPortsCheck } from "../src/advertised-proxy-ports.ts"
 import { makeRouterBindAddressCheck } from "../src/doctor-bind-address.ts";
 import { buildTraefikServiceConfig, resolveTraefikPublication } from "../src/global-services/traefik.ts";
 import { persistPortAcquisition, readAcquisitionState } from "../src/port-acquisition-state.ts";
-import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { buildInstallScript } from "../src/socket-proxy-units.ts";
 import { acquisition, app, makeObserveFixture, route } from "./observe-routes-fixture.ts";
 import { makeHarness } from "./proxy-tls-harness.ts";
@@ -234,6 +234,8 @@ test("helper unit forwarding retains a private backend", () => {
       {
         ...acquisition,
         mode: "socket-helper",
+        helperInstalled: true,
+        socketsActive: true,
         bindHttpPort: 38080,
         bindHttpsPort: 38443,
         fingerprint: { ...acquisition.fingerprint, bindAddress: "192.0.2.24" },
@@ -250,6 +252,7 @@ test("helper unit forwarding retains a private backend", () => {
     { bindAddress: "127.0.0.1", hostPort: 38443 },
   ]);
   const script = buildInstallScript({
+    userDataRoot: "/lando",
     user: "test",
     binary: "/usr/lib/systemd/systemd-socket-proxyd",
     serviceType: "notify",

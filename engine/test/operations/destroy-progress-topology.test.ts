@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { rm, symlink } from "node:fs/promises";
-import { EventError, FileSyncStopError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { EventError, FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type FileSyncSessionInfo,
@@ -10,14 +10,13 @@ import {
   SnapshotInfo,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
+import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
-import { emptySnapshots } from "./data-mover-support.ts";
-
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import { makeUnavailableRouter } from "../../src/subsystems/proxy/api.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import {
@@ -25,6 +24,7 @@ import {
   recoveryHarness,
   target as retainedTarget,
 } from "./accelerated-start-recovery-support.ts";
+import { emptySnapshots } from "./data-mover-support.ts";
 import {
   byTag,
   destroyTreeId,
@@ -533,7 +533,61 @@ describe("destroy progress topology", () => {
       startChildTaskId(parentId, "provider"),
       startChildTaskId(parentId, "host-proxy"),
     ]);
-    expect(byTag(harness.events, "message.warn")[0]?.body).toContain("without route cleanup");
+    const warnings = byTag(harness.events, "message.warn");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.body).toContain("not withdrawn");
+    expect(warnings[0]?.body).toContain(plan.id);
+  });
+
+  test("#2138 an unavailable router settles the routes step as a warning and destroy succeeds", async () => {
+    // Given: the configured router cannot be selected.
+    const reason = new ProxyError({
+      message: "Router service missing is not installed.",
+      proxyId: "missing",
+      remediation: "Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
+    });
+    const router = makeUnavailableRouter(reason);
+    const harness = makeHarness({ router });
+
+    // When
+    await runDestroyTarget(harness);
+
+    // Then: destroy succeeds, and the skipped withdrawal is a warning, not a failure.
+    const routes = startChildTaskId(destroyTreeId(String(plan.id)), "routes");
+    expect(byTag(harness.events, "task.fail")).toEqual([]);
+    expect(byTag(harness.events, "task.complete").find((event) => event.taskId === routes)?.outcome).toBe(
+      "warn",
+    );
+    const warnings = byTag(harness.events, "message.warn");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.body).toContain("not withdrawn");
+    expect(warnings[0]?.body).toContain(plan.id);
+    expect(warnings[0]?.body).toContain(reason.message);
+    expect(warnings[0]?.body).toContain(reason.remediation);
+  });
+
+  test("#2138 an unavailable router withdraws through the installed routers and completes the routes step", async () => {
+    // Given: the configured router cannot be selected, but the installed routers can withdraw.
+    const withdrawn: string[] = [];
+    const router = makeUnavailableRouter(
+      new ProxyError({
+        message: "Router service missing is not installed.",
+        proxyId: "missing",
+        remediation: "Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
+      }),
+      (owner) => Effect.sync(() => void withdrawn.push(String(owner.id))),
+    );
+    const harness = makeHarness({ router });
+
+    // When
+    await runDestroyTarget(harness);
+
+    // Then: the routes step completes as proven cleanup and no warning is printed.
+    const routes = startChildTaskId(destroyTreeId(String(plan.id)), "routes");
+    expect(withdrawn).toEqual([String(plan.id)]);
+    const settled = byTag(harness.events, "task.complete").find((event) => event.taskId === routes);
+    expect(settled === undefined ? "unsettled" : (settled.outcome ?? "ok")).toBe("ok");
+    expect(byTag(harness.events, "message.warn")).toEqual([]);
   });
 
   test("purges snapshots before provider teardown when requested", async () => {

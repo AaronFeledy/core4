@@ -111,7 +111,6 @@ test("authored collection separates env maps, sensitive leaves and non-secret me
         ]),
         labels: { buildKey: "label-private" },
         extensions: { compose: { labels: { stripeSecretKey: "compose-private" } } },
-        password: override("service-private"),
         creds: { password: "credential-private", rootPassword: "root-private" },
         certs: { key: "./certs/server.key" },
         storage: [{ key: "source-code" }],
@@ -119,7 +118,6 @@ test("authored collection separates env maps, sensitive leaves and non-secret me
         buildKey: "build-id",
         defaultSecretStore: "env",
         tokenFile: "./token.txt",
-        rootPassword: "structural-private",
         apiToken: "api-private",
         clientSecret: "client-private",
         removedSecret: reset(),
@@ -136,10 +134,8 @@ test("authored collection separates env maps, sensitive leaves and non-secret me
     "pg-private",
     "label-private",
     "compose-private",
-    "service-private",
     "credential-private",
     "root-private",
-    "structural-private",
     "api-private",
     "client-private",
   ]);
@@ -192,7 +188,7 @@ test("retained invocations read current containers again instead of caching regi
     slug: "retained-output",
     root: "/tmp/retained-output",
     provider: "test",
-    services: {},
+    services: { web: planService("web", {}) },
     routes: [],
     stores: [],
     fileSync: [],
@@ -213,6 +209,7 @@ test("retained invocations read current containers again instead of caching regi
     Effect.gen(function* () {
       const rendererRedactor = yield* redaction.forProfile("secrets");
       const selected = outputRegisteredTestProvider(provider, plan);
+      yield* Effect.scoped(provider.apply(plan, { reconcile: true }));
       yield* selected.exec({ app: plan.id, service: ServiceName.make("web") }, { command: ["true"] });
       yield* selected.exec({ app: plan.id, service: ServiceName.make("web") }, { command: ["true"] });
       return rendererRedactor.redactString("new-container-private");
@@ -380,7 +377,7 @@ describe("app-plan redaction tokens", () => {
   test("excludes published defaults from authored passwords, labels, and tooling environment", () => {
     // Given
     const landofile = {
-      services: { database: { password: "lando", labels: { "db.password": "landolando" } } },
+      services: { database: { creds: { password: "lando" }, labels: { "db.password": "landolando" } } },
       tooling: { task: { env: { DB_PASSWORD: "lando" } } },
       toolingDefaults: { env: { API_SECRET: "landolando", CUSTOM_PASSWORD: "private-tooling-password" } },
     };

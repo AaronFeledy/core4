@@ -1,9 +1,10 @@
+import { resolveLandoRoots } from "@lando/paths";
 import { Effect, Schema } from "effect";
-import { Flags } from "../../spec/metadata";
-
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { ShellenvInstallRecordError, normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 /**
  * `lando meta:shellenv` — print shell-profile snippets to add Lando to PATH.
@@ -29,12 +30,18 @@ export const shellenvSpec: LandoCommandSpec<string, ShellenvInstallRecordError, 
     }),
   },
   run: (input) =>
-    Effect.try({
-      try: () => renderShellenv(shellenvShellFromInput(input)),
-      catch: (error) => {
-        if (error instanceof ShellenvInstallRecordError) return error;
-        throw error;
-      },
-    }),
+    Effect.flatMap(CliInvocation, (invocation) =>
+      Effect.try({
+        try: () =>
+          renderShellenv(
+            shellenvShellFromInput(input),
+            resolveLandoRoots({ env: invocation.env }).userDataRoot,
+          ),
+        catch: (error) => {
+          if (error instanceof ShellenvInstallRecordError) return error;
+          throw error;
+        },
+      }),
+    ),
   render: (result) => (typeof result === "string" ? result : undefined),
 };

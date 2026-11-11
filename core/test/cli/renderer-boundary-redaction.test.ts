@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
@@ -8,6 +6,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { formatSummary } from "@lando/renderer/summary";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AppPlan } from "@lando/sdk/schema";
+import { Effect, Layer, Schema } from "effect";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
 import { renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";

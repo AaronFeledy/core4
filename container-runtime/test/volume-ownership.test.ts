@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import { podmanVolumeCreationLabels } from "../src/podman/bring-up.ts";
 import { renderCompose } from "../src/podman/compose.ts";
 import { buildLandoVolumeFilters, volumeMatchesFilters } from "../src/podman/volume-prune.ts";
+import { planVolumeFilters } from "../src/volume-ownership.ts";
 
 const ctx = { providerId: "lando", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appRoot = AbsolutePath.make("/srv/apps/ownership");
@@ -47,6 +46,20 @@ const readerFilters = (plan: AppPlan, volumeClass: "cache" | "data") =>
   });
 
 describe("volume ownership selector", () => {
+  test("a renamed app selects volumes labeled with its original data id", () => {
+    const renamed: AppPlan = {
+      ...plannedPlan,
+      id: AppId.make("renamed"),
+      identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot), dataName: "ownership" },
+    };
+    const original = podmanVolumeCreationLabels(plannedPlan, dataStore);
+    const written = podmanVolumeCreationLabels(renamed, dataStore);
+
+    expect(written["dev.lando.app"]).toBe("ownership");
+    expect(composeVolumeLabels(renamed, dataStore.name)["dev.lando.app"]).toBe("ownership");
+    expect(written["dev.lando.volume-selector"]).toBe(original["dev.lando.volume-selector"]);
+    expect(volumeMatchesFilters(original, planVolumeFilters(renamed, ["data"]))).toBe(true);
+  });
   test("app volume teardown excludes the global-owned SSH agent volume", () => {
     // Given
     const globalPlan: AppPlan = {

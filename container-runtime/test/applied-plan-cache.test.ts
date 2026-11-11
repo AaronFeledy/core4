@@ -1,23 +1,23 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { makeAppliedPlanCache } from "../src/applied-plan-cache.ts";
-import { plan as valuePlan } from "./fixtures/environment-values.ts";
+import { plan as valuePlan, service as valueService } from "./fixtures/environment-values.ts";
 
 const appId = AppId.make("app");
 
-const appPlan = (name: string, services: ReadonlyArray<string>): AppPlan =>
-  ({
-    id: appId,
-    name,
-    slug: "app",
-    services: Object.fromEntries(services.map((service) => [service, { name: service }])),
-  }) as AppPlan;
+const appPlan = (name: string, services: ReadonlyArray<string>): AppPlan => ({
+  ...valuePlan,
+  id: appId,
+  name,
+  slug: "app",
+  services: Object.fromEntries(
+    services.map((service) => [service, { ...valueService, name: ServiceName.make(service) }]),
+  ),
+});
 
 const stateStore = (lockFails: boolean): PluginStateStore => ({
   open: () => Effect.die("unused"),

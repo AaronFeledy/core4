@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import { LandofileParseError } from "@lando/sdk/errors";
 import { detectLandofileTags, parseLandofile } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 const detect = (content: string) => detectLandofileTags({ content, file: "/workspace/.lando.yml" });
 

@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, type VolumeIdentity } from "@lando/sdk/schema";
@@ -11,6 +9,7 @@ import { DataMover, EventService, PathsService, RuntimeProvider, StateStore } fr
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { Effect, Stream } from "effect";
 import * as BunDataMover from "./support.ts";
 
 test("the live shared port reads engine creation state and does not expose a creation writer", async () => {

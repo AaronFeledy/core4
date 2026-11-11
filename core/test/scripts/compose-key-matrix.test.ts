@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-
 import {
   type ComposeDisposition,
   type ComposeDispositionEntry,
@@ -7,6 +6,9 @@ import {
   composeTagDispositions,
   composeTopLevelDispositions,
 } from "@lando/sdk/landofile";
+import remarkMdx from "remark-mdx";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import {
   ComposeKeyMatrixError,
   assertMatrixInvariants,
@@ -14,6 +16,11 @@ import {
 } from "../../../scripts/build-compose-key-matrix.ts";
 
 type DispositionMap = Readonly<Record<string, ComposeDispositionEntry>>;
+
+test("renders remediation placeholders as text that parses as MDX", () => {
+  const page = renderComposeKeyMatrixPage();
+  expect(() => unified().use(remarkParse).use(remarkMdx).parse(page)).not.toThrow();
+});
 
 const countDisposition = (entries: DispositionMap, disposition: ComposeDisposition): number =>
   Object.values(entries).filter((entry) => entry.disposition === disposition).length;

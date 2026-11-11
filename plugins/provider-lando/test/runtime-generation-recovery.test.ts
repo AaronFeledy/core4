@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Duration, Effect } from "effect";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { Duration, Effect } from "effect";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import type { LinuxRuntimeFilesystem, RuntimeGenerationStore } from "../src/linux-runtime-generation.ts";
 import { type PodmanServiceRunner, buildPodmanServiceArgs } from "../src/podman-service-runner.ts";
@@ -14,6 +12,7 @@ const paths = (dir: string) => {
   const runtime = join(dir, "runtime");
   const runRoot = join(runtime, "run");
   return {
+    privateRuntimeDir: "/private/test-runtime",
     podmanBin: join(runtime, "bin", "podman"),
     storageDir: join(runtime, "storage"),
     runRoot,

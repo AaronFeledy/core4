@@ -3,7 +3,7 @@ id: deprecating-plugin-surfaces
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, plugins, deprecations]
+tags: [docs, plugins, deprecations]
 ---
 
 # Deprecate plugin surfaces
@@ -38,11 +38,19 @@ Check the `removeIn` rules below before choosing a removal release.
 | --- | --- |
 | `since` | Semver `major.minor.patch`. Required. |
 | `note` | Required string. |
-| `removeIn` | Future major or minor (patch must be `0`). Required when `since` is older than `4.1.0`. |
+| `removeIn` | Optional semver `major.minor.patch`, strictly later than `since`. |
 | `severity` | `info`, `warn`, or `error`. Default `warn`. `error` still records use, then fails. |
 | `replacement` | Optional string. |
 | `docsUrl` | Optional absolute `http:` or `https:` URL. |
 | `ticket` | Optional string. |
+
+These schema rules apply to app, plugin, and recipe authors in their own
+version space. A later patch release is a valid removal schedule.
+
+Lando's own surfaces follow a separate release gate policy: removal must target
+a future major or minor release with patch `0`, and `removeIn` is required after
+12 months. Follow that policy for your plugins when you want to give callers
+the same migration window.
 
 ## Other surfaces
 
@@ -67,7 +75,9 @@ contributes:
 
 ## Verify
 
-Keep the notice on `plugin.yaml` / `landoPlugin`. A bad `removeIn` (same release, a patch, or the past) fails schema decode.
+Keep the notice on `plugin.yaml` / `landoPlugin`. Schema decoding rejects a
+`removeIn` that is the same release as `since` or earlier. Choose a later version
+to resolve that error.
 
 ## Next
 

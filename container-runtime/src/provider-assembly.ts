@@ -10,11 +10,15 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { refuseOtherAppsResources } from "./foreign-owner.ts";
 import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
-export { makeResourceOwnershipStore } from "./resource-ownership.ts";
+
 export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
+export { makeResourceOwnershipStore } from "./resource-ownership.ts";
+export { hasResourceOwnershipRecords } from "./resource-ownership-records.ts";
+
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
 import { type EmitComposeOptions, composePath, emitCompose, renderCompose } from "./podman/compose.ts";
@@ -39,10 +43,22 @@ export const providerHostInputs = Effect.gen(function* () {
 });
 
 type ProviderPlanStateOptions = AppliedPlanCacheOptions &
-  Omit<ProviderDataPlaneOptions, "api" | "providerId"> & {
+  Omit<ProviderDataPlaneOptions, "api" | "providerId" | "redactorFor"> & {
     readonly ctx: ProviderErrorContext;
     readonly api?: ProviderDataPlaneOptions["api"];
   };
+
+const makeOwnership = (options: ProviderPlanStateOptions) => {
+  const store = makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState);
+  return {
+    ...store,
+    prepare: (plan: AppPlan, previous?: AppPlan) =>
+      refuseOtherAppsResources(plan, previous, {
+        ctx: options.ctx,
+        ...(options.api === undefined ? {} : { api: options.api }),
+      }).pipe(Effect.andThen(store.prepare(plan, previous))),
+  };
+};
 
 export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
   removeOrphanedNetworks: (plan: AppPlan, previous: AppPlan | undefined) =>
@@ -51,7 +67,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
       ...(options.api === undefined ? {} : { api: options.api }),
       store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
     }),
-  ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+  ownership: makeOwnership(options),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
     checkAppliedState: (app) =>
       options.appliedPlanState === undefined
@@ -69,6 +85,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
           api: options.api,
           capabilities: options.capabilities,
           redactor: options.redactor,
+          ...(options.ctx.redactorFor === undefined ? {} : { redactorFor: options.ctx.redactorFor }),
           ...(options.pullHelperImage === undefined ? {} : { pullHelperImage: options.pullHelperImage }),
           ...(options.volumeCreationLabels === undefined
             ? {}
@@ -106,11 +123,7 @@ export const forgetAppliedPlanUnlessKept = (
 ) => (destroyOptions.removeState === false ? Effect.void : appliedPlans.forgetPlan(app));
 
 export const noPlanErrorFactory =
-  (options: {
-    readonly providerId: string;
-    readonly implementer: string;
-    readonly remediation: string;
-  }) =>
+  (options: { readonly providerId: string; readonly implementer: string; readonly remediation: string }) =>
   (appId: AppId, operation: string) =>
     new ProviderUnavailableError({
       providerId: options.providerId,
@@ -123,7 +136,7 @@ export const notImplementedError = (providerId: string, operation: string) =>
   new ProviderUnavailableError({
     providerId,
     operation,
-    message: `provider-${providerId} does not implement ${operation} yet.`,
+    message: `provider-${providerId} does not implement ${operation}.`,
     remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 

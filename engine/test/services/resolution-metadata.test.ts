@@ -4,8 +4,8 @@ import type { AppFeatureDefinition, ServiceTypeResolution } from "@lando/sdk/ser
 import { Effect } from "effect";
 import { servicePlanFromDraft, toAppFeatureDraft } from "../../src/planner/extensions.ts";
 import { composeAppFeatures } from "../../src/services/app-feature.ts";
-import { prepareServiceComposition } from "../../src/services/feature-preparation.ts";
 import { composeService } from "../../src/services/feature.ts";
+import { prepareServiceComposition } from "../../src/services/feature-preparation.ts";
 
 test("direct composition projects resolution facts into declarations, application and persisted provenance", async () => {
   // Given
@@ -21,6 +21,7 @@ test("direct composition projects resolution facts into declarations, applicatio
     },
     baseKind: resolution.base,
     appRoot: "/srv/metadata",
+    appSlug: "metadata",
     normalizedConfig: resolution.normalizedConfig,
     resolutionMetadata: metadata,
     features: [],

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Schema } from "effect";
-
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent as PublishedEvent } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree, startChildTaskId } from "@lando/sdk/task-progress";
+import { Cause, Effect, Exit, Fiber, Schema } from "effect";
 
 const collectPublisher = () => {
   const events: LandoEvent[] = [];
@@ -29,7 +28,8 @@ describe("@lando/sdk/task-progress controller", () => {
     expect(startChildTaskId("tree-a", "setup")).toBe("tree-a:setup");
   });
 
-  test("settles declared but unstarted children and completes the tree on interrupt", async () => {
+  test("leaves never-started children pending and marks the tree interrupted on interrupt", async () => {
+    // Given: a tree whose only child never started.
     const publisher = collectPublisher();
     const parentId = "routes-app-1";
     const tree = makeTaskTree(publisher, {
@@ -39,6 +39,7 @@ describe("@lando/sdk/task-progress controller", () => {
       prefixChildIds: true,
     });
 
+    // When
     const fiber = Effect.runFork(
       runWithTaskTree(tree, () => Effect.never, {
         success: "routes applied",
@@ -48,27 +49,14 @@ describe("@lando/sdk/task-progress controller", () => {
     );
     await Effect.runPromise(Fiber.interrupt(fiber));
 
-    expect(tags(publisher.events)).toEqual([
-      "task.tree.start",
-      "task.start",
-      "task.fail",
-      "task.tree.complete",
-    ]);
-    expect(byTag(publisher.events, "task.tree.start")[0]).toMatchObject({
-      parentId,
-      children: [startChildTaskId(parentId, "apply")],
-    });
-    expect(byTag(publisher.events, "task.start")[0]).toMatchObject({
-      taskId: startChildTaskId(parentId, "apply"),
-      parentId,
-    });
-    expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
-      taskId: startChildTaskId(parentId, "apply"),
-    });
+    // Then
+    expect(tags(publisher.events)).toEqual(["task.tree.start", "task.tree.complete"]);
     expect(byTag(publisher.events, "task.tree.complete")[0]).toMatchObject({
       parentId,
+      summary: "routes interrupted",
       succeeded: 0,
-      failed: 1,
+      failed: 0,
+      outcome: "interrupted",
     });
   });
 
@@ -81,6 +69,7 @@ describe("@lando/sdk/task-progress controller", () => {
       children: [
         { id: "web", label: "Apply service web" },
         { id: "database", label: "Apply service database" },
+        { id: "cache", label: "Apply service cache" },
       ],
     });
 
@@ -100,12 +89,40 @@ describe("@lando/sdk/task-progress controller", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(byTag(publisher.events, "task.start").map((event) => event.taskId)).toEqual(["web", "database"]);
     expect(byTag(publisher.events, "task.fail").map((event) => event.taskId)).toEqual(["web", "database"]);
+    // The never-started "cache" child gets neither task.start nor task.fail.
     expect(byTag(publisher.events, "task.tree.complete")[0]).toMatchObject({
       parentId,
       succeeded: 0,
       failed: 2,
+      outcome: "failure",
     });
-    expect(byTag(publisher.events, "task.start")).toHaveLength(2);
+  });
+
+  test("settles a defective task tree as failed and preserves the defect", async () => {
+    const publisher = collectPublisher();
+    const defect = new Error("unexpected task defect");
+    const tree = makeTaskTree(publisher, {
+      parentId: "defective-tree",
+      label: "Apply",
+      children: [
+        { id: "web", label: "Apply web" },
+        { id: "database", label: "Apply database" },
+      ],
+    });
+
+    const exit = await Effect.runPromiseExit(
+      runWithTaskTree(tree, (active) => active.startTask("web").pipe(Effect.andThen(Effect.die(defect))), {
+        success: "applied",
+        failure: "apply failed",
+        interrupt: "apply interrupted",
+      }),
+    );
+
+    expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toBe(defect);
+    expect(byTag(publisher.events, "task.fail").map((event) => event.taskId)).toEqual(["web"]);
+    expect(byTag(publisher.events, "task.tree.complete")).toMatchObject([
+      { parentId: "defective-tree", summary: "apply failed", succeeded: 0, failed: 1, outcome: "failure" },
+    ]);
   });
 
   test("completes the tree once on success after children settle", async () => {
@@ -153,6 +170,7 @@ describe("@lando/sdk/task-progress controller", () => {
       succeeded: 1,
       failed: 0,
     });
+    expect(byTag(publisher.events, "task.tree.complete")[0]?.outcome).toBeUndefined();
   });
 
   test("does not emit a second tree.complete when settle is repeated", async () => {
@@ -282,6 +300,8 @@ describe("@lando/sdk/task-progress controller", () => {
       exitCode: 1,
       remediation: "rerun with --verbose",
     });
+    // Closing a tree with a failed child reports the tree as failed, not as an absent (successful) outcome.
+    expect(byTag(publisher.events, "task.tree.complete")[0]).toMatchObject({ failed: 1, outcome: "failure" });
   });
 
   test("does not restart or re-complete an already settled child", async () => {

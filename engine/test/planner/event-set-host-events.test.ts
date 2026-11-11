@@ -2,13 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
-
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { ConfigError, LandofileValidationError, PluginLoadError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { resolveKnownEventSet } from "../../src/planner/event-set.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";

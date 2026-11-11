@@ -8,6 +8,7 @@ import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema"
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: fastapiDecomposer,
   defaults: fastapiDefaults,
@@ -168,8 +169,13 @@ describe("fastapi decomposition", () => {
         cache: { type: "redis" },
       },
       tooling: {
-        uvicorn: { service: "web", description: "Run uvicorn inside the web service.", cmds: ["uvicorn"] },
-        pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"] },
+        uvicorn: {
+          service: "web",
+          description: "Run uvicorn inside the web service.",
+          cmds: ["uvicorn"],
+          wrapper: true,
+        },
+        pip: { service: "web", description: "Run pip inside the web service.", cmds: ["pip"], wrapper: true },
       },
     });
     expect<unknown>(result.fragment).toEqual({

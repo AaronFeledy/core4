@@ -1,10 +1,11 @@
+import type { CliInvocationContext } from "../runtime/invocation-context";
 import type { RendererMode } from "./bug-report";
+import { withCommandRemainderSeparator } from "./command-tail";
 import { normalizeScratchStartArgv } from "./commands/scratch";
 import {
   argDefinitionsForCommand,
   commandSpecForId,
   flagDefinitionsForCommand,
-  flagNameByToken,
   hasUniversalFormatFlag,
   parseFlagsAndPositionals,
 } from "./compiled-argv";
@@ -14,35 +15,9 @@ import {
   activeResultFormat,
   setActiveCommandInvocation,
 } from "./compiled-runtime";
-import { normalizeCliFlagTokens, validateCommandFlagValues } from "./flag-value-validation";
+import { normalizeCliFlagTokens } from "./flag-tokens";
+import { validateCommandFlagValues } from "./flag-value-validation";
 import { type ResultFormat, resolveResultFormat } from "./format-flags";
-
-const withCommandRemainderSeparator = (
-  argv: ReadonlyArray<string>,
-  flagDefinitions: ReturnType<typeof flagDefinitionsForCommand>,
-): ReadonlyArray<string> => {
-  const flagTokens = flagNameByToken(flagDefinitions);
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined || arg === "--") return argv;
-    const equalsIndex = arg.indexOf("=");
-    const token = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
-    const normalizedToken = normalizeCliFlagTokens([arg], flagDefinitions);
-    const recognized = flagTokens.has(token) || normalizedToken.length !== 1 || normalizedToken[0] !== arg;
-    if (!recognized) {
-      // An explicit `--` later already terminates flags. Inserting another one
-      // would leak the real terminator into parsedArgv (`exec app -- echo`).
-      if (argv.indexOf("--", index) !== -1) return argv;
-      return [...argv.slice(0, index), "--", ...argv.slice(index)];
-    }
-
-    const last = normalizedToken.at(-1);
-    if (last === undefined || last.includes("=")) continue;
-    const lastFlagName = flagTokens.get(last);
-    if (lastFlagName !== undefined && flagDefinitions[lastFlagName]?.type !== "boolean") index += 1;
-  }
-  return argv;
-};
 
 export const compiledCommandInputFromArgv = (
   commandId: string,
@@ -51,6 +26,7 @@ export const compiledCommandInputFromArgv = (
     readonly rendererMode?: RendererMode;
     readonly resultFormat?: ResultFormat;
     readonly signal?: AbortSignal;
+    readonly context?: CliInvocationContext;
   } = {},
 ): CompiledCommandInput => {
   const command = commandSpecForId(commandId);

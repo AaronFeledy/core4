@@ -1,8 +1,24 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
 import type { UninstallOptions } from "../../src/operations/uninstall.ts";
+import {
+  type RemoveRuntimeDirDeps,
+  defaultRemoveRuntimeDir,
+} from "../../src/operations/uninstall-runtime-dir.ts";
+
+export const privateRuntimeTestDeps = (runtimeDir: string): RemoveRuntimeDirDeps => {
+  const privateDir = join(dirname(runtimeDir), "test-session-runtime");
+  return {
+    resolvePrivateRuntimeDir: async () => privateDir,
+    preparePrivateRuntimeDir: async () => {
+      mkdirSync(privateDir, { recursive: true, mode: 0o700 });
+      return privateDir;
+    },
+    terminatePause: async () => undefined,
+  };
+};
 
 export const makeUninstallRoots = (prefix = "lando-uninstall-") => {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -13,8 +29,6 @@ export const makeUninstallRoots = (prefix = "lando-uninstall-") => {
     userConfRoot: join(root, "config"),
     cgroupsDelegatePath: join(root, "delegate.conf"),
     shellProfilePath: join(root, ".profile"),
-    socketProxyUnitDir: join(root, "units"),
-    socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
   };
 };
 
@@ -27,14 +41,11 @@ export const sandboxUninstallOptions = (
   userConfRoot: roots.userConfRoot,
   cgroupsDelegatePath: roots.cgroupsDelegatePath,
   shellProfilePath: roots.shellProfilePath,
-  socketProxyUnitPaths: [
-    join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
-    join(roots.socketProxyUnitDir, "lando-proxy-http.service"),
-    join(roots.socketProxyUnitDir, "lando-proxy-https.socket"),
-    join(roots.socketProxyUnitDir, "lando-proxy-https.service"),
-  ],
-  socketProxyPolkitPath: roots.socketProxyPolkitPath,
   listDiscoveredApps: async () => [],
+  remove: (path) =>
+    path === join(roots.userDataRoot, "runtime")
+      ? defaultRemoveRuntimeDir(path, privateRuntimeTestDeps(path))
+      : rm(path, { recursive: true, force: true }),
   ...extra,
 });
 

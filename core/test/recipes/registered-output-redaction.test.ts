@@ -80,4 +80,5 @@ test("bundled Lando 3 translator ports observe later secret registration", async
   // Then
   expect(output).toBe("translation failed with [redacted]");
 });
+
 import { serviceTypeFacts } from "@lando/service-lando";

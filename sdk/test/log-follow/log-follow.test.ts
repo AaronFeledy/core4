@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Duration, Effect, Exit, Fiber, Ref, Stream } from "effect";
-import { TestClock } from "effect/testing";
-
 import {
   type LogFollowEvent,
   followLogSource,
@@ -11,7 +8,8 @@ import {
 } from "@lando/sdk/log-follow";
 import { LogSource } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
-import { Schema } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Ref, Schema, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 const SERVICE = "db" as never;
 

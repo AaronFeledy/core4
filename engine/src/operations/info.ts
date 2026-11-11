@@ -1,5 +1,3 @@
-import { Effect, Result, Schema } from "effect";
-
 import type {
   InfoAppOptions,
   InfoAppResult,
@@ -10,33 +8,34 @@ import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lan
 import {
   type AppPlan,
   type LoadScopedLandofile,
-  type ServiceConnection,
+  type ServiceCreds,
+  ServiceInfoConsistent,
   type ServicePlan,
-  type ServiceState,
   landoServiceNetworkAttachments,
   serviceAppMount,
 } from "@lando/sdk/schema";
-import { REDACTED } from "@lando/sdk/secrets";
+import { REDACTED, isPublicDefaultCredential } from "@lando/sdk/secrets";
 import {
   type AppPlanner,
   type ConfigService,
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-  type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { hostProxyEligibleServices } from "../subsystems/host-proxy/worker-service-plan.ts";
-import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
 import { infoLogSources } from "./info-log-sources.ts";
-import { projectServiceProbes } from "./info-probes.ts";
+import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
+import { resolveInfoTarget } from "./info-target.ts";
+import { plannedServiceArtifact } from "./planned-service-artifact.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -46,42 +45,35 @@ type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimePr
 
 const CertsProvenance = Schema.Literals(["none", "custom"]);
 
-const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] => {
-  if (connection === undefined) return undefined;
-  const { user, database, rootPassword } = connection.creds;
-  return {
-    user,
-    password: REDACTED,
-    database,
-    ...(rootPassword === undefined ? {} : { rootPassword: REDACTED }),
-  };
+// A published development default is public as a literal; every deferred
+// descriptor and every other value stays redacted without touching a store.
+const displayedCredential = (value: ServiceCreds["password"]): string =>
+  typeof value === "string" && isPublicDefaultCredential(value) ? value : REDACTED;
+
+const displayedCreds = (creds: ServiceCreds): InfoAppService["creds"] => ({
+  user: creds.user,
+  password: displayedCredential(creds.password),
+  database: creds.database,
+  ...(creds.rootPassword === undefined ? {} : { rootPassword: displayedCredential(creds.rootPassword) }),
+});
+
+const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] =>
+  connection === undefined ? undefined : displayedCreds(connection.creds);
+
+const credsFromService = (service: ServicePlan): InfoAppService["creds"] => {
+  if (service.sqlite !== undefined) return { engine: "sqlite", path: service.sqlite.path };
+  if (service.connection !== undefined) return credsFromConnection(service.connection);
+  return service.nonSqlCreds === undefined ? undefined : displayedCreds(service.nonSqlCreds);
 };
 
-const toServiceInfo = (
+const serviceInfoMetadata = (
   plan: AppPlan,
   service: ServicePlan,
-  status: ServiceState,
-  connections: readonly ServiceConnection[],
   capabilities: RuntimeProviderShape["capabilities"],
-  runtimeHealth: ServiceRuntimeInfo["health"],
-): InfoAppService => {
+): Omit<InfoAppService, "status" | "health" | "readiness" | "connections"> => {
   const logSources = infoLogSources(service, capabilities);
-  const creds = credsFromConnection(service.connection);
-  const artifact =
-    service.artifact === undefined
-      ? undefined
-      : service.artifact.kind === "ref"
-        ? {
-            kind: "ref" as const,
-            ref: service.artifact.ref,
-            ...(service.artifact.digest === undefined ? {} : { digest: service.artifact.digest }),
-          }
-        : {
-            kind: "build" as const,
-            ...(service.artifact.contentHash === undefined
-              ? {}
-              : { contentHash: service.artifact.contentHash }),
-          };
+  const creds = credsFromService(service);
+  const artifact = plannedServiceArtifact(service.artifact);
   const hostnames = Array.from(
     new Set(landoServiceNetworkAttachments(plan, service).flatMap((attachment) => attachment.aliases)),
   );
@@ -99,16 +91,13 @@ const toServiceInfo = (
     type: service.type,
     provider: String(service.provider),
     primary: service.primary,
-    status,
     ...(artifact === undefined ? {} : { artifact }),
     ...(service.user === undefined ? {} : { user: service.user }),
     ...(service.workingDirectory === undefined ? {} : { workingDirectory: service.workingDirectory }),
     hostnames,
     ...(certs === undefined ? {} : { certs }),
-    ...projectServiceProbes(service, runtimeHealth),
     ...(service.home === undefined ? {} : { home: service.home }),
     ...(service.listenerAuthority === undefined ? {} : { listenerAuthority: service.listenerAuthority }),
-    connections,
     ...(logSources.length === 0 ? {} : { logSources }),
     ...(creds === undefined ? {} : { creds }),
   };
@@ -120,7 +109,7 @@ const toServiceInfo = (
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
   completionPlan: AppPlan = plan,
-  plannedPolicy: AppPlan | null = completionPlan,
+  options: { readonly plannedPolicy?: AppPlan | null; readonly appName?: string } = {},
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
@@ -129,25 +118,38 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   const services = rows.map((row) => {
     const service = Object.values(plan.services).find((service) => String(service.name) === row.name);
     if (service === undefined) throw new TypeError(`Missing service plan for ${row.name}`);
-    const runtime = observations.find((observed) => observed.name === row.name)?.runtime;
-    const mounts = projectServiceMounts(plan, service, runtime);
+    const observed = observations.find((candidate) => candidate.name === row.name);
+    if (observed === undefined) throw new TypeError(`Missing observation for ${row.name}`);
+    const mounts = projectServiceMounts(plan, service, observed.runtime);
     const appMount = serviceAppMount(service);
-    return {
-      ...toServiceInfo(plan, service, row.state, row.connections, provider.capabilities, runtime?.health),
+    return ServiceInfoConsistent.make({
+      ...serviceInfoMetadata(plan, service, provider.capabilities),
+      ...projectServiceObservation(service, observed),
+      connections: row.connections,
       ...(mounts === undefined ? {} : { mounts }),
       ...(appMount === undefined ? {} : { appMount }),
-    };
+    });
   });
 
   const hostProxy =
     hostProxyEligibleServices(plan).length === 0
       ? undefined
       : (hostProxyPlanExtension(plan) ?? { runLando: { availability: "available" as const } });
-  const applied = yield* registry.resolveAppliedPlan(completionPlan.identity?.appRoot ?? completionPlan.root);
+  const applied = yield* registry.resolveAppliedPlan(
+    completionPlan.identity?.appRoot ?? completionPlan.root,
+    {
+      kind: "user",
+      id: completionPlan.id,
+    },
+  );
   // selectInfoPlan returns the original plan only for an unscoped view.
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
+  const appName = options.appName ?? plan.name;
+  const dataName = plan.identity?.dataName ?? plan.name;
+  const plannedPolicy = options.plannedPolicy === undefined ? completionPlan : options.plannedPolicy;
   return {
-    app: plan.name,
+    app: appName,
+    ...(dataName === appName ? {} : { dataName }),
     services,
     fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied, selectedServices),
     ...(hostProxy === undefined ? {} : { hostProxy }),
@@ -162,12 +164,17 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
 
   let plan: AppPlan;
   let landofile: LoadScopedLandofile | undefined;
-  const observedTarget = target ?? (yield* resolveAppliedStateTarget);
+  const observedTarget = target ?? (yield* resolveInfoTarget);
   if (observedTarget !== undefined) {
     plan = observedTarget.plan;
     if (options?.deep === true) {
       landofile =
         observedTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, observedTarget.root));
+    } else if (target === undefined) {
+      // An applied plan carries its recorded name; the Landofile names the app now, when it loads.
+      landofile = yield* loadUserLandofileAt(landofileService, observedTarget.root).pipe(
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
     }
   } else {
     ({ plan, landofile } = yield* planDesiredApp);
@@ -180,7 +187,10 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
     const planned = yield* Effect.result(planDesiredApp);
     desired = Result.match(planned, { onFailure: () => null, onSuccess: ({ plan }) => plan });
   }
-  const result = yield* infoForPlan(selectedPlan, observedPlan, desired);
+  const result = yield* infoForPlan(selectedPlan, observedPlan, {
+    plannedPolicy: desired,
+    appName: landofile?.document.name ?? plan.name,
+  });
   if (options?.deep !== true) return result;
   const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);
   return { ...result, agentEnv };

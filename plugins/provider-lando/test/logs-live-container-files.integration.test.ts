@@ -1,14 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema, Stream } from "effect";
-
 import { makePodmanApiClient } from "@lando/provider-lando";
+import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -21,9 +19,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { LogChunk, RuntimeProviderShape } from "@lando/sdk/services";
+import { DateTime, Effect, Schema, Stream } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
-
-import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 
 const liveSocket = resolveLiveProviderSocket();
 const helperPath = (arch: "x64" | "arm64") =>
@@ -186,7 +183,7 @@ const fileLogs = (
     { follow: options.follow ?? false, sources: [selected], source: selected.id, ...options },
   );
 
-const containerName = "lando-livefilelogsapp-node";
+const containerName = "lando-livefilelogsapp--node";
 
 const realContainerHelper = (target: { readonly os: "linux"; readonly arch: "x64" | "arm64" }) =>
   Effect.tryPromise({

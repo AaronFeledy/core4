@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import * as SchemaExports from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const runtimeKnobExports = [
   "ComposeBooleanOrStringField",
@@ -14,13 +13,11 @@ const runtimeKnobExports = [
   "ComposeDeploymentDevice",
   "ComposeDevice",
   "ComposeDevicesField",
-  "ComposeDiscreteResourceSpec",
   "ComposeDnsField",
   "ComposeDnsOptField",
   "ComposeDnsSearchField",
   "ComposeDurationSecondsField",
   "ComposeExtraHostsField",
-  "ComposeGenericResource",
   "ComposeGpuRequest",
   "ComposeGpusField",
   "ComposeGroupAddField",

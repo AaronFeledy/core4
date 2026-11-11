@@ -1,14 +1,14 @@
 import { Effect } from "effect";
-import { yesFlag } from "../../spec/confirmation-flag";
-import { Args, Flags } from "../../spec/metadata";
-
+import type { CliInvocationContext } from "../../../runtime/invocation-context";
 import type { InitAppOptions } from "../../commands/init";
 import { resolveInitDestination } from "../../commands/init-destination";
 import { parseInitSourceFlags } from "../../commands/init-source";
 import { InitAppResultSchema } from "../../commands/recipe-init-schemas";
 import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { booleanFlag, specArgsOf, specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
+import { Args, Flags } from "../../spec/metadata";
 
 type InitCommandOptions = Omit<InitAppOptions, "privateFileAccess">;
 
@@ -38,7 +38,7 @@ export interface InitFlags {
   readonly yes?: boolean;
 }
 
-export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
+export const initOptionsFromInput = (input: unknown, context?: CliInvocationContext): InitCommandOptions => {
   const destination = stringFlag(specArgsOf(input), "destination");
   const values = specFlagsOf(input);
   const flags = {
@@ -69,7 +69,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
     path: flags.path,
     checksum: flags.checksum,
   });
-  const cwd = process.cwd();
+  const cwd = context?.cwd ?? process.cwd();
   return {
     cwd,
     full: flags.full === true,
@@ -80,7 +80,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
     nonInteractive: resolveNonInteractive({
       interactive: flags.interactive === true,
       noInteractive: flags["no-interactive"] === true,
-      isTTY: process.stdin.isTTY,
+      isTTY: (context === undefined ? process.stdin.isTTY : context.io.stdinIsTTY) === true,
     }),
     ...sourceOptions,
     destination: resolveInitDestination({
@@ -97,6 +97,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
 export const initSpec: LandoCommandSpec<typeof InitAppResultSchema.Type> = {
   resultSchema: InitAppResultSchema,
   id: "apps:init",
+  onlineAcquisition: true,
   helpGroup: "common",
   summary: "Generate a new Lando app.",
   namespace: "apps",
@@ -152,5 +153,5 @@ export const initSpec: LandoCommandSpec<typeof InitAppResultSchema.Type> = {
       default: false,
     }),
   },
-  run: () => Effect.die("not yet implemented: apps:init"),
+  run: () => Effect.die("not implemented: apps:init"),
 };

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { composeServicePlan } from "./compose-harness.ts";
 

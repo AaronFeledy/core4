@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -12,7 +11,9 @@ import {
   ServiceName,
   type ServicePlan,
   landoAppNetworkName,
+  landoServiceContainerName,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
@@ -123,7 +124,7 @@ const rewritePlanIdentity = (plan: CurrentExecutableAppPlan, slug: string): Curr
 };
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  landoServiceContainerName(plan.slug, String(service.name));
 
 const inspectContainers = async (plan: AppPlan, api: ReturnType<typeof makePodmanApiClient>) => {
   const request = api.request;
@@ -156,6 +157,7 @@ describe("scratch fork app resources — live integration", () => {
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);
+      const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
       const sourcePlan = appPlan("forksrc");
       const forkPlan = rewritePlanIdentity(sourcePlan, "scratch-forksrc-abc123");
 
@@ -163,10 +165,10 @@ describe("scratch fork app resources — live integration", () => {
       await Effect.runPromise(Effect.result(bringDown(sourcePlan, { api, volumes: true })));
 
       try {
-        const sourceApplied = await Effect.runPromise(bringUp(sourcePlan, { api }));
+        const sourceApplied = await Effect.runPromise(bringUp(sourcePlan, { api, ...helperOptions }));
         expect(sourceApplied.changed).toBe(true);
 
-        const forkApplied = await Effect.runPromise(bringUp(forkPlan, { api }));
+        const forkApplied = await Effect.runPromise(bringUp(forkPlan, { api, ...helperOptions }));
         expect(forkApplied.changed).toBe(true);
 
         expect(forkPlan.root).toBe(sourcePlan.root);

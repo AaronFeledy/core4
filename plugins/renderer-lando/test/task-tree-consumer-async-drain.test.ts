@@ -1,13 +1,11 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Schema } from "effect";
 import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
 import type { LiveRegionSpoolFactory } from "../src/opentui/live-region-spool.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";

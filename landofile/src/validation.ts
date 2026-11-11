@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import {
@@ -39,7 +40,7 @@ export const landofileValidationError = (
 };
 
 export const validationErrorFromCause = (file: string, parsed: unknown, cause: unknown) => {
-  const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue) : [];
+  const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue, [], { input: parsed }) : [];
   const unknown = leaves.filter((issue) => issue._tag === "Unexpected");
   const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
   const issues = (
@@ -93,5 +94,5 @@ export const validateLandofile = (
   return Schema.decodeUnknownEffect(LandofileShape)(parsed, {
     onExcessProperty: "error",
     errors: "all",
-  }).pipe(Effect.mapError((cause) => validationErrorFromCause(file, parsed, cause)));
+  }).pipe(mapFailures((cause) => validationErrorFromCause(file, parsed, cause)));
 };

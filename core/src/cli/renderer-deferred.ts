@@ -2,14 +2,14 @@
  * Deferred renderer surfaces.
  *
  * This module is the single source of truth for renderer flags and mode
- * values that are not yet shipped. Guards raise tagged
+ * values that are not implemented. Guards raise tagged
  * `NotImplementedError` objects so callers see the deferred remediation
  * instead of a silent no-op or a generic `RendererSelectionError`.
  *
  * Deferred surfaces include the `task.detail` tail control flag and the
- * user-configurable expand/collapse control flags for the task tree. The
- * `verbose` renderer mode has shipped, so no renderer mode values are
- * currently deferred — the mode table is retained for future modes.
+ * user-configurable expand/collapse control flags for the task tree. No
+ * renderer mode values are deferred; the mode table is where one would be
+ * registered.
  *
  * Wiring:
  *   - `core/src/cli/renderer-selection.ts` consults this module from
@@ -59,7 +59,7 @@ export const DEFERRED_RENDERER_FLAGS: ReadonlyMap<string, DeferredRendererSurfac
         {
           feature: "renderer `task.detail` streaming-tail control flag",
           remediation:
-            "The TTY `lando` renderer shows a fixed `task.detail` tail. The `--tail` / `--no-tail` control flag is not available yet; use `--renderer=json` for structured NDJSON or `--renderer=plain` for line-per-event output.",
+            "The TTY `lando` renderer shows a fixed `task.detail` tail. The `--tail` / `--no-tail` control flag is not available; use `--renderer=json` for structured NDJSON or `--renderer=plain` for line-per-event output.",
         },
       ];
     }
@@ -68,14 +68,14 @@ export const DEFERRED_RENDERER_FLAGS: ReadonlyMap<string, DeferredRendererSurfac
       {
         feature: `renderer task tree ${kind} configuration flag`,
         remediation:
-          "The TTY `lando` renderer supports default Enter/Esc task-detail expand/collapse keybindings and publishes `task.detail.expand` / `task.detail.collapse` events. User-configurable expand/collapse control flags are not available yet; use the default keybindings in TTY mode, or `--renderer=json` for structured NDJSON and `--renderer=plain` for non-interactive output.",
+          "The TTY `lando` renderer supports default Enter/Esc task-detail expand/collapse keybindings and publishes `task.detail.expand` / `task.detail.collapse` events. User-configurable expand/collapse control flags are not available; use the default keybindings in TTY mode, or `--renderer=json` for structured NDJSON and `--renderer=plain` for non-interactive output.",
       },
     ];
   }) as ReadonlyArray<readonly [string, DeferredRendererSurface]>,
 );
 
 const surfaceMessage = (surface: DeferredRendererSurface, prefix: string): string =>
-  `${prefix}: ${surface.feature} is not available yet.`;
+  `${prefix}: ${surface.feature} is not available.`;
 
 /**
  * Build a tagged `NotImplementedError` for a deferred renderer mode value

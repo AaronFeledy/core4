@@ -1,11 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema, Stream } from "effect";
-import {
-  compileTestLandofile,
-  toolingExecutionLayer,
-  toolingValueResolverLayer,
-} from "./support/compiled-landofile.ts";
-
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -26,9 +19,14 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
+import { Effect, Layer, Schema, Stream } from "effect";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");
@@ -85,7 +83,7 @@ const makeProvider = (
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -220,7 +218,7 @@ describe("meilisearch service type — scenario: index create + document post + 
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-meilisearch-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--search--meilisearch-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:7700/health"]);
     expect(search.environment.LANDO_SERVICE_TYPE).toBe("meilisearch");

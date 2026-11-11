@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
 import {
   SOLR_CONFIG_TARGET,
@@ -56,7 +55,7 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual(["solr-foreground", "-p", "8983"]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-solr-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--search--solr-data");
     expect(String(volumes[0]?.target)).toBe("/var/solr");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([

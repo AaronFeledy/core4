@@ -1,4 +1,5 @@
 import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 import { canonicalJson } from "../digest/index.ts";
 
 import {
@@ -11,6 +12,7 @@ import {
   ServiceConfig,
   ServiceName,
   ServicePlan,
+  landoServiceStoreName,
 } from "../schema/index.ts";
 import type {
   AppFeatureContext,
@@ -141,9 +143,7 @@ export const runServiceCompositionContract = Effect.fnUntraced(function* (
 
   const resolution = yield* serviceType
     .resolve(makeInput())
-    .pipe(
-      Effect.mapError((cause) => serviceCompositionFailure("service type resolve succeeds", String(cause))),
-    );
+    .pipe(mapFailures((cause) => serviceCompositionFailure("service type resolve succeeds", String(cause))));
 
   yield* requireServiceComposition(
     typeof resolution === "object" && resolution !== null,
@@ -218,9 +218,7 @@ export const runServiceCompositionContract = Effect.fnUntraced(function* (
   const second = yield* serviceType
     .resolve(makeInput())
     .pipe(
-      Effect.mapError((cause) =>
-        serviceCompositionFailure("service type resolve is replay-safe", String(cause)),
-      ),
+      mapFailures((cause) => serviceCompositionFailure("service type resolve is replay-safe", String(cause))),
     );
   yield* requireServiceComposition(
     second.base === resolution.base &&
@@ -301,6 +299,7 @@ export interface ServiceFeatureContractHarness {
   readonly base?: "l337" | "lando";
   readonly primary?: boolean;
   readonly appName?: string;
+  readonly appSlug?: string;
   readonly appRoot?: string;
   readonly normalizedConfig?: ServiceConfig;
   readonly connection?: DatabaseConnection;
@@ -332,6 +331,8 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     normalizedConfig: input.normalizedConfig ?? { type: "test" },
     ...(input.connection === undefined ? {} : { connection: input.connection }),
     config: input.config ?? {},
+    serviceStoreName: (role) =>
+      landoServiceStoreName(input.appSlug ?? "myapp", input.serviceName ?? "web", role),
     addEnv(name, value) {
       recorded.env.set(name, value);
     },

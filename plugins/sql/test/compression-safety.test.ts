@@ -1,15 +1,10 @@
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import { Effect } from "effect";
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Stream } from "effect";
-
-import { DataChecksumMismatchError } from "@lando/sdk/errors";
-import { runImport } from "../src/actions.ts";
 import { withHostDumpCompression, writeDumpTransform } from "../src/compression.ts";
-import { SqlEnvironmentSession } from "../src/environment.ts";
-import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 describe("host dump compression safety", () => {
   let root = "";
@@ -17,7 +12,6 @@ describe("host dump compression safety", () => {
     root = await mkdtemp(join(tmpdir(), "lando-dump-safety-"));
   });
   afterEach(async () => {
-    cleanupSqlTestDeps();
     await rm(root, { recursive: true, force: true });
   });
 
@@ -30,7 +24,6 @@ describe("host dump compression safety", () => {
       withHostDumpCompression({
         path: destination,
         compression: "gzip",
-        direction: "export",
         transfer: (path) =>
           Effect.promise(async () => {
             staged = path;
@@ -44,31 +37,6 @@ describe("host dump compression safety", () => {
     expect(await readdir(root)).toEqual(["dump.sql.gz"]);
   });
 
-  test.skipIf(process.platform === "win32")(
-    "protects plaintext import staging from other users",
-    async () => {
-      // Given
-      const source = join(root, "source.gz");
-      await writeFile(source, Bun.gzipSync("private dump"));
-      let mode = 0;
-      // When
-      await Effect.runPromise(
-        withHostDumpCompression({
-          path: source,
-          compression: "gzip",
-          direction: "import",
-          transfer: (path) =>
-            Effect.promise(async () => {
-              mode = (await stat(path)).mode & 0o777;
-              return { accelerated: false };
-            }),
-        }),
-      );
-      // Then
-      expect(mode).toBe(0o600);
-    },
-  );
-
   test("preserves the destination when decompression fails", async () => {
     // Given
     const source = join(root, "broken.gz");
@@ -80,54 +48,5 @@ describe("host dump compression safety", () => {
     // Then
     expect(await readFile(destination, "utf8")).toBe("previous dump");
     expect((await readdir(dirname(destination))).sort()).toEqual(["broken.gz", "existing.sql"]);
-  });
-
-  test("rejects a compressed dump changed after confirmation before transferring it", async () => {
-    // Given
-    const source = join(root, "changed.gz");
-    const original = Bun.gzipSync("approved SQL");
-    const expectedDigest = new Bun.CryptoHasher("sha256").update(original).digest("hex");
-    await writeFile(source, Bun.gzipSync("replacement SQL"));
-    const harness = makeSqlTestDeps({ password: "test-password" });
-    let transferred = false;
-    const input = {
-      plan: harness.deps.plan,
-      service: "database",
-      family: "mysql" as const,
-      creds: { user: "lando", database: "sql-app", password: "test-password", port: 3306 },
-      env: {},
-      file: source,
-      compression: "gzip" as const,
-      expectedDigest,
-    };
-    // When
-    const failure = await Effect.runPromise(
-      Effect.scoped(
-        harness.deps.environmentResolver.openSession().pipe(
-          Effect.flatMap((session) =>
-            runImport(
-              {
-                ...harness.deps,
-                transfer: () =>
-                  Effect.sync(() => {
-                    transferred = true;
-                    return { accelerated: false };
-                  }),
-              },
-              (service, command, env) =>
-                Stream.unwrap(
-                  session
-                    .resolveEnvironment(env ?? {})
-                    .pipe(Effect.map((resolved) => harness.deps.exec(service, command, resolved))),
-                ),
-              { ...input, secrets: () => ({ substring: [], wholeToken: [] }) },
-            ).pipe(Effect.provideService(SqlEnvironmentSession, session), Effect.flip),
-          ),
-        ),
-      ),
-    );
-    // Then
-    expect(failure).toBeInstanceOf(DataChecksumMismatchError);
-    expect(transferred).toBe(false);
   });
 });

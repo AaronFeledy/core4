@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import {
   acceptCompatibilityExceptions,
@@ -13,6 +12,7 @@ import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-ac
 import { evolveHistoricalAuthoringProjection } from "./x-extension-authoring-projection-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
+import { evolveHistoricalDeprecationNotice } from "./x-extension-deprecation-notice-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
@@ -20,12 +20,17 @@ import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
+import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
+import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
+  evolveHistoricalToolingWrapper,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import {
@@ -113,9 +118,17 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
+  const projected = evolveHistoricalDeprecationNotice(
+    evolveHistoricalToolingWrapper(
+      evolveHistoricalUploadDirs(
+        evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+      ),
+    ),
+    source,
+  );
   const evolved = evolveHistoricalSchedule(
-    evolveHistoricalUploadDirs(
-      evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+    evolveHistoricalServiceCreds(
+      evolveHistoricalSwarmReservations(evolveHistoricalToolingVars(evolveHistoricalSqliteTarget(projected))),
     ),
   );
   evolvedTypedCache.set(source, evolved);
@@ -181,7 +194,13 @@ describe("embedded wire closed x-* artifact repair", () => {
       ),
     );
     const repaired = evolveHistoricalSchedule(
-      evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services")),
+      evolveHistoricalServiceCreds(
+        evolveHistoricalSwarmReservations(
+          evolveHistoricalSqliteTarget(
+            evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services")),
+          ),
+        ),
+      ),
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),

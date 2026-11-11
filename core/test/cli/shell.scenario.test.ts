@@ -2,10 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { type Context, DateTime, Effect, Layer, Redacted, Stream } from "effect";
-
 import { shellApp } from "@lando/core/cli/operations";
 import { ProviderUnavailableError, ShellRequiresTtyError } from "@lando/core/errors";
 import {
@@ -23,6 +19,7 @@ import {
   AppPlanner,
   DeprecationService,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   SecretStore,
@@ -30,10 +27,13 @@ import {
   ShellRunner,
 } from "@lando/core/services";
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "@lando/engine/config/agent-env";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { type Context, DateTime, Effect, Layer, Redacted, Stream } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
 import { DEFAULT_SERVICE_LOGIN_SHELL, SESSION_NO_HISTORY_ENV } from "../../src/cli/service-login-shell.ts";
@@ -127,7 +127,7 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => Effect.die("not used"),
     pullArtifact: () => Effect.die("not used"),
@@ -178,6 +178,7 @@ const layer = (
   shellRunner = shellRunnerLayer(),
 ) =>
   Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
     Layer.succeed(
       LandofileService,
       LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, plan.root)) }),
@@ -209,6 +210,7 @@ const layer = (
 
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
@@ -902,6 +904,7 @@ describe("shellApp — shell modes", () => {
   test("default host mode persists history under a per-app HISTFILE path", async () => {
     const spec = await hostSpec();
     expect(spec.historyFile).toMatch(/[/\\]shell[/\\].+[/\\]history$/);
+    expect(spec.historyFile).toStartWith("/tmp/shell-configured-data/");
     expect(spec.env?.HISTFILE).toBeUndefined();
   });
 
@@ -1025,4 +1028,5 @@ describe("lando shell — CLI argv parsing", () => {
     });
   }, 30_000);
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

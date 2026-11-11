@@ -1,11 +1,10 @@
-import { Flags } from "../../spec/metadata";
+import { LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
 
 import { StreamFrame } from "@lando/sdk/schema";
-
-import { LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
 import { renderLogsAppResult } from "../../commands/logs";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 import {
   logFollowFromInput,
   logLinesToStreamFrames,
@@ -59,7 +58,7 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
     }),
     "no-viewer": Flags.boolean({
       description:
-        "Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior).",
+        "Reserved for the interactive log viewer; accepted as a no-op until the viewer exists (does not change follow behavior).",
       default: false,
     }),
   },

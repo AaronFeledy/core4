@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { NotImplementedError } from "../../errors/index.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../../schema/string-forms.ts";
@@ -11,7 +10,7 @@ export type ComponentId = typeof ComponentId.Type;
 
 const unsupportedComponentPropsError = (component: string, key: string): NotImplementedError =>
   new NotImplementedError({
-    message: `<${component}> prop \`${key}\` is not supported yet.`,
+    message: `<${component}> prop \`${key}\` is not supported.`,
     commandId: `guide.component.${component.toLowerCase()}`,
     remediation:
       "Unsupported guide component prop. Remove the unsupported prop or use a supported guide component shape.",
@@ -35,7 +34,7 @@ const unsupportedGuideComponentError = (componentName: string, hostPath: string)
   new NotImplementedError({
     message: `<${componentName}> is not supported at ${hostPath}.`,
     commandId: `guide.component.${componentName.toLowerCase()}`,
-    remediation: `<${componentName}> is not supported yet.`,
+    remediation: `<${componentName}> is not supported.`,
   });
 
 export const assertSupportedGuideComponent = (componentName: string, hostPath: string): void => {

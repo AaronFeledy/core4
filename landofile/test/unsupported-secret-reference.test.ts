@@ -60,7 +60,7 @@ test.each([
     path: ["services", "app", "build", "app", "user"],
     extra: "",
     suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+      "Use ${secret:...} only in a service environment value, a database password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
   {
     path: ["services", "app", "build", "app", 0, "run"],
@@ -138,7 +138,7 @@ test.each([
     path: ["services", "app", "type"],
     extra: "",
     suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+      "Use ${secret:...} only in a service environment value, a database password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
 ] as const)("provides site-aware guidance at $path", ({ path, extra, suggestion }) => {
   // Given an authored secret at an unsupported site.

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-
-import { Result, Schema } from "effect";
-
 import { IsolateMode, ProviderCapabilities } from "@lando/sdk/schema";
+import { Result, Schema, SchemaIssue } from "effect";
 
 const BOOLEAN_FIELDS = [
   "artifactBuild",
@@ -78,10 +75,10 @@ const COMPOSE_SERVICE_KNOB_KEYS = [
   "group_add",
   "read_only",
   "platform",
-  "pull_policy",
   "logging",
   "gpus",
   "deploy.resources",
+  "deploy.resources.reservations.devices",
 ] as const;
 
 const REQUIRED_FIELD_SET = [...BOOLEAN_FIELDS, ...Object.keys(LITERAL_FIELDS), ...ARRAY_FIELDS].sort();

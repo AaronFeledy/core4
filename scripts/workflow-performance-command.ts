@@ -27,6 +27,7 @@ export const DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS = 900_000;
 const PHASE_COMMAND_TIMEOUT_MS: Partial<Readonly<Record<WorkflowPerformanceStepId, number>>> = {
   "prepare:setup": 180_000,
   "prepare:pre-pull": 180_000,
+  "prepare:global": 180_000,
   "prepare:start": 180_000,
   start: 180_000,
   rebuild: 180_000,

@@ -1,13 +1,11 @@
 import { isDeepStrictEqual } from "node:util";
-
-import { Effect, Schema } from "effect";
-
 import { FileSyncStartError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   PreparedFileSyncTarget,
   type PreparedFileSyncTarget as PreparedFileSyncTargetType,
 } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 
 const mismatch = (engineId: string, message: string) =>

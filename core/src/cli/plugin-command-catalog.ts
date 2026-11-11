@@ -1,23 +1,30 @@
-import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-index-writer";
+import {
+  type AppCommandCacheReadResult,
+  readAppCommandCacheForCwdDetailed,
+} from "@lando/engine/cache/command-index-writer";
 import type {
   GraphCommandCandidate,
   PluginContributionGraphShape,
 } from "@lando/engine/plugins/contribution-graph";
+import { resolveLandoRoots } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { closestKeys } from "@lando/sdk/schema";
 import { Effect, Exit, Schema } from "effect";
+import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 import {
   isReservedNamespaceHead,
   resolveBuiltInCommand,
   suggestCommandForSuffix,
 } from "./built-in-command-registry";
 import { isHelpTopic } from "./cold-path-output";
-import { buildCommandCatalog } from "./command-catalog";
+import { type CommandCatalog, type CommandCatalogEntry, buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { loadPluginSpec } from "./event-command-target";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import { acquirePluginCommandMetadata } from "./plugin-command-discovery";
 import { pluginTopicRows } from "./root-help-topics";
+import { UNKNOWN_COMMAND_FALLBACK, type UnknownCommandGuidance } from "./unknown-command-error";
 
 export const PluginCommandDiagnostic = Schema.Struct({
   _tag: Schema.String,
@@ -66,7 +73,7 @@ export interface PluginCommandListing {
 
 const diagnostic = Effect.fnUntraced(function* (error: unknown) {
   const service = yield* RedactionService;
-  const redactor = yield* service.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* service.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   const tagged = Schema.is(PluginCommandDiagnostic)(error);
   const bounded = (text: string) => escapeDiagnosticText(redactor.redactString(text)).slice(0, 512);
   return {
@@ -101,13 +108,79 @@ const diagnostic = Effect.fnUntraced(function* (error: unknown) {
   };
 });
 
+const pluginAliasHint = (token: string, catalog: CommandCatalog | undefined): string | undefined => {
+  const aliased = catalog?.resolve(token);
+  return aliased?.source === "plugin" && aliased.id !== token
+    ? `Run \`lando ${aliased.id}\` to run the plugin command directly.`
+    : undefined;
+};
+
+const namespaceHint = (token: string, catalog: CommandCatalog | undefined): string | undefined => {
+  const head = token.split(":", 1)[0] ?? token;
+  if (isHelpTopic(head)) return `Run \`lando help ${head}\` to list commands.`;
+  const ids = catalog?.entries.filter((entry) => !entry.hidden).map((entry) => entry.id) ?? [];
+  if (!isReservedNamespaceHead(head) && ids.some((id) => id.startsWith(`${head}:`)))
+    return `Run \`lando help ${head}\` to list commands.`;
+  const suggestion = suggestCommandForSuffix(token, ids);
+  return suggestion === undefined ? undefined : `Run \`lando ${suggestion}\` instead.`;
+};
+
+const suggestable = (entry: CommandCatalogEntry | undefined): entry is CommandCatalogEntry =>
+  entry !== undefined && !entry.hidden && entry.deferred === undefined;
+
+// One edit for short words, two for longer ones; a single character is too short to guess from.
+const typoBudget = (token: string): number => {
+  const segment = token.slice(token.lastIndexOf(":") + 1);
+  return segment.length <= 1 ? 0 : segment.length <= 4 ? 1 : 2;
+};
+
+/**
+ * Routable spellings nearest to what was typed, best first: space-separated
+ * words joined into a colon id (`meta version` -> `meta:version`), else the
+ * closest visible tokens, at most one per command.
+ */
+const closestCommandSpellings = (
+  argv: ReadonlyArray<string>,
+  catalog: CommandCatalog,
+): ReadonlyArray<{ readonly spelling: string; readonly entry: CommandCatalogEntry }> => {
+  const token = argv[0];
+  if (token === undefined || escapeDiagnosticText(token) !== token) return [];
+  const words: string[] = [];
+  for (const word of argv.slice(0, 4)) {
+    if (word.startsWith("-") || escapeDiagnosticText(word) !== word) break;
+    words.push(word);
+  }
+  for (let count = words.length; count >= 2; count -= 1) {
+    const spelling = words.slice(0, count).join(":");
+    const entry = catalog.resolve(spelling);
+    if (suggestable(entry)) return [{ spelling, entry }];
+  }
+  const budget = typoBudget(token);
+  if (budget === 0) return [];
+  const spellings = catalog.entries
+    .filter(suggestable)
+    .flatMap((entry) => entry.tokens)
+    .filter((candidate) => !candidate.startsWith("-"));
+  const matches: { readonly spelling: string; readonly entry: CommandCatalogEntry }[] = [];
+  for (const spelling of closestKeys(token, spellings, budget, spellings.length)) {
+    const entry = catalog.resolve(spelling);
+    if (entry === undefined || matches.some((match) => match.entry.id === entry.id)) continue;
+    matches.push({ spelling, entry });
+    if (matches.length === 3) break;
+  }
+  return matches;
+};
+
 /** One lazy graph and selected-spec memo per invocation, never shared between cwd/policies. */
 export const createPluginCommandCatalog = (
   signal?: AbortSignal,
   acquireGraph: () => Effect.Effect<PluginContributionGraphShape, unknown> = acquirePluginCommandMetadata,
+  context?: CliInvocationContext,
 ) => {
   const run = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
-    const exit = await Effect.runPromiseExit(interruptOnAbort(effect, signal));
+    const operation =
+      context === undefined ? effect : effect.pipe(Effect.provideService(CliInvocation, context));
+    const exit = await Effect.runPromiseExit(interruptOnAbort(operation, signal));
     if (Exit.isFailure(exit)) throw exit.cause;
     return exit.value;
   };
@@ -137,10 +210,23 @@ export const createPluginCommandCatalog = (
     return acquisition;
   };
   const specs = new Map<string, Promise<PluginCommandRow>>();
-  const index = async (result: Extract<Awaited<ReturnType<typeof graph>>, { status: "available" }>) => {
-    const receipt = await run(readAppCommandCacheForCwdDetailed());
-    const cache = receipt.status === "fresh" ? receipt.payload : undefined;
-    return buildCommandCatalog(
+  // A fresh index stays fresh for this invocation; a miss is re-read because a rebuild may follow it.
+  let freshCache: Extract<AppCommandCacheReadResult, { readonly status: "fresh" }>["payload"] | undefined;
+  const freshAppCommandCache = async () => {
+    if (freshCache !== undefined) return freshCache;
+    const roots = context === undefined ? undefined : resolveLandoRoots({ env: context.env });
+    const receipt = await run(
+      readAppCommandCacheForCwdDetailed(
+        context === undefined || roots === undefined
+          ? {}
+          : { cwd: context.cwd, cacheRoot: roots.userCacheRoot, roots },
+      ),
+    );
+    if (receipt.status === "fresh") freshCache = receipt.payload;
+    return freshCache;
+  };
+  const index = async (result: Extract<Awaited<ReturnType<typeof graph>>, { status: "available" }>) =>
+    buildCommandCatalog(
       result.graph.commands.map((candidate) => ({
         id: candidate.id,
         pluginName: candidate.pluginName,
@@ -148,9 +234,11 @@ export const createPluginCommandCatalog = (
         descriptor: candidate.descriptor,
         summary: candidate.descriptor.summary,
       })),
-      cache,
+      await freshAppCommandCache(),
     );
-  };
+  // Failed plugin discovery still leaves built-ins and this app's tasks to suggest.
+  const suggestionCatalog = async (result: Awaited<ReturnType<typeof graph>>) =>
+    result.status === "available" ? index(result) : buildCommandCatalog([], await freshAppCommandCache());
   const load = (candidate: GraphCommandCandidate): Promise<PluginCommandRow> => {
     const cached = specs.get(candidate.id);
     if (cached !== undefined) return cached;
@@ -180,6 +268,7 @@ export const createPluginCommandCatalog = (
     return pending;
   };
   return {
+    context,
     async list(namespace?: string): Promise<PluginCommandListing> {
       const result = await graph();
       if (result.status === "unavailable") return { rows: [], metadata: result };
@@ -242,22 +331,38 @@ export const createPluginCommandCatalog = (
       if (isHelpTopic(head)) return `Run \`lando help ${head}\` to list commands.`;
       const result = await graph();
       const catalog = result.status === "available" ? await index(result) : undefined;
-      const aliased = catalog?.resolve(token);
-      if (aliased?.source === "plugin" && aliased.id !== token)
-        return `Run \`lando ${aliased.id}\` to run the plugin command directly.`;
-      const ids = catalog?.entries.filter((entry) => !entry.hidden).map((entry) => entry.id) ?? [];
-      if (!isReservedNamespaceHead(head) && ids.some((id) => id.startsWith(`${head}:`)))
-        return `Run \`lando help ${head}\` to list commands.`;
-      const suggestion = suggestCommandForSuffix(token, ids);
-      return suggestion === undefined ? undefined : `Run \`lando ${suggestion}\` instead.`;
+      return pluginAliasHint(token, catalog) ?? namespaceHint(token, catalog);
     },
-    async unknownCommandRemediation(token: string): Promise<string | undefined> {
-      const hint = await this.remediation(token);
-      if (hint !== undefined) return hint;
+    /** Whether a non-plugin command is spelled close to `argv`, even when plugin discovery failed. */
+    async hasCloseSpelling(argv: ReadonlyArray<string>): Promise<boolean> {
+      return closestCommandSpellings(argv, await suggestionCatalog(await graph())).length > 0;
+    },
+    /** Remediation for a token no command owns: the closest routable spelling first, then topic hints. */
+    async unknownCommandGuidance(argv: ReadonlyArray<string>): Promise<UnknownCommandGuidance> {
+      const token = argv[0] ?? "";
       const result = await graph();
-      return result.status === "unavailable"
-        ? `Plugin commands could not be listed: ${result.message} ${result.remediation ?? ""}`.trimEnd()
-        : undefined;
+      const catalog = await suggestionCatalog(result);
+      const unavailable =
+        result.status === "unavailable"
+          ? `Plugin commands could not be listed: ${result.message} ${result.remediation ?? ""}`.trimEnd()
+          : undefined;
+      const withUnavailable = (hint: string) => (unavailable === undefined ? hint : `${hint} ${unavailable}`);
+      const alias = pluginAliasHint(token, catalog);
+      if (alias !== undefined) return { remediation: alias };
+      const [closest, ...others] = closestCommandSpellings(argv, catalog);
+      if (closest !== undefined) {
+        const { spelling, entry } = closest;
+        // A colon id also names its short top-level spelling when it has one.
+        const alternative =
+          spelling.includes(":") && !entry.primary.includes(":") ? ` or \`lando ${entry.primary}\`` : "";
+        return {
+          suggestions: [spelling, ...others.map((other) => other.spelling)],
+          remediation: withUnavailable(`Did you mean \`lando ${spelling}\`${alternative}?`),
+        };
+      }
+      const hint = namespaceHint(token, catalog);
+      if (hint === undefined && unavailable === undefined) return {};
+      return { remediation: withUnavailable(hint ?? UNKNOWN_COMMAND_FALLBACK) };
     },
   };
 };

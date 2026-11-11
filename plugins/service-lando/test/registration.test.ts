@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
 
 import { globalServices, services } from "../src/index.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
@@ -159,7 +159,7 @@ describe("@lando/service-lando registration", () => {
         [ServiceName.make("queue")]: { type: "rabbitmq" },
         [ServiceName.make("object-store")]: {
           type: "minio",
-          database: "uploads",
+          bucket: "uploads",
           image: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z",
         },
         [ServiceName.make("aws")]: { type: "localstack" },
@@ -186,7 +186,7 @@ describe("@lando/service-lando registration", () => {
     expect(queue.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "catalog-app-rabbitmq-data",
+      store: "lando-catalog-app--queue--rabbitmq-data",
       target: PortablePath.make("/var/lib/rabbitmq"),
       readOnly: false,
     });
@@ -213,7 +213,7 @@ describe("@lando/service-lando registration", () => {
     expect(objectStore.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "catalog-app-minio-data",
+      store: "lando-catalog-app--object-store--minio-data",
       target: PortablePath.make("/data"),
       readOnly: false,
     });
@@ -226,7 +226,7 @@ describe("@lando/service-lando registration", () => {
     expect(aws.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "catalog-app-localstack-data",
+      store: "lando-catalog-app--aws--localstack-data",
       target: PortablePath.make("/var/lib/localstack"),
       readOnly: false,
     });
@@ -371,14 +371,14 @@ describe("@lando/service-lando registration", () => {
     expect(database.environment).toMatchObject({ ACCEPT_EULA: "Y", MSSQL_PID: "Developer" });
     const saPassword = database.environment.SA_PASSWORD;
     if (typeof saPassword !== "string") throw new Error("default mssql SA_PASSWORD must be literal");
-    expect(saPassword).toStartWith("Lando!");
+    expect(saPassword).toBe(MSSQL_DEFAULT_PASSWORD);
     expect(database.environment.SQLCMDPASSWORD).toBe(saPassword);
     expect(database.environment.LANDO_DB_USER).toBe("sa");
     expect(database.environment.LANDO_DB_PASSWORD).toBe(saPassword);
     expect(database.mounts).toContainEqual({
       origin: "service",
       type: "volume",
-      store: "sql-app-mssql-data",
+      store: "lando-sql-app--database--mssql-data",
       target: PortablePath.make("/var/opt/mssql"),
       readOnly: false,
     });
@@ -449,7 +449,7 @@ describe("@lando/service-lando registration", () => {
         [ServiceName.make("pma")]: {
           type: "phpmyadmin",
           hosts: ["db-a", "db-b"],
-          creds: { user: "pmauser", password: "pmapass", database: "pmadb" },
+          creds: { user: "pmauser", password: "pmapass" },
           certs: false,
         },
       },

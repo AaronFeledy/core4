@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { AbsolutePath, AppId, type FileSyncSessionSpec, ServiceName } from "@lando/sdk/schema";
 
@@ -66,7 +65,7 @@ describe("mutagen session naming", () => {
     ]) {
       const name = mutagenSessionName(input);
       expect(isValidMutagenSessionName(name)).toBe(true);
-      expect(name).toMatch(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u);
+      expect(name).toMatch(/^[a-z](?:[a-z0-9-]*[a-z0-9])?$/u);
     }
   });
 
@@ -102,7 +101,24 @@ describe("mutagen session naming", () => {
     expect(isValidMutagenSessionName(name)).toBe(true);
   });
 
-  test("isValidMutagenSessionName rejects empty, leading-dash, and oversized identifiers", () => {
+  test("prefixes names that would start with a digit, which Mutagen rejects", () => {
+    expect(mutagenSessionNameFromParts({ appId: "2048-game", service: "web", mountKey: "app-mount" })).toBe(
+      "lando--2048-game-web-app-mount",
+    );
+    const long = mutagenSessionNameFromParts({
+      appId: "3d".repeat(40),
+      service: "web",
+      mountKey: "app-mount",
+    });
+    expect(long.startsWith("lando--")).toBe(true);
+    expect(isValidMutagenSessionName(long)).toBe(true);
+    expect(
+      mutagenSessionNameFromParts({ appId: "lando-2048-game", service: "web", mountKey: "app-mount" }),
+    ).not.toBe(mutagenSessionNameFromParts({ appId: "2048-game", service: "web", mountKey: "app-mount" }));
+  });
+
+  test("isValidMutagenSessionName rejects empty, leading-dash, digit-leading, and oversized identifiers", () => {
+    expect(isValidMutagenSessionName("2048-game")).toBe(false);
     expect(isValidMutagenSessionName("")).toBe(false);
     expect(isValidMutagenSessionName("-abc")).toBe(false);
     expect(isValidMutagenSessionName("abc-")).toBe(false);

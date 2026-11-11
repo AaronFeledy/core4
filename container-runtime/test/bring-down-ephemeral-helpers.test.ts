@@ -5,9 +5,11 @@ import { Effect, Result } from "effect";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
+import { volumeInUseRemediation } from "../src/ephemeral-data-helpers.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const data = { name: "data", scope: "app", kind: "data" } as const;
 const cache = { name: "cache", scope: "app", kind: "cache" } as const;
@@ -70,7 +72,13 @@ describe("volume holder preservation during teardown", () => {
   ] as const)("empty selection never discovers or sweeps helpers: %j", async ({ stores, options }) => {
     const { api, effect } = down({ ...basePlan, stores }, options);
     expect(await Effect.runPromise(effect)).toMatchObject({ _tag: "Success", success: { changed: false } });
-    expect(api.calls.every((call) => call.method === "GET" && call.path.startsWith("/networks/"))).toBe(true);
+    expect(
+      api.calls.every(
+        (call) =>
+          call.method === "GET" &&
+          (call.path.startsWith("/networks/") || call.path.startsWith("/containers/json?")),
+      ),
+    ).toBe(true);
   });
 
   test("cache-only purge touches only its selected cache volume", async () => {
@@ -104,34 +112,30 @@ describe("volume holder preservation during teardown", () => {
     expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "bringDown.volume" } });
     if (!Result.isFailure(result)) return;
     expect(result.failure.message).toContain("lando-docker-data-[REDACTED] (exact-[REDACTED]-id)");
-    expect(result.failure.remediation).toContain("cannot verify that a leftover helper is inactive");
+    expect(result.failure.remediation).toBe(volumeInUseRemediation(redactor));
     expect(JSON.stringify(result.failure)).not.toContain("SENSITIVE");
     expect(api.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
       "/volumes/data",
     ]);
   });
 
-  test("direct removal retains the generation check and reports holders without mutating them", async () => {
+  test("direct removal reports an in-use holder and preserves it and its volume", async () => {
     const generation = "00000000-0000-4000-8000-000000000001";
     const calls: EngineHttpRequest[] = [];
+    const engine = new FakeEngine().seedContainer("lando-docker-data-SENSITIVE", {
+      Image: "fixture",
+      HostConfig: { Binds: ["data:/data"] },
+    });
+    const holder = engine.containers.get("lando-docker-data-SENSITIVE");
+    if (holder === undefined) throw new Error("Missing holder fixture");
+    engine.containers.entries.set(holder.name, { ...holder, id: "exact-SENSITIVE-id" });
+    engine.assets.volumes.set("data", { Name: "data", Labels: { "dev.lando.volume-instance": generation } });
+    engine.onRequest = (input) => calls.push(input);
     const plane = makeProviderDataPlane({
       providerId: "docker",
       capabilities: { volumeSnapshot: "none" },
       redactor,
-      api: {
-        request: (input) =>
-          Effect.sync(() => {
-            calls.push(input);
-            if (input.path === "/volumes/data" && input.method === "GET")
-              return {
-                status: 200,
-                body: JSON.stringify({ Name: "data", Labels: { "dev.lando.volume-instance": generation } }),
-              };
-            if (input.path === "/volumes/data" && input.method === "DELETE")
-              return { status: 409, body: "SENSITIVE is in use" };
-            return { status: 200, body: JSON.stringify([helper("created", {})]) };
-          }),
-      },
+      api: engine.api,
     });
     const result = await Effect.runPromise(
       plane.removeVolume({ app: basePlan.id, store: "data" }, generation).pipe(Effect.result),
@@ -140,7 +144,14 @@ describe("volume holder preservation during teardown", () => {
     if (!Result.isFailure(result)) return;
     expect(result.failure.message).toContain("exact-[REDACTED]-id");
     expect(JSON.stringify(result.failure)).not.toContain("SENSITIVE");
-    expect(calls.map((call) => call.method)).toEqual(["GET", "DELETE", "GET"]);
+    expect(engine.containers.get("lando-docker-data-SENSITIVE")).toMatchObject({
+      id: "exact-SENSITIVE-id",
+      status: "created",
+    });
+    expect(engine.assets.volumes.get("data")).toEqual({
+      Name: "data",
+      Labels: { "dev.lando.volume-instance": generation },
+    });
     expect(calls[1]?.path).toBe("/volumes/data");
   });
 });

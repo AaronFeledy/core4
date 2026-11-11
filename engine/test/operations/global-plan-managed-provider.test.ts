@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { AppPlanner, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { DateTime, Effect, Layer } from "effect";
 
 import { loadGlobalPlan } from "../../src/operations/global-plan.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";

@@ -4,6 +4,7 @@ import { Effect, Layer, Stream } from "effect";
 export const emptySnapshots = DataMover.of({
   transfer: () => Effect.die("transfer is not used by teardown"),
   transferStream: () => Stream.die("transferStream is not used by teardown"),
+  read: () => Stream.die("read is not used by teardown"),
   snapshot: () => Effect.die("snapshot is not used by teardown"),
   restore: () => Effect.die("restore is not used by teardown"),
   listSnapshots: () => Effect.succeed([]),

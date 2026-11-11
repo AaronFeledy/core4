@@ -1,3 +1,4 @@
+import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 import { getRecipeCatalog } from "../recipes/catalog";
 import { renderRecipeCatalog } from "../recipes/catalog-render";
@@ -13,6 +14,7 @@ export type ThisAppHelpRow = {
   readonly primary: string;
   readonly extras: ReadonlyArray<string>;
   readonly summary: string;
+  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
 };
 
 export type ColdHelpStyle = {
@@ -25,7 +27,7 @@ export type ColdHelpStyle = {
   readonly pluginTopics?: readonly { readonly token: string; readonly summary: string }[];
 };
 
-export const HELP_TOPICS = ["app", "apps", "plugin", "global", "recipes", "scratch"] as const;
+export const HELP_TOPICS = ["app", "apps", "meta", "plugin", "global", "recipes", "scratch"] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 
 const HELP_TOPIC_SET: ReadonlySet<string> = new Set(HELP_TOPICS);
@@ -163,6 +165,14 @@ const topicEntries = (topic: HelpTopic): readonly ManifestCommand[] => {
         (entry) =>
           entry.spec.id.startsWith("apps:") && entry.spec.id !== "apps:init" && entry.spec.id !== "apps:list",
       );
+    case "meta":
+      // Plugin, global, and recipe commands have their own topics.
+      return entries.filter(
+        (entry) =>
+          entry.spec.id.startsWith("meta:") &&
+          !/^meta:(?:plugin|global|recipes):/u.test(entry.spec.id) &&
+          !isCommon(entry),
+      );
     case "plugin":
       return entries.filter(
         (entry) => entry.spec.id.startsWith("meta:plugin:") && !AUTHORING_IDS.has(entry.spec.id),
@@ -201,7 +211,20 @@ export const renderColdRootHelp = (
   });
   const thisAppRows = options?.thisAppRows ?? [];
   const thisAppBlock =
-    thisAppRows.length === 0 ? [] : ["", style.bold("THIS APP"), ...formatSection(thisAppRows, style)];
+    thisAppRows.length === 0
+      ? []
+      : [
+          "",
+          style.bold("THIS APP"),
+          ...formatSection(
+            thisAppRows.map((row) =>
+              row.loadError === undefined
+                ? row
+                : { ...row, summary: "[unavailable] Run lando app:config:lint." },
+            ),
+            style,
+          ),
+        ];
   return [
     titleLine(style),
     "",

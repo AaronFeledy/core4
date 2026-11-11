@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-
-import { Effect, Predicate, Result, Schema } from "effect";
-
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import { ServiceBuildDirectoryCommand, ServiceCaFileDescriptor } from "@lando/sdk/services";
+import { Effect, Predicate, Result, Schema } from "effect";
 
 import type { BuildContextEntry } from "./build-context.ts";
 import { validateDockerfileUser } from "./image-build-user.ts";

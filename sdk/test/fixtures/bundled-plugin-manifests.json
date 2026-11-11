@@ -248,7 +248,10 @@
               "platform": ["darwin", "linux", "win32"]
             },
             "id": "traefik",
-            "module": "./src/proxy.ts"
+            "module": "./src/proxy.ts",
+            "requires": {
+              "globalServices": ["traefik"]
+            }
           }
         ]
       },

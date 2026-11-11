@@ -1,11 +1,9 @@
 import { availableParallelism } from "node:os";
-
 import { gateId } from "@lando/container-runtime/dependency-gates";
 import { runDependencySchedule } from "@lando/container-runtime/dependency-schedule";
 import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { dependencyGateRemediation } from "@lando/container-runtime/podman/bring-up";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { BuildPhaseFailedError, BuildStepFailedError, ProviderInternalError } from "@lando/sdk/errors";
 import {
   TaskCompleteEvent,
@@ -16,6 +14,7 @@ import {
 } from "@lando/sdk/events";
 import type { BuildStep } from "@lando/sdk/schema";
 import type { BuildAppOptions } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { type AppBuildGateResult, runAppBuildGate } from "./build-app-gates.ts";
@@ -72,10 +71,9 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
   if (graphPlan._tag === "Cycle") return yield* planError(input, graphPlan.edges);
   const parentId = `build-app-${String(input.plan.id)}`;
   const bucket = yield* openAppBuildResults(input.stateStore, String(input.plan.id)).pipe(
-    Effect.mapError((cause) => cacheError(input.provider.id, cause)),
+    mapFailures((cause) => cacheError(input.provider.id, cause)),
   );
-  const cached =
-    (yield* bucket.get.pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)))) ?? [];
+  const cached = (yield* bucket.get.pipe(mapFailures((cause) => cacheError(input.provider.id, cause)))) ?? [];
   yield* input.events.publish(
     TaskTreeStartEvent.make({
       parentId,
@@ -194,7 +192,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
       exitCode: result.exitCode,
       durationMs: result.durationMs,
       transcriptPath,
-    }).pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)));
+    }).pipe(mapFailures((cause) => cacheError(input.provider.id, cause)));
     if (result.exitCode === 0) return "succeeded" as const;
     failures.set(
       step.id,

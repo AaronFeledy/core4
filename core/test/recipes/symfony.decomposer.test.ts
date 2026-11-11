@@ -4,6 +4,7 @@ import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: symfonyDecomposer,
   producer: symfonyProducer,
@@ -44,11 +45,13 @@ const expected = {
       service: "appserver",
       description: "Run the Symfony console inside the appserver service.",
       cmds: ["php bin/console"],
+      wrapper: true,
     },
     composer: {
       service: "appserver",
       description: "Run Composer inside the appserver service.",
       cmds: ["composer"],
+      wrapper: true,
     },
   },
 } as const;

@@ -1,8 +1,7 @@
-import { Effect, Layer, Stream } from "effect";
-
 import type { DeprecationUsedEvent } from "@lando/sdk/events";
 import { EventService, Telemetry } from "@lando/sdk/services";
 import { deprecationUsedTelemetryData } from "@lando/telemetry/events";
+import { Effect, Layer, Stream } from "effect";
 
 const isDeprecationUsedEvent = (event: unknown): event is DeprecationUsedEvent =>
   typeof event === "object" &&

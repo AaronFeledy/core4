@@ -1,18 +1,24 @@
 import { readFile, rm } from "node:fs/promises";
-
-import { Effect, Schema } from "effect";
-
+import { dirname } from "node:path";
 import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
-
+import {
+  isManagedPodmanLaunchStage,
+  managedPodmanGlobalArgs,
+} from "@lando/container-runtime/podman/managed-invocation";
+import {
+  managedRuntimeDirForTeardown,
+  terminateManagedPause,
+} from "@lando/container-runtime/podman/managed-runtime-dir";
+import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { Duration, Effect, Schema } from "effect";
 import {
   type ExecConmonReaper,
   managedConmonPathForPodman,
   reapLingeringExecConmons,
 } from "./exec-conmon.ts";
 import { providerContextForEnv } from "./provider-context.ts";
-
-import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 export interface ManagedRuntimeServicePaths {
   readonly platform: HostPlatform;
@@ -55,9 +61,12 @@ export interface RuntimeServiceSeams {
   readonly fs?: FsSeam;
   readonly execConmon?: ExecConmonReaper;
   readonly apiClient?: (socketPath: string) => EngineHttpApi;
+  readonly terminationPolicy?: RetryPolicy;
+  readonly privateRuntimeDir?: (runtimeDir: string) => Effect.Effect<string | undefined>;
+  readonly terminatePause?: (privateRuntimeDir: string) => Effect.Effect<boolean>;
 }
 
-type TerminationResult = { readonly terminated: boolean; readonly pid?: number };
+type TerminationResult = { readonly terminated: boolean; readonly pid?: number; readonly quiescent?: true };
 
 const pidPattern = /^\d+$/u;
 const emptyArgv: ReadonlyArray<string> = [];
@@ -111,9 +120,6 @@ const parsePid = (raw: string): number | undefined => {
   return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
 };
 
-const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
-  actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
-
 const ownedRuntimePid = Effect.fnUntraced(function* (
   spec: ManagedRuntimeServiceSpec,
   processSeam: ProcessSeam,
@@ -128,7 +134,7 @@ const ownedRuntimePid = Effect.fnUntraced(function* (
   if (!alive) return undefined;
 
   const argv = yield* processSeam.readCmdline(pid).pipe(Effect.catch(() => Effect.succeed(emptyArgv)));
-  return sameArgv(argv, [spec.command, ...spec.args]) ? pid : undefined;
+  return isManagedPodmanLaunchStage(argv, [spec.command, ...spec.args]) ? pid : undefined;
 });
 
 const bestEffortUnlink = (fsSeam: FsSeam, path: string): Effect.Effect<void> =>
@@ -137,19 +143,8 @@ const bestEffortUnlink = (fsSeam: FsSeam, path: string): Effect.Effect<void> =>
 export const buildManagedRuntimeServiceArgs = (
   parts: ManagedRuntimeServiceArgsParts,
 ): ReadonlyArray<string> => {
-  const storageOptions =
-    parts.runtimeBinDir === undefined
-      ? []
-      : ["--storage-opt", `overlay.mount_program=${parts.runtimeBinDir}/fuse-overlayfs`];
-
   return [
-    "--root",
-    parts.runtimeStorageDir,
-    "--runroot",
-    parts.runtimeRunDir,
-    "--config",
-    parts.runtimeConfigDir,
-    ...storageOptions,
+    ...managedPodmanGlobalArgs(parts),
     "system",
     "service",
     "--time=0",
@@ -215,22 +210,50 @@ export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOw
     const fsSeam = seams.fs ?? realFsSeam;
 
     const pid = yield* ownedRuntimePid(spec, processSeam);
+    let quiescent = false;
+    let exited = false;
     const result = yield* Effect.gen(function* () {
       if (pid === undefined) return { terminated: false };
 
-      yield* reclaimLeftoverBuildContainers((seams.apiClient ?? defaultApiClient)(spec.socketPath)).pipe(
+      const api = (seams.apiClient ?? defaultApiClient)(spec.socketPath);
+      quiescent = yield* Effect.gen(function* () {
+        yield* reclaimLeftoverBuildContainers(api);
+        if (api.request === undefined) return false;
+        const response = yield* api.request({ method: "GET", path: "/libpod/containers/json?all=true" });
+        if (response.status < 200 || response.status >= 300) return false;
+        const containers = yield* Schema.decodeUnknownEffect(StorageContainers)(response.body);
+        return containers.every(
+          (container) =>
+            container.State !== undefined && !["running", "paused", "created"].includes(container.State),
+        );
+      }).pipe(
         Effect.timeout("10 seconds"),
-        Effect.catch(() => Effect.void),
+        Effect.catch(() => Effect.succeed(false)),
       );
 
       const terminated = yield* processSeam.terminate(pid).pipe(
         Effect.as(true),
         Effect.catch(() => Effect.succeed(false)),
       );
+      if (terminated) {
+        const probe = yield* runProbe(
+          {
+            id: `provider-lando-teardown-${pid}`,
+            policy: seams.terminationPolicy ?? {
+              maxAttempts: 61,
+              delay: Duration.millis(250),
+              timeout: Duration.seconds(15),
+            },
+            classify: { success: (alive) => (alive ? "red" : "green"), failure: () => "red" },
+          },
+          processSeam.isAlive(pid),
+        ).pipe(Effect.catch(() => Effect.succeed(undefined)));
+        exited = probe?.outcome === "green";
+      }
       return terminated ? { terminated: true, pid } : { terminated: false, pid };
     });
 
-    if (result.terminated) {
+    if (result.terminated && exited) {
       yield* bestEffortUnlink(fsSeam, spec.socketPath);
       yield* bestEffortUnlink(fsSeam, spec.pidPath);
     }
@@ -239,6 +262,15 @@ export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOw
       conmonPath: managedConmonPathForPodman(spec.command),
       ...(seams.execConmon === undefined ? {} : { reaper: seams.execConmon }),
     });
+
+    if (quiescent && exited) {
+      const runtimeDir = dirname(dirname(spec.command));
+      const privateDir = yield* (seams.privateRuntimeDir ?? managedRuntimeDirForTeardown)(runtimeDir);
+      if (privateDir === undefined) return result;
+      const pause = yield* (seams.terminatePause ?? terminateManagedPause)(privateDir);
+      if (pause === false) return result;
+      return { ...result, quiescent: true };
+    }
 
     return result;
   },

@@ -1,11 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Schema } from "effect";
-
 import * as caMkcert from "@lando/ca-mkcert";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import { PluginRegistry } from "@lando/engine/plugins/registry";
 import * as fileSyncMutagen from "@lando/file-sync-mutagen";
 import * as lando3 from "@lando/lando3";
 import * as lando4 from "@lando/lando4";
@@ -16,18 +15,15 @@ import * as providerPodman from "@lando/provider-podman";
 import * as proxyTraefik from "@lando/proxy-traefik";
 import * as rendererLando from "@lando/renderer-lando";
 import * as schedulePlugin from "@lando/schedule";
+import { ConfigTranslateInput } from "@lando/sdk/schema";
+import { ConfigService, Logger } from "@lando/sdk/services";
 import * as secretStoreOnePassword from "@lando/secret-store-1password";
 import * as serviceLando from "@lando/service-lando";
 import * as sqlPlugin from "@lando/sql";
 import * as sshAgent from "@lando/ssh-agent";
 import * as templateHandlebars from "@lando/template-handlebars";
 import * as templateMustache from "@lando/template-mustache";
-
-import { ConfigTranslateInput } from "@lando/sdk/schema";
-import { ConfigService, Logger } from "@lando/sdk/services";
-
-import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
-import { PluginRegistry } from "@lando/engine/plugins/registry";
+import { Context, Effect, Layer, Schema } from "effect";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
 import { loadLando3TranslatorPorts } from "../../src/recipes/lando3-ports.ts";

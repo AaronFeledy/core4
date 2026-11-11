@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
   PathsService,
@@ -11,8 +9,6 @@ import {
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -25,14 +21,18 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Effect, Layer, Stream } from "effect";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(
   Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
+
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -44,23 +44,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
-    npmRecipeSource: {
-      fetchTarball: async () => {
-        throw new Error("Unexpected npm download");
-      },
-      resolve: (packageSpec) =>
-        Promise.resolve({
-          packageName: packageSpec,
-          version: "0.0.0",
-          dist: { tarball: "https://example.test/unused.tgz" },
-        }),
-    },
-    git: { clone: () => Promise.resolve({ commitSha: "unused" }) },
-    tarball: {
-      fetch: () => Promise.resolve(new Uint8Array()),
-      extract: () => Promise.resolve(),
-    },
-    publication: { publish: () => Promise.resolve() },
+    sources: {},
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
@@ -103,7 +87,9 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
-const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Promise<T>): Promise<T> => {
+const withTempEnv = async <T>(
+  run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,
+): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-cache-")));
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-data-")));
   const confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-conf-")));
@@ -117,16 +103,13 @@ const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Pr
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
-    return await run({ cacheRoot });
+    return await run({ dataRoot, cacheRoot });
   } finally {
     process.chdir(previousCwd);
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousCacheRoot === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousConfRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConfRoot;
     await rm(cacheRoot, { recursive: true, force: true });
@@ -149,7 +132,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true, message: "ready" }),
+    getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => die("buildArtifact"),
     pullArtifact: () => die("pullArtifact"),
@@ -186,7 +169,11 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
   const { registryLayer: registryLive, admissionLayer } = scratchGlobalAdmissionFixture(provider);
   const initPortLive =
     runPostInitCalls === undefined
-      ? ScratchInitAppPortLayer.layer
+      ? ScratchInitAppPortLayer.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(stateStoreLayer, PrivateFileAccessService.layer, BunProcessRunner.layer),
+          ),
+        )
       : Layer.succeed(
           ScratchInitAppPort,
           ScratchInitAppPort.of({
@@ -210,15 +197,18 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
           }),
         );
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
     admissionLayer,
     environmentResolverLayer(),
     LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     initPortLive,
     BunDataMover.layer.pipe(
@@ -343,7 +333,7 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
   });
 
   test("surfaces recipe prompt failures with answer remediation", async () => {
-    await withTempEnv(async ({ cacheRoot }) => {
+    await withTempEnv(async ({ dataRoot }) => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(
@@ -369,14 +359,14 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
           "Provide it with --answer php=<value> or --option php=<value>.",
         );
       }
-      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+      expect((await readdir(join(dataRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
         [],
       );
     });
   });
 
   test("maps an unknown recipe reference to ScratchSourceUnresolvedError", async () => {
-    await withTempEnv(async ({ cacheRoot }) => {
+    await withTempEnv(async ({ dataRoot }) => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(
@@ -396,10 +386,11 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
           "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`.",
         );
       }
-      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+      expect((await readdir(join(dataRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
         [],
       );
     });
   });
 });
+
 import { environmentResolverLayer } from "../_support/value-contracts.ts";

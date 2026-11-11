@@ -1,14 +1,12 @@
+import { expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
+import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
 
 import { LandofileLoadLimitError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
-
-import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 import { IMPORTED_PEM, PEM, withApp } from "./landofile-load-expression-support.ts";
 

@@ -1,9 +1,8 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Flags } from "../../spec/metadata";
-
 import { ShellAppResult, renderShellAppResult, shellApp } from "../../commands/shell";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   resultSchema: ShellAppResult,

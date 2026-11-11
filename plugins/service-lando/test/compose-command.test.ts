@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { composeService } from "@lando/engine/services/feature";
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ProviderId, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 
 import { serviceTypes } from "../src/index.ts";
 import { composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
@@ -101,6 +100,7 @@ describe("Compose process argv", () => {
               defaultFeatures: [],
             },
             baseKind: "l337",
+            appSlug: "compose-command",
             appRoot: "/srv/compose-command",
             normalizedConfig: { type: "compose", image: "alpine:3", [field]: command },
             features: [{ id: composeServiceFeature.id, definition: composeServiceFeature }],

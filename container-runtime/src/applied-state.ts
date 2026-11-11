@@ -1,9 +1,9 @@
-import { Effect, Option, Schema } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, AppPlan, type AppPlan as AppPlanShape, type AppliedStateInventory } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
+import { Effect, Option, Schema } from "effect";
 
 import { APPLIED_PLAN_NAMESPACE, listAppliedPlanInventory } from "./applied-state-inventory.ts";
 import {
@@ -19,12 +19,12 @@ import {
 } from "./applied-state-read.ts";
 
 export { appliedPlanPath, appliedPlansDir } from "./applied-state-inventory.ts";
-export { type AppliedPlanRead, unreadableAppliedStateError } from "./applied-state-read.ts";
 export {
   APPLIED_STATE_VERSION,
   migrateAppliedPlan,
   migrateAppliedPlansRecord,
 } from "./applied-state-migrate.ts";
+export { type AppliedPlanRead, unreadableAppliedStateError } from "./applied-state-read.ts";
 
 const APPLIED_PLANS_KEY = "applied-plans.json";
 const AppliedPlans = Schema.Record(AppId, AppPlan);
@@ -129,7 +129,11 @@ export function makeAppliedPlanStore(
             case "readable":
               return Effect.succeed(read.plan);
             case "unreadable":
-              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path, appId }));
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
+            }
           }
         }),
       );
@@ -159,12 +163,12 @@ export function makeAppliedPlanStore(
               Effect.as(bucket.path),
             ),
           ),
-          Effect.mapError((cause) => error("persist", cause)),
+          mapFailures((cause) => error("persist", cause)),
         ),
       removeAppliedPlan: (stateStore, appId) =>
         open(stateStore, appId).pipe(
           Effect.flatMap((bucket) => bucket.remove),
-          Effect.mapError((cause) => error("remove", cause)),
+          mapFailures((cause) => error("remove", cause)),
         ),
     };
   }
@@ -182,19 +186,29 @@ export function makeAppliedPlanStore(
     });
   const inspectRecord = (stateStore: PluginStateStore) =>
     inspectAppliedPlansRecordBucket(open(stateStore), APPLIED_PLANS_KEY);
-  const readRecord = (stateStore: PluginStateStore) =>
+  const readRecord = (stateStore: PluginStateStore, appId?: AppId) =>
     inspectRecord(stateStore).pipe(
       Effect.flatMap((read) => {
         switch (read.status) {
           case "unreadable":
-            return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+            return Effect.fail(
+              unreadableAppliedStateError({
+                ...options,
+                path: read.path,
+                ...(appId === undefined ? {} : { appId }),
+              }),
+            );
           case "readable":
             return Effect.succeed(read.plans);
+          default: {
+            const exhaustive: never = read;
+            return exhaustive;
+          }
         }
       }),
     );
   const loadAppliedPlanStrict = (stateStore: PluginStateStore, appId: AppId) =>
-    readRecord(stateStore).pipe(Effect.map((plans) => plans?.[appId]));
+    readRecord(stateStore, appId).pipe(Effect.map((plans) => plans?.[appId]));
   return {
     loadAppliedPlanStrict,
     inspectAppliedPlan: (stateStore, appId) =>
@@ -206,6 +220,10 @@ export function makeAppliedPlanStore(
             case "readable": {
               const plan = read.plans?.[appId];
               return plan === undefined ? { status: "missing" } : { status: "readable", plan };
+            }
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
             }
           }
         }),
@@ -219,7 +237,7 @@ export function makeAppliedPlanStore(
             ),
           ),
         ),
-        Effect.mapError((cause) => error("persist", cause)),
+        mapFailures((cause) => error("persist", cause)),
       ),
     loadAppliedPlan: (stateStore, appId) =>
       loadAppliedPlanStrict(stateStore, appId).pipe(Effect.catch(() => Effect.succeed(undefined))),
@@ -231,6 +249,10 @@ export function makeAppliedPlanStore(
               return { plans: Object.values(read.plans ?? {}), unreadable: [] };
             case "unreadable":
               return { plans: [], unreadable: [{ path: read.path }] };
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
+            }
           }
         }),
       ),
@@ -247,7 +269,7 @@ export function makeAppliedPlanStore(
             return [undefined, remaining];
           }),
         ),
-        Effect.mapError((cause) => error("remove", cause)),
+        mapFailures((cause) => error("remove", cause)),
       ),
   };
 }

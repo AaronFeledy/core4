@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema, Stream } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
@@ -14,6 +12,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { logs } from "../src/podman/logs.ts";

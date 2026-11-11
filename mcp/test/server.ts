@@ -18,7 +18,7 @@ export const serverLayer = (
           McpRuntimeConfig.of({
             commandEntries: [],
             defaultAllowlist: [],
-            runtimeLayer: Layer.empty,
+            apps: testAppGenerations(),
             ...config,
           }),
         ),
@@ -81,11 +81,11 @@ export const toolErrorObject = (message: Schema.JsonObject) => {
   const result = Schema.decodeUnknownSync(
     Schema.Struct({
       isError: Schema.Literal(true),
-      content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
+      structuredContent: Schema.Struct({ error: Schema.JsonObject }),
     }),
   )(message.result);
-  const first = result.content[0];
-  if (first === undefined) throw new Error("Expected tool error content.");
-  return Schema.decodeUnknownSync(Schema.JsonObject)(JSON.parse(first.text));
+  return result.structuredContent.error;
 };
+
 import { resolveCommandCompletion } from "@lando/sdk/command-result";
+import { testAppGenerations } from "../src/testing.ts";

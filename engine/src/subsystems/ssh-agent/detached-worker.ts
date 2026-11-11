@@ -1,11 +1,13 @@
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { SshAgentTransportError, causeMessage } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, Ref, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { hostProxyWorkerEntry } from "../../composition.ts";
+import { acquireWorker, workerSessionLifetime } from "../detached-worker/lifecycle.ts";
 import { DetachedWorkerLogError } from "../detached-worker/log.ts";
 import {
   DetachedWorkerExitedBeforeReadyError,
@@ -20,7 +22,7 @@ import {
   hostProxyWorkerArgv,
   hostProxyWorkerEnv,
 } from "../host-proxy/worker-process.ts";
-import { type AgentRelaySession, sshAgentSessionPaths } from "./session.ts";
+import type { AgentRelaySession } from "./session.ts";
 import {
   AGENT_RELAY_WORKER_COMMAND,
   AGENT_RELAY_WORKER_PROTOCOL_VERSION,
@@ -31,11 +33,11 @@ import { reuseAgentRelayWorker } from "./worker-reuse.ts";
 import {
   type TerminateAgentRelayWorkerOptions,
   disposeAgentRelayWorker,
+  publishAgentRelayWorkerRecord,
   readAgentRelayWorkerRecord,
   registerAgentRelayControlToken,
-  replaceExistingAgentRelayWorker,
+  replaceAgentRelayWorkerClaim,
   withAgentRelayWorkerLock,
-  writeAgentRelayWorkerRecord,
 } from "./worker-state.ts";
 
 export interface DetachedAgentRelayWorkerOptions extends TerminateAgentRelayWorkerOptions {
@@ -83,7 +85,7 @@ export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetached
   return yield* withAgentRelayWorkerLock(
     options.app,
     options,
-    Effect.gen(function* () {
+    Effect.fnUntraced(function* (claim) {
       if (options.app.kind === "global")
         return yield* Effect.fail(workerError("Global apps cannot forward an agent."));
       const entry = hostProxyWorkerEntry();
@@ -100,13 +102,13 @@ export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetached
         ...configuration,
         configDigest: sha256Hex(canonicalJson({ ...configuration, workerEntry: entry })),
       };
-      const reused = yield* reuseAgentRelayWorker(options.app, options, input.configDigest);
       const publish = options.publish ?? (() => Effect.void);
-      if (reused !== undefined) return yield* publish(reused).pipe(Effect.as(reused));
-      const keep = yield* Ref.make(false);
-      yield* replaceExistingAgentRelayWorker(options.app, options);
-      return yield* Effect.acquireUseRelease(
-        Effect.tryPromise({
+      return yield* acquireWorker({
+        claim,
+        reuse: reuseAgentRelayWorker(options.app, options, input.configDigest),
+        publish,
+        replace: replaceAgentRelayWorkerClaim(claim, options.app, options),
+        spawn: Effect.tryPromise({
           try: async () => {
             const argv = hostProxyWorkerArgv({ ...entry, appId: options.app.id }).map((arg) =>
               arg === HOST_PROXY_WORKER_COMMAND ? AGENT_RELAY_WORKER_COMMAND : arg,
@@ -123,7 +125,7 @@ export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetached
           },
           catch: workerError,
         }),
-        (worker) =>
+        prepare: (worker) =>
           Effect.gen(function* () {
             const ready = yield* Effect.tryPromise({
               try: async () => {
@@ -162,50 +164,32 @@ export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetached
                 ),
               );
             }
-            let closePromise: Promise<void> | undefined;
-            let resolveClosed: () => void = () => undefined;
-            const closed = new Promise<void>((resolve) => {
-              resolveClosed = resolve;
-            });
             const session: AgentRelaySession = {
               appId: ready.appId,
               sessionId: ready.sessionId,
               kind: ready.kind,
               socketName: ready.socketName,
               mount: ready.mount,
-              closed,
-              close: () => {
-                closePromise ??= Effect.runPromise(
+              ...workerSessionLifetime(() =>
+                Effect.runPromise(
                   withAgentRelayWorkerLock(
                     options.app,
                     options,
-                    Effect.gen(function* () {
+                    Effect.fnUntraced(function* (closing) {
                       const current = yield* readAgentRelayWorkerRecord(options.app, options);
                       if (current?.sessionId !== ready.sessionId || current.pid !== ready.pid) return;
-                      if (
-                        !(yield* isOwnerOnlyRecordFile(
-                          sshAgentSessionPaths(options.app, options.paths, options.kind).recordPath,
-                          options.privateFileAccess,
-                        ))
-                      )
+                      if (!(yield* isOwnerOnlyRecordFile(closing.path, options.privateFileAccess)))
                         return yield* Effect.fail(workerError("Worker record is not private."));
                       yield* Effect.promise(() => worker.terminate());
-                      yield* disposeAgentRelayWorker(options.app, options);
+                      yield* disposeAgentRelayWorker(closing, options.app, options);
                     }),
                   ),
-                ).finally(resolveClosed);
-                return closePromise;
-              },
-            };
-            yield* Effect.uninterruptible(
-              writeAgentRelayWorkerRecord(options.app, options, ready).pipe(
-                Effect.andThen(Ref.set(keep, true)),
-                Effect.andThen(publish(session)),
+                ),
               ),
-            );
-            return session;
+            };
+            return { session, persist: publishAgentRelayWorkerRecord(claim, options, ready) };
           }).pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               cause instanceof SshAgentTransportError
                 ? cause
                 : new SshAgentTransportError({
@@ -215,11 +199,7 @@ export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetached
                   }),
             ),
           ),
-        (worker) =>
-          Ref.get(keep).pipe(
-            Effect.flatMap((retained) => (retained ? Effect.void : Effect.promise(() => worker.terminate()))),
-          ),
-      );
+      });
     }),
-  ).pipe(Effect.mapError(workerError));
+  ).pipe(mapFailures(workerError));
 });

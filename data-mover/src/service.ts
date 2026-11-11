@@ -3,25 +3,12 @@ import { cp, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
 import { providerImages } from "@lando/container-runtime/provider-images";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import {
-  Cause,
-  Clock,
-  type Context,
-  DateTime,
-  Effect,
-  Layer,
-  Option,
-  Schema,
-  type Scope,
-  Stream,
-} from "effect";
-
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
+import { sha256Hex } from "@lando/sdk/digest";
 import {
   ArchiveFormatError,
   ArtifactTransferError,
@@ -44,6 +31,7 @@ import {
 } from "@lando/sdk/events";
 import {
   AbsolutePath,
+  type AppId,
   type DataEndpoint,
   type DataTransferProgress,
   type DataTransferResult,
@@ -52,7 +40,9 @@ import {
   ProviderId,
   type PrunePolicy,
   type SnapshotInfo,
+  type VolumeRef,
   type VolumeSnapshotRef,
+  planDataId,
   snapshotHandle,
 } from "@lando/sdk/schema";
 import {
@@ -69,10 +59,25 @@ import {
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
 import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import {
+  Cause,
+  Clock,
+  type Context,
+  DateTime,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { checkedTransferCommand, serviceCommandFailure } from "./command-failure.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
+import { providerFailure } from "./provider-failure.ts";
 import { checkedServiceCommand, serviceCommandStdout } from "./service-command-redaction.ts";
 import {
   type SnapshotPersistence,
@@ -172,14 +177,6 @@ const unsupported = (from: DataEndpoint, to: DataEndpoint, reason: string): Data
 const failUnsupported = (from: DataEndpoint, to: DataEndpoint, reason: string) =>
   Effect.fail(unsupported(from, to, reason));
 
-const providerFailure = (operation: string, cause: unknown): DataTransferError =>
-  new DataTransferError({
-    message: `Provider ${operation} failed during data transfer.`,
-    operation,
-    cause,
-    remediation: "Inspect provider diagnostics and retry after the runtime is healthy.",
-  });
-
 const dataHelperImage = providerImages.images.dataHelper;
 
 const resolveDataHelperImage = (
@@ -188,7 +185,7 @@ const resolveDataHelperImage = (
   const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
   if (!provider.capabilities.artifactPull) return Effect.succeed(pinnedRef);
   return provider.pullArtifact({ ref: pinnedRef, policy: "missing" }).pipe(
-    Effect.mapError((cause) => providerFailure("pullArtifact", cause)),
+    mapFailures((cause) => providerFailure("pullArtifact", cause)),
     Effect.flatMap((ref) => {
       if (ref.digest !== dataHelperImage.digest) {
         return Effect.fail(
@@ -408,7 +405,7 @@ const snapshotStoreIdentity = (persistence: SnapshotPersistence) =>
     "canonicalize",
   ).pipe(
     Effect.map(({ rootReal }) => sha256Hex(rootReal)),
-    Effect.mapError((cause) => stateFailure("canonicalize", cause)),
+    mapFailures((cause) => stateFailure("canonicalize", cause)),
   );
 
 const resolveAppRoot = Effect.fnUntraced(function* (paths: ReadonlyArray<string>) {
@@ -626,7 +623,8 @@ const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransfe
         try: () => Bun.file(path).stream().getReader(),
         catch: (cause) => hostReadError(path, cause),
       }),
-      (reader) => Effect.sync(() => reader.releaseLock()),
+      // Cancel, not just release the lock, so a consumer that stops early closes the file now.
+      (reader) => Effect.promise(() => reader.cancel().catch(() => undefined)),
     ).pipe(
       Effect.map((reader) =>
         Stream.fromEffectRepeat(
@@ -651,6 +649,17 @@ const byteStreamFromArchive = (
   });
 
 type DataProvider = Effect.Effect<Context.Service.Shape<typeof RuntimeProvider>, DataTransferError>;
+
+const volumeRunOwner = Effect.fn("DataMover.volumeRunOwner")(function* (
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
+  app: AppId,
+) {
+  const plans = yield* (provider.appliedPlans ?? Effect.succeed([])).pipe(
+    mapFailures((cause) => providerFailure("appliedPlans", cause)),
+  );
+  const plan = plans.find((candidate) => planDataId(candidate) === app);
+  return plan === undefined ? { app } : { app: plan.id, plan };
+});
 
 const streamFromEndpoint = (
   selectedProvider: DataProvider,
@@ -694,7 +703,7 @@ const streamFromProvider = (
       }
       return provider
         .copyFromService({ app: endpoint.app, service: endpoint.service }, { sourcePath: endpoint.path })
-        .pipe(Stream.mapError((cause) => providerFailure("copyFromService", cause)));
+        .pipe(mapStreamFailures((cause) => providerFailure("copyFromService", cause)));
     case "volume":
       if (!provider.capabilities.ephemeralMounts) {
         return Stream.fail(
@@ -708,10 +717,12 @@ const streamFromProvider = (
       }
       return Stream.unwrap(
         resolveDataHelperImage(provider).pipe(
-          Effect.map((image) =>
+          Effect.bindTo("image"),
+          Effect.bind("owner", () => volumeRunOwner(provider, endpoint.app)),
+          Effect.map(({ image, owner }) =>
             execStdoutStream(
               provider.runStream({
-                owner: { app: endpoint.app },
+                owner,
                 image,
                 command: ["sh", "-c", `cat ${helperPayload}`],
                 mounts: [{ type: "volume", store: endpoint.store, target: helperTarget, readOnly: true }],
@@ -721,7 +732,7 @@ const streamFromProvider = (
                 serviceCommandFailure("runStream", exitCode, stderrTail, evidence),
             ),
           ),
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof DataTransferError ? cause : providerFailure("runStream", cause),
           ),
         ),
@@ -739,7 +750,7 @@ const streamFromProvider = (
       }
       return provider
         .exportArtifact({ providerId: providerId(provider.id), ref: endpoint.ref })
-        .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
+        .pipe(mapStreamFailures((cause) => providerFailure("exportArtifact", cause)));
     case "serviceCmd": {
       const command = providerCommandSpec(endpoint.command, endpoint.env);
       return serviceCommandStdout(
@@ -767,7 +778,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
     ArchiveFormatError | DataTransferError | DataEndpointUnsupportedError,
     Scope.Scope
   >,
-  scratchDir: string,
+  staging: { readonly transferStagingDir: string; readonly privateFileAccess: PrivateFileAccess },
 ): Effect.fn.Return<DataTransferResult, DataMoverTransferError, Scope.Scope> {
   const target = spec.to;
   switch (target._tag) {
@@ -777,7 +788,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         destinationPath: target.path,
         expectedSha256: spec.expectedDigest,
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -786,11 +797,11 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
     case "hostArchive": {
       const staged = yield* stageVerifiedStream({
         body,
-        scratchDir,
+        ...staging,
         prefix: "archive",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -803,7 +814,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         }),
         destinationPath: target.path,
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -820,11 +831,11 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       {
         const staged = yield* stageVerifiedStream({
           body,
-          scratchDir,
+          ...staging,
           prefix: "service",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
           ),
         );
@@ -837,7 +848,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
               ...(spec.overwrite === undefined ? {} : { overwrite: spec.overwrite }),
             },
           )
-          .pipe(Effect.mapError((cause) => providerFailure("copyToService", cause)));
+          .pipe(mapFailures((cause) => providerFailure("copyToService", cause)));
         return {
           accelerated: true,
           sizeBytes: staged.verified.sizeBytes,
@@ -851,13 +862,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         return yield* failUnsupported(spec.from, target, "ephemeral mounts are unavailable");
       {
         if (spec.overwrite !== true) {
-          const volumes = yield* provider.listVolumes({ app: target.app, store: target.store }).pipe(
-            Effect.catchIf(
-              (cause) => cause instanceof ProviderUnavailableError,
-              () => Effect.succeed([]),
-            ),
-            Effect.mapError((cause) => providerFailure("listVolumes", cause)),
-          );
+          const volumes = yield* provider
+            .listVolumes({ app: target.app, store: target.store })
+            .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
           if (volumes.some((volume) => volume.ref.app === target.app && volume.ref.store === target.store)) {
             return yield* Effect.fail(
               new DataTargetExistsError({
@@ -871,18 +878,19 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         }
         const staged = yield* stageVerifiedStream({
           body,
-          scratchDir,
+          ...staging,
           prefix: "volume",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
           ),
         );
         const helperImage = yield* resolveDataHelperImage(provider);
+        const owner = yield* volumeRunOwner(provider, target.app);
         yield* checkedTransferCommand(
           provider.runStream({
-            owner: { app: target.app },
+            owner,
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ type: "volume", store: target.store, target: helperTarget, readOnly: false }],
@@ -905,18 +913,18 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       {
         const staged = yield* stageVerifiedStream({
           body,
-          scratchDir,
+          ...staging,
           prefix: "artifact",
           ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
           ),
         );
         yield* provider
           .importArtifact(
             byteStreamFromHost(staged.path).pipe(
-              Stream.mapError(
+              mapStreamFailures(
                 (cause) =>
                   new ArtifactTransferError({
                     providerId: provider.id,
@@ -928,7 +936,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
               ),
             ),
           )
-          .pipe(Effect.mapError((cause) => providerFailure("importArtifact", cause)));
+          .pipe(mapFailures((cause) => providerFailure("importArtifact", cause)));
         return {
           accelerated: true,
           sizeBytes: staged.verified.sizeBytes,
@@ -940,11 +948,11 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       const provider = yield* selectedProvider;
       const staged = yield* stageVerifiedStream({
         body,
-        scratchDir,
+        ...staging,
         prefix: "command",
         ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
       }).pipe(
-        Effect.mapError((error) =>
+        mapFailures((error) =>
           error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
         ),
       );
@@ -980,7 +988,7 @@ const failureDetail = (cause: Cause.Cause<unknown>): string => {
 export const makeDataMoverService = (
   selectedProvider: DataProvider,
   events: DataMoverEvents,
-  persistence: SnapshotPersistence,
+  persistence: SnapshotPersistence & { readonly privateFileAccess: PrivateFileAccess },
 ): Context.Service.Shape<typeof DataMover> =>
   DataMover.of({
     volumeInitialization: Effect.fn("DataMover.volumeInitialization")((identity) =>
@@ -1025,12 +1033,10 @@ export const makeDataMoverService = (
         const nativeServiceCopy =
           serviceCopy && (yield* selectedProvider).capabilities.serviceFileCopy === "native";
         const body = streamFromEndpoint(selectedProvider, spec.from);
-        const result = yield* writeStreamToEndpoint(
-          selectedProvider,
-          spec,
-          body,
-          persistence.paths.scratchDir,
-        );
+        const result = yield* writeStreamToEndpoint(selectedProvider, spec, body, {
+          transferStagingDir: persistence.paths.transferStagingDir,
+          privateFileAccess: persistence.privateFileAccess,
+        });
         const adjusted = nativeServiceCopy ? { ...result, accelerated: true } : result;
         const progress: DataTransferProgress = {
           phase: "completed",
@@ -1104,6 +1110,81 @@ export const makeDataMoverService = (
             ),
         ),
       ),
+    // Source bytes for a caller-owned sink: success is source EOF + clean producer exit, not sink receipt.
+    read: (from) =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const startedAt = yield* Clock.currentTimeMillis;
+          const fromEndpoint = events.redactText(endpointName(from));
+          const toEndpoint = events.redactText("stream");
+          const app = appFromEndpoint(from);
+          const service = serviceFromEndpoint(from);
+          const publishFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
+            yield* events.publish(
+              PostDataTransferEvent.make({
+                eventName: "post-data-transfer",
+                fromEndpoint,
+                toEndpoint,
+                outcome: "failure",
+                accelerated: false,
+                failureDetail: events.redactText(failureDetail(cause)),
+                durationMs: (yield* Clock.currentTimeMillis) - startedAt,
+                timestamp: yield* DateTime.now,
+              }),
+            );
+          });
+          yield* events.publish(
+            PreDataTransferEvent.make({
+              eventName: "pre-data-transfer",
+              fromEndpoint,
+              toEndpoint,
+              ...(app === undefined ? {} : { app }),
+              ...(service === undefined ? {} : { service }),
+              timestamp: yield* DateTime.now,
+            }),
+          );
+          yield* validateHostEndpoints({ from, to: { _tag: "stream" } }, persistence.paths.scratchDir).pipe(
+            Effect.tapCause(publishFailure),
+          );
+          let sizeBytes = 0;
+          let reachedEnd = false;
+          // The source gets its own scope, and the outcome is published from the outermost exit, so
+          // producer cleanup has finished first. An early stop (EOF never reached) counts as a failure.
+          return Stream.scoped(
+            streamFromEndpoint(selectedProvider, from).pipe(
+              Stream.tap((chunk) =>
+                Effect.sync(() => {
+                  sizeBytes += chunk.byteLength;
+                }),
+              ),
+              Stream.onEnd(
+                Effect.sync(() => {
+                  reachedEnd = true;
+                }),
+              ),
+            ),
+          ).pipe(
+            Stream.onExit((exit) =>
+              Exit.isSuccess(exit) && reachedEnd
+                ? Effect.gen(function* () {
+                    yield* events.publish(
+                      PostDataTransferEvent.make({
+                        eventName: "post-data-transfer",
+                        fromEndpoint,
+                        toEndpoint,
+                        outcome: "success",
+                        accelerated: false,
+                        sizeBytes,
+                        durationMs: (yield* Clock.currentTimeMillis) - startedAt,
+                        timestamp: yield* DateTime.now,
+                      }),
+                    );
+                  })
+                : publishFailure(Exit.isFailure(exit) ? exit.cause : Cause.interrupt()),
+            ),
+          );
+        }),
+      ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
       const provider = yield* selectedProvider;
       if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
@@ -1145,7 +1226,7 @@ export const makeDataMoverService = (
           const createdAt = yield* DateTime.now;
           const sources = yield* provider
             .listVolumes({ app: store.app, store: store.store })
-            .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+            .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
           const { source, owner: sourceOwner } = yield* snapshotSourceOwner(sources, store, snapshotId);
           const owner = {
             ...sourceOwner,
@@ -1156,7 +1237,7 @@ export const makeDataMoverService = (
               new SnapshotOwnershipError({
                 message: "Physical snapshot source identity changed before creation.",
                 snapshotId,
-                sourceVolumeInstanceId: opts.metadata.volumeInstanceId,
+                sourceVolumeInstanceId: opts.metadata.volumeInstanceId ?? "unknown",
                 ...(physicalVolumeGeneration(source) === undefined
                   ? {}
                   : { targetVolumeInstanceId: physicalVolumeGeneration(source) }),
@@ -1194,7 +1275,7 @@ export const makeDataMoverService = (
                       rollbackNative = ref;
                     }),
                   ),
-                  Effect.mapError((cause) => providerFailure("snapshotVolume", cause)),
+                  mapFailures((cause) => providerFailure("snapshotVolume", cause)),
                 ),
               )
             : undefined;
@@ -1217,7 +1298,10 @@ export const makeDataMoverService = (
                     app: store.app,
                     store: store.store,
                   }),
-                  persistence.paths.scratchDir,
+                  {
+                    transferStagingDir: persistence.paths.transferStagingDir,
+                    privateFileAccess: persistence.privateFileAccess,
+                  },
                 )
               : undefined;
           const archiveIntegrity =
@@ -1226,7 +1310,7 @@ export const makeDataMoverService = (
               : yield* collectVerifiedStream({
                   body: byteStreamFromHost(archivePath),
                 }).pipe(
-                  Effect.mapError((error) =>
+                  mapFailures((error) =>
                     error instanceof VerifiedStreamError
                       ? mapVerifiedError(error, {
                           from: { _tag: "volume", app: store.app, store: store.store },
@@ -1284,7 +1368,7 @@ export const makeDataMoverService = (
                 ),
               ),
             ),
-          ).pipe(Effect.mapError((cause) => stateFailure("write-sidecar", cause)));
+          ).pipe(mapFailures((cause) => stateFailure("write-sidecar", cause)));
           yield* events.publish(
             PostVolumeSnapshotEvent.make({
               eventName: "post-volume-snapshot",
@@ -1328,7 +1412,7 @@ export const makeDataMoverService = (
       }
       const targets = yield* provider
         .listVolumes({ app: store.app, store: store.store })
-        .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+        .pipe(mapFailures((cause) => providerFailure("listVolumes", cause)));
       const target = targets.find(
         (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
       );
@@ -1346,7 +1430,7 @@ export const makeDataMoverService = (
               new SnapshotOwnershipError({
                 message: "Physical snapshot ownership does not match the target volume instance.",
                 snapshotId: info.id,
-                sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+                sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
                 ...(physicalVolumeGeneration(target) === undefined
                   ? {}
                   : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
@@ -1358,12 +1442,13 @@ export const makeDataMoverService = (
         }
         const staged = yield* stageVerifiedStream({
           body: byteStreamFromHost(archivePath),
-          scratchDir: persistence.paths.scratchDir,
+          transferStagingDir: persistence.paths.transferStagingDir,
+          privateFileAccess: persistence.privateFileAccess,
           prefix: "snapshot",
           expectedSha256: info.digest,
           expectedSizeBytes: info.sizeBytes,
         }).pipe(
-          Effect.mapError((error) =>
+          mapFailures((error) =>
             error instanceof VerifiedStreamError
               ? mapVerifiedError(error, {
                   from: {
@@ -1392,7 +1477,10 @@ export const makeDataMoverService = (
             path: absolutePath(staged.path),
             format: info.format ?? "tar",
           }),
-          persistence.paths.scratchDir,
+          {
+            transferStagingDir: persistence.paths.transferStagingDir,
+            privateFileAccess: persistence.privateFileAccess,
+          },
         ).pipe(Effect.asVoid);
       }
       const targetGeneration = physicalVolumeGeneration(target);
@@ -1415,7 +1503,7 @@ export const makeDataMoverService = (
             new SnapshotOwnershipError({
               message: "Physical snapshot ownership does not match the target volume instance.",
               snapshotId: info.id,
-              sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+              sourceVolumeInstanceId: info.metadata.volumeInstanceId ?? "unknown",
               ...(physicalVolumeGeneration(target) === undefined
                 ? {}
                 : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
@@ -1432,7 +1520,7 @@ export const makeDataMoverService = (
           expectedTargetGeneration: targetGeneration,
           overwrite: true,
         })
-        .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
+        .pipe(mapFailures((cause) => providerFailure("restoreVolume", cause)));
     }),
     listSnapshots: Effect.fn("DataMover.listSnapshots")((filter) => listSnapshotInfos(persistence, filter)),
     resolveSnapshot: Effect.fn("DataMover.resolveSnapshot")((reference, scope) =>
@@ -1489,22 +1577,31 @@ export const makeDataMoverService = (
     ),
   });
 
-export const layer: Layer.Layer<
+export const layerWithPrivateFileAccess: Layer.Layer<
   DataMover,
   never,
-  RuntimeProviderRegistry | PathsService | StateStore | EventService | RedactionService
+  | RuntimeProviderRegistry
+  | PathsService
+  | StateStore
+  | EventService
+  | RedactionService
+  | PrivateFileAccessService
 > = Layer.suspend(() =>
   Layer.effect(
     DataMover,
     Effect.gen(function* () {
       const paths = yield* PathsService;
       const stateStore = yield* StateStore;
+      const privateFileAccess = yield* PrivateFileAccessService;
       const providerRegistry = yield* RuntimeProviderRegistry;
       const eventService = yield* Effect.serviceOption(EventService);
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = yield* makeEvents(eventService, redaction);
-      const persistence = { paths, stateStore, providerRegistry };
-      const service = (app?: import("@lando/sdk/schema").AppId, providerId?: ProviderId) => {
+      const persistence = { paths, stateStore, providerRegistry, privateFileAccess };
+      const service = (target?: DataEndpoint | VolumeRef, providerId?: ProviderId) => {
+        const app =
+          target === undefined ? undefined : "_tag" in target ? appFromEndpoint(target) : target.app;
+        const volume = target !== undefined && (!("_tag" in target) || target._tag === "volume");
         const selected = Effect.gen(function* () {
           // Explicit call-time bindings come from operations that already selected
           // their provider. The bootstrap placeholder is never a selection.
@@ -1523,7 +1620,7 @@ export const layer: Layer.Layer<
               uninspected ??= inspected.failure;
               continue;
             }
-            const plan = inspected.success.find((plan) => plan.id === app);
+            const plan = inspected.success.find((plan) => (volume ? planDataId(plan) : plan.id) === app);
             if (plan !== undefined) return yield* providerRegistry.select(plan);
           }
           if (uninspected !== undefined) return yield* Effect.fail(uninspected);
@@ -1536,7 +1633,7 @@ export const layer: Layer.Layer<
             }),
           );
         }).pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new DataTransferError({
                 message: cause.message,
@@ -1549,14 +1646,16 @@ export const layer: Layer.Layer<
         return makeDataMoverService(selected, events, persistence);
       };
       return DataMover.of({
-        transfer: (spec) => service(appFromEndpoint(spec.from) ?? appFromEndpoint(spec.to)).transfer(spec),
+        transfer: (spec) =>
+          service(appFromEndpoint(spec.from) === undefined ? spec.to : spec.from).transfer(spec),
         volumeInitialization: Effect.fn("DataMover.volumeInitialization")((identity) =>
           sharedVolumeInitialization(stateStore, identity),
         ),
         transferStream: (spec) =>
-          service(appFromEndpoint(spec.from) ?? appFromEndpoint(spec.to)).transferStream(spec),
-        snapshot: (store, opts) => service(store.app).snapshot(store, opts),
-        restore: (handle, store, opts) => service(store.app).restore(handle, store, opts),
+          service(appFromEndpoint(spec.from) === undefined ? spec.to : spec.from).transferStream(spec),
+        read: (from) => service(from).read(from),
+        snapshot: (store, opts) => service(store).snapshot(store, opts),
+        restore: (handle, store, opts) => service(store).restore(handle, store, opts),
         listSnapshots: (filter) => service().listSnapshots(filter),
         resolveSnapshot: (reference, scope) => service().resolveSnapshot(reference, scope),
         findOrphanedSnapshots: Effect.suspend(() => service().findOrphanedSnapshots),
@@ -1568,3 +1667,5 @@ export const layer: Layer.Layer<
     }),
   ),
 );
+
+export const layer = layerWithPrivateFileAccess.pipe(Layer.provide(PrivateFileAccessService.layer));

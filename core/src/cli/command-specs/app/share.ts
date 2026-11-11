@@ -1,14 +1,14 @@
-import { Effect } from "effect";
+import { appShare } from "@lando/engine/operations/share";
 
 import { TunnelSession, type TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
-
-import { appShare } from "@lando/engine/operations/share";
+import { Effect } from "effect";
 import { renderShareResult } from "../../commands/share";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { shareFlags, shareFormatFromInput, shareOptionsFromInput } from "./share/common";
 
 export const shareSpec: LandoCommandSpec<TunnelSessionType> = {
   id: "app:share",
+  onlineAcquisition: true,
   summary: "Start a public tunnel for the current app.",
   namespace: "app",
   topLevelAlias: true,

@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdir, readFile, readdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
+import { makeManagedFileTransactions } from "../src/transaction.ts";
 import { ensureDirectory } from "../src/transaction-fs.ts";
 import { journalDirectory } from "../src/transaction-journal.ts";
-import { makeManagedFileTransactions } from "../src/transaction.ts";
 import { fixture, ownerOnlyFileAccess, scoped } from "./transaction-fixture.ts";
 
 const aliasedFixture = async () => {

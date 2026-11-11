@@ -1,10 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { sameRealpath } from "@lando/paths";
 import {
   AbsolutePath,
@@ -20,6 +17,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
+import { DateTime, Effect } from "effect";
 
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { startApp } from "../../src/operations/start.ts";

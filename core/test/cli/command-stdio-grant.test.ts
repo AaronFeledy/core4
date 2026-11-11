@@ -1,0 +1,354 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { CommandStdioError } from "@lando/sdk/errors";
+import type { ExecutableCommandInput, ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
+import { Renderer } from "@lando/sdk/services";
+import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
+
+import { commandStdioRequest, grantCommandStdio } from "../../src/cli/command-stdio.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { pluginOwnedCommandEffect } from "../../src/cli/run-plugin-owned-command.ts";
+
+const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
+const decode = (chunk: Uint8Array): string => new TextDecoder().decode(chunk);
+
+class FakeStdin extends EventEmitter {
+  readonly isTTY: boolean;
+  readableEnded = false;
+  readableFlowing: boolean | null = null;
+  constructor(isTTY: boolean) {
+    super();
+    this.isTTY = isTTY;
+  }
+  pause(): this {
+    return this;
+  }
+  resume(): this {
+    return this;
+  }
+}
+
+const capturingRenderer = (output: { stdout: string; stderr: string }) =>
+  Renderer.of({
+    id: "plain",
+    capabilities: RENDERER_CAPABILITIES_NONE,
+    message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
+    output: {
+      stdout: (chunk) =>
+        Effect.sync(() => {
+          output.stdout += typeof chunk === "string" ? chunk : decode(chunk);
+        }),
+      stderr: (chunk) =>
+        Effect.sync(() => {
+          output.stderr += typeof chunk === "string" ? chunk : decode(chunk);
+        }),
+    },
+  } satisfies Context.Service.Shape<typeof Renderer>);
+
+const stdioSpec = <E = never, R = never>(
+  id: string,
+  body: Partial<ExecutableCommandSpec<void, E, R>> & Pick<ExecutableCommandSpec<void, E, R>, "run">,
+): ExecutableCommandSpec<void, E, R> => ({
+  id,
+  namespace: "db",
+  bootstrap: "app",
+  resultSchema: Schema.Void,
+  args: { file: { type: "string" } },
+  ...body,
+});
+
+beforeEach(() => {
+  process.exitCode = 0;
+});
+afterEach(() => {
+  process.exitCode = 0;
+});
+
+describe("grantCommandStdio", () => {
+  test("derives requests only for bare dash values on marked positional args", () => {
+    const spec = {
+      args: {
+        source: { type: "string", stdio: "stdin" },
+        destination: { type: "option", stdio: "stdout" },
+        ordinary: { type: "string" },
+      },
+    } as const;
+    expect(commandStdioRequest(spec, { source: "-", destination: "-" })).toEqual({
+      stdin: true,
+      stdout: true,
+    });
+    expect(commandStdioRequest(spec, { source: "./-", destination: "dump.sql", ordinary: "-" })).toEqual({});
+    expect(commandStdioRequest(spec, {})).toEqual({});
+  });
+  test("grants stdout when routing is machine output", async () => {
+    const output = { stdout: "", stderr: "" };
+    const base = capturingRenderer(output);
+    const granted = await Effect.runPromise(
+      grantCommandStdio({
+        command: "db:export",
+        request: { stdout: true },
+        baseStdout: base.output.stdout,
+        stdoutIsTTY: false,
+        stdinIsTTY: false,
+        resultFormat: "json",
+        rendererMode: "lando",
+      }),
+    );
+    if (granted?.stdout === undefined) throw new Error("expected stdout grant");
+    await Effect.runPromise(granted.stdout(bytes("dump-bytes")));
+    expect(output).toEqual({ stdout: "dump-bytes", stderr: "" });
+  });
+
+  test("allows --renderer=json with text format (routing stays human)", async () => {
+    const output = { stdout: "", stderr: "" };
+    const base = capturingRenderer(output);
+    const granted = await Effect.runPromise(
+      grantCommandStdio({
+        command: "db:export",
+        request: { stdout: true },
+        baseStdout: base.output.stdout,
+        stdoutIsTTY: false,
+        stdinIsTTY: false,
+        resultFormat: "text",
+        rendererMode: "json",
+      }),
+    );
+    if (granted?.stdout === undefined) throw new Error("expected stdout grant");
+    await Effect.runPromise(granted.stdout(bytes("dump-bytes")));
+    expect(output).toEqual({ stdout: "dump-bytes", stderr: "" });
+  });
+
+  test("refuses stdout and stdin when the requested stream is a TTY", async () => {
+    const base = capturingRenderer({ stdout: "", stderr: "" });
+    for (const [request, stream, stdoutIsTTY, stdinIsTTY] of [
+      [{ stdout: true }, "stdout", true, false],
+      [{ stdin: true }, "stdin", false, true],
+    ] as const) {
+      const exit = await Effect.runPromiseExit(
+        grantCommandStdio({
+          command: "db:import",
+          request,
+          baseStdout: base.output.stdout,
+          stdoutIsTTY,
+          stdinIsTTY,
+          resultFormat: "text",
+          rendererMode: "plain",
+        }),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.squash(exit.cause);
+        expect(error).toBeInstanceOf(CommandStdioError);
+        if (error instanceof CommandStdioError) {
+          expect(error.reason).toBe("terminal");
+          expect(error.stream).toBe(stream);
+        }
+      }
+    }
+  });
+});
+
+describe("pluginOwnedCommandEffect stdio grants", () => {
+  test("preserves granted payload bytes and routes a success envelope to stderr", async () => {
+    const io = createBufferedRendererIO();
+    const resultSchema = Schema.Struct({ bytes: Schema.Number });
+    const spec: ExecutableCommandSpec<typeof resultSchema.Type, never, never> = {
+      id: "fixture:dump",
+      namespace: "fixture",
+      bootstrap: "plugins",
+      resultSchema,
+      args: { file: { type: "string", stdio: "stdout" } },
+      run: (input) => {
+        const write = input.stdio?.stdout;
+        if (write === undefined) throw new Error("expected stdout grant");
+        return Effect.as(write(bytes("dump\u0000\r\nsecret-bytes")), { bytes: 19 });
+      },
+    };
+    await runWithRendererHandling(
+      pluginOwnedCommandEffect(spec, ["-"], false, {
+        resultFormat: "json",
+        stdoutIsTTY: false,
+        stdinIsTTY: false,
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        resultFormat: "json",
+        payloadStdout: true,
+        resultSchema,
+        command: spec.id,
+        io,
+        setExitCode: () => {},
+        formatError: () => "unexpected failure",
+      },
+    );
+    expect(io.stdoutBytes()).toEqual(bytes("dump\u0000\r\nsecret-bytes"));
+    expect(JSON.parse(io.stderr())).toMatchObject({ ok: true, command: spec.id, result: { bytes: 19 } });
+  });
+
+  test("granted stdout writes secret bytes exact while ordinary renderer output still redacts", async () => {
+    const secret = "stdio-grant-canary-secret-9910";
+    const output = { stdout: "", stderr: "" };
+    const redaction = makeRedactionService();
+    const spec = stdioSpec("db:export", {
+      args: { file: { type: "string", stdio: "stdout" } },
+      run: (input: ExecutableCommandInput) =>
+        Effect.gen(function* () {
+          yield* (yield* RedactionService).registerValues([secret]);
+          const granted = input.stdio?.stdout;
+          if (granted === undefined) throw new Error("expected stdout grant");
+          yield* granted(bytes(secret));
+          const renderer = yield* Renderer;
+          yield* renderer.output.stdout(bytes(`${secret}-narration`));
+          yield* renderer.output.stderr(bytes(`${secret}-err`));
+        }),
+    });
+
+    await Effect.runPromise(
+      pluginOwnedCommandEffect(spec, ["-"], false, {
+        resultFormat: "text",
+        stdoutIsTTY: false,
+        stdinIsTTY: false,
+      }).pipe(
+        Effect.provideService(Renderer, capturingRenderer(output)),
+        Effect.provideService(RedactionService, redaction),
+      ),
+    );
+
+    expect(output.stdout).toBe(`${secret}[redacted]-narration`);
+    expect(output.stderr).toBe("[redacted]-err");
+  });
+
+  test("granted stdin delivers bytes from an injectable source", async () => {
+    const stdin = new PassThrough();
+    let received = "";
+    const spec = stdioSpec("db:import", {
+      args: { file: { type: "string", stdio: "stdin" } },
+      run: (input: ExecutableCommandInput) =>
+        Effect.gen(function* () {
+          const stream = input.stdio?.stdin;
+          if (stream === undefined) throw new Error("expected stdin grant");
+          const chunks = yield* Stream.runCollect(stream);
+          received = [...chunks].map(decode).join("");
+        }),
+    });
+
+    const fiber = Effect.runPromise(
+      pluginOwnedCommandEffect(spec, ["-"], false, {
+        stdin,
+        stdinIsTTY: false,
+        stdoutIsTTY: false,
+        resultFormat: "text",
+      }).pipe(Effect.provideService(Renderer, capturingRenderer({ stdout: "", stderr: "" }))),
+    );
+    stdin.write("dump-bytes");
+    stdin.end();
+    await fiber;
+    expect(received).toBe("dump-bytes");
+  });
+
+  test("a second consumer of granted stdin is a defect, and the first still gets every byte", async () => {
+    // Given
+    const stdin = new PassThrough();
+    const granted = await Effect.runPromise(
+      grantCommandStdio({
+        command: "db:import",
+        request: { stdin: true },
+        baseStdout: () => Effect.void,
+        stdoutIsTTY: false,
+        stdinIsTTY: false,
+        stdin,
+        resultFormat: "text",
+        rendererMode: "plain",
+      }),
+    );
+    const stream = granted?.stdin;
+    if (stream === undefined) throw new Error("expected stdin grant");
+    const first = Effect.runPromise(Stream.runCollect(stream));
+    // When
+    const second = await Effect.runPromiseExit(Stream.runCollect(stream));
+    stdin.end("payload");
+    // Then
+    expect([...(await first)].map(decode).join("")).toBe("payload");
+    expect(Exit.isFailure(second) && Cause.hasDies(second.cause)).toBe(true);
+  });
+
+  test("stdin read errors surface as CommandStdioError reason read", async () => {
+    const stdin = new FakeStdin(false);
+    const listening = new Promise<void>((resolve) => {
+      stdin.on("newListener", function onListener(event) {
+        if (event !== "error") return;
+        stdin.off("newListener", onListener);
+        resolve();
+      });
+    });
+    const spec = stdioSpec("db:import", {
+      args: { file: { type: "string", stdio: "stdin" } },
+      run: (input: ExecutableCommandInput) =>
+        Effect.gen(function* () {
+          const stream = input.stdio?.stdin;
+          if (stream === undefined) throw new Error("expected stdin grant");
+          yield* Stream.runDrain(stream);
+        }),
+    });
+
+    const pending = Effect.runPromiseExit(
+      pluginOwnedCommandEffect(spec, ["-"], false, {
+        stdin,
+        stdinIsTTY: false,
+        stdoutIsTTY: false,
+        resultFormat: "text",
+      }).pipe(Effect.provideService(Renderer, capturingRenderer({ stdout: "", stderr: "" }))),
+    );
+    await listening;
+    stdin.emit("error", new Error("broken pipe"));
+    const exit = await pending;
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const error = Cause.squash(exit.cause);
+      expect(error).toBeInstanceOf(CommandStdioError);
+      if (error instanceof CommandStdioError) {
+        expect(error.reason).toBe("read");
+        expect(error.stream).toBe("stdin");
+      }
+    }
+  });
+});
+
+describe("CommandStdioError exit codes at the renderer boundary", () => {
+  test.each([
+    ["terminal", 2],
+    ["unavailable", 2],
+    ["read", 1],
+  ] as const)("maps reason %s to exit %d", async (reason, expected) => {
+    const io = createBufferedRendererIO();
+    const codes: number[] = [];
+    await runWithRendererHandling(
+      Effect.fail(
+        new CommandStdioError({
+          message: `stdio ${reason}`,
+          command: "db:export",
+          stream: reason === "read" || reason === "unavailable" ? "stdin" : "stdout",
+          reason,
+          remediation: "Fix the stream.",
+        }),
+      ),
+      {
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "db:export",
+        io,
+        setExitCode: (code) => codes.push(code),
+        render: () => undefined,
+        formatError: (failure) =>
+          failure.error instanceof Error ? failure.error.message : String(failure.error),
+      },
+    );
+    expect(codes).toEqual([expected]);
+  });
+});

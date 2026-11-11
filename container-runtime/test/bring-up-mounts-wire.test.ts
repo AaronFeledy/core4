@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -13,9 +11,10 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -71,6 +70,9 @@ const makeFakeApi = () => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];

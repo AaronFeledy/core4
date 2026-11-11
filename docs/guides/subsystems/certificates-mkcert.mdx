@@ -3,12 +3,12 @@ id: certificates-mkcert
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, subsystems, certs, mkcert, ca]
+tags: [docs, subsystems, certs, mkcert, ca]
 ---
 
 # Trust local HTTPS certificates
 
-Run `lando setup` so Lando installs mkcert and trusts the local CA on this machine. After that, browsers trust the HTTPS URLs Traefik serves.
+Run `lando setup` once so Lando installs mkcert, creates the local CA, and trusts it on this machine. After that, browsers trust the HTTPS URLs Traefik serves, and apps that use `certs: true` can start.
 
 ```sh
 lando setup
@@ -49,7 +49,55 @@ services:
 
 The object form requires both `cert` and `key`. Custom paths must stay inside the app root and be readable.
 
-With `certs: true`, Lando issues a leaf that covers the service name, its internal alias, `hostnames:`, proxied hostnames, `localhost`, and `127.0.0.1`. Each `hostnames:` entry must be a plain DNS name: letters, digits, and hyphens in each label, no scheme, port, path, or wildcard. `lando app:config:lint` and `lando start` both reject anything else at `services.<name>.hostnames[<index>]`.
+With `certs: true`, Lando issues a leaf when the app starts, so run `lando setup` once before the first start. The leaf covers the service name, its internal alias (`<service>.<app>.internal`), `hostnames:` entries, certificate-mapped route hostnames, `localhost`, and `127.0.0.1`. HTTP-only routes contribute a name when it is certificate-coverable; deep wildcards do not. Each `hostnames:` entry must be a plain DNS name: letters, digits, and hyphens in each label, no scheme, port, path, or wildcard. `lando app:config:lint` and `lando start` both reject anything else at `services.<name>.hostnames[<index>]`.
+
+### Map route hostnames to certificate names
+
+HTTPS and `both` routes must be certificate-coverable. Lando maps each route hostname to a certificate name before it asks mkcert to issue:
+
+| Route hostname | Certificate name on the leaf |
+| --- | --- |
+| `app.lndo.site` | `app.lndo.site` |
+| `*.app.lndo.site` | `*.app.lndo.site` |
+| `*-app.lndo.site` | `*.lndo.site` |
+| `api*.app.lndo.site` | `*.app.lndo.site` |
+| `wild.*.app.lndo.site` | none (not certificate-coverable) |
+
+A partial leftmost wildcard expands to `*.` plus the rest of the hostname after that label. That SAN is broader than the route: the certificate for `*-app.lndo.site` is `*.lndo.site`, so a client that trusts the leaf will also accept `other.lndo.site` even though the route only matches names ending in `-app.lndo.site`. Prefer an exact hostname or a full leftmost `*.rest` when you want the SAN and the route to line up. Deep wildcards (a `*` outside the leftmost label) cannot be covered; write those routes with `scheme: http`, or move the wildcard left. Lint and start report `landofile.route` for an HTTPS or `both` route that cannot map. See [Write routes as shorthand strings and add filters](../proxy/route-shorthand.mdx).
+
+The proxy issues one app certificate whose SANs are the mapped HTTPS route hostnames for that app. Service leaves from `certs: true` use the same mapping for their route-derived names.
+
+Check the route names before starting the app:
+
+<Guide>
+  <Scenario id="certificate-coverable-routes" render>
+    <Step name="configure">
+      <UseFixture name="certificate-routes" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-deep-https-wildcard" render={false} reason="Validate HTTPS certificate coverage before asking the CA to issue">
+    <Step name="configure">
+      <UseFixture name="invalid-certificate-route" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "landofile.route" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="plan-without-certificate-authority" render={false} reason="Planning a certs: true app must not need mkcert or the local CA">
+    <Step name="configure">
+      <UseFixture name="certificate-routes" />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 After starting the app, the service receives these certificate-path environment
 variables (`<service>` is its service name):
@@ -61,15 +109,38 @@ LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key
 
 `certs: false` leaves both unset.
 
+## When Lando issues the certificate
+
+`lando start`, `lando restart`, and `lando rebuild` check the leaf and issue a new one only when it's needed. Commands that only read your config or plan the app, such as `lando app:config`, `lando app:config:lint`, and `lando app:cache:refresh`, never contact the certificate authority, so they work before `lando setup`.
+
+Lando keeps each app's leaf in its own folder under the Lando data directory and reuses it from one start to the next. You get a new certificate when:
+
+- you add a hostname or route the certificate doesn't cover yet
+- the certificate is within 30 days of expiring
+- the local CA is no longer the one that signed it
+- the certificate or key file is missing, damaged, or the two don't match
+
+Removing a hostname doesn't trigger a new certificate. The one you have still covers the names that remain.
+
+When the certificate does change, the next `lando start` recreates that service so it mounts the new files. An unchanged certificate never recreates a service. `lando restart --service <name>` won't recreate a service, so it asks you to run `lando rebuild` instead. `lando destroy` deletes the app's leaf.
+
+Starting an app never installs mkcert or creates the local CA. Only `lando setup` does, and it keeps a CA you already have. If mkcert isn't installed when the app starts, the start fails and names the service:
+
+```text
+Unable to issue the certificate for service appserver.
+mkcert v1.4.4 is not installed at <path>.
+  ↳ Run `lando setup` to download mkcert and install the local CA.
+```
+
+When mkcert is installed but the local CA is missing, the second line reads `mkcert has no local CA in <path>.` The fix is the same.
+
 ## Skip host trust
 
 ```sh
 lando setup --skip-install-ca
 ```
 
-That provisions mkcert without writing to the host trust store. Browsers will warn on HTTPS until you trust the CA yourself.
-
-If `certs: true` runs before setup, the command fails and tells you to run `lando setup`.
+That installs mkcert and still creates the local CA, but doesn't add it to the system trust store. Apps with `certs: true` start as usual. Lando's own URL check trusts that CA, so it does not report the route as unreachable. Start prints one warning instead: browsers will warn until you run `lando setup` without `--skip-install-ca`.
 
 ## Verify
 
@@ -77,4 +148,6 @@ If `certs: true` runs before setup, the command fails and tells you to run `land
 lando doctor
 ```
 
-The certs check should pass after setup.
+When this machine trusts the local CA, the certs check passes. When the CA exists but is not in the host trust store, doctor warns and tells you to run `lando setup` without `--skip-install-ca`. When mkcert is missing or the CA was never created, doctor warns with that authority's own remediation. Doctor does not install the CA for you, including with `--fix`. In JSON, `certsTrusted` is `"true"` or `"false"` on the certs check. A finding that Lando couldn't select or load a certificate authority is separate. Follow the remediation it prints.
+
+To check the result end to end, start an app with an HTTPS route and open its URL: a trusted padlock means the CA is installed and trusted.

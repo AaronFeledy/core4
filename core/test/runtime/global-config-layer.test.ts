@@ -73,11 +73,13 @@ test("none repair operations retain captured host inputs and hermetic source pol
     configSources: { user: false, env: false },
     config: { userConfRoot: "/host/config", router: { httpPort: 8127 } },
   });
-  const operation = configOperation({ subcommand: "get", key: "router.httpPort" });
-  const resolved = operation.pipe(Effect.provide(runtime));
-  const result = await withEnvVar("LANDO_USER_CONF_ROOT", "/ambient/config-must-not-be-read", () =>
+  const resolved = Effect.all([
+    configOperation({ subcommand: "get", key: "router.httpPort" }),
+    configOperation({ subcommand: "get", key: "userConfRoot" }),
+  ]).pipe(Effect.provide(runtime));
+  const [port, confRoot] = await withEnvVar("LANDO_USER_CONF_ROOT", "/ambient/config-must-not-be-read", () =>
     Effect.runPromise(resolved),
   );
-  expect(result.value).toBe(8127);
-  expect(String(result.config?.userConfRoot)).toBe("/host/config");
+  expect(port.value).toBe(8127);
+  expect(confRoot.value).toBe("/host/config");
 });

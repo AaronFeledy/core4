@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { McpAllowlistConflictError } from "@lando/sdk/errors";
-
 import {
   MCP_ALLOWLIST_FORBIDDEN_IDS,
   assertMcpAllowlistSafe,
@@ -11,12 +8,14 @@ import {
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandSpec } from "@lando/mcp/registry";
+import { McpAllowlistConflictError } from "@lando/sdk/errors";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { BUNDLED_COMMAND_DESCRIPTORS } from "../../src/cli/generated/bundled-command-descriptors.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const EXPECTED_DEFAULT_ALLOWLIST = [
+  "app:config:describe",
   "app:config:get",
   "app:config:view",
   "app:exec",
@@ -99,6 +98,16 @@ describe("assertMcpAllowlistSafe", () => {
     );
   });
 
+  test("sources:gc is destructive like snapshots:gc and must not self-allow", () => {
+    const sources = specFor("meta:sources:gc");
+    const snapshots = specFor("meta:snapshots:gc");
+    expect(sources.flags?.yes).toBeDefined();
+    expect(snapshots.flags?.yes).toBeDefined();
+    expect(sources.flags?.prune).toBeDefined();
+    expect(() => assertMcpAllowlistSafe({ ...sources, mcpAllowed: true })).toThrow(McpAllowlistConflictError);
+    expect(MCP_DEFAULT_ALLOWLIST).not.toContain("meta:sources:gc");
+  });
+
   test("allows a destructive command that does not self-allow", () => {
     expect(() => assertMcpAllowlistSafe(makeSpec("app:destroy", false))).not.toThrow();
     expect(() => assertMcpAllowlistSafe(makeSpec("app:destroy", undefined))).not.toThrow();
@@ -162,6 +171,11 @@ describe("MCP default allowlist derivation", () => {
     expect(specFor("app:config").mcpAllowed).toBeUndefined();
     expect(mcpSpecFor("app:config:get").id).toBe("app:config:get");
     expect(mcpSpecFor("app:config:view").id).toBe("app:config:view");
+    expect(
+      mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.filter(
+        ({ spec }) => spec.id === "app:config:describe",
+      ),
+    ).toHaveLength(1);
     expect(MCP_DEFAULT_ALLOWLIST).not.toContain("app:config");
   });
 

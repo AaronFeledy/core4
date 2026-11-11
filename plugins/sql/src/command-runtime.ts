@@ -1,7 +1,4 @@
 import { realpath } from "node:fs/promises";
-
-import { Effect } from "effect";
-
 import { PlanReplanRequiredError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import {
@@ -10,27 +7,35 @@ import {
   EventService,
   InteractionService,
   LandofileService,
+  PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  ServiceReadiness,
   StateStore,
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 
-import { validateExportCompressionLevel } from "./command-input.ts";
+import { requireAppliedSqliteTargets } from "./applied-sqlite.ts";
+import { validateExportCompression } from "./command-input.ts";
 import { providerSqlExec } from "./dispatch.ts";
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
-  yield* validateExportCompressionLevel(input);
+  yield* validateExportCompression(input);
   const landofiles = yield* LandofileService;
   const environmentResolver = yield* EnvironmentValueResolver;
   const registry = yield* RuntimeProviderRegistry;
   const mover = yield* DataMover;
+  const readiness = yield* ServiceReadiness;
   const interaction = yield* InteractionService;
   const events = yield* EventService;
   const stateStore = yield* StateStore;
+  const paths = yield* PathsService;
+  const privateFileAccess = yield* PrivateFileAccessService;
   const landofile = yield* landofiles.discover;
   const authored = toSqlLandofile(landofile.document);
   const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
@@ -45,6 +50,10 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       }),
     );
   const plan = toSqlPlan(planned);
+  yield* requireAppliedSqliteTargets(
+    { landofile: authored, plan, providerId: planned.provider },
+    input.service,
+  );
   const earlyTarget = resolveSqlTarget(plan, input.service);
   if (earlyTarget._tag === "Failure") return yield* Effect.fail(earlyTarget.failure);
   const provider = yield* registry.select(planned);
@@ -54,12 +63,15 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       plan,
       environmentResolver,
       transfer: (spec) => Effect.scoped(mover.transfer(spec)),
+      read: (from) => mover.read(from),
       snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
       restore: (handle, store, opts) => Effect.scoped(mover.restore(handle, store, opts)),
       listSnapshots: (filter) => mover.listSnapshots(filter),
       resolveSnapshot: (reference, scope) => mover.resolveSnapshot(reference, scope),
       pruneSnapshots: (policy) => mover.pruneSnapshots(policy),
       providerId: planned.provider,
+      waitForReady: (service) =>
+        readiness.wait({ provider, plan: planned, services: [ServiceName.make(service)] }),
       ...(provider.appliedPlans === undefined ? {} : { appliedPlans: provider.appliedPlans }),
       inspectSource: (target) => provider.inspect(target),
       canonicalizeSourcePath: (path) =>
@@ -73,6 +85,8 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               remediation: "Pass an existing app root with --from-path.",
             }),
         }).pipe(Effect.map(AbsolutePath.make)),
+      stagingDir: paths.transferStagingDir,
+      privateFileAccess,
       exec: providerSqlExec(provider, planned),
       resume: (service, identity) => {
         const resume = provider.resume;
@@ -112,10 +126,10 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               status:
                 info.containerId === undefined
                   ? "missing"
-                  : info.status === "running" || info.state === "running"
+                  : info.status === "running"
                     ? "running"
                     : "stopped",
-              running: info.status === "running" || info.state === "running",
+              running: info.status === "running",
               ...(info.containerId === undefined ? {} : { containerId: info.containerId }),
               ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
             })),
@@ -148,6 +162,32 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               { app: planned.id, service: ServiceName.make(service), plan: planned },
               PortablePath.make(destination ?? mount.target),
             );
+      },
+      sqlite: {
+        applied: planned,
+        removeSnapshot: (handle) => mover.removeSnapshot(handle),
+        inspect: (service) =>
+          provider.inspect({ app: planned.id, service: ServiceName.make(service), plan: planned }).pipe(
+            Effect.map((info) => ({
+              status:
+                info.containerId === undefined
+                  ? ("missing" as const)
+                  : info.status === "running"
+                    ? ("running" as const)
+                    : ("stopped" as const),
+              running: info.status === "running",
+              ...(info.containerId === undefined ? {} : { containerId: info.containerId }),
+              ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
+            })),
+          ),
+        privateFileAccess,
+        run: (spec) => Effect.scoped(provider.run(spec)),
+        pullArtifact: (spec) => provider.pullArtifact(spec),
+        paths: {
+          snapshotsDir: paths.snapshotsDir,
+          ownerSnapshotsDir: paths.ownerSnapshotsDir,
+        },
+        stateStore,
       },
       withVolumeLock: (instanceId, body) => stateStore.withLock(physicalVolumeLockKey(instanceId), body),
       initialization: (identity) =>

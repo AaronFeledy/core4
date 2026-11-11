@@ -1,6 +1,4 @@
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { makeDataMoverService } from "@lando/data-mover/service";
 import { makeLandoPaths } from "@lando/paths";
 import {
@@ -11,14 +9,30 @@ import {
   type SnapshotMetadata,
   planAppIdentity,
 } from "@lando/sdk/schema";
-import { RuntimeProvider, StateStore } from "@lando/sdk/services";
+import { RuntimeProvider, type RuntimeProviderShape, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as DiskStateStore from "@lando/state-store/service";
+import { Effect } from "effect";
 
 import { makeSqlTestDeps } from "./fakes.ts";
 
+const privateAccess = (operation: keyof PrivateFileAccess, path: string): Promise<void> =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.flatMap(PrivateFileAccessService, (access) =>
+        Effect.promise(() => access[operation](path)),
+      ).pipe(Effect.provide(PrivateFileAccessService.layer)),
+    ),
+  );
+const privateFileAccess: PrivateFileAccess = {
+  enforce: (path) => privateAccess("enforce", path),
+  verify: (path) => privateAccess("verify", path),
+};
+
 export const makeRetentionTestDeps = async (
   options: Parameters<typeof makeSqlTestDeps>[0] = { password: "lando" },
+  providerOverrides: Partial<RuntimeProviderShape> = {},
 ) => {
   const harness = makeSqlTestDeps(options);
   const stateStore = await Effect.runPromise(StateStore.pipe(Effect.provide(DiskStateStore.layer)));
@@ -63,10 +77,11 @@ export const makeRetentionTestDeps = async (
             Effect.sync(() => {
               removed.push(snapshot.id);
             }),
+          ...providerOverrides,
         }),
       ),
       { redactText: (text) => text, publish: () => Effect.void },
-      { paths, stateStore },
+      { paths, stateStore, privateFileAccess },
     );
   const mover = moverForRoot(harness.root);
   const deps = {

@@ -1,10 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { CacheService, makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import {
   AbsolutePath,
@@ -20,9 +17,9 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { TestRouterService } from "@lando/sdk/test";
+import { Effect, Layer, Schema } from "effect";
 
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -36,18 +33,19 @@ const testProviderLayers = () => {
         Effect.tap(() => Effect.sync(() => void plans.set(plan.root, options?.recordedPlan ?? plan))),
       ),
     inspect: (target) =>
-      TestRuntimeProvider.inspect(target).pipe(
-        Effect.map((observed) => {
-          const plan = [...plans.values()].find((plan) => plan.id === target.app);
-          return {
-            ...observed,
-            providerId: ProviderId.make(TestRuntimeProvider.id),
-            ...(plan === undefined ? {} : { appRoot: plan.root }),
-            containerId: `${target.app}-${target.service}`,
-            health: "healthy" as const,
-          };
-        }),
-      ),
+      Effect.sync(() => {
+        const plan = [...plans.values()].find((plan) => plan.id === target.app);
+        return {
+          app: target.app,
+          service: target.service,
+          providerId: ProviderId.make(TestRuntimeProvider.id),
+          ...(plan === undefined ? {} : { appRoot: plan.root }),
+          containerId: `${target.app}-${target.service}`,
+          status: "running" as const,
+          health: "healthy" as const,
+          publications: { status: "unknown" as const },
+        };
+      }),
     list: () =>
       Effect.sync(() =>
         [...plans.values()].flatMap((plan) =>

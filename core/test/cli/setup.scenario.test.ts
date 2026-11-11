@@ -1,12 +1,12 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema, Stream } from "effect";
-
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
+import { GlobalConfigSources } from "@lando/engine/services/config";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
@@ -18,10 +18,7 @@ import {
   InteractionService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { GlobalConfigSources } from "@lando/engine/services/config";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
+import { Effect, Layer, Schema, Stream } from "effect";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
 interface EventSink {
@@ -260,7 +257,9 @@ describe("meta:setup task tree progress", () => {
       if (treeComplete?._tag !== "task.tree.complete") {
         throw new Error("expected task.tree.complete as last event");
       }
-      expect(treeComplete.failed).toBe(2);
+      // Only the step that ran fails; never-started steps stay pending.
+      expect(treeComplete.failed).toBe(1);
+      expect(treeComplete.outcome).toBe("failure");
       expect(treeComplete.succeeded).toBeGreaterThanOrEqual(1);
     } finally {
       await rm(stateDir, { recursive: true, force: true });

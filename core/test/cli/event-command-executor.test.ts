@@ -2,25 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
-
-import { normalizeDefect } from "@lando/sdk/command-result";
-import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import {
-  EventService,
-  type EventServiceShape,
-  type LandoEvent,
-  Renderer,
-  RuntimeProviderRegistry,
-  ShellRunner,
-  ToolingEngine,
-  type ToolingInvocation,
-} from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-
 import { runAppEvent } from "@lando/engine/operations/events";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { withProjectEvents } from "@lando/engine/planner/effective-events";
@@ -31,10 +12,28 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { EnvironmentValueResolver } from "@lando/sdk/services";
-import { ProcessRunner, type ProcessSpawnOptions } from "@lando/sdk/services";
+import { normalizeDefect } from "@lando/sdk/command-result";
+import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import {
+  EnvironmentValueResolver,
+  EventService,
+  type EventServiceShape,
+  type LandoEvent,
+  ProcessRunner,
+  type ProcessSpawnOptions,
+  Renderer,
+  RuntimeProviderRegistry,
+  ShellRunner,
+  ToolingEngine,
+  type ToolingInvocation,
+} from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { metaBunSpec } from "../../src/cli/command-specs/meta/bun.ts";
@@ -596,8 +595,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     let observedCwd = "";
     const spec = {
       ...testSpec(() =>
-        Effect.sync(() => {
-          observedCwd = process.cwd();
+        Effect.map(discoveryCwd(), (cwd) => {
+          observedCwd = cwd;
           return "done";
         }),
       ),
@@ -647,8 +646,8 @@ describe("EventCommandExecutorLayer.layer", () => {
     let observedCwd = "";
     const spec = {
       ...testSpec(() =>
-        Effect.sync(() => {
-          observedCwd = process.cwd();
+        Effect.map(discoveryCwd(), (cwd) => {
+          observedCwd = cwd;
         }),
       ),
       namespace: "app" as const,
@@ -779,7 +778,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       expect.stringContaining("Missing required argument target"),
       expect.stringContaining("flag count"),
       expect.stringContaining("flag enabled"),
-      expect.stringContaining("must be one of"),
+      expect.stringContaining("does not accept that mode"),
       expect.stringContaining("does not accept raw arguments"),
     ]);
   });
@@ -1186,13 +1185,56 @@ describe("EventCommandExecutorLayer.layer", () => {
     });
   });
 
+  test.each([
+    { value: "remtoe", suggestion: 'Did you mean "remote"? ' },
+    { value: "unrelated", suggestion: "" },
+  ])(
+    "rejects a repeatable positional choice $value before running its command",
+    async ({ value, suggestion }) => {
+      const harness = makeHarness();
+      let ran = false;
+      const executor = executorFor(
+        entryFor(
+          testSpec(() =>
+            Effect.sync(() => {
+              ran = true;
+            }),
+          ),
+          {
+            args: { destination: Args.string({ options: ["local", "remote"], multiple: true }) },
+          },
+        ),
+        harness,
+      );
+      const error = await Effect.runPromise(
+        Effect.flip(
+          executor.run({
+            command: "meta:test:event-command",
+            flags: {},
+            args: { destination: ["local", value] },
+            argv: [],
+            cwd: process.cwd(),
+          }),
+        ),
+      );
+      expect(error).toMatchObject({
+        _tag: "CommandInputValidationError",
+        target: "meta:test:event-command",
+        field: "destination",
+        kind: "arg",
+        reason: "option",
+        remediation: `${suggestion}destination takes one of: local, remote.`,
+      });
+      expect(ran).toBe(false);
+    },
+  );
+
   test("rejects deferred canonical commands with the structured not-implemented error", async () => {
     // Given
     const harness = makeHarness();
     const deferred = {
       summary: "Deferred test command.",
       remediation: "Use an implemented command.",
-      phase: "4.1" as const,
     };
     const spec: LandoCommandSpec = {
       ...testSpec(() => Effect.die("deferred command must not run")),

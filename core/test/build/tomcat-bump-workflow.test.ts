@@ -30,7 +30,7 @@ describe("Tomcat bump workflow", () => {
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain("  actions: write");
     const ci = await Bun.file(resolve(import.meta.dirname, "../../../.github/workflows/ci.yml")).text();
-    expect(ci).toContain("bun test plugins/service-lando/test/*.integration.test.ts");
+    expect(ci).toContain("bun run test:selection services-lando");
   });
 
   test.skipIf(process.platform === "win32").each([false, true])(

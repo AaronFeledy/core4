@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type {
   ServiceFeatureDefinition,
@@ -7,6 +5,7 @@ import type {
   ServiceTypeInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 interface ServicePlanInput {
   readonly name: string;

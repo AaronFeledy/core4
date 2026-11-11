@@ -1,13 +1,19 @@
-import { Effect, Stream } from "effect";
-
 import { SnapshotNotFoundError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppIdentity, type DataTransferSpec, planAppIdentity } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type AppIdentity,
+  type DataEndpoint,
+  type DataTransferSpec,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import { DataMover, type DataMoverShape } from "@lando/sdk/services";
+import { Effect, Stream } from "effect";
 
 export interface TestDataMoverHandle {
   readonly service: DataMoverShape;
   readonly transfers: () => Effect.Effect<ReadonlyArray<DataTransferSpec>>;
   readonly streams: () => Effect.Effect<ReadonlyArray<DataTransferSpec>>;
+  readonly reads: () => Effect.Effect<ReadonlyArray<DataEndpoint>>;
 }
 
 export const makeTestDataMover = (
@@ -15,6 +21,7 @@ export const makeTestDataMover = (
 ): TestDataMoverHandle => {
   const transfers: DataTransferSpec[] = [];
   const streams: DataTransferSpec[] = [];
+  const reads: DataEndpoint[] = [];
 
   const service = DataMover.of({
     transfer: (spec) =>
@@ -29,6 +36,11 @@ export const makeTestDataMover = (
           { phase: "started" as const, transferredBytes: 0 },
           { phase: "completed" as const, transferredBytes: 0 },
         );
+      }),
+    read: (from) =>
+      Stream.suspend(() => {
+        reads.push(from);
+        return Stream.empty;
       }),
     snapshot: (store) => Effect.succeed({ id: `test-${store.store}`, store, ownerKey: owner.ownerKey }),
     restore: () => Effect.void,
@@ -51,6 +63,7 @@ export const makeTestDataMover = (
     service,
     transfers: () => Effect.succeed([...transfers]),
     streams: () => Effect.succeed([...streams]),
+    reads: () => Effect.succeed([...reads]),
   };
 };
 

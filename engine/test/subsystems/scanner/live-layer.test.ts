@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { ProviderConfigError, ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
@@ -10,6 +8,7 @@ import {
   UrlScanner,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";
@@ -99,7 +98,7 @@ describe("ProviderUrlScanner.layer", () => {
       };
       const router = RouterService.of({
         ...makeTestRouterService(),
-        observeRoutes: (_app, routes) =>
+        observeRoutes: (_owner, routes) =>
           Effect.succeed({
             configuredAuthorities: [],
             observation: {
@@ -168,8 +167,7 @@ describe("ProviderUrlScanner.layer", () => {
           app: appId,
           service,
           providerId: ProviderId.make(TestRuntimeProvider.id),
-          status: "running",
-          state: service === worker ? "stopped" : "running",
+          status: service === worker ? ("exited" as const) : ("running" as const),
           publications: {
             status: "present",
             bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 18080 }],

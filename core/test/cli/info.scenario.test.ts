@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Schema, Stream, Struct } from "effect";
-
 import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -27,10 +25,10 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
+import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-
-import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
+import { DateTime, Effect, Layer, Schema, Stream, Struct } from "effect";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -239,7 +237,7 @@ const makeInfoLayer = (
     isAvailable: Effect.succeed(true),
     planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -280,8 +278,7 @@ const makeInfoLayer = (
           app: plannedApp.id,
           service: target.service,
           providerId,
-          status: state,
-          state,
+          status: state === "running" ? ("running" as const) : ("exited" as const),
           ...(options?.mounts === undefined ? {} : { mounts: options.mounts }),
           publications: {
             status: "present",
@@ -348,7 +345,8 @@ const makeInfoLayer = (
         capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
         setup: () => Effect.void,
         revalidateStartup: Effect.void,
-        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        applyRoutes: (routes, owner) =>
+          Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
         removeRoutes: () => Effect.void,
         observeRoutes: (_app, routes) =>
           Effect.succeed({
@@ -772,7 +770,7 @@ describe("lando info — resolved log sources", () => {
       isAvailable: Effect.succeed(true),
       planSetup: () => Effect.succeed({ providerId, changes: [] }),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -811,8 +809,7 @@ describe("lando info — resolved log sources", () => {
           app: logPlan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running" as const,
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
@@ -930,4 +927,5 @@ describe("lando info — resolved log sources", () => {
     expect(svc?.logSources?.[0]?.availability).toBe("redirected-to-console");
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

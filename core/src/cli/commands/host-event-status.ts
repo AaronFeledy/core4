@@ -1,16 +1,16 @@
 export { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
+
 import type { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
-
-import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
-import { ConfigService, PathsService } from "@lando/sdk/services";
-import { Effect } from "effect";
-
 import { isExcludedFromUserAppDefaults } from "@lando/engine/planner/app-defaults";
 import {
   compileEffectiveEvents,
   hostEventStatusesForApp,
   stampPlanServices,
 } from "@lando/engine/planner/effective-events";
+import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
+import { ConfigService, PathsService } from "@lando/sdk/services";
+import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 export interface HostEventPlanInput {
   readonly name: string;
@@ -38,7 +38,7 @@ export const hostEventStatusesForPlan = Effect.fnUntraced(function* (
       landofile: plan.events === undefined ? {} : { events: plan.events },
       hostEvents,
       services: stampPlanServices(plan.services),
-      skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
+      skipHostEvents: (yield* CliInvocation).env[LANDO_HOST_EVENT_ENV] === "1",
     }),
   );
 });

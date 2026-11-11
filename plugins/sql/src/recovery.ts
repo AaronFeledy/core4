@@ -1,8 +1,9 @@
-import { DateTime, Effect, Exit, Option, absurd } from "effect";
-
+import { isProviderError } from "@lando/redaction/provider-error";
+import { mapFailures } from "@lando/sdk/command-result";
 import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { SnapshotId, type SnapshotMetadata } from "@lando/sdk/schema";
+import { DateTime, Effect, Exit, Option, absurd } from "effect";
 
 import { normalizeCommandFailure } from "./command-failure.ts";
 import { SqlEnvironmentSession } from "./environment.ts";
@@ -92,7 +93,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
         if (input.resumeAfterSnapshot && context.running) yield* context.resume;
         return yield* input.body(context, recovery.id);
       }).pipe(
-        Effect.mapError((cause) => {
+        mapFailures((cause) => {
           const normalized = normalizeCommandFailure(cause);
           if (Option.isSome(normalized)) {
             const failure = normalized.value;
@@ -105,6 +106,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
                   exitCode: failure.exitCode,
                   reason: failure.reason,
                   stderrTail: failure.stderrTail,
+                  ...(failure.cause === undefined ? {} : { cause: failure.cause }),
                   recoverySnapshotId: recovery.id,
                   remediation: `${failure.remediation} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`,
                 });
@@ -119,6 +121,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
                   stderrTail: failure.stderrTail,
                   recoverySnapshotId: recovery.id,
                   remediation: `${failure.remediation ?? "Resolve the command failure."} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`,
+                  ...(failure.cause === undefined ? {} : { cause: failure.cause }),
                 });
               default:
                 return absurd(failure);
@@ -133,8 +136,9 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
             operation: input.reason === "manual" ? "snapshot" : input.reason,
             recoverySnapshotId: recovery.id,
             cause,
-            remediation:
-              input.reason === "manual"
+            remediation: isProviderError(cause)
+              ? `${cause.remediation} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`
+              : input.reason === "manual"
                 ? `Snapshot ${recovery.id} remains available. Resolve the database restart failure and start the service again.`
                 : `Resolve the failure, then retry or restore recovery snapshot ${recovery.id} if needed.`,
           });

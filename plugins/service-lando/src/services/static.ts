@@ -1,7 +1,6 @@
-import { Effect, Schema } from "effect";
-
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   rootIdentity,
@@ -9,8 +8,6 @@ import {
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { tcpProbe } from "./_tcp-probe.ts";
-
 import {
   type ListenerContract,
   launcherAuthority,
@@ -18,8 +15,10 @@ import {
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 
 export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
@@ -65,13 +64,14 @@ export const defaultStaticCommand = (
 
   return nginxLauncherCommand({
     user,
-    serverBlock: [
+    httpBlock: [
       "server {",
       `  listen ${port};`,
       "  server_name _;",
       `  root ${nginxRootLiteral(docRoot)};`,
       "  index index.html index.htm;",
       ...nginxErrorPageConfigLines(),
+      ...nginxHiddenPathConfigLines(),
       "  location / { try_files $uri $uri/ =404; }",
       "}",
     ],

@@ -13,7 +13,6 @@
  * Duplicates inside the bundled set are already rejected by the module-set
  * index at plugin bootstrap.
  */
-import { Effect, Layer, Option } from "effect";
 
 import {
   ConfigTranslatorConflictError,
@@ -22,6 +21,7 @@ import {
 } from "@lando/sdk/errors";
 import type { ConfigTranslatorLoader, LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
+import { Effect, Layer, Option } from "effect";
 
 import { bundledPluginModules } from "../composition.ts";
 import { type LoadedPluginContribution, PluginContributionGraph } from "./contribution-graph.ts";

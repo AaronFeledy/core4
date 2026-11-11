@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
  * its complete selected shards. Paths and witnesses are repository-relative.
  */
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { loadWorkspacePackages, resolveFile, resolveWorkspaceSpecifier } from "./boundary/graph.ts";
 import { scanLiterals } from "./boundary/literals.ts";
@@ -224,7 +224,7 @@ export const selectAffectedTests = async (options: {
 }): Promise<Selection> => {
   const root = resolve(options.root ?? ROOT);
   const changed = sorted(new Set(options.changed.map((path) => relativePath(root, path))));
-  const eligible = sorted(options.eligible ?? (await collectShardedTestFiles()));
+  const eligible = sorted(options.eligible ?? (await collectShardedTestFiles(root)));
   let broadReason = changed.some((path) => CONFIG.test(path))
     ? "configuration or workspace mapping changed"
     : undefined;

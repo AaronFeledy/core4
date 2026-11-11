@@ -6,7 +6,7 @@ scaffold the application through the generated tooling after starting the stack.
 
 ## Host prerequisites
 
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -24,7 +24,7 @@ does not include Redis or inject `REDIS_URL`.
 - `lando npm …`: npm inside the api service.
 - `lando node …`: Node CLI inside the api service.
 
-## Alpha limitations
+## Limitations
 
 - The database prompt offers only `postgres` or `none`. The `mongodb`
   service type is available, but this recipe does not offer it as a database

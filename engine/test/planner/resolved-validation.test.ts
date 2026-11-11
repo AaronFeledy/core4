@@ -145,7 +145,7 @@ for (const [yaml, path, count] of [
 
 test("lint permits service default membership and declared external networks", async () => {
   await withApp(
-    "networks: {peer: {external: true}}\nservices: {web: {type: validation, networks: [default, peer]}}",
+    "networks: {peer: {external: true}}\nservices: {web: {type: validation, image: 'alpine:3.22', networks: [default, peer]}}",
     async (root) => {
       const lint = await Effect.runPromise(
         appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer), Effect.provide(BunFileSystem.layer)),
@@ -407,7 +407,7 @@ test.each([{ target: "host" }, { target: "host", command: "true", user: "root" }
 
 test("declared timestamped log sources lint and resolve successfully", async () => {
   await withApp(
-    "services:\n  web: {type: validation, logs: [{id: app, path: /tmp/app.log, timestamps: true}]}\n",
+    "services:\n  web: {type: validation, image: 'alpine:3.22', logs: [{id: app, path: /tmp/app.log, timestamps: true}]}\n",
     async (root) => {
       const lint = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
       const resolved = await Effect.runPromise(planning(root));

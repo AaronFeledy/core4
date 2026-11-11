@@ -1,8 +1,7 @@
 import { retainCreateArtifactIdentity } from "@lando/container-runtime/create-fingerprint";
-import { Effect, Predicate } from "effect";
-
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ArtifactRef as PlannedArtifactRef, ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect, Predicate } from "effect";
 
 import { artifactBuildStepsFor } from "./build-key.ts";
 
@@ -29,9 +28,15 @@ interface ProviderBuildInput {
   readonly resolvedSource?: ArtifactRef;
 }
 
+/**
+ * A provider artifact plus its planned provenance. `origin: "build"` is set only for an image the
+ * provider produced, so bring-up never contacts a registry for it; an acquired source ref has none.
+ */
+export type RealizedArtifact = ArtifactRef & Pick<PlannedArtifactRef, "origin">;
+
 export const runProviderBuild = Effect.fn("RuntimeProvider.buildArtifact")(function* (
   input: ProviderBuildInput,
-): Effect.fn.Return<ArtifactRef, ProviderError> {
+): Effect.fn.Return<RealizedArtifact, ProviderError> {
   const { provider, plan, service, buildKey, resolvedSource } = input;
   const artifact = service.artifact;
   if (artifact?.kind === "ref" && artifactBuildStepsFor(service).length === 0) {
@@ -51,12 +56,14 @@ export const runProviderBuild = Effect.fn("RuntimeProvider.buildArtifact")(funct
       ...(artifact.digest === undefined ? {} : { digest: artifact.digest }),
     };
   }
-  return yield* Effect.scoped(
+  const built = yield* Effect.scoped(
     provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey }),
   );
+  return { ...built, origin: "build" as const };
 });
 
-export const serviceWithArtifact = (service: ServicePlan, artifact: ArtifactRef): ServicePlan => {
+/** Projects a realized artifact onto the service, keeping the caller's provenance and never inventing it. */
+export const serviceWithArtifact = (service: ServicePlan, artifact: RealizedArtifact): ServicePlan => {
   const mounts = hasTrustStoreBuild(service)
     ? service.mounts.filter((mount) => String(mount.target) !== CA_BUNDLE_PATH)
     : service.mounts;
@@ -67,6 +74,7 @@ export const serviceWithArtifact = (service: ServicePlan, artifact: ArtifactRef)
       kind: "ref",
       ref: artifact.ref,
       ...(artifact.digest === undefined ? {} : { digest: artifact.digest }),
+      ...(artifact.origin === undefined ? {} : { origin: artifact.origin }),
     },
   });
 };

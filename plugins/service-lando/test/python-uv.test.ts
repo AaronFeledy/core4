@@ -5,9 +5,8 @@ import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
-import { compileTestLandofile } from "./support/compiled-landofile.ts";
-
 import { services } from "../src/index.ts";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 const BuildSteps = Schema.Struct({
   buildSteps: Schema.optionalKey(

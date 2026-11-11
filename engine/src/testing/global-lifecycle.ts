@@ -9,18 +9,20 @@ import {
   type PluginManifest,
   ProviderId,
   ServiceName,
+  type ServiceRunObservation,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
   ConfigService,
+  FileSystem,
   GlobalAppService,
   PathsService,
   PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
+  type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { FileSystem } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Schema } from "effect";
@@ -37,7 +39,7 @@ export const makeGlobalLifecycleFixture = (
   const providerId = ProviderId.make("lando");
   const planFor = (names: ReadonlyArray<string>) => globalLifecyclePlan(root, names);
   const containers = new Map<string, ServiceRuntimeInfo>();
-  const missingOverrides = new Map<string, Partial<ServiceRuntimeInfo>>();
+  const missingOverrides = new Map<string, Partial<ServiceRuntimeFields> | ServiceRunObservation>();
   const removed: string[] = [];
   const published: string[][] = [];
   const planned: Array<Parameters<AppPlanner["Service"]["plan"]>[0]> = [];
@@ -55,8 +57,7 @@ export const makeGlobalLifecycleFixture = (
           appRoot: root,
           providerId,
           service: service.name,
-          status: "stopped",
-          state: "stopped",
+          status: "absent",
           publications: { status: "missing" },
           mounts: { status: "missing" },
           ...missingOverrides.get(service.name),
@@ -71,7 +72,7 @@ export const makeGlobalLifecycleFixture = (
       return capabilities;
     },
     isAvailable: Effect.sync(() => online),
-    getStatus: Effect.sync(() => ({ running: online })),
+    getStatus: Effect.sync(() => ({ state: online ? ("running" as const) : ("idle" as const) })),
     appliedPlans: Effect.sync(plans),
     appliedStateInventory: Effect.sync(() => ({ plans: plans(), unreadable: [] })),
     list: () => Effect.sync(inventory),
@@ -85,8 +86,7 @@ export const makeGlobalLifecycleFixture = (
           service: target.service,
           providerId,
           ...(plan === undefined ? {} : { appRoot: plan.root }),
-          status: "stopped",
-          state: "stopped",
+          status: "absent",
           publications: { status: "missing" },
           mounts: { status: "missing" },
         };
@@ -154,19 +154,19 @@ export const makeGlobalLifecycleFixture = (
     ),
     Layer.succeed(RouterService, {
       ...makeTestRouterService(),
-      applyRoutes: (routes, app) =>
+      applyRoutes: (routes, owner) =>
         Effect.suspend(() => {
           if (failRoutes)
             return Effect.fail(
               new ProxyApplyError({
                 message: "Router unavailable",
-                app,
+                app: owner.id,
                 proxyId: "test",
                 remediation: "Retry route publication",
               }),
             );
           published.push(routes.map((route) => String(route.service)));
-          return Effect.succeed({ app, appliedRoutes: routes, authorities: [] });
+          return Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] });
         }),
     }),
     Layer.succeed(
@@ -223,7 +223,6 @@ export const makeGlobalLifecycleFixture = (
         service: ServiceName.make(name),
         containerId: `${plan.id}-${name}`,
         status: "running",
-        state: "running",
         publications: { status: "present", bindings: [] },
         mounts: { status: "present", mounts: [] },
       }),

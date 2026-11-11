@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   MONGODB_CONFIG_TARGET,
@@ -126,7 +125,7 @@ describe("mongodb ServiceType", () => {
     });
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-mongodb-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--mongodb-data");
     expect(String(volumes[0]?.target)).toBe("/data/db");
     expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
@@ -154,7 +153,9 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.environment.MONGO_INITDB_DATABASE).toBe("otherapp");
-    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe("otherapp-mongodb-data");
+    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe(
+      "lando-otherapp--db--mongodb-data",
+    );
   });
 
   test("respects user, database, image, port, and runtime overrides", async () => {
@@ -163,7 +164,7 @@ describe("mongodb ServiceType", () => {
       image: "mongo:8",
       port: 37017,
       user: "myuser",
-      database: "mydb",
+      creds: { database: "mydb" },
       command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"],
       entrypoint: ["docker-entrypoint.sh"],
       workingDirectory: PortablePath.make("/data/db"),
@@ -260,6 +261,7 @@ describe("mongodb ServiceType", () => {
     // Then
     expect(resolution.tooling).toEqual({
       mongosh: {
+        wrapper: true,
         service: "db",
         cmd: expect.any(Array),
         env: {
@@ -335,5 +337,24 @@ describe("mongodb ServiceType", () => {
       realization: "passthrough",
     });
     expect(plan.command).toEqual(["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"]);
+  });
+
+  test("a password-only creds block keeps the default user and database", async () => {
+    const plan = await planMongodb({ type: "mongodb", creds: { password: "hunter2" } });
+
+    expect(plan.environment).toMatchObject({
+      MONGO_INITDB_ROOT_USERNAME: "lando",
+      MONGO_INITDB_ROOT_PASSWORD: "hunter2",
+      MONGO_INITDB_DATABASE: "myapp",
+    });
+  });
+
+  test("rejects creds.rootPassword because user and password are the root account", async () => {
+    await expect(
+      resolveMongodb({ type: "mongodb", creds: { rootPassword: "root-secret" } }),
+    ).rejects.toMatchObject({
+      _tag: "ServiceTypeError",
+      issues: [expect.objectContaining({ path: ["creds", "rootPassword"] })],
+    });
   });
 });

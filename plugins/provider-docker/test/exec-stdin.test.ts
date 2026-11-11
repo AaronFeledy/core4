@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
-
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -20,12 +22,13 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec } from "@lando/sdk/services";
+import { DateTime, Effect, Stream } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
-const containerName = "lando-exec-stdin-app-web";
+const containerName = "lando-exec-stdin-app--web";
 const createPath = `/containers/${containerName}/exec` as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
@@ -70,6 +73,8 @@ const makeFakeApi = () => {
     request: (input) =>
       Effect.sync((): DockerHttpResponse => {
         calls.push(input);
+        if (input.method === "GET" && input.path === `/containers/${containerName}/json`)
+          return { status: 200, body: JSON.stringify({ Id: containerName }) };
         if (input.method === "POST" && input.path === createPath) {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
         }
@@ -84,6 +89,7 @@ const makeFakeApi = () => {
     },
   };
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -99,7 +105,12 @@ const runExec = async (api: DockerApiClient, command: CommandSpec, user?: string
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
   const provider = await Effect.runPromise(
-    makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }),
+    makeRuntimeProvider({
+      platform: "linux",
+      dockerApi: api,
+      appliedPlanState,
+      ...supervisedExecFixtureOptions(api),
+    }),
   );
   return Effect.runPromise(
     provider.exec({ app: appId, service: serviceName, ...(user === undefined ? {} : { user }) }, command),
@@ -134,7 +145,7 @@ describe("provider-docker exec AttachStdin", () => {
     expect(createBody(fake.calls)).toMatchObject({ AttachStdin: true });
   });
 
-  test("sets AttachStdin false when command has no stdin source", async () => {
+  test("keeps control stdin attached when command has no stdin source", async () => {
     // Given
     const fake = makeFakeApi();
 
@@ -142,7 +153,7 @@ describe("provider-docker exec AttachStdin", () => {
     await runExec(fake.api, { command: ["true"] });
 
     // Then
-    expect(createBody(fake.calls)).toMatchObject({ AttachStdin: false });
+    expect(createBody(fake.calls)).toMatchObject({ AttachStdin: true });
   });
 });
 

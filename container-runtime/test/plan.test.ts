@@ -11,6 +11,7 @@ import {
   fingerprintPlannedPublishPorts,
   mergeAppliedPlan,
   mountSuffix,
+  serviceContainerName,
 } from "@lando/container-runtime/plan";
 import { AbsolutePath, type AppPlan, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
@@ -60,6 +61,7 @@ const service = {
     { type: "volume", store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false },
   ],
   hostAliases: [],
+  routes: [],
   extensions: {},
 } as unknown as ServicePlan;
 
@@ -181,8 +183,13 @@ describe("container plan helpers", () => {
   test("retains prior services only for a non-reconciling partial apply", () => {
     const oldService = { ...service, name: "database" } as ServicePlan;
     const changedService = { ...service, environment: { UPDATED: "yes" } } as ServicePlan;
-    const previous = { ...plan, services: { database: oldService, web: service } } as AppPlan;
-    const incoming = { ...plan, services: { web: changedService } } as AppPlan;
+    const previous = {
+      ...plan,
+      routes: [],
+      stores: [],
+      services: { database: oldService, web: service },
+    } as AppPlan;
+    const incoming = { ...plan, routes: [], stores: [], services: { web: changedService } } as AppPlan;
 
     expect(mergeAppliedPlan(previous, incoming, false).services).toEqual({
       [ServiceName.make("database")]: oldService,
@@ -220,7 +227,7 @@ describe("container plan helpers", () => {
       "dev.lando.app": "app-id",
       "dev.lando.service": "web",
       "dev.lando.scratch": "TRUE",
-      [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
+      [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v4:[a-f0-9]{64}$/u),
     });
 
     expect(containerHostConfigFragment(plan, service)).toEqual({
@@ -491,6 +498,7 @@ describe("container plan helpers", () => {
       }),
     ).toEqual({
       Image: "nginx:latest",
+      Hostname: "lando-myapp--web",
       Env: ["FOO=bar", "BAZ=qux"],
       Cmd: ["sh", "-c", "echo hi"],
       Entrypoint: ["docker-entrypoint.sh"],
@@ -507,7 +515,7 @@ describe("container plan helpers", () => {
         "dev.lando.app": "app-id",
         "dev.lando.app-root": undefined,
         "dev.lando.service": "web",
-        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
+        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v4:[a-f0-9]{64}$/u),
       },
       HostConfig: {
         PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
@@ -515,6 +523,16 @@ describe("container plan helpers", () => {
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
     });
+  });
+
+  test.each(["web", "web_1", "a".repeat(70)])("uses the container name as hostname for %s", (name) => {
+    // Given a planned service, including keys requiring a hashed physical name.
+    const selected = { ...service, name: ServiceName.make(name) };
+    const containerName = serviceContainerName(plan, name);
+    // When
+    const body = containerCreateBodyFragment(plan, selected, { name: containerName });
+    // Then
+    expect(body).toMatchObject({ name: containerName, Hostname: containerName });
   });
 
   test("passes the planned runtime user through to the create body", () => {

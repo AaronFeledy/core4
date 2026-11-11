@@ -1,15 +1,13 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { openLandoRuntime } from "@lando/core";
 import { ProviderId, ServiceName } from "@lando/core/schema";
 import { EventService, RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { TestRouterService } from "@lando/sdk/test";
+import { Effect, Layer } from "effect";
 
 const providerLayers = [
   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),

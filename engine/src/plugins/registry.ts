@@ -1,17 +1,14 @@
 import { join } from "node:path";
-
-import { Context, Effect, Layer, Result } from "effect";
-
+import { findAppRoot } from "@lando/landofile/discovery";
+import { makeLandoPaths } from "@lando/paths";
 import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
-
-import { findAppRoot } from "@lando/landofile/discovery";
-import { makeLandoPaths } from "@lando/paths";
+import { Context, Effect, Layer, Result } from "effect";
 import { bundledPluginModules } from "../composition.ts";
 import { resolveUserDataRoot } from "../config/roots.ts";
 import { composeExtendedServiceType } from "../services/extends.ts";
-import { PluginContributionGraph } from "./contribution-graph.ts";
+import { type LoadedPluginContribution, PluginContributionGraph } from "./contribution-graph.ts";
 import { GlobalPluginManifests } from "./global-manifests.ts";
 import { type PluginCapabilityIndex, makePluginCapabilityIndex } from "./module-set.ts";
 import {
@@ -40,9 +37,16 @@ interface PluginRegistryInput {
   readonly discovery: PluginRegistryDiscoveryOptions;
   readonly bundledPlugins: ReadonlyArray<DiscoveredPlugin>;
   readonly capabilities: PluginCapabilityIndex;
-  readonly staticPlugins?: ReadonlyArray<DiscoveredPlugin>;
+  readonly staticPlugins?: ReadonlyArray<LoadedPluginContribution>;
   readonly staticGlobalPlugins?: ReadonlyArray<DiscoveredPlugin>;
 }
+
+const serviceFeatureMissing = (id: string) =>
+  new PluginLoadError({
+    message: `Bundled service feature ${id} is not registered.`,
+    pluginName: "@lando/core",
+    remediation: `Enable bundled plugins that contribute service feature ${id}, or remove the feature from the Landofile.`,
+  });
 
 const makePluginRegistry = (
   configService: Context.Service.Shape<typeof ConfigService> | undefined,
@@ -73,6 +77,19 @@ const makePluginRegistry = (
     const manifests = yield* mergeDiscoveredPlugins([globalPlugins, appPlugins], logger);
     return manifests.filter((plugin) => !disabled.has(plugin.manifest.name));
   });
+  // A missing id that a selected plugin declares but failed to import fails with that import error.
+  const notRegistered = (
+    kind: "serviceTypes" | "serviceFeatures" | "appFeatures",
+    id: string,
+    fallback: PluginLoadError,
+  ): PluginLoadError =>
+    staticPlugins?.find(
+      (plugin) =>
+        plugin.loadFailure !== undefined &&
+        (plugin.manifest.contributes?.[kind] ?? []).some(
+          (contribution) => (typeof contribution === "string" ? contribution : contribution.id) === id,
+        ),
+    )?.loadFailure ?? fallback;
   const discover = discoverPlugins.pipe(Effect.map((plugins) => plugins.map((plugin) => plugin.manifest)));
   const discoverGlobal = discoverGlobalPlugins.pipe(
     Effect.map((plugins) =>
@@ -118,34 +135,26 @@ const makePluginRegistry = (
       }
 
       return yield* Effect.fail(
-        new PluginLoadError({
-          message: `Service type ${id} is not registered.`,
-          pluginName: "@lando/core",
-          remediation: `Install a plugin that contributes service type ${id}, or correct the type: field in the Landofile.`,
-        }),
+        notRegistered(
+          "serviceTypes",
+          id,
+          new PluginLoadError({
+            message: `Service type ${id} is not registered.`,
+            pluginName: "@lando/core",
+            remediation: `Install a plugin that contributes service type ${id}, or correct the type: field in the Landofile.`,
+          }),
+        ),
       );
     }),
     loadServiceFeature: (id) => {
       if (discovery.bundled === false) {
-        return Effect.fail(
-          new PluginLoadError({
-            message: `Bundled service feature ${id} is not registered.`,
-            pluginName: "@lando/core",
-            remediation: `Enable bundled plugins that contribute service feature ${id}, or remove the feature from the Landofile.`,
-          }),
-        );
+        return Effect.fail(notRegistered("serviceFeatures", id, serviceFeatureMissing(id)));
       }
 
       const serviceFeature = capabilities.serviceFeatures.get(id);
       if (serviceFeature !== undefined) return Effect.succeed(serviceFeature);
 
-      return Effect.fail(
-        new PluginLoadError({
-          message: `Bundled service feature ${id} is not registered.`,
-          pluginName: "@lando/core",
-          remediation: `Enable bundled plugins that contribute service feature ${id}, or remove the feature from the Landofile.`,
-        }),
-      );
+      return Effect.fail(notRegistered("serviceFeatures", id, serviceFeatureMissing(id)));
     },
     loadAppFeature: Effect.fn("PluginRegistry.loadAppFeature")(function* (id) {
       if (discovery.bundled !== false) {
@@ -160,11 +169,15 @@ const makePluginRegistry = (
       }
 
       return yield* Effect.fail(
-        new PluginLoadError({
-          message: `App feature ${id} is not registered.`,
-          pluginName: "@lando/core",
-          remediation: `Install a plugin that contributes app feature ${id}, or remove it from the Landofile.`,
-        }),
+        notRegistered(
+          "appFeatures",
+          id,
+          new PluginLoadError({
+            message: `App feature ${id} is not registered.`,
+            pluginName: "@lando/core",
+            remediation: `Install a plugin that contributes app feature ${id}, or remove it from the Landofile.`,
+          }),
+        ),
       );
     }),
   });

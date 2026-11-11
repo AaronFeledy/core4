@@ -4,6 +4,7 @@ import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: lempDecomposer,
   producer: lempProducer,
@@ -49,11 +50,13 @@ const authoring = {
       service: "appserver",
       description: "Run Composer inside the appserver service.",
       cmds: ["composer"],
+      wrapper: true,
     },
     php: {
       service: "appserver",
       description: "Run the PHP CLI inside the appserver service.",
       cmds: ["php"],
+      wrapper: true,
     },
   },
 } as const;

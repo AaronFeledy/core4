@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { TRAEFIK_DIAGNOSTICS_COMMAND } from "../src/global-services/diagnostics.ts";
 import { PLUGIN_NAME, globalServices, manifest, routerServices } from "../src/index.ts";
@@ -39,6 +38,7 @@ describe("@lando/proxy-traefik plugin exports", () => {
       {
         id: "traefik",
         module: "./src/proxy.ts",
+        requires: { globalServices: ["traefik"] },
         defaultFor: { platform: ["darwin", "linux", "win32"] },
       },
     ]);

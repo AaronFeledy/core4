@@ -1,7 +1,3 @@
-import { Effect } from "effect";
-
-import { Flags } from "../../spec/metadata";
-
 import {
   type UpdateExecve,
   type UpdateOptions,
@@ -11,10 +7,13 @@ import {
   update,
 } from "@lando/engine/operations/update";
 import { StateStore } from "@lando/sdk/services";
+import { Effect } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { makePluginUpdateRunner } from "../../commands/update-plugins";
 import { execProcess } from "../../process-lifecycle";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 const execve: UpdateExecve = (input) =>
   Effect.try({ try: () => execProcess(input), catch: (cause) => cause });
@@ -36,7 +35,7 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
 export const runUpdateCommand = Effect.fn("UpdateCommand.run")(function* (input: unknown) {
   const runPluginUpdates = yield* makePluginUpdateRunner();
   const stateStore = yield* StateStore;
-  const handoff = makeUpdateHandoff(stateStore, process.env.LANDO_UPDATE_HANDOFF_TOKEN);
+  const handoff = makeUpdateHandoff(stateStore, (yield* CliInvocation).env.LANDO_UPDATE_HANDOFF_TOKEN);
   return yield* update({ ...updateOptionsFromInput(input), runPluginUpdates, handoff });
 });
 
@@ -78,6 +77,7 @@ export const renderUpdateResult = (result: UpdateResult): string => {
 export const updateSpec: LandoCommandSpec<UpdateResult> = {
   resultSchema: UpdateResultSchema,
   id: "meta:update",
+  onlineAcquisition: true,
   summary: "Update Lando core and plugins.",
   description: "Update Lando core and plugins.",
   namespace: "meta",

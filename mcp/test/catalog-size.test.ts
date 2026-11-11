@@ -89,10 +89,11 @@ test("keeps the real default tools/list within discovery budgets and accepts doc
     Schema.Array(Schema.Struct({ name: Schema.String, outputSchema: Schema.JsonObject })),
   )(catalog?.tools);
   // Built-in defaults plus bundled plugin tools such as db:snapshots and schedule:list.
-  expect(tools).toHaveLength(17);
+  expect(tools).toHaveLength(18);
   expect(tools.map((tool) => tool.name)).toContain("db:snapshots");
   expect(tools.map((tool) => tool.name)).toContain("schedule:list");
-  expect(Buffer.byteLength(JSON.stringify({ jsonrpc: "2.0", id: 2, result: catalog }))).toBeLessThan(85_000);
+  // Every tool advertises the per-call appPath selector (about 130 bytes each).
+  expect(Buffer.byteLength(JSON.stringify({ jsonrpc: "2.0", id: 2, result: catalog }))).toBeLessThan(96_000);
   for (const tool of tools) {
     expect(Buffer.byteLength(JSON.stringify(tool.outputSchema)), tool.name).toBeLessThan(9_000);
   }

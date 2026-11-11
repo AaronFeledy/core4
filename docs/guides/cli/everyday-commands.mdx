@@ -2,7 +2,7 @@
 id: everyday-commands
 provider: test
 timeout: 60000
-tags: [beta, docs, cli]
+tags: [docs, cli]
 ---
 
 # Run the everyday CLI loop
@@ -22,7 +22,7 @@ Use the URLs and connection details from `lando info` to reach your services. Wh
 | --- | --- |
 | `lando start` | Start this app and apply changed container create configuration. Unchanged containers and named volumes stay. Alias of `app:start`. |
 | `lando info` | Print services, URLs, and connection details. Alias of `app:info`. |
-| `lando exec -- <cmd>` | Run a one-off command in the primary service. Alias of `app:exec`. |
+| `lando exec -- <cmd>` | Run a one-off command in the primary service; `-s` / `--service` selects another service. Alias of `app:exec`. |
 | `lando logs` | Stream service logs. Alias of `app:logs`. |
 | `lando stop` | Stop this app. Keeps named volumes. Alias of `app:stop`. |
 | `lando restart` | Stop then start. Alias of `app:restart`. Pass `-s` / `--service` to bounce one service. |
@@ -32,6 +32,25 @@ Use the URLs and connection details from `lando info` to reach your services. Wh
 | `lando poweroff -y` | Stop every Lando app on this host. Alias of `apps:poweroff`. |
 | `lando list` | List apps on this host. Alias of `apps:list`. |
 | `lando share` | Start a public tunnel. Use `--target` for a non-primary service or extra port. Alias of `app:share`. |
+
+## Fix a mistyped command
+
+When a command does not exist, Lando names the closest one it knows: built-in commands, this app's tooling tasks and scripts, and plugin commands.
+
+```sh
+lando strat
+```
+
+```text
+Unknown command "strat".
+  ↳ Did you mean `lando start`?
+code: UnknownCommandError
+commandId: cli:unknown-command
+commandToken: strat
+suggestions: start
+```
+
+The command exits `2`, like any other way of calling Lando wrong, so scripts can tell a typo from a command that ran and failed. Command ids use colons; only a few groups such as `scratch`, `global`, and `app config` also accept spaces. `lando meta version` suggests `lando meta:version` or its alias `lando version`. With `--format=json`, `error.suggestions` lists up to three spellings, best first. When nothing is spelled close, the remediation points at `lando help --all`.
 
 ## Work inside a service
 
@@ -52,7 +71,9 @@ lando restart
 lando rebuild
 ```
 
-Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
+Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. A service's `pull_policy` takes precedence: `never` is never pulled, and a failed pull of an `always` service fails the command; see [Control when the image is pulled](../services/compose-passthrough.mdx#control-when-the-image-is-pulled). Stock PHP tags, which have no explicit pull policy, are also checked about weekly on start. A PHP security release on a floating tag is one of those pulls, and `lando rebuild` checks it immediately. See [Pick up a PHP security release](../services/php-security-updates.mdx). Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
+
+`lando stop` also withdraws the app's published hostnames, so the proxy stops sending requests to containers that no longer exist. `lando start` publishes them again. `lando restart` and `lando rebuild` keep the hostnames published while they stop and start the app, and they stay published if the start that follows fails. If no router is selected, `lando stop` warns that the routes were left in place and still stops the app.
 
 All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
@@ -66,7 +87,7 @@ lando logs -s <service>
 lando start
 ```
 
-A failed or interrupted `lando start` keeps what it built: created containers (started or not), networks, volumes, published routes, agent relays, and file-sync sessions. Creating a container is not the same as it being ready. After the error, the human report prints one warning that starts with `Start did not complete. Resources were left in place.` It lists `Running`, `created/stopped`, and `unverified` services, and says agent forwarding and file sync remain active where established. It tells you to inspect `lando info` and `lando logs`, fix the reported error, then run `lando start`. A service Lando could not observe within one second is unverified, never stopped. A failure before any app resource changed says `Start did not complete. No app resources changed.` instead of that inventory. JSON and YAML output don't carry the warning; use `lando info --format=json`.
+A failed or interrupted `lando start` keeps what it built: created containers (started or not), networks, volumes, published routes, agent relays, and file-sync sessions. Creating a container is not the same as it being ready. After the error, the human report prints one warning that starts with `Start did not complete. Resources were left in place.` It lists `Running`, `created/stopped`, and `unverified` services, and says agent forwarding and file sync remain active where established. It tells you to inspect `lando info` and `lando logs`, fix the reported error, then run `lando start`. A service Lando could not observe within one second is unverified, never stopped. A failure before any app resource changed says `Start did not complete. No app resources changed.` instead of that inventory. `lando restart` and `lando rebuild` use the same warning with `Restart` or `Rebuild` in place of `Start`, and they tell you to rerun that command. `lando rebuild -s web` says to run `lando rebuild -s web`, not a whole-app rebuild and not `lando start`. JSON and YAML output don't carry the warning; use `lando info --format=json`.
 
 Fix the reported error, then run `lando start`. It converges rather than starting over: containers that match the plan are started as they are, only a container whose create config changed is recreated, an unfinished accelerated file-sync attempt resumes with its sessions, and healthy agent relays and host-proxy workers are reused. SSH and GPG forwarding stay enabled from the failed attempt until `lando stop` or `lando destroy`. Init steps and lifecycle hooks run again on every invocation, so write them to tolerate a rerun. `lando restart` and `lando rebuild` still stop first. If the start that follows fails, that failure does not remove routes.
 
@@ -103,6 +124,19 @@ Use `lando start --format=json` to inspect the tagged error and remediation.
 Already-pulled images can still work without registry access; see
 [Work offline](../config/offline-dev.mdx).
 
+## Rebuild a missing Lando-built image
+
+Lando never pulls an image it built for a service, because no registry has it.
+If that image is gone, for example after you prune images, `lando start` fails
+before creating the container, names the service and the image, and suggests
+the fix. Run it from the app directory:
+
+```bash
+lando rebuild -s web
+```
+
+Replace `web` with the service the error names.
+
 ## Wait for another command to finish
 
 `start`, `stop`, `restart`, `rebuild`, and `destroy` take a per-app advisory lock so two processes cannot apply provider state at the same time. A second command waits and prints that another Lando command holds the app lock. After two minutes it fails. Set `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds) to wait longer or shorter.
@@ -111,7 +145,7 @@ Read-only commands (`info`, `logs`, `app:config:lint`) do not take the lock.
 
 Lando reclaims a lock left by a killed command without printing a wait message. You don't need to delete the lock file.
 
-The lock key is the stable app id plus the canonical (realpath) app root at acquire time. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
+User apps share a mutation lock by canonical (realpath) app root, so changing `name:` in the same folder does not bypass a running command's lock. Scratch apps use their id plus canonical root because they can share a user app's folder. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
 
 A mutating command that shells out to another `lando` mutate on the same app reuses the lock it already holds. It does not deadlock.
 
@@ -131,8 +165,31 @@ lando destroy -y
 
 `pre-destroy` fires before anything is removed, and `post-destroy` only after everything, leftovers included, is gone. When Lando finds no trace of the app, destroy reports `unchanged` and fires neither.
 
-If you've deleted or moved an app folder before tearing it down, use its old path to
-remove the leftovers. `lando doctor` lists app folders that no longer exist.
+If you've deleted or moved app folders before tearing them down, inspect their
+leftovers with `lando apps:gc`. `lando apps:gc --prune` asks once before cleaning
+up all reported roots. The prompt lists observed containers and volumes for each
+root, marks which categories are kept or deleted, and includes the completed
+start-journal sweep. Before the prompt, Lando starts any idle runtime that holds
+reported resources, so the prompt lists its containers and volumes; reporting
+without `--prune` never starts a runtime. Snapshots are not inventoried in this
+preview. Lando revalidates roots and ownership before
+deleting anything; changed evidence is retained for another review.
+If the report says Lando cannot remove a provider's file-sync copies of a deleted
+app yet, run `lando apps:gc --prune` without `--volumes`. It removes everything
+else selected by your flags and keeps data volumes, file-sync copies, and their
+ownership journals. Requesting `--volumes` fails that root before deletion.
+Otherwise, add `--volumes` to delete data volumes and file-sync copies
+of app files; add `--purge-caches` to delete caches. Data you keep by leaving off
+`--volumes` is listed in the result. A failed root doesn't prevent the others from
+being cleaned up, but makes the command exit nonzero.
+
+```sh
+lando apps:gc
+lando apps:gc --prune --volumes
+```
+
+`lando doctor` points missing-folder findings at this command. To clean up just
+one root, use its old path:
 `--root` refuses folders that still exist; run `lando destroy` from inside those
 folders instead. `--volumes` deletes the app's retained data, so use it only when
 you no longer need that data.
@@ -142,6 +199,10 @@ lando destroy --root <path> --volumes
 ```
 
 `poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up. The next `lando start` brings back the global services that app uses, including Traefik and the SSH agent sidecar.
+
+When the managed runtime is positively identified as idle, `lando stop` finishes the app's host-side cleanup without starting it and reports that the runtime is idle and nothing was running. Its `:host` event steps still run; steps that would run in a service container are skipped with a notice. `lando destroy` starts or repairs the managed runtime holding the app's resources before checking and removing them, including when status is unknown after a crash, `wsl --terminate`, or an upgrade. `lando destroy --root` and `lando apps:gc --prune` prepare it the same way. If preparation fails, cleanup reports that error. Normal data-retention rules still apply.
+
+On macOS and Windows, an absent API and a managed machine inspected as stopped establish idle. On Linux and WSL, Lando's shutdown receipt establishes idle after a quiescent `poweroff` or when it comes from an earlier boot, provided the API is absent and no managed processes match. Each runtime launch invalidates that evidence first. Without valid receipt evidence, `lando list` reports `unknown` and stop fails closed; process observations alone cannot prove workloads stopped. Observation and stop never launch the runtime.
 
 To stop everything Lando is running:
 
@@ -156,8 +217,8 @@ from runtime discovery, not the saved plan:
 | Status | Meaning |
 | --- | --- |
 | `active` | At least one container for this app is running. This does not mean every service is healthy. |
-| `stopped` | The app's provider answered discovery, and no running containers were found for the app. |
-| `unknown` | Discovery could not confirm the app's provider, including when its API socket is gone after `poweroff`. |
+| `stopped` | The app's provider answered discovery with no running containers, or an absent endpoint and stopped managed machine establish idle on macOS or Windows. |
+| `unknown` | Lando could not observe the provider or establish that it runs no workloads. Read failures and an unresponsive live runtime remain unknown. |
 
 Use `lando list --format=json` for the same `status` on each entry in `result.apps`.
 `--status` keeps only matching rows after that one discovery pass. Repeat it to
@@ -175,7 +236,7 @@ The service list includes saved service names; it is not a list of running servi
 The table adds `(stale)` when the recorded root no longer exists; JSON reports
 that separately as `stale: true`.
 Pruning also requires the provider to confirm that no matching containers or
-volumes remain. Remove those exact stale records with:
+volumes remain through a successful resource listing. An idle runtime proves nothing is running, but can still hold stopped containers and volumes; it never authorizes pruning. Remove those exact stale records with:
 
 ```sh
 lando list --prune
@@ -221,12 +282,19 @@ Container-only discoveries may have no saved root.
     <Step name="list-apps">
       <Run command="lando list" />
       <Verify command="lando list" expect={{ stdout: { regex: "No Lando apps applied on this host|APP\\s+STATUS" } }} />
-      <Verify command="lando list --status=active --jq=[.result.apps[].status]" expect={{ stdout: { regex: "^\\[(.active.(,.active.)*)?\\]\\s*$" } }} />
+      <Verify command="lando list --status=active --jq='[.result.apps[].status]'" expect={{ stdout: { regex: "^\\[(.active.(,.active.)*)?\\]\\s*$" } }} />
       <Verify command="lando list --format=json" expect={{ stdout: { regex: ".apps.:\\[" } }} />
     </Step>
     <Step name="prune-stale-inventory">
       <Run command="lando list --prune" />
       <Verify command="lando list --prune" expect={{ stdout: { regex: "Pruned 0 stale inventory entries" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="mistyped-command-suggestion" render={false} reason="Pins the closest-command suggestion the mistyped-command section shows.">
+    <Step name="suggest-closest-command">
+      <Run command="lando strat --format=json" expectExit={2} />
+      <Verify command="lando strat --format=json" expectExit={2} expect={{ stdout: { regex: "suggestions.:..start" } }} />
+      <Verify command="lando meta version --format=json" expectExit={2} expect={{ stdout: { regex: "suggestions.:..meta:version" } }} />
     </Step>
   </Scenario>
 </Guide>
@@ -241,4 +309,4 @@ Run doctor after `lando setup`. The default provider is `lando` (managed Podman)
 
 ## Next
 
-Walk the same loop as a tutorial: [Start, inspect, and tear down an app](../tutorial/app-lifecycle.mdx). Refresh the plan without starting services: [Refresh a stale app cache](./cache-refresh.mdx). For renderer modes, `--debug`, and `--log-level`, see [See more CLI output](./verbosity-and-debug.mdx). Point a tunnel at Storybook or Vite: [Share a service or extra port](./share-target.mdx).
+Walk the same loop as a tutorial: [Start, inspect, and tear down an app](../tutorial/app-lifecycle.mdx). Check the plan without starting services: [Check that your app plans without starting it](./cache-refresh.mdx). For renderer modes, `--debug`, and `--log-level`, see [See more CLI output](./verbosity-and-debug.mdx). Point a tunnel at Storybook or Vite: [Share a service or extra port](./share-target.mdx).

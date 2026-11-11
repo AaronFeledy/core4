@@ -1,18 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { type Context, Effect, Schema } from "effect";
-
-import { DownloadChecksumError, ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
+import { mapFailures } from "@lando/sdk/command-result";
+import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
 import type { Downloader, StateBucket } from "@lando/sdk/services";
+import { type Context, Effect, Schema } from "effect";
 
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
-import {
-  type ArtifactDownload,
-  type ArtifactDownloadResult,
-  ProviderBundleChecksumError,
-} from "./runtime-bundle.ts";
+import type { ArtifactDownload, ArtifactDownloadResult } from "./runtime-bundle.ts";
+import { type RuntimeShutdownStore, makeRuntimeShutdownStore } from "./runtime-shutdown.ts";
 
 const providerStateError = (message: string, cause?: unknown) =>
   new ProviderUnavailableError({
@@ -57,16 +53,15 @@ export const makePluginArtifactDownload =
         } satisfies ArtifactDownloadResult;
       }),
     ).pipe(
-      Effect.mapError((cause) =>
-        cause instanceof DownloadChecksumError
-          ? new ProviderBundleChecksumError("The Lando runtime bundle checksum did not match.", cause)
-          : new ProviderUnavailableError({
-              providerId: "lando",
-              operation: "setup",
-              message: "Failed to download the provider-lando runtime bundle.",
-              cause,
-              remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
-            }),
+      mapFailures(
+        (cause) =>
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "setup",
+            message: cause.message,
+            cause,
+            remediation: `${cause.remediation} Then run \`lando setup\` to finish installing the Lando runtime.`,
+          }),
       ),
     );
 
@@ -74,6 +69,7 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
   {
     readonly runtimeLock: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
     readonly runtimeGenerationStore: RuntimeGenerationStore;
+    readonly runtimeShutdownStore: RuntimeShutdownStore;
   },
   ProviderUnavailableError
 > {
@@ -88,14 +84,13 @@ export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPlu
   } as const;
   const generationBucketValue = yield* ctx.stateStore
     .open(generationBucketSpec)
-    .pipe(
-      Effect.mapError((cause) => providerStateError("Provider runtime state could not be opened.", cause)),
-    );
+    .pipe(mapFailures((cause) => providerStateError("Provider runtime state could not be opened.", cause)));
   if (!isStringStateBucket(generationBucketValue)) {
     return yield* Effect.fail(providerStateError("Provider runtime state returned an invalid bucket."));
   }
 
   return {
+    runtimeShutdownStore: yield* makeRuntimeShutdownStore(ctx.stateStore),
     runtimeLock: (body) => ctx.stateStore.withLock("runtime-launch", body),
     runtimeGenerationStore: {
       get: generationBucketValue.get,

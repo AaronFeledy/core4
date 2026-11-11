@@ -1,9 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { Schema } from "effect";
-
 import { PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 export const PLUGIN_NEW_TEMPLATE_IDS = [
   "service-type",
@@ -103,7 +101,7 @@ const renderPackageJson = (input: PluginScaffoldInput): string => {
       },
       devDependencies: {
         "@types/bun": "^1.4.0",
-        typescript: "^5.9.0",
+        typescript: "^7.0.2",
       },
       scripts: {
         test: "lando meta:plugin:test",

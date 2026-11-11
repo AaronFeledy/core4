@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { findAppRoot } from "@lando/landofile/discovery";
-import { withAppDiscovery } from "@lando/landofile/operation-discovery";
+import { discoveryCwd, withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { Deferred, Effect, Fiber, Result } from "effect";
 
 const withDirectories = async <A>(
@@ -21,7 +21,7 @@ const withDirectories = async <A>(
     await rm(root, { recursive: true, force: true });
   }
 };
-const cwd = Effect.sync(() => process.cwd());
+const cwd = discoveryCwd();
 
 describe("resolved cwd fiber-local ownership", () => {
   test("nested cwd resolution retargets discovery and restores the outer operation", async () => {
@@ -72,7 +72,7 @@ describe("resolved cwd fiber-local ownership", () => {
     });
   });
 
-  test("a child inherits the owner identity but cannot reenter its parent's cwd lock", async () => {
+  test("a child can resolve its own cwd while its parent keeps its discovery context", async () => {
     // Given
     const original = process.cwd();
     await withDirectories(async ({ outer, inner }) => {
@@ -92,7 +92,7 @@ describe("resolved cwd fiber-local ownership", () => {
                   Effect.forkScoped,
                 );
                 yield* Deferred.await(started);
-                yield* Effect.yieldNow;
+                yield* Deferred.await(entered);
                 return { child, waiting: yield* Deferred.poll(entered), parentCwd: yield* cwd };
               }),
             );
@@ -106,10 +106,11 @@ describe("resolved cwd fiber-local ownership", () => {
         ).pipe(Effect.timeout("2 seconds")),
       );
       // Then
-      expect(result.waiting._tag).toBe("None");
+      expect(result.waiting._tag).toBe("Some");
       expect(result.parentCwd).toBe(outer);
       expect(result.childCwd).toBe(inner);
       expect(result.after).toBe(original);
+      expect(process.cwd()).toBe(original);
     });
   });
 

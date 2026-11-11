@@ -2,7 +2,7 @@
 id: app-lifecycle
 provider: test
 timeout: 300000
-tags: [beta, docs, tutorial, lifecycle]
+tags: [docs, tutorial, lifecycle]
 ---
 
 # Start, inspect, and tear down an app
@@ -77,6 +77,8 @@ Tooling aliases declared under `tooling:` run inside their target service.
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
 Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. Reach for `rebuild` when you need a forced image pull or a forced rerun of build steps whose command text did not change. `start` does not take `-y`.
+
+`lando stop` withdraws the app's published hostnames along with its containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails.
 
 ```sh
 # Stop the app's containers but keep named volumes and state

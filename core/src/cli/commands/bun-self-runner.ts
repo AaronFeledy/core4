@@ -5,15 +5,17 @@ import {
   collectUrlCredentialValues,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { BunSelfReentryError, FileIoError, ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
 import { isSecretEnvName } from "@lando/sdk/secrets";
 import { type ProcessSpawnOptions, Renderer } from "@lando/sdk/services";
 import { DateTime, Effect, Stream } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { ChildOutput } from "../child-output.ts";
 import { finishCommandProgress } from "../command-progress.ts";
-import { applyRemoveEnv } from "./bun-child-network-policy.ts";
 import { projectBunChildNetwork } from "./bun-child-network.ts";
+import { applyRemoveEnv } from "./bun-child-network-policy.ts";
 import { publishOptionalEvent } from "./optional-event-publish.ts";
 
 export interface BunSelfRunOptions {
@@ -61,10 +63,15 @@ export const childEnv = (parent: NodeJS.ProcessEnv): Record<string, string> => (
 
 export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions: BunSelfRunOptions) {
   const options = { ...inputOptions };
-  const blocked = process.env[BUN_SELF_REENTRY_ENV];
+  const invocation = yield* CliInvocation;
+  const blocked = invocation.env[BUN_SELF_REENTRY_ENV];
   const argv = [...options.argv];
   const execPath = options.execPath ?? process.execPath;
-  const captured = captureHostExecutionContext(options);
+  const captured = captureHostExecutionContext(options, {
+    cwd: invocation.cwd,
+    env: invocation.env,
+    platform: process.platform,
+  });
   const verb = options.verb ?? argv[0] ?? "run";
   const callerSubsystem = options.callerSubsystem ?? "cli:meta:bun";
   const service = yield* Effect.serviceOption(RedactionService);
@@ -113,9 +120,15 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions
     cmd: execPath,
     args: childArgv,
     env: projected.env,
-    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    cwd: captured.requestedCwd,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
+    ...(options.stdin === undefined &&
+    policy !== undefined &&
+    policy.stdin !== true &&
+    invocation.io.stdin !== undefined
+      ? { stdinStream: invocation.io.stdin }
+      : {}),
     ...(options.output === "native" && policy?.stdin === true ? { inheritStdin: true } : {}),
     ...(native ? { inheritOutput: true } : streaming ? {} : { capture: true }),
   };
@@ -203,7 +216,7 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions
       }),
     { ...captured, env: input.env ?? captured.env },
   ).pipe(
-    Effect.mapError((error) => {
+    mapFailures((error) => {
       const fields = {
         message: redactor.redactString(error.message),
         remediation: redactor.redactString(error.remediation),

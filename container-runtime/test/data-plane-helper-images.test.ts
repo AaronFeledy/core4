@@ -1,15 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { Redactor } from "@lando/sdk/secrets";
-import { Effect, Stream } from "effect";
-
-import {
-  type DataPlaneHttpRequest,
-  dataHelperImage,
-  makeProviderDataPlane,
-} from "@lando/container-runtime/data-plane";
+import { dataHelperImage, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { AppId } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Effect, Stream } from "effect";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
@@ -17,81 +13,43 @@ const passthroughRedactor = {
 } satisfies Redactor;
 
 const ctx = { providerId: "test", remediation: "Run `lando doctor` and retry.", env: {} } as const;
-const encoder = new TextEncoder();
-
-interface FakeEngine {
-  readonly api: {
-    readonly request: (
-      request: DataPlaneHttpRequest,
-    ) => Effect.Effect<{ readonly status: number; readonly body: string }>;
-    readonly stream: (request: DataPlaneHttpRequest) => Stream.Stream<Uint8Array>;
-  };
-  readonly requests: DataPlaneHttpRequest[];
-  readonly registryPulls: () => number;
-  readonly containerCreates: () => ReadonlyArray<{ readonly Image?: string }>;
-}
 
 const fakeEngine = (input: {
   readonly cached: string | undefined;
   readonly pulled?: string;
   readonly inspectStatus?: number;
-}): FakeEngine => {
-  const requests: DataPlaneHttpRequest[] = [];
-  let local = input.cached;
+}) => {
+  const engine = new FakeEngine();
   const inspected = (digest: string) => ({
-    status: 200,
-    body: JSON.stringify({
-      Id: "sha256:image",
-      Size: 1,
-      RepoDigests: [`${dataHelperImage.ref.split("@")[0]}@${digest}`],
-    }),
+    Id: "sha256:image",
+    Size: 1,
+    RepoDigests: [`${dataHelperImage.ref.split("@")[0]}@${digest}`],
   });
-  const api: FakeEngine["api"] = {
-    request: (request) => {
-      requests.push(request);
-      if (request.path.startsWith("/images/create")) return Effect.succeed({ status: 200, body: "" });
-      if (request.path.startsWith("/containers/create")) return Effect.succeed({ status: 201, body: "{}" });
-      if (request.path.includes("/wait")) return Effect.succeed({ status: 200, body: '{"StatusCode":0}' });
-      if (request.path.startsWith("/commit")) return Effect.succeed({ status: 201, body: "{}" });
-      if (request.path.startsWith("/images/localhost")) {
-        return Effect.succeed({ status: 200, body: JSON.stringify({ Id: "sha256:snap", Size: 4096 }) });
-      }
-      if (request.path.startsWith("/images/")) {
-        if (input.inspectStatus !== undefined && input.inspectStatus !== 200) {
-          return Effect.succeed({ status: input.inspectStatus, body: "boom" });
-        }
-        return Effect.succeed(local === undefined ? { status: 404, body: "{}" } : inspected(local));
-      }
-      return Effect.succeed({ status: request.method === "DELETE" ? 204 : 200, body: "{}" });
-    },
-    stream: (request) => {
-      requests.push(request);
-      if (request.path.startsWith("/images/create")) {
-        local = input.pulled;
-        return Stream.make(encoder.encode('{"status":"Pull complete"}\n'));
-      }
-      return Stream.empty;
-    },
-  };
+  if (input.cached === undefined) engine.assets.images.delete(dataHelperImage.ref);
+  else engine.assets.images.set(dataHelperImage.ref, inspected(input.cached));
+  if (input.pulled !== undefined) engine.assets.registry.set(dataHelperImage.ref, inspected(input.pulled));
+  if (input.inspectStatus !== undefined && input.inspectStatus !== 200)
+    engine.fail("image.inspect", { status: input.inspectStatus, body: "boom" });
   return {
-    api,
-    requests,
-    registryPulls: () => requests.filter((request) => request.path.startsWith("/images/create")).length,
-    containerCreates: () =>
-      requests
-        .filter((request) => request.path.startsWith("/containers/create"))
-        .map((request) => (request.body ?? {}) as { readonly Image?: string }),
+    api: engine.api,
+    pullApi: {
+      request: (input: Parameters<typeof engine.request>[0]) => engine.request(input).pipe(Effect.orDie),
+      stream: (input: Parameters<typeof engine.stream>[0]) => engine.stream(input).pipe(Stream.orDie),
+    },
+    requests: engine.requests,
+    registryPulls: () => engine.requests.filter((request) => request.operation === "image.pull").length,
+    containerCreates: () => engine.containers.history.map((container) => container.config),
   };
 };
 
-const planeFor = (engine: FakeEngine) =>
+const planeFor = (engine: ReturnType<typeof fakeEngine>) =>
   makeProviderDataPlane({
     providerId: "test",
     api: engine.api,
     capabilities: { volumeSnapshot: "native" },
     redactor: passthroughRedactor,
     pullHelperImage: (ref) =>
-      pullImage(engine.api, ref, { ctx, dialect: dockerPullDialect, policy: "missing" }),
+      pullImage(engine.pullApi, ref, { ctx, dialect: dockerPullDialect, policy: "missing" }),
   });
 
 const snapshot = (plane: ReturnType<typeof planeFor>) =>
@@ -142,7 +100,13 @@ describe("data-plane helper image acquisition", () => {
 
     // Then: it fails with the digest mismatch and never creates the helper.
     expect(result._tag).toBe("Failure");
-    expect(JSON.stringify(result)).toContain("digest did not match the pin");
+    expect(result).toMatchObject({
+      failure: {
+        _tag: "ProviderInternalError",
+        operation: "snapshotVolume",
+        details: { expectedDigest: dataHelperImage.digest, actualDigest: wrong },
+      },
+    });
     expect(engine.containerCreates()).toEqual([]);
   });
 

@@ -19,6 +19,7 @@ import { type InteractionError, InteractionService, ManagedFileTransactionGuard 
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Option, Result, Schema, type Scope } from "effect";
 import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
 import type { AppConfigMigrateResult, MigrateBlockedReason } from "./app-config-migrate-output.ts";
 import {
@@ -35,14 +36,14 @@ import {
   provenanceWithoutServiceMap,
 } from "./app-config-recipe-analysis.ts";
 
+export type { AppConfigMigrateResult } from "./app-config-migrate-output.ts";
 export {
   AppConfigMigrateResultSchema,
   MigrateBlockedReason,
   MigrateHunkBlockReason,
   renderAppConfigMigrateResult,
 } from "./app-config-migrate-output.ts";
-export type { AppConfigMigrateResult } from "./app-config-migrate-output.ts";
-export { AppConfigMigrateError, AppConfigMigrateCommitError } from "./app-config-migrate-write.ts";
+export { AppConfigMigrateCommitError, AppConfigMigrateError } from "./app-config-migrate-write.ts";
 
 export interface AppConfigMigrateOptions {
   readonly cwd?: string;
@@ -80,7 +81,7 @@ export const appConfigMigrate = Effect.fn("AppConfigMigrate.migrate")(
     | InteractionError,
     Scope.Scope
   > {
-    const cwd = options.cwd ?? process.cwd();
+    const cwd = options.cwd ?? (yield* CliInvocation).cwd;
     const { appRoot, dualForm } = yield* discoverRecipeAnalysisRoot(cwd);
     const guard = yield* Effect.serviceOption(ManagedFileTransactionGuard);
     if (Option.isSome(guard)) yield* honorMigrationJournal(guard.value, appRoot, options.dryRun === true);
@@ -170,8 +171,8 @@ export const appConfigMigrate = Effect.fn("AppConfigMigrate.migrate")(
           source.migrations.flatMap((edge) =>
             edge.hunks.flatMap((hunk) =>
               hunk.kind === "rename" &&
-              /^services\.[^.\[]+$/.test(hunk.old) &&
-              /^services\.[^.\[]+$/.test(hunk.new)
+              /^services\.[^.[]+$/.test(hunk.old) &&
+              /^services\.[^.[]+$/.test(hunk.new)
                 ? [[hunk.old.slice(9), hunk.new.slice(9)] as const]
                 : [],
             ),

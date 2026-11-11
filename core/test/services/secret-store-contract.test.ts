@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeTestSecretStore } from "@lando/core/testing";
+import { makeEnvSecretStore } from "@lando/engine/services/secret-store";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import { runSecretStoreContractSuite } from "@lando/sdk/test";
-
-import { makeEnvSecretStore } from "@lando/engine/services/secret-store";
+import { Effect } from "effect";
 
 const redactor = (values: ReadonlyArray<string>) => {
   const inner = createSecretRedactor(values);

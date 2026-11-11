@@ -1,7 +1,6 @@
-import { Effect, Graph } from "effect";
-
 import { ServiceNotFoundError } from "@lando/sdk/errors";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { Effect, Graph } from "effect";
 
 const uniqueRequested = (requested: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName> => [
   ...new Map(requested.map((name) => [String(name), name])).values(),

@@ -1,19 +1,18 @@
-import { Effect, Result } from "effect";
-
 import type { ValidationIssue } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 import { collectDocumentDiagnostics } from "./diagnostics.ts";
 import { type ConfigDocument, persistMutation, resolveDocumentEffect as resolve } from "./document.ts";
 import { parsePathSegments, setAtPath } from "./dot-path";
+import { type ConfigSchemaName, configKeySummary } from "./key-schema.ts";
 import { prepareConfigEdit } from "./prepare-edit";
 import { parseTypedValue } from "./value-parse";
-import { authoredTreesEqual } from "./yaml-verify.ts";
-
 import {
   type ValueType,
   applySetMutation,
   applyUnsetMutation,
   writeValidationErrorFromIssues,
 } from "./write-core";
+import { authoredTreesEqual } from "./yaml-verify.ts";
 
 export {
   type ConfigDocument,
@@ -80,14 +79,18 @@ const mergeAttemptIssues = (attempts: readonly DecodeAttempt[]): ValidationIssue
   return merged;
 };
 
-const failureRemediation = (attemptCount: number): { readonly remediation?: string } => {
-  if (attemptCount > 1) {
-    return {
-      remediation:
-        "Fix the reported issue(s), or pass `--type` to force how the value is parsed, then retry the write. The file was left unchanged.",
-    };
-  }
-  return {};
+const failureRemediation = (
+  attempts: readonly DecodeAttempt[],
+  key: string,
+  schema: ConfigSchemaName | undefined,
+): string => {
+  const identities = attempts.map((attempt) =>
+    JSON.stringify([...new Set(attempt.issues.map(issueIdentity))].sort()),
+  );
+  const summary = schema === undefined ? undefined : configKeySummary(schema, key);
+  const takes = summary === undefined ? "" : `\`${key}\` takes ${summary}. `;
+  const typeHint = new Set(identities).size > 1 ? ", or pass `--type` to force how the value is parsed" : "";
+  return `${takes}Fix the reported issue(s)${typeHint}, then retry the write. The file was left unchanged.`;
 };
 
 export const runSetVerb = Effect.fnUntraced(function* <
@@ -164,13 +167,26 @@ export const runSetVerb = Effect.fnUntraced(function* <
     }
     attempts.push({ label: interpretationLabel(candidate.value), issues: blocking });
   }
-  const issues = mergeAttemptIssues(attempts);
+  const path = parsePathSegments(input.key)?.map((segment) =>
+    segment.kind === "key" ? segment.key : segment.index,
+  );
+  const kindAccepted = attempts.filter(
+    (attempt) =>
+      !attempt.issues.some(
+        (issue) =>
+          issue.kind === "type" &&
+          issue.path.length === path?.length &&
+          path.every((segment, index) => segment === issue.path[index]),
+      ),
+  );
+  const reported = kindAccepted.length > 0 ? kindAccepted : attempts;
+  const issues = mergeAttemptIssues(reported);
   return yield* Effect.fail(
     writeValidationErrorFromIssues({
       file: input.file,
       path: input.key,
       issues,
-      ...failureRemediation(attempts.length),
+      remediation: failureRemediation(reported, input.key, input.schema),
     }),
   );
 });

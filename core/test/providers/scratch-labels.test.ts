@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import { scratchLabelsForPlan as dockerScratchLabelsForPlan } from "@lando/provider-docker";
 import { scratchLabelsForPlan as landoScratchLabelsForPlan } from "@lando/provider-lando";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 const plan = (id: string, extensionId: string | undefined): AppPlan => ({
   id: AppId.make(id),

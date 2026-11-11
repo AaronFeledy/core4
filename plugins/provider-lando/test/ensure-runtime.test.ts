@@ -2,12 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-
-import { Cause, Duration, Effect, Exit } from "effect";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
+import { Cause, Duration, Effect, Exit } from "effect";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import {
   type PodmanServiceRunner,
@@ -16,6 +14,10 @@ import {
   podmanServiceLogPath,
 } from "../src/podman-service-runner.ts";
 import { RootlessPrerequisiteError, type RootlessProbes } from "../src/rootless-preflight.ts";
+import {
+  writeLaunchState as persistLaunchState,
+  recordedLaunchMatchesSpec,
+} from "../src/runtime-launch-state.ts";
 import {
   IntelMacUnsupportedError,
   type PodmanMachineRunner,
@@ -30,7 +32,11 @@ const unavailable = () =>
     remediation: "test remediation",
   });
 
-const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) });
+const reachableApi = (): PodmanApiClient => ({
+  info: Effect.succeed({}),
+  ping: Effect.succeed(undefined),
+  request: () => Effect.succeed({ status: 200, body: "[]" }),
+});
 const unreachableApi = (): PodmanApiClient => ({
   info: Effect.fail(unavailable()),
   ping: Effect.fail(unavailable()),
@@ -195,6 +201,15 @@ const machineRunner = (status: PodmanMachineStatus, calls: string[]): PodmanMach
   teardown: Effect.sync(() => calls.push("teardown")).pipe(Effect.asVoid),
 });
 
+/** Deterministic private runtime dir so ensure + builder share one value (no real FS). */
+const PRIVATE_RUNTIME_DIR = "/private/test-runtime";
+
+/** Longest user data root that still fits the managed socket under the 107-byte Unix path cap. */
+const MANAGED_SOCKET_PATH_MAX_BYTES = 107;
+const MANAGED_SOCKET_PATH_SUFFIX = "/runtime/run/podman.sock";
+// 107 - byteLength("/runtime/run/podman.sock") === 83 (not 84: the leading slash is part of the join suffix).
+const maxDataRootBytes = MANAGED_SOCKET_PATH_MAX_BYTES - Buffer.byteLength(MANAGED_SOCKET_PATH_SUFFIX);
+
 const paths = (dir: string) => ({
   podmanBin: join(dir, "bin", "podman"),
   storageDir: join(dir, "storage"),
@@ -202,25 +217,38 @@ const paths = (dir: string) => ({
   configDir: join(dir, "config"),
   socketPath: join(dir, "podman.sock"),
   pidPath: join(dir, "podman.pid"),
+  privateRuntimeDir: PRIVATE_RUNTIME_DIR,
 });
 
-const canonicalArgs = (p: ReturnType<typeof paths>) =>
-  JSON.stringify([
-    "--root",
-    p.storageDir,
-    "--runroot",
-    p.runRoot,
-    "--config",
-    p.configDir,
-    "--storage-opt",
-    `overlay.mount_program=${join(p.podmanBin, "..", "fuse-overlayfs")}`,
-    "system",
-    "service",
-    "--time=0",
-    `unix://${p.socketPath}`,
-  ]);
-
 const canonicalEnv = (p: ReturnType<typeof paths>) => buildPodmanServiceArgs(p).env;
+
+const terminatedPidSet = (calls: ReadonlyArray<Call>): number[] =>
+  [...new Set(calls.flatMap((call) => (call[0] === "terminate" ? [call[1]] : [])))].sort((a, b) => a - b);
+
+const launchCount = (calls: ReadonlyArray<Call>): number =>
+  calls.filter((call) => call[0] === "launch").length;
+
+const expectRefusedMutation = (calls: ReadonlyArray<Call>) => {
+  expect(terminatedPidSet(calls)).toEqual([]);
+  expect(launchCount(calls)).toBe(0);
+};
+
+const expectPersistedPid = async (p: ReturnType<typeof paths>, pid: number) => {
+  expect(await readFile(p.pidPath, "utf8")).toBe(String(pid));
+};
+
+const expectPersistedLaunchState = async (
+  p: ReturnType<typeof paths>,
+  pid: number,
+  runtimeBundleVersion?: string,
+) => {
+  await expectPersistedPid(p, pid);
+  expect(JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"))).toEqual({
+    pid,
+    env: canonicalEnv(p),
+    ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
+  });
+};
 
 const writeLaunchState = (p: ReturnType<typeof paths>, pid: number, runtimeBundleVersion?: string) =>
   writeFile(
@@ -242,6 +270,229 @@ const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
 });
 
 describe("ensureRuntime", () => {
+  test.each([
+    {
+      label: "running",
+      inventory: [{ State: "running" }],
+      expect: { kind: "refuse-known" as const, runningContainers: 1 },
+    },
+    {
+      label: "paused",
+      inventory: [{ State: "paused" }],
+      expect: { kind: "refuse-known" as const, runningContainers: 1 },
+    },
+    {
+      label: "mixed-running-paused-exited",
+      inventory: [{ State: "running" }, { State: "paused" }, { State: "exited" }],
+      expect: { kind: "refuse-known" as const, runningContainers: 2 },
+    },
+    {
+      label: "list-failure",
+      inventory: "fail" as const,
+      expect: { kind: "refuse-unknown" as const },
+    },
+    {
+      label: "exited",
+      inventory: [{ State: "exited" }],
+      expect: { kind: "relaunch" as const },
+    },
+  ])("private XDG transition with $label containers", async ({ inventory, expect: outcome }) => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-xdg-transition-"));
+    try {
+      const p = paths(dir);
+      const calls: Call[] = [];
+      await writeFile(p.pidPath, "4321");
+      await writeFile(
+        `${p.pidPath}.launch.json`,
+        JSON.stringify({ pid: 4321, env: { ...canonicalEnv(p), XDG_RUNTIME_DIR: "/old/runtime" } }),
+      );
+      const result = await Effect.runPromise(
+        ensureRuntime({
+          ...p,
+          platform: "linux",
+          serviceRunner: serviceRunner(calls, true),
+          podmanApi: {
+            ...reachableApi(),
+            request: () =>
+              inventory === "fail"
+                ? Effect.fail(unavailable())
+                : Effect.succeed({ status: 200, body: JSON.stringify(inventory) }),
+          },
+        }).pipe(Effect.result),
+      );
+      if (outcome.kind === "relaunch") {
+        expect(result._tag).toBe("Success");
+        expect(terminatedPidSet(calls)).toEqual([4321]);
+        expect(launchCount(calls)).toBe(1);
+        await expectPersistedLaunchState(p, 9999);
+        return;
+      }
+      expect(result._tag).toBe("Failure");
+      expectRefusedMutation(calls);
+      if (result._tag !== "Failure") return;
+      expect(result.failure.remediation).toBe("Run `lando poweroff`, then rerun the command.");
+      expect(result.failure.message).toContain("keeps");
+      if (outcome.kind === "refuse-known") {
+        expect(result.failure.details).toEqual({ runningContainers: outcome.runningContainers });
+        expect(result.failure.message).toContain(`${outcome.runningContainers} containers`);
+        expect(result.failure.message).toContain("still running or paused");
+      } else {
+        // Unknown inventory: describe the read failure; do not invent a known count.
+        expect(result.failure.details).toBeUndefined();
+        expect(result.failure.message).toContain("could not read the previous runtime's container inventory");
+        expect(result.failure.message).not.toMatch(/\d+ containers/);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses to replace a live daemon from another private dir when its API is down", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-xdg-transition-"));
+    try {
+      const p = paths(dir);
+      const calls: Call[] = [];
+      await writeFile(p.pidPath, "4321");
+      await writeFile(
+        `${p.pidPath}.launch.json`,
+        JSON.stringify({ pid: 4321, env: { ...canonicalEnv(p), XDG_RUNTIME_DIR: "/old/runtime" } }),
+      );
+      const result = await Effect.runPromise(
+        ensureRuntime({
+          ...p,
+          platform: "linux",
+          serviceRunner: serviceRunner(calls, true),
+          podmanApi: {
+            ...reachableApi(),
+            ping: Effect.fail(unavailable()),
+            request: () => Effect.fail(unavailable()),
+          },
+        }).pipe(Effect.result),
+      );
+      expect(result._tag).toBe("Failure");
+      expectRefusedMutation(calls);
+      if (result._tag === "Failure") {
+        expect(result.failure.remediation).toBe("Run `lando poweroff`, then rerun the command.");
+        expect(result.failure.details).toBeUndefined();
+        expect(result.failure.message).toContain("could not read the previous runtime's container inventory");
+        expect(result.failure.message).toContain("keeps");
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([107, 108, "multibyte"] as const)(
+    "checks managed socket UTF-8 bytes before launching: %s",
+    async (size) => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-socket-limit-"));
+      try {
+        const calls: Call[] = [];
+        const p = {
+          ...paths(dir),
+          socketPath: size === "multibyte" ? `/${"é".repeat(54)}` : `/${"a".repeat(size - 1)}`,
+        };
+        const result = await Effect.runPromise(
+          ensureRuntime({
+            ...p,
+            platform: "linux",
+            podmanApi: apiReachableAfterLaunch(calls),
+            serviceRunner: serviceRunner(calls, false),
+          }).pipe(Effect.result),
+        );
+        if (size === 107) {
+          expect(result._tag).toBe("Success");
+          expect(terminatedPidSet(calls)).toEqual([]);
+          expect(launchCount(calls)).toBe(1);
+          await expectPersistedPid(p, 9999);
+        } else {
+          expect(result._tag).toBe("Failure");
+          if (result._tag === "Failure") {
+            expect(maxDataRootBytes).toBe(83);
+            expect(result.failure.details).toEqual({
+              socketPath: p.socketPath,
+              bytes: size === "multibyte" ? 109 : 108,
+              limit: MANAGED_SOCKET_PATH_MAX_BYTES,
+              maxDataRootBytes,
+            });
+            expect(result.failure.remediation).toContain("LANDO_USER_DATA_ROOT");
+          }
+          expectRefusedMutation(calls);
+        }
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.each([true, false])(
+    "an early child exit reports a redacted log and rootless classification (uidmap: %s)",
+    async (hasUidmapTools) => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-early-exit-"));
+      const oldSecret = process.env.LANDO_TEST_SECRET_TOKEN;
+      process.env.LANDO_TEST_SECRET_TOKEN = "early-exit-secret";
+      try {
+        const p = paths(dir);
+        const calls: Call[] = [];
+        let pings = 0;
+        const error = await Effect.runPromise(
+          ensureRuntime({
+            ...p,
+            platform: "linux",
+            rootlessProbes: { probe: () => ({ ...allPrereqs(), hasUidmapTools }) },
+            serviceRunner: {
+              ...serviceRunnerWritingLog(calls, "unknown flag: --root early-exit-secret\n"),
+              waitForExit: () => Effect.succeed(125),
+            },
+            podmanApi: {
+              info: Effect.succeed({}),
+              ping: Effect.suspend(() => {
+                pings += 1;
+                return pings === 1 ? Effect.fail(unavailable()) : Effect.never;
+              }),
+            },
+          }).pipe(Effect.flip),
+        );
+        expect(error.details).toMatchObject({
+          exitCode: 125,
+          logPath: podmanServiceLogPath(p.socketPath),
+        });
+        expect(JSON.stringify(error.details)).toContain("unknown flag: --root");
+        expect(JSON.stringify(error.details)).not.toContain("early-exit-secret");
+        if (!hasUidmapTools) expect(error.details).toMatchObject({ prerequisite: "uidmap-tools" });
+        expect(error.remediation).toContain(podmanServiceLogPath(p.socketPath));
+        expect(pings).toBe(2);
+      } finally {
+        if (oldSecret === undefined) Reflect.deleteProperty(process.env, "LANDO_TEST_SECRET_TOKEN");
+        else process.env.LANDO_TEST_SECRET_TOKEN = oldSecret;
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("persisted launch identity contains only overlay and ignores changed host locale", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-launch-overlay-"));
+    const oldLang = process.env.LANG;
+    try {
+      const p = paths(dir);
+      process.env.LANG = "en_US.UTF-8";
+      const spec = buildPodmanServiceArgs(p);
+      await Effect.runPromise(persistLaunchState(p.pidPath, 4321, spec));
+      process.env.LANG = "fr_FR.UTF-8";
+      expect(
+        await Effect.runPromise(recordedLaunchMatchesSpec(p.pidPath, 4321, buildPodmanServiceArgs(p))),
+      ).toBe(true);
+      const stored = JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"));
+      expect(stored.env).toEqual(spec.env);
+      expect(stored.env.LANG).toBeUndefined();
+      expect(stored.env.XDG_RUNTIME_DIR).toBeDefined();
+    } finally {
+      if (oldLang === undefined) Reflect.deleteProperty(process.env, "LANG");
+      else process.env.LANG = oldLang;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("reachable socket with legacy managed argv stops service before relaunch", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
@@ -260,14 +511,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["findMatching", canonicalArgs(p)],
-        ["findManaged", canonicalArgs(p)],
-        ["isAlive", 8888],
-        ["terminate", 8888],
-        ["launch", canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([8888]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -288,12 +534,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["findMatching", canonicalArgs(p)],
-        ["findManaged", canonicalArgs(p)],
-        ["launch", canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -314,8 +557,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -338,11 +582,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("4321");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(0);
+      await expectPersistedPid(p, 4321);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -377,19 +619,9 @@ describe("ensureRuntime", () => {
       );
 
       // Then: the legacy service is terminated and relaunched with the current managed env.
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["terminate", 4321],
-        ["launch", canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
-      expect(JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"))).toEqual({
-        pid: 9999,
-        env: canonicalEnv(p),
-      });
+      expect(terminatedPidSet(calls)).toEqual([4321]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedLaunchState(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -415,15 +647,9 @@ describe("ensureRuntime", () => {
       );
 
       // Then: the old owned process is stopped and relaunched with the current spec.
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["terminate", 4321],
-        ["launch", canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([4321]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -449,11 +675,9 @@ describe("ensureRuntime", () => {
       );
 
       // Then: no stop/start is performed.
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("4321");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(0);
+      await expectPersistedPid(p, 4321);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -487,11 +711,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("4321");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(0);
+      await expectPersistedPid(p, 4321);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -515,13 +737,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls.some((call) => call[0] === "terminate" && call[1] === 4321)).toBe(true);
-      expect(calls.some((call) => call[0] === "launch")).toBe(true);
-      expect(JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"))).toEqual({
-        pid: 9999,
-        env: canonicalEnv(p),
-        runtimeBundleVersion: "2.0.0",
-      });
+      expect(terminatedPidSet(calls)).toEqual([4321]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedLaunchState(p, 9999, "2.0.0");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -543,16 +761,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["findMatching", canonicalArgs(p)],
-        ["findManaged", canonicalArgs(p)],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["launch", canonicalArgs(p)],
-      ]);
-      expect(calls.some((c) => c[0] === "terminate")).toBe(false);
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -577,18 +788,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["findMatching", canonicalArgs(p)],
-        ["isAlive", 7777],
-        ["findManaged", canonicalArgs(p)],
-        ["terminate", 7777],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["launch", canonicalArgs(p)],
-      ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([7777]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -609,8 +811,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -640,8 +843,8 @@ describe("ensureRuntime", () => {
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(calls).toContainEqual(["launch", canonicalArgs(p)]);
-      expect(calls).toContainEqual(["terminate", 9999]);
+      expect(terminatedPidSet(calls)).toEqual([9999]);
+      expect(launchCount(calls)).toBe(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -654,6 +857,8 @@ describe("ensureRuntime", () => {
       const p = paths(dir);
       await writeFile(p.pidPath, "4321");
       await writeFile(p.socketPath, "stale socket placeholder");
+      // Launched under the current private runtime dir, so replacing it is ordinary recovery.
+      await writeLaunchState(p, 4321);
 
       await Effect.runPromise(
         ensureRuntime({
@@ -664,14 +869,10 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["terminate", 4321],
-        ["launch", canonicalArgs(p)],
-      ]);
+      expect(terminatedPidSet(calls)).toEqual([4321]);
+      expect(launchCount(calls)).toBe(1);
       await expectMissingFile(p.socketPath);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -693,10 +894,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["launch", canonicalArgs(p)],
-      ]);
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -718,11 +918,9 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["launch", canonicalArgs(p)],
-      ]);
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -816,7 +1014,8 @@ describe("ensureRuntime", () => {
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
       if (Exit.isFailure(exit)) {
         const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
@@ -857,8 +1056,9 @@ describe("ensureRuntime", () => {
 
       // Then: readiness uses ping only and never invokes expensive info.
       expect(apiCalls).toEqual(["ping", "ping"]);
-      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -882,7 +1082,8 @@ describe("ensureRuntime", () => {
 
       // When/Then: the reachability failure carries the service log tail as stderr evidence.
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
       if (Exit.isFailure(exit)) {
         const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
@@ -914,8 +1115,9 @@ describe("ensureRuntime", () => {
       );
 
       expect(slow.attempts()).toBeGreaterThan(10);
-      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(1);
+      await expectPersistedPid(p, 9999);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -1034,6 +1236,52 @@ describe("ensureRuntime", () => {
     }
   });
 
+  test("linux helper repair runs inside the setup helpers phase, before launch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-helpers-"));
+    try {
+      // Given: nft is missing and its download fails.
+      const phases: string[] = [];
+      const record =
+        (phase: string) =>
+        (
+          body: Effect.Effect<void, ProviderUnavailableError>,
+        ): Effect.Effect<void, ProviderUnavailableError> =>
+          body.pipe(Effect.onExit((exit) => Effect.sync(() => phases.push(`${phase}:${exit._tag}`))));
+      const downloadFailure = new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "setup",
+        message:
+          "Failed to download nftables_1.1.3-1_amd64.deb from https://deb.debian.org: connection reset",
+        remediation: "Retry.",
+      });
+      // When
+      const result = await Effect.runPromise(
+        ensureRuntime({
+          ...paths(dir),
+          platform: "linux",
+          arch: "x64",
+          podmanApi: unreachableApi(),
+          serviceRunner: throwingLaunchRunner(),
+          nftProvision: {
+            download: () => Effect.fail(downloadFailure),
+            cacheDir: join(dir, "nft-downloads"),
+            arch: "x64",
+          },
+          setupProgress: {
+            helpers: record("helpers"),
+            launch: record("launch"),
+            readiness: record("readiness"),
+          },
+        }).pipe(Effect.result),
+      );
+      // Then: the failure is attributed to helpers and nothing launched.
+      expect(result).toMatchObject({ _tag: "Failure", failure: downloadFailure });
+      expect(phases).toEqual(["helpers:Failure"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("healthy Windows machine completes setup progress without taking the launch lock", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-progress-"));
     try {
@@ -1049,6 +1297,7 @@ describe("ensureRuntime", () => {
               phases.push("lock");
             }).pipe(Effect.andThen(body)),
           setupProgress: {
+            helpers: (body) => body,
             launch: (body) =>
               Effect.sync(() => {
                 phases.push("launch");
@@ -1214,6 +1463,7 @@ describe("ensureRuntime", () => {
               running = true;
             }).pipe(Effect.andThen(body)),
           setupProgress: {
+            helpers: (body) => body,
             launch: (body) =>
               Effect.sync(() => {
                 phases.push("launch");

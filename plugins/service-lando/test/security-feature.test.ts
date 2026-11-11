@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option, Schema } from "effect";
+import { composeService } from "@lando/engine/services/feature";
 
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
-
-import { composeService } from "@lando/engine/services/feature";
+import { Cause, Effect, Option, Schema } from "effect";
 import { serviceFeatures } from "../src/features/index.ts";
 
 const DIGEST_A = "a".repeat(64);
@@ -56,6 +55,7 @@ const composeSecurity = (
     },
     baseKind: "lando",
     appName: "security-test",
+    appSlug: "security-test",
     appRoot: "/srv/apps/security-test",
     normalizedConfig: { type: serviceType, environment },
     features: [{ id: "lando.security", config, definition: securityFeature() }],

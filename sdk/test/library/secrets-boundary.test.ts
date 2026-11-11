@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
-
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 const importSpecifiersOf = (source: string): string[] =>
   Array.from(
@@ -17,6 +16,7 @@ describe("@lando/sdk/secrets import boundary", () => {
       "./bounded-redaction.ts",
       "./env-placeholder.ts",
       "./inspection.ts",
+      "./public-default-credentials.ts",
       "./redactor.ts",
       "./secret-names.ts",
       "./transcript-redaction.ts",

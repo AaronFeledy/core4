@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import * as Schema from "effect/Schema";
 
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";
@@ -175,9 +174,7 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain(
         'bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"',
       );
-      expect(firstWorkflow).toContain(
-        "bun test plugins/service-lando/test/service-listener-journeys.integration.test.ts --max-concurrency=1",
-      );
+      expect(firstWorkflow).toContain("bun run test:selection nightly-service-listeners");
       expect(firstWorkflow).toContain("^SERVICE_LISTENER_ACCEPTANCE completed=4/4 cases=");
       expect(firstWorkflow).toContain("distribution-rehearsal-linux-x64:");
       expect(firstWorkflow).toContain("Verify SHA256SUMS match the binaries");
@@ -194,15 +191,18 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
       expect(firstWorkflow).toContain("include-hidden-files: true");
       expect(firstWorkflow).toContain("mysql-arm-client-linux-arm64:");
+      expect(firstWorkflow).toContain("runtime-bundle-linux-arm64:");
+      expect(firstWorkflow).toContain("needs: [container-helper, runtime-bundle-linux-arm64]");
+      expect(firstWorkflow).toContain(
+        "          name: runtime-bundle-linux-arm64-current\n          path: dist/cache/runtime-bundle\n",
+      );
       expect(firstWorkflow).toContain("runs-on: ubuntu-24.04-arm");
       expect(firstWorkflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
       expect(firstWorkflow).toContain("runtime-bundle-linux-arm64-current");
       expect(firstWorkflow).toContain("--target bun-linux-arm64");
       expect(firstWorkflow).toContain("Wrap managed Podman for ARM MySQL client tests");
       expect(firstWorkflow).toContain("LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper");
-      expect(firstWorkflow).toContain(
-        "bun test plugins/service-lando/test/mysql-arm-client.integration.test.ts",
-      );
+      expect(firstWorkflow).toContain("bun run test:selection mysql-arm-client");
       expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
       expect(firstWorkflow).not.toContain("podman system prune");
 
@@ -281,9 +281,7 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("name: provider-matrix-report-${{ matrix.cell }}");
       expect(firstWorkflow).toContain("path: provider-matrix-reports/${{ matrix.cell }}.json");
       expect(firstWorkflow).not.toContain("Run provider contract tests");
-      expect(firstWorkflow).not.toContain(
-        "bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
-      );
+      expect(firstWorkflow).not.toContain("bun run test:selection provider-contract-sdk");
 
       await runCodegen();
 
@@ -336,9 +334,9 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(41);
+      expect(versionFileMatches).toBe(42);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(15);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(21);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");
@@ -477,13 +475,11 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("library-api-tests:");
       expect(workflow).toContain("- name: Run library API tests");
-      expect(workflow).toContain("run: bun test core/test/library sdk/test/library");
+      expect(workflow).toContain("run: bun run test:selection library");
 
       expect(workflow).toContain("recipe-tests:");
       expect(workflow).toContain("- name: Run recipe test layer");
-      expect(workflow).toContain(
-        "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
-      );
+      expect(workflow).toContain("run: bun run test:selection recipes");
       expect(workflow).toContain(
         "needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
       );
@@ -532,19 +528,19 @@ describe("ci workflow codegen", () => {
       expect(job.if).toContain("needs.selection.outputs.profile == 'runtime'");
       expect(job.if).not.toContain("profile == 'guides'");
       const commands = job.steps.flatMap((step) => (step.run === undefined ? [] : [step.run]));
-      expect(commands.filter((command) => command.startsWith("bun test"))).toEqual([
-        "bun test core/test/cli/process-signals.test.ts",
-        "bun test container-runtime/test/exec-umask.test.ts",
+      expect(commands.filter((command) => command.startsWith("bun run test:selection"))).toEqual([
+        "bun run test:selection process-signals",
+        "bun run test:selection exec-umask",
       ]);
       expect(commands).toContain("bun install --frozen-lockfile");
       expect(commands.indexOf("bun run codegen")).toBeLessThan(
-        commands.indexOf("bun test core/test/cli/process-signals.test.ts"),
+        commands.indexOf("bun run test:selection process-signals"),
       );
-      expect(commands.indexOf("bun test core/test/cli/process-signals.test.ts")).toBeLessThan(
-        commands.indexOf("bun test container-runtime/test/exec-umask.test.ts"),
+      expect(commands.indexOf("bun run test:selection process-signals")).toBeLessThan(
+        commands.indexOf("bun run test:selection exec-umask"),
       );
       expect(job.steps.find((step) => step.name === "Test exec umask behavior")?.run).toBe(
-        "bun test container-runtime/test/exec-umask.test.ts",
+        "bun run test:selection exec-umask",
       );
       expect(job.steps.find((step) => step.name === "Isolate Lando roots")?.run).toContain(
         "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf",
@@ -578,8 +574,7 @@ describe("ci workflow codegen", () => {
       }
       expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
       expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-      expect(staticChecksPlatform).toContain("- name: Typecheck");
-      expect(staticChecksPlatform).toContain("if: matrix.platform == 'linux-x64'");
+      expect(staticChecksPlatform).toContain("      - name: Typecheck\n        run: bun run typecheck\n");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
       expect(staticChecksPlatform).not.toContain("- name: Audit dependencies");
@@ -616,19 +611,22 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "caches the assembled linux-x64 runtime bundle across unrelated PRs",
+    "caches the assembled native Linux runtime bundles across unrelated PRs",
     async () => {
       await runCodegen();
 
       const workflow = await readFile(workflowPath, "utf8");
 
-      expect(workflow).toContain("runtime-bundle-linux-x64:");
-      expect(workflow).toContain("id: runtime-bundle-cache");
-      expect(workflow).toContain("uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9");
-      expect(workflow).toContain("key: runtime-bundle-linux-x64-${{ hashFiles(");
-      expect(workflow).toContain("scripts/patches/netavark-v2.0.0-systemd-user-bus.patch");
-      expect(workflow).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");
-      expect(workflow).toContain("run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64");
+      for (const hostKey of ["linux-x64", "linux-arm64"]) {
+        const job = workflow.split(`\n  runtime-bundle-${hostKey}:\n`)[1]?.split(/^ {2}[a-z]/m)[0] ?? "";
+        expect(job).toContain("id: runtime-bundle-cache");
+        expect(job).toContain("uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9");
+        expect(job).toContain("key: ${{ steps.runtime-bundle-key.outputs.key }}");
+        expect(job).toContain(`bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey} --cache-key`);
+        expect(job).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");
+        expect(job).toContain(`run: bun run scripts/assemble-runtime-bundle.ts --platform ${hostKey}\n`);
+        expect(job).toContain(`name: runtime-bundle-${hostKey}-current`);
+      }
     },
     codegenTestTimeout,
   );
@@ -824,11 +822,9 @@ describe("ci workflow codegen", () => {
       ]) {
         expect(workflow).toContain(`"platform":"${platform}"`);
       }
-      expect(workflow).toContain(
-        "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
-      );
-      expect(workflow).toContain("run: bun test core/test/library sdk/test/library");
-      expect(workflow).toContain("bun test plugins/provider-podman/test/contract.integration.test.ts");
+      expect(workflow).toContain("run: bun run test:selection recipes");
+      expect(workflow).toContain("run: bun run test:selection library");
+      expect(workflow).toContain("bun run test:selection provider-contract-podman");
       expect(workflow).toContain("::notice title=ci-timing::");
       expect(workflow).toContain("timeout-minutes:");
     },
@@ -956,9 +952,9 @@ describe("ci workflow codegen", () => {
 
       const workflow = await readFile(workflowPerformanceWorkflowPath, "utf8");
       expect(workflow.startsWith(`${generatedWorkflowPerformanceHeader}\n`)).toBe(true);
-      expect(workflow).toContain("  workflow-performance-blocked:");
-      expect(workflow).toContain("#   workflow-performance-linux-x64:");
-      expect(workflow).toContain("#   workflow-performance-linux-arm64:");
+      expect(workflow).toContain("  workflow-performance-linux-x64:");
+      expect(workflow).toContain("  workflow-performance-linux-arm64:");
+      expect(workflow).not.toContain("workflow-performance-blocked");
       expect(workflow).not.toContain("workflow-performance-darwin-");
       expect(workflow).toContain("retention-days: 90");
       expect(workflow).toContain("actions: read");

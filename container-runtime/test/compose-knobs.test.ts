@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 
-import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-
+import type { EngineDialect } from "../src/dialect.ts";
 import { realizePodmanComposeKnobs } from "../src/podman/compose-knobs.ts";
-import { EMPTY_REALIZATION, KNOB_FIXTURES, type KnobRealization } from "./compose-knobs-fixtures.ts";
+import {
+  EMPTY_REALIZATION,
+  KNOB_FIXTURES_BY_DIALECT,
+  type KnobRealization,
+} from "./compose-knobs-fixtures.ts";
 
 interface InvalidCall {
   readonly message: string;
@@ -30,18 +34,29 @@ const rejectInvalid = (message: string, details: Record<string, unknown>): never
   throw new Error(`unexpected onInvalid: ${message} ${JSON.stringify(details)}`);
 };
 
-const realize = (compose: Record<string, unknown>): KnobRealization =>
-  realizePodmanComposeKnobs(serviceWithCompose(compose), { onInvalid: rejectInvalid });
+const realize = (compose: Record<string, unknown>, dialect: EngineDialect = "libpod"): KnobRealization =>
+  realizePodmanComposeKnobs(serviceWithCompose(compose), { onInvalid: rejectInvalid, dialect });
 
-const captureInvalid = (compose: Record<string, unknown>): ReadonlyArray<InvalidCall> => {
+const captureInvalid = (
+  compose: Record<string, unknown>,
+  dialect: EngineDialect = "libpod",
+): ReadonlyArray<InvalidCall> => {
   const calls: InvalidCall[] = [];
   const onInvalid = (message: string, details: Record<string, unknown>): never => {
     calls.push({ message, details });
     throw new Error(message);
   };
 
-  expect(() => realizePodmanComposeKnobs(serviceWithCompose(compose), { onInvalid })).toThrow();
+  expect(() => realizePodmanComposeKnobs(serviceWithCompose(compose), { onInvalid, dialect })).toThrow();
   return calls;
+};
+
+/** Issue paths the untyped-extensions guard reports, e.g. "deploy.resources.limits.cpus". */
+const invalidPaths = (call: InvalidCall | undefined): ReadonlyArray<string> => {
+  const issues = call?.details.issues;
+  return Array.isArray(issues)
+    ? issues.map((issue: { readonly path?: ReadonlyArray<PropertyKey> }) => (issue.path ?? []).join("."))
+    : [];
 };
 
 const BOOLEAN_KNOBS = [
@@ -58,10 +73,12 @@ const FALSY_SPELLINGS = ["false", "0", "no", "off", "NO", "Off"];
 const REMOTE_INVALID_LOG_DRIVERS = ["passthrough", "passthrough-tty"] as const;
 
 describe("podman Compose runtime knob realization", () => {
-  for (const [knob, fixture] of Object.entries(KNOB_FIXTURES)) {
-    test(`Given a service using the ${knob} knob, when realized, then it lands in its documented slot`, () => {
-      expect(realize(fixture.input)).toEqual(fixture.expected);
-    });
+  for (const dialect of ["libpod", "docker"] as const) {
+    for (const [knob, fixture] of Object.entries(KNOB_FIXTURES_BY_DIALECT[dialect])) {
+      test(`Given a service using the ${knob} knob, when realized for ${dialect}, then it lands in its documented slot`, () => {
+        expect(realize(fixture.input, dialect)).toEqual(fixture.expected);
+      });
+    }
   }
 
   test("Given a service without Compose extensions, when realized, then every fragment is empty", () => {
@@ -74,12 +91,11 @@ describe("podman Compose runtime knob realization", () => {
     expect(realize({})).toEqual(EMPTY_REALIZATION);
   });
 
-  test("Given only unrealizable knobs, when realized, then nothing is emitted and nothing fails", () => {
+  test("Given only knobs libpod does not realize, when realized for libpod, then nothing is emitted and nothing fails", () => {
     expect(
       realize({
-        pull_policy: "always",
         gpus: "all",
-        deploy: { resources: { limits: { cpus: "0.5" } } },
+        deploy: { resources: { reservations: { devices: [{ capabilities: ["gpu"] }] } } },
         labels: { "dev.lando.app": "myapp" },
         tmpfs: ["/run"],
       }),
@@ -121,7 +137,8 @@ describe("podman Compose runtime knob value coercion", () => {
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.details).toMatchObject({ knob: "ulimits", bound: "soft" });
+    expect(calls[0]?.details).toMatchObject({ knobs: ["ulimits"] });
+    expect(invalidPaths(calls[0])).toContain("ulimits.nofile.soft");
   });
 
   test("Given null, numeric, and boolean sysctls, when realized, then each is stringified", () => {
@@ -132,12 +149,28 @@ describe("podman Compose runtime knob value coercion", () => {
     });
   });
 
-  for (const stopGracePeriod of [0.5, -1, Number.MAX_SAFE_INTEGER + 1]) {
+  for (const dialect of ["libpod", "docker"] as const) {
+    for (const [stopGracePeriod, timeout] of [
+      [0.4, 0],
+      [0, 0],
+      [-0, 0],
+      [2.9, 2],
+    ] as const) {
+      test(`Given stop_grace_period ${stopGracePeriod}, when realized for ${dialect}, then StopTimeout is ${timeout} whole seconds`, () => {
+        const { topLevel } = realize({ stop_grace_period: stopGracePeriod }, dialect);
+
+        expect(topLevel).toEqual({ StopTimeout: timeout });
+        expect(Object.is(topLevel.StopTimeout, -0)).toBe(false);
+      });
+    }
+  }
+
+  for (const stopGracePeriod of [-0.5, -1, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY]) {
     test(`Given stop_grace_period ${stopGracePeriod}, when realized, then onInvalid rejects it`, () => {
       const calls = captureInvalid({ stop_grace_period: stopGracePeriod });
 
       expect(calls).toHaveLength(1);
-      expect(calls[0]?.details).toMatchObject({ knob: "stop_grace_period", value: stopGracePeriod });
+      expect(calls[0]?.details).toMatchObject({ knobs: ["stop_grace_period"] });
     });
   }
 
@@ -146,7 +179,7 @@ describe("podman Compose runtime knob value coercion", () => {
       const calls = captureInvalid({ shm_size: shmSize });
 
       expect(calls).toHaveLength(1);
-      expect(calls[0]?.details).toMatchObject({ knob: "shm_size", value: shmSize });
+      expect(calls[0]?.details).toMatchObject({ knobs: ["shm_size"] });
     });
   }
 
@@ -213,5 +246,92 @@ describe("podman Compose runtime knob value coercion", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.message).toContain("cap_add");
+  });
+});
+
+describe("Compose deploy.resources and GPU realization", () => {
+  test.each([
+    ["number", 1.5, 1_500_000_000],
+    ["decimal string", "0.25", 250_000_000],
+    ["integer string", "2", 2_000_000_000],
+    ["leading-dot string", ".5", 500_000_000],
+  ])(
+    "Given limits.cpus as a %s, when realized, then NanoCpus is the rounded nanosecond share",
+    (_, cpus, nano) => {
+      expect(realize({ deploy: { resources: { limits: { cpus } } } }).hostConfig).toEqual({ NanoCpus: nano });
+    },
+  );
+
+  test("Given zero limits and pids of -1, when realized, then no limit is applied", () => {
+    expect(
+      realize({
+        deploy: { resources: { limits: { cpus: 0, memory: 0, pids: -1 }, reservations: { memory: 0 } } },
+      }),
+    ).toEqual(EMPTY_REALIZATION);
+  });
+
+  test("Given pids as an integer string, when realized, then PidsLimit is an integer", () => {
+    expect(realize({ deploy: { resources: { limits: { pids: "64" } } } }).hostConfig).toEqual({
+      PidsLimit: 64,
+    });
+  });
+
+  test.each([
+    ["limits.cpus", { limits: { cpus: "half" } }],
+    ["limits.cpus", { limits: { cpus: -1 } }],
+    ["limits.cpus", { limits: { cpus: 1e308 } }],
+    ["limits.cpus", { limits: { cpus: "10000000" } }],
+    ["limits.pids", { limits: { pids: "9007199254740993" } }],
+    ["limits.memory", { limits: { memory: -1 } }],
+    ["limits.pids", { limits: { pids: "many" } }],
+    ["reservations.memory", { reservations: { memory: -1 } }],
+  ])("Given an invalid %s, when realized, then onInvalid names the field", (field, resources) => {
+    const calls = captureInvalid({ deploy: { resources } });
+
+    expect(calls).toHaveLength(1);
+    expect(invalidPaths(calls[0])).toContain(`deploy.resources.${field}`);
+  });
+
+  test("Given gpus all, when realized for docker, then one request asks for every GPU", () => {
+    expect(realize({ gpus: "all" }, "docker").hostConfig).toEqual({
+      DeviceRequests: [{ Count: -1, Capabilities: [["gpu"]] }],
+    });
+  });
+
+  test("Given gpus and reserved devices together, when realized for docker, then both requests are kept in order", () => {
+    expect(
+      realize(
+        {
+          gpus: [{ count: "all" }],
+          deploy: {
+            resources: {
+              reservations: {
+                devices: [{ driver: "cdi", device_ids: ["vendor.com/dev=0"], capabilities: [] }],
+              },
+            },
+          },
+        },
+        "docker",
+      ).hostConfig,
+    ).toEqual({
+      DeviceRequests: [
+        { Count: -1, Capabilities: [["gpu"]] },
+        { Driver: "cdi", Count: 0, DeviceIDs: ["vendor.com/dev=0"], Capabilities: [[]] },
+      ],
+    });
+  });
+
+  test("Given a device request without count or ids, when realized for docker, then it asks for every device", () => {
+    expect(
+      realize({ deploy: { resources: { reservations: { devices: [{ capabilities: ["gpu"] }] } } } }, "docker")
+        .hostConfig,
+    ).toEqual({ DeviceRequests: [{ Count: -1, Capabilities: [["gpu"]] }] });
+  });
+
+  test("Given a non-numeric device count, when realized for docker, then onInvalid names the knob", () => {
+    const calls = captureInvalid({ gpus: [{ count: "some" }] }, "docker");
+
+    expect(calls).toHaveLength(1);
+    expect(invalidPaths(calls[0])).toContain("gpus.0.count");
   });
 });

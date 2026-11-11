@@ -3,18 +3,14 @@ import {
   recordGlobalResourceCleanup,
   recordGlobalRouteCleanup,
 } from "@lando/engine/global-app/reconciliation";
-import { Effect, Schema } from "effect";
-
-import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
-
-import {
-  executeGlobalTeardown,
-  globalTeardownAppRef,
-  resolveGlobalTeardown,
-} from "@lando/engine/operations/global-teardown";
+import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/operations/global-teardown";
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
+import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
-import { RouterService } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
+import { type RouteWithdrawal, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
+import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
 export interface GlobalDestroyOptions {
@@ -62,15 +58,17 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
 
   return yield* withGlobalMutation(
     Effect.gen(function* () {
-      const loaded = yield* resolveGlobalTeardown().pipe(
+      const loaded = yield* resolveGlobalTeardown("destroy").pipe(
         Effect.provideService(TeardownProvider, options.providerId),
       );
       const volumes = options.purge ?? false;
       if (loaded.evidence.kind === "absent") {
         if (options.providerId === undefined) {
-          const router = yield* RouterService;
-          yield* router.removeRoutes(globalTeardownAppRef(loaded).id);
-          yield* recordGlobalRouteCleanup();
+          const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromGlobalTeardown(loaded));
+          // A skipped withdrawal proves nothing, so route obligations stay pending.
+          if (withdrawal.kind === "withdrawn") yield* recordGlobalRouteCleanup();
+          // A start that failed after certificate preparation leaves only host-side leaf material.
+          yield* removeServiceCertificates(routeOwnerFromGlobalTeardown(loaded).ownerKey);
         }
         return {
           app: "global",
@@ -81,8 +79,15 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
         };
       }
 
-      const receipt = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
-      if (options.providerId === undefined) yield* recordGlobalResourceCleanup();
+      const receipt: Effect.Success<ReturnType<typeof executeGlobalTeardown>> & {
+        readonly routes?: RouteWithdrawal["kind"];
+      } = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
+      // Cleanup proof covers routes, so a skipped withdrawal leaves every obligation pending.
+      if (options.providerId === undefined && receipt.routes === "withdrawn")
+        yield* recordGlobalResourceCleanup();
+      // A provider-scoped destroy keeps leaf material another provider's realization may mount.
+      if (options.providerId === undefined)
+        yield* removeServiceCertificates(routeOwnerFromGlobalTeardown(loaded).ownerKey);
 
       return withShutdownObservations(
         {

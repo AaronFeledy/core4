@@ -13,12 +13,12 @@ test("buildPodmanServiceArgs stays byte-identical to the managed runtime service
   // argv[0] match key must equal the exact spawned string, never a join-normalized path.
   const podmanBin = managedRuntimePodmanArgv0(paths.runtimeBinDir, "linux");
   const providerSpec = buildPodmanServiceArgs({
+    privateRuntimeDir: undefined,
     podmanBin,
     storageDir: paths.runtimeStorageDir,
     runRoot: paths.runtimeRunDir,
     configDir: paths.runtimeConfigDir,
     socketPath: paths.providerSocketPath,
-    useSystemdRunShim: false,
   });
 
   expect(podmanBin).toBe(`${paths.runtimeBinDir}/podman`);

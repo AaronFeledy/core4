@@ -86,7 +86,11 @@ describe("provider-lando machine ownership recording", () => {
       const calls: string[] = [];
 
       const result = await Effect.runPromise(
-        ensureMachine(machineRunner("running", calls), { name: "lando", createdByLando: true }),
+        ensureMachine(machineRunner("running", calls), {
+          name: "lando",
+          createdByLando: true,
+          createdAt: "2026-09-22T12:00:00Z",
+        }),
       );
 
       expect(result).toEqual({ createdByLando: false });
@@ -194,7 +198,7 @@ describe("provider-lando machine ownership recording", () => {
         setupProviderLando({
           platform: "darwin",
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          podmanMachine: machineRunner("missing", []),
+          podmanMachine: machineRunner("missing", [], "2026-09-22T12:00:00Z"),
           skipSocketProbe: true,
           stateDir,
         }),
@@ -204,14 +208,18 @@ describe("provider-lando machine ownership recording", () => {
         setupProviderLando({
           platform: "darwin",
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          podmanMachine: machineRunner("running", []),
+          podmanMachine: machineRunner("running", [], "2026-09-22T12:00:00Z"),
           skipSocketProbe: true,
           stateDir,
         }),
       );
 
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
-      expect(state.machine).toEqual({ name: "lando", createdByLando: true });
+      expect(state.machine).toEqual({
+        name: "lando",
+        createdByLando: true,
+        createdAt: "2026-09-22T12:00:00Z",
+      });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

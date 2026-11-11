@@ -1,12 +1,12 @@
-import { RemoteTestResult } from "@lando/sdk/schema";
-
 import { appRemoteSetup } from "@lando/engine/operations/remote";
+import { RemoteTestResult } from "@lando/sdk/schema";
 import { renderRemoteTestResult } from "../../../commands/remote";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { remoteEnvArg, remoteSetupFlags, remoteSetupOptionsFromInput } from "./common";
 
 export const remoteSetupSpec: LandoCommandSpec<RemoteTestResult> = {
   id: "app:remote:setup",
+  onlineAcquisition: true,
   summary: "Run remote setup checks for the current app.",
   namespace: "app",
   bootstrap: "app",

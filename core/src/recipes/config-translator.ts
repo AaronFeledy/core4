@@ -4,8 +4,8 @@
  * A recipe request is delegated to an injected `RecipeDecomposer`. Encode is
  * absent so `app:config:translate --to recipe` fails closed at selection.
  */
-import { Effect, Match, Result, Schema } from "effect";
 
+import { mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { validateConfigTranslateResult } from "@lando/sdk/landofile";
 import type {
@@ -16,6 +16,7 @@ import type {
 } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ConfigTranslatorShape, RecipeDecomposerFactory } from "@lando/sdk/services";
+import { Effect, Match, Result, Schema } from "effect";
 
 export const RECIPE_TRANSLATOR_ID = "recipe";
 
@@ -75,7 +76,18 @@ const translateRecipe = Effect.fn("RecipeConfigTranslator.translateRecipe")(func
       secrets: input.secretAnswers,
     })
     .pipe(
-      Effect.mapError((error) =>
+      // A decomposer defect can carry raw answers or secret bindings.
+      Effect.catchCause((cause) =>
+        Effect.failCause(
+          mapDefectCause(cause, () =>
+            translateError(
+              "Recipe decomposition did not return an authoring mapping.",
+              "Return a Landofile object fragment plus provenance from the decomposer.",
+            ),
+          ),
+        ),
+      ),
+      mapFailures((error) =>
         translateError(
           `Recipe decomposition failed (${error.reason}): ${error.remediation}`,
           error.remediation,
@@ -85,7 +97,7 @@ const translateRecipe = Effect.fn("RecipeConfigTranslator.translateRecipe")(func
   const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
     decomposed.fragment,
   ).pipe(
-    Effect.mapError(() =>
+    mapFailures(() =>
       translateError(
         "Recipe decomposition did not return an authoring mapping.",
         "Return a Landofile object fragment plus provenance from the decomposer.",

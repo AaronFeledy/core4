@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
-
 import { parseLandofile, parseLegacyLandofile } from "@lando/sdk/landofile";
+import { Effect, Exit } from "effect";
 
 const FIXTURES = `${import.meta.dir}/../fixtures/lando3`;
 const FILE = "/app/.lando.yml";

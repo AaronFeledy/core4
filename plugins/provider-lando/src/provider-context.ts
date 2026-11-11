@@ -1,11 +1,11 @@
 import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { composeAdaptersFor } from "@lando/container-runtime/provider-assembly";
 import { standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { runtimeRemediation } from "@lando/container-runtime/transport";
 
 export const LANDO_CTX_BASE = {
   providerId: "lando",
-  remediation:
-    "Run `lando doctor` to inspect the Lando runtime, then retry the failing command. Run `lando setup` if the runtime is not installed or healthy.",
+  remediation: `${runtimeRemediation} Run \`lando setup\` if the runtime is not installed or healthy.`,
 } as const;
 
 export const LANDO_CTX: ProviderErrorContext = { ...LANDO_CTX_BASE, env: {} };

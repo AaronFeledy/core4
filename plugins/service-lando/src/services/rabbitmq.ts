@@ -1,9 +1,14 @@
-import { Effect, Schema } from "effect";
-
-import { PortNumber, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import {
+  PortNumber,
+  PortablePath,
+  type ServiceConfig,
+  landoServiceContainerName,
+  normalizeAppSlug,
+} from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   literalEnvironmentValue,
@@ -12,7 +17,6 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { rabbitmqProbes } from "./rabbitmq-probes.ts";
@@ -74,9 +78,22 @@ const ARTIFACTS = {
 
 export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
 
+/**
+ * RabbitMQ keeps its database under its node name. Naming the node after the container name the
+ * folder's data identity would give it keeps that name stable: it equals the container hostname
+ * until the app is renamed, and afterwards a loopback host alias keeps the original name resolvable.
+ */
+const applyDataNodeName = (ctx: ServiceFeatureContext): void => {
+  const host = (name: string) =>
+    landoServiceContainerName(normalizeAppSlug(name, ctx.appRoot), ctx.serviceName);
+  const appName = ctx.appName ?? "app";
+  const node = host(ctx.dataName ?? appName);
+  ctx.addEnv("RABBITMQ_NODENAME", `rabbit@${node}`);
+  if (node !== host(appName)) ctx.addHostAlias({ hostname: node, ip: "127.0.0.1" });
+};
+
 const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   assertListenerConfig(service, RABBITMQ_LISTENER);
   assertDistributionPort(service);
   const port = plannedPort(service, RABBITMQ_LISTENER);
@@ -85,8 +102,11 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("RABBITMQ_DEFAULT_USER", service.environment?.RABBITMQ_DEFAULT_USER ?? "lando");
   ctx.addEnv("RABBITMQ_DEFAULT_PASS", service.environment?.RABBITMQ_DEFAULT_PASS ?? DEFAULT_PASSWORD);
   ctx.addEnv("RABBITMQ_NODE_PORT", String(port));
+  const authoredNode = service.environment?.RABBITMQ_NODENAME;
+  if (authoredNode === undefined) applyDataNodeName(ctx);
+  else ctx.addEnv("RABBITMQ_NODENAME", authoredNode);
   ctx.addStorage({
-    store: `${appName}-rabbitmq-data`,
+    store: ctx.serviceStoreName("rabbitmq-data"),
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -150,7 +170,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
         },
         features: [{ id: RABBITMQ_FEATURE_ID }],
         tooling: {
-          rabbitmqctl: { service: input.name, cmd: "rabbitmqctl" },
+          rabbitmqctl: { service: input.name, cmd: "rabbitmqctl", wrapper: true },
           rabbitmqadmin: {
             service: input.name,
             cmd: [
@@ -160,6 +180,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
               "--password",
               literalEnvironmentValue(managementPass, ["environment", "RABBITMQ_DEFAULT_PASS"]),
             ],
+            wrapper: true,
           },
         },
       };

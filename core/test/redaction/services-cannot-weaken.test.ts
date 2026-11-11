@@ -1,16 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { FileSyncStartError, ShellExecError } from "@lando/sdk/errors";
-import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
-import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
-
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import {
@@ -19,9 +10,15 @@ import {
   makeDownloaderService,
 } from "@lando/http-client/downloader";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { FileSyncStartError, ShellExecError } from "@lando/sdk/errors";
+import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
+import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
+import { Cause, type Context, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
-import { buildHostDnsCheck } from "../../src/cli/commands/doctor-host-dns-check.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
+import { buildHostDnsCheck } from "../../src/cli/commands/doctor-host-dns-check.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
 import { withProcess } from "../_support/process-runner.ts";
 

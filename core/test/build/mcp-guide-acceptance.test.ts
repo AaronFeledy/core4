@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import {
   type GuideScenarioAst,
@@ -121,7 +120,7 @@ describe("MCP executable guide", () => {
     expect(bounded.code).toContain('expect(JSON.parse(busyResult.content[0]?.text ?? "{}")).toEqual');
     expect(bounded.code).toContain('_tag: "McpTransportError"');
     expect(bounded.code).toContain('message: "Server busy"');
-    expect(bounded.code).toContain("expect(busyResult.structuredContent).toBeUndefined()");
+    expect(bounded.code).toContain("expect(busyResult.structuredContent.error).toEqual");
     expect(bounded.code).toContain(
       'expect(observed.busy).toMatchObject({ jsonrpc: "2.0", id: observed.busyId })',
     );

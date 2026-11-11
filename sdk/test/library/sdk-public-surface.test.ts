@@ -1,9 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import ts from "typescript";
-
 import {
   ConfigError,
   ConfigExpressionError,
@@ -12,8 +9,10 @@ import {
   NoProviderInstalledError,
   SshAgentUnavailableError,
 } from "@lando/sdk/errors";
-import * as sdkServices from "@lando/sdk/services";
+import { RouterServiceContribution } from "@lando/sdk/schema";
 import type { LandofileServiceError } from "@lando/sdk/services";
+import * as sdkServices from "@lando/sdk/services";
+import ts from "@typescript/typescript6";
 
 import sdkPackage from "../../package.json";
 import publicSurface from "../fixtures/sdk-public-surface.json";
@@ -33,6 +32,19 @@ const normalizeSignature = (value: string): string =>
     .replace(/\s+/g, " ")
     .trim()
     .replace(/;$/, "");
+
+test("host maintenance teardown receives the contributing plugin's confined state store", () => {
+  const file = join(repoRoot, "sdk/src/plugins/module.ts");
+  const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+  const contract = source.statements.find(
+    (statement): statement is ts.InterfaceDeclaration =>
+      ts.isInterfaceDeclaration(statement) && statement.name.text === "HostMaintenanceContribution",
+  );
+  const teardown = contract?.members.find((member) => member.name?.getText(source) === "teardown");
+  expect(teardown === undefined ? undefined : normalizeSignature(teardown.getText(source))).toBe(
+    normalizeSignature(publicSurface.hostMaintenanceTeardownSignature),
+  );
+});
 
 // Every `Context.Service` contract lives in its own module under `sdk/src/services/`; `index.ts`
 // only re-exports them. Parse the whole directory so a shape extracted into a named interface in
@@ -102,6 +114,11 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
+  test("matches router contribution fields", () => {
+    expect(Object.keys(RouterServiceContribution.fields).sort()).toEqual(
+      publicSurface.routerContributionFields,
+    );
+  });
   test("matches every ServiceFeatureContext member signature", () => {
     const members = interfaces.get("ServiceFeatureContext")?.members;
     expect(members?.map((member) => normalizeSignature(member.getText())).sort()).toEqual(

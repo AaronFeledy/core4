@@ -60,7 +60,7 @@ models `init` and config inspection without starting containers.
 id: my-first-guide
 provider: test
 timeout: 60000
-tags: [beta, docs, authoring]
+tags: [docs, authoring]
 ---
 
 # Create an app from the empty recipe
@@ -157,6 +157,58 @@ The `expect` prop of `<Verify>` is a matcher:
 
 Those are the only operators. `exact`, `allOf`, and `oneOf` are rejected,
 and a partial object may not use any of those names as a key.
+
+## How a command runs
+
+Write `command` exactly as a reader would type it into a POSIX shell such as
+bash or zsh. The scenario runs the argument list that shell would produce,
+without starting a shell:
+
+- Single quotes keep everything literal, double quotes allow `\"`, `\\`,
+  `\$`, and `` \` `` escapes, and a backslash outside quotes escapes the next
+  character. `''` passes an empty argument.
+- Anything a shell would interpret must be quoted: `|`, `&`, `;`, `<`, `>`,
+  `(`, `)`, `$`, backticks, `*`, `?`, `[`, `{`, `}`, `!`, and a `~` or `#` at
+  the start of a word. Write `--jq '.result | keys'`, not `--jq .result|keys`.
+- A command a shell cannot read the same way fails `bun run lint:guides`
+  with `guide.command.syntax` at the component's line. Interpolated values
+  count: `--name '{{appName}}'` keeps a value with spaces in one argument.
+
+When an attribute needs both quote characters, use a template literal:
+
+```mdx
+<Run command={`lando config set appEnv '{"TEAM":"platform"}'`} />
+```
+
+### What a default scenario runs
+
+A scenario without `layer="e2e"` runs the real `lando` command in process
+against an in-memory provider. `lando start`, `stop`, `restart`, `poweroff`,
+and `destroy` take their real code paths: start plans the app and records
+its applied plan, later commands read that record, and destroy removes it.
+No container runs, so command output from inside a service is the test
+provider's echo of the command, and routes go to an in-memory router.
+Use `layer="e2e"` for anything that needs a real container.
+
+Each in-process invocation receives an explicit working directory, environment,
+buffered renderer IO, and exit-status sink. Scenarios have separate Lando data,
+cache, configuration, and system-plugin roots, so global-app state stays within
+one scenario. Fixture paths resolve from the repository root captured by the
+harness. Commands never change the host process directory or replace its streams.
+For a static-site fetch, use an e2e scenario with `<Cleanup />` and
+`lando destroy -y`.
+
+`<Verify event="post-start" />` passes when the most recent CLI command in
+the scenario published that event, so put it right after the command:
+
+```mdx
+<Run command="lando stop --format=json" />
+<Verify event="pre-stop" />
+<Verify event="post-stop" />
+```
+
+e2e commands run in a separate process and publish no events to the
+scenario, so assert their output instead.
 
 ## How variables bind
 
@@ -264,6 +316,36 @@ See [public transcripts](../guides/authoring/public-transcripts.mdx) for
 the reader-facing description of the public artifact and
 [e2e smoke scenarios](../guides/authoring/e2e-smoke-scenarios.mdx) for the
 real-provider layer.
+
+## Register a new fixture
+
+A new directory under `docs/guides/<guide-id>/fixtures/<name>/` is checked
+by four tests outside the guide tooling. `lint:guides`, `dev:guides`,
+`check:guide-coverage`, and `check:public-transcripts` don't run them, so
+finish these steps from the repository root before you push:
+
+1. Record the fixture in the golden corpus, then commit the changed
+   `landofile/test/fixtures/golden-corpus-digests.json`. The update stores a
+   digest for an app that loads, or the error tag for one that fails to load.
+   Only your fixture's entry should change.
+
+   ```sh
+   UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts
+   ```
+
+2. If the fixture is deliberately invalid authoring input, put
+   `# lando-lint: expect-invalid <reason>` on line 1 of its `.lando.yml`.
+   `lint:guides` fails a marked fixture that decodes and an unmarked one that
+   doesn't. Nothing else needs registering: the provenance test accepts a
+   fixture that can't compose when it fails with the error tag step 1
+   recorded, and the schema parity test reads the marker.
+
+3. Run the four tests in one command. Require exit status 0 and a positive
+   test count.
+
+   ```sh
+   bun test landofile/test/pipeline/golden-corpus.test.ts landofile/test/provenance-invariant.test.ts sdk/test/schema/landofile-parity.test.ts core/test/guides/fixture-lint-plan-parity.test.ts
+   ```
 
 ## Register coverage
 

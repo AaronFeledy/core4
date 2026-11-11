@@ -1,5 +1,5 @@
+import { MalformedCliFlagValueError } from "@lando/sdk/errors";
 import { Effect } from "effect";
-
 import {
   APPS_LIST_STATUSES,
   AppsListResultSchema,
@@ -9,11 +9,9 @@ import {
   listServicesWithPrune,
   renderAppsListResult,
 } from "../../commands/list";
-import { MalformedCliFlagValueError } from "../../flag-value-validation";
-import { Flags } from "../../spec/metadata";
-
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { booleanFlag, formatFlag, specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 const extractFormat = (input: unknown): "json" | "table" =>
   formatFlag(specFlagsOf(input), ["json", "table"], "table");

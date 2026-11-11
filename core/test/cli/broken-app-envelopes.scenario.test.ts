@@ -10,17 +10,17 @@ const cases = [
   ["dual", "app:config", "app:config", "LandofileFormConflictError", 1],
   ["parse", "start", "app:start", "LandofileParseError", 1],
   ["parse", "info", "app:info", "LandofileParseError", 1],
-  ["parse", "hello", "app:hello", "ToolingCommandUnavailableError", 1],
+  ["parse", "hello", "app:hello", "LandofileParseError", 1],
   ["parse", "stop", "app:stop", null, 0],
   ["parse", "app:config", "app:config", "LandofileParseError", 1],
   ["missing", "start", "app:start", "LandofileNotFoundError", 1],
   ["missing", "info", "app:info", "LandofileNotFoundError", 1],
-  ["missing", "hello", "cli:unknown-command", "UnknownCommandError", 1],
+  ["missing", "hello", "cli:unknown-command", "UnknownCommandError", 2],
   ["missing", "stop", "app:stop", "LandofileNotFoundError", 1],
   ["missing", "app:config", "app:config", "LandofileNotFoundError", 1],
   ["marker", "start", "app:start", "LandofileNotFoundError", 1],
   ["marker", "info", "app:info", "LandofileNotFoundError", 1],
-  ["marker", "hello", "cli:unknown-command", "UnknownCommandError", 1],
+  ["marker", "hello", "cli:unknown-command", "UnknownCommandError", 2],
   ["marker", "stop", "app:stop", "LandofileNotFoundError", 1],
   ["marker", "app:config", "app:config", "LandofileNotFoundError", 1],
 ] as const;
@@ -86,13 +86,6 @@ for (const [kind, command, commandId, errorTag, exitCode] of cases) {
         const diagnostic = Object.fromEntries(Object.entries(error));
         expect(diagnostic._tag).toBe(errorTag);
         expect(diagnostic.remediation).toMatch(/\S/u);
-        if (errorTag === "ToolingCommandUnavailableError") {
-          expect(diagnostic).toMatchObject({
-            reason: "missing-cache",
-            sourcePath: join(fixture.root, ".lando.yml"),
-            remediation: expect.stringContaining("lando app:cache:refresh"),
-          });
-        }
       }
       if (errorTag === "LandofileNotFoundError") {
         expect(lastEnvelope(result.stdout)).toMatchObject({

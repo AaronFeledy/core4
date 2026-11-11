@@ -1,11 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema, Stream } from "effect";
-import {
-  compileTestLandofile,
-  toolingExecutionLayer,
-  toolingValueResolverLayer,
-} from "./support/compiled-landofile.ts";
-
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -26,9 +19,14 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
+import { Effect, Layer, Schema, Stream } from "effect";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");
@@ -85,7 +83,7 @@ const makeProvider = (
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -314,4 +312,5 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

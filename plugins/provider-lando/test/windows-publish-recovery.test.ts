@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { AbsolutePath, landoNetworkingPlan } from "@lando/sdk/schema";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
-
+import { Effect } from "effect";
 import { savePublishedContainerReceipt } from "../src/windows-nft-receipt.ts";
 import {
   WINDOWS_COMPAT_NETWORK_LIST_PATH,
@@ -17,6 +14,7 @@ import {
   supportsWindowsPublishedRecovery,
   withPublishedRecoveryAfterLifecycle,
 } from "../src/windows-publish-recovery.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const chain = "nv_3aedd499_10_89_3_0_nm24_dnat";
 const networkId = "3aedd499152655a20462dcc5c661a54070e0677a5a1b40ab1a323300bf0dd0a1";
@@ -159,7 +157,7 @@ test("uses strict Docker-compatible network responses from the production endpoi
       Id: networkId,
       Name: "lando-vm-generation",
       IPAM: { Config: [{ Subnet: "10.89.3.0/24" }] },
-      Containers: { router: { Name: "lando-global-traefik", IPv4Address: "10.89.3.3/24" } },
+      Containers: { router: { Name: "lando-global--traefik", IPv4Address: "10.89.3.3/24" } },
     }),
     networkListBody: JSON.stringify([{ Id: networkId }]),
   });
@@ -223,7 +221,7 @@ test("Podman facts reject invalid container ports and ambiguous attachments", ()
     },
     network: {
       ...input.network,
-      Containers: { router: { Name: "lando-global-traefik", IPv4Address: "10.89.3.3/24" } },
+      Containers: { router: { Name: "lando-global--traefik", IPv4Address: "10.89.3.3/24" } },
     },
   });
   expect(compatible.liveAddresses).toEqual(new Set(["10.89.3.3"]));

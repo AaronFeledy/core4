@@ -24,10 +24,11 @@ new content. The first `lando start` serves a page.
 
 ## Limitations
 
-- The recipe pins one Hugo extended release in the builder image rather than
-  shipping a dedicated `hugo` service type. A first-class `hugo` service type
-  is deferred to Beta.
+- There is no dedicated `hugo` service type. The recipe pins one Hugo extended
+  release in the `node:lts` builder image; edit the `build.artifact` step in
+  the Landofile to use another release.
 - The recipe assumes Hugo's default `public/` output. If you set `publishDir`
   in your Hugo config, point `webroot` on `web` at the new directory.
-- The static frontend serves files only; advanced routing/rewrites are
-  deferred.
+- The static frontend serves files only. The `static:nginx` service type has
+  no routing or rewrite options; handle redirects in your Hugo config or
+  switch `web` to the `nginx` service type with your own configuration.

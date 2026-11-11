@@ -2,11 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import * as ConfigLayer from "@lando/engine/services/config";
-import { ServiceName } from "@lando/sdk/schema";
-import { Effect, Exit, Layer, Schema } from "effect";
-import { literalLandofile } from "../_support/value-contracts.ts";
-
 import {
   type AppConfigResult,
   AppConfigResultSchema,
@@ -14,9 +9,13 @@ import {
   renderAppConfigResult,
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
+import * as ConfigLayer from "@lando/engine/services/config";
 import { rememberLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
+import { ServiceName } from "@lando/sdk/schema";
+import { Effect, Layer, Schema } from "effect";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -277,24 +276,26 @@ describe("lando app:config", () => {
     expect(renderAppConfigResult(result, "table")).toBe("");
   });
 
-  test("rejects an unrecognized subcommand instead of silently defaulting to view", async () => {
-    const layer = Layer.succeed(
-      LandofileService,
-      LandofileService.of({
-        discover: Effect.succeed(
-          literalLandofile({ name: "test-app-config", recipe: "node", services: {} }, process.cwd()),
-        ),
-      }),
-    );
-
-    const exit = await Effect.runPromiseExit(
-      appConfig({ subcommand: "bogus" as never }).pipe(
-        Effect.provide(Layer.merge(layer, testStateStoreLayer)),
-        Effect.provide(ConfigLayer.layer),
+  test("event input rejects an undeclared app config verb before app resolution", async () => {
+    const { appConfigSpec } = await import("../../src/cli/command-specs/app/config/index.ts");
+    const { validateEventCommandInput } = await import("../../src/cli/event-command-input.ts");
+    const error = await Effect.runPromise(
+      Effect.flip(
+        validateEventCommandInput(appConfigSpec, {
+          flags: {},
+          args: { subcommand: "bogus" },
+          raw: [],
+        }),
       ),
     );
-
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(error).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: "app:config",
+      field: "subcommand",
+      kind: "arg",
+      reason: "option",
+      remediation: "subcommand takes one of: view, get, set, unset, edit, validate, describe.",
+    });
   });
 
   test("CLI rejects a mistyped subcommand instead of succeeding as a view", async () => {
@@ -305,13 +306,21 @@ describe("lando app:config", () => {
       );
       const result = await runCli(["app:config", "bogus", "--format", "json"], dir);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(2);
       const envelope = JSON.parse(result.stdout) as {
         readonly ok?: boolean;
         readonly error?: { readonly message?: string };
       };
       expect(envelope.ok).toBe(false);
-      expect(envelope.error?.message).toContain("bogus");
+      expect(envelope.error?.message).toContain("subcommand");
+      expect(JSON.parse(result.stdout).error).toMatchObject({
+        _tag: "CommandInputValidationError",
+        target: "app:config",
+        field: "subcommand",
+        kind: "arg",
+        reason: "option",
+        remediation: "subcommand takes one of: view, get, set, unset, edit, validate, describe.",
+      });
     });
   });
 

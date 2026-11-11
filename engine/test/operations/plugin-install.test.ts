@@ -2,11 +2,9 @@ import { expect, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
+import { writeFileAtomic } from "@lando/state-store/atomic";
 import { Effect } from "effect";
-
 import { finalizePluginInstall, validatePluginManifest } from "../../src/operations/plugin-install.ts";
-import { recordInstalledPlugin } from "../../src/plugins/installed-registry.ts";
 
 test("reports the offending key path when a plugin manifest contains an excess key", async () => {
   // Given
@@ -55,8 +53,8 @@ test("restores previous registry bytes when install recording publishes then rej
         finalizePluginInstall(
           { pluginsRoot, entry, stagedPath },
           {
-            recordInstalledPlugin: async (path, installed) => {
-              await recordInstalledPlugin(path, installed);
+            writeFileAtomic: async (path, installed) => {
+              await writeFileAtomic(path, installed);
               throw new Error("directory sync failed");
             },
           },
@@ -68,6 +66,44 @@ test("restores previous registry bytes when install recording publishes then rej
     expect(await readFile(registryPath, "utf8")).toBe(registry);
     expect((await lstat(previousPath)).isDirectory()).toBe(true);
     await expect(lstat(entry.path)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("refuses to install over a linked plugin with a typed error and keeps the link", async () => {
+  // Given a registry entry linked from a local checkout
+  const root = await mkdtemp(join(tmpdir(), "lando-plugin-install-linked-"));
+  const pluginsRoot = join(root, "plugins");
+  const registryPath = join(pluginsRoot, "registry.json");
+  const linked = {
+    example: {
+      name: "example",
+      version: "0.0.0",
+      path: join(pluginsRoot, "example"),
+      source: "linked",
+      linkedPath: join(root, "checkout"),
+    },
+  };
+  try {
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(registryPath, `${JSON.stringify(linked, null, 2)}\n`);
+    const before = await readFile(registryPath, "utf8");
+
+    // When an install of the same name is finalized
+    const failure = await Effect.runPromise(
+      Effect.flip(
+        finalizePluginInstall({
+          pluginsRoot,
+          entry: { name: "example", version: "1.0.0", path: join(pluginsRoot, "example", "1.0.0") },
+        }),
+      ),
+    );
+
+    // Then it fails as a tagged error that names the unlink step, and the link is untouched
+    expect(failure).toMatchObject({ _tag: "NotImplementedError", commandId: "meta:plugin:add" });
+    expect(failure.remediation).toContain("lando meta:plugin:unlink example");
+    expect(await readFile(registryPath, "utf8")).toBe(before);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

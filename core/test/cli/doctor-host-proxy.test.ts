@@ -4,29 +4,27 @@ import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
-import { TestClock } from "effect/testing";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { ServiceExecError } from "@lando/sdk/errors";
-import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
-
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   type HostProxyWorkerRecord,
   writeWorkerRecord as writeWorkerRecordV2,
 } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
+import { ServiceExecError } from "@lando/sdk/errors";
+import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { type Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
+import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
+import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import {
   buildHostProxyAllowlistDoctorCheck,
   hostProxyAllowlistFreshness,
 } from "../../src/cli/commands/doctor-host-proxy-allowlist.ts";
 import { HostProxyDoctorFileSystem } from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
-import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
-import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];
@@ -103,7 +101,13 @@ const runDoctor = (
     doctor(env === undefined ? {} : { env }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            buildRegistry({
+              ...provider,
+              list: (filter) => (filter.app === undefined ? Effect.succeed([]) : provider.list(filter)),
+            }),
+          ),
           Layer.succeed(ConfigService, ConfigService.of(buildConfigService(userDataRoot))),
           Layer.succeed(PathsService, makeLandoPaths({ userDataRoot, platform: "linux", env: {} })),
         ),

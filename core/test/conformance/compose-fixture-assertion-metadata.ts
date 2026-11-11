@@ -31,6 +31,7 @@ export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureA
   init: { assertion: "direct" },
   networks: { assertion: "networks" },
   ports: { assertion: "published-endpoints" },
+  pull_policy: { assertion: "direct" },
   tmpfs: { assertion: "tmpfs" },
   user: { assertion: "direct" },
   volumes: { assertion: "volumes" },

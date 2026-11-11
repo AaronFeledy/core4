@@ -11,6 +11,11 @@ import type {
 } from "../errors/index.ts";
 import type { DownloadRequest, DownloadResult, DownloaderCapabilities } from "../schema/index.ts";
 
+/** True only during explicit online acquisition; downloaders retry transient failures only while true. */
+export const OnlineAcquisition = Context.Reference<boolean>("@lando/sdk/OnlineAcquisition", {
+  defaultValue: () => false,
+});
+
 export type DownloadError =
   | DownloadFetchError
   | DownloadChecksumError

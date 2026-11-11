@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Schema } from "effect";
-
 import { RecipeMissingAnswerError } from "@lando/sdk/errors";
 import { RecipePrompt } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import {
   PromptCancelledError,

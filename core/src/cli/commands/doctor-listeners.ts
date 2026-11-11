@@ -26,6 +26,11 @@ const collectListeners = Effect.fnUntraced(function* (
     );
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(target.plan);
+  if ((yield* provider.getStatus).state === "idle")
+    return skipped(
+      "app-listeners",
+      `Provider ${provider.id} holding the applied app is idle; no listeners were inspected.`,
+    );
   const running = yield* provider.list({ app: target.plan.id });
   const results = yield* Effect.forEach(
     Object.values(target.plan.services),
@@ -35,7 +40,7 @@ const collectListeners = Effect.fnUntraced(function* (
       if (expected === undefined)
         return Effect.succeed(skipped(section, "No expected TCP listener is recorded in the applied plan."));
       const observed = running.find((entry) => entry.service === service.name);
-      if (observed === undefined || (observed.state ?? observed.status) !== "running")
+      if (observed === undefined || observed.status !== "running")
         return Effect.succeed(
           skipped(section, "The service is not running; no listener observation was attempted."),
         );

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import {
   ELASTICSEARCH_FEATURE_ID,
@@ -71,7 +70,7 @@ describe("elasticsearch ServiceType", () => {
       expect(plan.command).toBeUndefined();
       const volumes = plan.mounts.filter((mount) => mount.type === "volume");
       expect(volumes).toHaveLength(1);
-      expect(volumes[0]?.store).toBe("myapp-elasticsearch-data");
+      expect(volumes[0]?.store).toBe("lando-myapp--search--elasticsearch-data");
       expect(String(volumes[0]?.target)).toBe("/usr/share/elasticsearch/data");
       expect(volumes[0]?.readOnly).toBe(false);
       expect(plan.endpoints).toEqual([

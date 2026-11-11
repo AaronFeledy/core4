@@ -1,12 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import type { HostPlatform } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import {
   type LoopbackPortReaders,
@@ -37,6 +35,19 @@ const healthy = (port: number): LoopbackPortSnapshot =>
 
 const foreign = (port: number): LoopbackPortSnapshot =>
   snapshot(port, { listening: true, comm: "nginx", kind: "foreign" });
+
+const otherDataRoot = (
+  port: number,
+  ownerRuntimeBinDir = "/other/share/lando/runtime/bin",
+): LoopbackPortSnapshot =>
+  snapshot(port, {
+    listening: true,
+    comm: "rootlessport",
+    kind: "other-data-root-forwarder",
+    ownerRuntimeBinDir,
+    pid: 4242,
+    exe: `${ownerRuntimeBinDir}/rootlessport`,
+  });
 
 const unknown = (port: number): LoopbackPortSnapshot => snapshot(port, { listening: true, kind: "unknown" });
 
@@ -378,6 +389,94 @@ describe("makeLeftoverProxyPortsCheck", () => {
       expect(reports[0]?.context.ports).toBe("8080");
     } finally {
       acquisition.cleanup();
+    }
+  });
+  test("reports another data root live forwarder without leftover kill remediation", async () => {
+    const ownerBin = "/home/user/.local/share/lando-other/runtime/bin";
+    const readers = readersFor({
+      [TRAEFIK_HTTP_PORT]: otherDataRoot(TRAEFIK_HTTP_PORT, ownerBin),
+      [TRAEFIK_HTTPS_PORT]: free(TRAEFIK_HTTPS_PORT),
+    });
+
+    const thisRoot = mkdtempSync(join(tmpdir(), "lando-leftover-this-"));
+    try {
+      const reports = await runCheck(readers, "linux", undefined, thisRoot);
+
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({
+        name: "proxy-loopback-ports",
+        status: "warn",
+        severity: "warn",
+        runtimeStatus: "other-data-root-forwarder",
+        runtime: { running: true },
+      });
+      expect(reports[0]?.context.ports).toBe(String(TRAEFIK_HTTP_PORT));
+      expect(reports[0]?.context.ownerRuntimeBinDir).toBe(ownerBin);
+      const remediation = joinedSolutions(reports[0]?.solutions ?? []);
+      expect(remediation).toContain("Another Lando data root");
+      expect(remediation).toContain(ownerBin);
+      expect(remediation).not.toContain("lando global:stop");
+      expect(remediation).not.toContain("terminate the leftover");
+      expect(remediation).not.toContain("lando setup");
+    } finally {
+      rmSync(thisRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps leftover kill remediation when exe is under this runtimeBinDir", async () => {
+    const readers = readersFor({
+      [TRAEFIK_HTTP_PORT]: leftover(TRAEFIK_HTTP_PORT),
+      [TRAEFIK_HTTPS_PORT]: free(TRAEFIK_HTTPS_PORT),
+    });
+    const thisRoot = mkdtempSync(join(tmpdir(), "lando-leftover-ours-"));
+    try {
+      const reports = await runCheck(readers, "linux", undefined, thisRoot);
+      expect(reports).toHaveLength(1);
+      expect(reports[0]?.runtimeStatus).toBe("leftover-rootlessport");
+      const remediation = joinedSolutions(reports[0]?.solutions ?? []);
+      expect(remediation).toContain("lando global:stop");
+      expect(remediation).toContain("rootlessport");
+    } finally {
+      rmSync(thisRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("emits both leftover and other-data-root reports when ports differ in origin", async () => {
+    const ownerBin = "/var/tmp/other-lando/runtime/bin";
+    const readers = readersFor({
+      [TRAEFIK_HTTP_PORT]: leftover(TRAEFIK_HTTP_PORT),
+      [TRAEFIK_HTTPS_PORT]: otherDataRoot(TRAEFIK_HTTPS_PORT, ownerBin),
+    });
+
+    const reports = await runCheck(readers);
+    expect(reports).toHaveLength(2);
+    expect(reports[0]?.runtimeStatus).toBe("leftover-rootlessport");
+    expect(reports[0]?.context.ports).toBe(String(TRAEFIK_HTTP_PORT));
+    expect(reports[1]?.runtimeStatus).toBe("other-data-root-forwarder");
+    expect(reports[1]?.context.ports).toBe(String(TRAEFIK_HTTPS_PORT));
+    const otherRemediation = joinedSolutions(reports[1]?.solutions ?? []);
+    expect(otherRemediation).not.toContain("lando global:stop");
+  });
+
+  test("system reader classifies other-root exe via runtimeBinDir from makeLandoPaths", async () => {
+    const seen: Array<string | undefined> = [];
+    const ownerBin = "/isolated/other/runtime/bin";
+    const readers: LoopbackPortReaders = {
+      readPort: async (port, _platform, _role, runtimeBinDir) => {
+        seen.push(runtimeBinDir);
+        if (port === TRAEFIK_HTTP_PORT) return otherDataRoot(port, ownerBin);
+        return free(port);
+      },
+    };
+    const thisRoot = mkdtempSync(join(tmpdir(), "lando-leftover-derive-"));
+    try {
+      const reports = await runCheck(readers, "linux", undefined, thisRoot);
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen[0]).toBe(join(thisRoot, "runtime", "bin"));
+      expect(reports).toHaveLength(1);
+      expect(reports[0]?.runtimeStatus).toBe("other-data-root-forwarder");
+    } finally {
+      rmSync(thisRoot, { recursive: true, force: true });
     }
   });
 });

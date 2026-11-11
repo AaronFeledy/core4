@@ -250,11 +250,12 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
     tool: "inspect",
     field: "first",
     message: "Positional argument first cannot be omitted before a later value.",
-    remediation:
-      "Check the declared inputs for lando inspect. If metadata changed, run lando app:cache:refresh and reconnect or re-resolve the command catalog.",
+    remediation: expect.stringContaining("lando inspect"),
   };
   expect(results.cli).toMatchObject({ _tag: "Failure", failure: expected });
   expect(results.event).toMatchObject({ _tag: "Failure", failure: expected });
   expect(results.mcp).toMatchObject({ _tag: "Failure", failure: expected });
+  expect(JSON.stringify(results.event)).toBe(JSON.stringify(results.cli));
+  expect(JSON.stringify(results.mcp)).toBe(JSON.stringify(results.cli));
   expect(invocations).toHaveLength(0);
 });

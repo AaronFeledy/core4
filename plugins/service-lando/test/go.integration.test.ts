@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
@@ -22,13 +23,12 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Clock, DateTime, Effect, Layer, Schema } from "effect";
+import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import {
   compileTestLandofile,
   toolingExecutionLayer,
   toolingValueResolverLayer,
 } from "./support/compiled-landofile.ts";
-
-import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("gointtest");
@@ -181,6 +181,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
               makeProviderLayer({
                 platform: "linux",
                 podmanApi: api,
+                resolveContainerHelper,
                 sanitizeAppliedPlan: stripHostProxyRunLando,
               }),
             ),

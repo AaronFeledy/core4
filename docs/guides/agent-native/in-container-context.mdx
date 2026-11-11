@@ -3,7 +3,7 @@ id: in-container-context
 provider: test
 platforms: [linux, darwin, win32, wsl]
 timeout: 90000
-tags: [beta, docs, agent-native, info, json]
+tags: [docs, agent-native, info, json]
 ---
 
 # Inspect a running app
@@ -43,9 +43,11 @@ tags: [beta, docs, agent-native, info, json]
 `app:info --format=json` wraps its result in the same `CommandResultEnvelope`
 every non-interactive command emits: `{ "ok": true, "result": <InfoAppResult> }`.
 The [`InfoAppResult` schema reference](../../reference/schemas/info-app-result.mdx)
-lists every field. The result carries `app` (the app name, matching the
+lists every field. The result carries `app` (the current app name, matching the
 Landofile) and `services`, an array with one entry per service defined in the
-Landofile.
+Landofile. When this folder's data was first created under a different name,
+`dataName` is present with that original name; omit it from scripts when it is
+absent (it matches `app`).
 
 Read `hostProxy.runLando.availability` as configured provider support, not worker health: `available` means a selected service has the bridge configured and its provider supports it, `unavailable` includes a reason, and an absent `hostProxy` means no selected service is eligible.
 
@@ -73,7 +75,8 @@ describe planned storage and any mounts the provider observed.
 aliases are names other containers can use when the networks are running, not
 route URLs or host-file entries.
 `certs.state` is `none`, `generated`, or `custom` when the plan records a
-certificate source. `health.check`, when present, gives the ongoing probe's
+certificate source. `generated` means Lando issues and maintains the certificate
+when it starts the service; it doesn't tell you the files exist yet. `health.check`, when present, gives the ongoing probe's
 kind and timings without its command or URL. `health.state` is the provider's
 reported health status or `unknown` if it hasn't reported one; it is separate
 from the service's `status`. These plan fields can be absent on older plans,

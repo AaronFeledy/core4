@@ -1,5 +1,3 @@
-import type { Effect } from "effect";
-
 import {
   type ProgressEmitter,
   type TaskSpec,
@@ -7,6 +5,7 @@ import {
   makeTaskTree,
   runWithTaskTree,
 } from "@lando/sdk/task-progress";
+import type { Effect } from "effect";
 
 export const destroyTreeId = (planId: string): string => `destroy-${planId}`;
 

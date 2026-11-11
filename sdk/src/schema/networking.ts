@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { AgentSocketProviderCapabilities } from "./agent-forwarding.ts";
 
 import { ComposeKnobCapabilities } from "./compose-knob-capabilities.ts";
@@ -7,7 +6,7 @@ import { ComposePreservedPathCapabilities } from "./compose-preserved-path-capab
 import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabilities.ts";
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
-import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { CertificateName, HostAliasName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { ListenerObservation } from "./listener-observation.ts";
 import { AbsolutePath, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
@@ -23,12 +22,12 @@ const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-
  */
 export const EndpointPlan = EndpointPlanSchema;
 export type EndpointPlan = typeof EndpointPlan.Type;
+export { ComposeKnobCapabilities, ComposeServiceKnobKey } from "./compose-knob-capabilities.ts";
 export {
   BindAddress,
   InternalEndpoint,
   PublishedEndpoint,
 } from "./endpoint.ts";
-export { ComposeKnobCapabilities, ComposeServiceKnobKey } from "./compose-knob-capabilities.ts";
 
 /**
  * Route reference attached to a service — points at AppPlan.routes by index.
@@ -68,7 +67,10 @@ export const RoutePlan = Schema.Struct({
         "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
     }),
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
-  hostname: RouteHostname,
+  hostname: RouteHostname.annotateKey({
+    description:
+      "Host header pattern. Planning requires an https or both route's wildcards to sit only in the leftmost label, with at least one label after it, so a certificate can cover the route.",
+  }),
   /** TLS scheme (`http`, `https`, `both`). */
   scheme: Schema.Literals(["http", "https", "both"]),
   /** Service name this route targets. */
@@ -159,13 +161,26 @@ export type CheckResult = typeof CheckResult.Type;
  */
 export const CertificatePlan = Schema.Struct({
   /** Common name. */
-  cn: Schema.String,
+  cn: CertificateName,
   /** Subject Alt Names. */
-  sans: Schema.Array(Schema.String),
+  sans: Schema.Array(CertificateName),
   /** CA id this cert was issued by. */
   caId: Schema.String,
 });
 export type CertificatePlan = typeof CertificatePlan.Type;
+
+/** Leaf certificate request a `CertificateAuthority` decodes before it issues anything. */
+export const CertificateSpec = Schema.Struct({
+  cn: CertificateName.annotateKey({ description: "Common name of the leaf certificate." }),
+  sans: Schema.Array(CertificateName).annotateKey({
+    description: "Subject alternative names: DNS names, leftmost *. wildcards, or IP addresses.",
+  }),
+}).annotate({
+  identifier: "CertificateSpec",
+  title: "Certificate Spec",
+  description: "Leaf certificate request names, validated before a certificate authority issues them.",
+});
+export type CertificateSpec = typeof CertificateSpec.Type;
 
 /**
  * Dedicated hostname containers use to reach a debugger/IDE on the host.
@@ -184,7 +199,7 @@ export const HOST_GATEWAY_TARGET = "host-gateway" as const;
  * Host alias — extra `/etc/hosts` entry inside the service container.
  */
 export const HostAliasPlan = Schema.Struct({
-  hostname: Schema.String,
+  hostname: HostAliasName,
   ip: Schema.String,
 });
 export type HostAliasPlan = typeof HostAliasPlan.Type;
@@ -437,7 +452,7 @@ export const AppRef = Schema.Struct({
   id: Schema.String,
   /**
    * Materialized app root (user app root, `<userDataRoot>/global/`, or
-   * `<userCacheRoot>/scratch/<id>/root/`).
+   * `<userDataRoot>/scratch/<id>/root/`).
    */
   root: AbsolutePath,
 });

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import { TestClock } from "effect/testing";
 import { renderTraefikDashboardConfig } from "../src/dashboard.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import {
   appCertificateFiles,
   dashboardConfigFile,
@@ -11,7 +12,6 @@ import {
   defaultTlsFile,
   routeFile,
 } from "../src/proxy-paths.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 import { renderTraefikDefaultTlsConfig, renderTraefikDynamicConfig } from "../src/routing.ts";
 import { certificatePem, privateKeyPem } from "./current-certificate-fixture.ts";
 import { app, httpsRoutes } from "./proxy-tls-harness.ts";
@@ -76,8 +76,8 @@ test.each(["linux", "darwin", "wsl"] as const)(
     fixture.files.set(
       routeFile(paths, app),
       renderTraefikDynamicConfig([route], app, {
-        certFile: "/etc/traefik/dynamic/certs/demo%2Fapp.crt",
-        keyFile: "/etc/traefik/dynamic/certs/demo%2Fapp.key",
+        certFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.crt`,
+        keyFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.key`,
       }),
     );
     let restarts = 0;

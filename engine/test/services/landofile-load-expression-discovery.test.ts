@@ -1,14 +1,12 @@
+import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { LandofileLoadOutsideRootError, LandofileValidationError } from "@lando/sdk/errors";
 import { GlobalConfig, ServiceName } from "@lando/sdk/schema";
 import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
 
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 import { PEM, discover, discoverFailure, withApp } from "./landofile-load-expression-support.ts";

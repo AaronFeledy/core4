@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
 import type { DockerApiClient, DockerHttpRequest, DockerHttpResponse } from "@lando/provider-docker";
@@ -13,6 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");
@@ -24,6 +23,7 @@ const metadata = {
 };
 
 const mailpitRef = "axllent/mailpit:v1.30.1";
+const builtRef = "lando-build-docker-mailpit-key";
 
 const makeService = (name: string, ref: string, compose?: Record<string, unknown>): ServicePlan => ({
   name: ServiceName.make(name),
@@ -145,6 +145,19 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
     }
     if (path.endsWith("/stop")) return { status: 204, body: "" };
     if (method === "DELETE") return { status: 204, body: "" };
+    if (method === "GET" && path.startsWith("/containers/json?")) {
+      return {
+        status: 200,
+        body: JSON.stringify(
+          Array.from(existing).map((name) => ({
+            Id: `${name}-id`,
+            Names: [`/${name}`],
+            State: running.has(name) ? "running" : "exited",
+            Labels: { "dev.lando.app": "mailpit-app" },
+          })),
+        ),
+      };
+    }
     return { status: 500, body: '{"message":"unexpected request"}' };
   };
   const api = {
@@ -246,6 +259,22 @@ describe("provider-docker pullArtifact", () => {
     expect(fake.requests).toEqual([`GET /images/${encodeURIComponent(mailpitRef)}/json`]);
   });
 
+  test("forwards the requested platform on an artifact pull", async () => {
+    // Given
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+
+    // When
+    await Effect.runPromise(
+      provider.pullArtifact({ ref: mailpitRef, policy: "always", platform: "linux/arm64" }),
+    );
+
+    // Then
+    expect(fake.requests).toContain(
+      `POST ${buildImagePullRequest(mailpitRef, dockerPullDialect, { platform: "linux/arm64" }).path}`,
+    );
+  });
+
   test("POSTs /images/create and returns providerId docker with the ref", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
@@ -302,7 +331,7 @@ describe("provider-docker apply image pull", () => {
 
     const inspect = fake.requests.indexOf(`GET /images/${encodeURIComponent(mailpitRef)}/json`);
     const pull = fake.requests.indexOf(`POST ${buildImagePullRequest(mailpitRef, dockerPullDialect).path}`);
-    const create = fake.requests.indexOf("POST /containers/create?name=lando-mailpit-app-mailpit");
+    const create = fake.requests.indexOf("POST /containers/create?name=lando-mailpit-app--mailpit");
     expect(inspect).toBeGreaterThan(-1);
     expect(pull).toBeGreaterThan(inspect);
     expect(create).toBeGreaterThan(pull);
@@ -347,6 +376,34 @@ describe("provider-docker apply image pull", () => {
     expect(startError.remediation).toContain("lando doctor --provider=docker");
     expect(fake.requests.filter((entry) => entry.startsWith("POST /images/create?"))).toHaveLength(1);
     expect(fake.requests.filter((entry) => entry.startsWith("POST /containers/create"))).toHaveLength(2);
+  });
+
+  test.each([
+    ["is missing before create", {}],
+    [
+      "is missing only at create",
+      {
+        images: new Set([builtRef]),
+        createStatuses: [404, 201],
+        createBody: JSON.stringify({ message: `No such image: ${builtRef}` }),
+      },
+    ],
+  ] as const)("never pulls a Lando-built image that %s", async (_label, options) => {
+    // Given a service whose image a Lando build produced.
+    const fake = makeFakeApi(options);
+    const plan = makePlan([
+      { ...makeService("mailpit", builtRef), artifact: { kind: "ref", ref: builtRef, origin: "build" } },
+    ]);
+
+    // When
+    const failure = await applyFailure(plan, fake.api);
+
+    // Then
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect((failure as ProviderUnavailableError).remediation).toBe(
+      "Run `lando rebuild -s mailpit` to build it again.",
+    );
+    expect(fake.requests.some((entry) => entry.startsWith("POST /images/create?"))).toBe(false);
   });
 
   test("forwards an explicit service platform on pull", async () => {

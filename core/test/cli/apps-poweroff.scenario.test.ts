@@ -2,13 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
+import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { ConfigService } from "@lando/sdk/services";
-
-import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { Effect, Layer } from "effect";
 import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.ts";
 
 const noDiscover = async () => [];
@@ -150,7 +148,7 @@ describe("apps:poweroff command", () => {
 
   test("runs teardown from the host maintenance registry", async () => {
     // Given: a host maintainer that records the core-computed runtime paths.
-    const teardownInputs: Parameters<HostMaintenanceContribution["teardown"]>[0][] = [];
+    const teardownInputs: Parameters<NonNullable<HostMaintenanceContribution["teardown"]>>[0][] = [];
     const maintainer: HostMaintenanceContribution = {
       id: "fake-runtime",
       teardown: (input) => {
@@ -160,7 +158,10 @@ describe("apps:poweroff command", () => {
     };
     const services = Layer.mergeAll(
       fakeConfigService(userDataRoot),
-      Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+      Layer.succeed(
+        HostMaintenanceRegistry,
+        HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+      ),
     );
 
     // When: poweroff uses its default runtime teardown seam.

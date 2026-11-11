@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, Scope } from "effect";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import { ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import {
@@ -20,8 +20,7 @@ import {
 import { ConfigService, PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, Scope } from "effect";
 import { installEngineComposition } from "../../src/composition.ts";
 import {
   startHostProxyRunLandoSession,
@@ -33,17 +32,11 @@ import type { HostProxyShimTarget } from "../../src/subsystems/host-proxy/transp
 
 const X64_TARGET = { os: "linux", arch: "x64" } as const satisfies HostProxyShimTarget;
 const ARM64_TARGET = { os: "linux", arch: "arm64" } as const satisfies HostProxyShimTarget;
-const unusedPort = async () => {
-  throw new Error("unused landofile port in start-host-proxy test");
-};
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => "/tmp/lando-start-host-proxy-cache",
     resolveUserIncludesDir: () => "/tmp/lando-start-host-proxy-includes",
-    npmRecipeSource: { resolve: unusedPort, fetchTarball: unusedPort },
-    git: { clone: unusedPort },
-    tarball: { fetch: unusedPort, extract: unusedPort },
-    publication: { publish: unusedPort },
+    sources: {},
   },
   templates: { modules: [] },
 };

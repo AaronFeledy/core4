@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 
 import { appNameFor } from "../src/app-name.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
@@ -39,11 +39,9 @@ describe("app-name consumers", () => {
 
     expect(plan.environment.MYSQL_DATABASE).toBe(input.expected);
     expect(plan.environment.LANDO_APP_NAME).toBe(input.expected);
-    expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe(
-      `lando-${createHash("sha256").update(`${input.expected}:db:root`).digest("hex").slice(0, 24)}`,
-    );
+    expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe(DEFAULT_PASSWORD);
     expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe(
-      `${input.expected}-db-mysql-data`,
+      `lando-${input.expected}--db--mysql-data`,
     );
   });
 });

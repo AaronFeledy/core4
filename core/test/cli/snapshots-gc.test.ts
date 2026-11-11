@@ -35,7 +35,7 @@ const runDoctor = (artifacts: ReadonlyArray<VolumeSnapshotArtifact>, running = t
           select: () =>
             Effect.succeed({
               ...TestRuntimeProvider,
-              getStatus: Effect.succeed({ running }),
+              getStatus: Effect.succeed({ state: running ? "running" : "idle" }),
               ensureReady: Effect.die("must not start"),
             }),
         }),

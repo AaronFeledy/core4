@@ -1,6 +1,5 @@
 import { RouterPortsExhausted } from "@lando/sdk/errors";
 import { DEFAULT_ROUTER_HTTPS_PORTS, DEFAULT_ROUTER_HTTP_PORTS, type PortNumber } from "@lando/sdk/schema";
-import { commLooksLikeRootlessport } from "./leftover-proxy-ports-linux.ts";
 import { occupiedHopNotices } from "./occupied-port-warning.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
 
@@ -31,6 +30,8 @@ export type SchemeProbe = {
   readonly holderPid?: number;
   readonly holderCmdline?: string;
   readonly holderSystemdUnit?: string;
+  /** The host's socket-helper units carry Lando's marker, so a `lando-proxy-*` holder is Lando's. */
+  readonly socketProxyMarked?: boolean;
 };
 
 export type AcquisitionFingerprint = {
@@ -64,20 +65,12 @@ const assertNever = (value: never): never => {
   throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 };
 
-export const isOurSocketHelperHolder = (holder: string): boolean => {
-  const name = holder.toLowerCase();
-  return name.includes("systemd-socket-") || name.startsWith("lando-proxy-");
-};
-
-export const isOurLoopbackForwarder = (holder: string): boolean => {
-  const name = holder.toLowerCase();
-  return (
-    commLooksLikeRootlessport(holder) ||
-    name.includes("docker-proxy") ||
-    name.includes("rootlesskit") ||
-    isOurSocketHelperHolder(holder) ||
-    name === "traefik"
-  );
+export const isOurSocketHelperHolder = (probe: {
+  readonly holder?: string;
+  readonly holderSystemdUnit?: string;
+}): boolean => {
+  // Identify Lando's helper only via lando-proxy-* units, never truncated systemd-socket-proxyd comm.
+  return probe.holderSystemdUnit?.startsWith("lando-proxy-") === true;
 };
 
 export const uniquePorts = (left: readonly number[], right: readonly number[]): readonly number[] => {
@@ -160,7 +153,9 @@ const portsExhausted = (input: {
       "Set router.httpPort, router.httpsPort, or router.httpFallbacks / router.httpsFallbacks to unused host ports.",
   });
 
-export const classifyAcquisition = (input: ClassifyAcquisitionInput): AcquisitionDecision => {
+export const classifyAcquisition = (
+  input: ClassifyAcquisitionInput,
+): AcquisitionDecision & { readonly mode: "direct" | "occupied-hop" } => {
   const httpTryList = input.httpTryList ?? DEFAULT_HTTP_TRY_LIST;
   const httpsTryList = input.httpsTryList ?? DEFAULT_HTTPS_TRY_LIST;
   const bindAddress = input.bindAddress ?? LOOPBACK_HOST;
@@ -209,16 +204,13 @@ export const classifyAcquisition = (input: ClassifyAcquisitionInput): Acquisitio
 const firstBackendPort = (
   tryList: readonly number[],
   binds: Readonly<Record<number, BindOutcome>> | undefined,
-  holders: Readonly<Record<number, string>> | undefined,
+  ownedPorts: ReadonlySet<number> | undefined,
 ): number | undefined => {
   for (const port of tryList) {
     const outcome = binds?.[port];
     if (outcome === undefined) continue;
     if (outcome.kind === "success") return port;
-    if (outcome.kind === "EADDRINUSE") {
-      const holder = holders?.[port];
-      if (holder !== undefined && isOurLoopbackForwarder(holder)) return port;
-    }
+    if (outcome.kind === "EADDRINUSE" && ownedPorts?.has(port) === true) return port;
   }
   return undefined;
 };
@@ -228,13 +220,12 @@ export const chooseHelperBindPorts = (input: {
   readonly httpsBinds?: Readonly<Record<number, BindOutcome>>;
   readonly httpTryList?: readonly number[];
   readonly httpsTryList?: readonly number[];
-  readonly httpHolders?: Readonly<Record<number, string>>;
-  readonly httpsHolders?: Readonly<Record<number, string>>;
+  readonly ownedPorts?: ReadonlySet<number>;
 }): { readonly bindHttpPort: number; readonly bindHttpsPort: number } => {
   const httpTryList = input.httpTryList ?? DEFAULT_BACKEND_HTTP_TRY_LIST;
   const httpsTryList = input.httpsTryList ?? DEFAULT_BACKEND_HTTPS_TRY_LIST;
-  const bindHttpPort = firstBackendPort(httpTryList, input.httpBinds, input.httpHolders);
-  const bindHttpsPort = firstBackendPort(httpsTryList, input.httpsBinds, input.httpsHolders);
+  const bindHttpPort = firstBackendPort(httpTryList, input.httpBinds, input.ownedPorts);
+  const bindHttpsPort = firstBackendPort(httpsTryList, input.httpsBinds, input.ownedPorts);
   if (bindHttpPort === undefined || bindHttpsPort === undefined) {
     let exhausted: "http" | "https" | "both";
     if (bindHttpPort === undefined && bindHttpsPort === undefined) {
@@ -254,5 +245,5 @@ export const chooseHelperBindPorts = (input: {
   return { bindHttpPort, bindHttpsPort };
 };
 
-export { probeBind, probeForward, probeTcpOpen } from "./port-acquisition-bind.ts";
 export type { ForwardProbeRole } from "./port-acquisition-bind.ts";
+export { probeBind, probeForward, probeTcpOpen } from "./port-acquisition-bind.ts";

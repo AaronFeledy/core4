@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { authoredInvocationSites } from "@lando/landofile/compiled-sites";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -23,11 +25,8 @@ import {
   ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
-
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
@@ -37,6 +36,7 @@ import {
   compileEffectiveTooling,
   disabledToolingSources,
 } from "../../src/planner/effective-tooling.ts";
+import { attachInvocationAuthority } from "../../src/planner/invocation-authority.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
@@ -101,11 +101,14 @@ const harness = (input: {
     metadata,
     extensions: {},
   };
-  const plan = attachEffectiveTooling(
-    input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events),
-    input.tooling,
-    {},
-    input.disabledSources,
+  const plan = attachInvocationAuthority(
+    attachEffectiveTooling(
+      input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events),
+      input.tooling,
+      {},
+      input.disabledSources,
+    ),
+    { sites: authoredInvocationSites({ tooling: input.tooling }, "<test>") },
   );
 
   const record = (label: string) => {
@@ -232,6 +235,41 @@ const harness = (input: {
       Effect.runPromise(runTooling({ name }).pipe(Effect.provide(Layer.merge(layer, sink)), Effect.result)),
   };
 };
+
+test("dynamic failure precedes task brackets and does not reach the ambient output sink", async () => {
+  const h = harness({
+    tooling: { build: { service: ":host", cmd: "body", vars: { X: { sh: "fail-var" } } } },
+    events: { "pre-build": [{ service: ":host", cmd: "pre-marker" }] },
+    failOn: "fail-var",
+    live: true,
+  });
+  const result = await h.run("build");
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ToolingExecError", variable: "X", exitCode: 7 },
+  });
+  expect(h.executed).toEqual(["fail-var"]);
+  expect(h.frames).toEqual([]);
+});
+
+test.each(["", false, 0])(
+  "inline event task keeps caller var %j and skips its dynamic command",
+  async (value) => {
+    const h = harness({
+      tooling: {
+        build: { service: ":host", cmd: "build-body" },
+        child: { service: ":host", cmd: 'echo "{{ vars.V }}"', vars: { V: { sh: "never" } } },
+      },
+      events: {
+        "pre-build": [{ task: "child", vars: { V: value } }],
+        "pre-child": [{ service: ":host", cmd: "must-not-bracket" }],
+      },
+    });
+    const result = await h.run("build");
+    expect(result._tag).toBe("Success");
+    expect(h.executed).toEqual([`echo "${value}"`, "build-body"]);
+  },
+);
 
 test.each(["command", "task"] as const)(
   "retains disabled origin for a plan-backed event %s",

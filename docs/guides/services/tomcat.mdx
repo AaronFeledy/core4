@@ -2,7 +2,7 @@
 id: tomcat
 provider: test
 timeout: 90000
-tags: [beta, docs, tomcat, service]
+tags: [docs, tomcat, service]
 ---
 
 # Add Tomcat
@@ -54,9 +54,9 @@ services:
 
 An absolute container path works too. On catalog images, Lando writes a ROOT context (`conf/Catalina/localhost/ROOT.xml`) during the image build to serve the webroot at `/`. A custom `command:` such as `catalina.sh jpda run` still serves the same webroot. Tomcat's upstream deployment defaults stay in place; Lando does not disable other webapps or WAR deployment.
 
-With a custom `image:` or `build.context`, you own Tomcat's configuration. Lando writes neither `server.xml` nor a ROOT context. Set your image's listener to match `port:`; that value still selects Lando's endpoint and healthcheck. `webroot` only sets `LANDO_WEBROOT`. An explicitly authored image matching the selected catalog's exact digest-pinned reference still uses Lando's configuration. A floating upstream tag is a custom image, not the catalog pin.
+With a custom `image:` or `build.context`, you own Tomcat's configuration. Lando writes neither `server.xml` nor a ROOT context. Set your image's listener to match `port:`; that value still selects Lando's endpoint and healthcheck. With the app mount enabled, `webroot` only sets `LANDO_WEBROOT`. An explicitly authored image matching the selected catalog's exact digest-pinned reference still uses Lando's configuration. A floating upstream tag is a custom image, not the catalog pin.
 
-`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. `appMount: /site` moves the mount. Set `appMount: false` when the service should not mount app code, and set `webroot` to an absolute container path to content the image provides; a relative or omitted `webroot` fails planning.
+`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. `appMount: /site` moves the mount. Set `appMount: false` when the service should not mount app code. On a catalog image, also set `webroot` to an absolute container path to content the image provides; a relative or omitted `webroot` fails planning. On a custom `image:` or `build.context`, leave `webroot` out: nothing would use it, so planning rejects it as unused.
 
 ## Change the HTTP port
 
@@ -69,7 +69,7 @@ services:
     port: 9090
 ```
 
-Lando bakes a reviewed, upstream-based `conf/server.xml` into every catalog image, including when `port:` is omitted or set to `8080`. Each supported major pairs an exact image version and immutable multiarch digest with its matching Apache configuration. Only the active HTTP connector's port is customized. Apache notices, listeners, realms, valves, shutdown settings, deployment defaults, and commented AJP/TLS examples stay intact. No startup script rewrites the config, and your `command:` and `entrypoint:` stay yours.
+Lando bakes a reviewed, upstream-based `conf/server.xml` into every catalog image, including when `port:` is omitted or set to `8080`. Each supported major pairs an exact image version and immutable multiarch digest with its matching Apache configuration. Lando sets the active HTTP connector's port and adds one `RemoteIpValve` so Tomcat sees the router's scheme and port. Apache notices, listeners, realms, upstream valves, shutdown settings, deployment defaults, and commented AJP/TLS examples stay intact. No startup script rewrites the config, and your `command:` and `entrypoint:` stay yours.
 
 Port `8005` fails during planning on a catalog image. Tomcat reserves it for the shutdown listener in that owned `server.xml`, so HTTP cannot share it. A custom `image:` or `build.context` drops that reservation because you own the configuration; match your Connector to `port:` yourself. Lando never appends flags to an authored `command:` or `entrypoint:`. When startup fails with a custom image or build, remediation names the setting your image must supply, such as `<Connector port="8081">` in `server.xml` for `port: 8081`.
 
@@ -114,5 +114,7 @@ on `lando.certs`, so `lando info` shows an `https://` URL after start. Set
 ```sh
 lando info --format=json
 ```
+
+The proxy ends HTTPS and forwards plain HTTP to Tomcat. On a catalog image, Lando's `server.xml` reads the proxy's `X-Forwarded-Proto` and `X-Forwarded-Port` headers, so `request.isSecure()` is `true` and `request.getRequestURL()` starts with the `https://` URL and port from `lando info`. A custom image or `build.context` owns its `server.xml`; add a `RemoteIpValve` there for the same result.
 
 </Guide>

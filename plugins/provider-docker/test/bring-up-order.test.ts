@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
-
-import { commonContainerLabels } from "@lando/container-runtime/plan";
+import { fixtureContainerLabels as commonContainerLabels } from "@lando/container-runtime/testing/exec-supervision";
 import type { DockerApiClient, DockerHttpResponse } from "@lando/provider-docker";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServicePlan } from "@lando/sdk/schema";
-import { ContainerUser } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ContainerUser, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");
@@ -162,6 +160,15 @@ const makeFakeApi = (
       }
       return { status: 204, body: "" };
     }
+    if (method === "GET" && path.startsWith("/containers/json?")) {
+      const containers = Array.from(existingNames).map((name) => ({
+        Id: ids.get(name) ?? `${name}-id`,
+        Names: [`/${name}`],
+        State: runningNames.has(name) ? "running" : "exited",
+        Labels: labels.get(name) ?? { "dev.lando.app": "bring-up-order-app" },
+      }));
+      return { status: 200, body: JSON.stringify(containers) };
+    }
     return { status: 500, body: '{"message":"unexpected request"}' };
   };
   const api: DockerApiClient = {
@@ -307,7 +314,7 @@ describe("provider-docker bringUp dependency order", () => {
     // Then
     expect(fake.execBodies).toEqual([]);
     expect(seen).toEqual([{ service: db.name, probe: db.readiness }]);
-    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-web/start");
+    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app--web/start");
   });
 
   test("missing host delegate fails before any apply request", async () => {
@@ -336,7 +343,7 @@ describe("provider-docker bringUp dependency order", () => {
   });
   test("deletes then creates a pre-existing stopped container when reconcile is true", async () => {
     // Given
-    const name = "lando-bring-up-order-app-web";
+    const name = "lando-bring-up-order-app--web";
     const fake = makeFakeApi(0, [name]);
     const plan = planWith([service("web", { dependsOn: [] })]);
     fake.labels.set(name, commonContainerLabels(plan, service("web", { dependsOn: [] })));
@@ -357,7 +364,7 @@ describe("provider-docker bringUp dependency order", () => {
 
   test("starts a pre-existing stopped container without deleting it when reconcile is false", async () => {
     // Given
-    const name = "lando-bring-up-order-app-web";
+    const name = "lando-bring-up-order-app--web";
     const fake = makeFakeApi(0, [name]);
     const plan = planWith([service("web", { dependsOn: [] })]);
     fake.labels.set(name, commonContainerLabels(plan, service("web", { dependsOn: [] })));
@@ -383,9 +390,9 @@ describe("provider-docker bringUp dependency order", () => {
     await apply(plan, fake.api);
 
     // Then
-    const dbStart = fake.requests.indexOf("POST /containers/lando-bring-up-order-app-db/start");
-    const dbExec = fake.requests.indexOf("POST /containers/lando-bring-up-order-app-db/exec");
-    const webStart = fake.requests.indexOf("POST /containers/lando-bring-up-order-app-web/start");
+    const dbStart = fake.requests.indexOf("POST /containers/lando-bring-up-order-app--db/start");
+    const dbExec = fake.requests.indexOf("POST /containers/lando-bring-up-order-app--db/exec");
+    const webStart = fake.requests.indexOf("POST /containers/lando-bring-up-order-app--web/start");
     expect(dbStart).toBeGreaterThan(-1);
     expect(dbExec).toBeGreaterThan(dbStart);
     expect(webStart).toBeGreaterThan(dbExec);
@@ -405,8 +412,8 @@ describe("provider-docker bringUp dependency order", () => {
     // Then
     expect(failure).toMatchObject({ _tag: "ServiceStartError", service: "web" });
     expect(failure.message).toContain("db:healthy");
-    expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app-web/start");
-    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-db/start");
+    expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app--web/start");
+    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app--db/start");
     expect(fake.requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
     expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
@@ -424,7 +431,7 @@ describe("provider-docker bringUp dependency order", () => {
 
     // Then
     expect(result.changed).toBe(true);
-    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-cache/start");
+    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app--cache/start");
     expect(fake.requests.filter((request) => request.endsWith("/stop"))).toHaveLength(0);
     expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toHaveLength(0);
   });
@@ -435,7 +442,7 @@ describe("provider-docker bringUp dependency order", () => {
       dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: true }],
     });
     const plan = planWith([web, healthyDb]);
-    const db = "lando-bring-up-order-app-db";
+    const db = "lando-bring-up-order-app--db";
     const fake = makeFakeApi(1, [db]);
     fake.labels.set(db, commonContainerLabels(plan, healthyDb));
 
@@ -455,8 +462,8 @@ describe("provider-docker bringUp dependency order", () => {
       dependsOn: [{ service: healthyDb.name, condition: "service_started", required: false }],
     });
     const plan = planWith([api, healthyDb, web]);
-    const apiName = "lando-bring-up-order-app-api";
-    const dbName = "lando-bring-up-order-app-db";
+    const apiName = "lando-bring-up-order-app--api";
+    const dbName = "lando-bring-up-order-app--db";
     const fake = makeFakeApi(0, [], [dbName]);
 
     // When
@@ -467,7 +474,7 @@ describe("provider-docker bringUp dependency order", () => {
     expect(fake.requests).toContain(`POST /containers/${dbName}/start`);
     expect(fake.requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
     expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
-    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-web/start");
+    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app--web/start");
     expect(fake.requests.some((request) => request.startsWith("DELETE /networks/"))).toBe(false);
   });
 
@@ -476,8 +483,8 @@ describe("provider-docker bringUp dependency order", () => {
     const apiSvc = service("api", { dependsOn: [] });
     const webSvc = service("web", { dependsOn: [] });
     const plan = planWith([apiSvc, webSvc]);
-    const apiName = "lando-bring-up-order-app-api";
-    const webName = "lando-bring-up-order-app-web";
+    const apiName = "lando-bring-up-order-app--api";
+    const webName = "lando-bring-up-order-app--web";
     const fake = makeFakeApi(0, [], [webName]);
     await applyFailure(plan, fake.api);
     const apiIdAfterFail = fake.ids.get(apiName);
@@ -507,8 +514,8 @@ describe("provider-docker bringUp dependency order", () => {
     const apiSvc = service("api", { dependsOn: [] });
     const webSvc = service("web", { dependsOn: [] });
     const plan = planWith([apiSvc, webSvc]);
-    const apiName = "lando-bring-up-order-app-api";
-    const webName = "lando-bring-up-order-app-web";
+    const apiName = "lando-bring-up-order-app--api";
+    const webName = "lando-bring-up-order-app--web";
     const fake = makeFakeApi(0, [], [webName]);
     await applyFailure(plan, fake.api);
     const apiId = fake.ids.get(apiName);
@@ -564,6 +571,6 @@ describe("provider-docker bringUp dependency order", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     else throw new TypeError("aborted Docker apply unexpectedly succeeded");
-    expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
+    expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app--cache/start");
   });
 });

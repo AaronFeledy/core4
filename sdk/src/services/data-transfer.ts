@@ -1,8 +1,4 @@
 import { Context, type Effect, type Scope, type Stream } from "effect";
-import type { StateStoreError } from "../errors/index.ts";
-import type { VolumeIdentity } from "../schema/volume-identity.ts";
-import type { VolumeInitialization } from "./volume-initialization.ts";
-
 import type {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -13,9 +9,11 @@ import type {
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SnapshotOwnershipError,
+  StateStoreError,
   VolumeNotFoundError,
 } from "../errors/index.ts";
 import type {
+  DataEndpoint,
   DataTransferProgress,
   DataTransferResult,
   DataTransferSpec,
@@ -29,6 +27,8 @@ import type {
   VolumeRef,
   VolumeSnapshotArtifact,
 } from "../schema/index.ts";
+import type { VolumeIdentity } from "../schema/volume-identity.ts";
+import type { VolumeInitialization } from "./volume-initialization.ts";
 
 export type DataMoverError =
   | DataTransferError
@@ -54,6 +54,12 @@ export class DataMover extends Context.Service<
     readonly transferStream: (
       spec: DataTransferSpec,
     ) => Stream.Stream<DataTransferProgress, DataMoverError, Scope.Scope>;
+    /**
+     * Yield source endpoint bytes for a caller-owned sink.
+     * Success means the source reached EOF and its producer exited cleanly;
+     * it does not certify sink receipt.
+     */
+    readonly read: (from: DataEndpoint) => Stream.Stream<Uint8Array, DataMoverError, Scope.Scope>;
     readonly snapshot: (
       store: VolumeRef,
       opts?: SnapshotOptions,

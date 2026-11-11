@@ -1,5 +1,11 @@
+import { recordConfigWarning } from "@lando/engine/config/config-warnings";
+import { hostEventsShellConfigError } from "@lando/engine/config/global-config";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
+import * as LandoConfigService from "@lando/engine/services/config";
 import { CORE_VERSION } from "@lando/engine/version";
 import type { ConfigError } from "@lando/sdk/errors";
+import * as StateStore from "@lando/state-store/service";
 /**
  * Safe-mode `lando doctor` entry point.
  *
@@ -11,13 +17,7 @@ import type { ConfigError } from "@lando/sdk/errors";
  * runtime-dependent sections and closes with the report.
  */
 import { Context, Effect, Layer, Option, type Scope } from "effect";
-
-import { recordConfigWarning } from "@lando/engine/config/config-warnings";
-import { hostEventsShellConfigError } from "@lando/engine/config/global-config";
-import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
-import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import * as LandoConfigService from "@lando/engine/services/config";
-import * as StateStore from "@lando/state-store/service";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
@@ -46,7 +46,7 @@ export const resilientDoctorReport = Effect.fn("Doctor.resilientReport")(
 const collectResilientDoctorReport = Effect.fnUntraced(function* (
   options: DoctorOptions,
 ): Effect.fn.Return<DoctorReport, never, RuntimeLayerFactory | Scope.Scope> {
-  const sourceEnv = { ...(options.env ?? process.env) };
+  const sourceEnv = { ...(options.env ?? (yield* CliInvocation).env) };
   const { redactor } = yield* resolveSecretsRedactor({ sourceEnv });
 
   const runtimeLayerFactory = yield* RuntimeLayerFactory;

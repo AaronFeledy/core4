@@ -23,7 +23,7 @@ const INPUT_TARGET = "Redirect input from a file with <file or a pipe.";
  * Reads a redirection operator at `index`, or returns undefined when there is none. Like Bun
  * Shell, digits directly before `<` or `>` name the descriptor even at the end of a word.
  */
-export const readRedirection = (source: string, index: number): Redirection | undefined => {
+const readOperator = (source: string, index: number): Redirection | undefined => {
   let cursor = index;
   let descriptor = "";
   while (isDigit(source[cursor])) descriptor += source[cursor++];
@@ -106,5 +106,28 @@ export const readRedirection = (source: string, index: number): Redirection | un
     end: end + 1,
     message: `Bun Shell does not support ${text} with a file name.`,
     suggestion: operator === "<" ? INPUT_TARGET : FILE_TARGET,
+  };
+};
+
+export const readRedirection = (
+  source: string,
+  index: number,
+  command: { readonly count: number; readonly groupClosed: boolean },
+): Redirection | undefined => {
+  const redirection = readOperator(source, index);
+  if (redirection === undefined) return undefined;
+  if (command.groupClosed)
+    return {
+      kind: "issue",
+      end: redirection.end,
+      message: "Bun Shell cannot redirect a ( ... ) group.",
+      suggestion: "Redirect each command inside the parentheses, or move them into a script.",
+    };
+  if (redirection.kind === "issue" || command.count <= 1) return redirection;
+  return {
+    kind: "issue",
+    end: redirection.end,
+    message: `Bun Shell accepts one redirection per command, and ${source.slice(index, redirection.end)} is a second one.`,
+    suggestion: "Write &>file or &>>file to send stdout and stderr to one file, or split the command.",
   };
 };

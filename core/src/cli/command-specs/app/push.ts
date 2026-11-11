@@ -1,7 +1,6 @@
-import { SyncResult, type SyncResult as SyncResultType } from "@lando/sdk/schema";
-
 import { confirmRemoteSyncWithInteraction } from "@lando/engine/app/remote-confirmation";
 import { appPush } from "@lando/engine/operations/remote";
+import { SyncResult, type SyncResult as SyncResultType } from "@lando/sdk/schema";
 import { renderSyncResult } from "../../commands/remote";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import {
@@ -13,6 +12,7 @@ import {
 
 export const pushSpec: LandoCommandSpec<SyncResultType> = {
   id: "app:push",
+  onlineAcquisition: true,
   summary: "Push local datasets to a remote.",
   namespace: "app",
   topLevelAlias: true,

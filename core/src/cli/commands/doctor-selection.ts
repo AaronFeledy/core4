@@ -1,16 +1,14 @@
-import { Effect, Option } from "effect";
-
-import { GlobalConfigSources } from "@lando/engine/services/config";
-
-import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
-
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   type ProviderSelectionInputs,
   type ProviderSelectionResolution,
   readProviderEnvVar,
 } from "@lando/engine/providers/precedence";
+import { GlobalConfigSources } from "@lando/engine/services/config";
+import { ProviderId } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { DoctorSelectionRecord } from "./doctor-contract";
 
 export interface DoctorSelectionOptions {
@@ -54,7 +52,11 @@ export const gatherSelectionInputs = Effect.fnUntraced(function* (
   const captured = yield* Effect.serviceOption(GlobalConfigSources);
   const providerEnv =
     options.env ??
-    (Option.isSome(captured) ? (captured.value.sources.env ? captured.value.env : {}) : process.env);
+    (Option.isSome(captured)
+      ? captured.value.sources.env
+        ? captured.value.env
+        : {}
+      : (yield* CliInvocation).env);
   const env = readProviderEnvVar(providerEnv);
   return {
     inputs: {

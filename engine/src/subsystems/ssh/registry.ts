@@ -1,8 +1,7 @@
-import { Context, Effect, Layer } from "effect";
-
 import { SshError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { FileSystem, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { Context, Effect, Layer } from "effect";
 
 import { bundledPluginModules } from "../../composition.ts";
 import { indexContributions, selectRegistration } from "../../plugins/capability-registry.ts";

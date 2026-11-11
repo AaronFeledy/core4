@@ -5,8 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
-import { Effect, Exit, Stream } from "effect";
-
 import {
   dockerCapabilitiesForHost,
   dockerCapabilitiesForPlatform,
@@ -22,6 +20,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Effect, Exit, Stream } from "effect";
 
 const listen = (server: Server, socketPath: string): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -554,7 +553,7 @@ describe("provider-docker capabilities", () => {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
       if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
       const chunks = await Effect.runPromise(
-        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+        client.stream({ method: "GET", path: "/containers/lando-myapp--web/logs?stdout=true" }).pipe(
           Stream.runCollect,
           Effect.map((collected) => Array.from(collected)),
         ),
@@ -633,7 +632,7 @@ describe("provider-docker capabilities", () => {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
       if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
       const chunks = await Effect.runPromise(
-        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+        client.stream({ method: "GET", path: "/containers/lando-myapp--web/logs?stdout=true" }).pipe(
           Stream.runCollect,
           Effect.map((collected) => Array.from(collected)),
         ),

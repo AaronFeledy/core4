@@ -1,11 +1,11 @@
-import { type Context, Effect, Schema } from "effect";
+import type { RedactionServiceShape } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { EventError } from "@lando/sdk/errors";
 import { RenderEvent } from "@lando/sdk/events";
 import type { PublishRender } from "@lando/sdk/plugins";
 import type { EventService } from "@lando/sdk/services";
-
-import type { RedactionServiceShape } from "@lando/redaction/service";
+import { type Context, Effect, Schema } from "effect";
 
 export const makePublishRender = (
   events: Context.Service.Shape<typeof EventService>,
@@ -14,7 +14,7 @@ export const makePublishRender = (
   Effect.fnUntraced(function* (event) {
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
     const decoded = yield* Schema.decodeUnknownEffect(RenderEvent)(redactor.redactValue(event)).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new EventError({
             event: event._tag,

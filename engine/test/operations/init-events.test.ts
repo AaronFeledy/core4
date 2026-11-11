@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Layer, Option, Stream } from "effect";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Effect, Layer, Option, Stream } from "effect";
 import { runAppEvent, runAppInitEvents } from "../../src/operations/events.ts";
 import * as EnvironmentResolver from "../../src/services/environment-value-resolver.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
@@ -179,7 +178,8 @@ describe("app initialization lifecycle events", () => {
     await Effect.runPromise(runAppInitEvents(plan).pipe(Effect.provide(eventRuntime(executed, published))));
 
     // Then
-    expect(executed).toEqual(["pre-init", "post-init"]);
+    // Each step's interpolated tag binds as one quoted shell word.
+    expect(executed).toEqual(["'pre-init'", "'post-init'"]);
     expect(published.filter((tag) => tag === "pre-init" || tag === "post-init")).toEqual([
       "pre-init",
       "post-init",
@@ -200,7 +200,7 @@ describe("app initialization lifecycle events", () => {
     expect(preflightIndex).toBeGreaterThan(-1);
     expect(preflightIndex).toBeLessThan(initIndex);
     expect(initIndex).toBeLessThan(preRebuildIndex);
-    expect(source).toContain("stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true })");
+    expect(source).toContain("haltAppRuntime({}, resolvedTarget, { skipInitEvents: true })");
     expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 
@@ -210,14 +210,14 @@ describe("app initialization lifecycle events", () => {
 
     // When
     const initCalls = source.match(/runAppInitEvents\(plan\)/gu) ?? [];
-    const preflightIndex = source.indexOf("yield* preflightStopApp(mysqlResolvedTarget)");
+    const preflightIndex = source.indexOf("yield* preflightStopApp(resolvedTarget)");
     const initIndex = source.indexOf("yield* runAppInitEvents(plan)");
 
     // Then
     expect(initCalls).toHaveLength(1);
     expect(preflightIndex).toBeGreaterThan(-1);
     expect(preflightIndex).toBeLessThan(initIndex);
-    expect(source).toContain("stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true })");
-    expect(source).toMatch(/mysqlResolvedTarget,\s+managed,/u);
+    expect(source).toContain("haltAppRuntime({}, resolvedTarget, { skipInitEvents: true })");
+    expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 });

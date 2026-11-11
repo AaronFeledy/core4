@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { LogLevelSelectionError, RendererSelectionError } from "@lando/sdk/errors";
 import { GlobalConfig, LOG_LEVELS } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("log-level contracts baseline", () => {
   test("decodes GlobalConfig when logLevel is omitted", () => {

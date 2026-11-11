@@ -1,10 +1,9 @@
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
-
+import { Effect } from "effect";
+import { type BindOutcome, probeBind } from "./port-acquisition.ts";
 import type { ProbedAcquisition } from "./port-acquisition-helpers.ts";
-import type { BindOutcome } from "./port-acquisition.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
+import { readHelperHopTargets } from "./socket-proxy-install.ts";
 
 export const ownedRouterPorts = Effect.fn("TraefikRouter.ownedRouterPorts")(function* (
   dependencies: TraefikProxyDependencies,
@@ -18,6 +17,31 @@ export const ownedRouterPorts = Effect.fn("TraefikRouter.ownedRouterPorts")(func
     Effect.catch(() => Effect.succeed([])),
   );
   return new Set<number>(owned);
+});
+
+export const usableHelperHopTargets = Effect.fn("TraefikRouter.usableHelperHopTargets")(function* (
+  dependencies: TraefikProxyDependencies,
+  probed: ProbedAcquisition,
+  bindAddress: string,
+) {
+  if (dependencies.socketProxy === undefined) return undefined;
+  const targets = yield* readHelperHopTargets(dependencies.socketProxy);
+  if (targets === undefined) return undefined;
+  const binds = yield* Effect.forEach([targets.httpTarget, targets.httpsTarget], (port) => {
+    const bind = probed.httpBinds[port] ?? probed.httpsBinds[port];
+    return (
+      bind === undefined ? (dependencies.probeBind ?? probeBind)(bindAddress, port) : Effect.succeed(bind)
+    ).pipe(Effect.map((observed) => ({ port, bind: observed })));
+  });
+  const owned = yield* ownedRouterPorts(
+    dependencies,
+    binds.filter(({ bind }) => bind.kind === "EADDRINUSE").map(({ port }) => port),
+  );
+  return binds.every(
+    ({ port, bind }) => bind.kind === "success" || (bind.kind === "EADDRINUSE" && owned.has(port)),
+  )
+    ? targets
+    : undefined;
 });
 
 export const reclaimRouterPorts = Effect.fn("TraefikRouter.reclaimRouterPorts")(function* (

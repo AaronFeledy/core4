@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect } from "effect";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 
 import type { LandofileShape } from "@lando/sdk/schema";
-
-import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { Effect } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const sourceCli = resolve(repoRoot, "core/bin/lando.ts");
@@ -121,21 +120,11 @@ test("Given a fresh cached task with an unsatisfied version constraint, command-
     expect(compiledResult.exitCode).toBe(1);
     expect(errorEnvelope(sourceResult.stdout)).toMatchObject({
       command: "app:guarded",
-      error: {
-        _tag: "ToolingCommandUnavailableError",
-        reason: "stale-cache",
-        staleReason: "version-constraint",
-        remediation: expect.any(String),
-      },
+      error: { _tag: "LandofileVersionConstraintError", remediation: expect.any(String) },
     });
     expect(errorEnvelope(compiledResult.stdout)).toMatchObject({
       command: "app:guarded",
-      error: {
-        _tag: "ToolingCommandUnavailableError",
-        reason: "stale-cache",
-        staleReason: "version-constraint",
-        remediation: expect.any(String),
-      },
+      error: { _tag: "LandofileVersionConstraintError", remediation: expect.any(String) },
     });
     expect(await Bun.file(sourceMarker).exists()).toBe(false);
     expect(await Bun.file(compiledMarker).exists()).toBe(false);
@@ -144,7 +133,7 @@ test("Given a fresh cached task with an unsatisfied version constraint, command-
   }
 }, 30_000);
 
-test("Given a remote include and no command cache, command-not-found performs no network or task action", async () => {
+test("Given a remote include without a fragment path, command-not-found reports subpath-invalid without network or task action", async () => {
   const source = await makeFixture("network-source");
   const compiled = await makeFixture("network-compiled");
   const sourceMarker = join(source.root, "task-ran");
@@ -179,17 +168,17 @@ test("Given a remote include and no command cache, command-not-found performs no
     expect(errorEnvelope(sourceResult.stdout)).toMatchObject({
       command: "app:offline",
       error: {
-        _tag: "ToolingCommandUnavailableError",
-        reason: "missing-cache",
-        remediation: expect.any(String),
+        _tag: "LandofileIncludeError",
+        kind: "subpath-invalid",
+        remediation: expect.stringMatching(/\S/u),
       },
     });
     expect(errorEnvelope(compiledResult.stdout)).toMatchObject({
       command: "app:offline",
       error: {
-        _tag: "ToolingCommandUnavailableError",
-        reason: "missing-cache",
-        remediation: expect.any(String),
+        _tag: "LandofileIncludeError",
+        kind: "subpath-invalid",
+        remediation: expect.stringMatching(/\S/u),
       },
     });
     expect(requests).toBe(0);

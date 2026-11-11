@@ -1,9 +1,7 @@
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { LandofileLoadFailure } from "@lando/sdk/errors";
-import { Effect, Result, Schema } from "effect";
-import { loadPathBlocked } from "./load-failures.ts";
-
 import {
   type ValueOrigins,
   isMergeDirective,
@@ -11,10 +9,11 @@ import {
   override,
   valueOriginAt,
 } from "@lando/sdk/landofile";
-
+import { Effect, Result, Schema } from "effect";
 import { hasIncludeCycle } from "./include-graph.ts";
 import { attributeIncludeError, includeError, realpathOrSelf } from "./include-guard.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
+import { loadPathBlocked } from "./load-failures.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 import type { SourceDocument } from "./pipeline/source-table.ts";
 import { type ToolingIncludeDefaults, layerIncludeDefaults } from "./tooling-include-defaults.ts";
@@ -168,7 +167,7 @@ export const resolveEntries = Effect.fnUntraced(function* (
       paths.push(filePath, ...nested.paths);
       referencedFiles.push(...fragment.referencedFiles, ...nested.referencedFiles);
     }).pipe(
-      Effect.mapError((error) => attributeIncludeError(error, entry.origin)),
+      mapFailures((error) => attributeIncludeError(error, entry.origin)),
       Effect.result,
     );
     if (Result.isFailure(result)) {

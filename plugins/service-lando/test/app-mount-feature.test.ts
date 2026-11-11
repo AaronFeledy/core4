@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { composeService } from "@lando/engine/services/feature";
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { landoAppMountFeature } from "../src/features/app-mount.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
@@ -108,6 +107,7 @@ describe("lando.app-mount", () => {
         },
         baseKind: "lando",
         appRoot: "/srv/project",
+        appSlug: "project",
         normalizedConfig: {},
         features: [{ id: definition.id, definition, config }],
       }),

@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 import { TaskStartEvent } from "../../src/events/task.ts";
 import {
   JSON_SCHEMA_NAMES,

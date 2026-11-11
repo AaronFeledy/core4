@@ -5,16 +5,16 @@
  * verified its target volume.
  */
 
-import { DateTime, Effect, Stream } from "effect";
-
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type {
   AppRef,
+  FileSyncDisposalPhase,
   FileSyncEventChunk,
   FileSyncSessionInfo,
   FileSyncSessionSpec,
   FileSyncSessionStatus,
 } from "@lando/sdk/schema";
+import { DateTime, Effect, Stream } from "effect";
 
 const ENGINE_ID = "mutagen" as const;
 const UNAVAILABLE_CLIENT_REMEDIATION =
@@ -64,9 +64,7 @@ export interface MutagenClient {
   readonly drainApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   readonly disposeApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   readonly completeAppDisposal?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
-  readonly disposalPhase?: (
-    app: AppRef,
-  ) => Effect.Effect<"absent" | "active" | "drained" | "disposing" | "completed", FileSyncStopError>;
+  readonly disposalPhase?: (app: AppRef) => Effect.Effect<FileSyncDisposalPhase, FileSyncStopError>;
   readonly version: Effect.Effect<string, FileSyncStartError>;
   readonly create: (args: MutagenCreateArgs) => Effect.Effect<void, FileSyncStartError | FileSyncDriftError>;
   /** Block until an inspected, conflict-free synchronization cycle completes. */
@@ -168,10 +166,7 @@ const fakeNow = (): DateTime.Utc => DateTime.makeUnsafe("2026-05-28T00:00:00Z");
  *   - `terminate("__STOP_FAIL__")` → `FileSyncStopError`
  */
 export const makeFakeMutagenClient = (
-  options: {
-    readonly version?: string;
-    readonly initialSessions?: ReadonlyArray<MutagenSessionRecord>;
-  } = {},
+  options: { readonly version?: string; readonly initialSessions?: ReadonlyArray<MutagenSessionRecord> } = {},
 ): FakeMutagenClient => {
   const sessions = new Map<string, MutagenSessionRecord>(
     options.initialSessions?.map((record) => [record.name, record]) ?? [],

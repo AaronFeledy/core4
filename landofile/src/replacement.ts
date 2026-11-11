@@ -11,8 +11,8 @@ import { createIncludeResolutionSession } from "./include-session.ts";
 import { type PresentLandofileLayer, landofileLayerPaths, presentLandofileLayers } from "./layers.ts";
 import { assertReadableRoot, loadContext } from "./load-context.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
-import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
+import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
 import { landofileValidationError, validationErrorFromCause } from "./validation.ts";
@@ -160,4 +160,8 @@ export const compileLandofileReplacement = Effect.fn("Landofile.compileReplaceme
 export const validateLandofileReplacement = (
   replacement: LandofileReplacement,
   inputs: Parameters<typeof compileLandofileReplacement>[1],
-) => compileLandofileReplacement(replacement, inputs).pipe(Effect.map(({ landofile }) => landofile));
+) =>
+  compileLandofileReplacement(replacement, inputs).pipe(
+    Effect.map(({ landofile }) => landofile),
+    Effect.scoped,
+  );

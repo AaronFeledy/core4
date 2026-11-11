@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { AppPlanner, RuntimeProvider, RuntimeProviderRegistry, makeLandoRuntime } from "@lando/core";
 import { type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { Effect, Layer } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
@@ -62,7 +61,7 @@ describe("library makeLandoRuntime app bootstrap", () => {
 
       expect(result.providerId).toBe(TestRuntimeProvider.id);
       expect(result.planProvider).toBe(TestRuntimeProvider.id);
-      expect(result.apply).toEqual({ changed: false });
-      expect(result.exec).toEqual({ exitCode: 0, stdout: "echo ok", stderr: "" });
+      expect(result.apply).toEqual({ changed: true });
+      expect(result.exec).toEqual({ exitCode: 0, stdout: "echo ok\n", stderr: "" });
     }));
 });

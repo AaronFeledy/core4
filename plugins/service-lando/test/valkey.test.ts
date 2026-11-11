@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { VALKEY_FEATURE_ID, valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
@@ -42,7 +41,7 @@ describe("valkey ServiceType", () => {
     expect(plan.command).toEqual(["valkey-server", "--appendonly", "yes", "--port", "6379"]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-valkey-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--valkey-data");
     expect(String(volumes[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
@@ -114,4 +113,5 @@ describe("valkey ServiceType", () => {
     expect(plan.user).toBe("valkey");
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

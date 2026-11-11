@@ -4,8 +4,8 @@ import { Effect, Result } from "effect";
 import { lookupRecipeDecomposer } from "../../src/recipes/builtin/decomposers.ts";
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { BUNDLED_RECIPE_SOURCES } from "../../src/recipes/builtin/source-catalog.ts";
-import { resolveBundledRecipeSource } from "../../src/recipes/bundled-resolution.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
+import { resolveBundledRecipeSource } from "../../src/recipes/bundled-resolution.ts";
 import { observedRecipeContent } from "../../src/recipes/compiled-source-assets.ts";
 
 export const bundledRecipe = (id: string) => {

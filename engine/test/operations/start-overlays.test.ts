@@ -4,9 +4,9 @@ import { BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services"
 import { Effect } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
+import { startApp } from "../../src/operations/start.ts";
 import * as Gpg from "../../src/operations/start-gpg-agent.ts";
 import * as Ssh from "../../src/operations/start-ssh-agent.ts";
-import { startApp } from "../../src/operations/start.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 

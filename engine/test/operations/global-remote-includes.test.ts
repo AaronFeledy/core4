@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
@@ -28,7 +28,7 @@ const pin = {
 let directory = "";
 let fixture: ReturnType<typeof makeGlobalLifecycleFixture>;
 let acquisitions: Array<string | undefined> = [];
-const store = makeStateStore({
+let store = makeStateStore({
   privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
 });
 const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof fixture.layer>>) =>
@@ -36,6 +36,16 @@ const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof fixture.laye
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "lando-global-remote-"));
+  const cacheRoot = join(directory, "cache");
+  store = makeStateStore({
+    privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+    roots: {
+      userConfRoot: cacheRoot,
+      userCacheRoot: cacheRoot,
+      userDataRoot: cacheRoot,
+      systemPluginRoot: cacheRoot,
+    },
+  });
   fixture = makeGlobalLifecycleFixture(directory);
   acquisitions = [];
   await mkdir(fixture.root);
@@ -53,24 +63,24 @@ services: { authored: { type: "compose", image: "authored:" + (++evaluations) } 
     ports: {
       resolveUserCacheRoot: () => join(directory, "cache"),
       resolveUserIncludesDir: () => join(directory, "includes"),
-      git: {
-        clone: async ({ dest, ref }) => {
-          acquisitions.push(ref);
-          await mkdir(dest, { recursive: true });
-          await writeFile(join(dest, "fragment.yml"), fragment);
-          return { commitSha: revision };
+      sources: {
+        git: {
+          fetch: async ({ dest, ref }) => {
+            acquisitions.push(ref);
+            await mkdir(dest, { recursive: true });
+            await writeFile(join(dest, "fragment.yml"), fragment);
+            return { commit: revision };
+          },
         },
+        archive: { fetch: unused },
       },
-      npmRecipeSource: { resolve: unused, fetchTarball: unused },
-      tarball: { fetch: unused, extract: unused },
-      publication: { publish: rename },
     },
   };
   installEngineComposition({
     bundledPluginModules: [],
     builtInCommandIds: [],
     landofileRuntimeInputs: inputs,
-    landofileSourcePorts: () => inputs.ports,
+    landofileSourcePorts: () => ({ sources: inputs.ports.sources }),
     hostProxyWorkerEntry: () => ({
       execPath: process.execPath,
       entryPath: undefined,
@@ -156,24 +166,38 @@ test.each([false, true])(
   async (pinned) => {
     // Given
     if (pinned) await writePin();
-    const before = await readdir(fixture.root);
+    const before = (await readdir(fixture.root)).sort();
     const outer = await readdir(directory);
     // When
     const result = await run(Effect.result(withReadOnlyLandofile(compile)));
     // Then
     expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileIncludeError" } });
     expect(acquisitions).toEqual([]);
-    expect(await readdir(fixture.root)).toEqual(before);
-    expect(await readdir(directory)).toEqual(outer);
+    expect((await readdir(fixture.root)).sort()).toEqual(before);
+    // Source-store session may create the cache root for leases without publishing includes.
+    expect((await readdir(directory)).sort()).toEqual(
+      [...new Set([...outer, "cache"])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    );
   },
 );
 
 test("warm pinned dry-run reads cached includes without publication", async () => {
   // Given
   await writePin();
-  const cache = join(directory, "cache", "includes", "git", revision);
+  const cache = join(directory, "cache", "sources", "git", revision, "tree");
   await mkdir(cache, { recursive: true });
   await writeFile(join(cache, "fragment.yml"), fragment);
+  await writeFile(
+    join(directory, "cache", "sources", "git", revision, "entry.json"),
+    JSON.stringify({
+      version: 1,
+      format: 1,
+      kind: "git",
+      id: revision,
+      treeDigest: "0".repeat(64),
+      provenance: { source: "test" },
+    }),
+  );
   const before = await Bun.file(join(fixture.root, ".lando.lock.yml")).text();
   // When
   const result = await run(globalReconcile({ dryRun: true }));

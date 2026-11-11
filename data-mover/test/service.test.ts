@@ -1,24 +1,8 @@
+import { describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-
-import { describe, expect, spyOn, test } from "bun:test";
-import {
-  Cause,
-  Context,
-  Deferred,
-  Effect,
-  Fiber,
-  Layer,
-  Option,
-  Queue,
-  Schema,
-  type Scope,
-  Stream,
-} from "effect";
-import { TestClock } from "effect/testing";
-
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
 import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
@@ -70,10 +54,26 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect";
+import { TestClock } from "effect/testing";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 import { makeDataMoverService } from "../src/service.ts";
+import { privateFileAccess } from "./private-file-access.ts";
 import * as BunDataMover from "./support.ts";
 import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");
@@ -268,6 +268,38 @@ const runDataMover = <A, E>(effect: Effect.Effect<A, E, DataMover | Scope.Scope>
   );
 
 describe("BunDataMover.layer", () => {
+  test("preserves provider remediation and cause when wrapping a provider failure", async () => {
+    const original = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "copyFromService",
+      message: "Provider copy unavailable",
+      remediation: "Start the selected provider and retry the copy.",
+    });
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mover = yield* DataMover;
+          yield* mover.read({ _tag: "servicePath", app, service, path: servicePath }).pipe(Stream.runDrain);
+        }),
+      ).pipe(
+        Effect.provide(BunDataMover.layer),
+        Effect.provide(
+          providerLayer({
+            capabilities: dataPlaneCapabilities({ serviceFileCopy: "native" }),
+            copyFromService: () => Stream.fail(original),
+          }),
+        ),
+        Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+      ),
+    );
+    if (exit._tag !== "Failure") throw new Error("Expected transfer failure");
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(DataTransferError);
+    if (!(error instanceof DataTransferError)) throw new Error("Expected data transfer error");
+    expect(error.remediation).toBe(original.remediation);
+    expect(error.cause).toBe(original);
+  });
+
   test("dispatches native service file copies and reports accelerated", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "payload.txt");
@@ -475,13 +507,14 @@ describe("BunDataMover.layer", () => {
     expect(Array.from(result)).toEqual(Array.from(payload));
   });
 
-  test("imports to volumes when existence preflight is unavailable", async () => {
+  test("unreachable volume inventory prevents staging and mutation before import", async () => {
     await withTempDir(async (dir) => {
       const seed = join(dir, "seed.txt");
-      const restored = join(dir, "restored.txt");
+      const paths = makeLandoPaths({ userCacheRoot: join(dir, "cache") });
+      const mutations: string[] = [];
       await writeFile(seed, "unlisted-volume-payload");
 
-      await Effect.runPromise(
+      const result = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -489,33 +522,54 @@ describe("BunDataMover.layer", () => {
               from: { _tag: "hostPath", path: absolute(seed) },
               to: { _tag: "volume", app, store: "unlisted" },
             });
-            yield* dataMover.transfer({
-              from: { _tag: "volume", app, store: "unlisted" },
-              to: { _tag: "hostPath", path: absolute(restored) },
-              overwrite: true,
-            });
           }),
         ).pipe(
           Effect.provide(BunDataMover.layer),
           Effect.provide(
-            providerLayer({
-              listVolumes: () =>
-                Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId: "test",
-                    operation: "listVolumes",
-                    message: "volume listing unavailable",
-                    remediation:
-                      "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+            providerLayer(
+              {
+                runStream: () => {
+                  mutations.push("runStream");
+                  return Stream.make({ exitCode: 0 });
+                },
+                copyToService: () =>
+                  Effect.sync(() => {
+                    mutations.push("copyToService");
                   }),
-                ),
-            }),
+                copyFromService: () => {
+                  mutations.push("copyFromService");
+                  return Stream.empty;
+                },
+                listVolumes: () =>
+                  Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: "test",
+                      operation: "listVolumes",
+                      message: "volume listing unavailable",
+                      remediation:
+                        "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+                    }),
+                  ),
+              },
+              paths,
+            ),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.result,
         ),
       );
 
-      expect(await readFile(restored, "utf8")).toBe("unlisted-volume-payload");
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DataTransferError",
+          operation: "listVolumes",
+          cause: { _tag: "ProviderUnavailableError", operation: "listVolumes" },
+          remediation: "Install or start the `test` provider and confirm it can perform `listVolumes`.",
+        },
+      });
+      expect(mutations).toEqual([]);
+      await expect(lstat(paths.transferStagingDir)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 
@@ -837,12 +891,14 @@ describe("BunDataMover.layer", () => {
 
   test("removes a staged volume payload when the helper is interrupted", async () => {
     await withTempDir(async (dir) => {
-      // Given: a verified payload staged in the configured scratch directory.
+      // Given: a verified payload staged under transferStagingDir, not scratchDir.
       const source = join(dir, "interrupt-volume.sql");
       const scratchDir = join(dir, "scratch");
+      const transferStagingDir = join(dir, "transfer-staging");
+      await mkdir(scratchDir, { recursive: true });
       await writeFile(source, "interrupt-volume-payload");
       const helperStarted = await Effect.runPromise(Deferred.make<void>());
-      const paths = PathsService.of({ ...makeLandoPaths(), scratchDir });
+      const paths = PathsService.of({ ...makeLandoPaths(), scratchDir, transferStagingDir });
       const transfer = Effect.scoped(
         Effect.gen(function* () {
           const dataMover = yield* DataMover;
@@ -878,11 +934,16 @@ describe("BunDataMover.layer", () => {
       // When: the transfer is interrupted after the provider helper starts.
       const fiber = Effect.runFork(transfer);
       await Effect.runPromise(Deferred.await(helperStarted));
-      expect((await readdir(scratchDir)).some((name) => name.startsWith(".lando-stage-volume-"))).toBe(true);
+      expect(
+        (await readdir(transferStagingDir)).some((name) => name.startsWith(".lando-stage-volume-")),
+      ).toBe(true);
+      expect(await readdir(scratchDir)).toEqual([]);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
       // Then: scoped cleanup removes both staged and in-progress files.
-      expect((await readdir(scratchDir)).filter((name) => name.includes("lando-stage-volume"))).toEqual([]);
+      expect(
+        (await readdir(transferStagingDir)).filter((name) => name.includes("lando-stage-volume")),
+      ).toEqual([]);
     });
   });
 
@@ -3034,11 +3095,7 @@ describe("DataMover helpers", () => {
 });
 
 describe("BunDataMover.layer hostPath -> hostPath directory transfers", () => {
-  const countingProviderLayer = (counters: {
-    pullArtifact: number;
-    run: number;
-    runStream: number;
-  }) =>
+  const countingProviderLayer = (counters: { pullArtifact: number; run: number; runStream: number }) =>
     Layer.succeed(
       RuntimeProvider,
       RuntimeProvider.of({
@@ -3577,7 +3634,7 @@ test.each([
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({
@@ -3633,7 +3690,7 @@ test("serviceCmd whole-token secrets mask whole tokens only on failure tails", a
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({
@@ -3689,7 +3746,7 @@ test.each([
         const mover = makeDataMoverService(
           Effect.succeed(provider),
           { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
         );
         return yield* mover
           .transfer({

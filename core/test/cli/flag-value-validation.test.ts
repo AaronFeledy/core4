@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
 import {
-  MalformedCliFlagValueError,
-  UnknownCliFlagError,
   validateCliFlagValues,
   validateCommandCliFlags,
   validateUnknownCliFlags,
@@ -15,6 +14,7 @@ const flags = {
   follow: { type: "boolean", char: "f" },
   shell: { type: "option", options: ["posix", "powershell", "pwsh"] },
   tail: Flags.integer(),
+  days: Flags.integer({ min: 0 }),
   answer: { type: "option", multiple: true },
   yes: { type: "boolean" },
 } as const;
@@ -25,6 +25,7 @@ describe("CLI flag-value validation", () => {
     ["option before a recognized flag", ["--provider", "--yes"], "missing"],
     ["empty equals value", ["--provider="], "empty"],
     ["non-integer tail", ["--tail=12x"], "invalid_integer"],
+    ["integer below its minimum", ["--days=-1"], "invalid_integer"],
     ["repeated non-repeatable option", ["--provider", "podman", "--provider=docker"], "repeated"],
     ["truncated short bundle", ["-fs"], "missing"],
     ["undeclared option value", ["--shell=private-shell"], "invalid_option"],
@@ -37,12 +38,21 @@ describe("CLI flag-value validation", () => {
     expect(error).toMatchObject({ _tag: "MalformedCliFlagValueError", issue });
   });
 
+  test("names the minimum in the remediation for an integer below it", () => {
+    expect(validateCliFlagValues(["--days=-3"], flags)).toMatchObject({
+      flag: "days",
+      remediation: "Supply --days with a whole integer of at least 0.",
+    });
+  });
+
   test.each([
     ["separated values", ["--provider", "podman"]],
     ["equals values", ["--provider=podman"]],
     ["repeatable values", ["--answer", "php=8.3", "--answer=database=mysql"]],
     ["short boolean bundle with attached option value", ["-fsappserver"]],
     ["declared option value", ["--shell=pwsh"]],
+    ["integer at its minimum", ["--days", "0"]],
+    ["negative integer without a minimum", ["--tail=-1"]],
     ["unknown flags", ["--future", "value"]],
   ])("accepts %s", (_name, argv) => {
     expect(validateCliFlagValues(argv, flags)).toBeUndefined();
@@ -117,6 +127,39 @@ describe("CLI flag-value validation", () => {
         argv: ["appserver", "sh", "-c", "echo hi"],
         definitions: flags,
         allowUnknownFlags: true,
+        commandTail: true,
+      }),
+    ).toBeUndefined();
+  });
+  test.each([
+    ["-c", ["-c", "echo hi"]],
+    ["--image", ["--image=private", "--", "sh"]],
+    ["--typo", ["--provider", "podman", "--typo", "sh"]],
+  ])("rejects the unknown prefix flag %s before a command tail", (flag, argv) => {
+    const error = validateCommandCliFlags({
+      commandId: "app:exec",
+      argv,
+      definitions: flags,
+      allowUnknownFlags: true,
+      commandTail: true,
+    });
+    expect(error).toMatchObject({ _tag: "UnknownCliFlagError", flag });
+    expect(JSON.stringify(error)).not.toContain("private");
+  });
+
+  test.each([
+    [["sh", "-s"]],
+    [["--", "sh", "-s"]],
+    [["--service", "web", "sh", "--tail=bad"]],
+    [["-fsweb", "sh", "-s"]],
+  ])("validates values only in the command prefix: %j", (argv) => {
+    expect(
+      validateCommandCliFlags({
+        commandId: "app:exec",
+        argv,
+        definitions: flags,
+        allowUnknownFlags: true,
+        commandTail: true,
       }),
     ).toBeUndefined();
   });

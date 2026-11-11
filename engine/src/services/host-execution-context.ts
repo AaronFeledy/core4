@@ -2,6 +2,23 @@ import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { posix, win32 } from "node:path";
 import { FileIoError } from "@lando/sdk/errors";
+import { Context, Effect } from "effect";
+
+export const HostExecutionDefaults = Context.Reference<
+  | {
+      readonly cwd: string;
+      readonly env: Readonly<Record<string, string | undefined>>;
+      readonly platform: NodeJS.Platform;
+      readonly stdin?: AsyncIterable<Uint8Array>;
+    }
+  | undefined
+>("@lando/engine/HostExecutionDefaults", { defaultValue: () => undefined });
+
+export const captureScopedHostExecutionContext = Effect.fnUntraced(function* (
+  input: Parameters<typeof captureHostExecutionContext>[0],
+) {
+  return captureHostExecutionContext(input, yield* HostExecutionDefaults);
+});
 
 export interface CapturedHostExecutionContext {
   readonly requestedCwd: string;

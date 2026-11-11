@@ -1,12 +1,10 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { dirname, join, win32 } from "node:path";
-
-import type { Context, Effect } from "effect";
+import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 
 import type { PrivilegeService, ProcessResult } from "@lando/sdk/services";
-
-import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
+import type { Context, Effect } from "effect";
 
 export type ShellenvShell = "posix" | "powershell";
 

@@ -1,5 +1,3 @@
-import { DateTime, Effect, Option } from "effect";
-
 import {
   isGlobalScopedVolume,
   teardownVolumeClasses,
@@ -15,15 +13,16 @@ import type {
 import {
   type AppliedOrphanGroup,
   EventService,
-  PathsService,
+  type PathsService,
   type ProviderError,
   type ProviderSelectionError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Option } from "effect";
 
-import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { ownedCleanupChanged, prepareOwnedResourceCleanup } from "./owned-resource-teardown.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
@@ -93,8 +92,6 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       const cleanup = input.ownedCleanup ?? (yield* prepareOwnedResourceCleanup(input.root, input.options));
-      const paths = yield* PathsService;
-      const relayRoots = { ...paths.roots, platform: paths.platform };
       const removeVolumes = input.options.volumes || input.options.purgeCaches;
       const volumeClasses = teardownVolumeClasses(input.options);
       const services: string[] = [];
@@ -130,16 +127,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
                   error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read";
               }),
             ),
-            Effect.ensuring(
-              Effect.suspend(() =>
-                protectedState ? Effect.void : cleanupAgentRelayState(ref, relayRoots, "ssh"),
-              ),
-            ),
-            Effect.ensuring(
-              Effect.suspend(() =>
-                protectedState ? Effect.void : cleanupAgentRelayState(ref, relayRoots, "gpg"),
-              ),
-            ),
+            Effect.ensuring(Effect.suspend(() => (protectedState ? Effect.void : cleanupAppWorkers(ref)))),
           ),
         ).pipe(
           Effect.catchIf(

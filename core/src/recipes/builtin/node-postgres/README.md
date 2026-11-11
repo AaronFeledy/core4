@@ -1,12 +1,12 @@
 # node-postgres
 
 Use this recipe for a Node.js app with PostgreSQL and a fixed server entrypoint
-at `/app/server.js`. It is the minimal scaffold used by the Lando v4 Alpha
-walking skeleton, rather than a framework-specific application starter.
+at `/app/server.js`. It is a minimal Node and Postgres scaffold, not a
+framework-specific application starter.
 
 ## Host prerequisites
 
-- Lando v4 alpha install (provider-lando or provider-docker).
+- Lando v4 install with `provider-lando` or `provider-docker`.
 - The host runtime selected by `lando setup` must be ready.
 
 ## Generated Landofile shape
@@ -16,7 +16,7 @@ walking skeleton, rather than a framework-specific application starter.
 
 The scaffold closes its HTTP server on SIGTERM or SIGINT and exits within five seconds if connections linger.
 
-## Alpha limitations
+## Limitations
 
 - Single fixed framework choice (Node + Postgres). For framework-specific
   scaffolds use the canonical recipes (`node-api`, `wordpress`, `laravel`,

@@ -1,4 +1,17 @@
+import {
+  AGENT_CONTEXT_ENV_ALLOWLIST,
+  AGENT_ENV_VALUE_MUST_BE_ONE,
+  HOST_PROXY_ENV_NAMES,
+  HOST_PROXY_ENV_PREFIXES,
+} from "@lando/container-runtime/container-helper/env-policy";
 import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
+
+export {
+  AGENT_CONTEXT_ENV_ALLOWLIST,
+  AGENT_ENV_VALUE_MUST_BE_ONE,
+  HOST_PROXY_ENV_NAMES,
+  HOST_PROXY_ENV_PREFIXES,
+} from "@lando/container-runtime/container-helper/env-policy";
 
 export type { HostEnv };
 
@@ -14,33 +27,8 @@ export type { HostEnv };
 // covers detection; COPILOT_ALLOW_ALL would grant every tool permission;
 // COPILOT_GITHUB_TOKEN is a credential; COPILOT_MODEL is a setting.
 // Never forge AI_AGENT.
-export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
-  "CLAUDECODE",
-  "CLAUDE_CODE",
-  "CLAUDE_CODE_IS_COWORK",
-  "CURSOR_AGENT",
-  "OPENCODE",
-  "OPENCODE_CLIENT",
-  "COPILOT_CLI",
-  "GEMINI_CLI",
-  "CODEX_SANDBOX",
-  "CODEX_CI",
-  "AUGMENT_AGENT",
-  "ANTIGRAVITY_AGENT",
-  "PI_CODING_AGENT",
-  "CLINE_ACTIVE",
-  "GOOSE_TERMINAL",
-  "OPENCLAW_SHELL",
-  "GROK_AGENT",
-  "AI_AGENT",
-  "AGENT",
-  "CI",
-];
 
 export const AGENT_ENV_DISABLE_ENV_VAR = "LANDO_AGENT_ENV";
-
-/** Names forwarded only when their value is exactly "1". */
-export const AGENT_ENV_VALUE_MUST_BE_ONE: ReadonlySet<string> = new Set(["GROK_AGENT"]);
 
 const EXACT_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -104,9 +92,6 @@ export const withAgentContextEnv = <Value = string>(
   const merged = { ...forwarded, ...(explicitEnv ?? {}) };
   return Object.keys(merged).length === 0 ? undefined : merged;
 };
-
-export const HOST_PROXY_ENV_PREFIXES: ReadonlyArray<string> = ["LC_"];
-export const HOST_PROXY_ENV_NAMES: ReadonlyArray<string> = ["LANG", "TERM"];
 
 export const isHostProxyForwardedEnvName = (
   name: string,

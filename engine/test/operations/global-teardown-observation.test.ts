@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { appMutationLockKey } from "@lando/engine/operations/app-mutation-lock";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
@@ -20,11 +19,41 @@ const withDataRoot = async (use: (dataRoot: string) => Promise<void>) => {
   }
 };
 
+test.each(["stop", "destroy"] as const)("global %s handles an idle applied owner", async (command) => {
+  await withDataRoot(async (dataRoot) => {
+    const root = AbsolutePath.make(join(dataRoot, "global"));
+    await mkdir(root);
+    let calls: ReadonlyArray<string> = [];
+    let statusReads = 0;
+    const harness = await globalTeardownHarness(dataRoot, {
+      plan: globalPlanAt(root),
+      status: Effect.sync(() => {
+        statusReads++;
+        return {
+          state:
+            calls.includes("ensureReady") || (command === "stop" && statusReads > 1)
+              ? ("running" as const)
+              : ("idle" as const),
+        };
+      }),
+    });
+    calls = harness.calls;
+    const result =
+      command === "stop"
+        ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
+        : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+    expect(result.outcome).toBe(command === "stop" ? "stopped" : "destroyed");
+    expect(calls.filter((call) => call === "ensureReady")).toHaveLength(command === "stop" ? 0 : 1);
+    expect(calls.filter((call) => call === "destroy")).toHaveLength(command === "stop" ? 0 : 1);
+    if (command === "stop") expect(statusReads).toBe(1);
+  });
+});
+
 for (const command of ["stop", "destroy"] as const) {
   test(`${command} observes a stopped runtime without starting or listing it`, async () => {
     await withDataRoot(async (dataRoot) => {
       // Given an absent global root and isAvailable=true on a stopped managed runtime.
-      const harness = await globalTeardownHarness(dataRoot, { status: Effect.succeed({ running: false }) });
+      const harness = await globalTeardownHarness(dataRoot, { status: Effect.succeed({ state: "idle" }) });
       // When teardown has no applied state.
       const result =
         command === "stop"
@@ -89,7 +118,7 @@ const unavailable = new ProviderUnavailableError({
   remediation: "Install or start the `lando` provider and confirm it can perform `inspect`.",
 });
 for (const probe of ["availability", "status"] as const) {
-  test(`global teardown treats ${probe} failure as unobserved runtime`, async () => {
+  test(`global teardown treats ${probe} failure as unobserved runtime when nothing is recorded`, async () => {
     await withDataRoot(async (dataRoot) => {
       const harness = await globalTeardownHarness(dataRoot, { [probe]: Effect.fail(unavailable) });
       await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
@@ -101,7 +130,7 @@ for (const probe of ["availability", "status"] as const) {
 test("global teardown preserves applied-state failures even when runtime observation is unavailable", async () => {
   await withDataRoot(async (dataRoot) => {
     const harness = await globalTeardownHarness(dataRoot, {
-      status: Effect.succeed({ running: false }),
+      status: Effect.succeed({ state: "idle" }),
       appliedPlans: Effect.fail(unavailable),
     });
     const result = await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer), Effect.result));

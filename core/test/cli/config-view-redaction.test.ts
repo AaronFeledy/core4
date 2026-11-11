@@ -8,8 +8,8 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { Layer, Schema } from "effect";
 import { metaConfigSpec } from "../../src/cli/command-specs/meta/config.ts";
-import { configRedactionTokens } from "../../src/cli/commands/config-redaction.ts";
 import { renderConfigResult } from "../../src/cli/commands/config.ts";
+import { configRedactionTokens } from "../../src/cli/commands/config-redaction.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const secret = "canary-config-opaque-value-626";
@@ -119,8 +119,8 @@ for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
         expect(output).not.toContain("completed");
         if (format === "json" && key !== undefined) {
           expect(JSON.parse(output).result.key).toBe(key);
-          expect(JSON.parse(output).result.config.appEnv.TEAM).toBe("platform");
-          expect(JSON.parse(output).result.config.appLabels["com.example.team"]).toBe("platform-team");
+          expect(JSON.parse(output).result).not.toHaveProperty("config");
+          expect(JSON.parse(output).result).not.toHaveProperty("raw");
         }
       });
     }

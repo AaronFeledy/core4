@@ -4,11 +4,10 @@ import {
   poweroff,
   renderPoweroffResult,
 } from "../../commands/poweroff";
-import { yesFlag } from "../../spec/confirmation-flag";
-import { Flags } from "../../spec/metadata";
-
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { specFlagsOf } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   resultSchema: PoweroffResultSchema,

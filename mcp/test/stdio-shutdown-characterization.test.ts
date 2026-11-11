@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { testAppGenerations } from "../src/testing.ts";
 import { serverLayer, startServer } from "./server";
 
 test("EOF closes after completed correlated requests without additional replies", async () => {
@@ -64,11 +65,13 @@ for (const shutdown of ["EOF", "interrupt"] as const) {
               serverLayer({
                 commandEntries: [{ spec }],
                 defaultAllowlist: [spec.id],
-                runtimeLayer: Layer.effectDiscard(
-                  Effect.addFinalizer(() =>
-                    Effect.sync(() => {
-                      runtimeReleased++;
-                    }),
+                apps: testAppGenerations(
+                  Layer.effectDiscard(
+                    Effect.addFinalizer(() =>
+                      Effect.sync(() => {
+                        runtimeReleased++;
+                      }),
+                    ),
                   ),
                 ),
               }),

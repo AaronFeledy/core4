@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -21,11 +19,14 @@ import {
   runToolingEngineContractSuite,
 } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
+import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
 
 const providerId = ProviderId.make("lando");
 const metadata = {
@@ -122,7 +123,7 @@ const makeRecordingProvider = (
     capabilities: stubCapabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => Effect.die("not used"),
     pullArtifact: () => Effect.die("not used"),
@@ -165,13 +166,18 @@ const inertProvider: RuntimeProviderShape = {
   exec: () => Effect.die("host engine must not call provider exec"),
 };
 
-const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
+const hostShellLayer = BunShellRunner.layerWithPrivateFileAccess(() => {
+  throw new TypeError("Interactive host tooling is unavailable in tests.");
+}).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
+
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
+  Layer.provide(Layer.merge(hostShellLayer, BunProcessRunner.layer)),
+);
+
+const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer | typeof hostToolingEngineLayer) =>
   Effect.runPromise(
     ToolingEngine.pipe(Effect.provide(live.pipe(Layer.provide(testEnvironmentResolverLayer)))),
   );
-const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
-  Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)),
-);
 
 const captureOutput: NonNullable<ToolingEngineContractHarness["captureOutput"]> = (run) =>
   withToolingOutput(run).pipe(
@@ -309,4 +315,3 @@ describe("ToolingEngine contract — built-in engines", () => {
     expect(exit._tag).toBe("Success");
   });
 });
-import { testEnvironmentResolverLayer } from "../environment-values.ts";

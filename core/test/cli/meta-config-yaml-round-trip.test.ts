@@ -10,6 +10,7 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const yamlGet = (value: unknown): ConfigResult => ({
   subcommand: "get",
+  key: "example",
   format: "yaml",
   value,
 });
@@ -38,7 +39,7 @@ test("config yaml output round-trips a record root through Bun.YAML.parse", asyn
   const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: ConfigResultSchema }))(
     Bun.YAML.parse(io.stdout()) as unknown,
   );
-  expect(envelope.result.value).toEqual(value);
+  expect("value" in envelope.result ? envelope.result.value : undefined).toEqual(value);
   expect(renderConfigResult(yamlGet(value))).toBe(renderConfigResult({ ...yamlGet(value), format: "table" }));
 });
 
@@ -59,7 +60,7 @@ test("config yaml output round-trips a scalar root", async () => {
     const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: ConfigResultSchema }))(
       Bun.YAML.parse(io.stdout()) as unknown,
     );
-    expect(envelope.result.value).toBe(value);
+    expect("value" in envelope.result ? envelope.result.value : undefined).toBe(value);
   }
 });
 
@@ -82,7 +83,7 @@ test("config yaml output round-trips an array root", async () => {
   const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: ConfigResultSchema }))(
     Bun.YAML.parse(io.stdout()) as unknown,
   );
-  expect(envelope.result.value).toEqual(value);
+  expect("value" in envelope.result ? envelope.result.value : undefined).toEqual(value);
 });
 
 test("dotted config keys stay plain and ambiguous keys are quoted", async () => {

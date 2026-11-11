@@ -3,8 +3,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import { rebuildApp, renderRebuildAppResult, startApp } from "@lando/core/cli/operations";
 import {
   AbsolutePath,
@@ -26,9 +24,6 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-
 import { makeTestStateStore } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
@@ -37,10 +32,14 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { ContainerHelperAssets } from "@lando/sdk/services";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Effect, Layer, Stream } from "effect";
 import * as BunShellRunner from "../_support/shell-runner.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 import "../../src/runtime/engine-composition.ts";
@@ -286,7 +285,6 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
         service: target.service,
         providerId,
         status: "running",
-        state: "running",
         publications: {
           status: "present",
           bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
@@ -378,7 +376,6 @@ const makeCachedBuildLayer = () => {
         service: target.service,
         providerId,
         status: "running",
-        state: "running",
         publications: {
           status: "present",
           bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
@@ -590,4 +587,5 @@ describe("lando rebuild", () => {
     });
   });
 });
+
 import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";

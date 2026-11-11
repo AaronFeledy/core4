@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-
-import { DateTime, Result, Schema } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -14,7 +10,10 @@ import {
   ProviderId,
   ServiceName,
   ServicePlan,
+  appIdentityKey,
+  planDataId,
 } from "@lando/sdk/schema";
+import { DateTime, Result, Schema, SchemaIssue } from "effect";
 
 const FIXED_RESOLVED_AT = DateTime.makeUnsafe("2026-05-10T18:51:00Z");
 
@@ -158,27 +157,33 @@ describe("ServicePlan", () => {
     expect(planRoundTrip.services[ServiceName.make("web")]?.listenerAuthority).toEqual(listenerAuthority);
   });
 
-  test.each(["redis-password", { _tag: "SecretRef", reference: "REDIS_PASSWORD" }])(
-    "rejects coexisting SQL connection and non-SQL credentials with password %j",
-    (password) => {
-      // Given
-      const creds = { user: "default", password, database: "0" };
-      const service = {
-        ...servicePlanFixture,
-        connection: { family: "postgres", port: 5432, creds },
-        nonSqlCreds: creds,
-      };
-      // When
-      const result = Schema.decodeUnknownResult(ServicePlan)(service);
-      const appResult = Schema.decodeUnknownResult(AppPlan)({
-        ...appPlanFixture,
-        services: { web: service },
-      });
-      // Then
-      expect(Result.isFailure(result)).toBe(true);
-      expect(Result.isFailure(appResult)).toBe(true);
-    },
-  );
+  test.each(
+    ["redis-password", { _tag: "SecretRef", reference: "REDIS_PASSWORD" }].flatMap((password) =>
+      ["connection+credentials", "connection+sqlite", "credentials+sqlite"].map(
+        (combination) => [combination, password] as const,
+      ),
+    ),
+  )("rejects coexisting targets %s with password %j", (combination, password) => {
+    // Given
+    const creds = { user: "default", password, database: "0" };
+    const service = {
+      ...servicePlanFixture,
+      ...(combination === "credentials+sqlite"
+        ? {}
+        : { connection: { family: "postgres", port: 5432, creds } }),
+      ...(combination === "connection+sqlite" ? {} : { nonSqlCreds: creds }),
+      ...(combination === "connection+credentials" ? {} : { sqlite: { path: "data/site.sqlite" } }),
+    };
+    // When
+    const result = Schema.decodeUnknownResult(ServicePlan)(service);
+    const appResult = Schema.decodeUnknownResult(AppPlan)({
+      ...appPlanFixture,
+      services: { web: service },
+    });
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(appResult)).toBe(true);
+  });
 
   test("decodes a minimal MVP service (one mount, one endpoint) and preserves required fields", () => {
     const decoded = Schema.decodeUnknownSync(ServicePlan)(servicePlanFixture);
@@ -345,5 +350,19 @@ describe("AppPlan", () => {
         ),
       ).toBe(true);
     }
+  });
+});
+
+describe("planDataId", () => {
+  const root = AbsolutePath.make("/srv/shop");
+  const identity = { appRoot: root, ownerKey: appIdentityKey("owner", root) };
+  test("a plan recorded without a data name owns its data under its own id", () => {
+    expect(planDataId({ id: AppId.make("store"), root, identity })).toBe(AppId.make("store"));
+    expect(planDataId({ id: AppId.make("store"), root })).toBe(AppId.make("store"));
+  });
+  test("a renamed plan owns its data under the slug of its data name", () => {
+    expect(
+      planDataId({ id: AppId.make("store"), root, identity: { ...identity, dataName: "My Shop" } }),
+    ).toBe(AppId.make("my-shop"));
   });
 });

@@ -1,9 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { describe, expect, test } from "bun:test";
 
 import type { ContributionRef } from "@lando/sdk/schema";
 
@@ -12,7 +11,7 @@ const expectedNativeOutput = resolve(repoRoot, "core/src/cli/generated/setup-plu
 const generatorPath = resolve(repoRoot, "scripts/build-setup-plugin-flags.ts");
 const fixtureFiles = [
   "package.json",
-  "biome.json",
+  "biome.jsonc",
   "core/build.config.ts",
   "scripts/_codegen-output.ts",
   "scripts/build-setup-plugin-flags.ts",

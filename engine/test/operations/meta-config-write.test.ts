@@ -1,9 +1,8 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { Cause, Effect, Exit, Option } from "effect";
 import { type EditorRunner, config } from "../../src/operations/config.ts";
@@ -40,6 +39,24 @@ const writeErrorIssues = (result: Exit.Exit<unknown, unknown>): string => {
 };
 
 describe("meta config set (S4)", () => {
+  test.each(["services.web.type", "services[0].type", "tooling.test.cmd"])(
+    "redirects app-only key %s to app config",
+    async (key) => {
+      await seed("renderer: json\n");
+      const result = await run(
+        Effect.result(config({ subcommand: "set", key, value: "php", configPath: configPath() })),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") return;
+      expect(result.failure).toMatchObject({
+        _tag: "LandofileWriteValidationError",
+        path: key,
+        issues: [{ path: [key.split(/[.[]/u)[0]] }],
+        remediation: expect.stringContaining(`lando app:config set ${key} <value>`),
+      });
+      expect(await readConfig()).toBe("renderer: json\n");
+    },
+  );
   test.each(["set", "unset"] as const)("keeps comments through config %s", async (subcommand) => {
     // Given
     await seed("# host\nrenderer: json # chosen\n# tail\n");

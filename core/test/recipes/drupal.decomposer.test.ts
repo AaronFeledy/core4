@@ -6,6 +6,7 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: drupalDecomposer,
   defaults: drupalDefaults,
@@ -14,6 +15,7 @@ const {
   contentDigest: DRUPAL_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("drupal");
+
 import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 
 const defaults = { ...drupalDefaults };
@@ -90,11 +92,13 @@ describe("drupal decomposition", () => {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
           cmds: [DRUSH_TOOLING_COMMAND],
+          wrapper: true,
         },
         composer: {
           service: "appserver",
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
+          wrapper: true,
         },
         "drupal-scaffold": scaffoldTooling,
       },

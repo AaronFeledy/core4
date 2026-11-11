@@ -10,11 +10,12 @@ import { Effect, Exit, Layer, Schema } from "effect";
 import * as composition from "../../src/composition.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { startDetachedHostProxyWorker } from "../../src/subsystems/host-proxy/detached-worker.ts";
+import * as worker from "../../src/subsystems/host-proxy/worker.ts";
 import type { HostProxyWorkerSpawner } from "../../src/subsystems/host-proxy/worker-process.ts";
 import { readWorkerRecord, workerStatePath } from "../../src/subsystems/host-proxy/worker-state.ts";
-import * as worker from "../../src/subsystems/host-proxy/worker.ts";
 import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
+
 const originalEnsureWorker = startDetachedHostProxyWorker;
 const ensureWorker = (options: Parameters<typeof startDetachedHostProxyWorker>[0]) =>
   originalEnsureWorker(options).pipe(
@@ -322,6 +323,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
     }
   },
 );
+
 import * as WorkerConfig from "../../src/services/config.ts";
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "../../src/subsystems/host-proxy/worker-records.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";

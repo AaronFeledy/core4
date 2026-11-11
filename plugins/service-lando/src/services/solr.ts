@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
@@ -8,6 +6,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
@@ -15,7 +14,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -133,7 +131,6 @@ const solrListener = (service: ServiceConfig): ListenerContract => {
 
 const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   assertListenerConfig(service, solrListener(service));
   const port = plannedPort(service, SOLR_LISTENER);
   const cores = service.cores ?? [];
@@ -149,7 +146,7 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.addStorage(
     {
-      store: `${appName}-solr-data`,
+      store: ctx.serviceStoreName("solr-data"),
       target: DATA_TARGET,
       readOnly: false,
     },

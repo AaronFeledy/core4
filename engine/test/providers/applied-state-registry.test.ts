@@ -1,8 +1,4 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { PluginLoadError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -14,7 +10,9 @@ import {
   GlobalConfig,
   PluginManifest,
   ProviderId,
+  appIdentityKey,
 } from "@lando/sdk/schema";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -26,8 +24,10 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
@@ -80,9 +80,103 @@ const moduleFor = (
   return { name: manifest.name, manifest, runtimeProviders: new Map([[providerId, contribution]]) };
 };
 
+test("idle installed providers retain ownership evidence without listing resources", async () => {
+  const provider = {
+    ...TestRuntimeProvider,
+    cleanupOwnedResources: () => Effect.die("observation must not clean up"),
+    getStatus: Effect.succeed({ state: "idle" as const }),
+    list: () => Effect.die("idle inventory must not be listed"),
+    listVolumes: () => Effect.die("idle volumes must not be listed"),
+  };
+  const module = moduleFor("lando", Effect.succeed([]), Effect.succeed(provider));
+  const contribution = module.runtimeProviders?.get(ProviderId.make("lando"));
+  if (contribution === undefined) throw new Error("missing provider contribution");
+  const ownership = {
+    appRoot: root,
+    ownerKey: appIdentityKey("owner", root),
+    providerId: ProviderId.make("lando"),
+    appIds: [plan.id],
+  };
+  const result = await run(
+    [
+      {
+        ...module,
+        runtimeProviders: new Map([
+          [ProviderId.make("lando"), { ...contribution, resourceOwnership: () => Effect.succeed(ownership) }],
+        ]),
+      },
+    ],
+    "teardown",
+    root,
+  );
+  expect(result).toMatchObject({ _tag: "Success", success: { kind: "owned", ownership: [ownership] } });
+});
+
+test.each([false, true])(
+  "teardown fails with the status remediation only for a provider that recorded state for the root (recorded: %s)",
+  async (withOwnership) => {
+    const failure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "getStatus",
+      message: "Managed runtime storage is unreadable.",
+      remediation: "Restore access to the managed runtime storage directory, then retry.",
+    });
+    const provider = {
+      ...TestRuntimeProvider,
+      getStatus: Effect.fail(failure),
+      cleanupOwnedResources: () => Effect.die("must not clean up after a failed observation"),
+      list: () => Effect.die("failed status must not list containers"),
+      listVolumes: () => Effect.die("failed status must not list volumes"),
+    };
+    const module = moduleFor("lando", Effect.succeed([]), Effect.succeed(provider));
+    const contribution = module.runtimeProviders?.get(ProviderId.make("lando"));
+    if (contribution === undefined) throw new Error("missing provider contribution");
+    const modules = [
+      {
+        ...module,
+        runtimeProviders: new Map([
+          [
+            ProviderId.make("lando"),
+            {
+              ...contribution,
+              resourceOwnership: () =>
+                Effect.succeed(
+                  withOwnership
+                    ? {
+                        appRoot: root,
+                        ownerKey: appIdentityKey("owner", root),
+                        providerId: ProviderId.make("lando"),
+                        appIds: [plan.id],
+                      }
+                    : undefined,
+                ),
+            },
+          ],
+        ]),
+      },
+    ];
+    // A provider with no record for this root cannot hold its resources, so its outage must not block teardown.
+    expect(await run(modules, "teardown", root)).toMatchObject(
+      withOwnership ? { _tag: "Failure", failure } : { _tag: "Success", success: { kind: "absent" } },
+    );
+    expect(await run(modules, true)).toMatchObject({
+      _tag: "Success",
+      success: [
+        {
+          providerId: "lando",
+          appliedPlans: [],
+          runtimeObserved: false,
+          services: [],
+          volumes: [],
+        },
+      ],
+    });
+  },
+);
+
 const run = (
   modules: ReadonlyArray<LandoPluginModule>,
-  observe = false,
+  observe: boolean | "teardown" = false,
   exactRoot?: AbsolutePath,
   selected?: ProviderId,
 ) => {
@@ -127,19 +221,20 @@ const run = (
   return Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
+      if (observe === "teardown") return yield* registry.resolveTeardownEvidence(exactRoot ?? root);
       if (exactRoot !== undefined) {
-        return yield* registry.appliedPlansFor(exactRoot);
+        return yield* registry.appliedPlansFor(exactRoot, selected);
       }
       if (observe) {
         if (registry.observeRuntime === undefined) return yield* Effect.die("missing observer");
         return yield* registry.observeRuntime;
       }
-      const selected = yield* registry.resolveAppliedPlan(root);
-      return selected === undefined
+      const resolved = yield* registry.resolveAppliedPlan(root);
+      return resolved === undefined
         ? undefined
         : {
-            plan: selected,
-            providerId: (yield* registry.select(selected)).id,
+            plan: resolved,
+            providerId: (yield* registry.select(resolved)).id,
           };
     }).pipe(
       Effect.provide(
@@ -153,6 +248,22 @@ const run = (
     ),
   );
 };
+
+test("provider-scoped applied plans never read another provider's state", async () => {
+  const dockerPlan = { ...plan, provider: ProviderId.make("docker") };
+  const modules = [
+    moduleFor(
+      "lando",
+      Effect.die("must not read excluded provider"),
+      Effect.die("must not initialize excluded provider"),
+    ),
+    moduleFor("docker", Effect.succeed([dockerPlan]), Effect.succeed(TestRuntimeProvider)),
+  ];
+  expect(await run(modules, false, root, dockerPlan.provider)).toMatchObject({
+    _tag: "Success",
+    success: [{ id: dockerPlan.id, provider: "docker" }],
+  });
+});
 
 test("provider-scoped resolution disambiguates two applied owners without reading the other provider", async () => {
   const dockerPlan = { ...plan, provider: ProviderId.make("docker") };
@@ -212,7 +323,7 @@ test.each([false, true])(
     const provider = {
       ...TestRuntimeProvider,
       isAvailable: Effect.succeed(true),
-      getStatus: Effect.succeed({ running }),
+      getStatus: Effect.succeed({ state: running ? ("running" as const) : ("idle" as const) }),
       list: () =>
         Effect.sync(() => {
           inspected.push("services");
@@ -312,7 +423,7 @@ test.each([false, true])(
     const provider = {
       ...TestRuntimeProvider,
       isAvailable: Effect.succeed(true),
-      getStatus: Effect.succeed({ running }),
+      getStatus: Effect.succeed({ state: running ? ("running" as const) : ("idle" as const) }),
       list: () =>
         Effect.sync(() => {
           inspected.push("services");

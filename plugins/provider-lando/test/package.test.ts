@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { runPluginContract } from "@lando/sdk/test";
+import { Effect, Layer } from "effect";
 
 describe("@lando/provider-lando package", () => {
   test("exports the package skeleton", async () => {

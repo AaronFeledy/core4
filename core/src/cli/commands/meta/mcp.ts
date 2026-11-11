@@ -12,35 +12,47 @@
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, Layer } from "effect";
 
-import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import type { McpToolInputError, McpTransportError } from "@lando/sdk/errors";
-import type { McpConfig } from "@lando/sdk/schema";
-import { CommandRegistry, ConfigService } from "@lando/sdk/services";
-
+import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
-import type { RedactionService } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import * as RendererStdio from "@lando/renderer/stdio";
+import type {
+  ConfigError,
+  LandoRuntimeBootstrapError,
+  McpToolInputError,
+  McpTransportError,
+} from "@lando/sdk/errors";
+import type { McpConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { Effect, Exit, type Layer, Option, type Result } from "effect";
 import { serviceLayer } from "../../../mcp-command-executor";
 import { resources } from "../../../mcp-resources";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationDefaults,
+} from "../../../runtime/invocation-context";
+import type { LandoGenerationRuntime } from "../../../runtime/layer";
 import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import type { ResultFormat } from "../../format-flags";
 import { runWithRendererHandling } from "../../renderer-boundary";
+import type { McpAppGenerations } from "./mcp-app-generations";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
-import { mcpRegistryWithPlugins } from "./mcp-plugins";
 import {
   type McpCommandRegistry,
   type ResolvedMcpOptions,
   defaultIdsOf,
   knownIdsOf,
   mcpRegistryFromBuiltIns,
-  mcpRegistryWithToolingEntries,
+  pendingAllowanceDiagnostics,
   validateMcpAllowlistIds,
 } from "./mcp-registry";
+import { openMcpSession, sessionAppRegistry } from "./mcp-session";
+
 export {
   type McpCommandRegistry,
   type ResolvedMcpOptions,
@@ -75,47 +87,6 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
   };
 };
 
-const resolveToolingRegistry = (
-  registry: McpCommandRegistry,
-  runtimeLayer: Layer.Layer<unknown>,
-): Effect.Effect<McpCommandRegistry, never, never> =>
-  Effect.scoped(
-    Layer.build(runtimeLayer).pipe(
-      Effect.orDie,
-      Effect.flatMap((context) =>
-        Effect.flatMap(CommandRegistry, (commandRegistry) => commandRegistry.list).pipe(
-          Effect.provide(context),
-        ),
-      ),
-      Effect.map((commands) => mcpRegistryWithToolingEntries(registry, commands)),
-    ),
-  );
-
-const resolveRegistryForEffectiveOptions = (
-  registry: McpCommandRegistry,
-  options: ResolvedMcpOptions,
-  runtimeLayer: Layer.Layer<unknown>,
-): Effect.Effect<McpCommandRegistry, never, never> =>
-  Effect.scoped(
-    Layer.build(runtimeLayer).pipe(
-      Effect.orDie,
-      Effect.flatMap((context) => mcpRegistryWithPlugins(registry).pipe(Effect.provide(context))),
-      Effect.flatMap((resolved) =>
-        options.tooling === true ? resolveToolingRegistry(resolved, runtimeLayer) : Effect.succeed(resolved),
-      ),
-    ),
-  );
-
-const resolveRegistryForCommand = Effect.fnUntraced(function* (
-  registry: McpCommandRegistry,
-  flags: McpCommandFlags,
-  runtimeLayer: Layer.Layer<unknown>,
-): Effect.fn.Return<McpCommandRegistry, McpToolInputError, ConfigService> {
-  const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
-  const options = resolveMcpOptions(flags, config);
-  return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
-});
-
 /**
  * Compose CLI flags with global `mcp.*` config. Deny is unioned here and wins
  * over allow downstream in `computeEffectiveAllowlist`; tooling is `true` when
@@ -131,32 +102,46 @@ export const resolveMcpOptions = (
   ...(config?.maxConcurrent === undefined ? {} : { maxConcurrent: config.maxConcurrent }),
 });
 
+const toolingEnabled = Effect.fnUntraced(function* (flags: McpCommandFlags) {
+  const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
+  return resolveMcpOptions(flags, config).tooling;
+});
+
 const resolveOptions = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.fn.Return<ResolvedMcpOptions, McpToolInputError, ConfigService> {
+): Effect.fn.Return<
+  { readonly options: ResolvedMcpOptions; readonly pending: ReadonlyArray<string> },
+  McpToolInputError,
+  ConfigService
+> {
   const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
   const options = resolveMcpOptions(flags, config);
-  yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
-  return options;
+  const pending = yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
+  return { options, pending };
 });
 
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
-  runtimeLayer: Layer.Layer<unknown>,
+  apps: McpAppGenerations,
 ): McpRuntimeConfigShape => ({
   commandEntries: registry.commandEntries,
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
-  defaultAllowlist: defaultIdsOf(registry),
-  runtimeLayer,
+  // Per-app owners are authorized against the reviewed defaults by their own provenance.
+  defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
   resources,
+  apps: Effect.succeed(apps),
 });
 
 export const mcpListResult = Effect.fn("Mcp.list")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
 ): Effect.fn.Return<McpListResult, McpToolInputError, ConfigService> {
-  const options = yield* resolveOptions(registry, flags);
+  const { options, pending } = yield* resolveOptions(registry, flags);
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const redactor = Option.isSome(redaction)
+    ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+    : createStandaloneRedactor("secrets", { sourceEnv: process.env });
   return buildMcpListResult({
     defaultAllowlist: defaultIdsOf(registry),
     commandEntries: registry.commandEntries,
@@ -164,7 +149,7 @@ export const mcpListResult = Effect.fn("Mcp.list")(function* (
     allow: options.allow,
     deny: options.deny,
     tooling: options.tooling,
-    diagnostics: registry.diagnostics ?? [],
+    diagnostics: [...(registry.diagnostics ?? []), ...pendingAllowanceDiagnostics(pending, redactor)],
   });
 });
 
@@ -177,10 +162,17 @@ export const mcpListResult = Effect.fn("Mcp.list")(function* (
 export const serveMcp = Effect.fn("Mcp.serve")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-  runtimeLayer: Layer.Layer<unknown>,
+  apps: McpAppGenerations,
 ): Effect.fn.Return<void, McpToolInputError | McpTransportError, ConfigService | RedactionService> {
-  const options = yield* resolveOptions(registry, flags);
-  const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
+  const { options } = yield* resolveOptions(registry, flags);
+  const runtimeConfig = buildMcpRuntimeConfig(
+    {
+      ...registry,
+      // Session-wide owners only: plugin owners come from each call's app generation.
+      commandEntries: registry.commandEntries.filter((entry) => entry.plugin === undefined),
+    },
+    apps,
+  );
   const catalogOptions = {
     allow: options.allow,
     deny: options.deny,
@@ -191,7 +183,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
     yield* service
       .serve({
         transport: "stdio",
-        cwd: process.cwd(),
+        cwd: (yield* CliInvocation).cwd,
         ...catalogOptions,
         ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
       })
@@ -204,13 +196,17 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
 });
 
 export const dispatchMcpCommand = async (params: {
+  readonly context?: CliInvocationContext;
   readonly flags: McpCommandFlags;
   readonly signal?: AbortSignal;
   readonly commandRuntime: Layer.Layer<
     ConfigService | RedactionService | BuiltInCommandCatalog,
     ConfigError | LandoRuntimeBootstrapError
   >;
-  readonly retainedRuntime: Layer.Layer<unknown>;
+  /** The retained host runtime and the per-app generation factory every tool call builds from. */
+  readonly sessionRuntime: Result.Result<LandoGenerationRuntime, LandoRuntimeBootstrapError>;
+  /** Runs before the tooling catalog is listed; the host rebuilds a non-fresh command index here. */
+  readonly prepareTooling?: Effect.Effect<void>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
@@ -219,22 +215,29 @@ export const dispatchMcpCommand = async (params: {
     redactor: import("@lando/sdk/secrets").Redactor,
   ) => string;
 }): Promise<void> => {
+  let exitCode = params.context === undefined ? process.exitCode : undefined;
+  const setExitCode = (code: number): void => {
+    exitCode = code;
+    (params.context?.setExitCode ?? processInvocationDefaults.setExitCode)(code);
+  };
+  const prepareTooling = params.prepareTooling ?? Effect.void;
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
       const catalog = yield* BuiltInCommandCatalog;
-      const registry = yield* resolveRegistryForCommand(
-        mcpRegistryFromBuiltIns(catalog.entries),
-        params.flags,
-        params.retainedRuntime,
-      );
+      const builtIns = mcpRegistryFromBuiltIns(catalog.entries);
+      const tooling = yield* toolingEnabled(params.flags);
+      const session = yield* openMcpSession(params.sessionRuntime, builtIns, prepareTooling);
+      const registry = yield* sessionAppRegistry(builtIns, session, tooling);
       return yield* mcpListResult(registry, params.flags);
-    });
+    }).pipe(Effect.scoped);
     // Lazy on purpose: a static import would pull compiled-session (and its
     // renderer plugin graph) into every consumer of this command module.
     const { activeJq, activeProjectResultKeys } = await import("../../compiled-session");
     const projectResultKeys = activeProjectResultKeys();
     const jqExpression = activeJq;
     return runWithRendererHandling(listEffect, {
+      setExitCode,
+      ...(params.context === undefined ? {} : { context: params.context }),
       runtime: params.commandRuntime,
       rendererMode: params.rendererMode,
       resultFormat: params.resultFormat,
@@ -252,18 +255,14 @@ export const dispatchMcpCommand = async (params: {
   const serveEffect =
     startupError === undefined
       ? Effect.gen(function* () {
-          const retainedScope = yield* Effect.scope;
-          const retainedContext = yield* Effect.cached(
-            Layer.buildWithScope(params.retainedRuntime, retainedScope),
-          );
-          const retainedRuntime = Layer.unwrap(Effect.map(retainedContext, Layer.succeedContext));
           const catalog = yield* BuiltInCommandCatalog;
-          const registry = yield* resolveRegistryForCommand(
-            mcpRegistryFromBuiltIns(catalog.entries),
-            params.flags,
-            retainedRuntime,
-          );
-          yield* serveMcp(registry, params.flags, retainedRuntime);
+          const builtIns = mcpRegistryFromBuiltIns(catalog.entries);
+          const tooling = yield* toolingEnabled(params.flags);
+          const session = yield* openMcpSession(params.sessionRuntime, builtIns, prepareTooling);
+          // A session app that cannot build still serves built-ins; its calls report the failure.
+          const sessionApp = yield* Effect.exit(sessionAppRegistry(builtIns, session, tooling));
+          const registry = Exit.isSuccess(sessionApp) ? sessionApp.value : builtIns;
+          yield* serveMcp(registry, params.flags, session.apps);
         }).pipe(Effect.scoped)
       : Effect.fail(startupError);
   const signal = params.signal;
@@ -280,6 +279,8 @@ export const dispatchMcpCommand = async (params: {
           return Effect.sync(() => signal.removeEventListener("abort", abort));
         });
   await runWithRendererHandling(Effect.raceFirst(interrupted, serveEffect), {
+    setExitCode,
+    ...(params.context === undefined ? {} : { context: params.context }),
     runtime: params.commandRuntime,
     rendererMode: params.rendererMode,
     resultFormat: "text",
@@ -290,7 +291,7 @@ export const dispatchMcpCommand = async (params: {
     render: () => undefined,
     formatError: params.formatError,
   });
-  if (signal?.aborted && (process.exitCode === undefined || process.exitCode === 0)) {
-    process.exitCode = signal.reason === "SIGTERM" ? 143 : 130;
+  if (signal?.aborted && (exitCode === undefined || exitCode === 0)) {
+    setExitCode(signal.reason === "SIGTERM" ? 143 : 130);
   }
 };

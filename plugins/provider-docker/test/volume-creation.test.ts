@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { DateTime, Effect, Schema } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const plan: AppPlan = {
@@ -33,6 +32,8 @@ test.each([false, true])(
         dockerApi: {
           info: Effect.succeed({}),
           request: (request) => {
+            if (request.path.startsWith("/containers/json?"))
+              return Effect.succeed({ status: 200, body: "[]" });
             if (request.path !== "/volumes/create") return Effect.succeed({ status: 200, body: "{}" });
             return Schema.decodeUnknownEffect(Request)(request.body).pipe(
               Effect.orDie,

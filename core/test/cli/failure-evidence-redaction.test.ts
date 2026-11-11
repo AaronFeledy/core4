@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { ContainerTransportError } from "@lando/container-runtime/transport";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect, Layer } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 test("debug cause evidence omits unknown values from every nominal structural field", async () => {

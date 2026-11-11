@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue, SchemaRepresentation } from "effect";
-
 import {
   CleanupProps,
   GuideProps,
@@ -29,7 +27,7 @@ import {
   decodeVerifyPropsEither,
 } from "@lando/core/docs/components";
 import { NotImplementedError } from "@lando/sdk/errors";
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaIssue, SchemaRepresentation } from "effect";
 
 const expectRight = <A>(decoded: Result.Result<A, unknown>): A => {
   expect(decoded._tag).toBe("Success");
@@ -385,7 +383,7 @@ describe("component prop schemas", () => {
         expect(error).toBeInstanceOf(NotImplementedError);
         if (!(error instanceof NotImplementedError)) return;
         expect(error.commandId).toBe(`guide.component.${componentName.toLowerCase()}`);
-        expect(error.remediation).toBe(`<${componentName}> is not supported yet.`);
+        expect(error.remediation).toBe(`<${componentName}> is not supported.`);
       }
     },
   );

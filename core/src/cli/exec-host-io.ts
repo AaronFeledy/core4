@@ -1,13 +1,14 @@
-import { Effect, Queue, Stream } from "effect";
-
 import { hostDisablesColor } from "@lando/renderer";
 import type { ExecAppOptions } from "@lando/sdk/app";
 import type { HostTerminal } from "@lando/sdk/schema";
 import type { ToolingInvocation } from "@lando/sdk/services";
+import { Effect, Queue, Stream } from "effect";
 
 import { cancellableTerminalStdin } from "./commands/terminal-stdin";
 
-export type ExecAppHostOptions = ExecAppOptions & {
+type ExecAppSignalOptions = ExecAppOptions & { readonly signal?: AbortSignal };
+
+export type ExecAppHostOptions = ExecAppSignalOptions & {
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
   readonly hostTerminal?: HostTerminal;
@@ -104,7 +105,7 @@ export const withInheritedStdinRawMode = <A, E, R>(
 };
 
 export const attachExecHostIo = (
-  options: ExecAppOptions,
+  options: ExecAppSignalOptions,
   stdin: InheritedStdin = process.stdin,
   output: TerminalOutput = process.stdout,
 ): ExecAppHostOptions => {

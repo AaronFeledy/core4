@@ -2,15 +2,15 @@ import { expect, test } from "bun:test";
 import { ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { Deferred, Effect, Fiber, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import { listenerDoctorChecks } from "../../src/cli/commands/doctor-listeners.ts";
-import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report-render.ts";
 import {
   DoctorReportSchema,
   doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
-import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report-render.ts";
 import {
   listenerOutput,
   listenerProvider,
@@ -21,6 +21,21 @@ import {
 } from "./doctor-listeners-fixture.ts";
 
 const collect = () => listenerDoctorChecks({ budgetMs: 5000, redact: (value) => value });
+
+test("skips listeners on the idle provider holding the applied app", async () => {
+  await withListenerApp(async (plan) => {
+    const provider = listenerProvider(plan, {
+      getStatus: Effect.succeed({ state: "idle" }),
+      list: () => Effect.die("idle listener checks must not list containers"),
+      execStream: () => Stream.die("idle listener checks must not exec"),
+    });
+    const result = await Effect.runPromise(collect().pipe(Effect.provide(listenerRegistry(plan, provider))));
+    expect(result.checks).toEqual([]);
+    expect(result.skipped).toMatchObject([
+      { section: "app-listeners", reason: expect.stringContaining("idle") },
+    ]);
+  });
+});
 
 test("redacts authority advice before returning the structured doctor result", async () => {
   await withListenerApp(async (original) => {
@@ -185,7 +200,10 @@ test("selects the applied provider and runs only under --app", async () => {
     });
     expect(withApp.provider.checks.some((check) => check.name === "app-listener")).toBe(false);
     expect(Schema.encodeSync(DoctorReportSchema)(withApp).appListeners?.checks).toHaveLength(1);
-    expect(renderDoctorReport(withApp)).toContain("app-listeners:\napp-listener: pass");
+    expect(renderDoctorReport(withApp)).not.toContain("app-listener: pass");
+    expect(renderDoctorReport(withApp, undefined, { all: true })).toContain(
+      "app-listeners:\napp-listener: pass",
+    );
     expect(renderDoctorReportAsNdjson(withApp)).toContain('"listenerState":"listening"');
     expect(executions).toBe(1);
   });
