@@ -1,7 +1,7 @@
-import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
+import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";

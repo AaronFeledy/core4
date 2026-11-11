@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
+import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 
