@@ -134,7 +134,7 @@ test("a pending resume preparation failure records the mutated-case notice", asy
     }),
   );
   const exit = await Effect.runPromiseExit(
-    withIncompleteStartNotice(startAppForTarget({}, target)).pipe(
+    withIncompleteStartNotice(startAppForTarget({}, target), { verb: "start" }).pipe(
       Effect.provideService(CommandWarnings, warnings),
       Effect.provide(harness.layer),
     ),
@@ -172,7 +172,7 @@ test("a provider apply failure records the left-in-place inventory notice", asyn
   });
   // When: the start fails under the CLI notice wrapper.
   const exit = await Effect.runPromiseExit(
-    withIncompleteStartNotice(startAppForTarget({}, noticeTarget)).pipe(
+    withIncompleteStartNotice(startAppForTarget({}, noticeTarget), { verb: "start" }).pipe(
       Effect.provideService(CommandWarnings, warnings),
       Effect.provide(harness.layer),
     ),
@@ -192,7 +192,9 @@ test("a failure before any app mutation records the no-change notice", async () 
   const plannedApp = { ...plan, requires: { globalServices: ["traefik"] } };
   // When: the start fails under the CLI notice wrapper.
   const exit = await Effect.runPromiseExit(
-    withIncompleteStartNotice(startAppForTarget({}, { ...noticeTarget, plan: plannedApp })).pipe(
+    withIncompleteStartNotice(startAppForTarget({}, { ...noticeTarget, plan: plannedApp }), {
+      verb: "start",
+    }).pipe(
       Effect.provideService(GlobalAppService, {
         id: "global",
         providerId: Effect.succeed(plan.provider),

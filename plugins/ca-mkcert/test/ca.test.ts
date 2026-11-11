@@ -192,8 +192,8 @@ describe("mkcert CertificateAuthority issuance", () => {
         // Then: the returned values are the files mkcert wrote, under the root it reports
         expect(issued.certificate).toBe("leaf certificate PEM\n");
         expect(Redacted.value(issued.privateKey)).toBe("leaf key PEM\n");
-        expect(issued.root).toEqual({ certificate: FAKE_ROOT_PEM });
-        expect(await Effect.runPromise(ca.root)).toEqual({ certificate: FAKE_ROOT_PEM });
+        expect(issued.root).toEqual({ certificate: FAKE_ROOT_PEM, trusted: false });
+        expect(await Effect.runPromise(ca.root)).toEqual({ certificate: FAKE_ROOT_PEM, trusted: false });
         const issueCall = issuingCalls(runner).at(-1);
         expect(issueCall?.args.slice(5)).toEqual(["web", "web.app.internal", "localhost", "127.0.0.1"]);
         expect(issueCall?.env?.CAROOT).toBe(harness.caRoot);
@@ -252,7 +252,7 @@ describe("mkcert CertificateAuthority issuance", () => {
     "%s before setup states the missing binary, runs no mkcert command, and creates no root",
     async (operation) => {
       await withCa({}, async ({ harness, runner, ca }) => {
-        const effect = operation === "root" ? ca.root : ca.issueCert(SPEC);
+        const effect: Effect.Effect<unknown, CaError> = operation === "root" ? ca.root : ca.issueCert(SPEC);
         const error = failure(await Effect.runPromiseExit(effect));
         expect(error).toMatchObject({ _tag: "CaError", caId: "mkcert" });
         expect(error.remediation).toContain("`lando setup`");
@@ -272,7 +272,7 @@ describe("mkcert CertificateAuthority issuance", () => {
         await rm(rootPath(harness));
         const before = issuingCalls(runner).length;
         // When
-        const effect = operation === "root" ? ca.root : ca.issueCert(SPEC);
+        const effect: Effect.Effect<unknown, CaError> = operation === "root" ? ca.root : ca.issueCert(SPEC);
         const error = failure(await Effect.runPromiseExit(effect));
         // Then
         expect(error).toMatchObject({ _tag: "CaError", caId: "mkcert" });

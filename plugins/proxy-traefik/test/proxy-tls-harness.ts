@@ -34,7 +34,7 @@ export const makeHarness = (issueFailure?: CaError) => {
   const certificateAuthority: CertificateAuthorityShape = {
     id: "test-ca",
     setup: () => Effect.sync(() => void operations.push("ca:setup")),
-    root: Effect.succeed({ certificate: "issuer cert" }),
+    root: Effect.succeed({ certificate: "issuer cert", trusted: true }),
     issueCert: (spec) => {
       calls.push(spec);
       if (issueFailure !== undefined) return Effect.fail(issueFailure);
@@ -42,7 +42,7 @@ export const makeHarness = (issueFailure?: CaError) => {
       return Effect.succeed({
         certificate: `${prefix} cert`,
         privateKey: Redacted.make(`${prefix} key`),
-        root: { certificate: "issuer cert" },
+        root: { certificate: "issuer cert", trusted: true },
       });
     },
   };

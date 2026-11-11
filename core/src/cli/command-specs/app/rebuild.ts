@@ -32,7 +32,10 @@ export const runRebuildCommand = Effect.fn("RebuildCommand.run")(function* (inpu
     yes: extractSpecFlags(input).yes === true,
     message: `Rebuild ${target}? This recreates containers and discards anything not in the Landofile or a volume.`,
   });
-  return yield* withIncompleteStartNotice(Effect.andThen(refreshAppCache(), rebuildApp(options)));
+  return yield* withIncompleteStartNotice(Effect.andThen(refreshAppCache(), rebuildApp(options)), {
+    verb: "rebuild",
+    ...(options.services === undefined ? {} : { services: options.services }),
+  });
 });
 
 export const rebuildSpec = {

@@ -4,6 +4,7 @@ import { Effect } from "effect";
 
 import {
   AmbiguousCertificateAuthoritiesError,
+  CaError,
   NoCertificateAuthorityError,
   PluginLoadError,
 } from "@lando/sdk/errors";
@@ -46,7 +47,40 @@ describe("certificate authority doctor status", () => {
     const status = await resolveStatus(Effect.succeed(authority));
 
     // Then
-    expect(status).toEqual({ _tag: "selected", id: "mkcert" });
+    expect(status).toEqual({ _tag: "selected", id: "mkcert", trusted: true });
+  });
+
+  test("reports an unreadable root without setup or issuance", async () => {
+    // Given an authority whose root fails and whose setup would be observable.
+    const calls: string[] = [];
+    const authority = {
+      ...makeTestCertificateAuthority(),
+      id: "mkcert",
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("setup");
+        }),
+      root: Effect.fail(
+        new CaError({
+          message: "mkcert has no local CA in secret.",
+          caId: "mkcert",
+          remediation: "Run `lando setup` to install the secret CA.",
+        }),
+      ),
+      issueCert: () => Effect.die("issued"),
+    };
+
+    // When doctor reads the authority.
+    const status = await resolveStatus(Effect.succeed(authority));
+
+    // Then the finding carries the authority remediation and does not install anything.
+    expect(calls).toEqual([]);
+    expect(status).toEqual({
+      _tag: "root-unavailable",
+      id: "mkcert",
+      detail: "mkcert has no local CA in [redacted].",
+      remediation: "Run `lando setup` to install the [redacted] CA.",
+    });
   });
 
   test("returns unavailable with redacted error detail", async () => {
@@ -124,7 +158,7 @@ describe("certificate authority doctor status", () => {
     // Given
     const statuses: ReadonlyArray<CertsDoctorStatus> = [
       UNRESOLVED_CERTS_STATUS,
-      { _tag: "selected", id: "mkcert" },
+      { _tag: "selected", id: "mkcert", trusted: true },
       { _tag: "unavailable", detail: "missing" },
       { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
       { _tag: "load-failed", pluginName: "ca-plugin", detail: "load failed" },
@@ -141,7 +175,7 @@ describe("certificate authority doctor status", () => {
     // Given
     const statuses: ReadonlyArray<CertsDoctorStatus> = [
       UNRESOLVED_CERTS_STATUS,
-      { _tag: "selected", id: "mkcert" },
+      { _tag: "selected", id: "mkcert", trusted: true },
       { _tag: "unavailable", detail: "missing" },
       { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
       { _tag: "load-failed", pluginName: "ca-plugin", detail: "load failed" },

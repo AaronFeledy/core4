@@ -190,7 +190,7 @@ describe("doctor progress events", () => {
           ],
         }),
         deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "mkcert" }),
+        certs: Effect.succeed({ _tag: "selected", id: "mkcert", trusted: true }),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
 
@@ -269,7 +269,7 @@ describe("doctor progress events", () => {
           selfChecks: [doctorSelfCheck({ section: "provider-status", reason: "timeout", message: "slow" })],
         }),
         deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "mkcert" }),
+        certs: Effect.succeed({ _tag: "selected", id: "mkcert", trusted: true }),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
     expect(recorder.events.filter((event) => event._tag === "task.fail")).toMatchObject([

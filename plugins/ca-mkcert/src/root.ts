@@ -9,6 +9,8 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { type CaError, isErrnoCode } from "@lando/sdk/errors";
 import type { CaRootCertificate } from "@lando/sdk/services";
 
+import { hostTrustsPem } from "./host-trust.ts";
+
 import type { IssueInto } from "./issuance.ts";
 import { type MkcertContext, SETUP_REMEDIATION, caError, failureDetail } from "./mkcert-command.ts";
 import { MKCERT_TOOL_VERSION, readInstalledMkcertStatus } from "./provision.ts";
@@ -70,7 +72,7 @@ export const makeMkcertRoot = (
         caError(`mkcert has no local CA in ${caroot}.`, { remediation: SETUP_REMEDIATION }),
       );
     }
-    return { caroot, root: { certificate } satisfies CaRootCertificate };
+    return { caroot, root: { certificate, trusted: hostTrustsPem(certificate) } satisfies CaRootCertificate };
   });
 
   /** Create the shared root when `CAROOT` has none; an existing root is never replaced. */

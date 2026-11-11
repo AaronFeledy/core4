@@ -276,12 +276,12 @@ describe("RouterService registry selection", () => {
         return {
           id: "test-ca",
           setup: () => Effect.void,
-          root: Effect.succeed({ certificate: "ca" }),
+          root: Effect.succeed({ certificate: "ca", trusted: true }),
           issueCert: () =>
             Effect.succeed({
               certificate: "cert",
               privateKey: Redacted.make("key"),
-              root: { certificate: "ca" },
+              root: { certificate: "ca", trusted: true },
             }),
         };
       }),
@@ -315,12 +315,12 @@ describe("RouterService registry selection", () => {
         return {
           id: "unused-ca",
           setup: () => Effect.void,
-          root: Effect.succeed({ certificate: "ca" }),
+          root: Effect.succeed({ certificate: "ca", trusted: true }),
           issueCert: () =>
             Effect.succeed({
               certificate: "cert",
               privateKey: Redacted.make("key"),
-              root: { certificate: "ca" },
+              root: { certificate: "ca", trusted: true },
             }),
         };
       }),

@@ -50,11 +50,14 @@ describe("CertificateAuthority contract", () => {
     const ca = makeTestCertificateAuthority();
     const mismatched = {
       ...ca,
-      root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootB }),
+      root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootB, trusted: true }),
       issueCert: (spec: Parameters<typeof ca.issueCert>[0]) =>
-        ca
-          .issueCert(spec)
-          .pipe(Effect.map((issued) => ({ ...issued, root: { certificate: TEST_CERTIFICATES.rootB } }))),
+        ca.issueCert(spec).pipe(
+          Effect.map((issued) => ({
+            ...issued,
+            root: { certificate: TEST_CERTIFICATES.rootB, trusted: true },
+          })),
+        ),
     };
     // When
     const exit = await Effect.runPromiseExit(runCaContract(mismatched));
@@ -71,7 +74,7 @@ describe("CertificateAuthority contract", () => {
     // Given: an authority that signs with rootA and says so on each issuance, but reports rootB as its root
     const drifted = {
       ...makeTestCertificateAuthority(),
-      root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootB }),
+      root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootB, trusted: true }),
     };
     // When
     const exit = await Effect.runPromiseExit(runCaContract(drifted));

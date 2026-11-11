@@ -15,6 +15,11 @@ export type { CertificateSpec } from "../schema/index.ts";
 export interface CaRootCertificate {
   /** PEM of the root that signs issued leaves. */
   readonly certificate: string;
+  /**
+   * Whether this root is already in the host trust store.
+   * Reporting it must not install trust.
+   */
+  readonly trusted: boolean;
 }
 
 export interface IssuedCertificate {
@@ -37,7 +42,11 @@ export class CertificateAuthority extends Context.Service<
   {
     readonly id: string;
     readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
-    /** The current root. Fails with remediation when the authority is not set up or has no root yet. */
+    /**
+     * The current signing root. Fails with remediation when the authority is not
+     * set up or has no root yet. Must not create a root, install host trust,
+     * download a tool, or prompt.
+     */
     readonly root: Effect.Effect<CaRootCertificate, CaError>;
     /** Issue fresh material. The authority maintains no persistent leaf store. */
     readonly issueCert: (spec: CertificateSpec) => Effect.Effect<IssuedCertificate, CaError>;
