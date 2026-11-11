@@ -386,7 +386,7 @@ jobs:
           bun run test:selection container-helper
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -1065,7 +1065,7 @@ jobs:
 
       - name: Upload guide scenario transcripts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip
           path: dist/transcripts/guides/**/*.json
@@ -1074,7 +1074,7 @@ jobs:
 
       - name: Upload guide e2e provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}.zip
           path: guide-e2e-provider-diagnostics
@@ -1296,7 +1296,7 @@ jobs:
 
       - name: Upload darwin-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-darwin-arm64
           path: |
@@ -1379,7 +1379,7 @@ jobs:
 
       - name: Upload darwin-x64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-darwin-x64
           path: |
@@ -1462,7 +1462,7 @@ jobs:
 
       - name: Upload linux-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-linux-arm64
           path: |
@@ -1545,7 +1545,7 @@ jobs:
 
       - name: Upload linux-x64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-linux-x64
           path: |
@@ -1625,7 +1625,7 @@ jobs:
 
       - name: Upload windows-x64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-windows-x64
           path: |
@@ -1705,7 +1705,7 @@ jobs:
 
       - name: Upload windows-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-windows-arm64
           path: |
@@ -1756,7 +1756,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 
       - name: Upload current-commit Linux x64 runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
@@ -1805,7 +1805,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
 
       - name: Upload current-commit Linux arm64 runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-linux-arm64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
@@ -1840,7 +1840,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
       - name: Upload current-commit Windows runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
@@ -1950,7 +1950,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-darwin-arm64
           path: provider-diagnostics
@@ -2021,7 +2021,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-darwin-x64
           path: provider-diagnostics
@@ -2092,7 +2092,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-linux-arm64
           path: provider-diagnostics
@@ -2374,7 +2374,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}
           path: provider-diagnostics
@@ -2488,7 +2488,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-windows-x64
           path: provider-diagnostics
@@ -2559,7 +2559,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-windows-arm64
           path: provider-diagnostics
