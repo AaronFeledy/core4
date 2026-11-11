@@ -17,7 +17,6 @@ export interface BuildLogsAppOptions {
 
 export type BuildLogsAppResult = LogsAppResult & {
   readonly lines: ReadonlyArray<LogsAppLine>;
-  readonly build: true;
 };
 
 const latestEntryFor = (
@@ -88,5 +87,5 @@ export const buildLogsApp = Effect.fn("AppOperation.buildLogs")(function* (
     }
   }
 
-  return { app: plan.name, lines, build: true };
+  return { app: plan.name, lines };
 });

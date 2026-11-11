@@ -51,9 +51,6 @@ export const LogsAppResult = Schema.Struct({
       }),
     ),
   ).annotate({ description: "Collected log lines; omitted when delivered to a live stream sink." }),
-  build: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "True when the lines are recorded build output rather than service logs.",
-  }),
 });
 export type LogsAppResult = typeof LogsAppResult.Type;
 export type LogsAppLine = NonNullable<LogsAppResult["lines"]>[number];

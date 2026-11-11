@@ -137,7 +137,7 @@ The label after the service name says which step printed the line. `[build]` is 
 
 `--build` prints what was saved and exits, so it can't be combined with `--follow`, `--since`, or `--source`. Lando rejects those combinations as a usage error with exit code `2`. An app with no saved build output prints one line that tells you to run `lando rebuild`. `lando destroy` removes an app's saved build output.
 
-With `--format=json`, each line's `source` is `build` or `build:<step id>`, and the result carries `"build": true`. To read a failed build with this command, see [Recover from a failed build step](../services/php-build-failures.mdx#read-the-full-build-output).
+With `--format=json`, each line's `source` is `build` or `build:<step id>`. To read a failed build with this command, see [Recover from a failed build step](../services/php-build-failures.mdx#read-the-full-build-output).
 
 ## Read a start-failure log tail
 

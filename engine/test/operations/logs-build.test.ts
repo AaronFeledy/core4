@@ -141,7 +141,6 @@ describe("buildLogsApp", () => {
       );
 
       // Then only the latest attempt of a step still in the plan is printed.
-      expect(result.build).toBe(true);
       expect(result.lines).toEqual([
         { service: "web", stream: "stdout", line: "image output", source: "build" },
         {
@@ -211,7 +210,7 @@ describe("buildLogsApp", () => {
       );
 
       // Then
-      expect(result).toEqual({ app: plan.name, lines: [], build: true });
+      expect(result).toEqual({ app: plan.name, lines: [] });
     });
   });
 

@@ -323,7 +323,7 @@ These are the last three lines it prints for the first example, two stream frame
 ```json
 {"_tag":"stdout","chunk":"second-line\n","service":"app","source":"build"}
 {"_tag":"stdout","chunk":"Error: Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1\n","service":"app","source":"build"}
-{"_tag":"result","envelope":{"apiVersion":"v4","command":"app:logs","ok":true,"result":{"app":"bt-failbuild","lines":[{"service":"app","stream":"stdout","line":"second-line","source":"build"},{"service":"app","stream":"stdout","line":"Error: Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","source":"build"}],"build":true},"warnings":[],"deprecations":[]}}
+{"_tag":"result","envelope":{"apiVersion":"v4","command":"app:logs","ok":true,"result":{"app":"bt-failbuild","lines":[{"service":"app","stream":"stdout","line":"second-line","source":"build"},{"service":"app","stream":"stdout","line":"Error: Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","source":"build"}]},"warnings":[],"deprecations":[]}}
 ```
 
 Read `envelope.result.lines` from the result frame. Each entry has `service`, `stream`, `line`, and `source`. `source` is `build` for an image build and `build:<step id>` for a `build.app` step. `envelope.result.build` is `true`, which tells this result apart from service logs.
@@ -390,7 +390,6 @@ The scenarios below start an app whose `build.app` step succeeds and confirm tha
     <Step name="print-saved-output">
       <Run command="lando logs --build --format=json" />
       <Verify command="lando logs --build --format=json" expect={{ stdout: { regex: "\"line\":\"build-step-output-marker\"[^}]*\"source\":\"build\"" } }} />
-      <Verify command="lando logs --build --format=json" expect={{ stdout: { regex: "\"build\":true" } }} />
     </Step>
     <Step name="cleanup-image-failure">
       <Cleanup />

@@ -52,7 +52,7 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   flags: {
     service: Flags.string({ char: "s", description: "Filter logs to a single planned service." }),
     build: Flags.boolean({
-      description: "Show the output of the most recent build instead of service logs.",
+      description: "Show saved build output instead of service logs.",
     }),
     follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),
     tail: Flags.integer({ description: "Show last N lines per service." }),
@@ -87,5 +87,5 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
     return followLogsApp({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },
   streamFrames: logLinesToStreamFrames,
-  render: renderLogsAppResult,
+  render: (result, input) => renderLogsAppResult(result, logBuildFromInput(input)),
 };

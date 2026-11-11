@@ -1,10 +1,10 @@
 /** `lando logs` result rendering. */
 import type { LogsAppResult } from "@lando/engine/operations/logs";
 
-export const renderLogsAppResult = (result: LogsAppResult): string => {
+export const renderLogsAppResult = (result: LogsAppResult, buildOutput = false): string => {
   if (result.lines === undefined) return "";
   if (result.lines.length === 0) {
-    if (result.build === true) {
+    if (buildOutput) {
       return `${result.app} has no recorded build output. Run "lando rebuild" to build the app and record it.`;
     }
     return `${result.app} (no log lines)`;

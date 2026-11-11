@@ -520,7 +520,7 @@ describe("lando logs", () => {
   });
 
   test("an empty build result names lando rebuild instead of no log lines", () => {
-    const rendered = renderLogsAppResult({ app: "test-logs", lines: [], build: true });
+    const rendered = renderLogsAppResult({ app: "test-logs", lines: [] }, true);
 
     expect(rendered).toContain("lando rebuild");
     expect(rendered).not.toContain("no log lines");
