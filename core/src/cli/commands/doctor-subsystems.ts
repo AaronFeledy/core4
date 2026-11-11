@@ -19,14 +19,11 @@
  */
 import { Effect, Option } from "effect";
 
+import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { RouterService, SshService } from "@lando/sdk/services";
 
-import {
-  type CertsDoctorStatus,
-  UNRESOLVED_CERTS_STATUS,
-  certsCheckContext,
-  certsSubsystemId,
-} from "./doctor-certs-status";
+import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsSubsystemCheck } from "./doctor-certs-status";
+import { idleGlobalProvider } from "./doctor-global-runtime";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostDnsCheck } from "./doctor-host-dns-check";
 import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
@@ -34,7 +31,7 @@ import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
 import { renderSectionCheck } from "./doctor-section-render";
 import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
-import { CERTS_SPEC, type DoctorSubsystemCheck, buildDegradedCheck } from "./doctor-subsystem-checks";
+import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export {
   DoctorSubsystemFailure,
@@ -71,24 +68,27 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
   const resolver = yield* Effect.serviceOption(HostDnsResolver);
+  const idleProvider = yield* idleGlobalProvider;
 
-  const proxyChecks = proxy === undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
+  // Router selection is host-side metadata, so an unselectable router is reported even when idle.
+  const routerUnavailable = proxy !== undefined && unavailableRouterReason(proxy) !== undefined;
+  const proxyChecks =
+    proxy === undefined || (idleProvider !== undefined && !routerUnavailable)
+      ? []
+      : [yield* buildProxyCheck(proxy, fix)];
   const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
-  const certsCheck =
-    certs._tag === "selected"
-      ? undefined
-      : yield* buildDegradedCheck(
-          CERTS_SPEC,
-          {
-            subsystem: "certs",
-            subsystemId: certsSubsystemId(certs),
-            ready: "false",
-            ...certsCheckContext(certs),
-          },
-          fix,
-        );
+  const certsCheck = yield* certsSubsystemCheck(certs, fix);
   const sshChecks =
-    ssh === undefined ? [] : [yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix })];
+    ssh === undefined
+      ? []
+      : [
+          yield* sshAgentPostureCheck({
+            ...options.sshAgent,
+            sshService: ssh,
+            fix,
+            ...(idleProvider === undefined ? {} : { idleProvider }),
+          }),
+        ];
   const hostDnsChecks = Option.isNone(resolver)
     ? []
     : [yield* buildHostDnsCheck(fix).pipe(Effect.provideService(HostDnsResolver, resolver.value))];
@@ -97,21 +97,48 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
     checks: [
       ...proxyChecks,
       ...(certsCheck === undefined ? [] : [certsCheck]),
-      ...sshChecks,
+      ...sshChecks.flatMap((check): ReadonlyArray<DoctorSubsystemCheck> => {
+        if (check.context.sidecarSkipped !== "true") return [check];
+        const gpg = check.details?.gpg;
+        if (gpg === undefined) return [];
+        const ready = gpg.upstream.reachable && gpg.keyringExported;
+        return [
+          {
+            name: "gpg-agent",
+            status: ready ? "pass" : "warn",
+            severity: ready ? "info" : "warn",
+            recovery: "manual",
+            context: {
+              subsystem: "gpg-agent",
+              upstreamReachable: String(gpg.upstream.reachable),
+              keyringExported: String(gpg.keyringExported),
+            },
+            solutions: ready
+              ? []
+              : [
+                  {
+                    kind: "manual",
+                    description:
+                      "Restore your host GPG agent and public keyring export, then rerun `lando doctor`.",
+                  },
+                ],
+          },
+        ];
+      }),
       ...hostDnsChecks,
       ...(options.networkTrust === undefined ? [] : [options.networkTrust]),
     ],
     skipped: [
-      ...(certsCheck === undefined
-        ? [
-            {
-              section: "certs",
-              status: "skipped" as const,
-              reason:
-                "A certificate authority was selected, but its installation and trust were not inspected; the certificate authority contract has no read-only inspection operation.",
-            },
-          ]
-        : []),
+      ...(idleProvider === undefined
+        ? []
+        : [
+            ...(routerUnavailable ? [] : ["router"]),
+            ...(sshChecks.some((check) => check.context.sidecarSkipped === "true") ? ["ssh-sidecar"] : []),
+          ].map((section) => ({
+            section,
+            status: "skipped" as const,
+            reason: `Provider ${idleProvider} holding the global app is idle; readiness was not inspected.`,
+          }))),
       ...[["router", proxy] as const, ["ssh", ssh] as const].flatMap(([section, service]) =>
         service === undefined
           ? [

@@ -12,29 +12,32 @@ import {
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version six for canonical input declarations", () => {
+  test("uses version nine for unavailable script metadata", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(6n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(9n);
   });
 
-  test.each([2n, 3n, 4n])("returns a cache miss for an old payload with header %s", (headerVersion) => {
-    // Given
-    const bytes = encodeAppCommandIndex({
-      schemaVersion: Number(headerVersion),
-      landoVersion: "0.0.0",
-      appName: "old",
-      sourceFile: "/app/.lando.yml",
-      sourceMtimeMs: 0,
-      sourceSize: 0,
-      generatedAtMs: 0,
-      entries: [],
-    });
-    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, headerVersion, true);
-    // When
-    const decoded = decodeAppCommandIndex(bytes);
-    // Then
-    expect(decoded).toBeNull();
-  });
+  test.each([2n, 3n, 4n, 5n, 6n])(
+    "returns a cache miss for an old payload with header %s",
+    (headerVersion) => {
+      // Given
+      const bytes = encodeAppCommandIndex({
+        schemaVersion: Number(headerVersion),
+        landoVersion: "0.0.0",
+        appName: "old",
+        sourceFile: "/app/.lando.yml",
+        sourceMtimeMs: 0,
+        sourceSize: 0,
+        generatedAtMs: 0,
+        entries: [],
+      });
+      new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, headerVersion, true);
+      // When
+      const decoded = decodeAppCommandIndex(bytes);
+      // Then
+      expect(decoded).toBeNull();
+    },
+  );
 
   test("roundtrips an app command index payload", () => {
     const payload = {

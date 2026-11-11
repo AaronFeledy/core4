@@ -85,7 +85,7 @@ const makeProvider = (
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -210,7 +210,7 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     ]);
     const volumes = db.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-mongodb-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--mongodb-data");
     expect(String(volumes[0]?.target)).toBe("/data/db");
     expect(db.healthcheck?.kind).toBe("command");
     expect(db.healthcheck?.target?.port).toBe(27017);

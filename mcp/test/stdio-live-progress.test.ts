@@ -3,6 +3,7 @@ import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { McpTransportError } from "@lando/sdk/errors";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { testAppGenerations } from "../src/testing.ts";
 import { serverLayer, startServer } from "./server";
 
 const completions = [
@@ -86,7 +87,7 @@ describe("stdio live byte progress", () => {
                   },
                 ],
                 defaultAllowlist: [spec.id, "app:info"],
-                runtimeLayer: Layer.succeed(RedactionService, redaction),
+                apps: testAppGenerations(Layer.succeed(RedactionService, redaction)),
               },
               [],
               redaction,

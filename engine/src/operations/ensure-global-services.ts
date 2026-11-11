@@ -43,6 +43,7 @@ import {
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
 import { captureGlobalStartupAdmission } from "../global-app/startup-admission.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
@@ -57,7 +58,7 @@ import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
 import { type globalInstall, installAndLoadGlobalPlan } from "./global-install.ts";
 import type { LoadGlobalPlanError } from "./global-plan.ts";
-import { advanceGlobalRecordedPlan, retainGlobalPlanSiblings } from "./global-retained-plan.ts";
+import { advanceGlobalRecordedPlan, reconcileGlobalSiblings } from "./global-retained-plan.ts";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -76,10 +77,11 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | import("@lando/sdk/errors").CaError
   | DebuggerHostUnavailableError
   | Effect.Error<ReturnType<typeof globalInstall>>
   | Effect.Error<ReturnType<typeof canonicalAppRoot>>
-  | Effect.Error<ReturnType<typeof retainGlobalPlanSiblings>>
+  | Effect.Error<ReturnType<typeof reconcileGlobalSiblings>>
   | EnvironmentValueResolutionError
   | PlanReplanRequiredError
   | ServiceNotReadyError
@@ -159,6 +161,8 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const root = yield* canonicalAppRoot((yield* globalApp.paths).root);
     const cached = globalEnsureRecord(registry, root);
     if (cached !== undefined) {
+      yield* registry.assertAppliedStateReadable?.({ id: cached.plan.id, provider: cached.plan.provider }) ??
+        Effect.void;
       const provider = yield* registry.select(yield* globalCreateProviderId());
       const inputs = yield* captureGlobalEnsureInputs(cached.plan, cached.landofile, provider);
       const names = Object.values(cached.plan.services);
@@ -255,7 +259,11 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       return yield* Effect.fail(missingServiceError(requested, missing, available, resolution));
     }
 
-    const requestedSet = includeAvailableDependencies(requested, planServices);
+    const retained = yield* reconcileGlobalSiblings(plan, yield* registry.select(plan.provider), {
+      selectedIds: requested,
+      close: (ids) => includeAvailableDependencies(ids, planServices),
+    });
+    const requestedSet = new Set(retained.selectedIds);
     const selected = planServices.filter((service) => requestedSet.has(String(service.name)));
     const planToApply =
       selected.length === planServices.length
@@ -267,25 +275,22 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
             ),
           };
 
-    const provider = yield* registry.select(plan.provider);
-    const retained = yield* retainGlobalPlanSiblings(
-      plan,
-      provider,
-      selected.map((service) => String(service.name)),
-    );
+    const provider = retained.provider;
     const beforeStartup = yield* captureGlobalEnsureInputs(plan, loaded.landofile, provider);
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.
-    const realizedPlan = withOrdinaryMounts(planToApply);
+    const realizedPlan = yield* prepareServiceCertificates(withOrdinaryMounts(planToApply));
     const preparedOverlays = yield* prepareDebuggerOverlay(realizedPlan);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
     const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
 
     yield* verifyAdmission;
+    const removalIds = retained.removals.map(({ observation }) => String(observation.service));
     const finalPlan = yield* advanceGlobalRecordedPlan(
       retained.recordedPlan,
       builtPlan,
       retained.disabledIds,
+      new Set(removalIds),
     );
     // Historical siblings remain observation evidence, never warm admission inputs.
     const desiredFinalPlan = { ...plan, services: { ...plan.services, ...builtPlan.services } };
@@ -302,9 +307,14 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
             ...(options.signal === undefined ? {} : { signal: options.signal }),
             onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
           },
-          verifyAdmission,
+          Effect.gen(function* () {
+            yield* verifyAdmission;
+            for (const removal of retained.removals)
+              yield* provider.removeObservedService(removal.observation);
+          }),
         ),
       ),
+      [...retained.joinedIds, ...removalIds],
     );
 
     const ready = yield* completeStartup({

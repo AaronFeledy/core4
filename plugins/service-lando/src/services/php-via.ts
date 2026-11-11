@@ -4,8 +4,10 @@ import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import type { ListenerContract } from "./_port-helpers.ts";
-import { apacheDirectivePath } from "./apache.ts";
+import { apacheDirectivePath, apacheForwardedDirectoryRedirectDirectives } from "./apache.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
+import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
+import { uploadDirRegex } from "./upload-dirs.ts";
 
 export const PHP_VIA_MODES = ["apache", "fpm", "cli"] as const;
 export type PhpVia = (typeof PHP_VIA_MODES)[number];
@@ -168,7 +170,7 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
   command: [
     "sh",
     "-c",
-    "a2enmod rewrite env && rm -f /etc/apache2/sites-enabled/000-default.conf /etc/apache2/conf-enabled/other-vhosts-access-log.conf",
+    "a2enmod rewrite env setenvif && rm -f /etc/apache2/sites-enabled/000-default.conf /etc/apache2/conf-enabled/other-vhosts-access-log.conf",
   ],
 });
 
@@ -220,6 +222,7 @@ export const apacheStartCommand = (
   allowOverride: boolean,
   listenPort: number | undefined,
   mapWindowsWorker = true,
+  uploadDirs: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot);
   const site = [
@@ -229,7 +232,29 @@ export const apacheStartCommand = (
     `AllowOverride ${allowOverride ? "All" : "None"}`,
     "Require all granted",
     "</Directory>",
+    // SetEnvIf survives .htaccess internal redirects, unlike a rewrite environment flag.
+    'SetEnvIf X-Forwarded-Proto "^https$" HTTPS=on',
+    // The PHP handler only claims lowercase extensions; variants must never serve source.
+    '<FilesMatch "\\.(?!php$)(?i:php)$">',
+    "Require all denied",
+    "</FilesMatch>",
+    ...apacheForwardedDirectoryRedirectDirectives("rewrite"),
+    // engine off cannot be overridden by an uploaded .htaccess AddHandler.
+    // FilesMatch also gives PHP requests the same 403 page as nginx.
+    ...(uploadDirs.length === 0
+      ? []
+      : [
+          `<DirectoryMatch "(?i)^${apacheDirectivePath(webroot.replace(/\/$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))}/(?:${apacheDirectivePath(uploadDirs.map(uploadDirRegex).join("|"))})(?:/|$)">`,
+          "<IfModule php_module>",
+          "php_admin_flag engine off",
+          "</IfModule>",
+          '<FilesMatch "(?i)\\.php$">',
+          "Require all denied",
+          "</FilesMatch>",
+          "</DirectoryMatch>",
+        ]),
     ...apacheErrorPageDirectives(),
+    ...apacheHiddenPathDirectives(),
   ];
   const directives = [
     "ServerName localhost",

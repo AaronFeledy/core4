@@ -48,7 +48,6 @@ export {
   type ValueWithOrigins,
 } from "./overlay-origins.ts";
 export { resolveLayerMergeRule } from "./layer-merge-rules.ts";
-export { executionSiteAt, ExecutionSiteMatch } from "./execution-sites.ts";
 export { assertLayerMergeCompleteness, listLayerMergeRules } from "./layer-merge-trie.ts";
 export {
   parseRouteHostname,
@@ -63,6 +62,7 @@ export {
   type ComposeDisposition,
   type ComposeDispositionEntry,
   ComposeDispositionMatrixError,
+  composeDispositionFor,
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,

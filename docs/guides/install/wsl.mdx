@@ -3,20 +3,26 @@ id: wsl
 provider: test
 platforms: [linux, wsl]
 timeout: 60000
-tags: [beta, docs, installer, wsl]
+tags: [docs, installer, wsl]
 ---
 
 # Install Lando on WSL
 
-Download `lando-linux-x64` (or `lando-linux-arm64` on ARM WSL) from a GitHub `v4.0.0-dev.N` prerelease and run it inside your WSL distro.
+WSL runs the Linux binary inside your distro. Install it with the POSIX installer, or download `lando-linux-x64` (or `lando-linux-arm64` on ARM WSL) from a GitHub release. Windows `.exe` assets exist on the same release if you also want a native Windows CLI; that is a separate install.
 
-> **Alpha status:** WSL uses the Linux binary. Unsigned Windows `.exe` assets also exist on the same prerelease if you want a native Windows CLI. The POSIX installer at `https://get.lando.dev/install.sh` is not up yet. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md) for current install options.
+## Install with the installer
 
-## Download the Linux binary
+Work inside the WSL distro shell, not a Windows prompt:
 
-Work inside the WSL distro shell, not a Windows prompt.
+```sh
+curl -fsSL https://get.lando.dev/install.sh | sh
+```
 
-1. Open the [Releases page](https://github.com/AaronFeledy/core4/releases) and find the latest `v4.0.0-dev.N` prerelease.
+The installer verifies the signed checksum, installs `lando` under `~/.local/share/lando/bin`, prints the `shellenv` command that puts it on PATH, and offers to run setup. [Install with the POSIX installer](./posix-installer.mdx) covers channels and install directories. Skip to [Keep the app off /mnt/c](#keep-the-app-off-mntc) when it finishes.
+
+## Download the Linux binary by hand
+
+1. Open the [Releases page](https://github.com/AaronFeledy/core4/releases) and pick the latest release.
 2. Download `lando-linux-x64` (or `lando-linux-arm64`) and `SHA256SUMS`.
 3. Verify the checksum:
 
@@ -24,7 +30,7 @@ Work inside the WSL distro shell, not a Windows prompt.
 grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c
 ```
 
-Use `lando-linux-arm64` in that grep if that is the asset you downloaded. `SHA256SUMS` lists every platform, so checking the whole file fails when the other binaries are missing. The piped command must report `OK` for the file you have. If it does not, delete both files and download them again from the same prerelease.
+Use `lando-linux-arm64` in that grep if that is the asset you downloaded. `SHA256SUMS` lists every platform, so checking the whole file fails when the other binaries are missing. The piped command must report `OK` for the file you have. If it does not, delete both files and download them again from the same release.
 
 4. Make it executable and put it on PATH:
 
@@ -41,8 +47,6 @@ lando --version
 Once `lando` is on PATH, `lando shellenv` prints a profile snippet you can append so new shells keep it.
 
 PATH is per distro. Installing in one WSL distro does not put `lando` on PATH in another distro or in Windows.
-
-Prefer the GitHub release. If no dev prerelease exists yet, download the `lando-<platform>` artifact from a successful main CI run. That needs a GitHub login. Extract the zip and verify the binary yourself.
 
 ## Keep the app off /mnt/c
 
@@ -71,7 +75,7 @@ lando doctor
 
 The default provider is `lando` (managed Podman). It does not need system Docker or Podman.
 
-Default setup may fail on Alpha. Host prerequisites can block the managed runtime. If setup names a host prerequisite, fix it and rerun `lando setup`.
+Host prerequisites can block the managed runtime. If setup names a host prerequisite, fix it and rerun `lando setup`.
 
 If the managed runtime still cannot install and you have working system Docker:
 

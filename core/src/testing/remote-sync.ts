@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { DateTime, Effect, Schema, Stream } from "effect";
 
@@ -256,7 +257,7 @@ const makeRemoteSource = (input: {
             redactionTokens: [TEST_REMOTE_SECRET],
           })
           .pipe(
-            Effect.mapError(
+            mapFailures(
               (cause) =>
                 new RemoteToolMissingError({
                   message: "Tool provisioning failed",
@@ -269,7 +270,7 @@ const makeRemoteSource = (input: {
           );
       }
       yield* http.get(locator.endpoint ?? `https://remote.example.test/${input.id}/fetch`).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new RemoteUnreachableError({
               message: "Remote fetch egress failed",
@@ -344,7 +345,7 @@ const makeRemoteSource = (input: {
               redactionTokens: [TEST_REMOTE_SECRET],
             })
             .pipe(
-              Effect.mapError(
+              mapFailures(
                 (cause) =>
                   new RemoteToolMissingError({
                     message: "Tool provisioning failed",
@@ -357,7 +358,7 @@ const makeRemoteSource = (input: {
             );
         }
         yield* http.get(locator.endpoint ?? `https://remote.example.test/${input.id}/send`).pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new RemoteUnreachableError({
                 message: "Remote send egress failed",
@@ -487,6 +488,7 @@ export const makeTestDataset = () =>
           return progress;
         });
       },
+      read: (_from) => Stream.make(expectedBytes),
       snapshot: (store) =>
         Effect.succeed({
           id: "remote-sync-contract-snapshot",
@@ -546,7 +548,7 @@ export const makeTestDataset = () =>
               to: artifact,
             })
             .pipe(
-              Effect.mapError(
+              mapFailures(
                 (cause) =>
                   new DatasetCaptureError({
                     message: "DataMover capture transfer failed",
@@ -562,7 +564,7 @@ export const makeTestDataset = () =>
             })
             .pipe(
               Stream.runCollect,
-              Effect.mapError(
+              mapFailures(
                 (cause) =>
                   new DatasetCaptureError({
                     message: "DataMover capture stream failed",
@@ -616,7 +618,7 @@ export const makeTestDataset = () =>
               to: { _tag: "serviceCmd", app, service, command: ["restore"] },
             })
             .pipe(
-              Effect.mapError(
+              mapFailures(
                 (cause) =>
                   new DatasetApplyError({
                     message: "DataMover apply transfer failed",

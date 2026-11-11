@@ -1,6 +1,11 @@
 export * from "./agent-forwarding.ts";
+export * from "./default-key.ts";
+export * from "./renderer-mode.ts";
+export * from "./host-maintenance.ts";
 export * from "./tooling-input.ts";
+export * from "./tooling-run-summary.ts";
 export * from "./app-plan.ts";
+export * from "./physical-names.ts";
 export * from "./file-sync-policy.ts";
 export * from "./image-reference.ts";
 export * from "./service-probe.ts";
@@ -8,9 +13,12 @@ export * from "./listener-observation.ts";
 export * from "./environment-value.ts";
 export * from "./compiled-landofile.ts";
 export * from "./database-connection.ts";
+export * from "./sqlite.ts";
 export * from "./artifacts.ts";
+export * from "./artifact-refresh.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";
+export * from "./config-key.ts";
 export * from "./config-view.ts";
 export * from "./certificate-authority-contribution.ts";
 export {
@@ -42,8 +50,6 @@ export {
   ComposeDeployField,
   ComposeDeployResources,
   ComposeDeploymentDevice,
-  ComposeDiscreteResourceSpec,
-  ComposeGenericResource,
   ComposeGpuRequest,
   ComposeGpusField,
   ComposeLogging,
@@ -74,6 +80,7 @@ export type { ComposeVolumeEntry } from "./compose-volumes.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
 export * from "./execution-site.ts";
+export * from "./config-lint-rules.ts";
 export * from "./host-events.ts";
 export * from "./editor.ts";
 export * from "./validation-issue.ts";
@@ -134,7 +141,14 @@ export * from "./container-helper.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./mounts.ts";
-export { DomainName, RouteHostname, RoutePathPrefix } from "./hostname.ts";
+export {
+  CertificateName,
+  certificateNameForHostname,
+  DomainName,
+  HostAliasName,
+  RouteHostname,
+  RoutePathPrefix,
+} from "./hostname.ts";
 export * from "./networking.ts";
 export * from "./route-filter.ts";
 export * from "./notify-config.ts";
@@ -163,6 +177,7 @@ export * from "./subscriber.ts";
 export * from "./service-info.ts";
 export * from "./service-mount.ts";
 export * from "./service-connection.ts";
+export * from "./service-run-observation.ts";
 export * from "./service-dependency.ts";
 export * from "./service-feature-validation.ts";
 export * from "./services/index.ts";
@@ -170,7 +185,11 @@ export * from "./template.ts";
 export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
-export { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
+export {
+  VolumeCreationFact,
+  VolumeInitializationPhase,
+  VolumeInitializationRecord,
+} from "./volume-initialization.ts";
 export {
   LayerMergeRule,
   SchemaLayerMergeAnnotationId,

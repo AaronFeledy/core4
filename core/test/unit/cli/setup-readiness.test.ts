@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -30,9 +30,67 @@ const withTempUserDataRoot = async <A>(run: (userDataRoot: string) => Promise<A>
 };
 
 describe("setup readiness persistence", () => {
+  test.each([
+    "{",
+    "null",
+    "{}",
+    JSON.stringify({ status: "ready", providerId: 42, updatedAt: "now", steps: [] }),
+    JSON.stringify({ status: "unknown", providerId: "lando", updatedAt: "now", steps: [] }),
+    JSON.stringify({ status: "ready", providerId: "lando", updatedAt: "now", steps: [{}] }),
+    JSON.stringify({
+      status: "ready",
+      providerId: "lando",
+      updatedAt: "now",
+      steps,
+      runtimeService: { running: "true" },
+    }),
+    JSON.stringify({
+      status: "ready",
+      providerId: "lando",
+      updatedAt: "now",
+      steps: [{ id: "ca", status: "failed", evidence: "failed" }],
+    }),
+  ])("treats corrupt readiness as absent (%s)", async (contents) => {
+    await withTempUserDataRoot(async (userDataRoot) => {
+      await mkdir(join(userDataRoot, "setup"));
+      await writeFile(setupReadinessPath(userDataRoot), contents);
+      expect(await Effect.runPromise(readSetupReadiness(userDataRoot))).toBeUndefined();
+    });
+  });
+
+  // Records written before `in-progress` existed derived status from steps; they must still decode.
+  test.each([
+    { status: "ready", steps },
+    {
+      status: "deferred",
+      steps: [...steps, { id: "file-sync", status: "deferred", evidence: "skipped", remediation: "rerun" }],
+    },
+    {
+      status: "failed",
+      steps: [...steps, { id: "ca", status: "unavailable", evidence: "missing", remediation: "rerun" }],
+    },
+  ])("decodes a record written before in-progress existed ($status)", async (record) => {
+    await withTempUserDataRoot(async (userDataRoot) => {
+      const persisted = {
+        ...record,
+        providerId: "lando",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        runtimeService: { running: true, socketPath: "/run/podman.sock", pid: 1 },
+      };
+      await mkdir(join(userDataRoot, "setup"));
+      await writeFile(setupReadinessPath(userDataRoot), JSON.stringify(persisted));
+      expect(await Effect.runPromise(readSetupReadiness(userDataRoot))).toEqual(persisted);
+    });
+  });
+
+  test("treats a missing readiness file as absent", async () => {
+    await withTempUserDataRoot(async (userDataRoot) => {
+      expect(await Effect.runPromise(readSetupReadiness(userDataRoot))).toBeUndefined();
+    });
+  });
   test("read tolerates a summary file without runtimeService", async () => {
     await withTempUserDataRoot(async (userDataRoot) => {
-      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", steps));
+      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", { status: "ready", steps }));
 
       const summary = await Effect.runPromise(readSetupReadiness(userDataRoot));
 
@@ -46,11 +104,15 @@ describe("setup readiness persistence", () => {
   test("write+read round-trips runtimeService", async () => {
     await withTempUserDataRoot(async (userDataRoot) => {
       await Effect.runPromise(
-        writeSetupReadiness(userDataRoot, "lando", steps, {
-          running: true,
-          socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
-          pid: 1234,
-          runtimeVersion: "5.0.0",
+        writeSetupReadiness(userDataRoot, "lando", {
+          status: "ready",
+          steps,
+          runtimeService: {
+            running: true,
+            socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
+            pid: 1234,
+            runtimeVersion: "5.0.0",
+          },
         }),
       );
 
@@ -73,14 +135,18 @@ describe("setup readiness persistence", () => {
         pid: 1234,
         runtimeVersion: "5.0.0",
       };
-      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", steps, runtimeService));
+      await Effect.runPromise(
+        writeSetupReadiness(userDataRoot, "lando", { status: "ready", steps, runtimeService }),
+      );
 
       const caStep = {
         id: "ca",
         status: "satisfied" as const,
         evidence: "Certificate authority setup completed.",
       };
-      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", [...steps, caStep]));
+      await Effect.runPromise(
+        writeSetupReadiness(userDataRoot, "lando", { status: "ready", steps: [...steps, caStep] }),
+      );
 
       const summary = await Effect.runPromise(readSetupReadiness(userDataRoot));
 
@@ -94,15 +160,19 @@ describe("setup readiness persistence", () => {
       const socketPath =
         "/home/u/.local/share/lando/runtime/run/podman.sock?token=ABC123&X-Amz-Signature=deadbeef";
       await Effect.runPromise(
-        writeSetupReadiness(userDataRoot, "lando", steps, {
-          running: true,
-          socketPath,
-          pid: 1234,
-          runtimeVersion: "5.0.0",
+        writeSetupReadiness(userDataRoot, "lando", {
+          status: "ready",
+          steps,
+          runtimeService: {
+            running: true,
+            socketPath,
+            pid: 1234,
+            runtimeVersion: "5.0.0",
+          },
         }),
       );
 
-      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", steps));
+      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", { status: "ready", steps }));
 
       const persisted = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8"));
       expect(persisted.runtimeService.socketPath).toBe(socketPath);
@@ -112,15 +182,21 @@ describe("setup readiness persistence", () => {
   test("write with null runtimeService clears existing runtimeService block", async () => {
     await withTempUserDataRoot(async (userDataRoot) => {
       await Effect.runPromise(
-        writeSetupReadiness(userDataRoot, "lando", steps, {
-          running: true,
-          socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
-          pid: 1234,
-          runtimeVersion: "5.0.0",
+        writeSetupReadiness(userDataRoot, "lando", {
+          status: "ready",
+          steps,
+          runtimeService: {
+            running: true,
+            socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
+            pid: 1234,
+            runtimeVersion: "5.0.0",
+          },
         }),
       );
 
-      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", steps, null));
+      await Effect.runPromise(
+        writeSetupReadiness(userDataRoot, "lando", { status: "ready", steps, runtimeService: null }),
+      );
 
       const summary = await Effect.runPromise(readSetupReadiness(userDataRoot));
 
@@ -131,12 +207,16 @@ describe("setup readiness persistence", () => {
   test("read redacts runtimeService.socketPath", async () => {
     await withTempUserDataRoot(async (userDataRoot) => {
       await Effect.runPromise(
-        writeSetupReadiness(userDataRoot, "lando", steps, {
-          running: true,
-          socketPath:
-            "/home/u/.local/share/lando/runtime/run/podman.sock?token=ABC123&X-Amz-Signature=deadbeef",
-          pid: 1234,
-          runtimeVersion: "5.0.0",
+        writeSetupReadiness(userDataRoot, "lando", {
+          status: "ready",
+          steps,
+          runtimeService: {
+            running: true,
+            socketPath:
+              "/home/u/.local/share/lando/runtime/run/podman.sock?token=ABC123&X-Amz-Signature=deadbeef",
+            pid: 1234,
+            runtimeVersion: "5.0.0",
+          },
         }),
       );
 

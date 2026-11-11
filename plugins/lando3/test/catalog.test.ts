@@ -117,6 +117,6 @@ describe("local Compose dispositions", () => {
       env_file: "envFile",
       depends_on: "dependsOn",
     });
-    expect([...CAPABILITY_FRAGILE_KEYS]).toEqual(["pull_policy", "gpus", "deploy"]);
+    expect([...CAPABILITY_FRAGILE_KEYS]).toEqual(["gpus", "deploy"]);
   });
 });

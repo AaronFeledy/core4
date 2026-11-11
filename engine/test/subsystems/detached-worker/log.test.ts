@@ -5,8 +5,30 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
-import { openWorkerLog, stderrTailFromLog } from "../../../src/subsystems/detached-worker/log.ts";
+import {
+  openWorkerLog,
+  stderrTailFromLog,
+  writeWorkerDiagnostic,
+} from "../../../src/subsystems/detached-worker/log.ts";
 import { ownerOnlyFileAccess } from "../../private-file-access.ts";
+
+test("delivers bounded worker diagnostics to the invocation writer", () => {
+  const chunks: string[] = [];
+  writeWorkerDiagnostic(
+    { callId: "c".repeat(100), operation: "openUrl", outcome: "ok", durationMs: 7, exitCode: 0 },
+    (line) => {
+      chunks.push(line);
+    },
+  );
+  expect(chunks).toHaveLength(1);
+  expect(JSON.parse(chunks.join(""))).toEqual({
+    callId: "c".repeat(80),
+    operation: "openUrl",
+    outcome: "ok",
+    durationMs: 7,
+    exitCode: 0,
+  });
+});
 
 test.each([33, 70 * 1024])("redacts a %s-character secret before clipping the log tail", async (length) => {
   // Given a secret spanning the final tail boundary, including one larger than a read window.

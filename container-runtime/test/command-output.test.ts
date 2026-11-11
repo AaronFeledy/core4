@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { RedactionService } from "@lando/redaction/service";
 import {
   FailureRoleAnnotation,
@@ -16,6 +16,7 @@ import {
   captureCommandOutput,
   commandOutputStream,
 } from "../src/command-output.ts";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const bytes = (value: string) => new TextEncoder().encode(value);
 const stderr = (value: string): ExecChunk => ({ kind: "stderr", chunk: bytes(value) });
@@ -339,28 +340,27 @@ test.each(["take", "interrupt"] as const)(
     frame[0] = 1;
     new DataView(frame.buffer).setUint32(4, payload.length, false);
     frame.set(payload, 8);
-    const api: DataPlaneApiClient = {
-      request: (request) => {
-        if (request.method === "DELETE") {
-          removed += 1;
-          return Effect.fail(
-            new ProviderUnavailableError({
-              providerId: "test",
-              operation: "remove",
-              message: "SYNTHETIC_PRIVATE_CLEANUP",
-              cause: "SYNTHETIC_PRIVATE_CAUSE",
-              remediation: "Retry fixture.",
-            }),
-          );
-        }
-        return Effect.succeed({ status: 201, body: "{}" });
-      },
-      stream: () =>
-        Stream.concat(
-          Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(frame))),
-          Stream.fromEffect(Effect.never),
-        ),
-    };
+    const engine = new FakeEngine().fail(
+      "container.delete",
+      new ProviderUnavailableError({
+        providerId: "test",
+        operation: "remove",
+        message: "SYNTHETIC_PRIVATE_CLEANUP",
+        cause: "SYNTHETIC_PRIVATE_CAUSE",
+        remediation: "Retry fixture.",
+      }),
+    );
+    engine.observers.set("container.delete", () => {
+      removed += 1;
+    });
+    engine.feeds.set(
+      "container.attach",
+      Stream.concat(
+        Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(frame))),
+        Stream.fromEffect(Effect.never),
+      ),
+    );
+    const api = engine.api;
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
@@ -371,11 +371,16 @@ test.each(["take", "interrupt"] as const)(
     const exit: Exit.Exit<unknown, unknown> =
       mode === "take"
         ? await Effect.runPromiseExit(
-            commandOutputStream(source, { failure }).pipe(Stream.take(1), Stream.runDrain),
+            commandOutputStream(source, { failure, authoritativeTokens: ["SYNTHETIC_PRIVATE_CLEANUP"] }).pipe(
+              Stream.take(1),
+              Stream.runDrain,
+            ),
           )
         : await Effect.runPromise(
             Effect.gen(function* () {
-              const fiber = yield* Effect.forkChild(captured(source));
+              const fiber = yield* Effect.forkChild(
+                captured(source, { authoritativeTokens: ["SYNTHETIC_PRIVATE_CLEANUP"] }),
+              );
               yield* Deferred.await(started);
               yield* Fiber.interrupt(fiber);
               return yield* Fiber.await(fiber);
@@ -384,6 +389,9 @@ test.each(["take", "interrupt"] as const)(
     expect(removed).toBe(1);
     if (!Exit.isFailure(exit)) throw new Error("Expected sanitized removal failure");
     const outcome = failureOutcomeFromCause(exit.cause);
+    expect(outcome.error).toMatchObject({
+      cause: { _tag: "ProviderUnavailableError", remediation: "Retry fixture." },
+    });
     expect(JSON.stringify(outcome).includes("SYNTHETIC_PRIVATE")).toBe(false);
     expect(Cause.hasInterrupts(exit.cause)).toBe(mode === "interrupt");
     expect(exit.cause.reasons.filter((reason) => !Cause.isInterruptReason(reason))).toHaveLength(1);

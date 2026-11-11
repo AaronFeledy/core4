@@ -1,15 +1,19 @@
 #!/usr/bin/env bun
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { CONTAINER_HELPER_ARCHES } from "@lando/container-runtime/container-helper";
 import { Effect } from "effect";
 
-import { resolveContainerHelper } from "../core/src/container-helper/assets.ts";
-import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
-import { CONTAINER_HELPER_SOURCE_ROOT } from "../core/src/container-helper/source.ts";
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
+import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";
+import {
+  CONTAINER_HELPER_SOURCE_DIGEST_PATH,
+  CONTAINER_HELPER_SOURCE_ROOT,
+  containerHelperSourceDigest,
+} from "@lando/container-runtime/container-helper/source";
 
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { compiledBinaryBundleConfig } from "./compiled-binary-bundle.ts";
@@ -33,14 +37,27 @@ export type CompiledBinaryBuildRunner = (config: Bun.BuildConfig) => Promise<Bun
 export type ContainerHelperAssetBuilder = (stagingDir: string) => Promise<readonly string[]>;
 
 /**
+ * A helper directory written by `build:container-helper` records the source digest it was built
+ * from; refuse to embed one built from other sources. Test stubs record no digest and pass.
+ */
+const assertHelperOverrideCurrent = async (dir: string): Promise<void> => {
+  const recorded = Bun.file(resolve(dir, basename(CONTAINER_HELPER_SOURCE_DIGEST_PATH)));
+  if (!(await recorded.exists())) return;
+  if ((await recorded.text()).trim() === (await containerHelperSourceDigest())) return;
+  throw new Error(
+    `The container helper in LANDO_CONTAINER_HELPER_DIR (${dir}) was built from different sources than core/container-helper. Run \`bun run --filter='@lando/core' build:container-helper\` and point LANDO_CONTAINER_HELPER_DIR at core/container-helper/dist, or unset it.`,
+  );
+};
+
+/**
  * Gzips the prebuilt static helper for every Linux arch into embeddable assets
  * named by digest. The helpers come from `LANDO_CONTAINER_HELPER_DIR` or from
  * `bun run build:container-helper`, which builds them with Lando.
  */
 export const buildContainerHelperAssets: ContainerHelperAssetBuilder = async (stagingDir) => {
-  await containerHelperNotices(
-    process.env.LANDO_CONTAINER_HELPER_DIR ?? resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist"),
-  );
+  const override = process.env.LANDO_CONTAINER_HELPER_DIR;
+  if (override !== undefined) await assertHelperOverrideCurrent(override);
+  await containerHelperNotices(override ?? resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist"));
   const assets: string[] = [];
   for (const arch of CONTAINER_HELPER_ARCHES) {
     const helper = await Effect.runPromise(

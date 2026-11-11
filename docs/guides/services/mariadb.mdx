@@ -2,7 +2,7 @@
 id: mariadb
 provider: test
 timeout: 90000
-tags: [beta, docs, mariadb, service, database]
+tags: [docs, mariadb, service, database]
 ---
 
 # Add MariaDB
@@ -51,7 +51,7 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Setting | Value |
 | --- | --- |
 | Host | `db` |
-| Database | the app name (`mariadb-demo`); override with `database:` under `services.db` |
+| Database | the folder's data name (here `mariadb-demo`, the name this folder's data was first created under); override with `database:` under `services.db` |
 | User | `lando` |
 | Password | `lando` |
 

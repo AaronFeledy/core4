@@ -159,7 +159,7 @@ test("uses strict Docker-compatible network responses from the production endpoi
       Id: networkId,
       Name: "lando-vm-generation",
       IPAM: { Config: [{ Subnet: "10.89.3.0/24" }] },
-      Containers: { router: { Name: "lando-global-traefik", IPv4Address: "10.89.3.3/24" } },
+      Containers: { router: { Name: "lando-global--traefik", IPv4Address: "10.89.3.3/24" } },
     }),
     networkListBody: JSON.stringify([{ Id: networkId }]),
   });
@@ -223,7 +223,7 @@ test("Podman facts reject invalid container ports and ambiguous attachments", ()
     },
     network: {
       ...input.network,
-      Containers: { router: { Name: "lando-global-traefik", IPv4Address: "10.89.3.3/24" } },
+      Containers: { router: { Name: "lando-global--traefik", IPv4Address: "10.89.3.3/24" } },
     },
   });
   expect(compatible.liveAddresses).toEqual(new Set(["10.89.3.3"]));

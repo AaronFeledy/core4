@@ -149,7 +149,7 @@ describe("start progress topology", () => {
           app: target.app,
           service: target.service,
           providerId: routedPlan.provider,
-          status: "running",
+          status: "running" as const,
           publications: { status: "unknown" },
         }),
       onApply: (applied) => {
@@ -161,7 +161,7 @@ describe("start progress topology", () => {
               service: service.name,
               providerId: applied.provider,
               containerId: `owned-${service.name}`,
-              status: "running",
+              status: "running" as const,
               publications: { status: "unknown" as const },
             })),
           );
@@ -331,7 +331,8 @@ describe("start progress topology", () => {
       ),
     ).toMatchObject({
       summary: "test-start file-sync failed",
-      failed: 2,
+      failed: 1,
+      outcome: "failure",
     });
   });
 

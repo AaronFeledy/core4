@@ -1,7 +1,7 @@
-import { Effect } from "effect";
 import { Schema } from "effect";
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 
+import { withDefaultKey } from "./default-key.ts";
 import { BindAddress } from "./endpoint.ts";
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
 import { HostEvents } from "./host-events.ts";
@@ -95,29 +95,31 @@ export type AppLabelDefaults = typeof AppLabelDefaults.Type;
  * schema default for their host decision; they stay opt-in at runtime creation.
  */
 export const TelemetryConfig = Schema.Struct({
-  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
+  enabled: Schema.Boolean.pipe(withDefaultKey(true)),
 });
 export type TelemetryConfig = typeof TelemetryConfig.Type;
 
 export const NetworkProxyConfig = Schema.Struct({
   http: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   https: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  noProxy: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+  noProxy: Schema.Array(Schema.String).pipe(withDefaultKey([])),
   /**
    * When true, write the resolved proxy env (`HTTP_PROXY` / `HTTPS_PROXY` /
    * `NO_PROXY`) into `type: lando` service env layers. Default false — proxy
    * URLs may embed credentials. Per-service override: `security.inheritNetworkProxy`.
    */
-  injectIntoServices: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description:
-      "When true, write resolved HTTP(S)_PROXY / NO_PROXY into type: lando services (default false).",
-  }),
+  injectIntoServices: Schema.Boolean.pipe(
+    withDefaultKey(false, {
+      description:
+        "When true, write resolved HTTP(S)_PROXY / NO_PROXY into type: lando services (default false).",
+    }),
+  ),
 });
 export type NetworkProxyConfig = typeof NetworkProxyConfig.Type;
 
 export const NetworkCaConfig = Schema.Struct({
-  trustHost: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
-  certs: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+  trustHost: Schema.Boolean.pipe(withDefaultKey(true)),
+  certs: Schema.Array(Schema.String).pipe(withDefaultKey([])),
   /**
    * When true (default), install `network.ca.certs` into every `type: lando`
    * service trust store and runtime CA env (`NODE_EXTRA_CA_CERTS`, etc.) so
@@ -125,9 +127,11 @@ export const NetworkCaConfig = Schema.Struct({
    * per-project Dockerfiles or Landofile edits. Per-service override:
    * `security.inheritNetworkCa`.
    */
-  injectIntoServices: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))).annotate({
-    description: "When true (default), install network.ca.certs into type: lando service trust stores.",
-  }),
+  injectIntoServices: Schema.Boolean.pipe(
+    withDefaultKey(true, {
+      description: "When true (default), install network.ca.certs into type: lando service trust stores.",
+    }),
+  ),
 });
 export type NetworkCaConfig = typeof NetworkCaConfig.Type;
 
@@ -251,8 +255,9 @@ export type DebuggerConfig = typeof DebuggerConfig.Type;
  *
  * `renderer` selects the CLI output mode (`lando`/`json`/`plain`/`verbose`)
  * with precedence flag > env > config > default.
- * `logLevel` is an optional string (`none`/`error`/`warn`/`info`/`debug`/`trace`);
- * unknown tokens fail later at resolve, not at config load.
+ * `logLevel` is an optional string (`none`/`error`/`warn`/`info`/`debug`/`trace`).
+ * Both stay strings here so presentation can fall back to defaults; the global
+ * config decoder reports values outside those sets as issues.
  */
 export const GlobalConfig = Schema.Struct({
   debugger: Schema.optionalKey(DebuggerConfig).annotate({
@@ -293,37 +298,33 @@ export const GlobalConfig = Schema.Struct({
     description: "Container-label defaults applied below each user-app service's authored labels.",
   }),
   telemetry: TelemetryConfig.pipe(
-    Schema.withDecodingDefaultKey(Effect.sync(() => ({ enabled: true }))),
-  ).annotate({
-    description: "CLI telemetry policy.",
-  }),
+    withDefaultKey({ enabled: true }, { description: "CLI telemetry policy." }),
+  ),
   renderer: Schema.optionalKey(Schema.String).annotate({
-    description: "Default CLI renderer contribution id.",
+    description:
+      "Default CLI renderer: lando, json, plain, or verbose. Config validation reports other values, and output falls back to the default renderer.",
   }),
   logLevel: Schema.optionalKey(Schema.String).annotate({
     description:
-      "Diagnostic log level (none, error, warn, info, debug, trace). Unknown values fail at resolve, not config load.",
+      "Diagnostic log level: none, error, warn, info, debug, or trace. Config validation reports other values, and logging falls back to the default level.",
   }),
-  allowLoadOutsideRoot: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate(
-    {
+  allowLoadOutsideRoot: Schema.Boolean.pipe(
+    withDefaultKey(false, {
       description: "Allow Landofile load/import paths outside the app root (default false).",
-    },
+    }),
   ),
-  loadMaxFileBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))
-    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 1_048_576)))
-    .annotate({ description: "Maximum bytes read by one Landofile load/import call." }),
+  loadMaxFileBytes: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThan(0)),
+  ).pipe(withDefaultKey(1_048_576, { description: "Maximum bytes read by one Landofile load/import call." })),
   loadMaxFilesPerExpression: Schema.Number.pipe(
     Schema.check(Schema.isInt()),
     Schema.check(Schema.isGreaterThan(0)),
-  )
-    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 16)))
-    .annotate({ description: "Maximum distinct files read by one Landofile expression." }),
+  ).pipe(withDefaultKey(16, { description: "Maximum distinct files read by one Landofile expression." })),
   loadMaxRecursionDepth: Schema.Number.pipe(
     Schema.check(Schema.isInt()),
     Schema.check(Schema.isGreaterThan(0)),
-  )
-    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 4)))
-    .annotate({ description: "Maximum nested Landofile load/import call depth." }),
+  ).pipe(withDefaultKey(4, { description: "Maximum nested Landofile load/import call depth." })),
   network: Schema.optionalKey(NetworkConfig).annotate({
     description: "Outbound proxy and certificate trust policy.",
   }),
@@ -333,10 +334,12 @@ export const GlobalConfig = Schema.Struct({
    */
   proxy: Schema.optionalKey(
     Schema.Struct({
-      defaultDomain: DomainName.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "lndo.site"))).annotate({
-        description:
-          "Plain DNS domain used when routes omit a custom domain (global proxy.defaultDomain), without a scheme, port, path, or wildcard.",
-      }),
+      defaultDomain: DomainName.pipe(
+        withDefaultKey("lndo.site", {
+          description:
+            "Plain DNS domain used when routes omit a custom domain (global proxy.defaultDomain), without a scheme, port, path, or wildcard.",
+        }),
+      ),
     }),
   ).annotate({
     description: "Global ingress proxy settings (global proxy). Distinct from network.proxy HTTP egress.",

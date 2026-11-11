@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ListenerObservation } from "@lando/sdk/schema";
 import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
@@ -30,6 +31,7 @@ import {
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
@@ -47,6 +49,7 @@ import {
   unsupportedHealthcheckTarget,
   validateHealthcheckExecution,
 } from "../healthcheck-attempt.ts";
+import { isProducedArtifact, producedImageMissing } from "../image-ensure.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
@@ -89,8 +92,13 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
-import { exec, execStream } from "./exec.ts";
+import { type ExecOptions, exec, execStream } from "./exec.ts";
 import { logs } from "./logs.ts";
+import {
+  listLabeledServiceContainers,
+  removeStaleServiceContainers,
+  selectStaleServiceContainers,
+} from "./stale-service-containers.ts";
 
 export { scratchLabelsForPlan } from "../labels.ts";
 
@@ -158,6 +166,8 @@ export interface BringUpOptions {
   readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
+  readonly resolveContainerHelper?: ExecOptions["resolveContainerHelper"];
+  readonly helperTarget?: ExecOptions["helperTarget"];
   readonly dialect?: LifecycleDialect;
   readonly ensureImage?: (input: {
     readonly service: ServicePlan;
@@ -565,6 +575,13 @@ const createContainer = Effect.fnUntraced(function* (
     service.artifact?.kind === "ref" &&
     isMissingImageCreateResponse(response)
   ) {
+    // A Lando-built image exists in no registry; the forced pull that repairs Docker's
+    // inspect-200/create-404 disagreement would only reach for a tag that was never published.
+    if (isProducedArtifact(service)) {
+      return yield* Effect.fail(
+        producedImageMissing(deps.options.ctx, String(service.name), service.artifact.ref),
+      );
+    }
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
     const retry = yield* request(deps, { method: "POST", ...createRequest });
     if (retry.status === 201 || retry.status === 409) return endpoints;
@@ -681,7 +698,7 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
 
 const removeContainer = (deps: BringUpDeps, service: ServicePlan, name: string) =>
   removeRuntimeContainer(deps.api, name, { ...deps.options.ctx, operation: "bringUp.remove" }).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       podmanFailure(deps, {
         service,
         operation: "bringUp.remove",
@@ -699,7 +716,7 @@ const publish = (
   deps.options.eventService === undefined
     ? Effect.void
     : deps.options.eventService.publish(event).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ProviderInternalError({
               providerId: deps.options.ctx.providerId,
@@ -1049,7 +1066,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
-  const plan = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
+  const prepared = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
+  const plan = yield* prepareContainerHelperMounts(prepared, options);
   const deps: BringUpDeps = {
     api,
     options,
@@ -1067,6 +1085,13 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   for (const name of networkNames) {
     if (!externalNames.has(name)) continue;
     yield* preflightExternalNetwork(api, name, options.ctx);
+  }
+
+  let staleNameChanged = false;
+  if (options.forbidRecreate !== true) {
+    const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
+    const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+    staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
   }
 
   for (const service of Object.values(plan.services)) {
@@ -1147,7 +1172,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
                         raw: true,
                         ...(options.signal === undefined ? {} : { signal: options.signal }),
                       },
-                      { api, ctx: options.ctx },
+                      {
+                        api,
+                        ctx: options.ctx,
+                        resolveContainerHelper: options.resolveContainerHelper,
+                        helperTarget: options.helperTarget,
+                      },
                     ),
               ),
             ),
@@ -1234,5 +1264,5 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     );
   }
 
-  return { changed: result.changed || createdVolumes.length > 0, createdVolumes };
+  return { changed: result.changed || staleNameChanged || createdVolumes.length > 0, createdVolumes };
 });

@@ -554,7 +554,7 @@ describe("provider-docker capabilities", () => {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
       if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
       const chunks = await Effect.runPromise(
-        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+        client.stream({ method: "GET", path: "/containers/lando-myapp--web/logs?stdout=true" }).pipe(
           Stream.runCollect,
           Effect.map((collected) => Array.from(collected)),
         ),
@@ -633,7 +633,7 @@ describe("provider-docker capabilities", () => {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
       if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
       const chunks = await Effect.runPromise(
-        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+        client.stream({ method: "GET", path: "/containers/lando-myapp--web/logs?stdout=true" }).pipe(
           Stream.runCollect,
           Effect.map((collected) => Array.from(collected)),
         ),

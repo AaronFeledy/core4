@@ -43,6 +43,9 @@ test("publishes paired stop events for each service when containers are already 
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         return { status: 404, body: "" };
       }),
   };
@@ -86,8 +89,9 @@ test("publishes paired stop events for each service when containers are already 
     })),
   });
   expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-    "GET /containers/lando-absent-database/json",
-    "GET /containers/lando-absent-web/json",
+    "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dabsent%22%5D%7D",
+    "GET /containers/lando-absent--database/json",
+    "GET /containers/lando-absent--web/json",
     "GET /networks/lando-absent",
   ]);
 });

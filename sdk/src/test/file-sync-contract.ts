@@ -1,10 +1,14 @@
 import { isDeepStrictEqual } from "node:util";
 import { DateTime, Effect, Result, Schema, Stream } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import {
   AbsolutePath,
   type AppRef,
+  type FileSyncDisposalOperation,
+  type FileSyncDisposalPhase,
+  type FileSyncDisposalStep,
   FileSyncEngineCapabilities,
   type FileSyncEventChunk,
   type FileSyncSessionFilter,
@@ -13,6 +17,8 @@ import {
   type FileSyncSessionSpec,
   type FileSyncSetupOptions,
   ServiceName,
+  fileSyncDisposalTransitions,
+  planFileSyncDisposal,
 } from "../schema/index.ts";
 import type { FileSyncEngineShape, FileSyncError } from "../services/index.ts";
 import { ContractFailure, isNonEmptyString, isStream } from "./_shared.ts";
@@ -136,7 +142,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
   yield* requireFileSyncContract(isStream(engine.streamEvents(sentinelRef)), "streamEvents returns a Stream");
 
   const isAvailable = yield* engine.isAvailable.pipe(
-    Effect.mapError((details: FileSyncError) =>
+    mapFailures((details: FileSyncError) =>
       fileSyncContractFailure("isAvailable resolves", details as unknown),
     ),
   );
@@ -147,9 +153,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
   );
 
   yield* Effect.scoped(engine.setup({ force: false })).pipe(
-    Effect.mapError((details: FileSyncError) =>
-      fileSyncContractFailure("setup resolves", details as unknown),
-    ),
+    mapFailures((details: FileSyncError) => fileSyncContractFailure("setup resolves", details as unknown)),
   );
 
   yield* Effect.scoped(
@@ -158,7 +162,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       const ref = yield* engine
         .createSession(lifecycleSpec)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("createSession resolves for the contract fixture", details as unknown),
           ),
         );
@@ -171,7 +175,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       const listed = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves", details as unknown),
           ),
         );
@@ -189,7 +193,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .flushSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("flushSession resolves after create", details as unknown),
           ),
         );
@@ -197,14 +201,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .pauseSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("pauseSession resolves", details as unknown),
           ),
         );
       const afterPause = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves after pause", details as unknown),
           ),
         );
@@ -217,7 +221,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .pauseSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("pauseSession is idempotent", details as unknown),
           ),
         );
@@ -225,14 +229,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .resumeSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("resumeSession resolves", details as unknown),
           ),
         );
       const afterResume = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves after resume", details as unknown),
           ),
         );
@@ -244,7 +248,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .flushSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("flushSession resolves after resume", details as unknown),
           ),
         );
@@ -252,14 +256,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .terminateSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("terminateSession resolves", details as unknown),
           ),
         );
       const afterTerminate = yield* engine
         .listSessions({})
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("listSessions resolves after terminate", details as unknown),
           ),
         );
@@ -272,7 +276,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
       yield* engine
         .terminateSession(ref)
         .pipe(
-          Effect.mapError((details: FileSyncError) =>
+          mapFailures((details: FileSyncError) =>
             fileSyncContractFailure("terminateSession is idempotent", details as unknown),
           ),
         );
@@ -285,7 +289,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
     engine
       .createSession(buildFileSyncContractSpec("scope-finalizer"))
       .pipe(
-        Effect.mapError((details: FileSyncError) =>
+        mapFailures((details: FileSyncError) =>
           fileSyncContractFailure("createSession registers a scope finalizer", details as unknown),
         ),
       ),
@@ -293,7 +297,7 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
   const afterScope = yield* engine
     .listSessions({})
     .pipe(
-      Effect.mapError((details: FileSyncError) =>
+      mapFailures((details: FileSyncError) =>
         fileSyncContractFailure("listSessions resolves after scope finalization", details as unknown),
       ),
     );
@@ -308,14 +312,14 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
     yield* engine
       .terminateSession(scopeFinalizedRef)
       .pipe(
-        Effect.mapError((details: FileSyncError) =>
+        mapFailures((details: FileSyncError) =>
           fileSyncContractFailure("persistent session explicit teardown resolves", details),
         ),
       );
     const afterTeardown = yield* engine
       .listSessions({})
       .pipe(
-        Effect.mapError((details: FileSyncError) =>
+        mapFailures((details: FileSyncError) =>
           fileSyncContractFailure("listSessions resolves after persistent session teardown", details),
         ),
       );
@@ -348,6 +352,119 @@ export const runFileSyncEngineContract = Effect.fnUntraced(function* (
     "stop failure fails with FileSyncStopError",
   );
 });
+
+/**
+ * Run the app disposal lifecycle assertions for an engine that declares
+ * `appLifecycle`; engines without one have nothing to hold to the table. `spec`
+ * is a session the engine can create for an app it holds nothing for. Every
+ * observed `disposalPhase` move must match `fileSyncDisposalTransitions`:
+ * the full create -> drain -> dispose -> complete path, the planner's resume
+ * plan from `disposing`, rejected out-of-order operations that leave the phase
+ * untouched, and the settled `invalidateDrain` on a completed app.
+ */
+export const runFileSyncAppLifecycleContract = Effect.fnUntraced(function* (
+  engine: FileSyncEngineShape,
+  spec: FileSyncSessionSpec,
+): Effect.fn.Return<void, ContractFailure> {
+  const lifecycle = engine.appLifecycle;
+  if (lifecycle === undefined) return;
+  const app = spec.app;
+
+  const phase = (assertion: string) =>
+    lifecycle
+      .disposalPhase(app)
+      .pipe(
+        mapFailures((details) => fileSyncContractFailure(`disposalPhase resolves ${assertion}`, details)),
+      );
+  const requirePhase = (expected: FileSyncDisposalPhase, assertion: string) =>
+    phase(assertion).pipe(
+      Effect.flatMap((actual) =>
+        requireFileSyncContract(actual === expected, `disposalPhase is ${expected} ${assertion}`, { actual }),
+      ),
+    );
+  const nextPhase = (operation: FileSyncDisposalOperation, from: FileSyncDisposalPhase) => {
+    const verdict = fileSyncDisposalTransitions.step(operation, from);
+    return verdict._tag === "Illegal"
+      ? Effect.fail(fileSyncContractFailure(`the table allows ${operation} from ${from}`, verdict))
+      : Effect.succeed(verdict._tag === "Advance" ? verdict.to : from);
+  };
+  const invoke = (
+    operation: Exclude<FileSyncDisposalOperation, "createSession">,
+  ): Effect.Effect<void, FileSyncError> => lifecycle[operation](app);
+  const run = (operation: Exclude<FileSyncDisposalOperation, "createSession">) =>
+    Effect.gen(function* () {
+      const before = yield* phase(`before ${operation}`);
+      const expected = yield* nextPhase(operation, before);
+      yield* invoke(operation).pipe(
+        mapFailures((details) => fileSyncContractFailure(`${operation} resolves from ${before}`, details)),
+      );
+      yield* requirePhase(expected, `after ${operation} from ${before}`);
+    });
+  const create = Effect.gen(function* () {
+    const before = yield* phase("before createSession");
+    const expected = yield* nextPhase("createSession", before);
+    yield* Effect.scoped(engine.createSession(spec)).pipe(
+      mapFailures((details) => fileSyncContractFailure(`createSession resolves from ${before}`, details)),
+    );
+    yield* requirePhase(expected, `after createSession from ${before}`);
+  });
+  const rejected = (operation: FileSyncDisposalStep) =>
+    Effect.gen(function* () {
+      const before = yield* phase(`before rejected ${operation}`);
+      yield* requireFileSyncContract(
+        fileSyncDisposalTransitions.step(operation, before)._tag === "Illegal",
+        `the table rejects ${operation} from ${before}`,
+      );
+      yield* requireFileSyncTaggedFailure(
+        invoke(operation),
+        "FileSyncStopError",
+        `${operation} from ${before} fails with FileSyncStopError`,
+      );
+      yield* requirePhase(before, `after rejected ${operation}`);
+    });
+  const retire = Effect.gen(function* () {
+    for (const operation of planFileSyncDisposal(yield* phase("before retirement"))) yield* run(operation);
+    yield* requirePhase("completed", "after the planned retirement");
+    yield* requireFileSyncContract(
+      planFileSyncDisposal("completed").length === 0,
+      "nothing remains to plan once completed",
+    );
+  });
+
+  yield* requirePhase("absent", "for an app the engine holds nothing for");
+  yield* run("invalidateDrain");
+  yield* rejected("drain");
+  yield* rejected("dispose");
+  yield* rejected("completeDisposal");
+  yield* create;
+  yield* requirePhase("active", "once a session exists");
+  yield* run("invalidateDrain");
+  yield* rejected("dispose");
+  yield* rejected("completeDisposal");
+
+  // A drained app is restartable: invalidating returns it to active.
+  yield* run("drain");
+  yield* run("invalidateDrain");
+  yield* run("drain");
+  yield* run("drain");
+
+  // Disposal can resume: dispose is re-accepted while disposing, and the plan covers the rest.
+  yield* run("dispose");
+  yield* rejected("drain");
+  yield* run("dispose");
+  yield* retire;
+
+  // A completed app owns nothing to invalidate, owes no drain, and is revived by a new session.
+  yield* run("completeDisposal");
+  yield* run("invalidateDrain");
+  yield* rejected("drain");
+  yield* rejected("dispose");
+  yield* create;
+  yield* requirePhase("active", "once a session replaces the completed receipt");
+  yield* retire;
+});
+
+export const makeFileSyncAppLifecycleContractSuite = runFileSyncAppLifecycleContract;
 
 export interface SupportedFileSyncContractCell {
   readonly platform: HostPlatformId;
@@ -420,7 +537,7 @@ export const runFileSyncEngineContractMatrix = Effect.fnUntraced(function* (
       );
       const engine = yield* cell
         .factory()
-        .pipe(Effect.mapError(mapFileSyncFailure(`matrix cell ${cell.platform} factory resolves`)));
+        .pipe(mapFailures(mapFileSyncFailure(`matrix cell ${cell.platform} factory resolves`)));
       yield* runFileSyncEngineContract(engine);
       results.push({ platform: cell.platform, outcome: "passed" });
     } else {

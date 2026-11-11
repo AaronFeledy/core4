@@ -15,8 +15,7 @@ const running: RuntimeProviderShape["inspect"] = (target) =>
     app: target.app,
     service: target.service,
     providerId: ProviderId.make("lando"),
-    status: "running",
-    state: "running",
+    status: "running" as const,
     publications: { status: "unknown" },
     lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
     containerId: "scratch-web",
@@ -47,8 +46,7 @@ test.each([
             app: target.app,
             service: target.service,
             providerId: ProviderId.make("lando"),
-            status: "stopped",
-            state: "stopped",
+            status: "exited" as const,
             publications: { status: "unknown" },
             exitCode: 17,
           }),
@@ -202,7 +200,7 @@ test("scratch converted to detached during its scope stays registered", async ()
           const entry = yield* registry.get(handle.id);
           if (entry === undefined)
             return yield* Effect.die("Scratch acquisition did not register its instance");
-          yield* registry.upsert({ ...entry, detached: true });
+          yield* registry.upsert("detach", entry);
           return handle;
         }).pipe(Effect.scoped, Effect.provide(f.layer)),
       );
@@ -235,7 +233,7 @@ test.each([false, true])(
         expect(f.entries.size).toBe(keepOnFailure ? 1 : 0);
         expect(await readFile(join(f.sourceRoot, "keep.txt"), "utf8")).toBe("source survives");
       },
-      Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+      { registration: Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)) },
     );
   },
 );

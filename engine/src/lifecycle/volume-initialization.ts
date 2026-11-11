@@ -1,7 +1,9 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { type Context, Effect, Option } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeCreationFact } from "@lando/sdk/schema";
+import { planDataId } from "@lando/sdk/schema";
 import { type ApplyOptions, type RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { withVolumeCoordinationLock } from "./volume-coordination.ts";
@@ -27,7 +29,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
     if (Option.isNone(store) || fact.ownerRoot !== (plan.identity?.appRoot ?? plan.root)) return;
     for (const plannedStore of plan.stores) {
       if (plannedStore.name !== fact.nativeName) continue;
-      const ref = { app: plan.id, store: plannedStore.name, scope: plannedStore.scope };
+      const ref = { app: planDataId(plan), store: plannedStore.name, scope: plannedStore.scope };
       const observed = yield* provider.locateVolume(ref);
       const identity = observed.identity;
       if (
@@ -70,7 +72,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
   },
   (effect, provider) =>
     effect.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof ProviderInternalError && cause.operation === "record-volume-creation"
           ? cause
           : new ProviderInternalError({

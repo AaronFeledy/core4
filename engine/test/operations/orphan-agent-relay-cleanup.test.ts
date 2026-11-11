@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,6 +24,7 @@ import { destroyApp } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { layerTransactionGuard } from "../services/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("orphan-relay");
@@ -73,6 +74,7 @@ const layerFor = (root: string) => {
   return {
     paths,
     layer: Layer.mergeAll(
+      layerTransactionGuard,
       emptySnapshotsLayer,
       PrivateFileAccessService.layer,
       Layer.succeed(StateStore, makeTestStateStore().service),
@@ -119,6 +121,7 @@ const markerPaths = (root: string) => {
   return {
     ssh: join(sshAgentSessionPaths(app, roots, "ssh").stateDir, "marker"),
     gpg: join(sshAgentSessionPaths(app, roots, "gpg").stateDir, "marker"),
+    hostProxy: join(paths.hostProxyRunDir(app.id, app.root), "credentials"),
   };
 };
 
@@ -128,9 +131,11 @@ const writeMarkers = async (root: string): Promise<void> => {
   await mkdir(join(markers.gpg, ".."), { recursive: true });
   await writeFile(markers.ssh, "ssh-relay");
   await writeFile(markers.gpg, "gpg-relay");
+  await mkdir(join(markers.hostProxy, ".."), { recursive: true, mode: 0o700 });
+  await writeFile(markers.hostProxy, "stale", { mode: 0o600 });
 };
 
-test("orphan stop removes ssh and gpg agent relay state", async () => {
+test("orphan stop removes agent relay and host-proxy worker state", async () => {
   await withTempRoot(async (root) => {
     // Given
     const harness = layerFor(root);
@@ -143,10 +148,11 @@ test("orphan stop removes ssh and gpg agent relay state", async () => {
     // Then
     expect(await Bun.file(markers.ssh).exists()).toBe(false);
     expect(await Bun.file(markers.gpg).exists()).toBe(false);
+    await expect(stat(join(markers.hostProxy, ".."))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 
-test("orphan destroy removes ssh and gpg agent relay state", async () => {
+test("orphan destroy removes agent relay and host-proxy worker state", async () => {
   await withTempRoot(async (root) => {
     // Given
     const harness = layerFor(root);
@@ -159,5 +165,6 @@ test("orphan destroy removes ssh and gpg agent relay state", async () => {
     // Then
     expect(await Bun.file(markers.ssh).exists()).toBe(false);
     expect(await Bun.file(markers.gpg).exists()).toBe(false);
+    await expect(stat(join(markers.hostProxy, ".."))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

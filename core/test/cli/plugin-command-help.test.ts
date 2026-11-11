@@ -119,14 +119,14 @@ test.each([{ args: ["help", "db:export"] }, { args: ["db:export", "--help"] }])(
 
 test.each([
   ["export", "lando db:export"],
-  ["db:exprt", "lando help db"],
+  ["db:exprt", "Did you mean `lando db:export`?"],
   ["db", "lando help db"],
   ["app", "lando help app"],
 ])("unknown %s offers %s", async (token, hint) => {
   const f = await fixture();
   try {
     const result = await f.invoke([token, "--format", "json"]);
-    expect(result.exit).toBe(1);
+    expect(result.exit).toBe(2);
     expect(JSON.parse(result.stdout).error).toMatchObject({
       _tag: "UnknownCommandError",
       remediation: expect.stringContaining(hint),
@@ -173,25 +173,25 @@ test.each(["fresh", "missing", "stale"])(
         if (path !== undefined) await rm(path);
         await rm(appToolingCompilationCachePath(f.env.LANDO_USER_CACHE_ROOT, f.root));
       }
-      if (state === "stale") await writeFile(join(f.root, ".lando.yml"), "name: changed-help\n");
-      for (const args of [
-        ["help", "db"],
-        ["db", "--help"],
-      ]) {
+      if (state === "stale")
+        await writeFile(
+          join(f.root, ".lando.yml"),
+          "name: plugin-help\ntooling:\n  db:\n    cmd: echo tooling\n    description: Edited tooling DB\n",
+        );
+      // A missing or stale index is rebuilt from the Landofile, whose `cmd` task forwards `--help` to
+      // the tool, so only `lando help db` is help there.
+      const helpInvocations =
+        state === "fresh"
+          ? [
+              ["help", "db"],
+              ["db", "--help"],
+            ]
+          : [["help", "db"]];
+      for (const args of helpInvocations) {
         const result = await f.invoke(args);
         expect(result.exit, result.stderr).toBe(0);
-        expect(result.stdout).toContain(state === "fresh" ? "Owned tooling DB" : "db:export");
-        if (state === "fresh") expect(result.stdout).not.toContain("db:export");
-      }
-      if (state !== "fresh") {
-        const bare = await f.invoke(["db", "--format", "json"]);
-        expect(bare.exit).toBe(1);
-        expect(JSON.parse(bare.stdout).error).toMatchObject({
-          _tag: "ToolingCommandUnavailableError",
-          remediation: expect.stringContaining("lando help db"),
-        });
-        const explicit = await f.invoke(["app:db", "--help", "--format", "json"]);
-        expect(JSON.parse(explicit.stdout).error._tag).toBe("ToolingCommandUnavailableError");
+        expect(result.stdout).toContain(state === "stale" ? "Edited tooling DB" : "Owned tooling DB");
+        expect(result.stdout).not.toContain("db:export");
       }
     } finally {
       await f.cleanup();
@@ -353,7 +353,7 @@ test.each([
 });
 
 test.each(["fresh", "missing"])(
-  "app namespace plugin respects %s tooling ownership",
+  "app namespace plugin resolves with a %s tooling index",
   async (state) => {
     // Given
     const f = await fixture();
@@ -373,10 +373,9 @@ test.each(["fresh", "missing"])(
       for (const args of [["app:inspect"], ["app:inspect", "--help"], ["help", "app:inspect"]]) {
         const result = await f.invoke([...args, "--format=json"]);
         // Then
-        expect(result.exit, result.stderr).toBe(state === "fresh" ? 0 : 1);
+        expect(result.exit, result.stderr).toBe(0);
         const envelope = JSON.parse(result.stdout);
-        if (state === "missing") expect(envelope.error._tag).toBe("ToolingCommandUnavailableError");
-        else if (args.length === 1) expect(envelope.result).toBe(f.root);
+        if (args.length === 1) expect(envelope.result).toBe(f.root);
         else expect(envelope.result.target).toMatchObject({ canonicalId: "app:inspect", source: "plugin" });
       }
     } finally {

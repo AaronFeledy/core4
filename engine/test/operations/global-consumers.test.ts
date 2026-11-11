@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, type ServiceRunObservation } from "@lando/sdk/schema";
+import {
+  RuntimeProviderRegistry,
+  type ServiceRuntimeFields,
+  type ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import {
@@ -36,12 +40,15 @@ const app = (
   requires: { globalServices: options.requires ?? ["mail"] },
   extensions: options.scratch ? { [SCRATCH_EXTENSION_KEY]: {} } : {},
 });
-const row = (plan: AppPlan, extra: Partial<ServiceRuntimeInfo> = {}): ServiceRuntimeInfo => ({
+const row = (
+  plan: AppPlan,
+  extra: Partial<ServiceRuntimeFields> | ServiceRunObservation = {},
+): ServiceRuntimeInfo => ({
   app: plan.id,
   appRoot: plan.root,
   providerId: plan.provider,
   service: firstService.name,
-  status: "running",
+  status: "running" as const,
   containerId: `container-${plan.id}`,
   publications: { status: "unknown" },
   ...extra,
@@ -76,9 +83,55 @@ test("protects legacy routed apps using the actual configured router id", () => 
   expect(resolve([disabled], [row(disabled)], ["router-custom"]).consumers).toEqual([]);
 });
 
+test("#2138 a legacy routed app makes impact uncertain when no router is selectable", () => {
+  // Given: a running routed app that recorded no router, and no selectable router to attribute it to.
+  const routed = app("legacy", { requires: [], routed: true });
+
+  // When
+  const impact = resolveGlobalConsumerImpact({
+    providerId,
+    selectedIds: ["traefik"],
+    routerId: undefined,
+    plans: [routed],
+    services: [row(routed)],
+  });
+
+  // Then: the dependency is reported as unknown instead of silently dropping protection.
+  expect(impact).toEqual({
+    consumers: [],
+    uncertainties: [
+      "Running app legacy recorded no router and no router is selectable; its router dependency is unknown.",
+    ],
+  });
+});
+
+test("#1941 protects the applied router's services after the configured router changes", () => {
+  const planned = {
+    ...app("custom-routed", { requires: ["gateway"], routed: true }),
+    router: { enabled: true, id: "custom" },
+  };
+  const impact = resolve([planned], [row(planned)], ["gateway"], "traefik");
+  expect(impact.consumers[0]).toMatchObject({
+    globalServices: ["gateway"],
+    routes: expect.arrayContaining([firstRoute.hostname]),
+  });
+  expect(resolve([planned], [row(planned)], ["traefik"], "traefik").consumers).toEqual([]);
+});
+
+test("#1941 a router with no declared globals is independent of global-service policy", () => {
+  const external = {
+    ...app("external-routed", { requires: [], routed: true }),
+    router: { enabled: true, id: "external" },
+  };
+  expect(resolve([external], [row(external)], ["external", "traefik", "gateway"], "external")).toEqual({
+    consumers: [],
+    uncertainties: [],
+  });
+});
+
 test("ignores stopped consumers and records active service-level orphan uncertainty", () => {
   const plan = app();
-  expect(resolve([plan], [row(plan, { status: "stopped" })]).consumers).toEqual([]);
+  expect(resolve([plan], [row(plan, { status: "exited" })]).consumers).toEqual([]);
   const orphan = { ...plan, services: {} };
   const impact = resolve([orphan], [row(plan)]);
   expect(impact.uncertainties.join(" ")).toContain("no unique readable applied service");

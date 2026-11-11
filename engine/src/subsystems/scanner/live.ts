@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -21,7 +22,7 @@ import {
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
-import { observedPublicationConnection, serviceState } from "../../operations/service-connections.ts";
+import { observedPublicationConnection, serviceStateOf } from "../../operations/service-connections.ts";
 import { endpointScanPolicy } from "../../services/endpoint-scan.ts";
 import {
   SCANNER_ID,
@@ -97,15 +98,14 @@ export const makeUrlScanner = (
           candidates.map((entry) => [`${entry.target.service}/${entry.target.url}`, entry]),
         ).values(),
       ];
+      const scanDeps = {
+        ...deps,
+        ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }),
+      };
       const scanned = yield* Effect.forEach(
         targets,
         ({ target, config }) =>
-          scanTarget(
-            { ...deps, ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }) },
-            config,
-            redactor,
-            { service: target.service, url: target.url },
-          ),
+          scanTarget(scanDeps, config, redactor, { service: target.service, url: target.url }),
         { concurrency: 4 },
       );
       return { appId, endpoints: scanned };
@@ -155,7 +155,7 @@ const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
     const plans =
       provider.appliedPlans === undefined
         ? []
-        : yield* provider.appliedPlans.pipe(Effect.mapError((error) => providerListError(error, redactor)));
+        : yield* provider.appliedPlans.pipe(mapFailures((error) => providerListError(error, redactor)));
     const plan = suppliedPlan ?? plans.find((plan) => plan.id === appId);
     const infos = yield* (
       plan === undefined
@@ -163,7 +163,7 @@ const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
         : Effect.forEach(Object.values(plan.services), (service) =>
             provider.inspect({ app: appId, service: service.name, plan }),
           )
-    ).pipe(Effect.mapError((error) => providerListError(error, redactor)));
+    ).pipe(mapFailures((error) => providerListError(error, redactor)));
     if (plan !== undefined) {
       const rows = yield* collectObservedConnections(
         plan,
@@ -180,7 +180,7 @@ const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
     return infos.flatMap((runtime) =>
       runtime.publications.status === "present"
         ? runtime.publications.bindings.map((binding) => ({
-            ...observedPublicationConnection(binding, serviceState(runtime.state ?? runtime.status)),
+            ...observedPublicationConnection(binding, serviceStateOf(runtime)),
             service: runtime.service,
           }))
         : [],
@@ -224,9 +224,7 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | Htt
               }),
             );
           });
-          const provider = yield* selected.pipe(
-            Effect.mapError((error) => providerListError(error, redactor)),
-          );
+          const provider = yield* selected.pipe(mapFailures((error) => providerListError(error, redactor)));
           return yield* listEndpointsFromProvider(provider)(appId, suppliedPlan);
         }),
       });

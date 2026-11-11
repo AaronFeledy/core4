@@ -84,6 +84,42 @@ describe("provider pullArtifact", () => {
     },
   );
 
+  test("forwards the requested platform on an artifact pull", async () => {
+    // Given
+    const ref = "docker.io/library/alpine:3.20";
+    const requests: EngineHttpRequest[] = [];
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            platform: "linux",
+            podmanApi: {
+              info: Effect.succeed({ host: { arch: "x64" } }),
+              ping: Effect.void,
+              request: (request) => {
+                requests.push(request);
+                return Effect.succeed({ status: 200, body: JSON.stringify({ RepoDigests: [] }) });
+              },
+              stream: (request) => {
+                requests.push(request);
+                return Stream.empty;
+              },
+            },
+          }),
+        ),
+      ),
+    );
+
+    // When
+    await Effect.runPromise(provider.pullArtifact({ ref, policy: "always", platform: "linux/arm64" }));
+
+    // Then
+    expect(requests).toContainEqual(
+      buildImagePullRequest(ref, libpodPullDialect, { platform: "linux/arm64" }),
+    );
+  });
+
   test("reuses a present local image when policy is missing without a registry pull", async () => {
     // Given
     const fake = makeApplyApi(200);
@@ -273,6 +309,7 @@ const makeApplyApi = (inspectStatus = 404) => {
     request: (request: EngineHttpRequest) => {
       requests.push(`${request.method} ${request.path}`);
       const response = ((): EngineHttpResponse => {
+        if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
         if (request.method === "GET" && request.path.startsWith("/networks/"))
           return { status: 404, body: "" };
         if (request.path === "/networks/create" || request.path === "/libpod/networks/create")

@@ -11,13 +11,13 @@ import {
 } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import {
   APPLY_REMEDIATION,
   type BringUpOptions,
   GLOBAL_APPLY_REMEDIATION,
   bringUp,
-} from "../src/podman/bring-up.ts";
-import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+} from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
@@ -64,6 +64,9 @@ const plan: AppPlan = {
 const failingStartApi = (startBody: string, selectedPlan: AppPlan = plan): EngineHttpApi => ({
   request: (request) =>
     Effect.sync((): EngineHttpResponse => {
+      if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+        return { status: 200, body: "[]" };
+      }
       if (request.method === "GET" && request.path.startsWith("/networks/")) {
         const name = decodeURIComponent(request.path.slice("/networks/".length));
         return { status: 200, body: JSON.stringify(ownedNetworkInspection(selectedPlan, name)) };
@@ -190,9 +193,12 @@ describe("bringUp network-create remediation hook", () => {
   const networkCreateFailingApi: EngineHttpApi = {
     request: (request) =>
       Effect.succeed(
-        request.method === "GET" && (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
-          ? { status: 404, body: "{}" }
-          : { status: 500, body: '{"message":"unable to execute \'nft\': netavark"}' },
+        request.method === "GET" && request.path.startsWith("/containers/json?")
+          ? { status: 200, body: "[]" }
+          : request.method === "GET" &&
+              (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
+            ? { status: 404, body: "{}" }
+            : { status: 500, body: '{"message":"unable to execute \'nft\': netavark"}' },
       ),
   };
 
@@ -248,10 +254,12 @@ describe("bringUp provider identity", () => {
     const api: EngineHttpApi = {
       request: (request) =>
         Effect.succeed(
-          request.method === "GET" &&
-            (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
-            ? { status: 404, body: "{}" }
-            : { status: 500, body: '{"message":"network create refused"}' },
+          request.method === "GET" && request.path.startsWith("/containers/json?")
+            ? { status: 200, body: "[]" }
+            : request.method === "GET" &&
+                (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
+              ? { status: 404, body: "{}" }
+              : { status: 500, body: '{"message":"network create refused"}' },
         ),
     };
 

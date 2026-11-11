@@ -157,6 +157,7 @@ describe("recipe option parity", () => {
       expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toContain("recommended-project:^10");
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
+      expect(landofile.services?.[ServiceName.make("edge")]?.uploadDirs).toEqual(["sites/*/files"]);
       expect(String(landofile.services?.[ServiceName.make("edge")]?.webroot ?? "")).toBe("web");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
     });
@@ -187,6 +188,7 @@ describe("recipe option parity", () => {
       });
       const lempFile = await discoverFrom(lemp.directory);
       expect(lempFile.services?.[ServiceName.make("web")]?.type).toBe("nginx");
+      expect(lempFile.services?.[ServiceName.make("web")]?.uploadDirs).toBeUndefined();
       expect(lempFile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
       expect(lempFile.services?.[ServiceName.make("database")]?.type).toBe("mariadb");
     });
@@ -446,7 +448,7 @@ describe("recipe option parity", () => {
       const settings = landofile.services?.[ServiceName.make("appserver")]?.environment?.BACKDROP_SETTINGS;
       // App identity is planner-owned; discovery preserves its binding.
       expect(landofile.name).toBe("backdrop-defaults");
-      expect(settings).toContain('"database":"{{ app.name }}"');
+      expect(settings).toContain('"database":"{{ services.database.creds.database }}"');
       expect(settings).toContain('"username":"lando"');
       expect(settings).toContain('"password":"lando"');
       expect(yaml).not.toContain("via:");

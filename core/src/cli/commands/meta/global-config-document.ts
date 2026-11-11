@@ -138,6 +138,7 @@ export const globalConfigDocument = (file: string, verb: "set" | "unset" | "edit
   ),
   parse: (text: string) => parseGlobalTree(file, text),
   editCommand: "lando global:config edit",
+  schema: "LandofileShape" as const,
   decode: decodeGlobalConfigDocument(file),
   validateText: (content: string) =>
     compileGlobalConfigDocument(file, content).pipe(

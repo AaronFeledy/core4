@@ -13,9 +13,8 @@ import {
 } from "@lando/sdk/schema";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
-import { commonContainerLabels } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { SERVICE_PUBLISH_PORT_MIN, type ServicePublishProbe } from "../src/service-publish-ports.ts";
+import { bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -26,7 +25,7 @@ const metadata = {
   source: "container-runtime/bring-up-publish-ports.test.ts",
   runtime: 4 as const,
 };
-const containerName = "lando-publish-ports-web";
+const containerName = "lando-publish-ports--web";
 
 const planWithPublication = (publication: EndpointPublication): AppPlan => {
   const service: ServicePlan = {
@@ -104,6 +103,9 @@ const makeFakeApi = (input: {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];

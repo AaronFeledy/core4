@@ -155,7 +155,7 @@ describe("mssql ServiceType", () => {
         ]);
         const volumes = plan.mounts.filter((mount) => mount.type === "volume");
         expect(volumes).toHaveLength(1);
-        expect(volumes[0]?.store).toBe("myapp-mssql-data");
+        expect(volumes[0]?.store).toBe("lando-myapp--database--mssql-data");
         expect(String(volumes[0]?.target)).toBe("/var/opt/mssql");
         expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({
@@ -192,6 +192,7 @@ describe("mssql ServiceType", () => {
         });
         expect(resolution.tooling).toEqual({
           sqlcmd: {
+            wrapper: true,
             service: "database",
             cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
             env: { SQLCMDPASSWORD: rootPassword },
@@ -220,6 +221,7 @@ describe("mssql ServiceType", () => {
         expect(plan.environment.LANDO_DB_ROOT_PASSWORD).toBe(creds.rootPassword);
         expect(resolution.normalizedConfig.creds).toEqual(creds);
         expect(resolution.tooling?.sqlcmd).toEqual({
+          wrapper: true,
           service: "database",
           cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
           env: { SQLCMDPASSWORD: creds.rootPassword },
@@ -242,6 +244,7 @@ describe("mssql ServiceType", () => {
         expect(plan.environment.SA_PASSWORD).toBe(saPassword);
         expect(resolution.normalizedConfig.creds?.rootPassword).toBe(saPassword);
         expect(resolution.tooling?.sqlcmd).toEqual({
+          wrapper: true,
           service: "database",
           cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
           env: { SQLCMDPASSWORD: saPassword },

@@ -60,7 +60,7 @@ test.each([
     );
 
     // Then canonical identity produces exactly one store and one mount.
-    const store = "shadowapp-web-app-vendor-64784057";
+    const store = "lando-shadowapp--web--shadow--app-vendor-64784057";
     expect(appPlan.stores).toEqual([{ name: store, scope: "service", kind: "data" }]);
     expect(
       appPlan.services[ServiceName.make("web")]?.mounts.filter((mount) => mount.type === "volume"),

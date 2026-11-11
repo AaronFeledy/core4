@@ -1,7 +1,14 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
-import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import {
+  type ServiceConfig,
+  type ServicePlan,
+  canonicalSqlitePath,
+  serviceAppMount,
+  validationIssue,
+} from "@lando/sdk/schema";
 
 import { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
@@ -17,6 +24,7 @@ import {
   toAppFeatureDraft,
 } from "./extensions.ts";
 import { serviceHomeIntent } from "./home.ts";
+import { servicePullPolicy } from "./pull-policy.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { plannedContainerDestination } from "./storage.ts";
 export { applyAuthoredHealthcheck } from "./authored-probes.ts";
@@ -48,6 +56,33 @@ export const validateAuthoredAppMount = (
   });
 };
 
+export const applyAuthoredSqlite = Effect.fnUntraced(function* (
+  servicePlan: ServicePlan,
+  service: ServiceConfig,
+  appRoot: string,
+): Effect.fn.Return<ServicePlan, LandofileValidationError> {
+  if (service.sqlite === undefined) return servicePlan;
+  const conflict = servicePlan.connection !== undefined || servicePlan.nonSqlCreds !== undefined;
+  if (conflict || serviceAppMount(servicePlan) === undefined) {
+    const message = conflict
+      ? "SQLite cannot coexist with database connections or non-SQL credentials."
+      : "SQLite requires an app mount on the service.";
+    const suggestion = conflict
+      ? "Move sqlite to a separate app service without published credentials."
+      : "Enable an app mount on this service, or move sqlite to a service that mounts the app.";
+    return yield* Effect.fail(
+      new LandofileValidationError({
+        message,
+        file: appRoot,
+        remediation: suggestion,
+        issues: [{ ...validationIssue(["services", servicePlan.name, "sqlite"], message), suggestion }],
+      }),
+    );
+  }
+  const { connection: _connection, nonSqlCreds: _nonSqlCreds, ...filePlan } = servicePlan;
+  return { ...filePlan, sqlite: { path: canonicalSqlitePath(service.sqlite.path) } };
+});
+
 export { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 
 export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* (input: {
@@ -74,7 +109,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       endpointContributions,
       applicationConfigs,
     }).pipe(
-      Effect.mapError((error) =>
+      mapFailures((error) =>
         servicePlanError(
           input.appRoot,
           name,
@@ -83,7 +118,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       ),
     );
     const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
-      applyAuthoredHealthcheck(composition.plan, service),
+      yield* applyAuthoredSqlite(applyAuthoredHealthcheck(composition.plan, service), service, input.appRoot),
       service,
     );
     const authoredServicePlan = mergeComposeKnobs(
@@ -91,10 +126,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       service,
     );
     const build = service.build;
-    const authoredArtifact =
+    const composeArtifact =
       build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, input.appRoot) : undefined;
-    const artifactScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
-    const appScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
+    const authoredArtifact =
+      composeArtifact ??
+      (service.image === undefined ? undefined : { kind: "ref" as const, ref: service.image });
+    const artifactScripts = composeArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
+    const appScripts = composeArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
     const servicePlan: ServicePlan =
       artifactScripts.length === 0 && appScripts.length === 0
         ? authoredServicePlan
@@ -127,6 +165,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],
       authoredArtifact,
+      pullPolicy: servicePullPolicy(service),
       authored,
       homeIntent: serviceHomeIntent({
         service: {

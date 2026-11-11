@@ -25,17 +25,20 @@ import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 
 export type AppliedStateProvider = Pick<
   RuntimeProviderShape,
-  "id" | "appliedPlans" | "isAvailable" | "list" | "listVolumes"
+  "id" | "appliedPlans" | "list" | "listVolumes"
 > & {
+  readonly isAvailable: Effect.Effect<boolean, ProviderError>;
   readonly appliedStateInventory?: Effect.Effect<AppliedStateInventory, ProviderError>;
   readonly resourceOwnership?: (
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
   readonly canCleanupOwnedResources?: Effect.Effect<boolean, ProviderError>;
+  readonly runtimeOnline?: Effect.Effect<boolean, ProviderError>;
 };
 
-const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter) =>
-  provider.isAvailable.pipe(
+const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter, teardown = false) => {
+  const online = provider.runtimeOnline ?? provider.isAvailable;
+  return (teardown ? online : online.pipe(Effect.catch(() => Effect.succeed(false)))).pipe(
     Effect.flatMap((available) =>
       available
         ? Effect.all({
@@ -46,6 +49,7 @@ const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter) =>
         : Effect.succeed({ runtimeObserved: false, services: [], volumes: [] }),
     ),
   );
+};
 
 const orphanRefusal = new AppResolveError({
   message: "Runtime resources remain without matching applied app state.",
@@ -255,27 +259,47 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       return ownership === "exact" ? appRoot === lookupRoot : isSameOrDescendantPath(appRoot, lookupRoot);
     })
     .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
-  const selected = matches[0];
+  let selected = matches[0];
   const selectedRoot = selected?.identity?.appRoot;
   if (
     selected !== undefined &&
     matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)
   ) {
-    return yield* Effect.fail(
-      new AppResolveError({
-        message: `Multiple providers claim applied state for ${selectedRoot}.`,
-        reason: "ambiguous",
-        detail: "applied-state",
-        remediation: `From ${selectedRoot}, remove unwanted realizations with ${[...new Set(matches.map((plan) => plan.provider))].map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
-      }),
-    );
+    const sameRoot = matches.filter((plan) => plan.identity?.appRoot === selectedRoot);
+    const providerIds = [...new Set(sameRoot.map((plan) => plan.provider))];
+    const renamed = app.kind === "user" && providerIds.length === 1;
+    const named =
+      renamed && new Set(sameRoot.map((plan) => plan.id)).size === sameRoot.length
+        ? sameRoot.find((plan) => plan.id === app.id)
+        : undefined;
+    if (named !== undefined) selected = named;
+    else {
+      return yield* Effect.fail(
+        new AppResolveError({
+          message: renamed
+            ? `App folder ${selectedRoot} has multiple applied app names: ${sameRoot.map((plan) => plan.name).join(", ")}.`
+            : `Multiple providers claim applied state for ${selectedRoot}: ${providerIds.join(", ")}.`,
+          reason: "ambiguous",
+          detail: "applied-state",
+          remediation: renamed
+            ? `Run \`lando start\`, \`lando stop\`, or \`lando destroy\` in ${selectedRoot} to reconcile the app names its Landofile no longer selects.`
+            : `From ${selectedRoot}, remove unwanted realizations with ${providerIds.map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
+        }),
+      );
+    }
   }
   if (ownership === "ancestor" && selected !== undefined) return { kind: "applied", plan: selected };
   const ownershipHints = ownership === "ancestor" ? yield* readOwnership : teardownOwnership;
   const owned = ownershipHints.length === 0 ? {} : { ownership: ownershipHints };
   if (selected === undefined) {
+    // Only a provider that recorded state for this root fails teardown with its status failure;
+    // another installed provider that cannot be observed simply contributes no evidence.
     const evidence = yield* Effect.forEach(providers, (provider) =>
-      runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
+      runtimeEvidence(
+        provider,
+        ownership === "exact" ? { includeUnplanned: true } : {},
+        ownership === "exact" && ownershipHints.some((hint) => hint.providerId === provider.id),
+      ),
     );
     const groups = groupOrphans(lookupRoot, providers, evidence).filter(
       (group) => belongsToApp(group.providerId, group.appId) && !isProtected(group.providerId, group.appId),

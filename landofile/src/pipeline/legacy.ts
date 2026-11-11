@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import type { LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import { Effect } from "effect";
@@ -17,7 +18,7 @@ export const classifyLoadFailure = Effect.fnUntraced(function* (
   const file = error._tag === "LandofileValidationError" ? error.file : error.filePath;
   if (file.endsWith(".ts")) return yield* Effect.fail(error);
   const retained = documents.find((source) => source.file === file);
-  const content = retained?.content ?? (yield* readFileContent(file).pipe(Effect.mapError(() => error)));
+  const content = retained?.content ?? (yield* readFileContent(file).pipe(mapFailures(() => error)));
   const canonicalFile = join(appRoot, ".lando.yml");
   if (file === canonicalFile) return yield* legacyLoadFailure(error, content, { appRoot, sourceFile: file });
   if (!hasLegacyRawKeys(content)) return yield* Effect.fail(error);

@@ -120,7 +120,15 @@ sudo systemctl daemon-reload
 lando setup
 ```
 
-**Missing `XDG_RUNTIME_DIR`:** log out and back in. If it is still missing, your session manager needs a distro-specific fix.
+**Missing private runtime directory base:** setup reports `Rootless Podman requires a private runtime directory base for your session.` The managed runtime needs `/run/user/<uid>` to exist, be owned by you, and have mode 0700 (no group or other bits), or an `XDG_RUNTIME_DIR` with the same properties. Logging out and back in usually recreates `/run/user/<uid>`. If your session manager does not, create a directory you own and export it:
+
+```bash
+install -d -m 0700 "$HOME/.lando-runtime"
+export XDG_RUNTIME_DIR="$HOME/.lando-runtime"
+lando setup
+```
+
+Lando creates its own `lando-<id>` directory under that base; it never uses the base directly.
 
 ### Use Docker as a Linux fallback
 
@@ -154,11 +162,22 @@ The in-container helper is built with Lando itself, so run setup first. You don'
 
 The following install paths are **not yet available** in Alpha:
 
-- **POSIX installer script** at `https://get.lando.dev/install.sh` (referenced in `scripts/install.sh`)
-- **PowerShell installer script** at `https://get.lando.dev/install.ps1` (referenced in `scripts/install.ps1`)
-- **Channel manifests** at `https://update.lando.dev/v4/{stable,next,dev}.json`
+- **POSIX installer script** at `https://get.lando.dev/install.sh` (referenced in `scripts/install.sh`). Do not pipe a `get.lando.dev` URL into a shell; the host is not serving v4.
+- **PowerShell installer script** at `https://get.lando.dev/install.ps1` (referenced in `scripts/install.ps1`).
+- **Channel manifests** at `https://update.lando.dev/v4/{stable,next,dev}.json`. `lando update` cannot fetch a signed channel manifest, so in-place self-update is not a usable path in Alpha; replace the binary by hand from a new dev prerelease or from source. A permission failure during update still names the path and stops without elevating.
+- **Signed artifacts.** Alpha binaries are unsigned on every platform, including Windows and macOS. GPG and cosign signatures, `SHA512SUMS`, the CycloneDX SBOM, SLSA provenance, and signed installer scripts are not published for Alpha builds; only `SHA256SUMS` is. Follow the checksum steps above instead of the signature verification the guides describe.
+- **`releases/latest`.** There is no `releases/latest` v4 binary. Do not download `https://github.com/lando/core/releases/latest/download/lando-linux-x64`; that is Lando 3, not this product. In CI, pin a specific dev prerelease tag instead of the installer.
+- **Windows setup** is still being validated in Alpha and may fail. Include `lando doctor` output when it does.
 
 These will be stood up before Beta. For now, use the GitHub prerelease or build from source paths above.
+
+## Release status
+
+Public Alpha 1 is the current milestone. Earlier internal phases are pre-alpha, and Beta follows Alpha. The `dev` channel ships unsigned `4.0.0-dev.N` artifacts. Signing, installers, and self-update are later milestones, not Alpha delivery claims. The manual signed release pipeline is a separate path.
+
+The rest of the Lando documentation describes Lando as released. Where a documented install, update, signing, or catalog feature is not available in an Alpha build, this page is the record of that gap.
+
+Compiling six binaries is not Alpha acceptance. Live `lando setup` and `lando doctor` must pass in `platform-readiness`, and the canonical Drupal and Rails journeys must pass in `drupal-journey` and `rails-journey`, on all six compile targets.
 
 ## Bug report checklist
 

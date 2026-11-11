@@ -3,10 +3,12 @@ import { join, relative } from "node:path";
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import type { ConfigTranslateDiagnostic, ConfigTranslateDocument } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { DocumentSetShape } from "./app-config-translate-document-set.ts";
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
 
@@ -92,8 +94,9 @@ export const writeTranslateTargets = Effect.fnUntraced(function* ({
       },
     ]),
   );
+  const env = (yield* CliInvocation).env;
   const transactions = makeManagedFileTransactions({
-    journalRoot: () => resolveLandoRoots().userDataRoot,
+    journalRoot: () => resolveLandoRoots({ env }).userDataRoot,
     privateFileAccess,
     ...(transactionCheckpoint === undefined ? {} : { checkpoint: transactionCheckpoint }),
   });
@@ -118,7 +121,7 @@ export const writeTranslateTargets = Effect.fnUntraced(function* ({
       ],
     })
     .pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ConfigTranslateError({
             message: `Translation transaction ${cause.phase}/${cause.reason}: ${cause.path}`,

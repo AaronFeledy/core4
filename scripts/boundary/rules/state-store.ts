@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { resolveConstString, scanLiteralsAndComments } from "../literals.ts";
 import type { BoundaryRule } from "../types.ts";

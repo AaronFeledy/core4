@@ -2,6 +2,7 @@ import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { type CommandWarning, type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { recordConfigWarning, recordPreexistingConfigIssues } from "../config/config-warnings.ts";
+import type { ConfigSchemaName } from "./key-schema.ts";
 
 export interface ConfigDocument<
   D extends Result.Result<unknown, readonly ValidationIssue[]>,
@@ -24,6 +25,8 @@ export interface ConfigDocument<
   /** Validates exact editor bytes when tree decoding alone cannot preserve document semantics. */
   readonly validateText?: ((text: string) => D | Effect.Effect<D, EAfter | EParse, R>) | undefined;
   readonly afterDecode?: (decoded: D) => EAfter | undefined;
+  /** Schema that describes this document's keys; set failures name what the written key takes. */
+  readonly schema?: ConfigSchemaName | undefined;
   readonly writeText: (file: string, text: string) => Effect.Effect<void, EWrite, R>;
 }
 

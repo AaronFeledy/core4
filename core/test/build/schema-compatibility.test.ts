@@ -241,7 +241,7 @@ describe("schema compatibility classifier", () => {
         surface: "command:app:info",
         changeKind: "property-removed",
         path: "$.port",
-        justification: "The command never populated this pre-release field.",
+        justification: "The command never populated this field.",
       },
     ];
 

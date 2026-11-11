@@ -11,6 +11,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 
+import { testCaPem } from "@lando/sdk/test";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -18,7 +19,8 @@ import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-const PEM = (name: string): string => `-----BEGIN CERTIFICATE-----\n${name}\n-----END CERTIFICATE-----\n`;
+const PEM_INDEX = { global: 1, project: 0, inline: 2, outside: 3 } as const;
+const PEM = (name: keyof typeof PEM_INDEX): string => testCaPem(PEM_INDEX[name]);
 
 const digest = (pem: string): string => createNodeHash("sha256").update(pem, "utf-8").digest("hex");
 
@@ -102,6 +104,11 @@ test("injects global, project, and inline CAs into lando-base services", async (
   const globalPem = PEM("global");
   const projectPem = PEM("project");
   const inlinePem = PEM("inline");
+  const certificates = [
+    { pem: globalPem, source: globalPath },
+    { pem: projectPem, source: projectPath },
+    { pem: inlinePem, source: expect.stringContaining(cacheRoot) },
+  ].sort((left, right) => digest(left.pem).localeCompare(digest(right.pem)));
 
   try {
     await mkdir(join(appRoot, "certs"), { recursive: true });
@@ -144,11 +151,9 @@ test("injects global, project, and inline CAs into lando-base services", async (
     const caMounts = web.mounts
       .filter((mount) => mount.type === "bind")
       .filter((mount) => String(mount.target).startsWith("/usr/local/share/ca-certificates/lando-"));
-    expect(caMounts.map((mount) => mount.source)).toEqual([
-      globalPath,
-      projectPath,
-      expect.stringContaining(cacheRoot),
-    ]);
+    expect(caMounts.map((mount) => mount.source)).toEqual(
+      certificates.map((certificate) => certificate.source),
+    );
     expect(web.environment.HTTPS_PROXY).toBe("http://proxy.example.test:8443");
     expect(web.environment.NO_PROXY).toBe("localhost");
     expect(edge.environment.LANDO_CA_BUNDLE).toBeUndefined();

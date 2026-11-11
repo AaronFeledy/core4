@@ -9,6 +9,7 @@ import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import type { MountAuthoringContext } from "./authored-mount-entry.ts";
 import { validateAuthoredMounts } from "./authored-mounts.ts";
 import { validateAuthoredAppMount } from "./authored.ts";
+import { validateServicePullPolicy } from "./pull-policy.ts";
 import type { ResolvedServiceSeed } from "./service-seeds.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
@@ -23,6 +24,23 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
 ) {
   const { appRoot } = context;
   const errors: LandofileValidationError[] = [];
+  if (
+    seed.service.sqlite !== undefined &&
+    (seed.resolution.connection !== undefined || seed.resolution.nonSqlCreds !== undefined)
+  ) {
+    const message =
+      "SQLite cannot coexist with a service type that publishes database connections or non-SQL credentials.";
+    const suggestion =
+      "Remove sqlite from this service, or move it to a separate app service without published credentials.";
+    errors.push(
+      new LandofileValidationError({
+        message,
+        file: landofilePath,
+        remediation: suggestion,
+        issues: [{ ...validationIssue(["services", seed.name, "sqlite"], message), suggestion }],
+      }),
+    );
+  }
   if (seed.resolution.connection !== undefined && seed.resolution.nonSqlCreds !== undefined) {
     const message = "A service type must publish either connection or nonSqlCreds, not both.";
     errors.push(
@@ -48,6 +66,8 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   if (Result.isFailure(logs)) errors.push(logs.failure);
   const mount = validateAuthoredAppMount(seed.service, appRoot, seed.name);
   if (mount !== undefined) errors.push(mount);
+  const pullPolicy = validateServicePullPolicy(seed.service, seed.name, landofilePath);
+  if (pullPolicy !== undefined) errors.push(pullPolicy);
   const mounts = validateAuthoredMounts(
     context,
     seed.resolution.normalizedConfig,

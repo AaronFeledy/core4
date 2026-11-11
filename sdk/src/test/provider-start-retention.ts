@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Result } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import {
   AbsolutePath,
@@ -10,6 +11,7 @@ import {
   type ServicePlan,
   appIdentityKey,
   landoAppNetworkName,
+  landoServiceContainerName,
 } from "../schema/index.ts";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "../services/index.ts";
 import {
@@ -47,9 +49,9 @@ export interface ProviderStartRetentionHooks {
   readonly hasVolume: (volumeName: string) => boolean;
 }
 
-/** Native container name convention shared by bundled providers (`lando-<slug>-<service>`). */
+/** Native container name shared by bundled providers (see `landoServiceContainerName`). */
 const retentionContainerName = (slug: string, service: string): string =>
-  `lando-${slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  landoServiceContainerName(slug, String(service));
 
 const DB = ServiceName.make("db");
 const WEB = ServiceName.make("web");
@@ -108,7 +110,7 @@ const inspectService = (
 ): Effect.Effect<ServiceRuntimeInfo, ContractFailure> =>
   provider
     .inspect({ app: plan.id, service, plan })
-    .pipe(Effect.mapError(mapProviderFailure(`inspect ${String(service)} returns a structured snapshot`)));
+    .pipe(mapFailures(mapProviderFailure(`inspect ${String(service)} returns a structured snapshot`)));
 
 /**
  * Prove that a failed or interrupted multi-service apply retains containers,
@@ -163,7 +165,7 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
   // --- Retry clears the fault, converges, and preserves the first container id ---
   hooks.setFailStartFor([]);
   yield* Effect.scoped(provider.apply(plan, { reconcile: false })).pipe(
-    Effect.mapError(mapProviderFailure("retry after start failure converges")),
+    mapFailures(mapProviderFailure("retry after start failure converges")),
   );
   const retryDb = yield* inspectService(provider, plan, DB);
   const retryWeb = yield* inspectService(provider, plan, WEB);
@@ -184,7 +186,7 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
 
   // --- Destroy with volumes cleans store volumes and the private network ---
   yield* Effect.scoped(provider.destroy({ app: plan.id, plan }, { volumes: true })).pipe(
-    Effect.mapError(mapProviderFailure("destroy with volumes after retention converges")),
+    mapFailures(mapProviderFailure("destroy with volumes after retention converges")),
   );
   yield* requireContract(
     !hooks.hasVolume(volumeName),
@@ -254,7 +256,7 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
 
   hooks.setAbortAfterStarts(0);
   yield* Effect.scoped(provider.apply(interruptPlan, { reconcile: false })).pipe(
-    Effect.mapError(mapProviderFailure("retry after mid-start interruption converges")),
+    mapFailures(mapProviderFailure("retry after mid-start interruption converges")),
   );
   const afterInterruptDb = yield* inspectService(provider, interruptPlan, DB);
   const afterInterruptWeb = yield* inspectService(provider, interruptPlan, WEB);
@@ -271,5 +273,5 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
 
   yield* Effect.scoped(
     provider.destroy({ app: interruptPlan.id, plan: interruptPlan }, { volumes: true }),
-  ).pipe(Effect.mapError(mapProviderFailure("interrupt retention contract cleanup succeeds")));
+  ).pipe(mapFailures(mapProviderFailure("interrupt retention contract cleanup succeeds")));
 });

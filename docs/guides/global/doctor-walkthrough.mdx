@@ -3,7 +3,7 @@ id: global-doctor-walkthrough
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, global, doctor, diagnostics]
+tags: [docs, global, doctor, diagnostics]
 ---
 
 # Read the global-app doctor check
@@ -70,6 +70,21 @@ The first remediation is always something you can do without privileges, such as
 A watcher that starts but never delivers events, which some virtual filesystems cause, is not detected by this check.
 
 Read the `filesystem-watch` check in the same report for a live CLI-host result. Linux and WSL test one watch allocation. Windows also confirms one file event on the host's temporary filesystem. Neither result looks inside the provider VM or refreshes this router record. See [Check filesystem watches on this host](../subsystems/doctor-walkthrough.mdx#check-filesystem-watches-on-this-host).
+
+## Read the legacy route files check
+
+Each route file in the router's configuration directory is named after a hash of its owner: the app folder for user and global apps, the scratch id for scratch apps. That's what lets a renamed app replace its routes instead of leaving the old hostnames live. Earlier development builds named files after the app instead. The `legacy-route-files` check separates files Lando recognizes as its generated output from files it cannot identify, with `generatedCount` and `unrecognizedCount` and bounded lists of full paths as evidence.
+
+Doctor only reads. Lando removes recognized generated files automatically the next time a routed app starts. To run that cleanup now, run `lando setup` on the host, then check the report:
+
+```sh
+lando setup
+lando doctor --format=json
+```
+
+The migration checks both the encoded app name and the exact generated configuration shape. It preserves every certificate and key file: the route alone cannot prove who owns the bytes currently at those paths. On Windows, Lando reloads the router once for the batch and retains evidence to retry if the reload fails. Start each app whose routes you still need to republish them.
+
+Unrecognized files stay in place and remain a warning. Review those files and manually delete only the ones you no longer need. On Windows, then run `lando global:restart` so Traefik reloads its route configuration. Republish the routes you still need: run `lando start` in a user app, `lando global:start` for global services, or start a scratch app again with its scratch command. An owner-named file without valid route metadata is also unrecognized; `lando start` refuses to overwrite it. The evidence lists can omit paths when large; the counts include every finding.
 
 ## Verify
 

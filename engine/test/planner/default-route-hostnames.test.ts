@@ -24,6 +24,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
   name: "appserver",
   hostnames: [],
   authoredArtifact: undefined,
+  pullPolicy: undefined,
   authored: { byStore: new Map() },
   authoredStorage: undefined,
   homeIntent: { serviceType: "lando", home: false as const },
@@ -31,6 +32,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
     name: ServiceName.make("appserver"),
     serviceName: "appserver",
     type: "php",
+    artifact: { kind: "ref", ref: "php:8.4-cli" },
     serviceType: "php",
     provider: PROVIDER,
     primary: true,
@@ -62,6 +64,7 @@ describe("finalizeServices auto-generated hostnames", () => {
     const draft = phpishDraft(undefined);
     const result = await Effect.runPromise(
       finalizeServices({
+        manifests: [],
         plannedServiceDrafts: [{ ...draft, draft: { ...draft.draft, provider } }],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
@@ -96,6 +99,7 @@ describe("finalizeServices auto-generated hostnames", () => {
     // When
     const finalized = await Effect.runPromise(
       finalizeServices({
+        manifests: [],
         plannedServiceDrafts: [plannedServiceDraft],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
@@ -124,6 +128,7 @@ describe("finalizeServices auto-generated hostnames", () => {
     // Given / When
     const finalized = await Effect.runPromise(
       finalizeServices({
+        manifests: [],
         plannedServiceDrafts: [phpishDraft(undefined)],
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,

@@ -1,6 +1,7 @@
+import { redactProviderDetails } from "@lando/redaction/provider-details";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Context, Effect, Option } from "effect";
+import { Context, Effect, Option, type Schema } from "effect";
 import type { ProviderErrorContext } from "./engine-api.ts";
 
 /** Prefer the retained redactor; otherwise use ctx.env, never process.env. */
@@ -29,7 +30,11 @@ export const runtimeDiagnosticContext = Effect.fnUntraced(function* (ctx: Provid
   const redactor = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
     : redactorFor(ctx);
-  return { ...ctx, redactor };
+  const forTokens = (tokens: { readonly authoritativeTokens: readonly string[] }) =>
+    Option.isSome(service)
+      ? service.value.forProfile("secrets", { ...options, ...tokens })
+      : Effect.sync(() => createStandaloneRedactor("secrets", { ...options, ...tokens }));
+  return { ...ctx, redactor, redactorFor: forTokens };
 });
 
 /**
@@ -42,7 +47,7 @@ export class StartFailureLogRedactor extends Context.Service<StartFailureLogReda
 
 export const redactString = (value: string, redactor: Redactor): string => redactor.redactString(value);
 
-export const redactDetails = (value: unknown, redactor: Redactor): unknown => redactor.redactValue(value);
+export const redactDetails = redactProviderDetails;
 
 export const httpResponseDetails = (response: {
   readonly status: number;
@@ -58,9 +63,9 @@ export const redactResponseDetails = (
     readonly body: string;
   },
   redactor: Redactor,
-): unknown => redactDetails(httpResponseDetails(response), redactor);
+): Schema.Json => redactDetails(httpResponseDetails(response), redactor);
 
-const apiReasonFromBody = (details: unknown, redactor: Redactor): string | undefined => {
+export const apiReasonFromBody = (details: unknown, redactor: Redactor): string | undefined => {
   if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
   const body = details.body;
   if (typeof body !== "string" || body.trim().length === 0) return undefined;

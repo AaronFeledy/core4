@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Option, Result } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import {
   SecretNotFoundError,
@@ -325,7 +326,7 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
   // --- known secret resolves deterministically ---
   const first = yield* store
     .get(harness.known.key)
-    .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: get(known) resolves`, cause)));
+    .pipe(mapFailures((cause) => secretStoreContractFailure(`${label}: get(known) resolves`, cause)));
   yield* requireSecretStoreContract(
     first === harness.known.value,
     `${label}: get(known) returns the expected value`,
@@ -333,9 +334,7 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
   );
   const second = yield* store
     .get(harness.known.key)
-    .pipe(
-      Effect.mapError((cause) => secretStoreContractFailure(`${label}: repeat get(known) resolves`, cause)),
-    );
+    .pipe(mapFailures((cause) => secretStoreContractFailure(`${label}: repeat get(known) resolves`, cause)));
   yield* requireSecretStoreContract(
     first === second,
     `${label}: get(known) is deterministic across repeats`,
@@ -344,7 +343,7 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
 
   const hasKnown = yield* store
     .has(harness.known.key)
-    .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(known) resolves`, cause)));
+    .pipe(mapFailures((cause) => secretStoreContractFailure(`${label}: has(known) resolves`, cause)));
   yield* requireSecretStoreContract(hasKnown === true, `${label}: has(known) is true`, hasKnown);
 
   const listed = yield* store.list;
@@ -380,7 +379,7 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
   }
   const hasUnknown = yield* store
     .has(harness.unknown)
-    .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(unknown) resolves`, cause)));
+    .pipe(mapFailures((cause) => secretStoreContractFailure(`${label}: has(unknown) resolves`, cause)));
   yield* requireSecretStoreContract(hasUnknown === false, `${label}: has(unknown) is false`, hasUnknown);
 
   const invalid = yield* Effect.result(store.get(harness.invalidReference));
@@ -444,9 +443,7 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
     const cached = yield* harness.cachedOfflineStore.store
       .get(harness.cachedOfflineStore.key)
       .pipe(
-        Effect.mapError((cause) =>
-          secretStoreContractFailure(`${label}: cached offline get resolves`, cause),
-        ),
+        mapFailures((cause) => secretStoreContractFailure(`${label}: cached offline get resolves`, cause)),
       );
     yield* requireSecretStoreContract(
       cached === harness.cachedOfflineStore.value,

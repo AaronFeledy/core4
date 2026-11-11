@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import type { AbsolutePath } from "../schema/primitives.ts";
 import {
@@ -130,29 +130,45 @@ export const makeTaskTree = (
     });
   };
 
-  const closeTree = (summary?: string, durationMs?: number): Effect.Effect<void> =>
+  const closeTree = (
+    summary?: string,
+    durationMs?: number,
+    outcome?: "failure" | "interrupted",
+  ): Effect.Effect<void> =>
     Effect.suspend(() => {
       if (!opened || closed) return Effect.void;
       closed = true;
+      // A failed child makes the tree a failure even when the producer closes it directly.
+      const resolved = outcome ?? (failed.size > 0 ? "failure" : undefined);
       return publishTreeComplete(events, {
         parentId: args.parentId,
         ...(summary === undefined ? {} : { summary }),
         succeeded: succeeded.size,
         failed: failed.size,
         durationMs: durationMs ?? elapsedMs(treeStartedAt, nowFn()),
+        ...(resolved === undefined ? {} : { outcome: resolved }),
       });
     });
 
-  const settleRemaining = (outcome: "complete" | "fail", summary?: string): Effect.Effect<void> =>
+  const unsettled = (child: TaskSpec): boolean => !succeeded.has(child.id) && !failed.has(child.id);
+
+  // Success settles every declared child: the work ran to completion.
+  const completeRemaining: Effect.Effect<void> = Effect.suspend(() =>
     Effect.forEach(
-      args.children,
-      (child) =>
-        Effect.gen(function* () {
-          if (succeeded.has(child.id) || failed.has(child.id)) return;
-          if (!started.has(child.id)) yield* startDeclared(child.id);
-          yield* settleChild(child.id, outcome, summary);
-        }),
+      args.children.filter(unsettled),
+      (child) => startDeclared(child.id).pipe(Effect.andThen(settleChild(child.id, "complete"))),
       { discard: true },
+    ),
+  );
+
+  // Failure fails only children that were running; never-started children stay pending.
+  const failRunning = (summary: string): Effect.Effect<void> =>
+    Effect.suspend(() =>
+      Effect.forEach(
+        args.children.filter((child) => started.has(child.id) && unsettled(child)),
+        (child) => settleChild(child.id, "fail", summary),
+        { discard: true },
+      ),
     );
 
   return {
@@ -185,13 +201,18 @@ export const makeTaskTree = (
         ...(durationMs === undefined ? {} : { durationMs }),
       }),
     failTask: (localId, summary, options) => settleChild(localId, "fail", summary, options),
-    detail: (localId, stream, line) => publishTaskDetail(events, { taskId: childId(localId), stream, line }),
+    detail: (localId, stream, line) =>
+      Effect.suspend(() =>
+        closed || succeeded.has(localId) || failed.has(localId)
+          ? Effect.void
+          : publishTaskDetail(events, { taskId: childId(localId), stream, line }),
+      ),
     settleSuccess: (summary, durationMs) =>
-      settleRemaining("complete").pipe(Effect.andThen(closeTree(summary, durationMs))),
+      completeRemaining.pipe(Effect.andThen(closeTree(summary, durationMs))),
     settleFailure: (summary, durationMs) =>
-      settleRemaining("fail", summary).pipe(Effect.andThen(closeTree(summary, durationMs))),
+      failRunning(summary).pipe(Effect.andThen(closeTree(summary, durationMs, "failure"))),
     settleInterrupt: (summary, durationMs) =>
-      settleRemaining("fail", summary).pipe(Effect.andThen(closeTree(summary, durationMs))),
+      failRunning(summary).pipe(Effect.andThen(closeTree(summary, durationMs, "interrupted"))),
     close: closeTree,
   };
 };
@@ -203,7 +224,11 @@ export const runWithTaskTree = <A, E, R>(
 ): Effect.Effect<A, E, R> =>
   tree.start.pipe(
     Effect.andThen(work(tree)),
-    Effect.tap(() => tree.settleSuccess(summaries.success)),
-    Effect.tapError(() => tree.settleFailure(summaries.failure)),
-    Effect.onInterrupt(() => tree.settleInterrupt(summaries.interrupt)),
+    Effect.onExit((exit) =>
+      Exit.isSuccess(exit)
+        ? tree.settleSuccess(summaries.success)
+        : Cause.hasInterruptsOnly(exit.cause)
+          ? tree.settleInterrupt(summaries.interrupt)
+          : tree.settleFailure(summaries.failure),
+    ),
   );

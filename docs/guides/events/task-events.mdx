@@ -2,7 +2,7 @@
 id: task-events
 provider: test
 timeout: 60000
-tags: [beta, docs, landofile, events, tooling]
+tags: [docs, landofile, events, tooling]
 ---
 
 # Run steps before and after a tooling task
@@ -34,10 +34,9 @@ events:
       service: ":host"
 ```
 
-From that directory, refresh the command cache after adding the task, then run it:
+From that directory, run the task:
 
 ```sh
-lando app:cache:refresh
 lando build
 ```
 
@@ -84,7 +83,7 @@ events:
     - command: app:lint
 ```
 
-`task: lint` is an inline invocation. Lando runs `lint`'s steps right there and does not fire `pre-lint` or `post-lint`.
+`task: lint` is an inline invocation. Lando runs `lint`'s steps right there and does not fire `pre-lint` or `post-lint`. A `task:` step can also set `vars:`; a value it sets wins over the task's own var of the same name, and when that var is computed with `sh`, the command never runs. See [Compute a value with a shell command](../tooling/flags-and-args.mdx#compute-a-value-with-a-shell-command).
 
 `command: app:lint` re-enters the top-level command path, exactly as if you had typed `lando lint`. That fires `pre-lint` and `post-lint` too.
 
@@ -147,7 +146,6 @@ Typo'd `pre-buidl`? Lint and `lando start` both ask `Did you mean "pre-build"?`.
   <Scenario id="bracketed-run" render>
     <Step name="scaffold">
       <UseFixture name="bracketed-build" />
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-build">
       <Run command="lando build" />
@@ -161,7 +159,6 @@ Typo'd `pre-buidl`? Lint and `lando start` both ask `Did you mean "pre-build"?`.
   <Scenario id="post-failure-is-fatal" render={false} reason="Regression coverage: a failing post-task step fails the run with a tagged error">
     <Step name="scaffold-post-failure">
       <UseFixture name="post-build-fails" />
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-build-with-failing-post">
       <Run command="lando build --format=json" expectExit={1} />
@@ -175,7 +172,6 @@ Typo'd `pre-buidl`? Lint and `lando start` both ask `Did you mean "pre-build"?`.
   <Scenario id="failed-body-skips-post" render={false} reason="Regression coverage: a non-zero task body keeps its exit code and skips post-task steps">
     <Step name="scaffold-body-failure">
       <UseFixture name="build-body-fails" />
-      <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="run-failing-build">
       <Run command="lando build" expectExit={3} />

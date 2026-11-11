@@ -1,14 +1,16 @@
+import { describeConfigKey } from "@lando/engine/config-write/key-schema";
 import { type AppConfigResult, AppConfigResultSchema } from "@lando/engine/operations/app-config-result";
 import { type AppConfigViewOptions, appConfigView } from "@lando/engine/operations/app-config-view";
 import * as Writes from "@lando/engine/operations/app-config-write";
 import { collectAuthoredRedactionTokens } from "@lando/engine/services/app-plan-redaction";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
+import { CliInvocation } from "../../runtime/invocation-context";
+import { renderConfigKeyDescription } from "./config-key-render";
 import { configRedactionTokens } from "./config-redaction";
 import { renderConfigWriteResult } from "./config-write-render";
 import { hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
@@ -30,20 +32,28 @@ export const appConfigRedactionTokens = (result: unknown): readonly string[] => 
   return configRedactionTokens(result);
 };
 
+/** Describes a Landofile key from the Landofile schema; needs no app. */
+export const describeAppConfig = (options: Pick<AppConfigOptions, "key" | "path">) =>
+  describeConfigKey("app", options.key ?? options.path).pipe(
+    Effect.map((description) => ({ subcommand: "describe" as const, ...description })),
+  );
+
 export const appConfigSet = (options: AppConfigOptions) => Writes.appConfigSet(options);
 export const appConfigUnset = (options: AppConfigOptions) => Writes.appConfigUnset(options);
 export const appConfigValidate = (options: AppConfigOptions) => Writes.appConfigValidate(options);
 export const appConfigEdit = (options: AppConfigOptions) =>
-  Writes.appConfigEdit({
-    ...options,
-    editorRunner:
-      options.editorRunner ??
-      createDefaultEditorRunner(
-        options.editor === undefined
-          ? {}
-          : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
-      ),
-  });
+  Effect.flatMap(CliInvocation, ({ env }) =>
+    Writes.appConfigEdit({
+      ...options,
+      editorRunner:
+        options.editorRunner ??
+        createDefaultEditorRunner(
+          options.editor === undefined
+            ? { env }
+            : { env: { ...env, EDITOR: options.editor, VISUAL: options.editor } },
+        ),
+    }),
+  );
 
 export const appConfigGet = (options: AppConfigOptions) =>
   appConfigView({ ...options, subcommand: "get" }).pipe(
@@ -99,6 +109,7 @@ export const renderAppConfigResult = (
   format: "json" | "yaml" | "table" = "table",
 ): string => {
   if ("subcommand" in result && result.subcommand !== undefined) {
+    if (result.subcommand === "describe") return renderConfigKeyDescription(result, "Landofile");
     if (result.subcommand === "get")
       return result.value === undefined
         ? ""
@@ -124,7 +135,10 @@ export const renderAppConfigResult = (
 };
 
 export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfigOptions = {}) {
-  switch (options.subcommand ?? "view") {
+  const subcommand = options.subcommand ?? "view";
+  switch (subcommand) {
+    case "describe":
+      return yield* describeAppConfig(options);
     case "set":
       return yield* appConfigSet(options);
     case "unset":
@@ -150,14 +164,9 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfi
       });
       return { ...result, ...(hostEvents.length === 0 ? {} : { hostEvents }) };
     }
-    default:
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: `Unknown \`app config\` subcommand: "${options.subcommand}".`,
-          file: "",
-          issues: [],
-          remediation: "Usage: `lando app config [view|get|set|unset|edit|validate]`.",
-        }),
-      );
+    default: {
+      const exhaustive: never = subcommand;
+      return exhaustive;
+    }
   }
 });

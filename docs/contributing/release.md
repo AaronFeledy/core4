@@ -5,9 +5,9 @@ description: Run and verify the manual signed release pipeline.
 
 # Release runbook
 
-Use this runbook to build, publish, and verify a signed `4.0.0-beta.N` release from the repository root. The full signed release runs **manually**, not from CI, until RC. See the [release-automation decision](./decisions.md#release-automation-posture-decision) for the rationale.
+Use this runbook to build, publish, and verify a signed release from the repository root. The full signed release runs **manually**, not from CI. See the [release-automation decision](./decisions.md#release-automation-posture-decision) for the rationale.
 
-The generated `release` workflow (`.github/workflows/release.yml`) publishes unsigned `v4.0.0-dev.N` GitHub prerelease assets for all six platforms (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). It does not publish npm, sign, notarize, or cut a stable release. Manual `scripts/release.ts` remains the 14-stage signed Beta pipeline.
+The generated `release` workflow (`.github/workflows/release.yml`) publishes unsigned `v4.0.0-dev.N` GitHub prerelease assets for all six platforms (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). It does not publish npm, sign, notarize, or cut a stable release. Manual `scripts/release.ts` is the 14-stage signed release pipeline.
 
 Before a full release, prepare the [required credentials](#required-credentials) and a working Lando provider for the container-helper build. The full invocation reaches `14-publish`, which publishes packages and creates a GitHub release. To test stage ordering without signing credentials, use [local rehearsal](#rehearsal-without-credentials) instead.
 
@@ -76,7 +76,7 @@ Outside `LOCAL_REHEARSAL`, the signing and publishing stages require the environ
 
 Keyless signing (`ACTIONS_ID_TOKEN_REQUEST_*`) is an OIDC identity issued to a GitHub Actions job. Running signed manifest/provenance stages fully outside Actions requires an equivalent keyless identity; use `LOCAL_REHEARSAL=1` to rehearse those stages locally.
 
-Credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) must be assigned before RC. Until then, keep the full pipeline manual so a run either produces a genuinely signed release or fails closed, rather than a CI job that silently warning-skips every signing stage.
+Credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) must be assigned before the pipeline moves into CI. Keep it manual so a run either produces a genuinely signed release or fails closed, rather than a CI job that silently warning-skips every signing stage.
 
 ## Verification
 

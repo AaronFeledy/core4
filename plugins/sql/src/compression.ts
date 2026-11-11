@@ -1,10 +1,10 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
-import { Effect, Stream, absurd } from "effect";
+import { Effect, type Scope, Stream, absurd } from "effect";
 
-import { DataChecksumMismatchError, SqlDumpCompressionError } from "@lando/sdk/errors";
+import { SqlDumpCompressionError } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 
@@ -13,9 +13,9 @@ export type DumpCompression = "gzip" | "zstd" | "none";
 const GZIP_MAGIC = [0x1f, 0x8b] as const;
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd] as const;
 
-export const isGzipPath = (path: string): boolean => basename(path).endsWith(".gz");
+export const isGzipPath = (path: string): boolean => basename(path).toLowerCase().endsWith(".gz");
 
-export const isZstdPath = (path: string): boolean => basename(path).endsWith(".zst");
+export const isZstdPath = (path: string): boolean => basename(path).toLowerCase().endsWith(".zst");
 
 export const compressionFromExportPath = (path: string): DumpCompression => {
   if (isZstdPath(path)) return "zstd";
@@ -44,8 +44,10 @@ const appendBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return output;
 };
 
+const DUMP_PREFIX_LIMIT = 16;
+
 export const collectDumpPrefix = (chunk: Uint8Array, prefix: Uint8Array): Uint8Array =>
-  prefix.byteLength >= 4 ? prefix : appendBytes(prefix, chunk);
+  prefix.byteLength >= DUMP_PREFIX_LIMIT ? prefix : appendBytes(prefix, chunk);
 
 const streamThrough = (
   source: ReadableStream<Uint8Array>,
@@ -91,25 +93,11 @@ export const writeDumpTransform = (
   destPath: string,
   compression: Exclude<DumpCompression, "none">,
   operation: "compress" | "decompress",
-  expectedDigest?: string,
   level?: number,
-): Effect.Effect<
-  { readonly digest: string; readonly sizeBytes: number },
-  SqlDumpCompressionError | DataChecksumMismatchError
-> =>
+): Effect.Effect<{ readonly digest: string; readonly sizeBytes: number }, SqlDumpCompressionError> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const hash = new Bun.CryptoHasher("sha256");
-      const source = Bun.file(sourcePath)
-        .stream()
-        .pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>({
-            transform: (chunk, controller) => {
-              hash.update(chunk);
-              controller.enqueue(chunk);
-            },
-          }),
-        );
+      const source = Bun.file(sourcePath).stream();
       const result = yield* persistVerifiedStream({
         body: Stream.fromReadableStream({
           evaluate: () => streamThrough(source, compression, operation, level),
@@ -119,22 +107,10 @@ export const writeDumpTransform = (
         destinationPath: destPath,
         mode: 0o600,
       }).pipe(
-        Effect.mapError(() =>
+        mapFailures(() =>
           dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
         ),
       );
-      const actualDigest = hash.digest("hex");
-      if (expectedDigest !== undefined && actualDigest !== expectedDigest) {
-        return yield* Effect.fail(
-          new DataChecksumMismatchError({
-            message: "The compressed dump changed after it was selected for import.",
-            expectedSha256: expectedDigest,
-            actualSha256: actualDigest,
-            archivePath: sourcePath,
-            remediation: "Select the dump again and retry the import.",
-          }),
-        );
-      }
       return { digest: result.sha256, sizeBytes: result.sizeBytes };
     }),
   );
@@ -155,47 +131,46 @@ export const acquireStagedDump = (
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>
   Effect.promise(() => rm(path, { recursive: true, force: true }));
 
+/** Exports through a staged plaintext file beside the destination, then compresses into place. */
 export const withHostDumpCompression = <E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
   readonly compressionLevel?: number;
-  readonly direction: "export" | "import";
-  readonly expectedDigest?: string;
-  readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<DataTransferResult, E, R>;
-}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError | DataChecksumMismatchError, R> => {
+  readonly transfer: (workingPath: string) => Effect.Effect<DataTransferResult, E, R>;
+}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError, R> => {
   const compression = input.compression;
   if (compression === "none") return input.transfer(input.path);
   return Effect.scoped(
     Effect.gen(function* () {
       const directory = yield* Effect.acquireRelease(
-        acquireStagedDump(
-          input.direction === "export" ? dirname(input.path) : tmpdir(),
-          compression,
-          input.direction === "export" ? "compress" : "decompress",
-        ),
+        acquireStagedDump(dirname(input.path), compression, "compress"),
         releaseStagedDump,
       );
       const staged = join(directory, "dump");
-      if (input.direction === "import") {
-        const decompressed = yield* writeDumpTransform(
-          input.path,
-          staged,
-          compression,
-          "decompress",
-          input.expectedDigest,
-        );
-        return yield* input.transfer(staged, decompressed.digest);
-      }
       const result = yield* input.transfer(staged);
       const compressed = yield* writeDumpTransform(
         staged,
         input.path,
         compression,
         "compress",
-        undefined,
         input.compressionLevel,
       );
       return { ...result, ...compressed };
     }),
   );
 };
+
+/** Compresses a dump on its way to stdout. Cancelling the result cancels the source stream. */
+export const compressDumpStream = <E, R>(
+  body: Stream.Stream<Uint8Array, E, R>,
+  compression: Exclude<DumpCompression, "none">,
+  level?: number,
+): Stream.Stream<Uint8Array, unknown, Exclude<R, Scope.Scope>> =>
+  Stream.unwrap(
+    Effect.map(Stream.toReadableStreamEffect(body), (readable) =>
+      Stream.fromReadableStream({
+        evaluate: () => streamThrough(readable, compression, "compress", level),
+        onError: (cause) => cause,
+      }),
+    ),
+  );

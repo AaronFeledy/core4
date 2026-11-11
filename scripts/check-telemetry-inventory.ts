@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { TELEMETRY_EVENT_NAMES } from "../telemetry/src/inventory.ts";
 import { ALL_PACKAGE_WALK_ROOTS } from "./boundary/workspace-roots.ts";

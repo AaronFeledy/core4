@@ -1,6 +1,7 @@
 import { setAtPath } from "@lando/engine/config-write/dot-path";
 import { eligibleBindingPath, exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { compiledLandofileSource } from "@lando/landofile/serializer";
+import { mapFailures } from "@lando/sdk/command-result";
 import { RecipeDecomposeError } from "@lando/sdk/errors";
 import {
   type CompiledRecipeManifest,
@@ -70,7 +71,7 @@ export const makeCompiledRecipeDecomposer = (
       const options = yield* Effect.fromResult(
         validateOptionValues(snapshot.optionTypes, snapshot.defaults, values),
       ).pipe(
-        Effect.mapError((error) => {
+        mapFailures((error) => {
           const descriptor = error.path === undefined ? undefined : snapshot.optionTypes[error.path];
           return new RecipeDecomposeError({
             recipeId: manifest.id,
@@ -88,7 +89,7 @@ export const makeCompiledRecipeDecomposer = (
       );
       const compiled = yield* Effect.fromResult(
         renderCompiledRecipeSnapshot(snapshot, options, { appRoot: context.appRoot, env: {} }),
-      ).pipe(Effect.mapError((error) => fail(error.path ?? "snapshot.template")));
+      ).pipe(mapFailures((error) => fail(error.path ?? "snapshot.template")));
       const source = yield* Effect.try({
         try: () => compiledLandofileSource(compiled),
         catch: () => fail("snapshot.template"),
@@ -101,7 +102,7 @@ export const makeCompiledRecipeDecomposer = (
           options,
           ...(input.services === undefined ? {} : { services: input.services }),
         }),
-      ).pipe(Effect.mapError(() => fail("recipe")));
+      ).pipe(mapFailures(() => fail("recipe")));
       if (typeof provenance === "string") return yield* Effect.fail(fail("recipe"));
       const invalidSecret = (path: string) =>
         new RecipeDecomposeError({
@@ -116,7 +117,7 @@ export const makeCompiledRecipeDecomposer = (
         });
       const approved = yield* Effect.fromResult(approvedSecretReferencesOnly(input));
       const declarations = yield* Effect.fromResult(validateRecipeSecretPrompts(manifest)).pipe(
-        Effect.mapError(() => invalidSecret("prompts")),
+        mapFailures(() => invalidSecret("prompts")),
       );
       let boundSource: unknown = { ...source, recipe: provenance };
       for (const { promptName, disposition } of declarations) {
@@ -136,7 +137,7 @@ export const makeCompiledRecipeDecomposer = (
             const id = exactSecretReferenceId(reference.reference);
             if (id === undefined) return yield* Effect.fail(invalidSecret(`secrets.${promptName}`));
             yield* Effect.fromResult(parseSecretReference(id)).pipe(
-              Effect.mapError(() => invalidSecret(`secrets.${promptName}`)),
+              mapFailures(() => invalidSecret(`secrets.${promptName}`)),
             );
             boundSource = setAtPath(boundSource, disposition.field, reference.reference);
             break;
@@ -164,7 +165,7 @@ export const makeCompiledRecipeDecomposer = (
       }
       const fragment = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragmentWire)(boundSource, {
         onExcessProperty: "error",
-      }).pipe(Effect.mapError(() => fail("snapshot.template")));
+      }).pipe(mapFailures(() => fail("snapshot.template")));
       if (typeof fragment === "string") return yield* Effect.fail(fail("snapshot.template"));
       return { fragment, provenance };
     }),

@@ -2,12 +2,12 @@
 id: expressions
 provider: test
 timeout: 60000
-tags: [beta, docs, landofile]
+tags: [docs, landofile]
 ---
 
 # Landofile expressions
 
-Load-time `{{ recipe.<option> }}` and `{{ env.* }}` sites resolve when Lando reads the Landofile. Plan-time `{{ app.* }}` and `{{ proxy.* }}` sites resolve when Lando builds the plan, in route hostnames, `environment:` values, service config, and tooling commands. Shell-style `${VAR}` is not something Lando evaluates: write `$${VAR}` when the container shell should see `${VAR}`.
+Load-time `{{ recipe.<option> }}` and `{{ env.* }}` sites resolve when Lando reads the Landofile. Plan-time `{{ app.* }}` and `{{ proxy.* }}` sites resolve when Lando builds the plan, in route hostnames, `environment:` values, service config, and tooling commands. Shell-style `${VAR}` is not something Lando evaluates: write `$${VAR}` when the container shell should see `${VAR}`, and `$VAR` in a host command.
 
 A whole-file template, includes, and env overlays still exist for the jobs expressions don't cover.
 
@@ -87,7 +87,7 @@ That prints the Landofile after load-time resolution: recipe and env sites show 
 
 ## Plan-time app and proxy
 
-`app.name` and `app.slug` both resolve to the app slug: lowercase, with every run of non-alphanumerics turned into `-`, so `My App` becomes `my-app`. That is the same value route hostnames and default database names use. `proxy.defaultDomain` comes from global config and defaults to `lndo.site`.
+`app.name` and `app.slug` both resolve to the **current** app slug: lowercase, with every run of non-alphanumerics turned into `-`, so `My App` becomes `my-app`. Route hostnames and other runtime identity follow that current slug. Catalog default database names, generated passwords, and named data stores follow the folder's **data name** (the name this folder's data was first created under), which matches the current name until you rename the app. When you author `database: "{{ app.slug }}"` yourself, the expression tracks the current name on rename; prefer `{{ services.<db>.creds.database }}` when you need the stable database the volume was initialized with. `proxy.defaultDomain` comes from global config and defaults to `lndo.site`.
 
 Route hostnames, `environment:` values, service config such as `database:`, tooling `cmd` / `cmds`, and `x-` extension values all resolve at plan time:
 
@@ -182,9 +182,21 @@ lando app:cache:refresh
 
 See [Secret stores](../config/secret-stores.mdx#where-references-resolve) for which authored sites create a reference.
 
+## Use invocation values in tooling
+
+Tooling command text, var definitions, and step overrides can read `flags`, `args`, `raw`, and `task` when the task runs. Lando binds declared inputs first, so `{{ flags.name }}` reads the validated value and `{{ default(args.label, 'latest') }}` handles an omitted optional argument. `task` has `name`, `subnamespace`, `commandNamespace`, and `canonicalId`; for `app:db:dump` these are `db:dump`, `db`, `app`, and `app:db:dump`. `raw` is the passthrough argument array for tasks with no declared flags or args.
+
+Invocation values are data in shell text, including `task`, event payloads, loop `item` and `key`, computed vars, and caller overrides. A literal var becomes data when its recorded definition reads invocation data, even through helpers or other vars. Lando quotes data for the current shell context and never parses a substituted value as another template. Load-time scopes such as `env`, `host`, and `app`, and literal vars independent of invocation input, remain authored command text.
+
+Place `{{ raw }}` alone in an unquoted argument word after the executable. Its elements become separate arguments, preserving empty elements. An argv-list element exactly equal to `{{ raw }}` splices the tail. Other argv elements receive scalar values without shell escaping. Lando forwards only unconsumed input, so using `flags.name` does not suppress an unrelated declared `--verbose`.
+
+Data binding is refused inside backticks, here-documents, arithmetic, parameter expansions, and dollar-prefixed quotes. It also cannot make an argument safe for a program that interprets code: `sh -c "{{ flags.code }}"` still executes the supplied code. See [Use inputs in the command](../tooling/flags-and-args.mdx#use-inputs-in-the-command) for empty-word rules, forwarding, and complete examples.
+
+The invocation scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` are not implemented. A reference fails loading with `NotImplementedError` naming the scope, authored path, and available alternatives.
+
 ## Keep `${VAR}` and `{{` as text
 
-Double the opener. `$${HOME}` reaches the container as `${HOME}`, and `{{{{ app.name }}` reaches it as `{{ app.name }}`. Use this for a `command:`, an `environment:` value, or a tooling `cmd` that needs literal expression-looking text. To expand a variable, invoke a shell explicitly, as the `sh -c` commands below do. An environment value itself is not a shell command and stays literal.
+Double the opener. `$${HOME}` reaches the container as `${HOME}`, and `{{{{ app.name }}` reaches it as `{{ app.name }}`. Use this for a `command:`, an `environment:` value, or a container tooling `cmd` that needs literal expression-looking text. To expand a variable, invoke a shell explicitly, as the `sh -c` commands below do. An environment value itself is not a shell command and stays literal.
 
 ```yaml
 name: escaped-literals
@@ -210,7 +222,9 @@ lando app:config --format=json
 lando app:cache:refresh
 ```
 
-An unescaped `${HOME}`, `${HOME:-/root}`, or any other `${...}` shell form outside that one secret shape is not supported. Lando does not guess whether you meant your host's value or the container's, so loading fails with `LandofileValidationError` naming the value path, for example `services.app.environment.GREETING`, and the layer file that wrote it. Write `$${HOME}` for the container's value or `{{ env.HOME }}` for your host's.
+An unescaped `${HOME}`, `${HOME:-/root}`, or any other `${...}` shell form outside that one secret shape is not supported. Lando does not guess whether you meant your host's value or the container's, so loading fails with `LandofileValidationError` naming the value path, for example `services.app.environment.GREETING`, and the layer file that wrote it. Write `$${HOME}` for the container's value or `{{ env.HOME }}` for your host's. In a tooling or event command, the error also covers host commands: `` `${HOME}` at tooling.home.cmd is shell syntax Lando does not expand. `` with the suggestion ``Write $${HOME} to pass it to a container shell, $HOME in a service: ":host" command, or {{ env.HOME }} for your host's value.``
+
+A `service: ":host"` command is the exception. It runs in Lando's Bun Shell, which doesn't expand `${HOME}`, so an escaped `$${HOME}` would reach it as literal text. Write `$HOME` there instead. `lando app:config:lint` reports `$${HOME}` in a host command as `landofile.host-shell`; see [Write host commands in Bun Shell syntax](../tooling/bun-shell-scripts.mdx#write-host-commands-in-bun-shell-syntax).
 
 ## Find a bad expression
 
@@ -401,4 +415,4 @@ Share fragments across apps with `includes:`. See [Includes and the lockfile](./
 
 Override config from the environment with `LANDO_CONFIG__` or `env_file:`. See [Env overrides](./env-overrides.mdx).
 
-Host-shell forms like `${VAR:-default}` are not evaluated anywhere in a Landofile, including volumes and tooling. Lando rejects them with `LandofileValidationError` naming the file and the value path; escape them as `$${...}` when the container shell should expand them. `load()` and `import()` stay on their own file-IO path.
+Host-shell forms like `${VAR:-default}` are not evaluated anywhere in a Landofile, including volumes and tooling. Lando rejects them with `LandofileValidationError` naming the file and the value path; escape them as `$${...}` when the container shell should expand them, or write `$VAR` in a `:host` command. `load()` and `import()` stay on their own file-IO path.

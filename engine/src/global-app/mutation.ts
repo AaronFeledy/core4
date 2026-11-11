@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
-import { Context, Effect } from "effect";
+import { mapFailures } from "@lando/sdk/command-result";
+import { Context, Effect, type Scope } from "effect";
 
 import { AppLockTimeoutError, GlobalAppError, StateStoreError } from "@lando/sdk/errors";
 import { GlobalAppService, type PathsService, type StateStore } from "@lando/sdk/services";
@@ -32,7 +33,7 @@ export const globalPolicyIdentity = Effect.gen(function* () {
 /** Acquire shared policy before the actual global app, preserving its pinned runtime root. */
 export const withGlobalMutation = Effect.fnUntraced(function* <A, E, R>(
   body: Effect.Effect<A, E, R>,
-): Effect.fn.Return<A, E | GlobalAppError, R | GlobalMutationServices> {
+): Effect.fn.Return<A, E | GlobalAppError, Exclude<R, Scope.Scope> | GlobalMutationServices> {
   const globalApp = yield* GlobalAppService;
   const paths = yield* globalApp.paths;
   const coordinate = Effect.gen(function* () {
@@ -64,13 +65,13 @@ export const withGlobalMutation = Effect.fnUntraced(function* <A, E, R>(
     return yield* withAppMutationLock(
       { id: "global-policy", root: policy },
       withGlobalActivationScope(
-        withAppMutationLock({ id: "global", root: paths.root }, Effect.exit(body)),
+        withAppMutationLock({ id: "global", root: paths.root }, Effect.exit(Effect.scoped(body))),
       ).pipe(Effect.provideService(HeldGlobalPolicy, { policy, root })),
       { lockRoot: dirname(policy) },
     );
   });
   const outcome = yield* coordinate.pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new GlobalAppError({
           operation: "coordination",

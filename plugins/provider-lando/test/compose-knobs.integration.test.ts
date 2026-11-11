@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { DateTime, Effect } from "effect";
 
+import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -18,7 +20,7 @@ import {
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("composeknobsapp");
 const appRoot = AbsolutePath.make("/tmp/lando-compose-knobs-app");
-const containerName = "lando-composeknobsapp-web";
+const containerName = "lando-composeknobsapp--web";
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
@@ -64,6 +66,35 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+const limited: ServicePlan = {
+  ...web,
+  extensions: {
+    compose: {
+      deploy: {
+        resources: {
+          limits: { memory: 134_217_728, cpus: "0.5", pids: 100 },
+          reservations: { memory: 67_108_864 },
+        },
+      },
+    },
+  },
+};
+const limitedPlan: AppPlan = { ...plan, services: { [limited.name]: limited } };
+
+// A container that has its own cgroup holds every requested limit in its cgroup files.
+const expectedCgroupFiles = {
+  "memory.max": "134217728",
+  "pids.max": "100",
+  "cpu.max": "50000 100000",
+  "memory.low": "67108864",
+} as const;
+
+const readText = (path: string): Promise<string | undefined> =>
+  readFile(path, "utf8").then(
+    (text) => text.trim(),
+    () => undefined,
+  );
+
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 
@@ -79,7 +110,8 @@ describe("provider-lando Compose runtime knobs (live)", () => {
       if (liveRequest === undefined) throw new Error("live Podman client exposes no request transport");
 
       try {
-        await Effect.runPromise(bringUp(plan, { api }));
+        const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
+        await Effect.runPromise(bringUp(plan, { api, ...helperOptions }));
 
         const response = await Effect.runPromise(
           liveRequest({ method: "GET", path: `/containers/${containerName}/json` }),
@@ -103,6 +135,54 @@ describe("provider-lando Compose runtime knobs (live)", () => {
         expect(field(hostConfig, "ExtraHosts")).toEqual(
           expect.arrayContaining(["knob-check.lando:10.42.0.9"]),
         );
+      } finally {
+        await Effect.runPromise(
+          Effect.result(liveRequest({ method: "POST", path: `/containers/${containerName}/stop` })),
+        );
+        await Effect.runPromise(
+          Effect.result(liveRequest({ method: "DELETE", path: `/containers/${containerName}?force=true` })),
+        );
+      }
+    },
+    60_000,
+  );
+
+  test.skipIf(liveSocketPath.length === 0)(
+    "Given deploy.resources, when Podman creates the container, then HostConfig carries every limit and a container with its own cgroup enforces them",
+    async () => {
+      const api = makePodmanApiClient(liveSocketPath);
+      const liveRequest = api.request;
+      if (liveRequest === undefined) throw new Error("live Podman client exposes no request transport");
+
+      try {
+        const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));
+        await Effect.runPromise(bringUp(limitedPlan, { api, ...helperOptions }));
+
+        const response = await Effect.runPromise(
+          liveRequest({ method: "GET", path: `/containers/${containerName}/json` }),
+        );
+        expect(response.status).toBe(200);
+        const inspect: unknown = JSON.parse(response.body);
+        const hostConfig = field(inspect, "HostConfig");
+        expect(field(hostConfig, "Memory")).toBe(134_217_728);
+        expect(field(hostConfig, "NanoCpus")).toBe(500_000_000);
+        expect(field(hostConfig, "PidsLimit")).toBe(100);
+        expect(field(hostConfig, "MemoryReservation")).toBe(67_108_864);
+
+        // Enforcement needs a runtime service delegated to the user; the managed Linux launcher
+        // provides one, an arbitrary test socket may not. Read the cgroup back when the container
+        // got its own.
+        const pid = field(field(inspect, "State"), "Pid");
+        const id = String(field(inspect, "Id"));
+        const cgroup = (await readText(`/proc/${String(pid)}/cgroup`))
+          ?.split("\n")
+          .find((line) => line.startsWith("0::"))
+          ?.slice(3);
+        if (cgroup?.includes(id) === true) {
+          for (const [file, value] of Object.entries(expectedCgroupFiles)) {
+            expect(await readText(`/sys/fs/cgroup${cgroup}/${file}`)).toBe(value);
+          }
+        }
       } finally {
         await Effect.runPromise(
           Effect.result(liveRequest({ method: "POST", path: `/containers/${containerName}/stop` })),

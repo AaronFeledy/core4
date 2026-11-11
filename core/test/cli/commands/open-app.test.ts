@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import { realpath } from "node:fs/promises";
 import { invokeOperation } from "@lando/core/cli/operations";
+import { HostProxyOpenerError } from "@lando/engine/services/host-opener";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
-import { Cause, DateTime, Effect, Exit, Layer, Result } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Result, Stream } from "effect";
 
-import { ShellExecError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -20,9 +20,9 @@ import {
   AppPlanner,
   EventService,
   LandofileService,
+  ProcessRunner,
   RouterService,
   RuntimeProviderRegistry,
-  ShellRunner,
 } from "@lando/sdk/services";
 
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -61,35 +61,27 @@ const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {
   } as unknown as AppPlan;
 };
 
-const record = (failOnCommand?: string) => ({
-  commands: [] as string[],
+const record = (failOnUrl?: string) => ({
+  commands: new Array<readonly string[]>(),
   events: [] as { tag: string; url: string }[],
-  failOnCommand,
+  failOnUrl,
 });
 
 const layers = (rec: ReturnType<typeof record>) =>
   Layer.mergeAll(
     Layer.succeed(
-      ShellRunner,
-      ShellRunner.of({
-        exec: (command: string) => {
-          rec.commands.push(command);
-          if (rec.failOnCommand === command) {
-            return Effect.fail(
-              new ShellExecError({
-                message: "open failed",
-                command,
-                exitCode: 1,
-                remediation:
-                  "Fix the shell command so it succeeds in the reported working directory, then re-run.",
-              }),
-            );
-          }
-          return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
+      ProcessRunner,
+      ProcessRunner.of({
+        run: ({ cmd, args }) => {
+          rec.commands.push([cmd, ...(args ?? [])]);
+          return Effect.succeed({
+            exitCode: rec.failOnUrl !== undefined && args?.includes(rec.failOnUrl) ? 1 : 0,
+            stdout: "",
+            stderr: "",
+          });
         },
-        run: () => Effect.die("nu"),
-        runScript: () => Effect.die("nu"),
-        interactive: () => Effect.die("nu"),
+        stream: () => Stream.die("nu"),
+        streamWithExit: () => Stream.die("nu"),
       }),
     ),
     Layer.succeed(
@@ -99,12 +91,12 @@ const layers = (rec: ReturnType<typeof record>) =>
           rec.events.push({ tag: event._tag, url: event.url ?? "" });
           return Effect.void;
         },
-        subscribe: () => Effect.die("nu") as never,
-        subscribeQueue: Effect.die("nu") as never,
-        waitFor: () => Effect.die("nu") as never,
+        subscribe: () => Stream.die("nu"),
+        subscribeQueue: Effect.die("nu"),
+        waitFor: () => Effect.die("nu"),
         subscribeWithHistory: () => Effect.never,
-        waitForAny: () => Effect.die("nu") as never,
-        query: () => Effect.die("nu") as never,
+        waitForAny: () => Effect.die("nu"),
+        query: () => Effect.die("nu"),
       }),
     ),
     Layer.succeed(
@@ -198,8 +190,7 @@ describe("openForPlan", () => {
             app: target.app,
             service: target.service,
             providerId,
-            status: "running",
-            state: "running",
+            status: "running" as const,
             publications: {
               status: "present" as const,
               bindings: [{ port: 80, transport: "tcp" as const, bindAddress: "127.0.0.1", hostPort: 49152 }],
@@ -433,7 +424,7 @@ describe("openForPlan", () => {
     const exit = await run(httpsPlan(), { platform: "linux", env: { DISPLAY: ":0" } }, rec);
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) expect(exit.value.launch).toBe("opened");
-    expect(rec.commands).toEqual(["xdg-open 'https://web.myapp.lndo.site'"]);
+    expect(rec.commands).toEqual([["xdg-open", "https://web.myapp.lndo.site"]]);
     expect(rec.events).toEqual([
       { tag: "pre-open-url", url: "RED(https://web.myapp.lndo.site)" },
       { tag: "post-open-url", url: "RED(https://web.myapp.lndo.site)" },
@@ -441,8 +432,8 @@ describe("openForPlan", () => {
   });
 
   test("failed later opens still publish a matching post-open-url event", async () => {
-    const secondCommand = "xdg-open 'https://api.myapp.lndo.site'";
-    const rec = record(secondCommand);
+    const secondUrl = "https://api.myapp.lndo.site";
+    const rec = record(secondUrl);
     const exit = await run(
       makePlan(
         [
@@ -456,7 +447,13 @@ describe("openForPlan", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(rec.commands).toEqual(["xdg-open 'https://web.myapp.lndo.site'", secondCommand]);
+    if (Exit.isFailure(exit)) {
+      expect(Result.getOrThrow(Cause.findError(exit.cause))).toBeInstanceOf(HostProxyOpenerError);
+    }
+    expect(rec.commands).toEqual([
+      ["xdg-open", "https://web.myapp.lndo.site"],
+      ["xdg-open", secondUrl],
+    ]);
     expect(rec.events).toEqual([
       { tag: "pre-open-url", url: "RED(https://web.myapp.lndo.site)" },
       { tag: "post-open-url", url: "RED(https://web.myapp.lndo.site)" },
@@ -532,7 +529,7 @@ describe("openForPlan", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) expect(exit.value.launch).toBe("opened");
-    expect(rec.commands).toEqual(["xdg-open 'https://web.myapp.lndo.site'"]);
+    expect(rec.commands).toEqual([["xdg-open", "https://web.myapp.lndo.site"]]);
   });
 });
 

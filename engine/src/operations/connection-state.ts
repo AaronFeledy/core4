@@ -1,48 +1,56 @@
-import type { ServiceConnection, ServiceState } from "@lando/sdk/schema";
-import type { ServiceRuntimeInfo } from "@lando/sdk/services";
+import type { ServiceConnection, ServiceRunObservation, ServiceState } from "@lando/sdk/schema";
 
-export const serviceState = (state: string): ServiceState => {
-  switch (state) {
-    case "stopped":
-    case "starting":
+/**
+ * The one projection from a provider run observation to the shared service vocabulary. `lando
+ * info` derives both `status` and `health.state` from the same observation, so a native health
+ * verdict can only appear next to a running status.
+ */
+export const serviceStateOf = (run: ServiceRunObservation, completionIntent = false): ServiceState => {
+  switch (run.status) {
     case "running":
-    case "healthy":
-    case "unhealthy":
-    case "ready":
-    case "completed":
-    case "restarting":
+      return "running";
     case "paused":
-    case "error":
-      return state;
-    default:
+      return "paused";
+    case "restarting":
+      return "restarting";
+    case "exited":
+      return completionIntent && run.exitCode === 0 ? "completed" : "stopped";
+    case "absent":
+    case "created":
+    case "dead":
+    case "removing":
+      return "stopped";
+    case "unknown":
       return "unknown";
+    default: {
+      const exhaustive: never = run;
+      return exhaustive;
+    }
   }
 };
 
 export const reconcileReadinessState = (
   readiness: ServiceState,
-  runtime: ServiceRuntimeInfo,
+  runtime: ServiceRunObservation,
 ): ServiceState => {
-  const observed = serviceState(runtime.state ?? runtime.status);
+  const observed = serviceStateOf(runtime);
   switch (observed) {
     case "running":
-    case "healthy":
-    case "ready":
       return readiness;
     case "stopped":
       return readiness === "completed" || readiness === "restarting" ? readiness : observed;
     case "unknown":
     case "starting":
+    case "healthy":
     case "unhealthy":
+    case "ready":
     case "completed":
     case "restarting":
     case "paused":
     case "error":
       return observed;
-    default: {
-      const exhaustive: never = observed;
-      return exhaustive;
-    }
+    default:
+      return observed satisfies never;
   }
 };
 

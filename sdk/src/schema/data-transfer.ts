@@ -23,10 +23,19 @@ export const DataEndpoint = Schema.Union([
   }),
   Schema.TaggedStruct("hostArchive", { path: AbsolutePath, format: ArchiveFormat }),
   Schema.TaggedStruct("stream", {}),
-  Schema.TaggedStruct("volume", { app: AppId, store: Schema.String }),
-  Schema.TaggedStruct("servicePath", { app: AppId, service: ServiceName, path: PortablePath }),
+  Schema.TaggedStruct("volume", {
+    app: AppId.annotate({
+      description: "Recorded data app id from planDataId(plan), retained across app renames.",
+    }),
+    store: Schema.String,
+  }),
+  Schema.TaggedStruct("servicePath", {
+    app: AppId.annotate({ description: "Runtime app id of the service where file access occurs." }),
+    service: ServiceName,
+    path: PortablePath,
+  }),
   Schema.TaggedStruct("serviceCmd", {
-    app: AppId,
+    app: AppId.annotate({ description: "Runtime app id of the service where the command executes." }),
     service: ServiceName,
     command: CommandSpec,
     env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -64,22 +73,40 @@ export type LabelMap = typeof LabelMap.Type;
  * Reference to a named volume (a `DataStorePlan`) owned by an app.
  */
 export const VolumeRef = Schema.Struct({
-  app: AppId,
+  app: AppId.annotate({
+    description:
+      "Recorded data app id from planDataId(plan); also retained as snapshot store.app and image dev.lando.app.",
+  }),
   store: Schema.String,
   scope: Schema.optionalKey(StorageScope),
 });
 export type VolumeRef = typeof VolumeRef.Type;
 
 /** Stable provider locator for one native volume, available before creation. */
-export const VolumeLocator = Schema.Struct({
+const volumeLocatorFields = {
   coordinationKey: Schema.NonEmptyString.annotate({
     description: "Opaque configured-endpoint and native-volume key, stable across recreation.",
   }),
   nativeName: Schema.NonEmptyString.annotate({ description: "Provider-native volume name." }),
-  identity: Schema.optionalKey(VolumeIdentity).annotate({
-    description: "Observed generation and owner when the volume currently exists with provenance.",
+};
+export const VolumeLocator = Schema.Union([
+  Schema.Struct({
+    ...volumeLocatorFields,
+    presence: Schema.optionalKey(Schema.Literal("present")).annotate({
+      description: "Explicit native presence; omission means presence was not established.",
+    }),
+    identity: Schema.optionalKey(VolumeIdentity).annotate({
+      description: "Observed generation and owner when the volume currently exists with provenance.",
+    }),
   }),
-});
+  Schema.Struct({
+    ...volumeLocatorFields,
+    presence: Schema.Literal("absent").annotate({
+      description: "A successful native inspection proved the volume does not exist.",
+    }),
+    identity: Schema.optionalKey(Schema.Never),
+  }),
+]);
 export type VolumeLocator = typeof VolumeLocator.Type;
 
 /**
@@ -106,7 +133,9 @@ export type VolumeInfo = typeof VolumeInfo.Type;
  * Match criteria for listing volumes.
  */
 export const VolumeFilter = Schema.Struct({
-  app: Schema.optionalKey(AppId),
+  app: Schema.optionalKey(AppId).annotate({
+    description: "Match the recorded data app id, retained across app renames.",
+  }),
   store: Schema.optionalKey(Schema.String),
   scope: Schema.optionalKey(StorageScope),
   labels: Schema.optionalKey(LabelMap),
@@ -133,7 +162,10 @@ export type VolumeSnapshotRef = typeof VolumeSnapshotRef.Type;
 export const VolumeSnapshotArtifact = Schema.Struct({
   ref: VolumeSnapshotRef.annotate({ description: "Immutable provider snapshot reference." }),
   createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
-  labels: LabelMap.annotate({ description: "Labels carried by the snapshot image." }),
+  labels: LabelMap.annotate({
+    description:
+      "Labels carried by the snapshot image; dev.lando.app records the data app id, not the current runtime app id.",
+  }),
 });
 export type VolumeSnapshotArtifact = typeof VolumeSnapshotArtifact.Type;
 
@@ -142,7 +174,7 @@ export const SnapshotGcOrphan = Schema.Struct({
   provider: Schema.String.annotate({ description: "Provider that holds the snapshot image." }),
   sizeBytes: Schema.Number.annotate({ description: "Provider image size in bytes." }),
   createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
-  app: Schema.optionalKey(Schema.String).annotate({ description: "Owning app label when present." }),
+  app: Schema.optionalKey(Schema.String).annotate({ description: "Recorded data app label when present." }),
 });
 export const SnapshotGcProviderReport = Schema.Struct({
   provider: Schema.String.annotate({ description: "Provider inspected for orphaned images." }),
@@ -243,18 +275,32 @@ export const DataTransferProgress = Schema.Struct({
 });
 export type DataTransferProgress = typeof DataTransferProgress.Type;
 
-export const SnapshotMetadata = Schema.Struct({
-  service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
-  volumeInstanceId: Schema.String.annotate({
-    description: "Physical source volume creation identity.",
+export const SnapshotMetadata = Schema.Union([
+  Schema.Struct({
+    service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
+    volumeInstanceId: Schema.String.annotate({
+      description: "Physical source volume creation identity.",
+    }),
+    family: Schema.String.annotate({ description: "Observed database family." }),
+    version: Schema.String.annotate({ description: "Observed database version." }),
+    imageIdentity: Schema.String.annotate({ description: "Observed immutable runtime image identity." }),
+    path: Schema.optionalKey(Schema.Never),
+    recoveryReason: Schema.Literals(["manual", "reset", "restore", "import", "seed"]).annotate({
+      description: "Reason this durable recovery point was created.",
+    }),
   }),
-  family: Schema.String.annotate({ description: "Observed database family." }),
-  version: Schema.String.annotate({ description: "Observed database version." }),
-  imageIdentity: Schema.String.annotate({ description: "Observed immutable runtime image identity." }),
-  recoveryReason: Schema.Literals(["manual", "reset", "restore", "import", "seed"]).annotate({
-    description: "Reason this durable recovery point was created.",
+  Schema.Struct({
+    service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
+    family: Schema.Literal("sqlite").annotate({ description: "Database file format." }),
+    path: Schema.String.annotate({ description: "Canonical relative SQLite database path." }),
+    version: Schema.String.annotate({ description: "SQLite version recorded as provenance." }),
+    recoveryReason: Schema.Literals(["manual", "reset", "restore", "import"]).annotate({
+      description: "Reason the SQLite snapshot was created.",
+    }),
+    volumeInstanceId: Schema.optionalKey(Schema.Never),
+    imageIdentity: Schema.optionalKey(Schema.Never),
   }),
-});
+]);
 export type SnapshotMetadata = typeof SnapshotMetadata.Type;
 
 /**
@@ -296,6 +342,12 @@ export const SnapshotHandle = Schema.Struct({
 export type SnapshotHandle = typeof SnapshotHandle.Type;
 
 /**
+ * StateStore version of a persisted snapshot sidecar. Version 2 added the SQLite
+ * metadata arm; version 1 records are server snapshots and decode unchanged.
+ */
+export const SNAPSHOT_INFO_VERSION = 2;
+
+/**
  * Persisted snapshot sidecar record.
  */
 export const SnapshotInfo = Schema.Struct({
@@ -326,7 +378,10 @@ export const snapshotHandle = (info: SnapshotInfo): SnapshotHandle => ({
  */
 export const SnapshotFilter = Schema.Struct({
   id: Schema.optionalKey(SnapshotId),
-  app: Schema.optionalKey(AppId),
+  app: Schema.optionalKey(AppId).annotate({
+    description:
+      "Recorded data app id. Resolve a current applied runtime app id to its data id before filtering; canonical-owner path selection remains separate.",
+  }),
   store: Schema.optionalKey(Schema.String),
   ownerKey: Schema.optionalKey(Schema.String).annotate({ description: "Match the snapshot owner's key." }),
   repoGroupKey: Schema.optionalKey(Schema.String).annotate({

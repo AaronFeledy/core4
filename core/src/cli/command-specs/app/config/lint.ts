@@ -17,7 +17,6 @@ export const appConfigLintSpec: LandoCommandSpec<
   summary: "Check Landofile configuration, declared listeners, routes, and event names.",
   namespace: "app",
   topLevelAlias: false,
-  aliases: ["config:lint"],
   bootstrap: "plugins",
   flags: {
     format: Flags.string({

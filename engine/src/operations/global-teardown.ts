@@ -2,36 +2,32 @@ import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
 import { DateTime, Effect } from "effect";
 
-import { AbsolutePath, AppId, type ServiceShutdownObservation } from "@lando/sdk/schema";
-import {
-  EventService,
-  FileSystem,
-  GlobalAppService,
-  RouterService,
-  RuntimeProviderRegistry,
-  type RuntimeProviderShape,
-} from "@lando/sdk/services";
+import { AbsolutePath, AppId, type ServiceShutdownObservation, isActiveRunStatus } from "@lando/sdk/schema";
+import { EventService, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { globalObserveProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
+import { routeOwnerFromGlobalTeardown, routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import {
+  republishRetainedRoutes,
+  settleRoutesTask,
+  withdrawOwnerRoutes,
+} from "../lifecycle/route-withdrawal.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
+import { observeRuntime, prepareTeardownOwners, runtimeOnline } from "../providers/runtime-observation.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { removeGlobalResources } from "./global-teardown-resources.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
+import { stopIdleApp } from "./stop-idle.ts";
+import { preflightStopApp } from "./stop-internal.ts";
 import { unknownPlanServiceError } from "./unknown-service.ts";
 
-const runtimeOnline = (provider: Pick<RuntimeProviderShape, "isAvailable" | "getStatus">) =>
-  provider.isAvailable.pipe(
-    Effect.flatMap((available) =>
-      available ? Effect.map(provider.getStatus, (status) => status.running) : Effect.succeed(false),
-    ),
-    Effect.catch(() => Effect.succeed(false)),
-  );
-
-export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(function* () {
+export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(function* (
+  intent: "stop" | "destroy" = "stop",
+) {
   const globalApp = yield* GlobalAppService;
   const paths = yield* globalApp.paths;
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(paths.root));
@@ -41,9 +37,24 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const provider = yield* registry.select(providerId);
   const resourceOwnership = registry.resourceOwnership;
   const ownership = yield* resourceOwnership?.(providerId, root) ?? Effect.succeed(undefined);
+  if (
+    intent === "destroy" &&
+    (ownership !== undefined ||
+      (yield* registry.appliedPlansFor(root, providerId)).some((plan) => plan.provider === providerId))
+  )
+    yield* prepareTeardownOwners([provider]);
   const observedProvider = {
     ...provider,
-    isAvailable: runtimeOnline(provider),
+    isAvailable: observeRuntime(provider).pipe(
+      Effect.flatMap((observation) =>
+        observation.kind === "unavailable"
+          ? observation.error === undefined
+            ? Effect.succeed(false)
+            : Effect.fail(observation.error)
+          : Effect.succeed(true),
+      ),
+    ),
+    runtimeOnline: runtimeOnline(provider),
     ...(resourceOwnership === undefined ? {} : { resourceOwnership: () => Effect.succeed(ownership) }),
     canCleanupOwnedResources: Effect.succeed(provider.cleanupOwnedResources !== undefined),
   } satisfies AppliedStateProvider;
@@ -113,15 +124,7 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
       return unreachable;
     }
   }
-  const online = options?.requireOnline
-    ? yield* resolved.provider.isAvailable.pipe(
-        Effect.flatMap((available) =>
-          available
-            ? Effect.map(resolved.provider.getStatus, (status) => status.running)
-            : Effect.succeed(false),
-        ),
-      )
-    : yield* runtimeOnline(resolved.provider);
+  const online = yield* runtimeOnline(resolved.provider);
   if (options?.requireOnline && !online)
     return yield* Effect.fail(
       new AppResolveError({
@@ -143,12 +146,7 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
       service.containerId !== undefined,
   );
   const activeNames = new Set(
-    owned
-      .filter(
-        (service) =>
-          service.status === "running" || service.status === "paused" || service.status === "restarting",
-      )
-      .map((service) => String(service.service)),
+    owned.filter((service) => isActiveRunStatus(service.status)).map((service) => String(service.service)),
   );
   const selected = new Set(requested);
   const updateRoutes = online && evidence.plan.routes.some((route) => selected.has(String(route.service)));
@@ -203,10 +201,12 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
     }
   }
   if (selection.routePolicyError !== undefined) return yield* Effect.fail(selection.routePolicyError);
-  if (selection.routes !== undefined) {
-    const router = yield* RouterService;
-    yield* router.applyRoutes(selection.routes, selection.plan.id);
-  }
+  if (selection.routes !== undefined)
+    yield* republishRetainedRoutes(
+      selection.routes,
+      routeOwnerFromPlan(selection.plan),
+      selection.services.map((service) => String(service.service)),
+    );
   return withShutdownObservations(
     {
       changed: services.length > 0,
@@ -227,7 +227,36 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   options: { readonly intent: "stop" | "destroy"; readonly volumes: boolean; readonly removeState: boolean },
 ) {
   const evidence = resolved.evidence.kind;
-  if (evidence === "absent") return { changed: false, services: [], volumesRemoved: false };
+  if (evidence === "absent")
+    return withShutdownObservations({
+      changed: false,
+      services: [],
+      volumesRemoved: false,
+      cleanup: "routes" as const,
+    });
+  if (options.intent === "stop" && (yield* resolved.provider.getStatus).state === "idle") {
+    if (resolved.evidence.kind !== "applied")
+      return withShutdownObservations({
+        changed: false,
+        services: [],
+        volumesRemoved: false,
+        cleanup: "routes" as const,
+      });
+    const target = {
+      plan: resolved.evidence.plan,
+      root: resolved.paths.root,
+      app: globalTeardownAppRef(resolved),
+    };
+    yield* stopIdleApp(target, yield* preflightStopApp(target, "idle"));
+    const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromPlan(resolved.evidence.plan));
+    return withShutdownObservations({
+      changed: true,
+      services: [],
+      volumesRemoved: false,
+      cleanup: "routes" as const,
+      routes: withdrawal.kind,
+    });
+  }
   const work = removeGlobalResources(resolved, {
     volumes: options.volumes,
     removeState: options.removeState,
@@ -241,7 +270,6 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       return options.intent satisfies never;
   }
   const events = yield* EventService;
-  const router = yield* RouterService;
   const app = globalTeardownAppRef(resolved);
   const payload = { scope: "global" as const, app, evidence, purge: options.volumes };
   yield* events.publish(PreGlobalDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
@@ -254,9 +282,11 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       const result = yield* work.pipe(Effect.tapError(() => tree.failTask("provider")));
       yield* tree.completeTask("provider");
       yield* tree.startTask("routes");
-      yield* router.removeRoutes(app.id).pipe(Effect.tapError(() => tree.failTask("routes")));
-      yield* tree.completeTask("routes");
-      return result;
+      const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromGlobalTeardown(resolved)).pipe(
+        Effect.tapError(() => tree.failTask("routes")),
+      );
+      yield* settleRoutesTask(tree, withdrawal);
+      return { ...result, routes: withdrawal.kind };
     }),
   });
   yield* events.publish(

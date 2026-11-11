@@ -10,6 +10,7 @@
  * canonical `RecipeManifest` schema.
  */
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Clock, Duration, Effect } from "effect";
 
@@ -109,7 +110,7 @@ export const loadRecipeTs = Effect.fnUntraced(function* (
   options: LoadRecipeTsOptions,
 ): Effect.fn.Return<unknown, RecipeManifestParseError> {
   yield* sandboxScan(options.filePath, options.recipeRoot, options.content).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause._tag === "LandofileParseError"
         ? parseError(
             options.filePath,

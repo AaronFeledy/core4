@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * Pre-parse Landofile template rendering.
  *
@@ -168,14 +169,12 @@ export const renderLandofileTemplate = (
   }
 
   return engine.compile({ id: filePath, source: blanked }).pipe(
-    Effect.mapError((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
+    mapFailures((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
     Effect.flatMap((compiled) =>
       engine
         .render(compiled, options.context ?? defaultRenderContext())
         .pipe(
-          Effect.mapError((error) =>
-            parseError(filePath, error.message, error.line, error.column, error.cause),
-          ),
+          mapFailures((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
         ),
     ),
   );

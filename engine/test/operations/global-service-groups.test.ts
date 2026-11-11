@@ -27,11 +27,15 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Schema } from "effect";
 import { withGlobalMutation } from "../../src/global-app/mutation.ts";
-import { readGlobalConsumerReservations } from "../../src/operations/global-consumer-lease.ts";
+import {
+  readGlobalConsumerReservations,
+  withGlobalConsumerReservation,
+} from "../../src/operations/global-consumer-lease.ts";
 import {
   applyGlobalServiceGroups as applyGlobalServiceGroupsEffect,
   globalServiceGroupError,
 } from "../../src/operations/global-service-groups.ts";
+import { prepareProvider } from "../../src/providers/prepared.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
@@ -75,8 +79,21 @@ const leaseLayer = Layer.mergeAll(
   ),
 );
 const applyGlobalServiceGroups = <E, R, AdmissionE = never, AdmissionR = never>(
-  ...args: Parameters<typeof applyGlobalServiceGroupsEffect<E, R, AdmissionE, AdmissionR>>
-) => withGlobalMutation(applyGlobalServiceGroupsEffect(...args)).pipe(Effect.provide(leaseLayer));
+  plan: AppPlan,
+  apply: Omit<
+    Parameters<typeof applyGlobalServiceGroupsEffect<E, R, AdmissionE, AdmissionR>>[1],
+    "provider"
+  > & {
+    readonly provider: RuntimeProviderShape;
+  },
+  build: Parameters<typeof applyGlobalServiceGroupsEffect<E, R, AdmissionE, AdmissionR>>[2],
+) =>
+  withGlobalMutation(
+    Effect.gen(function* () {
+      const provider = yield* prepareProvider(apply.provider);
+      return yield* applyGlobalServiceGroupsEffect(plan, { ...apply, provider }, build);
+    }),
+  ).pipe(Effect.provide(leaseLayer));
 
 const globalPlan: AppPlan = {
   id: AppId.make("global"),
@@ -125,6 +142,120 @@ const build = (plan: AppPlan) =>
       ]),
     ),
   });
+
+test.each([false, true])(
+  "bound sibling removals require a successful group build (failure: %s)",
+  async (failBuild) => {
+    const services = [service("selected"), service("joined")];
+    const plan = planWith(services);
+    const recorded = planWith([service("joined")]);
+    const removed = {
+      app: plan.id,
+      appRoot: root,
+      providerId: plan.provider,
+      service: ServiceName.make("idle"),
+      containerId: "idle-container",
+      status: "exited" as const,
+      publications: { status: "unknown" as const },
+    };
+    const timeline: string[] = [];
+    const outcome = await Effect.runPromise(
+      applyGlobalServiceGroups(
+        plan,
+        {
+          services,
+          recordedPlan: recorded,
+          options: { reconcile: false },
+          bindings: [["selected", "joined", "idle"]],
+          exclusive: ["joined"],
+          removals: [{ observation: removed, binding: ["idle", "selected"] }],
+          provider: {
+            ...TestRuntimeProvider,
+            removeObservedService: (observation) =>
+              Effect.sync(() => {
+                expect(observation.containerId).toBe("idle-container");
+                timeline.push("remove");
+                return { kind: "removed" as const };
+              }),
+            apply: (built) =>
+              Effect.gen(function* () {
+                const reservations = yield* readGlobalConsumerReservations(["joined", "idle"]).pipe(
+                  Effect.provide(leaseLayer),
+                  Effect.orDie,
+                );
+                expect(
+                  reservations.map((entry) => ({
+                    services: entry.services,
+                    exclusive: entry.exclusive?.slice().sort(),
+                  })),
+                ).toEqual([{ services: ["idle", "joined", "selected"], exclusive: ["idle", "joined"] }]);
+                expect(Object.keys(built.services)).toEqual(["selected", "joined"]);
+                timeline.push("apply");
+                return { changed: true };
+              }),
+          },
+        },
+        (built) =>
+          Effect.gen(function* () {
+            timeline.push("build");
+            if (failBuild) return yield* Effect.fail(failure("joined"));
+            return yield* build(built);
+          }),
+      ),
+    );
+    expect(timeline).toEqual(failBuild ? ["build"] : ["build", "remove", "apply"]);
+    expect(outcome.failures.map((entry) => entry.names)).toEqual(failBuild ? [["selected", "joined"]] : []);
+    if (failBuild) expect(outcome.builtPlan).toEqual(recorded);
+  },
+);
+
+test.each(["existing-exclusive", "new-exclusive"] as const)(
+  "consumer admission refuses %s sibling use and releases the claim",
+  async (direction) => {
+    const holder = { ...globalPlan, id: AppId.make("holder"), name: "holding-app" };
+    const contender = planWith([service("sibling")]);
+    let admitted = false;
+    const result = await Effect.runPromise(
+      withGlobalMutation(
+        Effect.gen(function* () {
+          const denied = yield* withGlobalConsumerReservation(
+            holder,
+            ["sibling"],
+            Effect.result(
+              withGlobalConsumerReservation(
+                contender,
+                ["sibling"],
+                Effect.sync(() => {
+                  admitted = true;
+                }),
+                direction === "new-exclusive" ? ["sibling"] : [],
+              ),
+            ),
+            direction === "existing-exclusive" ? ["sibling"] : [],
+          );
+          const after = yield* readGlobalConsumerReservations(["sibling"]);
+          const retry = yield* withGlobalConsumerReservation(
+            contender,
+            ["sibling"],
+            Effect.succeed("admitted"),
+            ["sibling"],
+          );
+          return { denied, after, retry };
+        }),
+      ).pipe(Effect.provide(leaseLayer)),
+    );
+    expect(result.denied).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "GlobalAppError",
+        operation: "consumer-admission",
+      },
+    });
+    expect(admitted).toBe(false);
+    expect(result.after).toEqual([]);
+    expect(result.retry).toBe("admitted");
+  },
+);
 const failure = (name: string, remediation?: string) =>
   new ServiceStartError({
     service: name,
@@ -598,7 +729,7 @@ test("each global group reserves its selected IDs inside provider apply while sh
       applyGlobalServiceGroupsEffect(
         plan,
         {
-          provider,
+          provider: await Effect.runPromise(prepareProvider(provider)),
           services: [first, second],
           options: { reconcile: false },
         },

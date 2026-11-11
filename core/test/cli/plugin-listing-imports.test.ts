@@ -7,6 +7,9 @@ test("listing, topics and token indexing import zero bundled or external plugin 
   const repo = resolve(import.meta.dirname, "../../..");
   try {
     await f.install("@example/trapped", [{ id: "trap:inspect", summary: "Metadata-only fixture." }]);
+    // A missing tooling index is rebuilt once with plugins loaded; the listing must leave it fresh.
+    const warm = await f.invoke(["help", "--all", "--format=json"]);
+    expect(warm.exit, warm.stderr).toBe(0);
     const script = `
       let imports = 0;
       Bun.plugin({name: "plugin-import-trap", setup(build) {

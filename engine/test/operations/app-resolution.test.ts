@@ -5,7 +5,8 @@ import { join } from "node:path";
 
 import { type Context, Effect } from "effect";
 
-import type { LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import type { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import {
@@ -143,19 +144,8 @@ describe("loadUserLandofile includes", () => {
   });
 });
 
-const cwdAnchor = process.cwd();
-
-const currentDir = (): string | undefined => {
-  try {
-    return process.cwd();
-  } catch (cause) {
-    if (cause instanceof Error) return undefined;
-    throw cause;
-  }
-};
-
 describe("loadUserLandofileAt root-aware seam", () => {
-  test("resolves at an explicit root and restores the host cwd", async () => {
+  test("resolves at an explicit root without changing the host cwd", async () => {
     const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-left-")));
     const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-right-")));
     const previous = process.cwd();
@@ -163,8 +153,8 @@ describe("loadUserLandofileAt root-aware seam", () => {
     try {
       let observedCwd = "";
       const service = {
-        discover: Effect.sync(() => {
-          observedCwd = process.cwd();
+        discover: Effect.map(discoveryCwd(), (cwd) => {
+          observedCwd = cwd;
           return literalTestLandofile(landofile("at-root"));
         }),
       } satisfies Context.Service.Shape<typeof LandofileService>;
@@ -197,61 +187,37 @@ describe("loadUserLandofileAt root-aware seam", () => {
     }
   });
 
-  test("serializes same-root resolution while another chdir region is active", async () => {
-    const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-left-")));
-    const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-right-")));
-    let releaseFirst: (() => void) | undefined;
-    let allowSecondObserve: (() => void) | undefined;
-    let first: Promise<LoadScopedLandofile> | undefined;
-    let second: Promise<LoadScopedLandofile> | undefined;
-    process.chdir(left);
+  test("concurrent resolutions at different roots each discover their own root", async () => {
+    const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-left-")));
+    const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-right-")));
+    const host = process.cwd();
     try {
-      const firstCanRestore = new Promise<void>((resolve) => {
-        releaseFirst = resolve;
-      });
-      let firstEntered!: () => void;
-      const firstInDiscover = new Promise<void>((resolve) => {
-        firstEntered = resolve;
-      });
-      const secondMayObserve = new Promise<void>((resolve) => {
-        allowSecondObserve = resolve;
-      });
-      let secondObserved = "";
+      const seen: Record<string, string> = {};
+      // Each discovery yields mid-flight, so the two resolutions interleave.
+      const recording = (name: string, root: string) =>
+        loadUserLandofileAt(
+          {
+            discover: discoveryCwd().pipe(
+              Effect.tap((cwd) =>
+                Effect.sync(() => {
+                  seen[name] = cwd;
+                }),
+              ),
+              Effect.andThen(Effect.yieldNow),
+              Effect.as(literalTestLandofile(landofile(name))),
+            ),
+          },
+          root,
+        );
 
-      const firstService = {
-        discover: Effect.promise(async () => {
-          firstEntered();
-          await firstCanRestore;
-          return literalTestLandofile(landofile("first"));
-        }),
-      } satisfies Context.Service.Shape<typeof LandofileService>;
-      const secondService = {
-        discover: Effect.promise(async () => {
-          await secondMayObserve;
-          secondObserved = process.cwd();
-          return literalTestLandofile(landofile("second"));
-        }),
-      } satisfies Context.Service.Shape<typeof LandofileService>;
+      const [first, second] = await Effect.runPromise(
+        Effect.all([recording("left", left), recording("right", right)], { concurrency: "unbounded" }),
+      );
 
-      first = Effect.runPromise(loadUserLandofileAt(firstService, right));
-      await firstInDiscover;
-      second = Effect.runPromise(loadUserLandofileAt(secondService, right).pipe(Effect.timeout("1 second")));
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      releaseFirst?.();
-      await first;
-      allowSecondObserve?.();
-      if (second === undefined) throw new Error("second resolution never started");
-      const secondResult = await second;
-
-      expect(secondResult.document.name).toBe("second");
-      expect(secondObserved).toBe(right);
-      expect(process.cwd()).toBe(left);
+      expect([first.document.name, second.document.name]).toEqual(["left", "right"]);
+      expect(seen).toEqual({ left, right });
+      expect(process.cwd()).toBe(host);
     } finally {
-      releaseFirst?.();
-      allowSecondObserve?.();
-      await Promise.allSettled([first ?? Promise.resolve(), second ?? Promise.resolve()]);
-      const here = currentDir();
-      if (here === undefined || here === left || here === right) process.chdir(cwdAnchor);
       await rm(left, { recursive: true, force: true });
       await rm(right, { recursive: true, force: true });
     }

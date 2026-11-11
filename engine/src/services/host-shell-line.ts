@@ -7,6 +7,7 @@ import {
   captureHostExecutionContext,
   prepareHostExecutionContext,
 } from "./host-execution-context.ts";
+import { killProcessTree } from "./process-tree.ts";
 
 export const hostShellError = (message: string, command: string, cause?: unknown): ShellExecError =>
   new ShellExecError({
@@ -100,17 +101,7 @@ export const runHostShellLine = async (
   const terminate = (): Promise<void> => {
     if (termination !== undefined) return termination;
     termination = (async () => {
-      if (process.platform === "win32") {
-        const taskkill = Bun.spawn({
-          cmd: ["taskkill.exe", "/PID", String(child.pid), "/T", "/F"],
-          stdin: "ignore",
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-        await taskkill.exited;
-      } else {
-        child.kill();
-      }
+      killProcessTree(child.pid, "SIGTERM", false);
       await child.exited;
     })();
     return termination;

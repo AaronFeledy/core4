@@ -9,6 +9,11 @@ import type { ToolingMetadataStatus } from "./tooling-cache-status";
 import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../runtime/invocation-context";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
@@ -16,8 +21,9 @@ import { activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { HelpCommandDescriptor } from "./help-command-descriptor";
+import { commandHelpInput } from "./help-command-input";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
-import { helpRedactor } from "./help-redaction";
+import { helpRedactor, redactHelpText } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
 import { type PluginCommandListing, PluginMetadata } from "./plugin-command-catalog";
@@ -45,6 +51,13 @@ export const HelpCatalogResult = Schema.Struct({
       sourcePath: ToolingCommandUnavailableError.fields.sourcePath,
       remediation: ToolingCommandUnavailableError.fields.remediation,
     }),
+    Schema.Struct({
+      status: Schema.Literal("unavailable"),
+      reason: Schema.Literal("rebuild-failed"),
+      sourcePath: Schema.optional(Schema.String),
+      remediation: Schema.String,
+      error: Schema.Struct({ _tag: Schema.String, message: Schema.String }),
+    }),
   ]),
   sections: Schema.Struct({
     common: Schema.Array(HelpCatalogRow),
@@ -65,6 +78,10 @@ const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): T
   hidden: entry.hidden,
   ...(entry.service === undefined ? {} : { service: entry.service }),
   ...(entry.input === undefined ? {} : { input: entry.input }),
+  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
+  ...(entry.source === undefined ? {} : { source: entry.source }),
+  ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
 });
 
 export const toolingHelpEntryForToken = (
@@ -101,6 +118,7 @@ export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonl
         primary: name.primary,
         extras: name.extras,
         summary: entry.summary,
+        ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
       };
     })
     .toSorted(
@@ -115,6 +133,7 @@ const toCatalogRow = (row: ThisAppHelpRow, source: "built-in" | "tooling"): Help
   canonicalId: row.canonicalId,
   summary: row.summary,
   source,
+  ...(row.loadError === undefined ? {} : { loadError: row.loadError }),
 });
 
 const byTypeable = (left: HelpCatalogRow, right: HelpCatalogRow): number =>
@@ -171,7 +190,11 @@ export const buildHelpCatalog = (
             implementation: entry.plugin.spec === undefined ? "discovered" : "validated",
             ...(entry.plugin.loadError === undefined ? {} : { loadError: entry.plugin.loadError }),
           };
-        return { ...row, source: entry.source === "tooling" ? "tooling" : "built-in" };
+        return {
+          ...row,
+          source: entry.source === "tooling" ? "tooling" : "built-in",
+          ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
+        };
       })
       .toSorted(byTypeable),
   };
@@ -182,6 +205,7 @@ export const printHelpCatalogJson = (
   format: CommandResultEnvelopeFormat = "json",
   metadata?: ToolingMetadataStatus,
   plugins?: PluginCommandListing,
+  context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -193,8 +217,8 @@ export const printHelpCatalogJson = (
         redactor,
         format,
       });
-      yield* Effect.promise(() => emitResultLine(line));
-    }),
+      yield* Effect.promise(() => emitResultLine(line, context));
+    }).pipe(Effect.provideService(CliInvocation, context)),
   );
 
 const rendererModeFrom = (
@@ -211,7 +235,10 @@ const rendererModeFrom = (
   return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
 };
 
-export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
+export const printCommandHelp = (
+  entry: BuiltInCommandEntry,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) {
     return printMachineHelpTarget(
       {
@@ -220,24 +247,31 @@ export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
         extras: [],
         summary: entry.spec.summary,
         source: "built-in",
+        input: commandHelpInput(entry.spec),
       },
       activeResultFormat,
+      context,
     );
   }
   const argv = process.argv.slice(2);
   return emitResultLine(
     renderCommandHelp(entry, {
       styled: shouldStyleHelp({
-        isTTY: process.stdout.isTTY === true,
-        env: process.env,
+        isTTY: context.io.stdoutIsTTY === true,
+        env: context.env,
         argv,
-        rendererMode: rendererModeFrom(argv, process.env),
+        rendererMode: rendererModeFrom(argv, context.env),
       }),
     }),
+    context,
   );
 };
 
-export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAliasPolicy): Promise<void> => {
+export const printToolingHelp = (
+  entry: ToolingHelpEntry,
+  aliasPolicy?: HelpAliasPolicy,
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) {
     const names = typeableName({
       canonicalId: entry.id,
@@ -253,20 +287,24 @@ export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAlia
         summary: entry.summary,
         source: "tooling",
         ...(entry.input === undefined ? {} : { input: entry.input }),
+        ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+        ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
       },
       activeResultFormat,
+      context,
     );
   }
   const argv = process.argv.slice(2);
-  return emitResultLine(
+  return redactHelpText(
     renderToolingHelp(entry, {
       styled: shouldStyleHelp({
-        isTTY: process.stdout.isTTY === true,
-        env: process.env,
+        isTTY: context.io.stdoutIsTTY === true,
+        env: context.env,
         argv,
-        rendererMode: rendererModeFrom(argv, process.env),
+        rendererMode: rendererModeFrom(argv, context.env),
       }),
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     }),
-  );
+    context,
+  ).then((text) => emitResultLine(text, context));
 };

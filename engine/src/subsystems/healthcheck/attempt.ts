@@ -1,4 +1,5 @@
 import { compileServiceProbe } from "@lando/container-runtime/service-probe";
+import { mapFailures } from "@lando/sdk/command-result";
 import { HealthcheckError, HealthcheckTargetUnsupportedError, ServiceExecError } from "@lando/sdk/errors";
 import { type AppPlan, type HealthcheckPlan, type ServiceName, probeTargetError } from "@lando/sdk/schema";
 import {
@@ -9,6 +10,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { bunShellDialectIssues, describeBunShellIssue } from "../../services/bun-shell-dialect.ts";
 export { interruptOnAbort } from "@lando/container-runtime/healthcheck-attempt";
 
 export interface HostProbeRunners {
@@ -98,6 +100,16 @@ export const prepareHealthcheckAttempt = Effect.fnUntraced(function* (input: {
     if (typeof command === "string") {
       const shell = input.runners?.shell;
       if (shell === undefined) return yield* Effect.fail(unsupportedHealthcheckTarget(service, probe));
+      // Reject before the probe loop starts so a syntax error is reported once, not retried.
+      const dialect = bunShellDialectIssues(command)[0];
+      if (dialect !== undefined)
+        return yield* Effect.fail(
+          new HealthcheckError({
+            service: String(service),
+            message: `Host readiness command: ${describeBunShellIssue(dialect)}`,
+            remediation: dialect.suggestion,
+          }),
+        );
       return {
         rendered: command,
         run: Effect.suspend(() => shell.run(command, { cwd, capture: true, ...signalOption })).pipe(
@@ -116,7 +128,7 @@ export const prepareHealthcheckAttempt = Effect.fnUntraced(function* (input: {
     return {
       rendered: command.join(" "),
       run: Effect.suspend(() => process.run({ cmd, args, cwd, capture: true, ...signalOption })).pipe(
-        Effect.mapError(hostFailure),
+        mapFailures(hostFailure),
       ),
     };
   }

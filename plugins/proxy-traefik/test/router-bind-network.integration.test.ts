@@ -161,6 +161,7 @@ isolated("rendered helper forwarding reaches loopback-only HTTP and HTTPS backen
   const frontends: Server[] = [];
   try {
     const script = buildInstallScript({
+      userDataRoot: "/lando",
       user: "test",
       binary: "/fixture/proxyd",
       serviceType: "simple",

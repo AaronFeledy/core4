@@ -27,6 +27,7 @@ export interface NormalizedToolingTask {
   readonly env: Environment;
   readonly disabled: boolean;
   readonly input: ToolingInputDeclaration;
+  readonly wrapper: boolean;
   readonly steps: readonly NormalizedToolingStep[];
   readonly source?: { readonly path: string; readonly task: string };
 }
@@ -57,6 +58,12 @@ export const normalizeToolingTask = (
     return fail(`Tooling env must not override reserved runtime keys: ${reserved.join(", ")}.`);
   const input = normalizeToolingInput(name, task, source);
   if (Result.isFailure(input)) return Result.fail(input.failure);
+  if (task.wrapper === true) {
+    if (input.success.flags.length > 0 || input.success.args.length > 0)
+      return fail("A wrapper task declares no flags or args; remove those declarations or remove wrapper.");
+    if (!input.success.acceptsArguments)
+      return fail("A wrapper task accepts arguments; remove arguments: false or remove wrapper.");
+  }
   const serviceRef = (
     value: string | undefined,
   ): Result.Result<ToolingServiceRef | undefined, ToolingCompileError> => {
@@ -71,6 +78,12 @@ export const normalizeToolingTask = (
   };
   const service = serviceRef(task.service);
   if (Result.isFailure(service)) return Result.fail(service.failure);
+  for (const [key, variable] of Object.entries(task.vars ?? {})) {
+    if (typeof variable !== "object") continue;
+    const target = serviceRef(variable.service);
+    if (Result.isFailure(target))
+      return fail(`tooling.${name}.vars.${key}.service: ${target.failure.message}`);
+  }
   const env = { ...task.env };
   if (task.cmd !== undefined && task.cmds !== undefined) return fail("Use cmd or cmds, not both.");
   const steps: NormalizedToolingStep[] = [];
@@ -104,6 +117,8 @@ export const normalizeToolingTask = (
     });
   }
   const summary = task.description ?? task.summary;
+  if (task.wrapper === true && steps.length !== 1)
+    return fail("A wrapper task runs exactly one command; move setup into its own task or remove wrapper.");
   return Result.succeed({
     name,
     ...(summary === undefined ? {} : { summary }),
@@ -113,6 +128,7 @@ export const normalizeToolingTask = (
     env,
     disabled: task.disabled ?? false,
     input: input.success,
+    wrapper: task.wrapper ?? false,
     steps,
     ...provenance,
   });

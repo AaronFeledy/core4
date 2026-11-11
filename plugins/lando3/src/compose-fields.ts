@@ -2,6 +2,7 @@ import { splitComposeCommand } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { serviceCursor } from "./claims.ts";
 import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-disposition-of.ts";
+import { invalidKnobValue } from "./compose-knob-values.ts";
 import type { Lando3Path } from "./contract.ts";
 import { type AssignmentPolicy, lowerAssignments } from "./environment.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "./host-reachability.ts";
@@ -210,6 +211,13 @@ export const lowerComposeFields = (
           if (dispositionOf(dotted) === "rejected") reject(dotted, [...relative, index, nestedKey]);
         }
       });
+    }
+    const invalid = invalidKnobValue(key, output, { ctx, relative });
+    if (invalid !== undefined) {
+      cursor.acceptNoOp(relative);
+      diagnostics.push(invalid);
+      blocked = true;
+      continue;
     }
     const target = Object.hasOwn(COMPOSE_KEY_RENAMES, key) ? COMPOSE_KEY_RENAMES[key] : undefined;
     if (!["build", "environment", "labels"].includes(key)) cursor.mapTo(relative);

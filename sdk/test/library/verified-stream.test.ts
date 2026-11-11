@@ -15,6 +15,40 @@ import {
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 const digest = (text: string): string => createHash("sha256").update(text).digest("hex");
 
+test("failed temp-file preparation leaves the destination unchanged without consuming payload", async () => {
+  const directory = await fs.mkdtemp(join(tmpdir(), "lando-prepare-stream-"));
+  const target = join(directory, "artifact");
+  let consumed = false;
+  const denied = new Error("private access unavailable");
+  try {
+    await fs.writeFile(target, "original");
+    const error = await Effect.runPromise(
+      Effect.scoped(
+        persistVerifiedStream({
+          destinationPath: target,
+          beforeWrite: async (path) => {
+            expect((await fs.stat(path)).size).toBe(0);
+            throw denied;
+          },
+          body: Stream.fromEffect(
+            Effect.sync(() => {
+              consumed = true;
+              return bytes("secret");
+            }),
+          ),
+        }),
+      ).pipe(Effect.flip),
+    );
+    expect(error.reason).toBe("persist");
+    expect(error.cause).toBe(denied);
+    expect(consumed).toBe(false);
+    expect(await fs.readFile(target, "utf8")).toBe("original");
+    expect(await fs.readdir(directory)).toEqual(["artifact"]);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 describe("verified stream size ceilings", () => {
   for (const mode of ["collect", "persist"] as const) {
     test(`${mode} stops at the first chunk exceeding the expected size`, async () => {
@@ -184,4 +218,86 @@ describe("verified stream size ceilings", () => {
       }
     });
   }
+});
+
+describe("verified stream destinations", () => {
+  test.skipIf(process.platform === "win32")(
+    "refuses to replace a named pipe and never reads the body",
+    async () => {
+      // Given
+      const dir = await fs.mkdtemp(join(tmpdir(), "lando-fifo-destination-"));
+      const fifo = join(dir, "dump.sql");
+      expect(Bun.spawnSync(["mkfifo", fifo]).exitCode).toBe(0);
+      let pulled = false;
+      const body = Stream.fromEffect(
+        Effect.sync(() => {
+          pulled = true;
+          return bytes("select 1;");
+        }),
+      );
+      try {
+        // When
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(persistVerifiedStream({ body, destinationPath: fifo })),
+        );
+        // Then
+        expect(exit._tag === "Failure" && Cause.squash(exit.cause)).toBeInstanceOf(VerifiedStreamError);
+        expect(pulled).toBe(false);
+        expect((await fs.stat(fifo)).isFIFO()).toBe(true);
+        expect(await fs.readdir(dir)).toEqual(["dump.sql"]);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("verified stream dangling links", () => {
+  test.skipIf(process.platform === "win32")("refuses to replace a dangling symlink", async () => {
+    const dir = await fs.mkdtemp(join(tmpdir(), "lando-dangling-"));
+    const link = join(dir, "artifact.bin");
+    await fs.symlink(join(dir, "missing"), link);
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(persistVerifiedStream({ body: Stream.make(bytes("x")), destinationPath: link })),
+      );
+      expect(exit._tag === "Failure" && Cause.squash(exit.cause)).toBeInstanceOf(VerifiedStreamError);
+      expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("verified stream destination recheck", () => {
+  test.skipIf(process.platform === "win32")(
+    "refuses a named pipe that appears while the body streams and removes its temp file",
+    async () => {
+      // Given: the destination is absent when persistence starts, then becomes a pipe mid-stream.
+      const dir = await fs.mkdtemp(join(tmpdir(), "lando-fifo-race-"));
+      const destination = join(dir, "dump.sql");
+      const body = Stream.make(bytes("first")).pipe(
+        Stream.concat(
+          Stream.fromEffect(
+            Effect.sync(() => {
+              expect(Bun.spawnSync(["mkfifo", destination]).exitCode).toBe(0);
+              return bytes("second");
+            }),
+          ),
+        ),
+      );
+      try {
+        // When
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(persistVerifiedStream({ body, destinationPath: destination })),
+        );
+        // Then
+        expect(exit._tag === "Failure" && Cause.squash(exit.cause)).toBeInstanceOf(VerifiedStreamError);
+        expect((await fs.stat(destination)).isFIFO()).toBe(true);
+        expect(await fs.readdir(dir)).toEqual(["dump.sql"]);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

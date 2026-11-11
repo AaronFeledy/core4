@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
@@ -7,6 +8,7 @@ import {
   AppId,
   type AppPlan,
   AppRef,
+  type AppRouteOwner,
   ProviderId,
   ServiceName,
   type VolumeInfo,
@@ -26,6 +28,7 @@ import {
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -78,11 +81,14 @@ export const globalTeardownHarness = async (
     readonly volumes?: ReadonlyArray<VolumeInfo>;
     readonly destroyOutcome?: DestroyOutcome;
     readonly availability?: Effect.Effect<boolean, ProviderUnavailableError>;
-    readonly status?: Effect.Effect<{ readonly running: boolean }, ProviderUnavailableError>;
+    readonly status?: RuntimeProviderShape["getStatus"];
+    readonly inspectAppliedFileSync?: RuntimeProviderShape["inspectAppliedFileSync"];
+    readonly ensureReady?: RuntimeProviderShape["ensureReady"] | null;
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError>;
     readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
     readonly stopFailure?: boolean;
     readonly routeFailure?: boolean;
+    readonly routers?: "selectable" | "unselectable" | "uninstalled";
   } = {},
 ) => {
   const paths = makeLandoPaths({
@@ -102,15 +108,37 @@ export const globalTeardownHarness = async (
   const eventRoots: string[] = [];
   const selectedRoots: string[] = [];
   const routeRoots: string[] = [];
+  const builtRoots: string[] = [];
+  const routeOwners: AppRouteOwner[] = [];
+  let prepared = false;
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
     appliedPlans: input.appliedPlans ?? Effect.succeed(input.plan === undefined ? [] : [input.plan]),
     isAvailable: input.availability ?? Effect.succeed(true),
-    getStatus: input.status ?? Effect.succeed({ running: true }),
-    ensureReady: Effect.sync(() => {
-      calls.push("ensureReady");
-    }),
+    getStatus: Effect.suspend((): RuntimeProviderShape["getStatus"] =>
+      prepared
+        ? Effect.succeed({ state: "running" as const })
+        : (input.status ?? Effect.succeed({ state: "running" as const })),
+    ),
+    ...(input.inspectAppliedFileSync === undefined
+      ? {}
+      : { inspectAppliedFileSync: input.inspectAppliedFileSync }),
+    ...(input.ensureReady === null
+      ? {}
+      : {
+          ensureReady:
+            input.ensureReady ??
+            Effect.sync(() => {
+              calls.push("ensureReady");
+            }).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  prepared = true;
+                }),
+              ),
+            ),
+        }),
     list: () =>
       Effect.sync(() => {
         calls.push("list");
@@ -163,8 +191,10 @@ export const globalTeardownHarness = async (
   const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
   const router = RouterService.of({
     ...makeTestRouterService(),
-    removeRoutes: Effect.fnUntraced(function* (_app: AppId) {
+    stop: Effect.die("Global lifecycle must not stop the shared router"),
+    removeRoutes: Effect.fnUntraced(function* (owner) {
       calls.push("removeRoutes");
+      routeOwners.push(owner);
       if (input.routeFailure)
         return yield* Effect.fail(
           new ProxyError({
@@ -179,7 +209,7 @@ export const globalTeardownHarness = async (
     RouterService,
     Effect.gen(function* () {
       const capturedRoot = (yield* (yield* GlobalAppService).paths.pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ProxyError({
               proxyId: router.id,
@@ -189,11 +219,12 @@ export const globalTeardownHarness = async (
             }),
         ),
       )).root;
+      builtRoots.push(capturedRoot);
       return RouterService.of({
         ...router,
-        removeRoutes: (app) => {
+        removeRoutes: (owner) => {
           routeRoots.push(capturedRoot);
-          return router.removeRoutes(app);
+          return router.removeRoutes(owner);
         },
       });
     }),
@@ -203,8 +234,18 @@ export const globalTeardownHarness = async (
       resolve: Effect.die("No certificate issuance during teardown"),
     }),
     Layer.succeed(RouterServiceRegistry, {
-      list: Effect.succeed([router.id]),
-      select: () => Effect.succeed({ id: router.id, layer: routerLayer }),
+      list: Effect.succeed(input.routers === "uninstalled" ? [] : [router.id]),
+      select: (selection) =>
+        input.routers === "uninstalled" ||
+        (input.routers === "unselectable" && selection?.explicit !== router.id)
+          ? Effect.fail(
+              new ProxyError({
+                proxyId: "missing",
+                message: "Router service missing is not installed.",
+                remediation: "Configure `defaultRouterService` to an installed id.",
+              }),
+            )
+          : Effect.succeed({ id: router.id, layer: routerLayer }),
     }),
     Layer.succeed(
       StateStore,
@@ -258,9 +299,9 @@ export const globalTeardownHarness = async (
     ),
     Layer.succeed(RouterService, {
       ...router,
-      removeRoutes: (app) => {
+      removeRoutes: (owner) => {
         routeRoots.push(root);
-        return router.removeRoutes(app);
+        return router.removeRoutes(owner);
       },
     }),
     Layer.succeed(
@@ -282,5 +323,17 @@ export const globalTeardownHarness = async (
       }),
     ),
   );
-  return { layer, calls, events, destroyOptions, destroyed, removed, eventRoots, selectedRoots, routeRoots };
+  return {
+    layer,
+    calls,
+    events,
+    destroyOptions,
+    destroyed,
+    removed,
+    eventRoots,
+    selectedRoots,
+    routeRoots,
+    builtRoots,
+    routeOwners,
+  };
 };

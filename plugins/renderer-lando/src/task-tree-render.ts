@@ -29,6 +29,8 @@ export interface TreeState {
   succeeded: number;
   failed: number;
   durationMs: number | undefined;
+  /** Set when the tree's work failed or was interrupted; absent means it succeeded. */
+  outcome?: "failure" | "interrupted" | undefined;
 }
 
 export interface TaskTreeRenderState {
@@ -126,7 +128,18 @@ const footerLine = (state: TaskTreeRenderState): string | undefined => {
   if (tree === undefined) return undefined;
   if (!tree.done) return `╰─ ${runningCount(state)}/${tree.childCount} running`;
   const duration = formatQuietDuration(tree.durationMs);
-  if (tree.failed === 0) return `╰─ done${duration}`;
+  if (tree.failed === 0) {
+    switch (tree.outcome) {
+      case undefined:
+        return `╰─ done${duration}`;
+      case "failure":
+        return `╰─ failed${duration}`;
+      case "interrupted":
+        return `╰─ interrupted${duration}`;
+      default:
+        return assertNever(tree.outcome);
+    }
+  }
   if (tree.succeeded === 0) return `╰─ ${tree.failed} failed${duration}`;
   return `╰─ ${tree.succeeded} ok · ${tree.failed} failed${duration}`;
 };

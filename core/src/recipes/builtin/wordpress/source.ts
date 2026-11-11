@@ -17,6 +17,7 @@ export const source = {
         type: "php:{{ recipe.php }}",
         primary: true,
         framework: "wordpress",
+        uploadDirs: ["wp-content/uploads"],
         port: 80,
         dependsOn: ["database"],
         routes: defaultRoutes,
@@ -24,7 +25,12 @@ export const source = {
       database: { type: "mariadb" },
     },
     tooling: {
-      wp: { service: "appserver", description: "Run WP-CLI inside the appserver service.", cmds: ["wp"] },
+      wp: {
+        service: "appserver",
+        description: "Run WP-CLI inside the appserver service.",
+        cmds: ["wp"],
+        wrapper: true,
+      },
       composer: composerTool,
     },
   },

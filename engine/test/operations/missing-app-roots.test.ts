@@ -11,7 +11,7 @@ import {
 import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { type Context, DateTime, Effect } from "effect";
-import { findMissingAppRoots } from "../../src/operations/missing-app-roots.ts";
+import { findMissingAppRoots, scanMissingAppRoots } from "../../src/operations/missing-app-roots.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const root = AbsolutePath.make("/missing/app");
@@ -42,7 +42,7 @@ const service = {
   appRoot: root,
   service: ServiceName.make("web"),
   providerId,
-  status: "running",
+  status: "running" as const,
   publications: { status: "unknown" as const },
   containerId: "observed-container",
 };
@@ -106,9 +106,11 @@ test("groups applied state, services and native data/cache volumes across provid
       providers: [ProviderId.make("docker"), providerId],
       appliedState: true,
       runtimeObserved: true,
+      fileSyncCopiesRemovable: true,
       services: ["app/web", "other/db"],
       dataVolumes: ["data"],
       cacheVolumes: ["cache"],
+      journals: [],
     },
   ]);
 });
@@ -210,3 +212,30 @@ test("ignores unrelated unobserved providers", async () => {
   ]);
   expect(result).toMatchObject([{ appliedState: false, runtimeObserved: true, providers: ["lando"] }]);
 });
+
+test.each(["none", "plan", "ownership", "unreadable"] as const)(
+  "scan records provider state from %s without launching it",
+  async (source) => {
+    const inventory = await Effect.runPromise(
+      scanMissingAppRoots().pipe(
+        Effect.provideService(RuntimeProviderRegistry, {
+          list: Effect.succeed([providerId]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.die("State inventory must not select a runtime without journal copies"),
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          hasRecordedOwnership: () => Effect.succeed(source === "ownership"),
+          appliedStateInventory: () =>
+            Effect.succeed({
+              plans: source === "plan" ? [plan] : [],
+              unreadable: source === "unreadable" ? [{ path: "/state/broken" }] : [],
+            }),
+          observeRuntime: Effect.succeed([snapshot({ runtimeObserved: false })]),
+        }),
+        Effect.provide(BunFileSystem.layer),
+      ),
+    );
+    expect(inventory.scans[0]?.recordedState).toBe(source !== "none");
+  },
+);

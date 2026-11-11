@@ -43,7 +43,7 @@ export const ComposeEnvironmentInput = executionSite(
               return Effect.fail(
                 new SchemaIssue.InvalidValue(
                   {
-                    message: `Landofile service environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.`,
+                    message: `Landofile environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.`,
                   },
                   input,
                 ),
@@ -65,7 +65,7 @@ export const ComposeEnvironmentInput = executionSite(
               return Effect.fail(
                 new SchemaIssue.InvalidValue(
                   {
-                    message: `Landofile service environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).`,
+                    message: `Landofile environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).`,
                   },
                   input,
                 ),

@@ -242,8 +242,8 @@ for (const phase of phases) {
           }),
           Effect.provideService(RouterService, {
             ...TestRouterService,
-            applyRoutes: (routes, app) =>
-              phase === "routes" ? gate(errors.routes) : TestRouterService.applyRoutes(routes, app),
+            applyRoutes: (routes, owner) =>
+              phase === "routes" ? gate(errors.routes) : TestRouterService.applyRoutes(routes, owner),
             removeRoutes: () =>
               Effect.sync(() => {
                 cleanup.push("remove-routes");
@@ -274,10 +274,13 @@ for (const phase of phases) {
         expect(byTag(harness.events, "post-app-start")).toEqual([]);
         expect(cleanup).toEqual([]);
         const journal = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-        expect(journal.pending?.phase).toBe(
-          phase === "apply" || phase === "dependency-gate" ? "apply-intent" : "completed",
-        );
-        expect(journal.pending?.sessions).toMatchObject([{ name: "web/app-mount" }]);
+        if (phase === "apply" || phase === "dependency-gate") {
+          expect(journal.pending?.phase).toBe("apply-intent");
+          expect(journal.pending?.sessions).toMatchObject([{ name: "web/app-mount" }]);
+        } else {
+          // The provider applied the plan, so completing the attempt removed its journal.
+          expect(journal.pending).toBeNull();
+        }
         await Effect.runPromise(Scope.close(scope, Exit.void));
         expect(cleanup.sort()).toEqual(["gpg", "host-proxy", "ssh"]);
       } finally {
@@ -315,12 +318,10 @@ test.each(["restart", "rebuild"] as const)(
           app: plan.id,
           service: target.service,
           providerId: plan.provider,
-          status: applied ? "stopped" : "running",
+          ...(applied ? { status: "exited" as const, exitCode: 17 } : { status: "running" as const }),
           publications: { status: "unknown" },
-          state: applied ? "stopped" : "running",
           containerId: "container",
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-          exitCode: 17,
         }),
     });
     const target = {

@@ -2,7 +2,7 @@ import { deserialize, serialize } from "node:v8";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
-import type { LandofileShape, ToolingInputDeclaration } from "@lando/sdk/schema";
+import type { LandofileShape, ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { canonicalCacheJson } from "./canonical.ts";
 import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
@@ -12,7 +12,7 @@ import {
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 6n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 9n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -27,6 +27,9 @@ export interface CommandIndexEntry {
   readonly service?: string;
   readonly source?: "bun-script";
   readonly input?: ToolingInputDeclaration;
+  readonly wrapper?: true;
+  readonly runs?: ToolingRunSummary;
+  readonly loadError?: { readonly _tag: string; readonly message: string; readonly remediation?: string };
 }
 
 interface CommandAliasPolicy {

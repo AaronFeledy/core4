@@ -1,5 +1,6 @@
 import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
+import { closestKeys } from "@lando/sdk/schema";
 import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { BUNDLED_COMMAND_DESCRIPTORS } from "./generated/bundled-command-descriptors";
@@ -37,24 +38,6 @@ interface CommandAliasPolicyInput {
   readonly custom?: Readonly<Record<string, string>> | undefined;
 }
 
-const editDistance = (left: string, right: string): number => {
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      const diagonal = previous[rightIndex - 1] ?? rightIndex - 1;
-      const substitution = diagonal + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1);
-      current[rightIndex] = Math.min(
-        (current[rightIndex - 1] ?? rightIndex) + 1,
-        (previous[rightIndex] ?? leftIndex) + 1,
-        substitution,
-      );
-    }
-    previous = current;
-  }
-  return previous[right.length] ?? left.length;
-};
-
 export const commandAliasRegistrationError = (
   policy: CommandAliasPolicyInput | undefined,
   appCommandIds: ReadonlyArray<string>,
@@ -84,7 +67,7 @@ export const commandAliasRegistrationError = (
       alias,
       claimedBy: `script ${entry.id}`,
       reservedFor,
-      remediation: `Rename the .bun.sh script that registers ${safeId}, then run \`lando app:cache:refresh\`.`,
+      remediation: `Rename the .bun.sh script that registers ${safeId}.`,
     });
   }
   if (policy?.enabled === false) return undefined;
@@ -117,19 +100,13 @@ export const commandAliasRegistrationError = (
       });
     }
     if (!canonicalIds.includes(target)) {
-      const closeMatches = canonicalIds
-        .map((commandId) => ({ commandId, distance: editDistance(target, commandId) }))
-        .sort(
-          (left, right) => left.distance - right.distance || left.commandId.localeCompare(right.commandId),
-        )
-        .slice(0, 3)
-        .map(({ commandId }) => commandId);
+      const closeMatches = closestKeys(target, canonicalIds, Number.POSITIVE_INFINITY, 3);
       return new CommandAliasTargetError({
         message: `Top-level alias ${safeAlias} targets unknown canonical command ${safeTarget}.`,
         alias,
         target,
         closeMatches,
-        remediation: `Choose a registered canonical command${closeMatches.length === 0 ? "" : ` such as ${closeMatches.map(escapeDiagnosticText).join(", ")}`} or run \`lando app:cache:refresh\` after adding the target.`,
+        remediation: `Choose a registered canonical command${closeMatches.length === 0 ? "" : ` such as ${closeMatches.map(escapeDiagnosticText).join(", ")}`} or add the target.`,
       });
     }
   }

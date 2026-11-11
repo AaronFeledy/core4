@@ -1,8 +1,8 @@
-import { AppPlan, landoNetworkingPlan } from "@lando/sdk/schema";
+import { AppPlan, landoNetworkingPlan, landoServiceContainerName } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
-import { commonContainerLabels } from "../src/plan.ts";
+import { commonContainerLabels } from "./support/service-creation.ts";
 
 export const networkPlan = Schema.decodeUnknownSync(AppPlan)({
   valueModel: 1,
@@ -68,7 +68,7 @@ export const networkApi = (
   };
   if (options.existing) {
     for (const service of Object.values(networkPlan.services))
-      containers.set(`lando-networks-${service.name}`, {
+      containers.set(landoServiceContainerName("networks", service.name), {
         Id: `id-${service.name}`,
         Config: { Labels: commonContainerLabels(networkPlan, service) },
         State: { Running: true },
@@ -79,6 +79,9 @@ export const networkApi = (
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         requests.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const name = decodeURIComponent(request.path.slice("/networks/".length));
           return (

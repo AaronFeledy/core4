@@ -47,7 +47,7 @@ const canonicalPath = async (path: string): Promise<string> => {
 };
 
 export const containedSnapshotPath = Effect.fnUntraced(function* (
-  paths: LandoPaths,
+  paths: Pick<LandoPaths, "snapshotsDir">,
   segments: ReadonlyArray<string>,
 ) {
   yield* Effect.forEach(segments, requireSafeSegment);
@@ -64,7 +64,7 @@ export const containedSnapshotPath = Effect.fnUntraced(function* (
 });
 
 export const snapshotPaths = Effect.fn("DataMover.snapshotPaths")(function* (
-  paths: LandoPaths,
+  paths: Pick<LandoPaths, "snapshotsDir">,
   handle: SnapshotAddress,
 ) {
   yield* requireOwnerKey(handle.ownerKey);
@@ -81,7 +81,7 @@ export const snapshotPaths = Effect.fn("DataMover.snapshotPaths")(function* (
 });
 
 export const snapshotArchivePath = Effect.fn("DataMover.snapshotArchivePath")(function* (
-  paths: LandoPaths,
+  paths: Pick<LandoPaths, "snapshotsDir">,
   info: Pick<SnapshotInfo, "owner" | "store" | "id" | "format">,
 ) {
   yield* snapshotPaths(paths, { ownerKey: info.owner.ownerKey, store: info.store, id: info.id });

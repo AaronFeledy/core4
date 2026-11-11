@@ -53,7 +53,7 @@ test.each([
   expect(JSON.parse(JSON.stringify(result)).cause).toMatchObject({ _tag: cause._tag, service: "web" });
   expect(taggedErrorJson(result).context).toMatchObject({ _tag: cause._tag, service: "web" });
   const diagnostic = taggedErrorJson(result);
-  expect(diagnostic.cause).toBeUndefined();
+  expect(diagnostic.cause).toMatchObject({ _tag: cause._tag, message: cause.message });
   expect(JSON.stringify(diagnostic)).not.toContain("old-private-value");
   expect(JSON.stringify(diagnostic)).not.toContain("new-private-value");
 });

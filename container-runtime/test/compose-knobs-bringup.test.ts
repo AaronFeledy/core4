@@ -12,7 +12,9 @@ import {
 } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { fixtureHelperMount } from "./support/exec-supervision.ts";
+import { bringUp } from "./support/service-creation.ts";
+import { commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -100,6 +102,9 @@ const makeFakeApi = () => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
@@ -144,7 +149,7 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:757a3980dbf3238decc59e55a30c10294773d4e432d40a99d2c1334235c6f65a"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web","web.compose-knob-bringup.internal"]}}}}';
+  '{"name":"lando-compose-knob-bringup--web","Image":"nginx:1.27-alpine","Hostname":"lando-compose-knob-bringup--web","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:757a3980dbf3238decc59e55a30c10294773d4e432d40a99d2c1334235c6f65a"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web","web.compose-knob-bringup.internal"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
   test.each(["/workspace:v1", "/workspace", "/etc/config"])(
@@ -195,7 +200,10 @@ describe("Podman Compose knob bring-up realization", () => {
     expect(field(host, "PortBindings")).toEqual({
       "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "18080" }],
     });
-    expect(field(host, "Binds")).toEqual(["/tmp/lando-compose-knob-bind:/workspace"]);
+    expect(field(host, "Binds")).toEqual([
+      "/tmp/lando-compose-knob-bind:/workspace",
+      `${fixtureHelperMount.source}:/run/lando/helper:ro`,
+    ]);
     expect(field(host, "Mounts")).toEqual([
       {
         Type: "bind",
@@ -223,6 +231,18 @@ describe("Podman Compose knob bring-up realization", () => {
     expect(field(hostConfig(create), "StopTimeout")).toBeUndefined();
   });
 
+  test("Given a sub-second stop_grace_period, when creating a container, then StopTimeout is an explicit 0", async () => {
+    // Given
+    const fake = makeFakeApi();
+    const plan = planWithCompose({ stop_grace_period: 0.4 });
+
+    // When
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+
+    // Then
+    expect(field(findCreateRequest(fake.calls)?.body, "StopTimeout")).toBe(0);
+  });
+
   test("Given a platform knob, when creating a container, then query parameters preserve platform and name", async () => {
     // Given
     const fake = makeFakeApi();
@@ -234,7 +254,7 @@ describe("Podman Compose knob bring-up realization", () => {
     // Then
     const create = findCreateRequest(fake.calls);
     const searchParams = new URL(`http://localhost${create?.path ?? ""}`).searchParams;
-    expect(searchParams.get("name")).toBe("lando-compose-knob-bringup-web");
+    expect(searchParams.get("name")).toBe("lando-compose-knob-bringup--web");
     expect(searchParams.get("platform")).toBe("linux/amd64");
   });
 
@@ -296,8 +316,8 @@ describe("Podman Compose knob bring-up realization", () => {
     if (typeof baselineLabels !== "object" || baselineLabels === null)
       throw new TypeError("Expected baseline labels");
     if (typeof knobLabels !== "object" || knobLabels === null) throw new TypeError("Expected knob labels");
-    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
-    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
+    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v4:[a-f0-9]{64}$/u);
+    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v4:[a-f0-9]{64}$/u);
     expect(field(knobLabels, CREATE_CONFIG_LABEL)).not.toBe(field(baselineLabels, CREATE_CONFIG_LABEL));
     expect({
       Env: field(withKnobs, "Env"),
@@ -327,7 +347,13 @@ describe("Podman Compose knob bring-up realization", () => {
 
     // Then
     const create = findCreateRequest(fake.calls);
-    expect(create?.path).toBe("/containers/create?name=lando-compose-knob-bringup-web");
-    expect(JSON.stringify(create?.body)).toBe(BASELINE_CREATE_BODY_JSON);
+    expect(create?.path).toBe("/containers/create?name=lando-compose-knob-bringup--web");
+    const expected = JSON.parse(BASELINE_CREATE_BODY_JSON);
+    const plan = planWithCompose();
+    const service = Object.values(plan.services)[0];
+    if (service === undefined) throw new TypeError("Missing fixture service");
+    expected.Labels = commonContainerLabels(plan, service);
+    expected.HostConfig.Binds.push(`${fixtureHelperMount.source}:/run/lando/helper:ro`);
+    expect(create?.body).toEqual(expected);
   });
 });

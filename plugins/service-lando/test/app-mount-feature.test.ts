@@ -108,6 +108,7 @@ describe("lando.app-mount", () => {
         },
         baseKind: "lando",
         appRoot: "/srv/project",
+        appSlug: "project",
         normalizedConfig: {},
         features: [{ id: definition.id, definition, config }],
       }),

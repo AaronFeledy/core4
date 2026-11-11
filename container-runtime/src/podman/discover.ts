@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo } from "@lando/sdk/services";
@@ -6,30 +7,34 @@ import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { engineApiFailure, missingApi, parseEngineJson } from "../engine-errors.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "../labels.ts";
 import { redactResponseDetails, redactorFor, withApiReason } from "../redact.ts";
+import { runObservationFromListState } from "../run-observation.ts";
 
 const Containers = Schema.Array(
   Schema.Struct({
     Id: Schema.String,
     State: Schema.optionalKey(Schema.String),
+    Names: Schema.optionalKey(Schema.Array(Schema.String)),
     Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   }),
 );
 
-export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(function* (
+/** One engine container list call filtered by `label` entries, decoded. */
+export const listLabeledContainerRows = Effect.fn("RuntimeProvider.listLabeled")(function* (
   api: EngineHttpApi | undefined,
   ctx: ProviderErrorContext,
-): Effect.fn.Return<ReadonlyArray<ServiceRuntimeInfo>, ProviderError> {
+  label: ReadonlyArray<string>,
+): Effect.fn.Return<typeof Containers.Type, ProviderInternalError | ProviderUnavailableError> {
   const request = api?.request;
   if (request === undefined) {
     return yield* Effect.fail(
       missingApi(ctx, "list", `provider-${ctx.providerId} list requires an engine API client.`),
     );
   }
-  const query = new URLSearchParams({ all: "true", filters: JSON.stringify({ label: [APP_LABEL] }) });
+  const query = new URLSearchParams({ all: "true", filters: JSON.stringify({ label }) });
   const input = { method: "GET", path: `/containers/json?${query}` } as const;
 
   const response = yield* request(input).pipe(
-    Effect.mapError((cause) => engineApiFailure(ctx, "list", input, cause)),
+    mapFailures((cause) => engineApiFailure(ctx, "list", input, cause)),
   );
   if (response.status < 200 || response.status >= 300) {
     return yield* Effect.fail(
@@ -47,8 +52,8 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
     );
   }
   const decoded = yield* parseEngineJson(response, ctx, "list");
-  const containers = yield* Schema.decodeUnknownEffect(Containers)(decoded).pipe(
-    Effect.mapError(
+  return yield* Schema.decodeUnknownEffect(Containers)(decoded).pipe(
+    mapFailures(
       (cause) =>
         new ProviderInternalError({
           providerId: ctx.providerId,
@@ -59,6 +64,13 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
         }),
     ),
   );
+});
+
+export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(function* (
+  api: EngineHttpApi | undefined,
+  ctx: ProviderErrorContext,
+): Effect.fn.Return<ReadonlyArray<ServiceRuntimeInfo>, ProviderError> {
+  const containers = yield* listLabeledContainerRows(api, ctx, [APP_LABEL]);
   return containers.flatMap((container): ReadonlyArray<ServiceRuntimeInfo> => {
     const labels = container.Labels ?? {};
     const app = labels[APP_LABEL];
@@ -72,8 +84,7 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
         ...(appRoot === undefined ? {} : { appRoot: AbsolutePath.make(appRoot) }),
         service: ServiceName.make(service),
         containerId: container.Id,
-        status: container.State === "running" ? "running" : "stopped",
-        ...(container.State === undefined ? {} : { state: container.State }),
+        ...runObservationFromListState(container.State),
         publications: { status: "unknown" },
         labels,
       },

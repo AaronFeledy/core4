@@ -1,13 +1,17 @@
 import * as sdk from "@lando/sdk";
+import * as abortablePromise from "@lando/sdk/abortable-promise";
 import * as app from "@lando/sdk/app";
+import * as certificates from "@lando/sdk/certificates";
 import * as commandResult from "@lando/sdk/command-result";
 import * as databaseCreds from "@lando/sdk/database-creds";
 import * as digest from "@lando/sdk/digest";
+import * as errno from "@lando/sdk/errno";
 import * as errors from "@lando/sdk/errors";
 import * as events from "@lando/sdk/events";
 import * as expressions from "@lando/sdk/expressions";
 import * as fuzzy from "@lando/sdk/fuzzy";
 import * as landofile from "@lando/sdk/landofile";
+import * as executionSites from "@lando/sdk/landofile/execution-sites";
 import * as flowMappingRemediation from "@lando/sdk/landofile/flow-mapping-remediation";
 import * as logFollow from "@lando/sdk/log-follow";
 import * as networkTrust from "@lando/sdk/network-trust";
@@ -35,6 +39,7 @@ import * as services from "@lando/sdk/services";
 import * as taskProgress from "@lando/sdk/task-progress";
 import * as template from "@lando/sdk/template";
 import * as toolProvisioning from "@lando/sdk/tool-provisioning";
+import * as transitions from "@lando/sdk/transitions";
 import * as verifiedStream from "@lando/sdk/verified-stream";
 import * as yaml from "@lando/sdk/yaml";
 import * as effect from "effect";
@@ -55,15 +60,19 @@ const namespaceModules = (
 
 export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk": sdk,
+  "@lando/sdk/abortable-promise": abortablePromise,
   "@lando/sdk/app": app,
+  "@lando/sdk/certificates": certificates,
   "@lando/sdk/command-result": commandResult,
   "@lando/sdk/database-creds": databaseCreds,
   "@lando/sdk/digest": digest,
+  "@lando/sdk/errno": errno,
   "@lando/sdk/errors": errors,
   "@lando/sdk/events": events,
   "@lando/sdk/expressions": expressions,
   "@lando/sdk/fuzzy": fuzzy,
   "@lando/sdk/landofile": landofile,
+  "@lando/sdk/landofile/execution-sites": executionSites,
   "@lando/sdk/landofile/flow-mapping-remediation": flowMappingRemediation,
   "@lando/sdk/log-follow": logFollow,
   "@lando/sdk/network-trust": networkTrust,
@@ -91,6 +100,7 @@ export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk/task-progress": taskProgress,
   "@lando/sdk/template": template,
   "@lando/sdk/tool-provisioning": toolProvisioning,
+  "@lando/sdk/transitions": transitions,
   "@lando/sdk/verified-stream": verifiedStream,
   "@lando/sdk/yaml": yaml,
   effect,

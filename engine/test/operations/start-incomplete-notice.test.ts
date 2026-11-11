@@ -11,16 +11,19 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  type ServiceRunObservation,
 } from "@lando/sdk/schema";
 import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import {
+  type IncompleteStartCommand,
   markStartMutation,
   withIncompleteStartNotice,
 } from "../../src/operations/start-incomplete-notice.ts";
@@ -62,13 +65,15 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-type Observed = Partial<ServiceRuntimeInfo> | "fails" | "hangs" | "defects";
+type Observed = (Partial<ServiceRuntimeFields> & ServiceRunObservation) | "fails" | "hangs" | "defects";
 
-const runtimeFor = (name: string, observed: Partial<ServiceRuntimeInfo>): ServiceRuntimeInfo => ({
+const runtimeFor = (
+  name: string,
+  observed: Partial<ServiceRuntimeFields> & ServiceRunObservation,
+): ServiceRuntimeInfo => ({
   app: plan.id,
   service: ServiceName.make(name),
   providerId,
-  status: "stopped",
   publications: { status: "unknown" },
   ...observed,
 });
@@ -79,7 +84,7 @@ const makeRegistry = (observations: Readonly<Record<string, Observed>>, inspecte
     inspect: (target) => {
       const name = String(target.service);
       inspected.push(name);
-      const observed = observations[name] ?? {};
+      const observed = observations[name] ?? { status: "absent" as const };
       if (observed === "defects") return Effect.die("inspect defect");
       if (observed === "hangs") return Effect.never;
       if (observed === "fails")
@@ -112,13 +117,16 @@ const run = <A, E>(
   options: {
     readonly observations?: Readonly<Record<string, Observed>>;
     readonly machineOutput?: boolean;
+    readonly command?: IncompleteStartCommand;
   } = {},
 ) => {
   const warnings = makeCommandWarnings(options.machineOutput ?? false);
   const inspected: string[] = [];
   return Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* Effect.exit(withIncompleteStartNotice(effect));
+      const exit = yield* Effect.exit(
+        withIncompleteStartNotice(effect, options.command ?? { verb: "start" }),
+      );
       return { exit, notices: yield* warnings.failureNotices, inspected };
     }).pipe(
       Effect.provideService(CommandWarnings, warnings),
@@ -149,16 +157,27 @@ describe("incomplete start notice", () => {
     ]);
   });
 
-  test.each(["created", "stopped", "paused", "exited", "dead"])(
+  test("a selected rebuild names the command that was run", async () => {
+    // Given / When: rebuild of one service fails before it changes anything.
+    const { notices } = await run(failing.pipe(Effect.as(plan), Effect.flatMap(markStartMutation)), {
+      command: { verb: "rebuild", services: ["web"] },
+    });
+    // Then: the notice names rebuild and that service, not start.
+    expect(notices).toEqual([
+      "Rebuild did not complete. No app resources changed. Fix the reported error, then run `lando rebuild -s web`.",
+    ]);
+  });
+
+  test.each(["created", "paused", "exited", "dead"] as const)(
     "classifies known %s alongside running and unverified services",
     async (status) => {
       // Given: one running, one created, one stopped, one unobservable, and one missing container.
       const observations = {
         web: { status: "running", containerId: "web-id" },
-        db: { status: "stopped", containerId: "db-id" },
+        db: { status: "exited", containerId: "db-id" },
         worker: { status, containerId: "worker-id" },
         cache: "fails",
-        gone: { status: "stopped" },
+        gone: { status: "absent" },
       } as const;
       // When: the start fails after it began changing app resources.
       const { exit, notices } = await run(mutated.pipe(Effect.andThen(failing)), { observations });
@@ -197,6 +216,7 @@ describe("incomplete start notice", () => {
       const subset = { ...plan, services: { web: service("web") } };
       const inner = withIncompleteStartNotice(
         markStartMutation(outer ? subset : plan).pipe(Effect.andThen(failing)),
+        { verb: "start" },
       );
       // When: the outer operation fails with it.
       const { notices, inspected } = await run((outer ? mutated : Effect.void).pipe(Effect.andThen(inner)));
@@ -210,7 +230,7 @@ describe("incomplete start notice", () => {
   test("library callers without a command warning sink are unaffected", async () => {
     // Given / When: a failed start outside the CLI.
     const exit = await Effect.runPromiseExit(
-      withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing))).pipe(Effect.scoped),
+      withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing)), { verb: "start" }).pipe(Effect.scoped),
     );
     // Then: the failure is unchanged.
     expect(Exit.isFailure(exit)).toBe(true);
@@ -218,9 +238,9 @@ describe("incomplete start notice", () => {
 
   test.each([
     ["unknown", "web-id", "unverified: web."],
-    ["provider-specific", "web-id", "unverified: web."],
+    ["removing", "web-id", "unverified: web."],
     ["unknown", undefined, "unverified: web."],
-    ["missing", undefined, "unverified: none."],
+    ["absent", undefined, "unverified: none."],
     ["restarting", "web-id", "Running: web (restarting);"],
   ] as const)("does not report %s as stopped", async (status, containerId, expected) => {
     // Given / When: an observed container whose state is not stopped.
@@ -250,15 +270,6 @@ describe("incomplete start notice", () => {
     },
   );
 
-  test("uses detailed provider state instead of a coarse stopped status", async () => {
-    // Given: the provider distinguishes a restarting container from its coarse status.
-    const observations = { web: { status: "stopped", state: "restarting", containerId: "web-id" } };
-    // When: inventory observes the incomplete start.
-    const { notices } = await run(mutated.pipe(Effect.andThen(failing)), { observations });
-    // Then: an actively restarting service is not reported as stopped.
-    expect(notices[0]).toContain("Running: web (restarting); created/stopped: none;");
-  });
-
   test.each(["immediate", "slow", "hanging"])(
     "bounds %s provider selection and inspection by one total second",
     async (mode) => {
@@ -282,7 +293,9 @@ describe("incomplete start notice", () => {
           const selection =
             mode === "hanging" ? Deferred.await(release) : Effect.sleep(mode === "slow" ? "750 millis" : 0);
           const fiber = yield* Effect.forkChild(
-            Effect.exit(withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing)))).pipe(
+            Effect.exit(
+              withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing)), { verb: "start" }),
+            ).pipe(
               Effect.provideService(RuntimeProviderRegistry, {
                 ...registry,
                 select: (target) => selection.pipe(Effect.andThen(() => registry.select(target))),
@@ -311,4 +324,17 @@ describe("incomplete start notice", () => {
       expect(result.exit).toEqual(await Effect.runPromiseExit(failing));
     },
   );
+
+  test("reports a foreign-root inspect result as unverified, never running", async () => {
+    // Given: provider inspect already refused ownership (no containerId, unknown state).
+    const observations = {
+      web: { status: "unknown", labels: { "dev.lando.app-root": "/other/app" } },
+    } as const;
+    // When: start fails after mutation and inventory observes that service.
+    const { notices } = await run(mutated.pipe(Effect.andThen(failing)), { observations });
+    // Then: the notice must not list it under Running/created/stopped.
+    expect(notices[0]).toContain("Running: none;");
+    expect(notices[0]).toContain("created/stopped: none;");
+    expect(notices[0]).toContain("unverified: web.");
+  });
 });

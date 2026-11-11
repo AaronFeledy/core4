@@ -6,27 +6,55 @@ import type { CapabilityError } from "@lando/sdk/errors";
 import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result } from "effect";
+import { Effect, Layer, Result } from "effect";
+import { loadUserLandofileFile } from "../../src/landofile/app-resolution.ts";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import { assertAuthoredNetworksSupported } from "../../src/planner/compose-capabilities.ts";
 import * as Plugins from "../../src/plugins/registry.ts";
 import { lintLandofileSnapshot } from "../../src/services/landofile-live.ts";
 import * as Planner from "../../src/services/planner.ts";
 
-const lint = (root: string, capabilities: ProviderCapabilities | undefined) =>
+type DeclaredCapabilities = (id: ProviderId) => ProviderCapabilities | undefined;
+
+const declared = (
+  capabilities: ProviderCapabilities | undefined | DeclaredCapabilities,
+): DeclaredCapabilities => (typeof capabilities === "function" ? capabilities : () => capabilities);
+
+const lint = (root: string, capabilities: ProviderCapabilities | undefined | DeclaredCapabilities) =>
   Effect.runPromise(
     Effect.flatMap(PluginRegistry, (registry) =>
       appConfigLint({ cwd: root }).pipe(
         Effect.provideService(PluginRegistry, {
           ...registry,
-          declaredProviderCapabilities: () => capabilities,
+          declaredProviderCapabilities: declared(capabilities),
         }),
       ),
     ).pipe(Effect.provide(Plugins.layer)),
   );
 
+// Plans with the same declared provider capabilities that lint saw.
+const planWith = (root: string, selected: ProviderCapabilities, capabilities: DeclaredCapabilities) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const snapshot = yield* lintLandofileSnapshot({ cwd: root });
+      if (snapshot.resolved === undefined) throw new Error("Expected a resolved lint snapshot");
+      const landofile = snapshot.resolved;
+      const registry = yield* PluginRegistry;
+      return yield* Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, selected)).pipe(
+        Effect.provide(
+          Planner.layer.pipe(
+            Layer.provide(
+              Layer.succeed(PluginRegistry, { ...registry, declaredProviderCapabilities: capabilities }),
+            ),
+          ),
+        ),
+        Effect.result,
+      );
+    }).pipe(Effect.provide(Plugins.layer)),
+  );
+
 test.each([
-  ["node", undefined, true],
+  ["node", undefined, false],
   ["node", false, true],
   ["node", true, false],
   ["compose", undefined, true],
@@ -46,7 +74,7 @@ test.each([
     expect(result.valid).toBe(valid);
     const findings = result.violations.filter((issue) => issue.path.join(".") === "services.web.init");
     expect(findings.map((issue) => issue.severity)).toEqual(
-      init === undefined ? ["warning"] : valid ? [] : ["error"],
+      init === undefined ? (type === "node" ? ["warning", "error"] : ["warning"]) : valid ? [] : ["error"],
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -101,16 +129,7 @@ test("lint reports all unsupported Compose fields using planner remediation and 
       "services.web.profiles",
       "services.web.read_only",
     ]);
-    const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }));
-    if (snapshot.resolved === undefined) throw new Error("Expected a resolved lint snapshot");
-    const landofile = snapshot.resolved;
-    const planned = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-        Effect.result,
-        Effect.provide(Planner.layer),
-        Effect.provide(Plugins.layer),
-      ),
-    );
+    const planned = await planWith(root, capabilities, () => capabilities);
     expect(Result.isFailure(planned)).toBe(true);
     if (Result.isFailure(planned)) expect(planned.failure._tag).toBe("CapabilityError");
     if (Result.isFailure(planned) && planned.failure._tag === "CapabilityError") {
@@ -182,3 +201,126 @@ test.each([false, true])(
     }
   },
 );
+
+const withoutKnobs = { ...TestRuntimeProvider.capabilities, composeKnobs: { supported: [] } };
+
+test.each([
+  [
+    "names installed providers that declare the knob",
+    { ...TestRuntimeProvider.capabilities, composeKnobs: { supported: ["gpus" as const] } },
+    [],
+    "Remove gpus from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
+    undefined,
+  ],
+  [
+    "offers only removal when no installed provider declares the knob",
+    withoutKnobs,
+    [],
+    "Remove gpus from service web.",
+    undefined,
+  ],
+  [
+    "names the selected provider's extension namespaces",
+    withoutKnobs,
+    ["compose"],
+    "Remove gpus from service web, or move the intent under providers.compose.",
+    undefined,
+  ],
+  [
+    "leads with the selected provider's step for a withheld knob",
+    { ...TestRuntimeProvider.capabilities, composeKnobs: { supported: ["gpus" as const] } },
+    [],
+    "Enable the host feature. Otherwise, remove gpus from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
+    [{ key: "gpus" as const, remediation: "Enable the host feature." }],
+  ],
+])("lint and planning remediation %s", async (_name, docker, providerExtensions, remediation, withheld) => {
+  // Given a selected provider without the knob, and an installed docker provider.
+  const root = await mkdtemp(join(tmpdir(), "lando-knob-remediation-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: knobfix\nprovider: lando\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    gpus: all\n",
+    );
+    const selected = {
+      ...withoutKnobs,
+      providerExtensions,
+      composeKnobs: { supported: [], ...(withheld === undefined ? {} : { withheld }) },
+    };
+    const capabilities: DeclaredCapabilities = (id) => (id === "docker" ? docker : selected);
+
+    // When
+    const result = await lint(root, capabilities);
+    const planned = await planWith(root, selected, capabilities);
+
+    // Then
+    const finding = result.violations.find((issue) => issue.path.join(".") === "services.web.gpus");
+    expect(finding?.suggestion).toBe(remediation);
+    if (!Result.isFailure(planned) || planned.failure._tag !== "CapabilityError")
+      throw new Error("Expected a capability failure");
+    expect(planned.failure.remediation).toBe(remediation);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each(["always", "never"])(
+  "lint and planning reject pull_policy: %s without artifact pull",
+  async (policy) => {
+    // Given a provider that cannot pull service images.
+    const root = await mkdtemp(join(tmpdir(), "lando-pull-policy-lint-"));
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        `name: pullfix\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    pull_policy: ${policy}\n`,
+      );
+      const capabilities = { ...TestRuntimeProvider.capabilities, artifactPull: false };
+
+      // When
+      const result = await lint(root, capabilities);
+      const planned = await planWith(root, capabilities, () => capabilities);
+
+      // Then
+      const finding = result.violations.find((issue) => issue.path.join(".") === "services.web.pull_policy");
+      expect(result.valid).toBe(false);
+      expect(finding?.severity).toBe("error");
+      if (!Result.isFailure(planned) || planned.failure._tag !== "CapabilityError")
+        throw new Error("Expected a capability failure");
+      expect(planned.failure.capability).toBe("artifactPull");
+      expect(finding?.suggestion).toBe(planned.failure.remediation);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each([
+  ["limits.cpus", "cpus: 1e308"],
+  ["limits.cpus", 'cpus: "half"'],
+  ["limits.pids", 'pids: "9007199254740993"'],
+  ["limits.memory", "memory: -1"],
+])("lint and planning reject an unrepresentable deploy.resources.%s (%s)", async (field, line) => {
+  // Given a resource value past the container engine's integer range.
+  const root = await mkdtemp(join(tmpdir(), "lando-resource-range-lint-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: rangefix\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    deploy:\n      resources:\n        limits:\n          ${line}\n`,
+    );
+
+    // When
+    const result = await lint(root, TestRuntimeProvider.capabilities);
+    const loaded = await Effect.runPromise(
+      loadUserLandofileFile(join(root, ".lando.yml")).pipe(Effect.result, Effect.provide(Plugins.layer)),
+    );
+
+    // Then
+    const path = `services.web.deploy.resources.${field}`;
+    expect(result.valid).toBe(false);
+    expect(result.violations.find((issue) => issue.path.join(".") === path)?.severity).toBe("error");
+    if (!Result.isFailure(loaded) || loaded.failure._tag !== "LandofileValidationError")
+      throw new Error("Expected the Landofile planning loads to fail validation");
+    expect(loaded.failure.issues.map((issue) => issue.path.join("."))).toContain(path);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ExecutionSiteMatch, executionSiteAt } from "@lando/sdk/landofile";
+import { ExecutionSiteMatch, executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import {
   ConfigLintViolation,
   ExecutionSite,

@@ -3,6 +3,7 @@ import type { Effect } from "effect";
 import type {
   ConfigExpressionError,
   LandofileExpressionParseError,
+  ToolingCompileError,
   ToolingStepConditionError,
 } from "@lando/sdk/errors";
 import type { ExpressionContext, LandofileExpressionEvaluationError } from "@lando/sdk/expressions";
@@ -63,6 +64,7 @@ export interface ToolingStepRunners<E, A> {
 }
 
 export type ToolingStepExpressionError =
+  | ToolingCompileError
   | ConfigExpressionError
   | LandofileExpressionParseError
   | LandofileExpressionEvaluationError;

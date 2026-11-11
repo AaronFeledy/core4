@@ -17,6 +17,98 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
 });
 
 describe("compileToolingCommands", () => {
+  test.each(
+    [
+      [],
+      Array.from({ length: 1001 }, () => ({ cmd: "echo hi" })),
+      Array.from({ length: 33 }, (_, index) => ({ cmd: "echo hi", service: `service${index}` })),
+    ].map((cmds) => ({ cmds })),
+  )("keeps tasks outside summary bounds routable without retaining partial metadata %#", ({ cmds }) => {
+    const [entry] = compileToolingCommands(landofile({ check: { cmds } }));
+    expect(entry?.id).toBe("app:check");
+    expect(entry).not.toHaveProperty("runs");
+  });
+  test.each([
+    ["composer install", "composer"],
+    ["FOO=1 npm run build", "npm"],
+    ["A=1 B=2 bin/test", "bin/test"],
+    ["./bin/test", "./bin/test"],
+    [["php", "-r", "echo 'hi';"], "php"],
+    [["./bin/test", "run"], "./bin/test"],
+    [["{{ vars.tool }}", "run"], undefined],
+    ["a && b", undefined],
+    ["a | b", undefined],
+    ["a; b", undefined],
+    ["a\nb", undefined],
+    ["echo 'hi'", "echo"],
+    ['echo "hi"', "echo"],
+    ['node -e "console.log(process.version)"', "node"],
+    ['FOO="a b" npm run build', "npm"],
+    ['echo "a | b; c"', "echo"],
+    ["echo 'unterminated", undefined],
+    ['echo "$(x)"', undefined],
+    ["echo `x`", undefined],
+    ["a\\ b", undefined],
+    ['"quoted" arg', undefined],
+    ["{{ vars.x }}", undefined],
+    ["echo $(x)", undefined],
+    ["x".repeat(65), undefined],
+  ] as const)("extracts only a conservative program for %j", (cmd, program) => {
+    const [entry] = compileToolingCommands(landofile({ check: { cmd, service: ":host" } }));
+    expect(entry?.runs).toEqual({
+      kind: "commands",
+      steps: 1,
+      targets: [{ kind: "host" }],
+      ...(program === undefined ? {} : { program }),
+    });
+  });
+
+  test("summarizes effective task steps with distinct targets in authored order", () => {
+    const [entry] = compileToolingCommands(landofile(undefined), {
+      contributed: {
+        cmds: [
+          { cmd: "a", service: "web" },
+          { cmd: "b", service: ":host" },
+          { cmd: "c", service: "web" },
+          { cmd: "d", service: ":service" },
+          { cmd: "e", service: "{{ flags.target }}" },
+          "f",
+        ],
+        flags: { service: {} },
+      },
+    });
+    expect(entry?.runs).toEqual({
+      kind: "commands",
+      steps: 6,
+      targets: [
+        { kind: "service", name: "web" },
+        { kind: "host" },
+        { kind: "flag", flag: "service" },
+        { kind: "dynamic" },
+        { kind: "primary" },
+      ],
+    });
+  });
+  test("indexes only resolved forwarding decisions as literal true", () => {
+    // Given
+    const source = landofile({
+      auto: { cmd: "wp" },
+      compound: { cmd: "cd web && drush" },
+      explicit: { cmd: "cd web && drush", wrapper: true },
+      owned: { cmd: "wp", wrapper: false },
+    });
+    // When
+    const entries = compileToolingCommands(source);
+    // Then
+    expect(entries.map(({ id, wrapper }) => [id, wrapper])).toEqual([
+      ["app:auto", undefined],
+      ["app:compound", undefined],
+      ["app:explicit", true],
+      ["app:owned", undefined],
+    ]);
+    for (const entry of entries.filter((entry) => entry.id !== "app:explicit"))
+      expect(entry).not.toHaveProperty("wrapper");
+  });
   test.each([false, { cmd: "echo retired", disabled: true }])(
     "indexes disabled task %j as hidden so the router can refuse it",
     (task) => {
@@ -195,6 +287,7 @@ describe("compileBunShellScriptCommands", () => {
     const entries = compileBunShellScriptCommands(scripts);
 
     // Then
+    expect(entries[0]).not.toHaveProperty("wrapper");
     expect(entries).toMatchObject([
       {
         id: "app:quality",
@@ -202,6 +295,7 @@ describe("compileBunShellScriptCommands", () => {
         hidden: false,
         service: ":host",
         source: "bun-script",
+        runs: { kind: "script", path: ".lando/scripts/quality.bun.sh" },
       },
     ]);
   });

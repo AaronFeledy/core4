@@ -90,7 +90,7 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
   });
 };
 
-test("lint declares service and app listeners without apply, certificates, provider or cache", async () => {
+test("lint plans declared listeners without certificates, provider or cache", async () => {
   // Given
   const calls: string[] = [];
   const root = await mkdtemp(join(tmpdir(), "lando-declarations-"));
@@ -106,6 +106,7 @@ test("lint declares service and app listeners without apply, certificates, provi
         services: {
           web: {
             type: "declaration",
+            image: "alpine:3.22",
             certs: true,
             routes: [{ hostname: "app.lndo.site", endpoint: "late" }],
           },
@@ -137,7 +138,7 @@ test("lint declares service and app listeners without apply, certificates, provi
     );
     // Then
     expect(result.valid).toBe(true);
-    expect(calls).toEqual(["service-declaration", "app-declaration"]);
+    expect(calls).toEqual(["service-declaration", "app-declaration", "service-apply", "app-apply"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -162,6 +163,7 @@ test("planning consumes the projected declarations once before applying features
               services: {
                 web: {
                   type: "declaration",
+                  image: "alpine:3.22",
                   home: false,
                   routes: [{ hostname: "app.lndo.site", endpoint: "late" }],
                 },
@@ -268,7 +270,9 @@ test("declarations receive original feature config before planner-owned SSH subs
           landofile: yield* compileTestLandofile(
             {
               name: "original-config",
-              services: { web: { type: type.id, home: false, routes: ["original.lndo.site"] } },
+              services: {
+                web: { type: type.id, image: "alpine:3.22", home: false, routes: ["original.lndo.site"] },
+              },
             },
             "/srv/original-config",
           ),

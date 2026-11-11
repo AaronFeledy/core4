@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ToolingCompileError } from "@lando/sdk/errors";
 import {
   AppPlanner,
   ConfigService,
@@ -207,5 +208,58 @@ test("reports an interrupted script as exit 130 instead of a tooling failure", a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("rejects Bun Shell dialect gaps in a .bun.sh body before the script runs", async () => {
+  // Given a script that uses unsupported braced expansion (positional $1 remains allowed)
+  const root = await mkdtemp(join(tmpdir(), "lando-script-dialect-"));
+  try {
+    await mkdir(join(root, ".lando/scripts"), { recursive: true });
+    const body = ["# ---", "# desc: Dialect reject", "# ---", 'echo "${NAME}"', "echo ok", ""].join("\n");
+    await writeFile(join(root, ".lando/scripts/probe.bun.sh"), body);
+    // When
+    const result = await Effect.runPromise(
+      Effect.result(
+        runBunShellTooling({ name: "probe" }, root).pipe(
+          Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
+        ),
+      ),
+    );
+    // Then
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("expected dialect rejection");
+    expect(result.failure).toBeInstanceOf(ToolingCompileError);
+    if (!(result.failure instanceof ToolingCompileError)) throw result.failure;
+    expect(result.failure.tool).toBe("app:probe");
+    expect(result.failure.message).toMatch(/probe\.bun\.sh:\d+:\d+:/);
+    expect(result.failure.message).toContain("Bun Shell does not");
+    expect(result.failure.message).not.toContain(body);
+    expect(result.failure.remediation.length).toBeGreaterThan(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("allows positional $1 through $9 in a .bun.sh body", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-positional-ok-"));
+  try {
+    await mkdir(join(root, ".lando/scripts"), { recursive: true });
+    await writeFile(
+      join(root, ".lando/scripts/probe.bun.sh"),
+      '# ---\n# desc: Positional ok\n# ---\necho "<$1>"\n',
+    );
+    // When
+    const result = await Effect.runPromise(
+      runBunShellTooling({ name: "probe", input: { _tag: "RawArgv", argv: ["arg"] } }, root).pipe(
+        Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
+      ),
+    );
+    // Then
+    expect(result).toMatchObject({ exitCode: 0, stdout: "<arg>\n" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

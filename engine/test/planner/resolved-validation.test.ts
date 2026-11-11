@@ -145,7 +145,7 @@ for (const [yaml, path, count] of [
 
 test("lint permits service default membership and declared external networks", async () => {
   await withApp(
-    "networks: {peer: {external: true}}\nservices: {web: {type: validation, networks: [default, peer]}}",
+    "networks: {peer: {external: true}}\nservices: {web: {type: validation, image: 'alpine:3.22', networks: [default, peer]}}",
     async (root) => {
       const lint = await Effect.runPromise(
         appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer), Effect.provide(BunFileSystem.layer)),
@@ -407,7 +407,7 @@ test.each([{ target: "host" }, { target: "host", command: "true", user: "root" }
 
 test("declared timestamped log sources lint and resolve successfully", async () => {
   await withApp(
-    "services:\n  web: {type: validation, logs: [{id: app, path: /tmp/app.log, timestamps: true}]}\n",
+    "services:\n  web: {type: validation, image: 'alpine:3.22', logs: [{id: app, path: /tmp/app.log, timestamps: true}]}\n",
     async (root) => {
       const lint = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
       const resolved = await Effect.runPromise(planning(root));
@@ -437,4 +437,18 @@ test("a blocked descendant site suppresses checks on its ancestor path", () => {
   expect(validate(new Set([deferredSiteKey(["networks", "b", "name"])]))).toEqual([]);
   // And a sibling key that only shares a prefix is not treated as a descendant
   expect(validate(new Set([deferredSiteKey(["networks", "bb", "name"])]))).toHaveLength(1);
+});
+
+test("authored host readiness string command is scanned for Bun Shell dialect", async () => {
+  await withApp(
+    'services:\n  web:\n    type: validation\n    readiness:\n      target: host\n      command: "test -f $${READY}"\n',
+    async (root) => {
+      const lint = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer), Effect.provide(BunFileSystem.layer)),
+      );
+      expect(lint.valid).toBe(false);
+      const hit = lint.violations.find((v) => v.rule === "landofile.host-shell");
+      expect(hit?.path).toEqual(["services", "web", "readiness", "command"]);
+    },
+  );
 });

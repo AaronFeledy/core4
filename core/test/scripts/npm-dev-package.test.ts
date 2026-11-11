@@ -48,6 +48,26 @@ describe("npm dev package preparation", () => {
     );
   });
 
+  test("includes @lando/source-acquisition before its landofile, engine, and core dependents", () => {
+    expect(releasePackageWorkspaces).toContain("source-acquisition");
+    expect(releasePackageNames).toContain("@lando/source-acquisition");
+    expect(releasePackageWorkspaces.indexOf("source-acquisition")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("landofile"),
+    );
+    expect(releasePackageNames.indexOf("@lando/source-acquisition")).toBeLessThan(
+      releasePackageNames.indexOf("@lando/landofile"),
+    );
+    expect(releasePackageWorkspaces.indexOf("source-acquisition")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("engine"),
+    );
+    expect(releasePackageNames.indexOf("@lando/source-acquisition")).toBeLessThan(
+      releasePackageNames.indexOf("@lando/engine"),
+    );
+    expect(releasePackageWorkspaces.indexOf("source-acquisition")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("core"),
+    );
+  });
+
   test("publishes every runtime workspace dependency before its dependent release package", async () => {
     const workspaceByName = new Map(
       releasePackageNames.map((name, index) => [name, releasePackageWorkspaces[index] ?? ""]),

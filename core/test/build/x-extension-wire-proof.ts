@@ -8,7 +8,7 @@ import {
 export const TYPED_EXPRESSION_PATTERN = "^\\{\\{-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])";
 
 export const DIRECTIVE_TRANSPORT_JUSTIFICATION =
-  "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a pre-release transport change, not unchanged decoding for every previous fragment.";
+  "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a transport change, not unchanged decoding for every previous fragment.";
 
 export const WIRE_TARGETS = [
   ["ConfigTranslateDocumentSetInput", "$.currentLowerV4Fragments.items.fragment", "fragment"],

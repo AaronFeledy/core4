@@ -1,8 +1,12 @@
 import type { Effect } from "effect";
 
 import type { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import type { ExecutableCommandStdio } from "@lando/sdk/plugins";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver, RuntimeProvider } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+
+import type { SqliteSnapshotDeps } from "./sqlite-snapshot.ts";
 
 import type { SqlExec, SqlMover } from "./actions.ts";
 import type { SqlPublisher } from "./progress.ts";
@@ -34,6 +38,7 @@ export type DbCommandInput = {
   readonly hostCwd?: string;
   readonly keepLatest?: number;
   readonly preview?: boolean;
+  readonly stdio?: ExecutableCommandStdio;
 };
 
 export type SqlCommandDeps = SqlMover &
@@ -47,6 +52,7 @@ export type SqlCommandDeps = SqlMover &
     ) => ReturnType<SqlExec>;
     readonly environmentResolver: EnvironmentValueResolver["Service"];
     readonly providerId: string;
+    readonly waitForReady: (service: string) => Effect.Effect<void, unknown>;
     readonly appliedPlans?: RuntimeProvider["Service"]["appliedPlans"];
     readonly inspectSource: RuntimeProvider["Service"]["inspect"];
     readonly canonicalizeSourcePath: (
@@ -54,4 +60,8 @@ export type SqlCommandDeps = SqlMover &
     ) => Effect.Effect<AbsolutePath, SqlRecoveryUnavailableError>;
     readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
     readonly publish: SqlPublisher;
+    readonly sqlite?: SqliteSnapshotDeps;
+    /** Host directory for staging stdin and compressed dumps before import or seed. */
+    readonly stagingDir: string;
+    readonly privateFileAccess: PrivateFileAccess;
   };

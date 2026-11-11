@@ -1,11 +1,13 @@
 import {
   AbsolutePath,
+  AppId,
   AppPlan,
   DatabaseConnection,
   Environment,
   ServiceCreds,
   type ServicePlan,
   planAppIdentity,
+  planDataId,
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { Predicate } from "effect";
@@ -15,6 +17,7 @@ export type SqlLandofileService = {
   readonly type?: string;
   readonly creds?: Partial<SqlCreds>;
   readonly environment?: Readonly<Record<string, string>>;
+  readonly sqlite?: { readonly path: string };
 };
 
 export type SqlLandofile = {
@@ -22,11 +25,34 @@ export type SqlLandofile = {
   readonly services?: Readonly<Record<string, SqlLandofileService | undefined>>;
 };
 
+export type SqlPlanMount =
+  | {
+      readonly type: "bind";
+      readonly source: string;
+      readonly target: string;
+      readonly readOnly: boolean;
+      readonly role?: "app";
+      readonly realization?: "passthrough" | "accelerated";
+      readonly mountKey?: string;
+      readonly fileMode?: number;
+    }
+  | {
+      readonly type: "volume";
+      readonly store: string;
+      readonly target: string;
+      readonly readOnly: boolean;
+      readonly subpath?: string;
+    }
+  | { readonly type: "tmpfs"; readonly target: string };
+
 export type SqlPlanService = {
   readonly name: string;
   readonly type: string;
   readonly environment: Environment;
   readonly connection?: DatabaseConnection;
+  readonly sqlite?: { readonly path: string };
+  readonly user?: string;
+  readonly mounts: ReadonlyArray<SqlPlanMount>;
   readonly extensions: Readonly<Record<string, unknown>>;
   readonly nonSqlCreds?: NonNullable<ServicePlan["nonSqlCreds"]>;
   readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
@@ -40,6 +66,7 @@ export type SqlPlan = {
     readonly appRoot: string;
     readonly ownerKey: string;
     readonly repoGroupKey?: string;
+    readonly dataName?: string;
   };
   readonly committedLiteralDigests?: NonNullable<AppPlan["committedLiteralDigests"]>;
   readonly extensions?: AppPlan["extensions"];
@@ -53,6 +80,13 @@ export const sqlPlanIdentity = (plan: SqlPlan) =>
     ...(plan.identity === undefined
       ? {}
       : { identity: { ...plan.identity, appRoot: AbsolutePath.make(plan.identity.appRoot) } }),
+  });
+
+export const sqlPlanDataId = (plan: SqlPlan) =>
+  planDataId({
+    id: AppId.make(plan.id),
+    root: AbsolutePath.make(plan.root),
+    identity: sqlPlanIdentity(plan),
   });
 
 const objectOrArray = Predicate.or(Predicate.isObject, (value: unknown): value is Record<string, unknown> =>
@@ -91,10 +125,12 @@ export const toSqlLandofile = (value: unknown): SqlLandofile => {
           ),
         )
       : undefined;
+    const sqlitePath = objectOrArray(service.sqlite) ? asString(service.sqlite.path) : undefined;
     mapped[serviceName] = {
       ...(type === undefined ? {} : { type }),
       ...(creds === undefined ? {} : { creds }),
       ...(environment === undefined ? {} : { environment }),
+      ...(sqlitePath === undefined ? {} : { sqlite: { path: sqlitePath } }),
     };
   }
   return {
@@ -110,6 +146,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
   const identityOwnerKey = identityRecord === undefined ? undefined : asString(identityRecord.ownerKey);
   const identityRepoGroupKey =
     identityRecord === undefined ? undefined : asString(identityRecord.repoGroupKey);
+  const identityDataName = identityRecord === undefined ? undefined : asString(identityRecord.dataName);
   const identity =
     identityAppRoot === undefined || identityOwnerKey === undefined
       ? undefined
@@ -117,6 +154,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
           appRoot: identityAppRoot,
           ownerKey: identityOwnerKey,
           ...(identityRepoGroupKey === undefined ? {} : { repoGroupKey: identityRepoGroupKey }),
+          ...(identityDataName === undefined ? {} : { dataName: identityDataName }),
         };
   const services = objectOrArray(record.services) ? record.services : {};
   const mapped: Record<string, SqlPlanService> = {};
@@ -126,11 +164,45 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
       Object.fromEntries(Object.entries(objectOrArray(service.environment) ? service.environment : {})),
     );
     // Volume entries live on ServicePlan.mounts; keep a narrow storage projection for SQL.
-    const mounts = Array.isArray(service.mounts) ? service.mounts : [];
-    const storage = mounts.flatMap((entry) => {
+    const plannedMounts = Array.isArray(service.mounts) ? service.mounts : [];
+    const storage = plannedMounts.flatMap((entry) => {
       if (!objectOrArray(entry) || entry.type !== "volume" || typeof entry.store !== "string") return [];
       const target = asString(entry.target);
       return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
+    });
+    const sqlitePath = objectOrArray(service.sqlite) ? asString(service.sqlite.path) : undefined;
+    const mounts: SqlPlanMount[] = plannedMounts.flatMap((entry): SqlPlanMount[] => {
+      if (!objectOrArray(entry) || typeof entry.type !== "string" || typeof entry.target !== "string")
+        return [];
+      if (entry.type === "bind" && typeof entry.source === "string") {
+        return [
+          {
+            type: "bind",
+            source: entry.source,
+            target: entry.target,
+            readOnly: entry.readOnly === true,
+            ...(entry.role === "app" ? { role: "app" as const } : {}),
+            ...(entry.realization === "passthrough" || entry.realization === "accelerated"
+              ? { realization: entry.realization }
+              : {}),
+            ...(typeof entry.mountKey === "string" ? { mountKey: entry.mountKey } : {}),
+            ...(typeof entry.fileMode === "number" ? { fileMode: entry.fileMode } : {}),
+          },
+        ];
+      }
+      if (entry.type === "volume" && typeof entry.store === "string") {
+        return [
+          {
+            type: "volume",
+            store: entry.store,
+            target: entry.target,
+            readOnly: entry.readOnly === true,
+            ...(typeof entry.subpath === "string" ? { subpath: entry.subpath } : {}),
+          },
+        ];
+      }
+      if (entry.type === "tmpfs") return [{ type: "tmpfs", target: entry.target }];
+      return [];
     });
     const extensions = objectOrArray(service.extensions) ? service.extensions : {};
     mapped[name] = {
@@ -140,6 +212,9 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
       ...(service.connection === undefined
         ? {}
         : { connection: Schema.decodeUnknownSync(DatabaseConnection)(service.connection) }),
+      ...(sqlitePath === undefined ? {} : { sqlite: { path: sqlitePath } }),
+      ...(typeof service.user === "string" ? { user: service.user } : {}),
+      mounts,
       extensions,
       ...(service.nonSqlCreds === undefined
         ? {}
@@ -161,20 +236,5 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
     ...(objectOrArray(record.extensions) ? { extensions: record.extensions } : {}),
     ...(appPlan?.events === undefined ? {} : { events: appPlan.events }),
     services: mapped,
-  };
-};
-
-export const sqlPlanFromLandofile = (landofile: SqlLandofile): SqlPlan => {
-  const services: Record<string, SqlPlanService> = {};
-  for (const [name, service] of Object.entries(landofile.services ?? {})) {
-    const type = service?.type;
-    if (type === undefined) continue;
-    services[name] = { name, type, environment: {}, extensions: {}, storage: [] };
-  }
-  return {
-    id: landofile.name ?? "app",
-    name: landofile.name ?? "app",
-    root: "/",
-    services,
   };
 };

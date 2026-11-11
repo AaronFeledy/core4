@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createPublicKey } from "node:crypto";
 
 import { certificatePairIsCurrent } from "../src/route-reload-state.ts";
 
@@ -22,6 +23,26 @@ VSmRrS2PB7TZrWwYkLJu3it28iOhRANCAARrQ8NS8lICw/TaapNm76MQSXypM9/N
 5bma5wIuow3IRkHmJz7z1RXMhqDmbC8YZq3IglZZzYFg7Nd9v75n8V+O
 -----END PRIVATE KEY-----
 `;
+
+// Leaf covering exact x.lndo.site and mapped leftmost wildcard *.lndo.site.
+const mappedWildcardCertificatePem = `-----BEGIN CERTIFICATE-----
+MIIBpzCCAUygAwIBAgIUUeLp7r4wZtBc5IbWDCAY5Sfp7QgwCgYIKoZIzj0EAwIw
+FjEUMBIGA1UEAwwLeC5sbmRvLnNpdGUwHhcNMjYxMTA0MTAyNDU4WhcNMzYxMTAx
+MTAyNDU4WjAWMRQwEgYDVQQDDAt4LmxuZG8uc2l0ZTBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABGu03ppvzenu77M/slxjQ9lP6ORaUl0PSj0X5+orQ+YsXxwIkOIs
+lZ+1blNSco9l5Z11JwbJPox1qN+L/fXU9lyjeDB2MB0GA1UdDgQWBBQYWtn2llwA
+XoBamMhJ7s594B1ZBTAfBgNVHSMEGDAWgBQYWtn2llwAXoBamMhJ7s594B1ZBTAP
+BgNVHRMBAf8EBTADAQH/MCMGA1UdEQQcMBqCC3gubG5kby5zaXRlggsqLmxuZG8u
+c2l0ZTAKBggqhkjOPQQDAgNJADBGAiEA0kTO/eM3pHqO0P0O8Txy/mzSCHZBtC5w
+Mh+mLPdbtKUCIQCkx9UOlARP+2aJ9am4A5VGEZrPFY5+pqbIPFIBJ40lLw==
+-----END CERTIFICATE-----
+`;
+const mappedWildcardPrivateKeyPem = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgjmXa2HmmJFVvs+iX
+hNc9xQ6ZDk5jp4Tbd6MvGYamRdOhRANCAARrtN6ab83p7u+zP7JcY0PZT+jkWlJd
+D0o9F+fqK0PmLF8cCJDiLJWftW5TUnKPZeWddScGyT6Mdajfi/311PZc
+-----END PRIVATE KEY-----
+`;
 const now = Date.parse("2027-01-01T00:00:00Z");
 
 describe("certificatePairIsCurrent", () => {
@@ -31,10 +52,31 @@ describe("certificatePairIsCurrent", () => {
     ).toBe(true);
   });
 
+  test("accepts partial leftmost route wildcards covered by a mapped *.rest SAN", () => {
+    expect(
+      certificatePairIsCurrent(
+        mappedWildcardCertificatePem,
+        mappedWildcardPrivateKeyPem,
+        ["x.lndo.site", "*-x.lndo.site"],
+        now,
+      ),
+    ).toBe(true);
+  });
+
   test("rejects hostnames the certificate does not cover", () => {
     expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.other.lndo.site"], now)).toBe(false);
     expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["a.b.demo.lndo.site"], now)).toBe(false);
     expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.lndo.site"], now)).toBe(false);
+    // *-demo.lndo.site maps to *.lndo.site, which this leaf does not carry.
+    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*-demo.lndo.site"], now)).toBe(false);
+  });
+
+  test("rejects a public key passed as the private key", () => {
+    // Given: the public half of the certificate's own key pair
+    const publicKeyPem = createPublicKey(privateKeyPem).export({ type: "spki", format: "pem" }).toString();
+    // Then
+    expect(certificatePairIsCurrent(certificatePem, publicKeyPem, ["demo.lndo.site"], now)).toBe(false);
+    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["demo.lndo.site"], now)).toBe(true);
   });
 
   test("rejects an expired certificate", () => {

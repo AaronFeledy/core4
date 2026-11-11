@@ -1,7 +1,12 @@
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
 import type { ProcessRunner } from "@lando/sdk/services";
+import type { SourceSession } from "@lando/source-acquisition";
 import { Effect } from "effect";
+import { retainedRecipeSourceStore } from "../../recipes/runtime-sources";
+import { mapSourceAcquisitionError } from "../../recipes/source-session";
 
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import { makeTaskTree } from "@lando/sdk/task-progress";
@@ -34,10 +39,11 @@ export interface InitAppResult {
   readonly agentSkills?: AgentSkillsResult;
 }
 
-export const initApp = Effect.fn("InitApp.run")(function* (options: InitAppOptions) {
+const runInitWithSources = Effect.fn("InitApp.runWithSources")(function* (
+  options: InitAppOptions & { readonly sources: SourceSession },
+): Effect.fn.Return<InitAppResult, unknown, ProcessRunner> {
   const context = yield* Effect.context<ProcessRunner>();
-  let pending: Promise<InitAppResult> | undefined;
-  return yield* Effect.tryPromise({
+  return yield* tryPromiseSettled({
     try: (signal) => {
       const bound = Effect.runPromiseWith(context);
       const run: ReturnType<typeof Effect.runPromiseWith<ProcessRunner>> = (effect, runOptions) =>
@@ -45,16 +51,27 @@ export const initApp = Effect.fn("InitApp.run")(function* (options: InitAppOptio
           ...runOptions,
           signal: runOptions?.signal === undefined ? signal : AbortSignal.any([signal, runOptions.signal]),
         });
-      pending = initAppInContext({ ...options, signal: options.signal ?? signal }, run);
-      return pending;
+      return initAppInContext({ ...options, signal: options.signal ?? signal }, run);
     },
     catch: (cause) => cause,
-  }).pipe(
-    Effect.onInterrupt(() =>
-      Effect.promise(async () => {
-        if (pending !== undefined) await Promise.allSettled([pending]);
-      }),
-    ),
+  });
+});
+
+/**
+ * Initialize an app. Opens one SourceSession spanning acquisition, parent/asset
+ * resolution, preparation, and publication when `options.sources` is omitted.
+ * Prefer an outer scoped session for hosts that already hold a store.
+ */
+export const initApp = Effect.fn("InitApp.run")(function* (options: InitAppOptions) {
+  if (options.sources !== undefined) {
+    return yield* runInitWithSources({ ...options, sources: options.sources });
+  }
+  const store = options.recipeSourceStore ?? (yield* retainedRecipeSourceStore(options.registryUrl)).store;
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const sources = yield* store.session.pipe(mapFailures((error) => mapSourceAcquisitionError(error)));
+      return yield* runInitWithSources({ ...options, sources });
+    }),
   );
 });
 

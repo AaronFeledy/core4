@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
+import { ProxyError } from "@lando/sdk/errors";
 import { StreamFrame } from "@lando/sdk/schema";
 import { PathsService, RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
 import * as BunFileSystem from "@lando/engine/services/file-system";
+import { makeUnavailableRouter } from "@lando/engine/subsystems/proxy/api";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { HOST_DNS_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
@@ -97,14 +99,15 @@ describe("meta:doctor subsystem checks", () => {
         expect(solution?.command).toBe("lando doctor --fix");
       } else {
         expect(solution?.kind).toBe("manual");
-        if (check.name !== "host-dns") expect(solution?.command).toBeDefined();
+        // Host DNS and an unselectable router have no single command that repairs them.
+        if (check.name !== "host-dns" && check.name !== "router") expect(solution?.command).toBeDefined();
       }
     }
     const manual = failing.filter((check) => check.recovery === "manual");
     expect(manual.length).toBeGreaterThanOrEqual(1);
     expect(
       manual
-        .filter((check) => check.name !== "host-dns")
+        .filter((check) => check.name !== "host-dns" && check.name !== "router")
         .every((check) => check.solutions[0]?.command === "lando setup"),
     ).toBe(true);
   });
@@ -213,21 +216,56 @@ describe("meta:doctor subsystem checks", () => {
     expect(result.checks.length).toBe(EXPECTED_SUBSYSTEMS.length);
   });
 
-  test("uses the selected certificate authority id from precomputed status", async () => {
-    // Given / When
+  test("passes the certs check when the local root is in the host trust store", async () => {
     const result = await Effect.runPromise(
-      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert" } }).pipe(
+      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert", trusted: true } }).pipe(
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );
-
-    // Then
     const certs = result.checks.find((check) => check.name === "certs");
-    expect(certs).toBeUndefined();
-    expect(result.skipped).toContainEqual({
-      section: "certs",
-      status: "skipped",
-      reason: expect.any(String),
+    expect(certs?.status).toBe("pass");
+    expect(certs?.context.certsTrusted).toBe("true");
+    expect(result.skipped?.some((entry) => entry.section === "certs")).toBe(false);
+  });
+
+  test("warns when the local root is not in the host trust store", async () => {
+    const result = await Effect.runPromise(
+      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert", trusted: false }, fix: true }).pipe(
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
+    const certs = result.checks.find((check) => check.name === "certs");
+    expect(certs?.status).toBe("warn");
+    expect(certs?.context.certsTrusted).toBe("false");
+    expect(certs?.context.fixOutcome).toBe("skipped-manual");
+    expect(certs?.solutions[0]?.description).toContain("--skip-install-ca");
+    expect(certs?.solutions[0]?.command).toBe("lando setup");
+  });
+
+  test("warns with the authority remediation when the local root cannot be read", async () => {
+    // Given a selected authority whose root is missing, and a request to fix.
+    const status = {
+      _tag: "root-unavailable",
+      id: "mkcert",
+      detail: "mkcert has no local CA in /caroot.",
+      remediation: "Run `lando setup` to download mkcert and install the local CA.",
+    } as const;
+
+    // When doctor reports subsystems.
+    const result = await Effect.runPromise(
+      subsystemDoctor({ certs: status, fix: true }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+    );
+
+    // Then the finding uses that remediation and does not run setup.
+    const certs = result.checks.find((check) => check.name === "certs");
+    expect(certs?.status).toBe("warn");
+    expect(certs?.recovery).toBe("manual");
+    expect(certs?.context.subsystemId).toBe("mkcert");
+    expect(certs?.context.fixOutcome).toBe("skipped-manual");
+    expect(certs?.solutions[0]).toEqual({
+      kind: "manual",
+      description: status.remediation,
+      command: "lando setup",
     });
   });
 
@@ -315,6 +353,47 @@ describe("meta:doctor subsystem checks", () => {
     expect(proxy?.solutions[0]?.kind).toBe("automatic");
     expect(proxy?.solutions[0]?.command).toBe("lando doctor --fix");
   });
+
+  test.each([false, true])(
+    "#2138 reports an unselectable router's reason as a manual fix (fix: %s)",
+    async (fix) => {
+      // Given: the configured router is not installed.
+      const router = makeUnavailableRouter(
+        new ProxyError({
+          message: "Router service missing is not installed.",
+          proxyId: "missing",
+          remediation:
+            "Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
+        }),
+      );
+      const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, Layer.succeed(RouterService, router));
+
+      // When
+      const result = await Effect.runPromise(subsystemDoctor({ fix }).pipe(Effect.provide(layer)));
+
+      // Then: the selection failure is the remedy; doctor never offers or runs Traefik re-provisioning.
+      expect(result.checks.find((check) => check.name === "router")).toEqual({
+        name: "router",
+        status: "warn",
+        severity: "warn",
+        recovery: "manual",
+        context: {
+          subsystem: "router",
+          subsystemId: "unavailable",
+          ready: "false",
+          routerId: "missing",
+          ...(fix ? { fixOutcome: "skipped-manual" } : {}),
+        },
+        solutions: [
+          {
+            kind: "manual",
+            description:
+              "Router service missing is not installed. Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
+          },
+        ],
+      });
+    },
+  );
 
   test("surfaces needs-helper remediation from persisted acquisition state", async () => {
     // Given

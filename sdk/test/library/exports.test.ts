@@ -745,6 +745,11 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runStateStoreContract).toBeDefined();
   });
 
+  test("test entry point exports the file-sync app lifecycle contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+    expect(sdkTest.makeFileSyncAppLifecycleContractSuite).toBe(sdkTest.runFileSyncAppLifecycleContract);
+  });
+
   test("test entry point exports the secret store contract suite", async () => {
     const sdkTest = await import("@lando/sdk/test");
 

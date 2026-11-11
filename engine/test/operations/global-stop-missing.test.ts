@@ -35,8 +35,7 @@ test("selected stop withdraws missing service routes without removing its live s
     expect(
       await Effect.runPromise(fixture.provider.inspect({ app: plan.id, service: ServiceName.make("mail") })),
     ).toMatchObject({
-      status: "stopped",
-      state: "stopped",
+      status: "absent",
       publications: { status: "missing" },
       mounts: { status: "missing" },
     });

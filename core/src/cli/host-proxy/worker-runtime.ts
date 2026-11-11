@@ -4,17 +4,26 @@ import { scopedHostProxyRunLandoSession } from "@lando/engine/subsystems/host-pr
 import { writeWorkerDiagnostic } from "@lando/engine/subsystems/host-proxy/worker-process";
 import { hostProxyMountInfoFromPlan } from "@lando/engine/subsystems/host-proxy/worker-service-plan";
 import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
-import { detachStdioWrites, writeStdioLine } from "@lando/renderer/io";
+import { detachStdioWrites, isStdioRendererIO } from "@lando/renderer/io";
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
+import {
+  CliInvocation,
+  type CliInvocationContext,
+  processInvocationContext,
+} from "../../runtime/invocation-context";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
 import { hostProxyChildExecutor, hostProxyChildOpenExecutor } from "./call-spawn";
 import { WorkerInput } from "./worker-config";
 
-export const runHostProxyWorkerProcess = async (): Promise<void> => {
-  ensureHostProxyNoProxy("127.0.0.1");
-  ensureHostProxyNoProxy("localhost");
+export const runHostProxyWorkerProcess = async (
+  context: CliInvocationContext = processInvocationContext(),
+): Promise<void> => {
+  const env = { ...context.env };
+  ensureHostProxyNoProxy("127.0.0.1", env);
+  ensureHostProxyNoProxy("localhost", env);
   const owner = makeRedactionOwner();
   const redactionLayer = Layer.succeed(RedactionService, owner.service);
   const shutdown = Promise.withResolvers<void>();
@@ -23,9 +32,9 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
   process.once("SIGINT", onSignal);
   try {
     const input = await Effect.runPromise(
-      Schema.decodeUnknownEffect(Schema.fromJsonString(WorkerInput))(await Bun.stdin.text()).pipe(
-        Effect.mapError(() => new TypeError("Invalid host-proxy worker input.")),
-      ),
+      Schema.decodeUnknownEffect(Schema.fromJsonString(WorkerInput))(
+        await new Response(context.io.stdin).text(),
+      ).pipe(mapFailures(() => new TypeError("Invalid host-proxy worker input."))),
     );
     const app = { kind: input.app.kind, id: input.plan.id, root: input.plan.root } satisfies AppRef;
     if (input.app.id !== app.id || input.app.root !== app.root)
@@ -56,7 +65,11 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
                 throw new TypeError("Invalid host-proxy plan.");
               plan = decoded.success;
             },
-            diagnostic: writeWorkerDiagnostic,
+            diagnostic: (entry) =>
+              writeWorkerDiagnostic(
+                entry,
+                isStdioRendererIO(context.io) ? undefined : context.io.writeStderr,
+              ),
             paths: input.paths,
             shimArtifactPath: input.shimArtifactPath,
             configDigest: input.configDigest,
@@ -107,9 +120,8 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
           void session.closed.then(shutdown.resolve);
           yield* Effect.sync(() => {
             const socketPath = bridge?.socketPath ?? session.socketPath;
-            writeStdioLine(
-              "stdout",
-              JSON.stringify({
+            context.io.writeStdout(
+              `${JSON.stringify({
                 _tag: "ready",
                 appId: session.appId,
                 sessionId: session.sessionId,
@@ -122,13 +134,13 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
                   : { containerUrl: session.containerUrl }),
                 shimPath: session.shimPath,
                 transport: bridge === undefined ? session.transport : "unix-socket",
-              }),
+              })}\n`,
             );
-            detachStdioWrites();
+            if (isStdioRendererIO(context.io)) detachStdioWrites();
           });
           yield* Effect.promise(() => shutdown.promise);
         }),
-      ).pipe(Effect.provide(redactionLayer)),
+      ).pipe(Effect.provide(redactionLayer), Effect.provideService(CliInvocation, { ...context, env })),
     );
   } catch {
     // Bootstrap errors may contain decoded proxy credentials; report no payload or cause.

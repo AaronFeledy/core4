@@ -101,6 +101,9 @@ describe("HttpClient contract suite", () => {
       | { url: string; proxy?: BunFetchRequestInit["proxy"]; tls?: { ca?: ReadonlyArray<string> } }
       | undefined;
     let connectCount = 0;
+    const failures = new Map<string, string>();
+    const statuses = new Map<string, number>();
+    const requests = new Map<string, number>();
     let offline = false;
     let interruptSignal: AbortSignal | undefined;
     let interruptAborted = false;
@@ -109,6 +112,14 @@ describe("HttpClient contract suite", () => {
 
     const fetchImpl = ((input: string | URL | Request, init?: unknown) => {
       const url = typeof input === "string" ? input : input.toString();
+      requests.set(url, (requests.get(url) ?? 0) + 1);
+      const code = failures.get(url);
+      if (code !== undefined) {
+        failures.delete(url);
+        return Promise.reject(Object.assign(new TypeError("fetch failed"), { code }));
+      }
+      const status = statuses.get(url);
+      if (status !== undefined) return Promise.resolve(new Response(null, { status }));
       if (offline) return Promise.reject(new Error("offline"));
       const requestInit = (init ?? {}) as {
         proxy?: BunFetchRequestInit["proxy"];
@@ -175,6 +186,11 @@ describe("HttpClient contract suite", () => {
     const harness: HttpClientContractHarness<ResolvedNetworkTrust> = {
       name: "HttpClientLayer",
       service,
+      failures: {
+        rejectNext: (url, code) => Effect.sync(() => void failures.set(url, code)),
+        serveStatus: (url, status) => Effect.sync(() => void statuses.set(url, status)),
+        requestCount: (url) => Effect.sync(() => requests.get(url) ?? 0),
+      },
       serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
       events: () => Effect.sync(() => [...events]),
       withPolicy,

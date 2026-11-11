@@ -7,6 +7,7 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect } from "effect";
 import { makeDataMoverService } from "../src/service.ts";
+import { privateFileAccess } from "./private-file-access.ts";
 
 let base: string;
 let appRoot: string;
@@ -30,7 +31,11 @@ const transfer = (source: string, target: string) => {
   const mover = makeDataMoverService(
     Effect.die("Local transfers must not resolve a runtime provider"),
     { redactText: (text) => text, publish: () => Effect.void },
-    { paths: { ...makeLandoPaths(), scratchDir: scratchRoot }, stateStore: makeTestStateStore().service },
+    {
+      paths: { ...makeLandoPaths(), scratchDir: scratchRoot },
+      stateStore: makeTestStateStore().service,
+      privateFileAccess,
+    },
   );
   return Effect.runPromise(
     Effect.scoped(

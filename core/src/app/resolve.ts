@@ -1,4 +1,6 @@
 import { dirname, join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { Effect, Schema, Scope } from "effect";
 
@@ -67,17 +69,17 @@ const planResolvedLandofile = Effect.fnUntraced(function* (
     Effect.suspend(() => planner.plan(landofile, capabilities)),
   );
   return { plan, landofile };
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const planAt = Effect.fnUntraced(function* (
   dir: string | undefined,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
-  const root = dir ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
+  const root = dir ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : (yield* CliInvocation).cwd);
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofileAt(landofileService, root);
   return yield* planResolvedLandofile(landofile, root);
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const planFromShape = Effect.fnUntraced(function* (
   shape: LandofileShape,
@@ -93,14 +95,14 @@ const planFromShape = Effect.fnUntraced(function* (
   yield* assertUserAppIdNotReserved(landofile.document);
   yield* assertLandoVersionConstraint(landofile.document, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const planFromLandofileFile = Effect.fnUntraced(function* (
   filePath: string,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const landofile = yield* loadUserLandofileFile(filePath);
   return yield* planResolvedLandofile(landofile, dirname(filePath));
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const selectorMismatch = (detail: string): AppResolveError =>
   new AppResolveError({
@@ -230,7 +232,7 @@ const resolveTarget = (
       const root = appliedFallbackRoot(selector);
       if (root === undefined) return Effect.fail(desiredError);
       return withResolvedCwd(root, resolveAppliedStateTarget).pipe(
-        Effect.mapError(toAppResolveError),
+        mapFailures(toAppResolveError),
         Effect.flatMap((target) => {
           if (target === undefined) return Effect.fail(desiredError);
           if (selector.kind === "id" && target.plan.id !== selector.id) {

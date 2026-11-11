@@ -12,8 +12,14 @@ import {
   DRUPAL_CMS_PHP_INI_PATH,
   DRUPAL_CMS_PHP_INI_TARGET,
 } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
-const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand("mysql", "{{ app.name }}");
-const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand("pgsql", "{{ app.name }}");
+const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
+  "mysql",
+  "{{ services.database.creds.database }}",
+);
+const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
+  "pgsql",
+  "{{ services.database.creds.database }}",
+);
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 const {
   decomposer: drupalCmsDecomposer,
@@ -80,6 +86,7 @@ describe("drupal-cms decomposition", () => {
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
+          uploadDirs: ["sites/*/files"],
           port: 80,
           dependsOn: ["database"],
           mounts: [
@@ -92,18 +99,20 @@ describe("drupal-cms decomposition", () => {
           },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
-        database: { type: "{{ recipe.database }}", database: "{{ app.name }}" },
+        database: { type: "{{ recipe.database }}" },
       },
       tooling: {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
           cmds: [DRUSH_TOOLING_COMMAND],
+          wrapper: true,
         },
         composer: {
           service: "appserver",
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
+          wrapper: true,
         },
         "drupal-cms-scaffold": {
           service: "appserver",
@@ -136,9 +145,10 @@ describe("drupal-cms decomposition", () => {
     });
     expect(authoring.services.edge).not.toHaveProperty("primary");
     expect(authoring.services.edge).toHaveProperty("routes");
+    expect(authoring.services.edge).toMatchObject({ uploadDirs: ["sites/*/files"] });
     expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_PGSQL_INSTALL_COMMAND);
     expect(authoring.tooling["drupal-cms-install"].cmd).toContain('--db-url="pgsql://lando:');
-    expect(authoring.tooling["drupal-cms-install"].cmd).toContain("{{ app.name }}");
+    expect(authoring.tooling["drupal-cms-install"].cmd).toContain("{{ services.database.creds.database }}");
   });
 
   test("includes an editable PHP memory limit asset and mount for Apache and FPM", () => {

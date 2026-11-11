@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option, Redacted } from "effect";
 
 import { CaError, NoCertificateAuthorityError } from "@lando/sdk/errors";
 import { CertificateAuthority } from "@lando/sdk/services";
+import { TEST_CERTIFICATES } from "@lando/sdk/test";
 
 import {
   CertificateAuthorityResolver,
@@ -32,7 +33,13 @@ describe("deferred proxy certificate authority", () => {
         return {
           id: "test-ca",
           setup: () => Effect.void,
-          issueCert: () => Effect.succeed({ certPath: "/cert", keyPath: "/key", caPath: "/ca" }),
+          root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
+          issueCert: () =>
+            Effect.succeed({
+              certificate: TEST_CERTIFICATES.service.certificate,
+              privateKey: Redacted.make(TEST_CERTIFICATES.service.privateKey),
+              root: { certificate: TEST_CERTIFICATES.rootA, trusted: true },
+            }),
         };
       }),
     };
@@ -53,14 +60,21 @@ describe("deferred proxy certificate authority", () => {
         return {
           id: "test-ca",
           setup: () => Effect.void,
-          issueCert: () => Effect.succeed({ certPath: "/cert", keyPath: "/key", caPath: "/ca" }),
+          root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
+          issueCert: () =>
+            Effect.succeed({
+              certificate: TEST_CERTIFICATES.service.certificate,
+              privateKey: Redacted.make(TEST_CERTIFICATES.service.privateKey),
+              root: { certificate: TEST_CERTIFICATES.rootA, trusted: true },
+            }),
         };
       }),
     };
     const authority = await Effect.runPromise(buildAuthority(resolver));
 
-    // When: setup and issuance are invoked.
+    // When: setup, root, and issuance are invoked.
     await Effect.runPromise(authority.setup({ force: false }));
+    await Effect.runPromise(authority.root);
     await Effect.runPromise(authority.issueCert({ cn: "demo.test", sans: ["demo.test"] }));
 
     // Then: the resolver is lazy and cached.

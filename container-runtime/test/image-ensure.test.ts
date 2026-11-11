@@ -331,4 +331,116 @@ describe("ensureImage", () => {
     expect(pinned.requests[1]?.path).toContain("platform=linux%2Farm64");
     expect(buildOnly.requests[1]?.path).toBe("/images/create?fromImage=nginx&tag=1.27");
   });
+
+  test.each([
+    ["a missing image", { inspectStatus: 404 }, false, undefined],
+    ["a forced retry after a missing-image create", { inspectStatus: 404 }, true, undefined],
+    [
+      "a registry image for the wrong platform",
+      {
+        inspectBody: inspectBody({ os: "linux", architecture: "amd64", repoDigests: ["nginx@sha256:test"] }),
+      },
+      false,
+      "linux/arm64",
+    ],
+  ] as const)("pull_policy never fails without pulling for %s", async (_label, api, force, platform) => {
+    // Given
+    const fake = makeApi(api);
+    const neverService = {
+      ...service(platform === undefined ? undefined : { platform }),
+      pullPolicy: "never" as const,
+    };
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        makeEnsureImage(fake.api, { ctx: dockerCtx, dialect: dockerPullDialect })({
+          service: neverService,
+          ref: "nginx:1.27",
+          force,
+        }),
+      ),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.message).toContain("pull_policy: never");
+    expect(error.remediation).toContain("remove pull_policy: never");
+    expect(fake.requests.filter((request) => request.method === "POST")).toEqual([]);
+  });
+
+  test("pull_policy never accepts a local image on a forced retry without pulling", async () => {
+    // Given
+    const fake = makeApi({});
+
+    // When
+    await Effect.runPromise(
+      makeEnsureImage(fake.api, { ctx: dockerCtx, dialect: dockerPullDialect })({
+        service: { ...service(), pullPolicy: "never" as const },
+        ref: "nginx:1.27",
+        force: true,
+      }),
+    );
+
+    // Then
+    expect(fake.requests.map((request) => request.method)).toEqual(["GET"]);
+  });
+});
+
+describe("ensureImage for a Lando-built image", () => {
+  const producedService = (compose?: Record<string, unknown>): ServicePlan => ({
+    ...service(compose),
+    artifact: { kind: "ref", ref: "lando-build-docker-web-key", origin: "build" },
+  });
+
+  test.each([
+    ["a missing image", { inspectStatus: 404 }, false, undefined],
+    ["a forced retry after a missing-image create", { inspectStatus: 404 }, true, undefined],
+    [
+      "an image for the wrong platform even when its base left RepoDigests",
+      {
+        inspectBody: inspectBody({ os: "linux", architecture: "amd64", repoDigests: ["nginx@sha256:base"] }),
+      },
+      false,
+      "linux/arm64",
+    ],
+  ] as const)("never contacts a registry for %s", async (_label, api, force, platform) => {
+    // Given
+    const fake = makeApi(api);
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        makeEnsureImage(fake.api, { ctx: dockerCtx, dialect: dockerPullDialect })({
+          service: producedService(platform === undefined ? undefined : { platform }),
+          ref: "lando-build-docker-web-key",
+          force,
+        }),
+      ),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.message).toContain("lando-build-docker-web-key");
+    expect(error.message).toContain("web");
+    expect(error.remediation).toBe("Run `lando rebuild -s web` to build it again.");
+    expect(fake.requests.filter((request) => request.method === "POST")).toEqual([]);
+  });
+
+  test("accepts a present image on a forced retry without pulling", async () => {
+    // Given
+    const fake = makeApi({});
+
+    // When
+    await Effect.runPromise(
+      makeEnsureImage(fake.api, { ctx: dockerCtx, dialect: dockerPullDialect })({
+        service: producedService(),
+        ref: "lando-build-docker-web-key",
+        force: true,
+      }),
+    );
+
+    // Then
+    expect(fake.requests.map((request) => request.method)).toEqual(["GET"]);
+  });
 });

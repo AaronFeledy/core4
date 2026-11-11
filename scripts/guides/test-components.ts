@@ -2,6 +2,11 @@ import type { VariableProps } from "../../sdk/src/docs/components/index.ts";
 import type { GuideStepComponent, GuideStepNode } from "./model.ts";
 
 const quote = (value: string): string => JSON.stringify(value);
+// Resolution carries the shell-word argv runners execute; a missing one is a compiler bug.
+const argvLiteral = (component: Extract<GuideStepComponent, { kind: "Run" | "Verify" }>): string => {
+  if (component.argv === undefined) throw new Error(`Unresolved guide command at line ${component.line}`);
+  return JSON.stringify(component.argv);
+};
 export const sourceComment = (sourcePath: string, line: number): string =>
   `  // @source: ${sourcePath}:${line}`;
 export const renderVariableSetup = (variables: ReadonlyMap<string, VariableProps>): string =>
@@ -42,9 +47,10 @@ const renderRun = (component: Extract<GuideStepComponent, { kind: "Run" }>, sour
     ].join("\n");
   if ("command" in props)
     return [
-      `    lastRun = yield* context.runCli(${quote(props.command)}, {`,
+      `    lastRun = yield* context.runCli(${argvLiteral(component)}, {`,
       `      answers: ${JSON.stringify(props.answers ?? {})},`,
       "    });",
+      "    lastEvents = lastRun.events;",
       `    expect(lastRun.exitCode, \`stdout:\\n\${lastRun.stdout}\\nstderr:\\n\${lastRun.stderr}\`).toBe(${props.expectExit ?? 0});`,
     ].join("\n");
   return `    yield* context.shell(${quote(props.shell)});`;
@@ -54,14 +60,16 @@ const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>
   const expected = props.expect === undefined ? undefined : JSON.stringify(props.expect, null, 2);
   if (props.event !== undefined)
     return [
-      `    const actual = context.events.find((event) => event._tag === ${quote(props.event)});`,
-      `    const matched = ${expected === undefined ? "actual !== undefined" : `matchesExpected(actual, ${expected})`};`,
+      `    const tagged = lastEvents.filter((event) => event._tag === ${quote(props.event)});`,
+      `    const actual = ${expected === undefined ? "tagged.at(-1)" : `tagged.findLast((event) => matchesExpected(event, ${expected})) ?? tagged.at(-1)`};`,
+      `    const matched = ${expected === undefined ? "actual !== undefined" : `actual !== undefined && matchesExpected(actual, ${expected})`};`,
       `    yield* context.transcript.append({ kind: "verify", target: "event", matched, expected: ${expected ?? quote(props.event)}, actual });`,
       "    expect(matched).toBe(true);",
     ].join("\n");
   if (props.command !== undefined)
     return [
-      `    const verifyRun = yield* context.runCli(${quote(props.command)});`,
+      `    const verifyRun = yield* context.runCli(${argvLiteral(component)});`,
+      "    lastEvents = verifyRun.events;",
       `    expect(verifyRun.exitCode, \`stdout:\\n\${verifyRun.stdout}\\nstderr:\\n\${verifyRun.stderr}\`).toBe(${props.expectExit ?? 0});`,
       ...(expected === undefined
         ? []

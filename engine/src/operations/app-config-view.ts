@@ -6,6 +6,7 @@ import {
   composeLandofileRootLayers,
   finishLoadStage,
 } from "@lando/landofile/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
 import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
@@ -21,17 +22,27 @@ import {
 } from "../services/app-plan-redaction.ts";
 import { findDiscoveredLandofilePath, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
+export const APP_CONFIG_SUBCOMMANDS = [
+  "view",
+  "get",
+  "set",
+  "unset",
+  "edit",
+  "validate",
+  "describe",
+] as const;
+
 export interface AppConfigViewOptions {
   readonly source?: "raw" | "merged" | "resolved";
   readonly path?: string;
   readonly key?: string;
-  readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate";
+  readonly subcommand?: (typeof APP_CONFIG_SUBCOMMANDS)[number];
   readonly cwd?: string;
 }
 
 const inspectionValue = (value: unknown) =>
   Schema.decodeUnknownEffect(LandofileSourceValue)(value).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ConfigError({
           message: "Landofile inspection requires serializable source data.",

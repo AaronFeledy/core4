@@ -94,7 +94,9 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
       const summary = asString(event.summary);
       const succeeded = asNumber(event.succeeded) ?? 0;
       const failed = asNumber(event.failed) ?? 0;
-      const label = summary ?? "complete";
+      // An unsummarized failed tree must not read as complete.
+      const outcome = asString(event.outcome);
+      const label = summary ?? (outcome === "failure" ? "failed" : (outcome ?? "complete"));
       return `▶ ${label} (${succeeded} ✓ · ${failed} ✗)${formatDurationSuffix(asNumber(event.durationMs))}`;
     }
     case "paint.banner": {

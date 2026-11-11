@@ -23,6 +23,7 @@ import {
   resolveGlobalStopSelection,
   type resolveGlobalTeardown,
 } from "../../src/operations/global-teardown.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 export const root = AbsolutePath.make("/tmp/global-stop-selection");
@@ -88,7 +89,9 @@ export const harness = (
 ) => {
   const removed: ServiceRuntimeInfo[] = [];
   const removedIds = new Set<string | undefined>();
-  const states = new Map(["mail", "database", "sibling"].map((name) => [name, "running"]));
+  const states = new Map<string, "running" | "exited">(
+    ["mail", "database", "sibling"].map((name) => [name, "running"]),
+  );
   const published: string[][] = [];
   const observed = (): readonly ServiceRuntimeInfo[] =>
     (
@@ -107,7 +110,7 @@ export const harness = (
     ...TestRuntimeProvider,
     id: "lando",
     isAvailable: Effect.succeed(options.online ?? true),
-    getStatus: Effect.succeed({ running: options.online ?? true }),
+    getStatus: Effect.succeed({ state: options.online === false ? ("idle" as const) : ("running" as const) }),
     list: () => (options.online === false ? Effect.die("offline list") : Effect.sync(observed)),
     stop: () => Effect.die("selected stop must remove by exact observed identity"),
     removeObservedService: (observation: ServiceRuntimeInfo) =>
@@ -142,6 +145,7 @@ export const harness = (
       }),
   };
   const layer = Layer.mergeAll(
+    LandoEventService.layer,
     Layer.succeed(
       PathsService,
       makeLandoPaths({

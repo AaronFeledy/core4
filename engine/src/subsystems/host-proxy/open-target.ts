@@ -82,7 +82,7 @@ export const openHostProxyTarget = Effect.fn("HostProxy.openTarget")(function* (
             remediation:
               scheme === "file"
                 ? "Reveal app files by path, not file: URLs."
-                : `Allow this scheme with: lando config set hostProxy.allowedSchemes '["${scheme}"]' --type=json`,
+                : `Allow this scheme with: lando config set hostProxy.allowedSchemes '${JSON.stringify([...allowedSchemes, scheme])}'`,
           }),
         );
       }

@@ -25,7 +25,11 @@ describe("owned Podman machine setup idempotency", () => {
     test(`${platform} leaves a running owned machine untouched`, async () => {
       const calls: string[] = [];
       await Effect.runPromise(
-        ensureMachine(runner("running", calls), { name: "lando", createdByLando: true }),
+        ensureMachine(runner("running", calls), {
+          name: "lando",
+          createdByLando: true,
+          createdAt: "2026-09-22T12:00:00Z",
+        }),
       );
       expect(calls).toEqual(["inspect"]);
     });
@@ -33,7 +37,11 @@ describe("owned Podman machine setup idempotency", () => {
     test(`${platform} syncs trust before starting a stopped owned machine`, async () => {
       const calls: string[] = [];
       await Effect.runPromise(
-        ensureMachine(runner("stopped", calls), { name: "lando", createdByLando: true }),
+        ensureMachine(runner("stopped", calls), {
+          name: "lando",
+          createdByLando: true,
+          createdAt: "2026-09-22T12:00:00Z",
+        }),
       );
       expect(calls).toEqual(["inspect", "syncTrust", "start"]);
     });

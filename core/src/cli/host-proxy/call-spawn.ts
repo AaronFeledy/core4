@@ -7,10 +7,12 @@ import type {
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { filterHostProxyEnv } from "@lando/engine/subsystems/host-proxy/shim";
 import { hostProxyWorkerArgv } from "@lando/engine/subsystems/host-proxy/worker-process";
+import { mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, HostProxyResponse } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Schema, Stream } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { HOST_PROXY_CALL_COMMAND, type HostProxyCall } from "./call-context";
 import type { WorkerInput } from "./worker-config";
 
@@ -40,9 +42,9 @@ const childExecutor = (
   input: typeof WorkerInput.Type,
   prefix: readonly string[] = hostProxyWorkerArgv(hostProxyWorkerEntry()).slice(0, -1),
 ) => {
-  const startup = { ...process.env };
   return Effect.fnUntraced(
     function* (envelope: HostProxyCall, output?: HostProxyRunLandoExecutorInput["output"]) {
+      const startup = (yield* CliInvocation).env;
       const runner = yield* ProcessRunner;
       const stdinStream: AsyncIterable<Uint8Array> = {
         async *[Symbol.asyncIterator]() {
@@ -96,7 +98,11 @@ const childExecutor = (
       return { stdout, stderr, exitCode };
     },
     Effect.provide(BunProcessRunner.layer),
-    Effect.mapError(
+    // Child runner defects can retain private stdin or child output.
+    Effect.catchCause((cause) =>
+      Effect.failCause(mapDefectCause(cause, () => new TypeError("Host-proxy child execution failed."))),
+    ),
+    mapFailures(
       () =>
         new HostProxyTransportUnavailableError({
           message: "Host-proxy child execution failed.",
@@ -149,7 +155,13 @@ export const hostProxyChildOpenExecutor = (
       Effect.flatMap((result) =>
         Schema.decodeUnknownEffect(Schema.fromJsonString(HostProxyResponse))(result.stdout),
       ),
-      Effect.mapError(
+      // Decoder defects must not retain the child's response payload.
+      Effect.catchCause((cause) =>
+        Effect.failCause(
+          mapDefectCause(cause, () => new TypeError("Host-proxy open child returned an invalid response.")),
+        ),
+      ),
+      mapFailures(
         () =>
           new HostProxyTransportUnavailableError({
             message: "Host-proxy open child returned an invalid response.",

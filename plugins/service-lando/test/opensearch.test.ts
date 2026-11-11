@@ -72,7 +72,7 @@ describe("opensearch ServiceType", () => {
       expect(plan.command).toBeUndefined();
       const volumes = plan.mounts.filter((mount) => mount.type === "volume");
       expect(volumes).toHaveLength(1);
-      expect(volumes[0]?.store).toBe("myapp-opensearch-data");
+      expect(volumes[0]?.store).toBe("lando-myapp--search--opensearch-data");
       expect(String(volumes[0]?.target)).toBe("/usr/share/opensearch/data");
       expect(volumes[0]?.readOnly).toBe(false);
       expect(plan.endpoints).toEqual([

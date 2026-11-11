@@ -1,4 +1,5 @@
 import { DateTime, Effect, Exit, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import type { InfoAppError } from "@lando/sdk/app";
 import type {
@@ -6,7 +7,6 @@ import type {
   EventError,
   LandofileLoadExpressionError,
   ProxyError,
-  ShellExecError,
 } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
@@ -18,12 +18,12 @@ import {
   type RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import type { ShellRunner } from "@lando/sdk/services";
+import type { ProcessRunner } from "@lando/sdk/services";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { observedAppPlan } from "@lando/engine/providers/app-placement";
-import { canOpenHost, openUrl } from "@lando/engine/services/host-opener";
+import { type HostProxyOpenerError, canOpenHost, openUrl } from "@lando/engine/services/host-opener";
 import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import { isEnvelopeResultFormat } from "../format-flags";
@@ -88,7 +88,6 @@ export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
     ...(flags.print === undefined ? {} : { print: flags.print }),
     ...(flags.qr === true ? { qr: true } : {}),
     json: isEnvelopeResultFormat(flags.format),
-    ttyPresent: process.stdout.isTTY === true,
   };
 };
 
@@ -96,7 +95,7 @@ export type OpenAppError =
   | ComposeKeyRejectedError
   | OpenTargetUnresolvedError
   | HostProxyOpenUrlSchemeError
-  | ShellExecError
+  | HostProxyOpenerError
   | ProxyError
   | EventError
   | LandofileLoadExpressionError;
@@ -111,7 +110,7 @@ export const openForPlan = Effect.fnUntraced(function* (
   plan: AppPlan,
   options: OpenAppOptions,
   connections: readonly StartedService[],
-): Effect.fn.Return<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> {
+): Effect.fn.Return<OpenAppResult, OpenAppError, ProcessRunner | EventService | RedactionService> {
   const targets = resolveOpenTargets(plan, options, connections);
   if (targets.length === 0) {
     const knownServices = Object.values(plan.services).map((service) => String(service.name));
@@ -175,19 +174,23 @@ export const openForPlan = Effect.fnUntraced(function* (
     return { app: plan.name, targets, launch: "printed" as const };
 
   const platform = options.platform ?? process.platform;
-  const env = options.env ?? process.env;
+  const invocation = yield* CliInvocation;
+  const env = options.env ?? invocation.env;
   if (!canOpenHost({ platform, env })) {
     return { app: plan.name, targets, launch: "headless-degraded" as const, note: HEADLESS_NOTE };
   }
 
   const explicitSelection = options.service !== undefined || options.route !== undefined;
-  if (options.json === true && !(explicitSelection && options.ttyPresent === true)) {
+  if (
+    options.json === true &&
+    !(explicitSelection && (options.ttyPresent ?? invocation.io.stdoutIsTTY) === true)
+  ) {
     return { app: plan.name, targets, launch: "printed" as const };
   }
 
   const events = yield* EventService;
   const redaction = yield* RedactionService;
-  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: env });
   const ref = openAppRef(plan);
   for (const target of targets) {
     const summary = redactor.redactString(target.url);
@@ -203,7 +206,7 @@ type OpenAppServices =
   | AppPlanner
   | LandofileService
   | RuntimeProviderRegistry
-  | ShellRunner
+  | ProcessRunner
   | EventService
   | RedactionService
   | RouterService;

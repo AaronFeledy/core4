@@ -2,9 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { compileBunShellScriptCommands } from "@lando/engine/cache/command-compiler";
+import { compileInspectedAppCommands } from "@lando/engine/cache/command-compiler";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { fingerprintsFromInspection } from "@lando/engine/cache/command-script-freshness";
+import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
@@ -20,17 +22,22 @@ const withHelpApp = async (
     await mkdir(join(root, ".lando/scripts"), { recursive: true });
     await writeFile(join(root, ".lando.yml"), "name: [invalid\n");
     if (state.cached) await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
-    const scripts = await Effect.runPromise(discoverBunShellScripts({ appRoot: root }));
+    await writeFile(join(root, ".lando/scripts/unrelated.bun.sh"), "invalid metadata");
+    const scripts = await Effect.runPromise(inspectBunShellScripts({ appRoot: root }));
     await Effect.runPromise(
       writeAppCommandCacheStrict({
         cwd: root,
         cacheRoot,
         landofile: { name: "machine-help" },
-        entries: compileBunShellScriptCommands(scripts),
+        entries: compileInspectedAppCommands({
+          landofile: { name: "machine-help" },
+          inspection: scripts,
+          redact: createRedactor("secrets").redactString,
+        }),
+        sourceScripts: fingerprintsFromInspection(scripts),
       }),
     );
     if (!state.cached) await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
-    await writeFile(join(root, ".lando/scripts/unrelated.bun.sh"), "invalid metadata");
     await run(root, cacheRoot);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -57,17 +64,80 @@ const runHelp = async (root: string, cacheRoot: string, argv: readonly string[])
   return { code, stdout, stderr };
 };
 
+test("built-in machine help carries declared flags and positional arguments (#2053)", async () => {
+  await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {
+    const result = await runHelp(root, cacheRoot, ["help", "exec"]);
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).result.target.input).toEqual({
+      flags: [
+        {
+          name: "service",
+          type: "string",
+          description: "Service to run the command in (default: the primary service).",
+          required: false,
+          multiple: false,
+          char: "s",
+        },
+        {
+          name: "user",
+          type: "string",
+          description: "User to run the command as inside the service.",
+          required: false,
+          multiple: false,
+          char: "u",
+        },
+        {
+          name: "cwd",
+          type: "string",
+          description: "Working directory inside the service.",
+          required: false,
+          multiple: false,
+        },
+        {
+          name: "interactive",
+          type: "boolean",
+          description: "Attach your terminal keyboard to the command. Piped stdin is always attached.",
+          required: false,
+          multiple: false,
+          default: false,
+          char: "i",
+        },
+      ],
+      args: [
+        {
+          name: "command",
+          description: "Command argv after `--`. An optional service name may come first.",
+          required: false,
+          multiple: true,
+        },
+      ],
+    });
+  });
+});
+
+test("built-in config machine help carries positional choices", async () => {
+  await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {
+    const result = await runHelp(root, cacheRoot, ["config", "--help"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).result.target.input.args[0]).toMatchObject({
+      name: "subcommand",
+      options: ["view", "get", "set", "unset", "edit", "validate", "describe", "telemetry", "translate"],
+    });
+  });
+});
+
 test("explicit machine help rejects an unknown target instead of returning a root catalog", async () => {
   // Given
   await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {
     // When
     const result = await runHelp(root, cacheRoot, ["help", "app:absent"]);
     // Then
-    expect(result.code, result.stderr).toBe(1);
+    expect(result.code, result.stderr).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
-      command: "app:absent",
+      command: "cli:unknown-command",
       ok: false,
-      error: { _tag: "ToolingCommandUnavailableError", reason: "unknown-command" },
+      error: { _tag: "UnknownCommandError", commandToken: "app:absent" },
     });
   });
 });
@@ -86,6 +156,7 @@ test.each([true, false])("machine help returns the selected declaration when cac
         target: {
           canonicalId: "app:probe",
           source: "tooling",
+          runs: { kind: "script", path: ".lando/scripts/probe.bun.sh" },
           input: {
             flags: [{ name: "mode", choices: ["dev", "prod"], default: "dev" }],
             revision: expect.any(String),

@@ -1,8 +1,7 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { executionSiteAt } from "@lando/sdk/landofile";
+import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import {
   type LandofileLayer,
-  LandofileLoadIssueRule,
   type ValidationFix,
   type ValidationIssuePath,
   formatValidationIssuePath,
@@ -213,7 +212,7 @@ export const unsupportedSecretReferenceError = (
       {
         ...diagnostic,
         path: input.source.path,
-        rule: LandofileLoadIssueRule.unsupportedSecretReference,
+        rule: "unsupported-secret-reference",
         source: input.source,
       },
     ],

@@ -18,7 +18,9 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
   "poweroff handles %s scratch resources without hiding failures",
   async (mode) => {
     // Given: a labeled scratch container and independently controlled registry state.
-    const root = await mkdtemp(join(tmpdir(), "poweroff-orphan-"));
+    const dataRoot = await mkdtemp(join(tmpdir(), "poweroff-orphan-data-"));
+    const cacheRoot = await mkdtemp(join(tmpdir(), "poweroff-orphan-cache-"));
+    const root = dataRoot;
     const teardown = await globalTeardownHarness(root);
     const id = AppId.make("scratch-orphan-abc123");
     const calls: string[] = [];
@@ -118,8 +120,8 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
       // When: poweroff uses the real GC scanner against the discovered scratch app.
       const result = await Effect.runPromise(
         poweroff({
-          userDataRoot: root,
-          userCacheRoot: root,
+          userDataRoot: dataRoot,
+          userCacheRoot: cacheRoot,
           discoverContainers: async () => [
             { appId: id, appName: id, appRoot: root, providerId: "lando", services: ["web"], scratch: true },
           ],
@@ -168,7 +170,8 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
           break;
       }
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await rm(dataRoot, { recursive: true, force: true });
+      await rm(cacheRoot, { recursive: true, force: true });
     }
   },
 );

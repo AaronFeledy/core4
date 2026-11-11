@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -12,15 +12,6 @@ import {
   podmanServiceLogPath,
 } from "../src/podman-service-runner.ts";
 
-const waitForLog = async (path: string, expected: string): Promise<string> => {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const content = await readFile(path, "utf8").catch(() => "");
-    if (content.includes(expected)) return content;
-    await Bun.sleep(25);
-  }
-  return readFile(path, "utf8");
-};
-
 describe("PodmanServiceRunner", () => {
   test("buildPodmanServiceArgs emits canonical podman system service argv with private-root flags and unix socket bind", () => {
     const spec = buildPodmanServiceArgs({
@@ -29,7 +20,7 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: false,
+      privateRuntimeDir: "/private/selected-runtime",
     });
 
     expect(spec.command).toBe("/data/runtime/bin/podman");
@@ -38,6 +29,7 @@ describe("PodmanServiceRunner", () => {
       CONTAINERS_REGISTRIES_CONF: "/data/runtime/config/registries.conf",
       XDG_CONFIG_HOME: "/data/runtime/config",
       DISABLE_HC_SYSTEMD: "true",
+      XDG_RUNTIME_DIR: "/private/selected-runtime",
     });
     expect(spec.env?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
     expect(spec.cwd).toBe("/data/runtime/run");
@@ -65,7 +57,7 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: true,
+      privateRuntimeDir: undefined,
     });
 
     expect(spec.env?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
@@ -81,7 +73,7 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: false,
+      privateRuntimeDir: undefined,
     });
     const canonical = [spec.command, ...spec.args];
     const legacy = [
@@ -127,7 +119,7 @@ describe("PodmanServiceRunner", () => {
       runRoot: "/data/runtime/run",
       configDir: "/data/runtime/config",
       socketPath: "/data/runtime/run/podman.sock",
-      useSystemdRunShim: false,
+      privateRuntimeDir: undefined,
     });
 
     expect(spec.args).toContain("--time=0");
@@ -136,14 +128,19 @@ describe("PodmanServiceRunner", () => {
 
   test("system runner launches Podman with managed config and runtime bin prepended to PATH", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
+    const previousHost = process.env.CONTAINER_HOST;
+    process.env.CONTAINER_HOST = "unix:///hostile.sock";
     try {
       let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
       let launchedCwd: string | undefined;
-      const runner = makeSystemPodmanServiceRunner((_argv, options) => {
-        launchedEnv = options.env;
-        launchedCwd = options.cwd;
-        return { pid: 4321 };
-      });
+      const runner = makeSystemPodmanServiceRunner(
+        (_argv, options) => {
+          launchedEnv = options.env;
+          launchedCwd = options.cwd;
+          return { pid: 4321 };
+        },
+        (_runtimeDir, resolved) => Effect.succeed(resolved.privateRuntimeDir ?? "/wrong/runtime"),
+      );
       const runRoot = join(dir, "run");
       const spec = buildPodmanServiceArgs({
         podmanBin: "/data/runtime/bin/podman",
@@ -151,7 +148,7 @@ describe("PodmanServiceRunner", () => {
         runRoot,
         configDir: "/data/runtime/config",
         socketPath: join(dir, "podman.sock"),
-        useSystemdRunShim: false,
+        privateRuntimeDir: "/private/test-runtime",
       });
 
       const pid = await Effect.runPromise(runner.launch(spec));
@@ -160,12 +157,16 @@ describe("PodmanServiceRunner", () => {
       expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
       expect(launchedEnv?.CONTAINERS_REGISTRIES_CONF).toBe("/data/runtime/config/registries.conf");
       expect(launchedEnv?.XDG_CONFIG_HOME).toBe("/data/runtime/config");
+      expect(launchedEnv?.XDG_RUNTIME_DIR).toBe("/private/test-runtime");
+      expect(launchedEnv?.CONTAINER_HOST).toBeUndefined();
       expect(launchedEnv?.PATH?.startsWith("/data/runtime/bin")).toBe(true);
       expect(launchedCwd).toBe(runRoot);
       if (process.env.PATH !== undefined && process.env.PATH.length > 0) {
         expect(launchedEnv?.PATH).toContain(process.env.PATH);
       }
     } finally {
+      if (previousHost === undefined) Reflect.deleteProperty(process.env, "CONTAINER_HOST");
+      else process.env.CONTAINER_HOST = previousHost;
       await rm(dir, { recursive: true, force: true });
     }
   });
@@ -182,10 +183,11 @@ describe("PodmanServiceRunner", () => {
       };
 
       // When: the service is launched by the system runner.
-      await Effect.runPromise(runner.launch(spec));
+      const pid = await Effect.runPromise(runner.launch(spec));
+      await Effect.runPromise(runner.waitForExit?.(pid) ?? Effect.die("exit observer missing"));
 
       // Then: stderr lands in the fresh service log next to the runtime socket.
-      const content = await waitForLog(podmanServiceLogPath(spec.socketPath), "boom");
+      const content = await readFile(podmanServiceLogPath(spec.socketPath), "utf8");
       expect(content).toContain("boom");
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -207,13 +209,90 @@ describe("PodmanServiceRunner", () => {
       };
 
       // When: a new service launch starts.
-      await Effect.runPromise(runner.launch(spec));
+      const pid = await Effect.runPromise(runner.launch(spec));
+      await Effect.runPromise(runner.waitForExit?.(pid) ?? Effect.die("exit observer missing"));
 
       // Then: the log contains only the new launch evidence.
-      const content = await waitForLog(logPath, "fresh");
+      const content = await readFile(logPath, "utf8");
       expect(content).toContain("fresh");
       expect(content).not.toContain("old failure");
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a delegated launch wraps the exact service argv and keeps the launched PID through the exec chain", async () => {
+    // Given: a stand-in launcher that, like `systemd-run --scope`, records its environment and
+    // execs the command after `--` in the same process.
+    const dir = await mkdtemp(join(tmpdir(), "lando-podman-scope-launch-"));
+    const launcher = join(dir, "systemd-run");
+    const launcherEnv = join(dir, "launcher.env");
+    await writeFile(
+      launcher,
+      `#!/bin/sh\nenv > '${launcherEnv}'\nwhile [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"\n`,
+    );
+    await chmod(launcher, 0o755);
+    const runRoot = join(dir, "run");
+    const ready = join(dir, "ready.fifo");
+    await Bun.$`mkfifo ${ready}`;
+    const spec = {
+      command: "/bin/sh",
+      args: ["-c", 'echo ready > "$1"; while :; do sleep 1; done', "sh", ready, "--runroot", runRoot],
+      env: { XDG_RUNTIME_DIR: "/private/scope-runtime", DISABLE_HC_SYSTEMD: "true" },
+      socketPath: join(dir, "podman.sock"),
+    };
+    let launchedArgv: ReadonlyArray<string> = [];
+    const runner = makeSystemPodmanServiceRunner(
+      (argv, options) => {
+        launchedArgv = argv;
+        return Bun.spawn([...argv], options);
+      },
+      (_runtimeDir, resolved) => Effect.succeed(resolved.privateRuntimeDir ?? "/wrong"),
+      () => Effect.succeed(255),
+    );
+    const previousBus = process.env.DBUS_SESSION_BUS_ADDRESS;
+    process.env.DBUS_SESSION_BUS_ADDRESS = "unix:path=/run/user/4242/bus";
+    try {
+      // When: the launcher hands over to the service, which then reports ready.
+      const pid = await Effect.runPromise(
+        runner.launch(spec, { systemdRun: launcher, userRuntimeDir: "/run/user/4242" }),
+      );
+      expect((await readFile(ready, "utf8")).trim()).toBe("ready");
+
+      // Then: the launcher is the outer argv, `env` restores the private dir, then the exact argv.
+      expect(launchedArgv).toEqual([
+        launcher,
+        "--user",
+        "--scope",
+        "--quiet",
+        "--collect",
+        "-p",
+        "Delegate=yes",
+        "--expand-environment=no",
+        "--description=Lando managed Podman runtime",
+        "--",
+        "/usr/bin/env",
+        "XDG_RUNTIME_DIR=/private/scope-runtime",
+        spec.command,
+        ...spec.args,
+      ]);
+      expect(await Effect.runPromise(runner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false))).toBe(
+        true,
+      );
+      const environ = (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0");
+      expect(environ).toContain("XDG_RUNTIME_DIR=/private/scope-runtime");
+      const outer = await readFile(launcherEnv, "utf8");
+      expect(outer).toContain("XDG_RUNTIME_DIR=/run/user/4242");
+      expect(outer).not.toContain("DBUS_SESSION_BUS_ADDRESS");
+
+      // And the exit observer still belongs to the launched PID.
+      await Effect.runPromise(runner.terminate(pid));
+      expect(
+        await Effect.runPromise(runner.waitForExit?.(pid) ?? Effect.die("exit observer missing")),
+      ).not.toBe(0);
+    } finally {
+      if (previousBus === undefined) Reflect.deleteProperty(process.env, "DBUS_SESSION_BUS_ADDRESS");
+      else process.env.DBUS_SESSION_BUS_ADDRESS = previousBus;
       await rm(dir, { recursive: true, force: true });
     }
   });

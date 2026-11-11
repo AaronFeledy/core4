@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { override, reset } from "@lando/sdk/landofile";
-import { LandofileLoadIssueRule } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
@@ -40,7 +39,7 @@ test.each([
   expect(result.failure.issues).toMatchObject([
     {
       path,
-      rule: LandofileLoadIssueRule.unsupportedExpression,
+      rule: "unsupported-expression",
       source: { file: source.sourcePath, layer: "base", path },
     },
   ]);
@@ -63,7 +62,7 @@ test.each([
     issues: [
       {
         path,
-        rule: LandofileLoadIssueRule.unsupportedSecretReference,
+        rule: "unsupported-secret-reference",
         suggestion: expect.stringContaining("services.app.environment.TOKEN"),
         source: { file: source.sourcePath, layer: "base", path },
       },
@@ -85,9 +84,7 @@ test.each([
     expect(failure).toMatchObject({
       _tag: "LandofileValidationError",
       remediation: expect.stringContaining(`services.web.environment.${name}`),
-      issues: [
-        { path: ["services", "web", "command"], rule: LandofileLoadIssueRule.unsupportedSecretReference },
-      ],
+      issues: [{ path: ["services", "web", "command"], rule: "unsupported-secret-reference" }],
     });
   },
 );
@@ -131,7 +128,7 @@ test.each([
     // Then
     expect(failure).toMatchObject({
       _tag: "LandofileValidationError",
-      issues: [{ path, rule: LandofileLoadIssueRule.unsupportedSecretReference }],
+      issues: [{ path, rule: "unsupported-secret-reference" }],
     });
     if (!(failure instanceof LandofileValidationError)) throw failure;
     expect(failure.issues[0]?.suggestion).toStartWith(suggestion);

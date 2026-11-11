@@ -3,7 +3,7 @@ id: init-from-remote
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 60000
-tags: [beta, docs, cli, init, recipes]
+tags: [docs, cli, init, recipes]
 ---
 
 # Init from a remote recipe
@@ -42,9 +42,10 @@ lando init --source=tarball --url=<tarball-url> --checksum=<sha256>
 ```
 
 Downloads a tar/tar.gz archive, verifies it against the 64-hex `--checksum`,
-then reads `recipe.yml` from the extracted root. `--checksum` is optional;
-without it Lando warns with the computed digest and, when interactive,
-prompts once before continuing. Add `--path` when `recipe.yml` lives in a
+then reads `recipe.yml` from the extracted root. A `--checksum` that matches
+an archive already in the source store skips the download. `--checksum` is
+optional; without it Lando warns with the computed digest and, when
+interactive, prompts once before continuing. Add `--path` when `recipe.yml` lives in a
 subdirectory of the archive:
 
 ```sh
@@ -57,10 +58,14 @@ lando init --source=tarball --url=<tarball-url> --path=packages/my-recipe
 lando init --source=npm --package=@lando/recipe-foo
 ```
 
-Resolves the package's metadata, downloads the published tarball, and reads
-`recipe.yml` from the extracted `package/` root. An `@version` suffix pins an
-exact published version or dist-tag; without it Lando uses the registry
-latest dist-tag:
+Resolves the package's metadata, downloads the published tarball, checks it
+against the first hash in the registry's `dist.integrity` (falling back to the
+older sha1 `shasum` when that hash is missing, malformed, or uses an algorithm
+Lando doesn't support), and reads `recipe.yml` from the extracted `package/`
+root. A package the registry publishes neither usable value for is refused
+with `RecipeSourceError` kind `integrity-missing`; a tarball that doesn't
+match fails with kind `integrity-mismatch`. An `@version` suffix pins an exact published version or dist-tag;
+without it Lando uses the registry latest dist-tag:
 
 ```sh
 lando init --source=npm --package=@lando/recipe-foo@1.2.3
@@ -99,9 +104,9 @@ private or test registries:
 lando init --source=registry --id=<recipe-id> --registry-url=<url>
 ```
 
-See [remote recipe sources](../recipes/remote-sources.mdx) for the git cache
-location, ref handling, and the `RecipeSourceError` kinds raised before a
-clone.
+See [remote recipe sources](../recipes/remote-sources.mdx) for the source
+store location, ref handling, and the `RecipeSourceError` kinds raised before
+a clone.
 
 <Guide>
   <Scenario id="missing-url-fails-fast" render>

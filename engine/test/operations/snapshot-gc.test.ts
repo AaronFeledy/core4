@@ -45,7 +45,7 @@ test("reports providers unavailable when registry construction cannot reach thei
 test("reports a stopped native provider as unavailable without invoking data-plane or startup", async () => {
   const provider = {
     ...TestRuntimeProvider,
-    getStatus: Effect.succeed({ running: false }),
+    getStatus: Effect.succeed({ state: "idle" as const }),
     ensureReady: Effect.die("must not start"),
   };
   const mover = { ...emptySnapshots, findOrphanedSnapshots: Effect.die("must not inspect stopped runtime") };

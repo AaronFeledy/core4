@@ -11,6 +11,7 @@ import { getOrigins } from "../src/pipeline/origins.ts";
 import type { AuthoredOrigin } from "../src/pipeline/prepare.ts";
 import { getSourceDocuments } from "../src/pipeline/source-table.ts";
 import { composeLandofileRootLayers } from "../src/service.ts";
+import { expectedGoldenOutcome, readGoldenCorpus } from "./pipeline/golden-corpus-expectation.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 type Path = readonly (string | number)[];
@@ -156,19 +157,8 @@ const fixtureFiles = ["docs/guides/**/fixtures/**", "recipes/*/.scaffold/**"]
   .sort();
 const fixtureRoots = [...new Set(fixtureFiles.map(dirname))];
 const outcomes: { fixture: string; leaves?: number; reason?: string }[] = [];
-const acquisitionExclusions = new Map([
-  ["docs/guides/config-lint/fixtures/two-broken-includes", "LandofileLoadError"],
-  ["docs/guides/compose-service-block/fixtures/compose-service-block-rejected", "ComposeKeyRejectedError"],
-  ["docs/guides/networks/fixtures/networks-pinned-address", "ComposeKeyRejectedError"],
-  ["docs/guides/includes-and-lockfile/fixtures/user-profile-demo", "LandofileIncludeError"],
-  ["docs/guides/migrating-recipes/fixtures/programmatic-app", "LandofileFormConflictError"],
-  ["docs/guides/timezone/fixtures/timezone-rejected-interpolation", "LandofileValidationError"],
-  ["docs/guides/expressions/fixtures/expressions-unescaped-shell", "LandofileValidationError"],
-  ["docs/guides/secret-stores/fixtures/secret-stores-build-args", "LandofileValidationError"],
-  ["docs/guides/secret-stores/fixtures/secret-stores-command-misuse", "LandofileValidationError"],
-  ["docs/guides/your-landofile/fixtures/flow-mapping-rejected", "LandofileParseError"],
-  ["docs/guides/your-landofile/fixtures/dual-form-conflict", "LandofileFormConflictError"],
-]);
+// A guide fixture that cannot compose offline must fail with the load error the golden corpus records.
+const golden = await readGoldenCorpus();
 
 describe("composed Landofile provenance invariant", () => {
   for (const fixture of fixtureRoots) {
@@ -179,7 +169,9 @@ describe("composed Landofile provenance invariant", () => {
       const result = await Effect.runPromise(composeLandofileRootLayers(root, inputs).pipe(Effect.result));
       // Then: every composed scalar has exact, retained, value-faithful provenance.
       if (Result.isFailure(result)) {
-        expect(acquisitionExclusions.get(fixture), fixture).toBe(result.failure._tag);
+        expect(expectedGoldenOutcome(golden, fixture), `${fixture}: ${result.failure.message}`).toEqual({
+          invalid: { status: "invalid", tag: result.failure._tag },
+        });
         outcomes.push({ fixture, reason: `${result.failure._tag}: ${result.failure.message}` });
         return;
       }
@@ -198,7 +190,6 @@ describe("composed Landofile provenance invariant", () => {
     expect(outcomes).toHaveLength(fixtureRoots.length);
     expect(checked.length).toBeGreaterThanOrEqual(210);
     expect(checked.every(({ leaves }) => leaves !== undefined && leaves > 0)).toBe(true);
-    expect(excluded.map(({ fixture }) => fixture).sort()).toEqual([...acquisitionExclusions.keys()].sort());
   });
 
   test("tooling includes across fragment, canonical and local layers retain every scalar origin (#1625)", async () => {

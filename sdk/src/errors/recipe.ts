@@ -65,6 +65,7 @@ export class RecipeSourceError extends Schema.TaggedError<RecipeSourceError>()("
     "package-not-found",
     "version-not-found",
     "integrity-mismatch",
+    "integrity-missing",
     "missing-id",
     "recipe-not-found",
     "registry-invalid",

@@ -84,6 +84,8 @@ export interface ServiceTypeInput {
   readonly service: ServiceConfig;
   readonly appRoot: string;
   readonly appName?: string;
+  /** Derive persisted defaults (databases, passwords, buckets) from this name so they survive a rename. Defaults to appName. */
+  readonly dataName?: string;
   readonly provider?: ProviderId;
   readonly primary?: boolean;
   readonly metadata: typeof PlanMetadata.Encoded;
@@ -181,6 +183,8 @@ export interface RegisteredCommand {
   readonly summary: string;
   readonly hidden: boolean;
   readonly input?: import("../schema/tooling-input.ts").ToolingInputDeclaration;
+  /** Bounded summary of what a tooling command runs, when its index entry records one. */
+  readonly runs?: import("../schema/tooling-run-summary.ts").ToolingRunSummary;
 }
 
 export class CommandRegistry extends Context.Service<

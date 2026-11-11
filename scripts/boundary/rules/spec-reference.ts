@@ -1,6 +1,6 @@
 import { dirname, join, normalize } from "node:path/posix";
 
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 import { resolveConstString } from "../literals.ts";
 import type { BoundaryRule } from "../types.ts";

@@ -57,6 +57,26 @@ const issues = (schema: Schema.ConstraintDecoder<unknown, never>, input: unknown
     : { diagnostics: [], missing: false };
 };
 
+test.each([
+  { tooling: { task: { cmd: "echo ok", env: ["FOO"] } } },
+  { tooling: { task: { cmd: "echo ok", env: ["__proto__=x"] } } },
+  { tooling: { task: { cmd: "echo ok", env: { FOO: null } } } },
+  { tooling: { task: { cmd: "echo ok", deprecated: { since: "4.2.0", removeIn: "4.1.0", note: "Old" } } } },
+])("keeps semantic replay parity for the supplemental corpus: %j", (value) => {
+  const effective = issues(LandofileShape, value).diagnostics;
+  expect(effective).not.toEqual([]);
+  expect(issues(LandofileAuthoringFragmentNative, value).diagnostics).toEqual(effective);
+});
+
+test.each([{ reference: "secret" }, { _tag: "{{ env.DESCRIPTOR_TYPE }}", reference: "secret" }])(
+  "defers a missing or expression-bearing discriminator in the corpus: %j",
+  (descriptor) => {
+    const value = { services: { web: { environment: { FOO: descriptor } } } };
+    expect(issues(LandofileAuthoringFragmentNative, value).diagnostics).toEqual([]);
+    expect(issues(LandofileShape, value).diagnostics).not.toEqual([]);
+  },
+);
+
 test("generated Landofile defects have plain messages and unchanged-scope parity", () => {
   // Given one-site mutations in valid witnesses, not a Cartesian product.
   expect(corpus.cases.length).toBeGreaterThan(3000);
@@ -100,22 +120,23 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
         failures.push({ path: sample.path, issue });
       }
     }
-    // Exceptions: partial fragments omit required keys (including object-shaped
-    // wrong values); dependsOn normalizes map/list spellings at an encoding boundary.
-    // Type-side transform constraints do not run on authored inputs. No expressions are
-    // generated here; their intentional asymmetry is covered by SDK slot tests.
     if (effective.length === 0 && fragment.length === 0) {
       accepted++;
       continue;
     }
-    const exception =
-      sample.partial || effectiveResult.missing
+    const differs = JSON.stringify(effective) !== JSON.stringify(fragment);
+    const recordAlternative =
+      sample.path[0] === "services" &&
+      sample.path[2] === "dependsOn" &&
+      effective.some((issue) => issue.path.length === 3 && issue.kind === "type") &&
+      JSON.stringify(effective.filter((issue) => issue.path.length !== 3)) === JSON.stringify(fragment);
+    const exception = !differs
+      ? undefined
+      : effectiveResult.missing || sample.partial
         ? "partial missing keys"
-        : sample.path[0] === "services" && sample.path[2] === "dependsOn"
-          ? "dependsOn input transform"
-          : sample.transformed === true && (effective.length === 0 || fragment.length === 0)
-            ? "transform-only constraint"
-            : undefined;
+        : recordAlternative
+          ? "dependsOn unattempted record alternative"
+          : undefined;
     if (exception !== undefined) exceptions.set(exception, (exceptions.get(exception) ?? 0) + 1);
     else {
       compared++;
@@ -138,9 +159,8 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
   expect(tagged).toBeGreaterThan(100);
   expect(suggested).toBeGreaterThan(0);
   expect([...exceptions.keys()].sort()).toEqual([
-    "dependsOn input transform",
+    "dependsOn unattempted record alternative",
     "partial missing keys",
-    "transform-only constraint",
   ]);
   expect(failures.slice(0, 12)).toEqual([]);
 });

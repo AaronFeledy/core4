@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Stream } from "effect";
@@ -102,10 +102,30 @@ export interface FakeProcessRunner {
   readonly calls: () => ReadonlyArray<RunCall>;
 }
 
+export const FAKE_ROOT_PEM = "-----BEGIN CERTIFICATE-----\nfake mkcert root\n-----END CERTIFICATE-----\n";
+
+/** Like mkcert, any run that needs a root creates one in CAROOT when it has none. */
+const createRootWhenMissing = async (caRoot: string): Promise<void> => {
+  const rootPath = join(caRoot, "rootCA.pem");
+  const exists = await access(rootPath).then(
+    () => true,
+    () => false,
+  );
+  if (exists) return;
+  await mkdir(caRoot, { recursive: true });
+  await writeFile(rootPath, FAKE_ROOT_PEM);
+};
+
 export const makeFakeMkcertRunner = (options: {
   readonly caRoot: string;
   readonly installExitCode?: number;
   readonly installStderr?: string;
+  /** Exit code of issuing runs; they write nothing when it is not 0. */
+  readonly issueExitCode?: number;
+  /** PEM material written for each issuance; placeholder text otherwise. */
+  readonly issue?: { readonly certificate: string; readonly privateKey: string };
+  /** Runs after each issuance writes its files, before mkcert reports success. */
+  readonly afterIssue?: () => Promise<void>;
 }): FakeProcessRunner => {
   const calls: RunCall[] = [];
   const run = async (input: ProcessSpawnOptions): Promise<ProcessResult> => {
@@ -116,6 +136,7 @@ export const makeFakeMkcertRunner = (options: {
     });
     if (input.args[0] === "-CAROOT") return okResult(`${options.caRoot}\n`);
     if (input.args[0] === "-install") {
+      await createRootWhenMissing(input.env?.CAROOT ?? options.caRoot);
       const exitCode = options.installExitCode ?? 0;
       return exitCode === 0
         ? okResult("The local CA is now installed in the system trust store!\n")
@@ -124,10 +145,20 @@ export const makeFakeMkcertRunner = (options: {
     const certFile = input.args[input.args.indexOf("-cert-file") + 1];
     const keyFile = input.args[input.args.indexOf("-key-file") + 1];
     if (certFile === undefined || keyFile === undefined) {
-      return { exitCode: 2, stdout: "", stderr: `unexpected mkcert invocation: ${input.args.join(" ")}` };
+      return {
+        exitCode: 2,
+        stdout: "",
+        stderr: `unexpected mkcert invocation: ${input.args.join(" ")}`,
+      };
     }
-    await writeFile(certFile, "-----BEGIN CERTIFICATE-----\n");
-    await writeFile(keyFile, "-----BEGIN PRIVATE KEY-----\n");
+    const exitCode = options.issueExitCode ?? 0;
+    if (exitCode !== 0) {
+      return { exitCode, stdout: "", stderr: "mkcert failed to issue" };
+    }
+    await createRootWhenMissing(input.env?.CAROOT ?? options.caRoot);
+    await writeFile(certFile, options.issue?.certificate ?? "-----BEGIN CERTIFICATE-----\n");
+    await writeFile(keyFile, options.issue?.privateKey ?? "-----BEGIN PRIVATE KEY-----\n");
+    await options.afterIssue?.();
     return okResult("");
   };
 
@@ -162,8 +193,8 @@ export const makeFakePrivilege = (result: ProcessResult = okResult()): FakePrivi
 };
 
 export interface CaHarness {
+  readonly root: string;
   readonly binDir: string;
-  readonly certsDir: string;
   readonly toolDownloadsDir: string;
   readonly caRoot: string;
   readonly cleanup: () => Promise<void>;
@@ -172,8 +203,8 @@ export interface CaHarness {
 export const makeCaHarness = async (): Promise<CaHarness> => {
   const dirs = await makeTempDirs("lando-mkcert-ca-");
   return {
+    root: dirs.root,
     binDir: dirs.binDir,
-    certsDir: join(dirs.root, "certs"),
     toolDownloadsDir: dirs.toolDownloadsDir,
     caRoot: join(dirs.root, "caroot"),
     cleanup: dirs.cleanup,
@@ -191,10 +222,10 @@ export const makeCa = (
   return {
     ca: makeMkcertCertificateAuthority({
       binDir: harness.binDir,
-      certsDir: harness.certsDir,
       toolDownloadsDir: harness.toolDownloadsDir,
       downloader: downloaderService,
       processRunner: runner.service,
+      privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
       platform: "linux",
       arch: overrides.arch ?? "x64",
     }),

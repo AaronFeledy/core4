@@ -61,6 +61,7 @@ describe("LandoConfigService.layer", () => {
       expect(result.failure.issues).toEqual([
         {
           path: ["router", "httpPort"],
+          kind: "value",
           message: expect.any(String),
           source: { layer: "config-file", file: path, path: ["router", "httpPort"] },
           suggestion:

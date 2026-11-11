@@ -4,6 +4,7 @@ import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Duration, Effect, Result, Schema } from "effect";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
+import { binarySwapFileSystem, swapBinary } from "./binary-swap.ts";
 import { CoreReplacementPreconditionSchema, guardCoreReplacement } from "./compatibility.ts";
 import { UpdatePermissionError } from "./errors.ts";
 import { makeUpdateHandoff } from "./handoff.ts";
@@ -23,11 +24,12 @@ const RequestSchema = WindowsReplacementSchema.pipe(
   }),
 );
 
-const swapError = () =>
+const swapError = (cause?: unknown) =>
   new UpdatePermissionError({
     message: "Windows core replacement aborted because the binary could not be moved.",
     remediation:
       "Close other Lando processes and re-run lando update; completed plugin updates remain active.",
+    cause,
   });
 
 export const runWindowsReplacement = Effect.fn("Update.runWindowsReplacement")(function* (
@@ -44,33 +46,40 @@ export const runWindowsReplacement = Effect.fn("Update.runWindowsReplacement")(f
           platform: "win32",
           destination: input.executablePath,
         });
-        yield* Effect.tryPromise({
-          try: () => move(input.executablePath, input.backupPath),
-          catch: swapError,
-        });
-        yield* Effect.gen(function* () {
-          yield* Effect.tryPromise({
-            try: () => move(input.stagedBinaryPath, input.executablePath),
-            catch: swapError,
-          });
-          const bytes = yield* Effect.tryPromise({
-            try: () => Bun.file(input.executablePath).bytes(),
-            catch: swapError,
-          });
-          yield* refreshInstallRecord({
-            recordFile: input.installRecordFile,
-            record: owned.record,
-            sha256: Bun.SHA256.hash(bytes, "hex"),
-            size: bytes.byteLength,
-            releaseVersion: input.attemptedVersion,
-          });
-        }).pipe(
-          Effect.tapError(() =>
-            Effect.tryPromise({
-              try: () => move(input.backupPath, input.executablePath),
+        yield* swapBinary(
+          input,
+          Effect.gen(function* () {
+            const bytes = yield* Effect.tryPromise({
+              try: () => Bun.file(input.executablePath).bytes(),
               catch: swapError,
-            }),
-          ),
+            });
+            yield* refreshInstallRecord({
+              recordFile: input.installRecordFile,
+              record: owned.record,
+              sha256: Bun.SHA256.hash(bytes, "hex"),
+              size: bytes.byteLength,
+              releaseVersion: input.attemptedVersion,
+            });
+          }),
+          {
+            fs: { ...binarySwapFileSystem, rename: move },
+            // The deferred receipt keeps only message and remediation, so name the failed path here.
+            error: (message, cause) =>
+              new UpdatePermissionError({
+                message: `Windows core replacement aborted: ${message}`,
+                path: input.executablePath,
+                remediation:
+                  "Close other Lando processes and re-run lando update; completed plugin updates remain active.",
+                cause,
+              }),
+            rollbackError: (error, cause) =>
+              new UpdatePermissionError({
+                message: `Windows core replacement failed (${error.message}) and its backup could not be restored.`,
+                path: input.executablePath,
+                remediation: `Close other Lando processes and restore ${input.backupPath} to ${input.executablePath}; completed plugin updates remain active.`,
+                cause: { failure: error, rollbackFailure: cause },
+              }),
+          },
         );
       }),
     ),

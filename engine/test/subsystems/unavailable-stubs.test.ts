@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { CaError, HealthcheckError, ProxyApplyError } from "@lando/sdk/errors";
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { CertificateAuthority, HealthcheckRunner, RouterService } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import * as Certs from "../../src/subsystems/certs/api.ts";
@@ -10,10 +10,9 @@ import { nonePlan } from "./healthcheck/support.ts";
 
 test.each(["first-app", "second-app"])("unavailable route application retains app id %s", async (id) => {
   const result = await Effect.runPromise(
-    Effect.flatMap(RouterService, (router) => router.applyRoutes([], AppId.make(id))).pipe(
-      Effect.provide(Router.layerUnavailable),
-      Effect.result,
-    ),
+    Effect.flatMap(RouterService, (router) =>
+      router.applyRoutes([], { id: AppId.make(id), ownerKey: appIdentityKey("owner", `/tmp/${id}`) }),
+    ).pipe(Effect.provide(Router.layerUnavailable), Effect.result),
   );
   expect(result).toEqual(
     Result.fail(
@@ -22,7 +21,8 @@ test.each(["first-app", "second-app"])("unavailable route application retains ap
           "RouterService is not selected. Install and select the bundled Traefik router plugin, then run `lando setup` to provision the global app.",
         proxyId: "unavailable",
         app: id,
-        remediation: "Install and select a RouterService plugin, then retry route application.",
+        remediation:
+          "Install a RouterService plugin and set `defaultRouterService` to an installed router id.",
       }),
     ),
   );
@@ -46,25 +46,25 @@ test.each(["web", "database"])("unavailable healthcheck retains service %s", asy
   );
 });
 
-test("unavailable certificates preserve setup and issuance errors", async () => {
+test("unavailable certificates preserve setup, root, and issuance errors", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const ca = yield* CertificateAuthority;
       return {
         id: ca.id,
         setup: yield* ca.setup({ force: false }).pipe(Effect.result),
+        root: yield* ca.root.pipe(Effect.result),
         issue: yield* ca.issueCert({ cn: "test", sans: ["test"] }).pipe(Effect.result),
       };
     }).pipe(Effect.provide(Certs.layerUnavailable)),
   );
   const failure = Result.fail(
     new CaError({
-      message:
-        "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (full implementation is not available yet).",
+      message: "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA.",
       caId: "unavailable",
       remediation:
         "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",
     }),
   );
-  expect(result).toEqual({ id: "unavailable", setup: failure, issue: failure });
+  expect(result).toEqual({ id: "unavailable", setup: failure, root: failure, issue: failure });
 });

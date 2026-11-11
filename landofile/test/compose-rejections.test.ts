@@ -8,6 +8,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
+  override,
 } from "@lando/sdk/landofile";
 import { compileDispositionTrie, matchDispositionPath } from "../src/compose/rejection-trie.ts";
 import {
@@ -61,6 +62,19 @@ describe("Compose rejection analysis", () => {
     });
   });
 
+  test("addresses a rejection by structured path, through dotted service names and !override values", () => {
+    // Given
+    const parsed = { services: { "api.v2": { build: override({ context: ".", cache_from: ["x"] }) } } };
+
+    // When
+    const matches = analyzeComposeRejections(parsed);
+
+    // Then
+    expect(matches.map(({ matrixPath, path }) => [matrixPath, path])).toEqual([
+      ["build.cache_from", ["services", "api.v2", "build", "cache_from"]],
+    ]);
+  });
+
   test("descends through preserved deploy resources but rejects deploy replicas", () => {
     // Given
     const resources = { services: { web: { deploy: { resources: { limits: { cpus: "0.5" } } } } } };
@@ -86,6 +100,55 @@ describe("Compose rejection analysis", () => {
     // Then
     expect(matches).toHaveLength(1);
     expect(matches[0]?.matrixPath).toBe("extends");
+  });
+
+  test("rejects a service umask at its document path", () => {
+    // Given
+    const parsed = { services: { web: { image: "nginx:1.27", umask: "0027" } } };
+
+    // When
+    const matches = analyzeComposeRejections(parsed);
+
+    // Then
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      matrixPath: "umask",
+      documentPath: "services.web.umask",
+      service: "web",
+    });
+  });
+
+  test("rejects use_service_name_alias on a network attachment while aliases stays accepted", () => {
+    // Given
+    const parsed = {
+      services: { web: { networks: { shared: { aliases: ["api"], use_service_name_alias: false } } } },
+    };
+
+    // When
+    const matches = analyzeComposeRejections(parsed);
+
+    // Then
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      matrixPath: "networks.*.use_service_name_alias",
+      documentPath: "services.web.networks.shared.use_service_name_alias",
+      service: "web",
+    });
+  });
+
+  test("rejects top-level jobs once without walking service-shaped job bodies", () => {
+    // Given
+    const parsed = {
+      jobs: { cleanup: { image: "alpine:3.20", container_name: "cleanup", umask: "0027" } },
+    };
+
+    // When
+    const matches = analyzeComposeRejections(parsed);
+
+    // Then
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ matrixPath: "jobs", documentPath: "jobs" });
+    expect(matches[0]).not.toHaveProperty("service");
   });
 
   test("finds only deploy.replicas in a mixed resources and replicas fixture", () => {

@@ -2,7 +2,7 @@
 id: mssql
 provider: test
 timeout: 90000
-tags: [beta, docs, mssql, service, database]
+tags: [docs, mssql, service, database]
 ---
 
 # Add SQL Server
@@ -28,7 +28,7 @@ lando logs --service database
 
 On the selected catalog image, Lando starts SQL Server, waits for it to accept
 connections, and creates the resolved `creds.database` if it doesn't exist. The
-default name is your app name. Every start checks again without dropping or
+default name is the folder's data name (the name this folder's data was first created under). Every start checks again without dropping or
 replacing an existing database. Initialization failure fails startup. The
 healthcheck connects to `master` and checks that the target database is online
 and accessible, including after a restart. It never creates a database or keeps

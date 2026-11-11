@@ -2,7 +2,7 @@
 id: compose-passthrough
 provider: test
 timeout: 90000
-tags: [beta, docs, compose, service]
+tags: [docs, compose, service]
 ---
 
 # Add a Compose service
@@ -79,15 +79,72 @@ From your host terminal, curl the published HTTP port after the service starts:
 curl -sf http://localhost:80/
 ```
 
-Use your chosen host port if you changed the mapping. The response includes a `Hostname:` line. The [whoami image](https://github.com/traefik/whoami/blob/v1.10.0/Dockerfile) contains a standalone binary, not a shell or curl, so probe it from the host rather than running those tools inside the service.
+Use your chosen host port if you changed the mapping. The response's `Hostname:` line shows the container name, `lando-compose-passthrough-demo--whoami`. The [whoami image](https://github.com/traefik/whoami/blob/v1.10.0/Dockerfile) contains a standalone binary, not a shell or curl, so probe it from the host rather than running those tools inside the service.
+
+## Control when the image is pulled
+
+Without `pull_policy`, `lando start` pulls an image only when your provider does not have it yet, and `lando rebuild` pulls it again so an updated tag takes effect. If that rebuild pull fails, Lando warns and keeps the local copy. Set `pull_policy` on the service to choose a different rule. It applies to `lando start`, `lando rebuild`, scratch commands, and `lando global:start` alike:
+
+| `pull_policy` | Start | Rebuild |
+| --- | --- | --- |
+| omitted, `missing`, or `if_not_present` | Pull only a missing image | Pull again; keep the local copy if the pull fails |
+| `always` | Pull every time; a failed pull fails the command | Same as start |
+| `never` | Use the local image only; a missing image fails the command | Same as start |
+| `build` | Run the service's `build:` every time | Same as start |
+
+```yaml
+services:
+  api:
+    type: compose
+    image: ghcr.io/example/api:latest
+    pull_policy: always
+```
+
+`always` and `never` win over the command. `lando rebuild` does not pull a `never` service, and it does not fall back to a local copy for an `always` service. With `never`, put the image into your provider first, for example by building or loading it, or the command fails and names the image. When the service also sets `platform:`, Lando pulls that platform.
+
+An image Lando builds, from a `build:` section or from build steps on top of an image, exists only in your provider, so Lando never pulls it, whatever the policy. If it disappears, for example after you prune images, the next start fails, names the service and the image, and tells you to run `lando rebuild -s <service>` to build it again.
+
+`build` needs a Compose `build:` section, and `always` and `never` cannot be combined with one, because the build replaces the image. `build` reruns the build even when its inputs are unchanged, but the build still reuses cached layers and pulls the Dockerfile's `FROM` image only as the builder normally would. The timed Compose policies `daily`, `weekly`, `every_<interval>`, and `refresh` fail planning; use `always`, or run `lando rebuild` when you want a fresh image. `lando app:config:lint` reports both mistakes at `pull_policy`, and its suggestion names the fix.
+
+  <Scenario id="pull-policy-lint" render>
+    <Step name="reject-timed-policy">
+      <UseFixture name="compose-pull-policy-daily" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"api\",\\s*\"pull_policy\"\\s*\\][\\s\\S]*\"suggestion\":\\s*\"Set pull_policy: always" } }} />
+    </Step>
+    <Step name="reject-always-with-build">
+      <UseFixture name="compose-pull-policy-always-build" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"api\",\\s*\"pull_policy\"\\s*\\][\\s\\S]*\"suggestion\":\\s*\"Set pull_policy: build" } }} />
+    </Step>
+    <Step name="cleanup-pull-policy">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## See which Compose keys work
 
-The compose passthrough only accepts a subset of Compose service keys. The
-generated key matrix at `docs/reference/compose-key-matrix.mdx` publishes
-every accepted, preserved, and rejected key. If a key is rejected, the
-remediation is to move unsupported provider-specific config under
-`providers.<id>`, or open an issue to grow the subset.
+The compose passthrough accepts a subset of Compose service keys. The
+generated [Compose key matrix](../../reference/compose-key-matrix.mdx) lists
+every accepted, preserved, and rejected key. A rejected key fails
+`lando app:config:lint` and `lando start` with a remediation that names its
+replacement when Lando has one: `mem_limit`, for example, points you to
+`deploy.resources.limits.memory`.
+
+Some preserved keys also need the provider to support them. Resource limits
+under `deploy.resources` work on the `docker` and `podman` providers, and on
+the default `lando` provider on Linux with a systemd user session. GPU
+requests work on `docker` only. When the selected
+provider can't apply a key, planning fails with `CapabilityError`, and the
+remediation names each installed provider that can, with the
+`lando setup --provider=<id>` command that switches to it. See
+[Limit memory, CPU, and processes](../config/compose-service-block.mdx#limit-memory-cpu-and-processes)
+and [Give a service a GPU](../config/compose-service-block.mdx#give-a-service-a-gpu).
+
+Compose `hostname` and `domainname` are rejected. Lando sets each container's
+hostname to its container name, `lando-<app>--<service>`. To give a service
+another name that other services can use, add a `hostnames:` alias. See
+[Reach services by name](../subsystems/service-dns.mdx).
 
 ## Know what Lando adds
 

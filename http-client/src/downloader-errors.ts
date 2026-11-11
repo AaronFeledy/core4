@@ -8,10 +8,15 @@ import {
   DownloadPersistError,
   DownloadSizeMismatchError,
   type DownloadSourceForbiddenError,
+  HttpTrustError,
 } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { VerifiedStreamError } from "@lando/sdk/verified-stream";
+import { Schema } from "effect";
 import type * as HttpClientError from "effect/http/HttpClientError";
+
+import { type DownloadSource, fetchFailure, transportReason } from "./downloader-failure.ts";
+import { withoutFetchVerboseHint } from "./fetch-message.ts";
 
 export type DownloadError =
   | DownloadFetchError
@@ -21,49 +26,54 @@ export type DownloadError =
   | DownloadOfflineError
   | DownloadSourceForbiddenError;
 
-export const statusError = (status: number, origin: string): DownloadFetchError | undefined =>
-  status >= 200 && status < 300
-    ? undefined
-    : new DownloadFetchError({
-        message: `The download request failed with HTTP status ${status}.`,
-        urlOrigin: origin,
-        status,
-        remediation: `Inspect HTTP status ${status} from ${origin}; fix the origin response, auth, or routing, then retry the download.`,
-      });
+export const statusError = (status: number, source: DownloadSource): DownloadFetchError | undefined =>
+  status >= 200 && status < 300 ? undefined : fetchFailure(source, { reason: "http-status", status });
 
 /** Convert Effect `HttpClientError` → `DownloadFetchError`, keeping cause/remediation. */
 export const mapHttpClientError = (
   error: HttpClientError.HttpClientError,
-  origin: string,
+  source: DownloadSource,
   redactor: Redactor,
 ): DownloadFetchError => {
   const reason = error.reason;
   const cause = "cause" in reason ? reason.cause : undefined;
-  const status = error.response?.status;
-  let remediation: string | undefined;
-  let message = error.message;
-  if (cause !== undefined && typeof cause === "object" && cause !== null) {
-    if ("remediation" in cause && typeof cause.remediation === "string") {
-      remediation = cause.remediation;
-    }
-    // Prefer the nested trust/load message (e.g. missing CA PEM) over the generic
-    // Effect transport wrapper ("Transport error (GET …)").
-    if ("message" in cause && typeof cause.message === "string") {
-      const nested = cause.message;
-      if (nested.length > 0) message = nested;
-    }
-  }
-  return new DownloadFetchError({
-    message: redactor.redactString(message),
-    urlOrigin: origin,
+  // A body read that fails after a 2xx is a transport failure, not an HTTP status problem.
+  const responseStatus = error.response?.status;
+  const status =
+    responseStatus === undefined || (responseStatus >= 200 && responseStatus < 300)
+      ? undefined
+      : responseStatus;
+  const trust = Schema.is(HttpTrustError)(cause) ? cause : undefined;
+  const classified =
+    trust !== undefined
+      ? { reason: "trust" as const }
+      : status !== undefined
+        ? { reason: "http-status" as const }
+        : transportReason(cause);
+  const remediation =
+    cause !== null &&
+    typeof cause === "object" &&
+    "remediation" in cause &&
+    typeof cause.remediation === "string"
+      ? cause.remediation
+      : undefined;
+  const mapped = fetchFailure(source, {
+    ...classified,
+    ...(remediation === undefined ? {} : { remediation }),
     ...(status === undefined ? {} : { status }),
-    remediation: redactor.redactString(
-      remediation ??
-        (status !== undefined
-          ? `Inspect HTTP status ${status} from ${origin}, fix the origin response or request, then retry the download.`
-          : `Inspect the transport failure for ${origin} (DNS, TLS, proxy, or connectivity), then retry the download.`),
-    ),
+    ...(trust === undefined ? {} : { trustCause: trust.kind, remediation: trust.remediation }),
+    ...(classified.reason === "transport"
+      ? { detail: withoutFetchVerboseHint(cause instanceof Error ? cause.message : error.message) }
+      : {}),
     ...(cause === undefined ? {} : { cause: redactor.redactValue(cause) }),
+  });
+  return new DownloadFetchError({
+    ...mapped,
+    cause: mapped.cause,
+    transportCode:
+      mapped.transportCode === undefined ? undefined : redactor.redactString(mapped.transportCode),
+    message: redactor.redactString(mapped.message),
+    remediation: redactor.redactString(mapped.remediation),
   });
 };
 
@@ -101,7 +111,7 @@ export const mapVerifiedError = (error: VerifiedStreamError, origin: string): Do
 export const failureDetailForError = (error: DownloadError): string => {
   switch (error._tag) {
     case "DownloadFetchError":
-      return error.status === undefined ? "fetch-failed" : `fetch-failed status=${error.status}`;
+      return `fetch-failed reason=${error.reason ?? "transport"}${error.status === undefined ? "" : ` status=${error.status}`}`;
     case "DownloadChecksumError":
       return "checksum-mismatch";
     case "DownloadSizeMismatchError":

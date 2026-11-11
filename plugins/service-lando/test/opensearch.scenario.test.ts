@@ -85,7 +85,7 @@ const makeProvider = (
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -220,7 +220,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-opensearch-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--search--opensearch-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual([
       "bash",

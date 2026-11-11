@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Option, type Scope, Stream } from "effect";
 
@@ -9,16 +9,10 @@ import type { ContainerHelperArtifact } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
 
-import { logFileHelperExecArgv } from "./container-helper.ts";
+import { containerHelperDelivery, logFileHelperExecArgv } from "./container-helper.ts";
 import type { DataPlaneApiClient, DataPlaneHttpRequest } from "./data-plane.ts";
 import { tryParseJson } from "./engine-json.ts";
-import { archiveLogFileHelper } from "./log-file-archive.ts";
 import { ensure2xx, internal, parseExecId, unavailable } from "./log-file-errors.ts";
-import {
-  type LogFileHelperPaths,
-  cleanupLogFileHelper,
-  makeLogFileHelperPaths,
-} from "./log-file-helper-cleanup.ts";
 import { HelperSession } from "./log-file-session.ts";
 
 const maxReadBytes = 65_536;
@@ -36,12 +30,6 @@ export interface DockerLogFileAccessOptions {
 }
 
 type HelperObject = object & Record<"ok", unknown>;
-
-const oneChunk = (chunk: Uint8Array): AsyncIterable<Uint8Array> => ({
-  async *[Symbol.asyncIterator]() {
-    yield chunk;
-  },
-});
 
 const parseUnsignedDecimalBigInt = (
   value: string,
@@ -85,10 +73,7 @@ const responseStat = (providerId: string, label: string) => (response: HelperObj
     : Effect.fail(internal(providerId, `${label} response omitted stat.`, response));
 
 /**
- * Installs the static helper into `/tmp/lando-log-file-helper-<hex>/` once and
- * starts one long-lived helper exec session that serves every stat, open, and
- * read for the scope's lifetime. Closing the scope ends the session and removes
- * the install, including when acquisition is interrupted after the upload.
+ * One mounted helper exec serves file operations for the scope's lifetime.
  */
 export const scopedDockerLogFileAccess = (
   options: DockerLogFileAccessOptions,
@@ -104,8 +89,8 @@ export const scopedDockerLogFileAccess = (
       ? Stream.fail(unavailable(providerId, "Provider API stream client is missing."))
       : options.api.stream(input);
 
-  const helperBytes = options.resolveHelper.pipe(
-    Effect.mapError(
+  const helperPath = options.resolveHelper.pipe(
+    mapFailures(
       (error) =>
         new ProviderUnavailableError({
           providerId,
@@ -115,27 +100,7 @@ export const scopedDockerLogFileAccess = (
           cause: error,
         }),
     ),
-    Effect.flatMap((helper) =>
-      Effect.tryPromise({
-        try: () => readFile(helper.path),
-        catch: (cause) => unavailable(providerId, "Could not read the container helper.", helper.path, cause),
-      }),
-    ),
-  );
-
-  const install = Effect.acquireRelease(
-    Effect.gen(function* () {
-      const bytes = yield* helperBytes;
-      const paths = makeLogFileHelperPaths();
-      yield* request({
-        method: "PUT",
-        path: `/containers/${container}/archive?path=/tmp`,
-        headers: { "Content-Type": "application/x-tar" },
-        stdin: oneChunk(archiveLogFileHelper(bytes, paths.directoryName)),
-      }).pipe(Effect.flatMap((response) => ensure2xx(response, providerId, "install helper")));
-      return paths;
-    }),
-    (paths) => cleanupLogFileHelper(options, paths),
+    Effect.map((helper) => containerHelperDelivery(helper).executable),
   );
 
   const exitCodeOf = (execId: string) =>
@@ -149,13 +114,13 @@ export const scopedDockerLogFileAccess = (
       Effect.orElseSucceed(() => undefined),
     );
 
-  const startSession = (paths: LogFileHelperPaths) =>
+  const startSession = (helperPath: string) =>
     Effect.acquireRelease(
       request({
         method: "POST",
         path: `/containers/${container}/exec`,
         body: {
-          Cmd: logFileHelperExecArgv(paths.helperPath),
+          Cmd: logFileHelperExecArgv(helperPath),
           AttachStdin: true,
           AttachStdout: true,
           AttachStderr: false,
@@ -194,8 +159,8 @@ export const scopedDockerLogFileAccess = (
                     Effect.map((exitCode) =>
                       unavailable(
                         providerId,
-                        `Log helper ${paths.helperPath} in container ${options.container} exited before responding${exitCode === undefined ? "" : ` (exit code ${String(exitCode)})`}.`,
-                        { container: options.container, helper: paths.helperPath, exitCode },
+                        `Log helper ${helperPath} in container ${options.container} exited before responding${exitCode === undefined ? "" : ` (exit code ${String(exitCode)})`}. Run lando start to refresh the helper mount.`,
+                        { container: options.container, helper: helperPath, exitCode },
                       ),
                     ),
                   ),
@@ -208,8 +173,7 @@ export const scopedDockerLogFileAccess = (
     );
 
   return Effect.gen(function* () {
-    const paths = yield* install;
-    const session = yield* startSession(paths);
+    const session = yield* startSession(yield* helperPath);
     const send = (command: Readonly<Record<string, string | number>>) =>
       session.send(command).pipe(Effect.flatMap((response) => parseResponse(response, providerId)));
     const handle: LogFileHandle<ProviderError> = {

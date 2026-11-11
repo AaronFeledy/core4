@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LandofileLoadIssueRule } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
 import { createLoadFailureRecorder } from "../src/load-failures.ts";
@@ -91,7 +90,7 @@ test("lint reports build argument secrets as load failures with safe runtime gui
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path,
-      reason: LandofileLoadIssueRule.unsupportedSecretReference,
+      reason: "unsupported-secret-reference",
       message: expect.stringContaining("image history"),
       suggestion: expect.stringContaining("services.app.environment.TOKEN"),
       source: { file, layer: "canonical", path },
@@ -117,7 +116,7 @@ test("lint retains complete multi-reference fixes with physical source attributi
   expect(snapshot.result.violations).toMatchObject([
     {
       rule: "landofile.load",
-      reason: LandofileLoadIssueRule.unsupportedSecretReference,
+      reason: "unsupported-secret-reference",
       path: ["tooling", "deploy", "cmd"],
       source: { file, path: ["tooling", "deploy", "cmd"] },
       fix: {
@@ -138,9 +137,7 @@ test("compose fragments use their implicit service type for remediation before s
   );
   await writeFile(join(root, "compose.yml"), 'services:\n  app:\n    command: "echo ${secret:TOKEN}"\n');
   const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
-  const issue = snapshot.result.violations.find(
-    (issue) => issue.reason === LandofileLoadIssueRule.unsupportedSecretReference,
-  );
+  const issue = snapshot.result.violations.find((issue) => issue.reason === "unsupported-secret-reference");
   expect(issue?.suggestion).not.toContain("when the service type");
   expect(issue?.fix).toBeUndefined();
   expect(issue).toMatchObject({

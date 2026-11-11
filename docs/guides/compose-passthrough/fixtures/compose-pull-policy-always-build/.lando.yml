@@ -1,0 +1,8 @@
+name: compose-pull-policy-always-build
+services:
+  api:
+    type: compose
+    appMount: false
+    pull_policy: always
+    build:
+      context: .

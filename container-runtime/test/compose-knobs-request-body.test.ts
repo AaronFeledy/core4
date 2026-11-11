@@ -11,10 +11,10 @@ import {
 } from "@lando/sdk/schema";
 import { type LifecycleDialect, dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
 import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
+import { bringUp } from "./support/service-creation.ts";
 
-import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
+import { KNOB_FIXTURES_BY_DIALECT } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
@@ -77,6 +77,9 @@ const captureCreateRequest = async (
     ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync(() => {
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const name = decodeURIComponent(request.path.slice("/networks/".length));
           return {
@@ -139,7 +142,7 @@ describe("Podman Compose knob create request", () => {
       // Then
       expect(field(field(request.body, "HostConfig"), "Init")).toBe(init);
     });
-    const fixtures = new Map(Object.entries(KNOB_FIXTURES));
+    const fixtures = new Map(Object.entries(KNOB_FIXTURES_BY_DIALECT[dialect.engine]));
     for (const knob of composeKnobsForDialect(dialect.engine)) {
       test(`${dialect.engine}: ${knob} produces its expected Engine request fields`, async () => {
         const fixture = fixtures.get(knob);

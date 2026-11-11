@@ -4,6 +4,7 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveBuiltContainerHelperForTest } from "@lando/container-runtime/testing/exec-supervision";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeDockerApiClient, makeRuntimeProvider } from "@lando/provider-docker";
@@ -50,6 +51,7 @@ test.skipIf(dockerHost === undefined)(
         makeRuntimeProvider({
           platform: "linux",
           dockerApi: api,
+          resolveContainerHelper: resolveBuiltContainerHelperForTest,
           appliedPlanState: makePluginStateStore(
             makeTestStateStore().service,
             AbsolutePath.make(stateDir),

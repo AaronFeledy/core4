@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 
 import { Flags } from "../../spec/metadata";
 
@@ -36,7 +37,7 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
 export const runUpdateCommand = Effect.fn("UpdateCommand.run")(function* (input: unknown) {
   const runPluginUpdates = yield* makePluginUpdateRunner();
   const stateStore = yield* StateStore;
-  const handoff = makeUpdateHandoff(stateStore, process.env.LANDO_UPDATE_HANDOFF_TOKEN);
+  const handoff = makeUpdateHandoff(stateStore, (yield* CliInvocation).env.LANDO_UPDATE_HANDOFF_TOKEN);
   return yield* update({ ...updateOptionsFromInput(input), runPluginUpdates, handoff });
 });
 
@@ -78,6 +79,7 @@ export const renderUpdateResult = (result: UpdateResult): string => {
 export const updateSpec: LandoCommandSpec<UpdateResult> = {
   resultSchema: UpdateResultSchema,
   id: "meta:update",
+  onlineAcquisition: true,
   summary: "Update Lando core and plugins.",
   description: "Update Lando core and plugins.",
   namespace: "meta",

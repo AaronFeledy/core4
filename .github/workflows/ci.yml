@@ -64,18 +64,21 @@ jobs:
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
-      - name: Type check (bun check, no emit)
-        run: bun run check:types
       - name: Typecheck
-        if: matrix.platform == 'linux-x64'
         run: bun run typecheck
 
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
-        run: bun test state-store/test/state-store/private-file-access.test.ts
+        run: bun run test:selection windows-private-file-access
+
+      - name: Host Bun Shell dialect conformance
+        run: bun run test:selection shell-dialect
 
       - name: Lint
         run: bun run lint
+
+      - name: Test ownership inventory
+        run: bun run check:test-ownership
 
       - name: Boundary gates
         run: bun run check:boundaries
@@ -250,10 +253,10 @@ jobs:
         run: bun run codegen
 
       - name: Test native process signal handling
-        run: bun test core/test/cli/process-signals.test.ts
+        run: bun run test:selection process-signals
 
       - name: Test exec umask behavior
-        run: bun test container-runtime/test/exec-umask.test.ts
+        run: bun run test:selection exec-umask
 
   docs-build:
     needs: [selection]
@@ -281,7 +284,7 @@ jobs:
         run: bun run docs:check
 
       - name: Test docs
-        run: bun run docs:test
+        run: bun run test:selection docs
 
       - name: Build docs
         run: bun run docs:build
@@ -339,7 +342,7 @@ jobs:
         run: bun run codegen
 
       - name: Run cross-file isolation regressions
-        run: bun run test:unit:isolation
+        run: bun run test:selection unit-isolation
 
       - name: Report job timing
         if: always()
@@ -380,7 +383,7 @@ jobs:
       - name: Build and test the container helper with Lando
         run: |
           bun run scripts/build-container-helper.ts --test
-          bun test core/test/container-helper/helper.integration.test.ts
+          bun run test:selection container-helper
 
       - name: Upload container helper
         uses: actions/upload-artifact@v6
@@ -427,7 +430,7 @@ jobs:
         run: bun run codegen
 
       - name: Test the arm64 container helper
-        run: bun test core/test/container-helper/helper.integration.test.ts
+        run: bun run test:selection container-helper
   schema-snapshot:
     needs: [selection]
     if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
@@ -563,7 +566,7 @@ jobs:
         run: bun run codegen
 
       - name: Run library API tests
-        run: bun test core/test/library sdk/test/library
+        run: bun run test:selection library
 
       - name: Report job timing
         if: always()
@@ -618,7 +621,7 @@ jobs:
         run: bun run codegen
 
       - name: Run recipe test layer
-        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
+        run: bun run test:selection recipes
 
       - name: Report job timing
         if: always()
@@ -978,6 +981,13 @@ jobs:
 
       - name: Pre-pull container images
         run: |
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
@@ -1002,6 +1012,10 @@ jobs:
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/postgres:18
+          pull_image docker.io/library/httpd:2.4-alpine
+          pull_image docker.io/library/redis:7
+          pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
           pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           pull_image docker.io/getmeili/meilisearch:v1.11
@@ -1017,6 +1031,8 @@ jobs:
           pull_image docker.io/valkey/valkey:8
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
+          docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run e2e smoke guide scenarios
         env:
@@ -1028,6 +1044,13 @@ jobs:
         if: always()
         run: |
           dist/lando poweroff || true
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
@@ -1259,17 +1282,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: darwin-arm64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload darwin-arm64 binary
         if: always()
@@ -1342,17 +1365,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: darwin-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -1425,17 +1448,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: linux-arm64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload linux-arm64 binary
         if: always()
@@ -1508,17 +1531,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: linux-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload linux-x64 binary
         if: always()
@@ -1588,17 +1611,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: windows-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-x64.exe
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload windows-x64 binary
         if: always()
@@ -1668,17 +1691,17 @@ jobs:
         env:
           LANDO_RELEASE_TARGET: windows-arm64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-arm64.exe
-        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+        run: bun run test:selection compiled-opentui
 
       - name: Verify compiled host execution
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
-        run: bun test core/test/build/host-execution-compiled.test.ts
+        run: bun run test:selection compiled-host-execution
 
       - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
-        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
+        run: bun run test:selection compiled-renderer-output
 
       - name: Upload windows-arm64 binary
         if: always()
@@ -1707,66 +1730,26 @@ jobs:
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
-      - name: Restore assembled Linux x64 runtime bundle
-        id: runtime-bundle-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
-
       - name: Setup Bun
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
 
-      - name: Setup Go for Linux Podman source build
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
-        uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4
-
-      - name: Install Linux Podman source-build prerequisites
-        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+      - name: Derive Linux x64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
         run: |
-          set -euo pipefail
-          UBUNTU_SNAPSHOT=20261019T000000Z
-          printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-          # Prefer snapshot dependencies even when the runner has newer versions installed.
-          printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
-          for DELAY in 0 5 15 45; do
-            if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-            if sudo apt-get update --error-on=any; then break; fi
-            if [ "$DELAY" -eq 45 ]; then
-              echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-              exit 1
-            fi
-          done
-          PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
-          sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
-          for PACKAGE in "${PACKAGES[@]}"; do
-            INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
-            POLICY="$(apt-cache policy "$PACKAGE")"
-            CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
-            test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
-              $1 == "***" && $2 == candidate { candidate_block = 1; next }
-              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
-              candidate_block { candidate_block = 0 }
-              END { exit found ? 0 : 1 }
-            ' <<< "$POLICY"; then
-              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
-              exit 1
-            fi
-          done
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux x64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          key: ${{ steps.runtime-bundle-key.outputs.key }}
 
       - name: Assemble current-commit Linux x64 runtime bundle
         if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
@@ -1784,6 +1767,55 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::runtime-bundle-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 40m)"
+
+  runtime-bundle-linux-arm64:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Derive Linux arm64 runtime bundle cache key from its build context
+        id: runtime-bundle-key
+        run: |
+          KEY="$(bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64 --cache-key)"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore assembled Linux arm64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          key: ${{ steps.runtime-bundle-key.outputs.key }}
+
+      - name: Assemble current-commit Linux arm64 runtime bundle
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+
+      - name: Upload current-commit Linux arm64 runtime bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::runtime-bundle-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 40m)"
 
   runtime-bundle-win32-x64:
     needs: [selection]
@@ -1910,11 +1942,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -1981,11 +2013,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2052,11 +2084,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2079,7 +2111,7 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [ubuntu-26.04]
-        suite: [providers, services]
+        suite: [providers, engine, services]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
@@ -2210,6 +2242,13 @@ jobs:
 
       - name: Pre-pull container images
         run: |
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
@@ -2234,6 +2273,10 @@ jobs:
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/postgres:18
+          pull_image docker.io/library/httpd:2.4-alpine
+          pull_image docker.io/library/redis:7
+          pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
           pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           pull_image docker.io/getmeili/meilisearch:v1.11
@@ -2249,14 +2292,16 @@ jobs:
           pull_image docker.io/valkey/valkey:8
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
+          docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Run provider integration tests
         env:
@@ -2266,22 +2311,40 @@ jobs:
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
+          status=0
           case "$LANDO_PROVIDER_TEST_SUITE" in
             providers)
-              bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
-              bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-              bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log || status=$?
+              bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log || status=$?
+              ;;
+            engine)
+              bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log || status=$?
+              bun run test:selection providers-docker 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log || status=$?
+              bun run test:selection providers-readiness 2>&1 | tee /tmp/lando-provider-test-logs/start-readiness.log || status=$?
+              bun run test:selection providers-ephemeral-data 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log || status=$?
+              bun run test:selection providers-host-reachability 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log || status=$?
+              bun run test:selection providers-listener-observation 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log || status=$?
+              bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
+              bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
               ;;
             services)
-              bun test plugins/service-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?
               ;;
             *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
           esac
+          exit "$status"
 
       - name: Teardown Lando runtime
         if: always()
         run: |
           dist/lando poweroff || true
+          LANDO_LAUNCH_STATE="$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json"
+          if test -f "$LANDO_LAUNCH_STATE"; then
+            LANDO_XDG_FROM_LAUNCH="$(jq -r '.env.XDG_RUNTIME_DIR // empty' "$LANDO_LAUNCH_STATE" 2>/dev/null || true)"
+            if test -n "$LANDO_XDG_FROM_LAUNCH"; then
+              export XDG_RUNTIME_DIR="$LANDO_XDG_FROM_LAUNCH"
+            fi
+          fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
@@ -2417,11 +2480,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2488,11 +2551,11 @@ jobs:
 
       - name: Run provider contract tests
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run test:selection provider-contract-sdk
+          bun run test:selection provider-contract-lando
+          bun run test:selection provider-contract-docker
+          bun run test:selection provider-contract-podman
+          bun run test:selection provider-capabilities
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -2509,7 +2572,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   ci:
-    needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, process-signal-tests-darwin, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
+    needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, runtime-bundle-linux-arm64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, process-signal-tests-darwin, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

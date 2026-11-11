@@ -147,7 +147,13 @@ describe("managed-file codec import boundary (constructs no LandoRuntime)", () =
     const source = readFileSync(codecEntry, "utf8");
     const directImports = scanStaticImports(source);
 
-    const allowed = new Set(["effect", "@lando/sdk/landofile", "@lando/sdk/errors", "@lando/sdk/schema"]);
+    const allowed = new Set([
+      "effect",
+      "@lando/sdk/command-result",
+      "@lando/sdk/landofile",
+      "@lando/sdk/errors",
+      "@lando/sdk/schema",
+    ]);
     for (const specifier of directImports) {
       expect(allowed.has(specifier), `unexpected codec import: "${specifier}"`).toBe(true);
     }

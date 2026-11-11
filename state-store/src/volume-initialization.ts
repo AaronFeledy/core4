@@ -1,8 +1,114 @@
-import { Effect, Schema } from "effect";
+import { Effect, Schema, absurd } from "effect";
 
-import type { VolumeIdentity } from "@lando/sdk/schema";
-import { VolumeInitializationRecord } from "@lando/sdk/schema";
-import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
+import {
+  type VolumeIdentity,
+  VolumeInitializationPhase,
+  VolumeInitializationRecord,
+} from "@lando/sdk/schema";
+import { type StateStoreShape, type StateWrite, physicalVolumeLockKey } from "@lando/sdk/services";
+import { type TransitionEdge, defineTransitions, planTransition } from "@lando/sdk/transitions";
+
+export const VOLUME_INITIALIZATION_VERSION = 1 as const;
+
+const edges = {
+  "record-creation": {
+    from: ["absent"],
+    to: "fresh",
+    settledIn: VolumeInitializationPhase.literals,
+  },
+  begin: { from: ["fresh"], to: "in-progress" },
+  "finish-seeded": { from: ["in-progress"], to: "seeded" },
+  "finish-failed": { from: ["in-progress"], to: "failed" },
+} as const satisfies Record<string, TransitionEdge<VolumeInitializationPhase | "absent">>;
+
+export const transitions = defineTransitions<VolumeInitializationPhase | "absent">()(edges);
+
+export type VolumeInitializationWrite =
+  | { readonly operation: "record-creation"; readonly baseline: VolumeInitializationRecord | null }
+  | { readonly operation: Exclude<keyof typeof edges, "record-creation">; readonly operationId: string };
+
+const matchesIdentity = (current: VolumeInitializationRecord | null, identity: VolumeIdentity) =>
+  current !== null &&
+  current.identity.coordinationKey === identity.coordinationKey &&
+  current.identity.nativeName === identity.nativeName &&
+  current.identity.origin === identity.origin &&
+  current.identity.generation === identity.generation &&
+  current.identity.ownerRoot === identity.ownerRoot;
+
+type Write = StateWrite<VolumeInitializationRecord | null, boolean>;
+const refused: Write = { _tag: "Keep", result: false };
+
+const meetsPreconditions = (
+  current: VolumeInitializationRecord | null,
+  identity: VolumeIdentity,
+  write: VolumeInitializationWrite,
+): boolean => {
+  switch (write.operation) {
+    case "record-creation":
+      return identity.origin === "created";
+    case "begin":
+      return identity.origin === "created" && write.operationId.length > 0;
+    case "finish-seeded":
+    case "finish-failed":
+      return (
+        write.operationId.length > 0 &&
+        current !== null &&
+        "operationId" in current.state &&
+        current.state.operationId === write.operationId
+      );
+    default:
+      return absurd(write);
+  }
+};
+
+/** A record for a different generation was replaced since this claim's baseline read. */
+const baselineDrifted = (
+  current: VolumeInitializationRecord | null,
+  identity: VolumeIdentity,
+  baseline: VolumeInitializationRecord | null,
+): boolean =>
+  current?.identity.generation === identity.generation ||
+  current?.identity.generation !== baseline?.identity.generation ||
+  current?.identity.ownerRoot !== baseline?.identity.ownerRoot;
+
+/**
+ * Pure claim planner shared by the locked store and in-memory ports. A refused
+ * operation keeps the record and reports `false`; a settled one reports `true`.
+ */
+export const planVolumeInitializationWrite = (
+  current: VolumeInitializationRecord | null,
+  identity: VolumeIdentity,
+  write: VolumeInitializationWrite,
+): Write => {
+  if (!meetsPreconditions(current, identity, write)) return refused;
+  if (
+    write.operation === "record-creation" &&
+    !matchesIdentity(current, identity) &&
+    baselineDrifted(current, identity, write.baseline)
+  )
+    return refused;
+  const phase = matchesIdentity(current, identity) ? (current?.state._tag ?? "absent") : "absent";
+  const plan = planTransition(transitions, write.operation, phase, (_to): VolumeInitializationRecord => {
+    switch (write.operation) {
+      case "record-creation":
+        return { identity, state: { _tag: "fresh" } };
+      case "begin":
+      case "finish-seeded":
+      case "finish-failed":
+        return { identity, state: { _tag: edges[write.operation].to, operationId: write.operationId } };
+      default:
+        return absurd(write);
+    }
+  });
+  switch (plan._tag) {
+    case "Illegal":
+      return refused;
+    case "Keep":
+      return { _tag: "Keep", result: true };
+    case "Write":
+      return { _tag: "Set", value: plan.value, result: true };
+  }
+};
 
 /** Only the engine's verified creation-result consumer may call recordCreation. */
 export const volumeInitialization = Effect.fn("StateStore.volumeInitialization")(function* (
@@ -14,47 +120,30 @@ export const volumeInitialization = Effect.fn("StateStore.volumeInitialization")
     namespace: "volume-initialization",
     key: `${physicalVolumeLockKey(identity.coordinationKey)}.json`,
     schema: Schema.NullOr(VolumeInitializationRecord),
-    version: 1,
+    version: VOLUME_INITIALIZATION_VERSION,
     lock: "advisory",
     onCorrupt: "fail",
   });
   const baseline = yield* bucket.get;
-  const matches = (current: VolumeInitializationRecord | null) =>
-    current !== null &&
-    current.identity.coordinationKey === identity.coordinationKey &&
-    current.identity.nativeName === identity.nativeName &&
-    current.identity.origin === identity.origin &&
-    current.identity.generation === identity.generation &&
-    current.identity.ownerRoot === identity.ownerRoot;
   return {
-    read: bucket.get.pipe(Effect.map((current) => (matches(current) ? current : null))),
-    recordCreation: bucket.modify((current) => {
-      if (identity.origin !== "created") return [false, current] as const;
-      if (matches(current)) return [true, current] as const;
-      if (current?.identity.generation === identity.generation) return [false, current] as const;
-      if (
-        current?.identity.generation !== baseline?.identity.generation ||
-        current?.identity.ownerRoot !== baseline?.identity.ownerRoot
-      )
-        return [false, current] as const;
-      return [true, { identity, state: { _tag: "fresh" } }] as const;
-    }),
+    read: bucket.get.pipe(Effect.map((current) => (matchesIdentity(current, identity) ? current : null))),
+    recordCreation: bucket.mutate((current) =>
+      Effect.succeed(
+        planVolumeInitializationWrite(current, identity, { operation: "record-creation", baseline }),
+      ),
+    ),
     begin: (operationId: string) =>
-      bucket.modify((current) =>
-        identity.origin === "created" &&
-        matches(current) &&
-        current?.state._tag === "fresh" &&
-        operationId.length > 0
-          ? ([true, { identity, state: { _tag: "in-progress", operationId } }] as const)
-          : ([false, current] as const),
+      bucket.mutate((current) =>
+        Effect.succeed(planVolumeInitializationWrite(current, identity, { operation: "begin", operationId })),
       ),
     finish: (input: { readonly operationId: string; readonly outcome: "seeded" | "failed" }) =>
-      bucket.modify((current) =>
-        matches(current) &&
-        current?.state._tag === "in-progress" &&
-        current.state.operationId === input.operationId
-          ? ([true, { identity, state: { _tag: input.outcome, operationId: input.operationId } }] as const)
-          : ([false, current] as const),
+      bucket.mutate((current) =>
+        Effect.succeed(
+          planVolumeInitializationWrite(current, identity, {
+            operation: `finish-${input.outcome}`,
+            operationId: input.operationId,
+          }),
+        ),
       ),
   };
 });

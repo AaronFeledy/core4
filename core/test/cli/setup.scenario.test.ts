@@ -260,7 +260,9 @@ describe("meta:setup task tree progress", () => {
       if (treeComplete?._tag !== "task.tree.complete") {
         throw new Error("expected task.tree.complete as last event");
       }
-      expect(treeComplete.failed).toBe(2);
+      // Only the step that ran fails; never-started steps stay pending.
+      expect(treeComplete.failed).toBe(1);
+      expect(treeComplete.outcome).toBe("failure");
       expect(treeComplete.succeeded).toBeGreaterThanOrEqual(1);
     } finally {
       await rm(stateDir, { recursive: true, force: true });

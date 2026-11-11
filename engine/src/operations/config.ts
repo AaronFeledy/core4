@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { Effect, Result, Schema } from "effect";
 
@@ -18,19 +19,34 @@ import { validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
 import type { EditorRunner } from "../config-write/editor.ts";
+import {
+  ConfigDescribeResultSchema,
+  describeConfigKey,
+  isAppOnlyConfigKey,
+} from "../config-write/key-schema.ts";
 import { runEditVerb, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import type { ValueType } from "../config-write/write-core";
 import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
 import { recordConfigWarning } from "../config/config-warnings.ts";
-import type { CliTelemetrySource } from "../runtime/cli-options";
 import { GlobalConfigSources } from "../services/config.ts";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one config operation on one engine seam.
 
 export type { EditorRunInput, EditorRunResult, EditorRunner } from "../config-write/editor.ts";
 
+export const CONFIG_SUBCOMMANDS = [
+  "view",
+  "get",
+  "set",
+  "unset",
+  "edit",
+  "validate",
+  "describe",
+  "telemetry",
+  "translate",
+] as const;
 export interface ConfigOptions {
-  readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate" | "translate" | "telemetry";
+  readonly subcommand?: Exclude<(typeof CONFIG_SUBCOMMANDS)[number], "describe">;
   readonly key?: string;
   readonly value?: string;
   readonly type?: ValueType;
@@ -43,29 +59,10 @@ export interface ConfigOptions {
   readonly editorRunner?: EditorRunner;
 }
 
-export interface ConfigResult {
-  readonly raw?: unknown;
-  readonly config?: GlobalConfigView;
-  readonly subcommand?: string;
-  readonly key?: string;
-  readonly value?: unknown;
-  readonly path?: string;
-  readonly format: "json" | "yaml" | "table";
-  readonly telemetry?: {
-    readonly enabled: boolean;
-    readonly source: CliTelemetrySource;
-  };
-  readonly changed?: boolean;
-  readonly dryRun?: boolean;
-  readonly valid?: boolean;
-  readonly issues?: ReadonlyArray<string>;
-  readonly configPath?: string;
-}
-
-export const ConfigResultSchema = Schema.Struct({
-  raw: Schema.optionalKey(Schema.Unknown),
-  config: Schema.optionalKey(GlobalConfigView),
-  subcommand: Schema.optionalKey(Schema.String),
+const ConfigValueResultSchema = Schema.Struct({
+  config: Schema.optionalKey(Schema.Never),
+  raw: Schema.optionalKey(Schema.Never),
+  subcommand: Schema.Literals(["set", "unset", "edit", "validate", "telemetry"]),
   key: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
   path: Schema.optionalKey(Schema.String),
@@ -87,6 +84,41 @@ export const ConfigResultSchema = Schema.Struct({
   issues: Schema.optionalKey(Schema.Array(Schema.String)),
   configPath: Schema.optionalKey(Schema.String),
 });
+const ConfigReadFields = {
+  changed: Schema.optionalKey(Schema.Never),
+  dryRun: Schema.optionalKey(Schema.Never),
+  valid: Schema.optionalKey(Schema.Never),
+  issues: Schema.optionalKey(Schema.Never),
+  telemetry: Schema.optionalKey(Schema.Never),
+  configPath: Schema.optionalKey(Schema.Never),
+};
+const ConfigProjectionResultSchema = Schema.Struct({
+  ...ConfigReadFields,
+  subcommand: Schema.Literals(["get", "view"]),
+  key: Schema.String,
+  value: Schema.optionalKey(Schema.Unknown),
+  config: Schema.optionalKey(Schema.Never),
+  raw: Schema.optionalKey(Schema.Never),
+  format: ConfigValueResultSchema.fields.format,
+});
+const ConfigViewFields = {
+  ...ConfigReadFields,
+  subcommand: Schema.optionalKey(Schema.Literal("view")),
+  key: Schema.optionalKey(Schema.Never),
+  value: Schema.optionalKey(Schema.Never),
+  format: ConfigValueResultSchema.fields.format,
+};
+const ConfigReadResultSchema = Schema.Union([
+  ConfigProjectionResultSchema,
+  Schema.Struct({ ...ConfigViewFields, config: GlobalConfigView, raw: Schema.optionalKey(Schema.Never) }),
+  Schema.Struct({ ...ConfigViewFields, raw: Schema.Unknown, config: Schema.optionalKey(Schema.Never) }),
+]);
+export const ConfigResultSchema = Schema.Union([
+  ConfigReadResultSchema,
+  ConfigValueResultSchema,
+  Schema.Struct({ ...ConfigDescribeResultSchema.fields, format: ConfigValueResultSchema.fields.format }),
+]);
+export type ConfigResult = typeof ConfigResultSchema.Type;
 
 const translateRemediation =
   "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
@@ -150,6 +182,7 @@ const installationDocument = (path: string) => ({
   readText: readConfigText(path),
   parse: parseConfigText(path),
   editCommand: "lando config edit",
+  schema: "GlobalConfig" as const,
   decode: (input: unknown) => decodeConfigCandidate(input, path),
   decodeBaseline: (input: unknown) => decodeConfigCandidate(input, path, false),
   writeText: writeConfigAtomic,
@@ -164,7 +197,7 @@ const isHostEventsConfigPath = (key: string): boolean => {
 
 const hostEventsWriteError = (key: string, file: string): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
-    message: `Cannot change ${key} through \`meta config\`. ${HOST_EVENTS_HAND_EDIT}`,
+    message: `Cannot change ${key} through \`lando config\`. ${HOST_EVENTS_HAND_EDIT}`,
     file,
     path: key,
     issues: [validationIssue(["hostEvents"], HOST_EVENTS_HAND_EDIT)],
@@ -173,7 +206,11 @@ const hostEventsWriteError = (key: string, file: string): LandofileWriteValidati
 
 const metaConfigSet = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const key = options.key ?? options.path;
   const raw = options.value;
   if (key !== undefined && isHostEventsConfigPath(key)) {
@@ -182,7 +219,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
   if (key === undefined || raw === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
-        message: "`meta config set` requires a <key.path> and a <value>.",
+        message: "`lando config set` requires a <key.path> and a <value>.",
         file: "",
         issues: [validationIssue([], "Missing key path or value.")],
         remediation: "Usage: `lando config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
@@ -190,6 +227,19 @@ const metaConfigSet = Effect.fnUntraced(function* (
     );
   }
   const path = resolveConfigWritePath(options);
+  if (isAppOnlyConfigKey(key)) {
+    const first = parsePathSegments(key)?.[0];
+    const root = first?.kind === "key" ? first.key : key;
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: `Cannot set ${key} in config.yml.`,
+        file: path,
+        path: key,
+        issues: [validationIssue([root], `\`${root}\` is a Landofile key, not a config.yml key.`)],
+        remediation: `Run \`lando app:config set ${key} <value>\` to change this app's Landofile.`,
+      }),
+    );
+  }
   const outcome = yield* runSetVerb({
     ...installationDocument(path),
     key,
@@ -210,7 +260,11 @@ const metaConfigSet = Effect.fnUntraced(function* (
 
 const metaConfigUnset = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const key = options.key ?? options.path;
   if (key !== undefined && isHostEventsConfigPath(key)) {
     return yield* Effect.fail(hostEventsWriteError(key, resolveConfigWritePath(options)));
@@ -218,7 +272,7 @@ const metaConfigUnset = Effect.fnUntraced(function* (
   if (key === undefined) {
     return yield* Effect.fail(
       new LandofileWriteValidationError({
-        message: "`meta config unset` requires a <key.path>.",
+        message: "`lando config unset` requires a <key.path>.",
         file: "",
         issues: [validationIssue([], "Missing key path.")],
         remediation: "Usage: `lando config unset <key.path>`.",
@@ -243,7 +297,11 @@ const metaConfigUnset = Effect.fnUntraced(function* (
 
 const metaConfigValidate = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const path = resolveConfigWritePath(options);
   const stack = yield* configSourceStack(path);
   const decoded = yield* decodeConfigStack(stack, "error");
@@ -259,7 +317,11 @@ const metaConfigValidate = Effect.fnUntraced(function* (
 
 const metaConfigEdit = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
+): Effect.fn.Return<
+  typeof ConfigValueResultSchema.Type,
+  ConfigError | LandofileWriteValidationError,
+  GlobalConfigSources
+> {
   const path = resolveConfigWritePath(options);
   const runner = options.editorRunner;
   const outcome = yield* runEditVerb({
@@ -289,10 +351,26 @@ const metaConfigEdit = Effect.fnUntraced(function* (
   };
 });
 
+/** `meta:config` input: every {@link ConfigOptions} subcommand plus the schema-only `describe`. */
+export type MetaConfigOptions = Omit<ConfigOptions, "subcommand"> & {
+  readonly subcommand?: ConfigOptions["subcommand"] | "describe";
+};
+
+/** Describes a `config.yml` key from the GlobalConfig schema; reads no config source. */
+export const describeConfig = Effect.fn("AppOperation.configDescribe")(function* (
+  options: Pick<ConfigOptions, "key" | "path" | "format">,
+) {
+  return {
+    subcommand: "describe" as const,
+    format: options.format ?? "table",
+    ...(yield* describeConfigKey("installation", options.key ?? options.path)),
+  };
+});
+
 export const config = Effect.fn("AppOperation.config")(function* (
   inputOptions: ConfigOptions = {},
 ): Effect.fn.Return<
-  ConfigResult,
+  typeof ConfigValueResultSchema.Type | typeof ConfigReadResultSchema.Type,
   ConfigError | LandoCommandError | LandofileWriteValidationError | NotImplementedError,
   GlobalConfigSources
 > {
@@ -340,6 +418,7 @@ export const config = Effect.fn("AppOperation.config")(function* (
     const origin = mergeGlobalConfigSources(stack).originAt(["telemetry", "enabled"]).layer.layer;
     const source = origin === "env" ? "env" : origin === "default" ? "default" : "config";
     return {
+      subcommand: "telemetry",
       telemetry: { enabled: decoded.success.config.telemetry.enabled, source },
       changed: false,
       configPath: options.configPath,
@@ -361,27 +440,21 @@ export const config = Effect.fn("AppOperation.config")(function* (
     );
   }
 
-  if (subcommand !== "view" && subcommand !== "get") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `Unknown \`meta config\` subcommand: "${subcommand}".`,
-        file: "",
-        issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
-        remediation: "Usage: `lando meta config [view|get|set|unset|edit|validate|translate|telemetry]`.",
-      }),
-    );
-  }
-
   const key = options.key ?? options.path;
   if (options.source === "raw") {
     const raw = yield* inputs.sources.user
       ? readConfigTree(resolveConfigWritePath(options))
       : Effect.succeed({});
     const value = key === undefined ? undefined : getAtPath(raw, key);
+    if (key !== undefined)
+      return {
+        subcommand,
+        key,
+        ...(value === undefined ? {} : { value }),
+        format: options.format ?? "table",
+      };
     return {
       raw,
-      ...(key === undefined ? {} : { key }),
-      ...(value === undefined ? {} : { value }),
       format: options.format ?? "table",
     };
   }
@@ -391,7 +464,7 @@ export const config = Effect.fn("AppOperation.config")(function* (
   for (const message of decoded.success.warnings)
     yield* recordConfigWarning({ code: "LANDO_MESSAGE_WARN", message });
   const merged = yield* Schema.encodeEffect(GlobalConfigView)(decoded.success.config).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new ConfigError({
           message: "Failed to project public global config.",
@@ -402,10 +475,16 @@ export const config = Effect.fn("AppOperation.config")(function* (
   );
 
   const value = key === undefined ? undefined : getAtPath(merged, key);
+  if (key !== undefined)
+    return { subcommand, key, ...(value === undefined ? {} : { value }), format: options.format ?? "table" };
   return {
     config: merged,
-    ...(key === undefined ? {} : { key }),
-    ...(value === undefined ? {} : { value }),
     format: options.format ?? "table",
   };
 });
+
+/** Every `meta:config` subcommand, including the schema-only `describe`. */
+export const runConfig = ({ subcommand, ...options }: MetaConfigOptions = {}) =>
+  subcommand === "describe"
+    ? describeConfig(options)
+    : config(subcommand === undefined ? options : { ...options, subcommand });

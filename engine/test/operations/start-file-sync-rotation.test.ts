@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { FileSyncSessionRef } from "@lando/sdk/schema";
-import type { FileSyncEngineShape } from "@lando/sdk/services";
+import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { Cause, Effect, Exit } from "effect";
 import {
@@ -50,7 +50,7 @@ test("rotates the complete old session set before init and preserves named volum
   expect(harness.events.filter(({ _tag }) => _tag === "message.info")).toHaveLength(1);
   expect(harness.events.some(({ _tag }) => _tag === "pre-destroy" || _tag === "post-destroy")).toBe(false);
   const journal = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(journal.pending?.phase).toBe("completed");
+  expect(journal.pending).toBeNull();
 });
 
 test.each(["includes", "tmpfs", "store", "source", "removed-session"] as const)(
@@ -164,10 +164,32 @@ test.each(["prepare", "flush"] satisfies FailurePoint[])(
     expect(Exit.isFailure(await Effect.runPromiseExit(start(harness)))).toBe(true);
     const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
     expect(before.pending?.phase).toBe("preparing");
+    const attemptsAtApply: Array<string | undefined> = [];
+    const registry = await Effect.runPromise(RuntimeProviderRegistry.pipe(Effect.provide(harness.layer)));
+    const provider = await Effect.runPromise(registry.select(harness.desired));
     harness.calls.splice(0);
-    await Effect.runPromise(start(harness));
+    await Effect.runPromise(
+      startApp({}, targetFor(harness.desired)).pipe(
+        Effect.provideService(RuntimeProviderRegistry, {
+          ...registry,
+          select: () =>
+            Effect.succeed({
+              ...provider,
+              apply: (plan, options) =>
+                readJournal(app).pipe(
+                  Effect.tap(({ pending }) => Effect.sync(() => attemptsAtApply.push(pending?.attemptId))),
+                  Effect.orDie,
+                  Effect.andThen(provider.apply(plan, options)),
+                  Effect.provide(harness.layer),
+                ),
+            }),
+        }),
+        Effect.provide(harness.layer),
+      ),
+    );
     const after = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-    expect(after.pending).toMatchObject({ attemptId: before.pending?.attemptId, phase: "completed" });
+    expect(attemptsAtApply).toEqual([before.pending?.attemptId]);
+    expect(after.pending).toBeNull();
     expect(harness.calls).not.toContain("dispose");
     expect(harness.calls.includes("invalidate")).toBe(failAt === "flush");
     expect(harness.sessions).toHaveLength(2);

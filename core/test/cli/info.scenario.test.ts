@@ -239,7 +239,7 @@ const makeInfoLayer = (
     isAvailable: Effect.succeed(true),
     planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -280,8 +280,7 @@ const makeInfoLayer = (
           app: plannedApp.id,
           service: target.service,
           providerId,
-          status: state,
-          state,
+          status: state === "running" ? ("running" as const) : ("exited" as const),
           ...(options?.mounts === undefined ? {} : { mounts: options.mounts }),
           publications: {
             status: "present",
@@ -348,7 +347,8 @@ const makeInfoLayer = (
         capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
         setup: () => Effect.void,
         revalidateStartup: Effect.void,
-        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        applyRoutes: (routes, owner) =>
+          Effect.succeed({ app: owner.id, appliedRoutes: routes, authorities: [] }),
         removeRoutes: () => Effect.void,
         observeRoutes: (_app, routes) =>
           Effect.succeed({
@@ -772,7 +772,7 @@ describe("lando info — resolved log sources", () => {
       isAvailable: Effect.succeed(true),
       planSetup: () => Effect.succeed({ providerId, changes: [] }),
       setup: () => Effect.void,
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
@@ -811,8 +811,7 @@ describe("lando info — resolved log sources", () => {
           app: logPlan.id,
           service: target.service,
           providerId,
-          status: "running",
-          state: "running" as const,
+          status: "running" as const,
           publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),

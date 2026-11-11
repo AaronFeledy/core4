@@ -12,9 +12,9 @@ import {
 } from "@lando/sdk/schema";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
-import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { commonContainerLabels } from "./support/service-creation.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-dialect-app");
@@ -65,6 +65,9 @@ const makeBringUpApi = (
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
@@ -79,7 +82,7 @@ const makeBringUpApi = (
             ? {
                 status: 200,
                 body: JSON.stringify({
-                  Id: "lando-lifecycle-dialect-app-web-id",
+                  Id: "lando-lifecycle-dialect-app--web-id",
                   Config: { Labels: commonContainerLabels(options.plan ?? plan, service) },
                   State: { Running: true, Status: "running" },
                 }),
@@ -186,7 +189,7 @@ describe("lifecycle dialect", () => {
       method: "POST",
       path: "/networks/lando_bridge_network/connect",
       body: {
-        Container: "lando-lifecycle-dialect-app-web",
+        Container: "lando-lifecycle-dialect-app--web",
         EndpointConfig: { Aliases: ["web.lifecycle-dialect-app.internal"] },
       },
     });
@@ -282,7 +285,7 @@ describe("lifecycle dialect", () => {
         method: "POST",
         path: "/networks/lando_bridge_network/connect",
         body: {
-          Container: "lando-lifecycle-dialect-app-web",
+          Container: "lando-lifecycle-dialect-app--web",
           EndpointConfig: { Aliases: ["web.lifecycle-dialect-app.internal"] },
         },
       },
@@ -316,7 +319,7 @@ describe("lifecycle dialect", () => {
         method: "POST",
         path: "/networks/lando_bridge_network/connect",
         body: {
-          Container: "lando-global-web",
+          Container: "lando-global--web",
           EndpointConfig: { Aliases: ["web.global.internal"] },
         },
       },
@@ -345,6 +348,39 @@ describe("lifecycle dialect", () => {
     // Then
     expect(forces).toEqual([false, true]);
     expect(fake.requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(2);
+  });
+
+  test("fails a missing-image create for a Lando-built image without a forced pull", async () => {
+    // Given Docker reports the built image missing at create time.
+    const fake = makeBringUpApi([{ status: 404, body: '{"message":"No such image: lando-build-web"}' }]);
+    const forces: boolean[] = [];
+    const builtPlan: AppPlan = {
+      ...plan,
+      services: {
+        [serviceName]: { ...service, artifact: { kind: "ref", ref: "lando-build-web", origin: "build" } },
+      },
+    };
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        bringUp(builtPlan, {
+          api: fake.api,
+          ctx,
+          dialect: dockerLifecycleDialect,
+          ensureImage: ({ force }) => Effect.sync(() => forces.push(force)).pipe(Effect.asVoid),
+          retryCreateOnMissingImage: true,
+        }),
+      ),
+    );
+
+    // Then
+    expect(error).toMatchObject({
+      _tag: "ProviderUnavailableError",
+      remediation: "Run `lando rebuild -s web` to build it again.",
+    });
+    expect(forces).toEqual([false]);
+    expect(fake.requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(1);
   });
 
   test("does not ensure or pull-pin a build-only service", async () => {
@@ -387,6 +423,9 @@ describe("lifecycle dialect", () => {
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+            return { status: 200, body: "[]" };
+          }
           return { status: 404, body: "{}" };
         }),
     };

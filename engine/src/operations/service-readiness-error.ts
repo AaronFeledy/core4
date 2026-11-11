@@ -105,9 +105,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
           : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
       ...(listener === undefined ? {} : { listener }),
       ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
-      ...(evidence.runtime === undefined
-        ? {}
-        : { state: redactor.redactString(evidence.runtime.state ?? evidence.runtime.status) }),
+      ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),
       ...(evidence.attempts === undefined ? {} : { attempts: evidence.attempts }),
       ...(evidence.lastStatus === undefined
         ? {}
@@ -132,7 +130,7 @@ export const guardServiceRunning = Effect.fn("ServiceReadiness.guardRunning")(fu
   runtime: ServiceRuntimeInfo,
   initial?: ServiceRuntimeInfo,
 ) {
-  const running = runtime.status === "running" || runtime.state === "running";
+  const running = runtime.status === "running";
   const job = completionIntentServices(target.plan).has(String(target.service));
   const restarted =
     initial !== undefined &&

@@ -6,16 +6,21 @@ import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/s
 import type { EngineDialect } from "../dialect.ts";
 import { extraHostEntries, realizeHostAliases } from "../host-aliases.ts";
 
+import { withoutInertExtensions } from "./compose-knobs-identity.ts";
 import {
+  type DeviceRequest,
   type InvalidKnob,
   deviceMappings,
+  gpuDeviceRequests,
   groupEntries,
   knobBoolean,
   logConfig,
-  nonNegativeInteger,
   positiveInteger,
+  reservedDeviceRequests,
+  resourceControls,
   scalarTextMap,
   ulimitEntries,
+  wholeSeconds,
 } from "./compose-knobs-values.ts";
 
 /**
@@ -49,6 +54,8 @@ const PodmanComposeKnobs = Schema.Struct(
     "read_only",
     "platform",
     "logging",
+    "gpus",
+    "deploy",
   ]),
 );
 type PodmanComposeKnobValues = typeof PodmanComposeKnobs.Type;
@@ -57,6 +64,8 @@ interface KnobFragment {
   readonly hostConfig?: Record<string, unknown>;
   readonly topLevel?: Record<string, unknown>;
   readonly query?: Record<string, string>;
+  // Several knobs contribute device requests; they concatenate into one HostConfig.DeviceRequests.
+  readonly deviceRequests?: ReadonlyArray<DeviceRequest>;
 }
 
 interface KnobRealizer {
@@ -102,21 +111,32 @@ const queryKnob = (
   },
 });
 
+const hostConfigFieldsKnob = (
+  dialects: ReadonlyArray<EngineDialect>,
+  read: (knobs: PodmanComposeKnobValues, fail: InvalidKnob) => Record<string, unknown> | undefined,
+): KnobRealizer => ({
+  dialects,
+  realize: (knobs, fail) => {
+    const hostConfig = read(knobs, fail);
+    return hostConfig === undefined ? {} : { hostConfig };
+  },
+});
+
+const deviceRequestKnob = (
+  dialects: ReadonlyArray<EngineDialect>,
+  read: (knobs: PodmanComposeKnobValues, fail: InvalidKnob) => ReadonlyArray<DeviceRequest> | undefined,
+): KnobRealizer => ({
+  dialects,
+  realize: (knobs, fail) => {
+    const deviceRequests = read(knobs, fail);
+    return deviceRequests === undefined ? {} : { deviceRequests };
+  },
+});
+
 /**
- * Three preserved knobs are deliberately absent, and stay absent so the
- * planner's fail-closed capability gate rejects them before this code runs:
- *
- * - `pull_policy` — Podman's compat `POST /containers/create` has no
- *   pull-policy field (pulls go through `/images/create`), and
- *   `ArtifactPullSpec.policy` carries only a per-command policy. Realizing
- *   per-service pull policy would need a provider-neutral plan field that does not exist.
- * - `gpus` — Podman's compat handler honors `HostConfig.DeviceRequests` only
- *   for `Driver: "cdi"` plus `DeviceIDs`; `count`, `capabilities`, and
- *   `options` are parsed and ignored, so the mapping cannot be total.
- * - `deploy.resources` — core classifies `reservations.cpus` and
- *   `reservations.generic_resources` as preserved, and Podman has no
- *   equivalent. The capability surface is per-key, so declaring the coarse key
- *   would claim support for subfields that would then be silently dropped.
+ * GPU device requests are Docker-only. Podman's compat create honors
+ * `HostConfig.DeviceRequests` only for `Driver: "cdi"` plus `DeviceIDs` and
+ * ignores count, capabilities, and options, so libpod does not declare them.
  */
 const PODMAN_COMPOSE_KNOB_REGISTRY = {
   restart: hostConfigKnob(["libpod", "docker"], "RestartPolicy", ({ restart }) =>
@@ -143,7 +163,7 @@ const PODMAN_COMPOSE_KNOB_REGISTRY = {
   ),
   stop_signal: topLevelKnob(["libpod", "docker"], "StopSignal", ({ stop_signal }) => stop_signal),
   stop_grace_period: topLevelKnob(["libpod", "docker"], "StopTimeout", ({ stop_grace_period }, fail) =>
-    nonNegativeInteger("stop_grace_period", stop_grace_period, fail),
+    wholeSeconds("stop_grace_period", stop_grace_period, fail),
   ),
   security_opt: hostConfigKnob(["libpod", "docker"], "SecurityOpt", ({ security_opt }) => security_opt),
   group_add: hostConfigKnob(["libpod", "docker"], "GroupAdd", ({ group_add }) => groupEntries(group_add)),
@@ -152,6 +172,13 @@ const PODMAN_COMPOSE_KNOB_REGISTRY = {
   ),
   platform: queryKnob(["libpod", "docker"], "platform", ({ platform }) => platform),
   logging: hostConfigKnob(["libpod", "docker"], "LogConfig", ({ logging }, fail) => logConfig(logging, fail)),
+  gpus: deviceRequestKnob(["docker"], ({ gpus }, fail) => gpuDeviceRequests(gpus, fail)),
+  "deploy.resources": hostConfigFieldsKnob(["libpod", "docker"], ({ deploy }, fail) =>
+    resourceControls(deploy?.resources, fail),
+  ),
+  "deploy.resources.reservations.devices": deviceRequestKnob(["docker"], ({ deploy }, fail) =>
+    reservedDeviceRequests(deploy?.resources?.reservations?.devices, fail),
+  ),
 } satisfies Partial<Record<ComposeServiceKnobKey, KnobRealizer>>;
 
 // Published knob order is deterministic; membership and dialect support belong to the realizers.
@@ -193,6 +220,20 @@ const serviceKnobValues = (service: ServicePlan, fail: InvalidKnob): PodmanCompo
   });
 };
 
+const KNOB_TYPE_AST = Schema.toType(PodmanComposeKnobs).ast;
+
+/**
+ * Provider-neutral knob intent as container identity, independent of the engine dialect that
+ * later realizes it: inert `x-*` extension metadata does not participate.
+ */
+export const composeKnobIdentity = (service: ServicePlan, onInvalid: InvalidKnob): unknown =>
+  withoutInertExtensions(
+    KNOB_TYPE_AST,
+    serviceKnobValues(service, (message, details) =>
+      onInvalid(message, { service: service.name, ...details }),
+    ),
+  );
+
 export const realizePodmanComposeKnobs = (
   service: ServicePlan,
   options: RealizePodmanComposeKnobsOptions,
@@ -204,6 +245,7 @@ export const realizePodmanComposeKnobs = (
   const hostConfig: Record<string, unknown> = {};
   const topLevel: Record<string, unknown> = {};
   const query: Record<string, string> = {};
+  const deviceRequests: Array<DeviceRequest> = [];
 
   for (const key of PODMAN_KNOB_KEYS) {
     if (!PODMAN_COMPOSE_KNOB_REGISTRY[key].dialects.includes(options.dialect ?? "libpod")) continue;
@@ -211,7 +253,9 @@ export const realizePodmanComposeKnobs = (
     Object.assign(hostConfig, fragment.hostConfig);
     Object.assign(topLevel, fragment.topLevel);
     Object.assign(query, fragment.query);
+    deviceRequests.push(...(fragment.deviceRequests ?? []));
   }
+  if (deviceRequests.length > 0) hostConfig.DeviceRequests = deviceRequests;
 
   return { hostConfig, topLevel, query };
 };

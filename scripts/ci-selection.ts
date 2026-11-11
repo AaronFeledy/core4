@@ -1,4 +1,5 @@
 import { CI_PLATFORMS } from "./ci-platforms.ts";
+import { TEST_SELECTIONS, selectionMatches } from "./test-selections.ts";
 
 export const PROFILES = ["docs", "guides", "runtime", "providers"] as const;
 export type CiProfile = (typeof PROFILES)[number];
@@ -20,6 +21,7 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
   "container-helper-arm64": "broad",
   "build-linux-x64": "guides",
   "runtime-bundle-linux-x64": "guides",
+  "runtime-bundle-linux-arm64": "runtime",
   "guide-scenarios-linux-x64-runner": "guides",
   "guide-scenarios-linux-x64": "guides",
   "unit-tests-linux-x64-shard": "runtime",
@@ -44,13 +46,26 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
 const affectsProviders = (path: string): boolean =>
   path.startsWith("plugins/provider-") ||
   path.startsWith("plugins/service-lando/") ||
+  path.startsWith("plugins/sql/") ||
   path.startsWith("container-runtime/") ||
   path.startsWith("engine/src/providers/") ||
   path.startsWith("engine/test/providers/") ||
+  /^engine\/src\/operations\/service-readiness(?:-[^/]+)?\.ts$/u.test(path) ||
+  path === "engine/src/lifecycle/startup-completion.ts" ||
+  path.startsWith("engine/src/subsystems/healthcheck/") ||
+  path === "engine/src/testing/live-provider-socket.ts" ||
+  path === "sdk/src/services/service-readiness.ts" ||
+  path === "sdk/src/errors/provider.ts" ||
+  path === "sdk/src/schema/service-probe.ts" ||
   path.startsWith("sdk/src/services/provider") ||
   path.startsWith("sdk/test/contract/provider") ||
   path === ".github/workflows/ci.yml" ||
-  /^scripts\/(?:_ci-selection-workflow|build-ci-workflow|ci-selection|select-ci|validate-ci|test-shards)\.ts$/.test(
+  TEST_SELECTIONS.some(
+    (selection) =>
+      selection.jobs.some(({ job }) => job === "provider-integration-linux-x64-runner") &&
+      selectionMatches(selection, path),
+  ) ||
+  /^scripts\/(?:_ci-selection-workflow|build-ci-workflow|ci-selection|select-ci|validate-ci|test-shards|test-ownership|test-selections|run-test-selection)\.ts$/.test(
     path,
   );
 

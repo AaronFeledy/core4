@@ -42,6 +42,7 @@ const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<Sum
 };
 
 const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
+  if ("engine" in creds) return `engine=${creds.engine} path=${creds.path}`;
   const parts = [`user=${creds.user}`, `database=${creds.database}`, `password=${creds.password}`];
   if (creds.rootPassword !== undefined) parts.push(`root-password=${creds.rootPassword}`);
   return parts.join(" ");
@@ -143,7 +144,10 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         ];
   return {
     title: "APP INFO",
-    subtitle: result.app,
+    subtitle:
+      result.dataName === undefined
+        ? result.app
+        : `${result.app}\nData name: ${escapeDiagnosticText(result.dataName)}`,
     tone: result.services.length === 0 ? "info" : worstSummaryTone(rows.map((row) => row.tone ?? "info")),
     sections: [
       {
@@ -205,7 +209,12 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {
-  const extra = [...plainFileSyncLines(result.fileSync), ...hostProxyLines(result), ...agentEnvLines(result)];
+  const extra = [
+    ...(result.dataName === undefined ? [] : [`data-name\t${escapeDiagnosticText(result.dataName)}`]),
+    ...plainFileSyncLines(result.fileSync),
+    ...hostProxyLines(result),
+    ...agentEnvLines(result),
+  ];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
     const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;

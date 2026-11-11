@@ -89,7 +89,7 @@ test("an indexed mixed-case script runs its edited body without refresh", async 
   });
 }, 30_000);
 
-test("a removed indexed script reports no longer available with refresh remediation", async () => {
+test("a removed indexed script rebuilds the index and reports an unknown command", async () => {
   await withApp(async (root, cacheRoot) => {
     const path = join(root, ".lando/scripts/probe.bun.sh");
     await writeFile(path, script);
@@ -98,14 +98,11 @@ test("a removed indexed script reports no longer available with refresh remediat
     });
     await rm(path);
     const result = await invoke(root, cacheRoot, "probe");
-    expect(result.code).toBe(1);
+    expect(result.code).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
-      error: {
-        _tag: "ToolingCompileError",
-        message: expect.stringContaining("no longer available"),
-        remediation: expect.stringContaining("app:cache:refresh"),
-      },
+      command: "cli:unknown-command",
+      error: { _tag: "UnknownCommandError", commandToken: "probe" },
     });
   });
 }, 30_000);
@@ -156,7 +153,7 @@ test.each([
   },
 );
 
-test("a new script becomes unavailable after the Landofile changes", async () => {
+test("a new script still runs after the Landofile changes", async () => {
   await withApp(async (root, cacheRoot) => {
     await cache(root, cacheRoot);
     await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
@@ -165,17 +162,11 @@ test("a new script becomes unavailable after the Landofile changes", async () =>
     });
     await writeFile(join(root, ".lando.yml"), "name: freshness\n# changed\n");
     const result = await invoke(root, cacheRoot, "probe");
-    expect(result.code).toBe(1);
+    expect(result.code, result.stderr + result.stdout).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
-      ok: false,
-      error: {
-        _tag: "ToolingCommandUnavailableError",
-        reason: "stale-cache",
-        staleReason: "source",
-        commandId: "app:probe",
-        sourcePath: join(root, ".lando.yml"),
-        remediation: expect.stringContaining("app:cache:refresh"),
-      },
+      ok: true,
+      command: "app:probe",
+      result: { stdout: "probe-output" },
     });
   });
 }, 30_000);

@@ -18,7 +18,7 @@
     },
     {
       "fixture": "docs/guides/backdrop-workflow/fixtures/backdrop-dev",
-      "digest": "c50fa9b247ad9e117cfd51bc4e0459514362225bf9d0a18d739bb48ce9102013"
+      "digest": "985ff8aabfc071da6696b4c136d1f05759ce14eb624b0ac45e915e5e16a834be"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
@@ -44,12 +44,20 @@
       "digest": "46a9e4c5d4a02001f2e9e6b50f1413d231fe01941fc9b4d45dde7d5f49f666ad"
     },
     {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/host-shell-syntax",
+      "digest": "0da69b54cfe54934103fb84df6699f992f7803dd0557a05be31d9cc2df35e96f"
+    },
+    {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/host-task",
       "digest": "32fe922f5c0aacdbbbfa5bcb5c7486cf6158bb72120bafe7a3496a5f081d6064"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/missing-front-matter",
-      "digest": "6c888bdc32825b680c353e10e63b052c20746b501869941a8ae22a66b2b39acf"
+      "digest": "d0722959d0a417a54487a7a507bda33f46ac5aa45f63a69866e3f0352189a20e"
+    },
+    {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/raw-help",
+      "digest": "fab07a0f379902450c5926603a2858069d4c12018e4208646164bdadf8d2a4f4"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/scripts-demo",
@@ -64,6 +72,14 @@
       "digest": "19ca47822cd36b2ff703ef380c3c2c6beaaa677667103e38390774781099904d"
     },
     {
+      "fixture": "docs/guides/certificates-mkcert/fixtures/certificate-routes",
+      "digest": "3fd3605fe40808c2ae675efc55460ca952591a8398b920424b8049dfc3b9e355"
+    },
+    {
+      "fixture": "docs/guides/certificates-mkcert/fixtures/invalid-certificate-route",
+      "digest": "eff4ccb649e3da396f2e7983962ccb65927d44cfdb482938bf8a359a5b9c6785"
+    },
+    {
       "fixture": "docs/guides/ci-github-actions/fixtures/ci-github-actions-demo",
       "digest": "7cfd04435d03ae54cfa73ba9187764f510ac48751a78a13f62e9173f2101d530"
     },
@@ -72,8 +88,34 @@
       "digest": "37a441e3a9e7a061e9fc859c5b3c6d012eab5ef87378b7b0768e7b9c7db2d64b"
     },
     {
+      "fixture": "docs/guides/compose-passthrough/fixtures/compose-pull-policy-always-build",
+      "digest": "a3ae637774e2f5d24a9e3346a3b72fafcee4b1a5116c5275294cd4e603667fee"
+    },
+    {
+      "fixture": "docs/guides/compose-passthrough/fixtures/compose-pull-policy-daily",
+      "digest": "9668f95efcd2ac07989f6217e40b12284cb0e527e75d2dc8a243252ae9a49ab8"
+    },
+    {
       "fixture": "docs/guides/compose-service-block/fixtures/compose-configs-phpini",
       "digest": "31d47121fc6cd3b48dd655d7fb64f7f87228dcf731f426277748e68ab1579589"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-invalid-cpus",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-limits",
+      "digest": "526984df03aedfa79838f6a0cc228c647d616672e62b2475dbe6b324f1898285"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-mem-limit",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
     },
     {
       "fixture": "docs/guides/compose-service-block/fixtures/compose-service-block-demo",
@@ -102,6 +144,10 @@
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-dynamic-vars",
+      "digest": "633927713bf54ca9ab4cf97e541c6b91925e0ecb38ceae75e60a817a5f6713b1"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-event-tooling",
       "digest": "67f450cca3d98d73e3758805c3935025bc40ce9407d4b6b6480ac89f788d8a47"
     },
@@ -115,6 +161,10 @@
     {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-pgport",
       "digest": "9af58cc2876625db8d252f8d3e0135ff558c57f81bd7bdc5d8189b911f9e3a14"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-scripts",
+      "digest": "8915d062ed66e315386002f280dc0ab4abec22ca9c1602ccb1f3bc0c005f8686"
     },
     {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-include",
@@ -242,6 +292,10 @@
       "digest": "1f56920584d949d4ccbc2d7b392e327d44bb72581ed56fac16f98be05d40c64b"
     },
     {
+      "fixture": "docs/guides/doctor-walkthrough/fixtures/unstarted-app",
+      "digest": "56039f296791a3f63e48c3bedd601e0537e5607a01b7d90c8652867f5bbcf63c"
+    },
+    {
       "fixture": "docs/guides/dotnet/fixtures/dotnet-demo",
       "digest": "9c29214f8e2f3d5a130753620d8822c95ec029b238f0a63b2526276857464bb6"
     },
@@ -299,6 +353,10 @@
     {
       "fixture": "docs/guides/events/fixtures/events-failure",
       "digest": "d968e715ac7ddda28b941702cc01ecbe7894bf2f1b875aaf096db2cf8bbda952"
+    },
+    {
+      "fixture": "docs/guides/events/fixtures/events-host-shell",
+      "digest": "3dd7a90c847e9329e9e58037d4fd2ad1afdc3d4890b468059fec2af558387b08"
     },
     {
       "fixture": "docs/guides/exec/fixtures/exec-demo",
@@ -372,7 +430,15 @@
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
-      "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
+      "digest": "b3a974bf52f825c0a4dd86d96cc9ac4d0aa29a8315d70d1b9ad54a9738801e90"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/help-forwarding",
+      "digest": "ca641ff757fc660852beb359bbb62e173f8079758268b254781448df877b7951"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/invalid-wrapper",
+      "digest": "de7c35b02f36239aed6566b22710712972b8e24966ee87f334aac17561176562"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
@@ -667,6 +733,13 @@
       }
     },
     {
+      "fixture": "docs/guides/networks/fixtures/networks-service-name-alias",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
+    },
+    {
       "fixture": "docs/guides/networks/fixtures/networks-undeclared",
       "digest": "1043e09b1fcfa6be384fb3bc16839209bc9df7e8b03a365c6d5655b236beaf93"
     },
@@ -681,6 +754,21 @@
     {
       "fixture": "docs/guides/nginx/fixtures/nginx-public",
       "digest": "df96558b651021bf7df0d882b8a92e97daeb3d6d9dc411382d2fd34a8761b1cd"
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs-inject",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs-unsupported",
+      "digest": "27b0264d66568001786084c5274616d74f65b488b7e0d01af221192ce45754e5"
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs",
+      "digest": "46477862f1396130731af50aa2a97ff9e1acfcd3743553d7c6553ee2f2a9f4df"
     },
     {
       "fixture": "docs/guides/node-playwright/fixtures/playwright-demo",
@@ -862,6 +950,10 @@
       "digest": "17a41f4e0275bd952c91b884adc108734ab2da08868d164e1e825c975fd3319f"
     },
     {
+      "fixture": "docs/guides/php-security-updates/fixtures/php-patch-demo",
+      "digest": "43a0da45c65ed6015ebef28a09db0e7ef2bd6fcf11d952bd22bfc79050d823a3"
+    },
+    {
       "fixture": "docs/guides/php-version-matrix/fixtures/php-81",
       "digest": "3b6fffcafc0bb668041f8a77101c654b7ad66878f9cdb136484771db02dc70a5"
     },
@@ -896,6 +988,14 @@
     {
       "fixture": "docs/guides/php/fixtures/php-fpm-nginx",
       "digest": "f1d973b3bfa3802f2900de503422f333037b90d8b013199d4fca1970af132e77"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/php-upload-dirs-fpm",
+      "digest": "91956ff4f461f9016bae64fae4b1f1c1afbcda7822f4ade454a116d821d51762"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/php-upload-dirs",
+      "digest": "dda55b72a8d471840e3d7268fea53649d6e17bf091ef6b2cefbe0b995939bea5"
     },
     {
       "fixture": "docs/guides/php/fixtures/stock-nonroot",
@@ -1088,6 +1188,14 @@
     {
       "fixture": "docs/guides/solr10/fixtures/solr10-demo",
       "digest": "af52f8b657a1349fc157b50d79d9629754cc761c1263b32016d8eb5a9b03109f"
+    },
+    {
+      "fixture": "docs/guides/sqlite-database/fixtures/sqlite-database-demo",
+      "digest": "2683d707e077c08e6b988ec1848259e68e5c623d3fbbbb8d88ec9b6d31cacac3"
+    },
+    {
+      "fixture": "docs/guides/sqlite-database/fixtures/sqlite-on-mysql",
+      "digest": "ab6d5bfc1fb0a0667501de4741556eaa1e0cd26118102a930c9ad4b774e1edb6"
     },
     {
       "fixture": "docs/guides/ssh-host-agent/fixtures/host-agent-1password",
@@ -1361,18 +1469,18 @@
         "digest": "3f256ed2c224bc94bc91ee335eb6a8fa1111d4f4bd8d7aa0d391d1ff2e44a585"
       },
       "after": {
-        "digest": "d8d00f6fa98810ea2e051b7c724a596e3aa1c309b16ca267b79fb7e7b4fd7610"
+        "digest": "5cb591dec3c70c9445fec30445c88b61000ba885de22c6729e1b422723f60ae0"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer."
     },
     "docs/guides/drupal-stack-overrides/fixtures/two-database-services": {
       "before": {
         "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
       },
       "after": {
-        "digest": "fc87e3aef6c08c23945f4b4c42f7998ce97f153026374b85b8fa3eda9fa27d4f"
+        "digest": "29848fc57ac608c0c720fc12d83844fa71149d2917c822bb1108f492bdf98859"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The fixture now also names its PHP database client (db_client), because final planning during config lint rejects a custom database image whose client version it cannot infer."
     },
     "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
       "before": {
@@ -1448,6 +1556,15 @@
         "digest": "bc62146b254691eb416dadb3b16157a8253d6f3640d4bcb9deaf37c43f1199ad"
       },
       "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged."
+    },
+    "docs/guides/magento/fixtures/mageos": {
+      "before": {
+        "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
+      },
+      "after": {
+        "digest": "9e9c712e5ed587b8ec284c19961749bf2d51b03103f9242710d6ca2559f62358"
+      },
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The encoded document drops bcmath from that one install command; nothing else changed."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {
@@ -1527,6 +1644,15 @@
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
+    "docs/guides/phpmyadmin/fixtures/phpmyadmin-demo": {
+      "before": {
+        "digest": "ac8ba6c81a9d56b47f54cf5c3d4c87f24e252ea4d71f516629f772f1c47fe7ca"
+      },
+      "after": {
+        "digest": "8cefe741b67af3abf128502c5e69fbf2af9514ad524f8dd24700656c7b1ed03d"
+      },
+      "reason": "Planning no longer contacts a certificate authority, so a guide app plans without one. The guide fixture dropped its workaround-only certs: false."
+    },
     "docs/guides/postgres-pgvector/fixtures/pgvector-demo": {
       "before": {
         "digest": "0ebf4df0f481601fa8e74c0f68e66c0a352e0e6d39f9e6cf9caf8af89416e25e"
@@ -1541,9 +1667,9 @@
         "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
       },
       "after": {
-        "digest": "8ce3989a78b0312903b6811adcf1593a85c8a14bd1491afa3a6e73cd287190b9"
+        "digest": "28d568a6b5f7ea70efb72d047a6f59a095355bfcff057898b1ff9d08ca8c15a2"
       },
-      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener."
+      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener. Its two deep-wildcard routes now use the object form with scheme: http, because an HTTPS route with a wildcard below the leftmost label cannot get a certificate."
     },
     "docs/guides/secret-stores/fixtures/secret-stores-demo": {
       "before": {
@@ -1583,6 +1709,15 @@
         "digest": "40a6b4a9e3e779d555c8be3bf18d0cd22543242a2d7499acb425372beb37e48e"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/varnish/fixtures/varnish-unknown-backend": {
+      "before": {
+        "digest": "8827f31b0a039e240264992e1edba873a77eee6806d3c8ea86a36d6de45166f7"
+      },
+      "after": {
+        "digest": "1c0bcc63ed7647955c92328584a52ba3f8ec0536295b5fa8271b6a8460a4c8da"
+      },
+      "reason": "Planning no longer contacts a certificate authority, so a guide app plans without one. The guide fixture dropped its workaround-only certs: false."
     },
     "docs/guides/xhprof-xhgui/fixtures/xhprof-demo": {
       "before": {

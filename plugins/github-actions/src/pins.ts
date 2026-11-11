@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { type DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import {
@@ -17,7 +18,7 @@ const loadCatalog = () => decodePinCatalog(manifest);
 export const selectNodeRuntime = Effect.fnUntraced(function* (input: unknown) {
   const request = yield* Schema.decodeUnknownEffect(RuntimeRequest)(input, {
     onExcessProperty: "error",
-  }).pipe(Effect.mapError(() => pinError("unsupported-runtime")));
+  }).pipe(mapFailures(() => pinError("unsupported-runtime")));
   const catalog = yield* loadCatalog();
   const runtime = catalog.nodeRuntimes.find(
     (pin) => pin.runtime === request.runtime && pin.arch === request.arch && pin.source === request.source,
@@ -30,7 +31,7 @@ export const selectNodeRuntime = Effect.fnUntraced(function* (input: unknown) {
 export const selectRunnerArchive = Effect.fnUntraced(function* (input: unknown) {
   const request = yield* Schema.decodeUnknownEffect(RunnerArchiveRequest)(input, {
     onExcessProperty: "error",
-  }).pipe(Effect.mapError(() => pinError("unsupported-runtime")));
+  }).pipe(mapFailures(() => pinError("unsupported-runtime")));
   const catalog = yield* loadCatalog();
   const artifact = catalog.artifacts.find(
     (pin) => pin.kind === "runner-archive" && pin.arch === request.arch,
@@ -43,7 +44,7 @@ export const selectRunnerArchive = Effect.fnUntraced(function* (input: unknown) 
 export const selectImageCandidate = Effect.fnUntraced(function* (input: unknown) {
   const request = yield* Schema.decodeUnknownEffect(ImageCandidateRequest)(input, {
     onExcessProperty: "error",
-  }).pipe(Effect.mapError(() => pinError("unsupported-image")));
+  }).pipe(mapFailures(() => pinError("unsupported-image")));
   const catalog = yield* loadCatalog();
   const image = catalog.images.find((pin) => pin.id === request.id && pin.arch === request.arch);
   if (!image) return yield* Effect.fail(pinError("unsupported-image"));
@@ -64,7 +65,7 @@ export const buildDownloadRequest = Effect.fnUntraced(function* (
 ): Effect.fn.Return<DownloadRequest, ReturnType<typeof pinError>> {
   const options = yield* Schema.decodeUnknownEffect(DownloadOptions)(input, {
     onExcessProperty: "error",
-  }).pipe(Effect.mapError(() => pinError("invalid-download-request")));
+  }).pipe(mapFailures(() => pinError("invalid-download-request")));
   const catalog = yield* loadCatalog();
   const artifact = catalog.artifacts.find((pin) => pin.id === options.artifactId);
   if (!artifact) return yield* Effect.fail(pinError("invalid-download-request"));
@@ -89,7 +90,7 @@ export const validateDownloadResult = Effect.fnUntraced(function* (requestInput:
     return yield* Effect.fail(pinError(request.offline ? "offline-artifact-missing" : "artifact-missing"));
   const result = yield* Schema.decodeUnknownEffect(DownloadResult)(receipt, {
     onExcessProperty: "error",
-  }).pipe(Effect.mapError(() => pinError("download-receipt-mismatch")));
+  }).pipe(mapFailures(() => pinError("download-receipt-mismatch")));
   if (
     request.destination.kind !== "file" ||
     result.kind !== "file" ||

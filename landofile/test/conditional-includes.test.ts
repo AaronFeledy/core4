@@ -3,7 +3,6 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { LandofileLoadIssueRule } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
 import { loadLandofileLayers } from "../src/service.ts";
@@ -126,7 +125,7 @@ test("rejects a secret reference in an include condition with secret-specific gu
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path: ["includes", 0, "when"],
-      reason: LandofileLoadIssueRule.unsupportedSecretReference,
+      reason: "unsupported-secret-reference",
       message: expect.stringContaining("Secret references are not supported"),
       source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["includes", 0, "when"] },
     },

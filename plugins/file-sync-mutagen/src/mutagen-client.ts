@@ -10,6 +10,7 @@ import { DateTime, Effect, Stream } from "effect";
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type {
   AppRef,
+  FileSyncDisposalPhase,
   FileSyncEventChunk,
   FileSyncSessionInfo,
   FileSyncSessionSpec,
@@ -64,9 +65,7 @@ export interface MutagenClient {
   readonly drainApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   readonly disposeApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   readonly completeAppDisposal?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
-  readonly disposalPhase?: (
-    app: AppRef,
-  ) => Effect.Effect<"absent" | "active" | "drained" | "disposing" | "completed", FileSyncStopError>;
+  readonly disposalPhase?: (app: AppRef) => Effect.Effect<FileSyncDisposalPhase, FileSyncStopError>;
   readonly version: Effect.Effect<string, FileSyncStartError>;
   readonly create: (args: MutagenCreateArgs) => Effect.Effect<void, FileSyncStartError | FileSyncDriftError>;
   /** Block until an inspected, conflict-free synchronization cycle completes. */

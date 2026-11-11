@@ -1,9 +1,14 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ShellExecError } from "@lando/sdk/errors";
 import { REDACTED, parseSecretReference } from "@lando/sdk/secrets";
 import type { ShellInteractiveSpec } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 const SECRET_REFERENCE = /\$\{secret:([^}\r\n]+)\}/g;
+
+/** Blanks each secret reference with same-length text, so a scan of the line keeps its columns. */
+export const maskHostShellSecretReferences = (line: string): string =>
+  line.replace(SECRET_REFERENCE, (reference) => "_".repeat(reference.length));
 
 const secretError = (message: string, cause?: unknown) =>
   new ShellExecError({
@@ -29,7 +34,7 @@ export const resolveHostShellSecrets = Effect.fnUntraced(function* (
       const reference = yield* Effect.fromResult(parseSecretReference(match[1] ?? ""));
       return yield* resolveSecret(reference.raw);
     }),
-  ).pipe(Effect.mapError((error) => secretError(error.message, error)));
+  ).pipe(mapFailures((error) => secretError(error.message, error)));
   const fragments: string[] = [];
   let cursor = 0;
   for (const match of matches) {

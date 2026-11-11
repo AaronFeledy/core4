@@ -2,6 +2,7 @@ import { expect } from "bun:test";
 import { resolve } from "node:path";
 
 import { PortablePath, ServiceName, type ServicePlan } from "@lando/core/schema";
+import { landoAppStoreName } from "@lando/sdk/schema";
 
 import {
   ComposeFixtureOutcomeError,
@@ -108,7 +109,7 @@ const expectations = {
     });
     expect(web.mounts).toContainEqual({
       type: "volume",
-      store: `${context.plan.name}-cache`,
+      store: landoAppStoreName(context.plan.slug, "cache"),
       origin: "authored",
       target: PortablePath.make("/var/cache/app"),
       readOnly: false,
@@ -146,7 +147,7 @@ const expectations = {
       deploy: {
         resources: {
           limits: { cpus: "2.0", memory: 1_073_741_824, pids: 256 },
-          reservations: { cpus: "0.5", memory: 268_435_456 },
+          reservations: { memory: 268_435_456 },
         },
       },
     });

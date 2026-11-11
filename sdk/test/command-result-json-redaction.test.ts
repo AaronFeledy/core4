@@ -20,6 +20,32 @@ const options = (value: unknown, redactor: Redactor) => ({
 const envelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 const frame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
 
+test("redacts secrets inside nested tagged cause messages in the envelope", () => {
+  const redactor = createRedactor("secrets", { values: ["nested-secret"] });
+  const line = Effect.runSync(
+    encodeCommandResult({
+      command: "app:start",
+      resultSchema: Schema.Void,
+      outcome: {
+        _tag: "failure",
+        error: {
+          _tag: "Outer",
+          message: "Failed.",
+          cause: { _tag: "Inner", message: "Could not read nested-secret." },
+        },
+        additionalErrors: [],
+      },
+      redactor,
+    }),
+  );
+
+  expect(envelope(line).error?.cause).toMatchObject({
+    _tag: "Inner",
+    message: `Could not read ${REDACTED}.`,
+  });
+  expect(line).not.toContain("nested-secret");
+});
+
 for (const [label, secret, primitive] of [
   ["truth", "true", true],
   ["falsehood", "false", false],

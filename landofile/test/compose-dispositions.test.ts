@@ -64,6 +64,7 @@ describe("Compose disposition analysis", () => {
       {
         matrixPath: "ports.mode",
         documentPath: "services.entry.ports[0].mode",
+        path: ["services", "entry", "ports", 0, "mode"],
         service: "entry",
         rationale: matrixEntry.rationale,
         remediation: matrixEntry.remediation,

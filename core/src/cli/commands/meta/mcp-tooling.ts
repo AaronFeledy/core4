@@ -5,8 +5,10 @@ import type { McpCommandSpec } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { type ToolingInputDeclaration, type ToolingInvocationInput, ToolingResult } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import type { RegisteredCommand } from "@lando/sdk/services";
 import { Effect, Option, Predicate, Schema } from "effect";
+import { toolingRunHelp } from "../../tooling-run-help";
 
 const invocationFromMaps = (declaration: ToolingInputDeclaration, input: unknown): ToolingInvocationInput => {
   const maps = Predicate.isObject(input) ? input : {};
@@ -29,6 +31,15 @@ export const toolingSpecFromRegistered = (command: RegisteredCommand): McpComman
   return {
     id: command.id,
     summary: command.summary,
+    ...(command.runs === undefined
+      ? {}
+      : {
+          description: createRedactor("secrets").redactString(
+            command.summary === ""
+              ? toolingRunHelp(command.runs)
+              : `${command.summary} ${toolingRunHelp(command.runs)}`,
+          ),
+        }),
     ...(declaration === undefined ? {} : { toolingInput: declaration }),
     resultSchema: ToolingResult,
     completion: (result) =>

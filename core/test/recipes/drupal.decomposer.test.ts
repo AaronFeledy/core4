@@ -78,6 +78,7 @@ describe("drupal decomposition", () => {
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
+          uploadDirs: ["sites/*/files"],
           port: 80,
           dependsOn: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
@@ -89,11 +90,13 @@ describe("drupal decomposition", () => {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
           cmds: [DRUSH_TOOLING_COMMAND],
+          wrapper: true,
         },
         composer: {
           service: "appserver",
           description: "Run Composer inside the appserver service.",
           cmds: ["composer"],
+          wrapper: true,
         },
         "drupal-scaffold": scaffoldTooling,
       },
@@ -116,6 +119,7 @@ describe("drupal decomposition", () => {
       type: "nginx",
       backend: "appserver",
       webroot: "{{ recipe.webroot }}",
+      uploadDirs: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     });
   });

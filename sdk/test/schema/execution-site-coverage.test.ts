@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { executionSiteAt } from "@lando/sdk/landofile";
+import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import {
   type ExecutionSite,
   LandofileShape,
@@ -143,7 +143,6 @@ test.each([
   [["tooling", "deploy", "cmds", 0, "cmd"], "tooling-cmds", [0, "cmd"]],
   [["tooling", "deploy", "cmds", 0, "env", "TOKEN"], "secret-binding", []],
   [["tooling", "deploy", "vars", "token", "sh"], "tooling-var", []],
-  [["toolingDefaults", "vars", "token", "sh"], "tooling-var", []],
   [["events", "post-start", 0], "event-step", []],
   [["events", "post-start", 0, "cmd"], "event-step", []],
   [["events", "post-start", 0, "defer"], "event-step", []],

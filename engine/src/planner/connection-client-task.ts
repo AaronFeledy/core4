@@ -1,5 +1,6 @@
 import type { InvocationProgram } from "@lando/landofile/compiled-sites";
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
+import { mapFailures } from "@lando/sdk/command-result";
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -37,10 +38,8 @@ export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   const plugins = yield* Effect.serviceOption(PluginRegistry);
   if (Option.isNone(registry) || Option.isNone(plugins)) return yield* Effect.fail(refused);
-  const root = AbsolutePath.make(
-    yield* canonicalMissingAppRoot(input.plan.root).pipe(Effect.mapError(refusal)),
-  );
-  const plans = yield* registry.value.appliedPlansFor(root).pipe(Effect.mapError(refusal));
+  const root = AbsolutePath.make(yield* canonicalMissingAppRoot(input.plan.root).pipe(mapFailures(refusal)));
+  const plans = yield* registry.value.appliedPlansFor(root).pipe(mapFailures(refusal));
   const owned = plans.filter(
     (plan) =>
       plan.id === input.plan.id &&
@@ -60,9 +59,7 @@ export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
     return yield* Effect.fail(refused);
   if (service.serviceTypeId === undefined || service.serviceTypeId.length === 0)
     return yield* Effect.fail(refused);
-  const definition = yield* plugins.value
-    .loadServiceType(service.serviceTypeId)
-    .pipe(Effect.mapError(refusal));
+  const definition = yield* plugins.value.loadServiceType(service.serviceTypeId).pipe(mapFailures(refusal));
   if (definition.id !== service.serviceTypeId) return yield* Effect.fail(refused);
   const factoryTask = definition.toolingForConnection?.(owner, service.connection)[input.name];
   if (factoryTask === undefined) return yield* Effect.fail(refused);

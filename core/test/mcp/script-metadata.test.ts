@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compileBunShellScriptCommands } from "@lando/engine/cache/command-compiler";
+import { compileInspectedAppCommands } from "@lando/engine/cache/command-compiler";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import { discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
 import type { McpCommandEntry, McpToolInput } from "@lando/mcp/registry";
@@ -13,6 +13,7 @@ import { LandofileService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, Effect, Layer } from "effect";
 import { mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 import { environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 
@@ -49,7 +50,11 @@ const withScript = async (run: (root: string, path: string) => Promise<void>) =>
 const project = async (root: string) =>
   mcpRegistryWithToolingEntries(
     { commandEntries: [] },
-    compileBunShellScriptCommands(await Effect.runPromise(discoverBunShellScripts({ appRoot: root }))),
+    compileInspectedAppCommands({
+      landofile: {},
+      inspection: await Effect.runPromise(inspectBunShellScripts({ appRoot: root })),
+      redact: createRedactor("secrets").redactString,
+    }),
   );
 
 const retainedDispatch = (root: string, entry: McpCommandEntry, input: McpToolInput) =>
@@ -58,6 +63,9 @@ const retainedDispatch = (root: string, entry: McpCommandEntry, input: McpToolIn
       const context = yield* Layer.build(
         Layer.mergeAll(
           BunProcessRunner.layer,
+          BunShellRunner.layer(() => {
+            throw new TypeError("Interactive host tooling is unavailable in tests.");
+          }),
           Layer.succeed(Context.Service<unknown>("script-mcp-runtime"), {}),
           environmentResolverLayer(),
           PrivateFileAccessService.layer,
@@ -118,6 +126,14 @@ test("omits disabled scripts from the opt-in MCP projection", async () => {
     const registry = await project(root);
     // Then
     expect(registry.toolingEntries).toEqual([]);
+  });
+});
+
+test("omits broken scripts without losing healthy MCP tools (#2210)", async () => {
+  await withScript(async (root) => {
+    await writeFile(join(root, ".lando/scripts/broken.bun.sh"), "echo broken\n");
+    const registry = await project(root);
+    expect(registry.toolingEntries?.map((entry) => entry.spec.id)).toEqual(["app:inspect"]);
   });
 });
 

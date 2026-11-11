@@ -1,12 +1,11 @@
 import { Schema } from "effect";
 
 import { AppPlan } from "./app-plan.ts";
+import { RouteHostname } from "./hostname.ts";
 import { AppId, PortNumber, ServiceName } from "./primitives.ts";
 
 const TUNNEL_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const TUNNEL_SERVICE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const TUNNEL_HOSTNAME_PATTERN =
-  /^(?:\*\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/u;
 const SAFE_HTTP_URL_PATTERN = /^https?:\/\/[^\s/?#@]+(?:\/[^\s?#]*)?$/u;
 const LOOPBACK_URL_PATTERN =
   /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\/[^\s?#]*)?$/u;
@@ -22,13 +21,6 @@ const TunnelServiceName = ServiceName.pipe(
   Schema.check(
     Schema.isPattern(TUNNEL_SERVICE_NAME_PATTERN, {
       message: "Expected a service name without path separators or control characters.",
-    }),
-  ),
-);
-const TunnelHostname = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(TUNNEL_HOSTNAME_PATTERN, {
-      message: "Expected a DNS hostname.",
     }),
   ),
 );
@@ -91,8 +83,8 @@ export const TunnelCapabilities = Schema.Struct({
 export type TunnelCapabilities = typeof TunnelCapabilities.Type;
 
 const TunnelRouteTarget = Schema.TaggedStruct("route", {
-  routeId: TunnelIdentifier,
-  hostname: Schema.optionalKey(TunnelHostname),
+  routeId: Schema.Union([RouteHostname, TunnelIdentifier]),
+  hostname: Schema.optionalKey(RouteHostname),
 });
 
 const TunnelServiceEndpointTarget = Schema.TaggedStruct("service", {

@@ -27,6 +27,9 @@
       "path": "./managed-file"
     },
     {
+      "path": "./source-acquisition"
+    },
+    {
       "path": "./data-mover"
     },
     {
@@ -90,7 +93,16 @@
       "path": "./plugins/lando3"
     },
     {
+      "path": "./plugins/ssh-agent"
+    },
+    {
+      "path": "./plugins/secret-store-1password"
+    },
+    {
       "path": "./tsconfig.test.json"
+    },
+    {
+      "path": "./scripts"
     }
   ]
 }

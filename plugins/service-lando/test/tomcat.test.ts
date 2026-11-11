@@ -86,6 +86,7 @@ describe("tomcat ServiceType", () => {
             defaultFeatures: [],
           },
           baseKind: "lando",
+          appSlug: "myapp",
           appRoot: "/srv/apps/myapp",
           normalizedConfig: {},
           features: [{ id: TOMCAT_FEATURE_ID, definition: tomcatServiceFeature, config }],
@@ -224,6 +225,23 @@ describe("tomcat ServiceType", () => {
       ]),
     });
   });
+
+  test.each([{ image: "acme/tomcat:custom" }, { build: { context: "." } }])(
+    "plans %j without an app mount or webroot",
+    async (definition) => {
+      // Given: a Tomcat service whose image configuration the author owns, with no app code mounted.
+      // When: it is planned without a webroot.
+      const plan = await planTomcatService(tomcatServiceType, {
+        type: "tomcat",
+        appMount: false,
+        ...definition,
+      });
+      // Then: Lando neither exports a webroot nor writes Tomcat configuration into the image.
+      expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
+      const features = Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]);
+      expect(features.buildSteps.filter(({ id }) => id.startsWith("service-lando.tomcat:"))).toEqual([]);
+    },
+  );
 
   test.each([undefined, "public"])("rejects appMount false with webroot %s", async (webroot) => {
     // Given: a webroot requiring app code on a service that disables it.

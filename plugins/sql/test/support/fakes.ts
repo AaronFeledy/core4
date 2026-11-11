@@ -5,7 +5,9 @@ import { gzipSync } from "node:zlib";
 
 import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import { PortNumber } from "@lando/sdk/schema";
-import { DateTime, Effect, Stream } from "effect";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { DateTime, Effect, Stream, absurd } from "effect";
 import { familyFromServiceType } from "../../src/families.ts";
 
 import {
@@ -14,12 +16,12 @@ import {
   SqlRecoveryUnavailableError,
 } from "@lando/sdk/errors";
 import type {
+  DataEndpoint,
   DataTransferResult,
   DataTransferSpec,
   SnapshotFilter,
   SnapshotHandle,
   VolumeInfo,
-  VolumeInitializationRecord,
 } from "@lando/sdk/schema";
 import {
   AbsolutePath,
@@ -48,6 +50,7 @@ const liveHarnesses: SqlTestHarness[] = [];
 
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const transfers: DataTransferSpec[] = [];
+  const reads: DataEndpoint[] = [];
   const snapshots: RecordedSnapshot[] = [];
   const restores: Array<ReturnType<SqlTestHarness["restores"]>[number]> = [];
   const execs: RecordedExec[] = [];
@@ -55,8 +58,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const lifecycle: SqlLifecycleStep[] = [];
   const snapshotFilters: SnapshotFilter[] = [];
   let countAttempts = 0;
-  let seedStatus = options.seedStatus ?? "fresh";
-  let seedOperationId = "fixture-operation";
+  const initializationStore = makeTestStateStore();
   let runtimeRunning = options.initiallyRunning !== false;
   const storage = options.storage ?? [
     { store: "sql-app_database_data", target: fixtureDataDestination(options.type ?? "mysql:8.0") },
@@ -83,6 +85,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         MYSQL_DATABASE: "sql-app",
         ...(options.rootPassword === undefined ? {} : { MYSQL_ROOT_PASSWORD: options.rootPassword }),
       },
+      mounts: [],
       extensions: {},
       storage,
     },
@@ -92,6 +95,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       name: extra.name,
       type: extra.type,
       environment: {},
+      mounts: [],
       extensions: {},
       storage: [{ store: `sql-app_${extra.name}_data`, target: fixtureDataDestination(extra.type) }],
     };
@@ -199,6 +203,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         }
         return { accelerated: true, sizeBytes: 12 };
       }),
+    read: (from) => {
+      reads.push(from);
+      const payload = options.readPayload ?? new TextEncoder().encode("dump");
+      return Stream.succeed(payload);
+    },
     snapshot: (store, opts) =>
       Effect.sync((): SnapshotHandle => {
         lifecycle.push("snapshot");
@@ -248,6 +257,8 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
             ];
       }),
     pruneSnapshots: () => Effect.succeed([]),
+    stagingDir: join(root, "transfer-staging"),
+    privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
     canonicalizeSourcePath: (path) =>
       Effect.try({
         try: () => AbsolutePath.make(realpathSync(path)),
@@ -292,6 +303,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return sqlResult({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
+    waitForReady: () => Effect.void,
     resume: Effect.fnUntraced(function* () {
       lifecycle.push("resume");
       if (options.startFails === true) return yield* Effect.fail(new FakeStartError());
@@ -328,29 +340,28 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       Effect.sync(() => {
         lifecycle.push("lock");
       }).pipe(Effect.andThen(body)),
-    initialization: (identity) =>
-      Effect.succeed({
-        read: Effect.sync(
-          (): VolumeInitializationRecord => ({
-            identity,
-            state:
-              seedStatus === "fresh" ? { _tag: "fresh" } : { _tag: seedStatus, operationId: seedOperationId },
-          }),
-        ),
-        begin: (operationId) =>
-          Effect.sync(() => {
-            if (seedStatus !== "fresh") return false;
-            seedStatus = "in-progress";
-            seedOperationId = operationId;
-            return true;
-          }),
-        finish: ({ operationId, outcome }) =>
-          Effect.sync(() => {
-            if (seedStatus !== "in-progress" || operationId !== seedOperationId) return false;
-            seedStatus = outcome;
-            return true;
-          }),
-      }),
+    initialization: Effect.fnUntraced(function* (identity) {
+      const state = yield* volumeInitialization(initializationStore.service, identity);
+      if ((yield* state.read) === null) {
+        yield* state.recordCreation;
+        const status = options.seedStatus ?? "fresh";
+        switch (status) {
+          case "fresh":
+            break;
+          case "in-progress":
+            yield* state.begin("fixture-operation");
+            break;
+          case "seeded":
+          case "failed":
+            yield* state.begin("fixture-operation");
+            yield* state.finish({ operationId: "fixture-operation", outcome: status });
+            break;
+          default:
+            return absurd(status);
+        }
+      }
+      return state;
+    }),
     publish: (event) =>
       Effect.sync(() => {
         published.push(String(event._tag));
@@ -361,6 +372,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     root,
     deps,
     transfers: () => transfers,
+    reads: () => reads,
     snapshots: () => snapshots,
     restores: () => restores,
     execs: () => execs,

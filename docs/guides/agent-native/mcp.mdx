@@ -3,13 +3,14 @@ id: mcp
 provider: test
 platforms: [darwin, linux, win32, wsl]
 timeout: 120000
-tags: [beta, docs, mcp, agent]
+tags: [docs, mcp, agent]
 ---
 
 # Drive Lando through MCP
 
 Configure your MCP client to launch `lando mcp` as a child process with piped
-stdin and stdout. For app-scoped tools and resources, start it in the app directory.
+stdin and stdout. Start it in the app you work on most: tools and resources use
+that directory's app unless a tool call names another one with `appPath`.
 Before connecting, inspect the tools the server will expose without starting the
 long-running session:
 
@@ -64,8 +65,12 @@ issues, warnings, deprecations, and bounded output with `output.truncated`.
 MCP envelopes do not include the CLI's optional timing `trace`.
 
 Rejections that never reach the command (bad input, `Server busy`) also come
-back as a tool result with `isError: true`; the
-`text` block is the tagged error as JSON and there is no `structuredContent`.
+back as a tool result with `isError: true`. Read the same envelope in
+`structuredContent` or the first `text` block: `apiVersion` is `"v4"`, `command`
+is the called tool id, `ok` is `false`, and `error` is the redacted tagged error,
+including its `_tag`, `message`, and `remediation`. `warnings` and `deprecations`
+are empty arrays. For `McpToolInputError`, `error.path` identifies the rejected
+input. These rejections have no command result or output capture.
 A tool outside the effective allowlist is never registered, so calling it gets
 the protocol's unknown-tool error, code `-32602`.
 
@@ -91,20 +96,23 @@ a shell:
 
 ## Send named tooling inputs
 
-To expose app tooling, refresh its command cache in the app directory, then
-inspect the opt-in catalog:
+To expose app tooling, inspect the opt-in catalog from the app directory:
 
 ```sh
-lando app:cache:refresh
 lando mcp --tooling --list --format=json
 ```
 
 Launch the client session with `lando mcp --tooling` from that same directory.
-The refresh rebuilds the full app plan and command index without starting
-services. It is explicit, not an automatic metadata-only repair.
+When the session starts, Lando reads your app's commands, rebuilding the index
+if the Landofile, an include, or a script changed since the last run, so the
+tool catalog matches the current Landofile. That rebuild plans the app without
+starting services or the provider. Each tooling tool's `description` ends with the
+sentence `lando <task> --help` prints about what the task runs, such as
+``Runs `composer` in appserver.`` or `Runs .lando/scripts/tag.bun.sh on the host.`,
+so an agent can tell a database reset from a lint run before calling it.
 
 A `.bun.sh` script can accept sparse named arguments. For example, save this as
-`.lando/scripts/tag.bun.sh` before refreshing:
+`.lando/scripts/tag.bun.sh` before starting the session:
 
 ```sh
 # ---
@@ -161,21 +169,27 @@ types, defaults, choices, requiredness, sensitivity, or raw-argument policy reje
 the call with `ToolingInputError` before the body runs. Script-body and
 description-only edits keep the revision compatible.
 
-After changing metadata, run `lando app:cache:refresh`, reconnect the client,
-and inspect `tools/list` again. A running session does not atomically replace its
-catalog after a refresh, and rejected calls are not automatically replayed.
-Review the new declaration before retrying.
+After changing metadata, reconnect the client and inspect `tools/list` again.
+A running session keeps the catalog it started with; the next session reads the
+current commands on its own, so no refresh command is needed. Rejected calls are
+not automatically replayed. Review the new declaration before retrying.
 
-If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`:
-`missing-cache`, `stale-cache`, or `invalid-cache` requires an explicit refresh;
-`unknown-command` means a fresh index has no matching command, so check the name
-and aliases. `lando help --format=json` exposes `result.toolingMetadata` with
-`status` and, when unavailable, `reason` and `remediation`. Neither help nor a
-failed lookup repairs metadata by planning or starting a provider. You do not
-need `lando start` or `lando rebuild` just to repair discovery. The same help
-JSON lists plugin commands as `result.all[]` rows with `source: "plugin"` and
-reports plugin discovery in `result.pluginMetadata`. Plugin commands can be MCP
-tools too; see [Expose plugin commands](#expose-plugin-commands).
+If discovery reports `ToolingCommandUnavailableError`, its `reason` is
+`missing-cache`, `stale-cache`, or `invalid-cache`. Those appear only in a rare
+race where the app changed while Lando was reading it; run the command again.
+A name the app does not define is an ordinary `UnknownCommandError`, with the
+closest commands in `error.suggestions`, best first, when any are spelled nearby. On the host CLI, every app tooling command and help
+rebuilds a missing, stale, or unreadable index before it runs; a rebuild that
+fails makes the command fail with the real error, such as
+`LandofileValidationError`. `lando help --format=json` exposes
+`result.toolingMetadata` with `status` and, after a failed rebuild,
+`reason: "rebuild-failed"`, `remediation`, and `error` as `{ _tag, message }`.
+Calls from inside a container through the host proxy do not rebuild. Neither
+path starts a provider only to repair discovery. You do not need `lando start`
+or `lando rebuild` just for that. The same help JSON lists plugin commands as
+`result.all[]` rows with `source: "plugin"` and reports plugin discovery in
+`result.pluginMetadata`. Plugin commands can be MCP tools too; see
+[Expose plugin commands](#expose-plugin-commands).
 
 ## Protect sensitive tooling values
 
@@ -240,6 +254,9 @@ other requests. Closing stdin cancels every active call and releases its
 provider reads, including idle log followers. Either way, a cancelled call gets
 no fabricated result, and a change the command had already applied to the app
 stays applied. Progress notifications you already received remain valid.
+Cancelling an exec or tooling call also stops the command inside the container
+and everything it started, so a port it held is free for your next call; you
+don't need to kill leftover processes yourself.
 
 ## Confirm changes to an app
 
@@ -291,7 +308,74 @@ Each plugin tool in that list carries `plugin.name`, `plugin.source` (`bundled`
 or `external`), and `destructive`. The `diagnostics` array names plugin commands
 the catalog left out and why: a module that failed to load, a descriptor or
 alias conflict, or a destructive command that tried to self-allow. An unknown id
-passed to `--allow` fails with `McpToolInputError` before the server starts.
+passed to `--allow` that no plugin provides yet stays pending: `--list` reports
+it in `diagnostics` with `_tag: "McpPendingAllowance"`, and the tool appears once
+an app that provides it is selected, as described in the next section. A malformed
+id, or one that can never be an MCP tool, fails with `McpToolInputError` before the
+server starts.
+
+A default allowance covers the bundled plugin that ships the command. If an app
+plugin replaces `db:snapshots` with its own implementation, that app's version
+needs its own `--allow db:snapshots` entry.
+
+## Drive another app with appPath
+
+One session can work on several apps. Every tool accepts an `appPath` argument
+next to `flags` and `args`. Set it to a directory inside the app you want; a
+relative path resolves against the directory `lando mcp` was started in. This
+call reads the app in `../shop` while the session runs in another app:
+
+```json
+{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"app:info","arguments":{"appPath":"../shop"}}}
+```
+
+To find paths of known apps, read `lando://apps` and use an entry's `appRoot`
+from its `apps` array as `appPath`. That resource lists apps known from applied
+state and provider inventory; it does not search your filesystem for every
+project. You can also supply the path of a project you already know.
+
+The call uses that app's Landofile and its app plugins under `.lando/plugins`:
+their service types, app features, and plugin commands. A plugin command that
+both apps define runs the selected app's implementation, so its flags, its
+confirmation, and its result follow that app's plugin. Calls without `appPath`
+keep using the session app.
+
+The first call that targets an app adds that app's allowed plugin commands to
+the catalog. When that adds or changes a tool, the server sends
+`notifications/tools/list_changed`. The call's result also includes a second
+model-visible `text` block identifying the app by its path and listing added
+tools separately from updated tool contracts. The first block remains the
+envelope JSON, and `structuredContent` stays the envelope. The notice appears
+even if the command fails or its call is rejected after publication. It only
+reports contracts published by that call; a later call with no catalog changes
+has no notice.
+
+Clients that support tool list updates refresh automatically. If yours does
+not, request `tools/list` to read the tools named in the notice. Review changed
+contracts before retrying a rejected call.
+
+Commands from installed and app plugins still need an `mcp.allow` or `--allow`
+entry. When two apps define the same command id
+differently, the tool's input schema lists each version under `anyOf`, and the
+app you select decides which version validates your input.
+
+A call can fail on `appPath` with `McpToolInputError` in two cases. If the
+selected app has no plugin that provides the command, pick an app that does. If
+the selected app's version of the command was not in the catalog when your call
+arrived, the server has just published it: list tools again, check the updated
+schema, and retry. Lando never runs a command under a contract it has not shown
+you.
+
+Lando reads each app's plugin selection on every call. Plugins you install,
+link, remove, or edit take effect on the next call, including edits to files
+imported by the plugin entry and contributions loaded later. A call already
+using the previous code finishes first; calls that need the edited plugin wait
+for it before loading the new code. This also applies when several apps share
+the plugin. A syntax error makes that plugin's tools return a `PluginLoadError`
+that names the plugin and the import error, and planning an app that uses one
+of its service types reports the same error. Built-in tools and other plugins'
+tools keep working. After you fix the file, the next call loads it again. If files keep changing during loading, finish the
+edit and retry the call.
 
 ## Read resources and complete schema names
 
@@ -312,6 +396,8 @@ App-scoped resources resolve the app from the directory `lando mcp` was started
 in and fail with the usual tagged errors when there is no app there. The
 `lando://schemas/{name}` template supports `completion/complete`, so a client
 can tab through the public schema registry instead of guessing names.
+Resources have no `appPath`. To read another app, call `app:info` or
+`app:config:view` with `appPath` instead.
 
 ```json
 {"jsonrpc":"2.0","id":7,"method":"completion/complete","params":{"ref":{"type":"ref/resource","uri":"lando://schemas/{name}"},"argument":{"name":"name","value":"CommandResult"}}}
@@ -335,7 +421,12 @@ const list = (allow: ReadonlyArray<string>) => buildMcpListResult({ ...registry,
 const sql = expect.objectContaining({ name: "@lando/sql", source: "bundled" });
 expect(list([]).tools).toContainEqual(expect.objectContaining({ id: "db:snapshots", source: "default", plugin: sql }));
 expect(list([]).tools).not.toContainEqual(expect.objectContaining({ id: "db:export" }));
-expect(list(["db:export"]).tools).toContainEqual(expect.objectContaining({ id: "db:export", source: "allow", destructive: true, plugin: sql }));`}
+expect(list(["db:export"]).tools).toContainEqual(expect.objectContaining({ id: "db:export", source: "allow", destructive: true, plugin: sql }));
+const { knownIdsOf, validateMcpAllowlistIds } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-registry.ts"));
+const pending = yield* validateMcpAllowlistIds({ allow: ["db:export", "shop:reindex"], deny: [], tooling: false }, knownIdsOf(registry));
+expect(pending).toEqual(["shop:reindex"]);
+const malformed = yield* E.flip(validateMcpAllowlistIds({ allow: ["Not An Id"], deny: [], tooling: false }, knownIdsOf(registry)));
+expect(malformed._tag).toBe("McpToolInputError");`}
         displayCode={`const listed = buildMcpListResult({ ...registry, allow: ["db:export"] });`} />
     </Step>
   </Scenario>
@@ -351,7 +442,7 @@ const { discoverBunShellScripts } = yield* Effect.promise(() => import("@lando/l
 const { compileBunShellScriptCommands } = yield* Effect.promise(() => import("@lando/engine/cache/command-compiler"));
 const { mcpRegistryWithToolingEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
-const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { makeStdioClient, testAppGenerations } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
 const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const { withCwd } = yield* Effect.promise(() => import("../../../../../core/test/_support/temp-cwd.ts"));
@@ -363,7 +454,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
     commandEntries: registry.commandEntries,
     toolingEntries: registry.toolingEntries ?? [],
     defaultAllowlist: [],
-    runtimeLayer: LandoCore.makeLandoRuntime({ bootstrap: "tooling", cwd: root }).pipe(Layer.orDie),
+    apps: testAppGenerations(LandoCore.makeLandoRuntime({ bootstrap: "tooling", cwd: root }).pipe(Layer.orDie)),
   }),
   Layer.succeed(RedactionService, makeRedactionService()),
 )));
@@ -421,7 +512,7 @@ const landofile = LoadScopedLandofile.make({
   context: { appRoot: AbsolutePath.make(context.testDir), env: {} },
 });
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
-const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { makeStdioClient, testAppGenerations } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
 const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
@@ -432,7 +523,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
     commandEntries: registry.commandEntries,
     defaultAllowlist: ["app:config:get", "app:config:view"],
-    runtimeLayer,
+    apps: testAppGenerations(runtimeLayer),
   }),
   Layer.succeed(RedactionService, makeRedactionService()),
 )));
@@ -611,11 +702,15 @@ const tools = JSON.parse(stdout);`}
     </Step>
   </Scenario>
 
-The two read-only tools are `app:config:get` and `app:config:view`. Both accept
-optional `flags.source` (`raw`, `merged`, or `resolved`) and `flags.path`.
-The source defaults to `resolved`. Get selects `args.key ?? flags.path`, so
-`args.key` is optional but one selector is required. View reads the complete
-source unless `flags.path` selects a value. The fixed `lando://app/config`
+The read-only config tools are `app:config:get`, `app:config:view`, and
+`app:config:describe`. Get and view accept optional `flags.source` (`raw`,
+`merged`, or `resolved`) and `flags.path`. The source defaults to `resolved`.
+Get selects `args.key ?? flags.path`, so `args.key` is optional but one
+selector is required. View reads the complete source unless `flags.path`
+selects a value. Describe reads no app at all: it answers what a Landofile key
+takes, its type summary, description, default, child keys, and JSON Schema,
+for `args.key` or for the document root when you omit it. Call it before
+proposing a Landofile change to learn which values the key accepts. The fixed `lando://app/config`
 resource still returns resolved configuration. Umbrella and write-capable ids:
 `app:config`, `app:config:set`, `app:config:unset`, `app:config:edit`,
 `app:config:validate` are not MCP tools, even through explicit allow
@@ -624,8 +719,9 @@ configuration.
 Protocol input and output stay bounded. An inbound frame, including one
 still being read, is capped at 1 MiB. At most 256 unresolved tool calls are
 retained; request 257 gets a tool result with `isError: true` whose text is
-a `McpTransportError` reading `Server busy`, and it carries no
-`structuredContent`. Each serialized JSON payload is capped at 8 MiB, and a
+the same failure envelope as `structuredContent`, with
+`error._tag: "McpTransportError"` and `error.message: "Server busy"`.
+Each serialized JSON payload is capped at 8 MiB, and a
 stdout write that does not finish fails after 5 seconds.
 
   <Scenario id="bounded-read-only-regressions" render>
@@ -644,7 +740,7 @@ const landofile = LoadScopedLandofile.make({
 const { MAX_OUTSTANDING_REQUESTS } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-limits.ts"));
 const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../mcp/src/catalog.ts"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
-const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { makeStdioClient, testAppGenerations } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
 const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
@@ -677,7 +773,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
     commandEntries: registry.commandEntries,
     defaultAllowlist: ["app:config:get", "app:config:view"],
-    runtimeLayer,
+    apps: testAppGenerations(runtimeLayer),
   }),
   Layer.succeed(RedactionService, makeRedactionService()),
 )));
@@ -710,10 +806,16 @@ expect(observed.busy).toMatchObject({ jsonrpc: "2.0", id: observed.busyId });
 const busyResult = Schema.decodeUnknownSync(Schema.Struct({
   isError: Schema.Literal(true),
   content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
-  structuredContent: Schema.optionalKey(Schema.Unknown),
+  structuredContent: Schema.Struct({
+    apiVersion: Schema.Literal("v4"), command: Schema.String, ok: Schema.Literal(false),
+    error: Schema.JsonObject, warnings: Schema.Array(Schema.Unknown), deprecations: Schema.Array(Schema.Unknown),
+  }),
 }))(observed.busy.result);
-expect(busyResult.structuredContent).toBeUndefined();
-expect(JSON.parse(busyResult.content[0]?.text ?? "{}")).toEqual({
+expect(JSON.parse(busyResult.content[0]?.text ?? "{}")).toEqual(busyResult.structuredContent);
+expect(busyResult.structuredContent.command).toBe("app:config:get");
+expect(busyResult.structuredContent.warnings).toEqual([]);
+expect(busyResult.structuredContent.deprecations).toEqual([]);
+expect(busyResult.structuredContent.error).toEqual({
   _tag: "McpTransportError",
   message: "Server busy",
   remediation: "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
@@ -725,7 +827,8 @@ const succeeded = observed.results.filter((message) => {
 expect(succeeded).toHaveLength(MAX_OUTSTANDING_REQUESTS);`}
         displayCode={`// Keep protocol input and output bounded. Lando rejects oversized or stalled
 // peers and caps unresolved calls at 256. Request 257 is answered with a tool
-// result with isError: true and tagged McpTransportError JSON in its text.
+// result with isError: true and a CommandResultEnvelope in structuredContent
+// and the first text block; error._tag is McpTransportError.
 // The app-config projection is intentionally read-only:
 const appConfigTools = ["app:config:get", "app:config:view"];
 console.log(appConfigTools);`}
@@ -740,7 +843,7 @@ console.log(appConfigTools);`}
 code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
 const { JSON_SCHEMA_NAMES } = yield* Effect.promise(() => import("@lando/sdk/schema"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
-const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { makeStdioClient, testAppGenerations } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
 const { resources } = yield* Effect.promise(() => import("../../../../../core/src/mcp-resources.ts"));
 const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
@@ -748,7 +851,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
     commandEntries: [],
     defaultAllowlist: [],
-    runtimeLayer: Layer.empty,
+    apps: testAppGenerations(),
     resources,
   }),
   Layer.succeed(RedactionService, makeRedactionService()),

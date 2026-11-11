@@ -7,11 +7,16 @@ import {
   PATHINFO_OK,
   PHAR_EXECUTED,
   PHP_INDEX,
+  UPLOAD_EXECUTED,
   apacheCases,
+  apacheUploadDirFixtureFiles,
   nginxFpmCases,
   phpFixtureFiles,
   staticCases,
   staticFixtureFiles,
+  uploadDirCases,
+  uploadDirFixtureFiles,
+  uploadDirHostilePaths,
 } from "./support/http-error-pages-cases.ts";
 import {
   type ErrorPageServer,
@@ -19,6 +24,7 @@ import {
   runErrorPageCase,
   startErrorPageStack,
 } from "./support/http-error-pages-live.ts";
+import { apacheRewriteFixture, registerWebDefaultsCases } from "./support/http-web-defaults-live.ts";
 
 const socketPath = resolveLiveProviderSocket()?.socketPath;
 
@@ -29,13 +35,16 @@ const suites: ReadonlyArray<{
 }> = [
   { server: "static", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx", files: staticFixtureFiles, cases: staticCases },
+  { server: "apache-static", files: staticFixtureFiles, cases: [] },
+  { server: "apache-port", files: { ...phpFixtureFiles, ".htaccess": apacheRewriteFixture }, cases: [] },
   { server: "nginx-fpm", files: phpFixtureFiles, cases: nginxFpmCases },
+  { server: "nginx-fpm-upload-dirs", files: uploadDirFixtureFiles, cases: uploadDirCases },
+  { server: "apache-upload-dirs", files: apacheUploadDirFixtureFiles, cases: uploadDirCases },
   {
     server: "apache",
     files: {
       ...phpFixtureFiles,
-      ".htaccess":
-        "<IfModule mod_rewrite.c>\nRewriteEngine On\nRewriteRule ^up$ index.php [L]\n</IfModule>\n",
+      ".htaccess": apacheRewriteFixture,
     },
     cases: [
       ...apacheCases,
@@ -85,7 +94,12 @@ for (const suite of suites) {
       }, 30_000);
     }
 
-    if (suite.server === "static" || suite.server === "nginx") return;
+    registerWebDefaultsCases(suite.server, () => {
+      if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
+      return stack;
+    });
+
+    if (suite.server === "static" || suite.server === "nginx" || suite.server === "apache-static") return;
 
     test("PATH_INFO for /pathinfo.php/one/two is /one/two", async () => {
       if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
@@ -109,6 +123,19 @@ for (const suite of suites) {
       expect(body).toMatch(/^PATH_INFO=$/m);
       expect(body).not.toMatch(/^PATH_INFO=\/.+/m);
     }, 30_000);
+
+    if (suite.server === "nginx-fpm-upload-dirs" || suite.server === "apache-upload-dirs") {
+      test("never executes PHP for hostile upload paths or uploaded handler overrides", async () => {
+        if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
+        for (const path of uploadDirHostilePaths) {
+          const response = await stack.request(`${stack.baseUrl}${path}`, {
+            redirect: "manual",
+            signal: AbortSignal.timeout(15_000),
+          });
+          expect(await response.text(), path).not.toContain(UPLOAD_EXECUTED);
+        }
+      }, 300_000);
+    }
 
     if (suite.server !== "nginx-fpm") return;
 

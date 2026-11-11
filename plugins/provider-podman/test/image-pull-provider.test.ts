@@ -83,6 +83,7 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
     request: (request: EngineHttpRequest) => {
       requests.push(`${request.method} ${request.path}`);
       const responseFor = (): EngineHttpResponse => {
+        if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
         if (request.method === "GET" && request.path.startsWith("/networks/"))
           return { status: 404, body: "" };
         if (request.path === "/networks/create" || request.path === "/libpod/networks/create")
@@ -187,6 +188,28 @@ describe("provider-podman apply image pull", () => {
       ]);
     },
   );
+
+  test("forwards the requested platform on an artifact pull", async () => {
+    // Given
+    const ref = "docker.io/library/alpine:3.20";
+    const fake = makeFakeApi({ inspectStatus: 200 });
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        podmanApi: fake.api,
+        conflictDetector: () => Effect.void,
+      }),
+    );
+
+    // When
+    await Effect.runPromise(provider.pullArtifact({ ref, policy: "always", platform: "linux/arm64" }));
+
+    // Then
+    expect(fake.requests).toContain(
+      `POST ${buildImagePullRequest(ref, libpodPullDialect, { platform: "linux/arm64" }).path}`,
+    );
+  });
 
   test("apply forwards the complete resolved environment callback", async () => {
     // Given

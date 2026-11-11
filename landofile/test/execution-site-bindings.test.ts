@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { executionSiteAt } from "@lando/sdk/landofile";
+import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import { SECRET_BINDING_SITES, eligibleBindingPath } from "../src/secret-reference.ts";
 
 const patterns = SECRET_BINDING_SITES.flatMap((site) => site.paths);

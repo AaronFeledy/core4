@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { LandofileLoadIssueRule, ServiceName } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
@@ -138,7 +138,7 @@ describe("landofile load-time route hostname expressions", () => {
         issues: [
           {
             path: ["services", "appserver", "image"],
-            rule: LandofileLoadIssueRule.unsupportedSecretReference,
+            rule: "unsupported-secret-reference",
           },
         ],
       });
@@ -159,7 +159,7 @@ describe("landofile load-time route hostname expressions", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       expect(failure).toMatchObject({
         _tag: "LandofileValidationError",
-        issues: [{ path: ["hostname"], rule: LandofileLoadIssueRule.unsupportedExpression }],
+        issues: [{ path: ["hostname"], rule: "unsupported-expression" }],
       });
       if (failure instanceof LandofileValidationError) {
         expect(failure.message).not.toMatch(/\b(?:Alpha|Beta)\b/);

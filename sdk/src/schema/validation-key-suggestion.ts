@@ -1,22 +1,28 @@
+/**
+ * Candidates within `maxDistance` Damerau-Levenshtein edits of `unknownKey`,
+ * closest first (ties sort lexically), at most `limit` of them.
+ */
+export const closestKeys = (
+  unknownKey: string,
+  allowedKeys: readonly string[],
+  maxDistance = 2,
+  limit = 3,
+): readonly string[] =>
+  allowedKeys
+    .filter((key) => key !== unknownKey)
+    .map((key) => ({ key, distance: damerauLevenshtein(unknownKey, key) }))
+    .filter(({ distance }) => distance <= maxDistance)
+    .sort((left, right) => left.distance - right.distance || left.key.localeCompare(right.key))
+    .slice(0, limit)
+    .map(({ key }) => key);
+
 /** Closest allowed key within Damerau-Levenshtein distance 2, or undefined. */
 export const suggestionForUnknownKey = (
   unknownKey: string,
   allowedKeys: readonly string[],
 ): string | undefined => {
-  let best: { readonly key: string; readonly distance: number } | undefined;
-  for (const key of allowedKeys) {
-    if (key === unknownKey) continue;
-    const distance = damerauLevenshtein(unknownKey, key);
-    if (distance > 2) continue;
-    if (
-      best === undefined ||
-      distance < best.distance ||
-      (distance === best.distance && key.localeCompare(best.key) < 0)
-    ) {
-      best = { key, distance };
-    }
-  }
-  return best === undefined ? undefined : `Did you mean "${best.key}"?`;
+  const [key] = closestKeys(unknownKey, allowedKeys, 2, 1);
+  return key === undefined ? undefined : `Did you mean "${key}"?`;
 };
 
 const damerauLevenshtein = (left: string, right: string): number => {
