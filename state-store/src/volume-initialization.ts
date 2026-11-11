@@ -88,7 +88,7 @@ export const planVolumeInitializationWrite = (
   )
     return refused;
   const phase = matchesIdentity(current, identity) ? (current?.state._tag ?? "absent") : "absent";
-  const plan = planTransition(transitions, write.operation, phase, (to): VolumeInitializationRecord => {
+  const plan = planTransition(transitions, write.operation, phase, (_to): VolumeInitializationRecord => {
     switch (write.operation) {
       case "record-creation":
         return { identity, state: { _tag: "fresh" } };
