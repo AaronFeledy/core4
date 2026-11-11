@@ -1,4 +1,4 @@
-import { Effect, Option, Result } from "effect";
+import { DateTime, Effect, Option, Result } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -10,6 +10,7 @@ import { pluginDoctorCheckIndex } from "@lando/engine/plugins/doctor-contributio
 import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import { interruptOnAbort } from "./doctor-abort";
+import { collectArtifactRefreshDoctorCheck } from "./doctor-artifact-refresh";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
 import {
   buildExecUmaskDoctorCheck,
@@ -337,9 +338,16 @@ export const doctor = Effect.fn("Doctor.collect")(
     });
     if (hostProxyOutcome.self !== undefined) selfChecks.push(hostProxyOutcome.self);
 
+    const artifactRefresh = yield* collectArtifactRefreshDoctorCheck({
+      runtimeId: provider.runtimeIdentity ?? `${provider.id}:${provider.platform}`,
+      now: DateTime.toEpochMillis(yield* DateTime.now),
+      provider,
+      selection,
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)));
     return {
       ...withSelfChecks([
         diagnosis.check,
+        ...(artifactRefresh === undefined ? [] : [artifactRefresh]),
         ...pluginChecks,
         ...setupReadinessChecks,
         ...runtimeServiceChecks,

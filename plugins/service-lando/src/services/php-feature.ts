@@ -1,4 +1,9 @@
-import { DEBUGGER_HOST_ALIAS, HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
+import {
+  ARTIFACT_REFRESH_EXTENSION,
+  DEBUGGER_HOST_ALIAS,
+  HOST_GATEWAY_TARGET,
+  STOCK_TAG_REFRESH_AFTER_MS,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
 import { addEnvRecord, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
@@ -50,6 +55,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   }
   if (policy.reference !== undefined) ctx.setArtifact({ kind: "ref", ref: policy.reference });
   const stock = policy.artifactSource === "stock";
+  if (stock) ctx.addExtension(ARTIFACT_REFRESH_EXTENSION, { afterMs: STOCK_TAG_REFRESH_AFTER_MS });
   const xdebug = resolvePhpXdebug(service.xdebug);
   const composerRelease = resolvePhpComposer(service.composer);
   if (stock) {

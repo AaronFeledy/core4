@@ -18,6 +18,13 @@ import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor, mapFailures } from "@lando/sdk/command-result";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
+import {
+  acquireReferencedArtifact,
+  openPullChecks,
+  pullCheckKey,
+  readArtifactRefreshAfterMs,
+  recordPullCheck,
+} from "./artifact-refresh.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
   type ArtifactBuildStep,
@@ -81,11 +88,41 @@ const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBu
     scratch: isScratchPlan(plan),
   });
 
+const warnRefreshFallback = (
+  service: ServicePlan,
+  artifactRef: string,
+  error: { readonly _tag: string; readonly message: string },
+  options: {
+    readonly events: Context.Service.Shape<typeof EventService>;
+    readonly redactor: Pick<Redactor, "redactString">;
+  },
+) =>
+  Effect.gen(function* () {
+    const message = options.redactor.redactString(
+      `Couldn't refresh ${artifactRef}, so ${service.name} uses the local copy. ${error.message}`,
+    );
+    yield* recordCommandWarning({
+      code: "LANDO_ARTIFACT_REFRESH_FAILED",
+      message,
+      remediation: "Rebuild again once the registry is reachable to pick up updated images.",
+      context: {
+        service: String(service.name),
+        artifact: options.redactor.redactString(artifactRef),
+        cause: error._tag,
+      },
+    });
+    if (yield* commandWarningsUseMachineOutput) return;
+    yield* options.events
+      .publish(MessageWarnEvent.make({ body: message, timestamp: yield* timestamp }))
+      .pipe(Effect.catch(() => Effect.void));
+  });
+
 const resolveSourceArtifact = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
   options: {
     readonly refresh: boolean;
+    readonly stateStore: Context.Service.Shape<typeof StateStore>;
     readonly events: Context.Service.Shape<typeof EventService>;
     readonly redactor: Pick<Redactor, "redactString">;
   },
@@ -99,35 +136,40 @@ const resolveSourceArtifact = (
         : { providerId: service.provider, ref: artifact.ref, digest: artifact.digest },
     );
   }
-  if (!options.refresh) return provider.pullArtifact({ ref: artifact.ref, policy: "missing" });
-  return provider.pullArtifact({ ref: artifact.ref, policy: "always" }).pipe(
-    Effect.catch((error) =>
-      provider.pullArtifact({ ref: artifact.ref, policy: "never" }).pipe(
-        Effect.catch(() => Effect.fail(error)),
-        Effect.tap(() =>
-          Effect.gen(function* () {
-            const message = options.redactor.redactString(
-              `Couldn't refresh ${artifact.ref}, so ${service.name} uses the local copy. ${error.message}`,
-            );
-            yield* recordCommandWarning({
-              code: "LANDO_ARTIFACT_REFRESH_FAILED",
-              message,
-              remediation: "Rebuild again once the registry is reachable to pick up updated images.",
-              context: {
-                service: String(service.name),
-                artifact: options.redactor.redactString(artifact.ref),
-                cause: error._tag,
-              },
+  return Effect.gen(function* () {
+    const refreshAfterMs = readArtifactRefreshAfterMs(service.extensions);
+    const runtimeId = provider.runtimeIdentity ?? `${provider.id}:${provider.platform}`;
+    const key = pullCheckKey({ runtimeId, platform: provider.platform, ref: artifact.ref });
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    const checks = yield* openPullChecks(options.stateStore).pipe(
+      Effect.flatMap((bucket) => bucket.get),
+      Effect.catch(() => Effect.succeed(null)),
+    );
+    const checkedAt = checks?.[key]?.checkedAt;
+    const onChecked =
+      refreshAfterMs === undefined
+        ? Effect.void
+        : Effect.gen(function* () {
+            const checkedAt = DateTime.toEpochMillis(yield* DateTime.now);
+            const bucket = yield* openPullChecks(options.stateStore);
+            yield* recordPullCheck(bucket, key, {
+              ref: artifact.ref,
+              platform: provider.platform,
+              runtimeId,
+              checkedAt,
+              afterMs: refreshAfterMs,
             });
-            if (yield* commandWarningsUseMachineOutput) return;
-            yield* options.events
-              .publish(MessageWarnEvent.make({ body: message, timestamp: yield* timestamp }))
-              .pipe(Effect.catch(() => Effect.void));
-          }),
-        ),
-      ),
-    ),
-  );
+          });
+    return yield* acquireReferencedArtifact({
+      pull: (policy) => provider.pullArtifact({ ref: artifact.ref, policy }),
+      forced: options.refresh,
+      refreshAfterMs,
+      checkedAt,
+      now,
+      onChecked,
+      onFallback: (error) => warnRefreshFallback(service, artifact.ref, error, options),
+    });
+  });
 };
 
 const serviceWithResolvedDigest = (
@@ -180,6 +222,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
     const context = redactedBuildContext(redactor, plan, service);
     const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
       refresh: input.refresh,
+      stateStore,
       events,
       redactor,
     });

@@ -7,9 +7,9 @@ tags: [docs, php, service, runtime, security]
 
 # Pick up a PHP security release
 
-Run `lando rebuild` when PHP publishes a security release. `lando start` and `lando restart` keep the image already on your machine, so the app keeps serving the old build.
+Stock PHP tags are checked against the registry about once a week. `lando start` and `lando restart` reuse the image already on your machine until that check is due, then pull the tag. `lando rebuild` checks immediately. `lando doctor` reports a check that is overdue. The next start performs it.
 
-Official images publish the fix under the same tag the service already uses. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. Other minors use the tags in [Pin a PHP version](./php-version-matrix.mdx), including the PHP 8.6 release-candidate tag until GA.
+Official images publish a security release under the same tag the service already uses. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. Other minors use the tags in [Pin a PHP version](./php-version-matrix.mdx), including the PHP 8.6 release-candidate tag until GA. A custom `image:` or replacement build is not on this weekly check. Rebuild it yourself when you want a new base.
 
 The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host:
 
