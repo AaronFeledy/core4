@@ -3,6 +3,7 @@ import * as sdkSecrets from "@lando/sdk/secrets";
 import {
   DEFAULT_PASSWORD,
   MINIO_DEFAULT_PASSWORD,
+  MSSQL_DEFAULT_PASSWORD,
   PUBLIC_DEFAULT_CREDENTIALS,
   isPublicDefaultCredential,
 } from "@lando/sdk/secrets";
@@ -19,11 +20,11 @@ test("keeps the published default credential exports available on the public sec
 
 test("publishes an immutable list of unchanged default credential values", () => {
   // Given
-  const passwords = [DEFAULT_PASSWORD, MINIO_DEFAULT_PASSWORD];
+  const passwords = [DEFAULT_PASSWORD, MINIO_DEFAULT_PASSWORD, MSSQL_DEFAULT_PASSWORD];
   // When
   const values = [...PUBLIC_DEFAULT_CREDENTIALS];
   // Then
-  expect(passwords).toEqual(["lando", "landolando"]);
+  expect(passwords).toEqual(["lando", "landolando", "Landolando1"]);
   expect(values).toEqual(passwords);
   expect(Object.isFrozen(PUBLIC_DEFAULT_CREDENTIALS)).toBe(true);
 });
@@ -31,6 +32,8 @@ test("publishes an immutable list of unchanged default credential values", () =>
 test.each([
   ["lando", true],
   ["landolando", true],
+  ["Landolando1", true],
+  ["landolando1", false],
   ["LANDO", false],
   [" lando ", false],
   ["lando-custom", false],

@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -12,7 +14,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/core/testing";
+import { TestRuntimeProvider, withScenarioContext } from "@lando/core/testing";
 import { formatSummary } from "@lando/renderer/summary";
 import type { InfoAppResult } from "@lando/sdk/app";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
@@ -280,3 +282,100 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
 });
 
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";
+
+// The scenario harness dispatches the real in-process CLI, so these cases cover
+// the renderer boundary's redaction instead of calling a renderer directly.
+setDefaultTimeout(30_000);
+
+const writeDispatchLandofile = (dir: string, lines: ReadonlyArray<string>): Effect.Effect<void> =>
+  Effect.promise(() => writeFile(join(dir, ".lando.yml"), `${lines.join("\n")}\n`));
+
+const runInfoDispatch = (
+  scenarioId: string,
+  lines: ReadonlyArray<string>,
+): Promise<{
+  readonly human: { readonly exitCode: number; readonly stdout: string; readonly stderr: string };
+  readonly json: { readonly exitCode: number; readonly stdout: string; readonly stderr: string };
+}> =>
+  Effect.runPromise(
+    withScenarioContext({ guideId: "info-no-secret", scenarioId }, (context) =>
+      Effect.gen(function* () {
+        yield* writeDispatchLandofile(context.testDir, lines);
+        const human = yield* context.runCli(["info"]);
+        const json = yield* context.runCli(["info", "--format=json"]);
+        return { human, json };
+      }),
+    ),
+  );
+
+const jsonResult = (
+  stdout: string,
+): { readonly services: ReadonlyArray<{ readonly creds?: Record<string, unknown> }> } => {
+  const envelope = JSON.parse(stdout) as { readonly ok?: boolean; readonly result?: unknown };
+  expect(envelope.ok).toBe(true);
+  return envelope.result as {
+    readonly services: ReadonlyArray<{ readonly creds?: Record<string, unknown> }>;
+  };
+};
+
+describe("lando info dispatch shows a published default password", () => {
+  test("keeps the default mysql password in human and JSON output", async () => {
+    // Given: a mysql service whose app password defaults to the published literal.
+    const { human, json } = await runInfoDispatch("default-mysql-password", [
+      "name: info-default-password",
+      "services:",
+      "  database:",
+      "    type: mysql",
+    ]);
+
+    // Then: both surfaces print the published default instead of the sentinel.
+    expect(human.exitCode).toBe(0);
+    expect(human.stdout).toContain("password=lando");
+    expect(json.exitCode).toBe(0);
+    expect(jsonResult(json.stdout).services[0]?.creds?.password).toBe("lando");
+  });
+
+  test("masks a non-default authored password everywhere on the dispatch path", async () => {
+    // Given
+    const privateValue = "hunter2-not-default";
+    const { human, json } = await runInfoDispatch("private-postgres-password", [
+      "name: info-private-password",
+      "services:",
+      "  database:",
+      "    type: postgres:16",
+      "    creds:",
+      "      user: app",
+      "      password: hunter2-not-default",
+      "      database: app",
+    ]);
+
+    // Then
+    expect(human.exitCode).toBe(0);
+    expect(human.stdout).toContain("password=[redacted]");
+    expect(json.exitCode).toBe(0);
+    expect(jsonResult(json.stdout).services[0]?.creds?.password).toBe(REDACTED);
+    for (const output of [human.stdout, human.stderr, json.stdout, json.stderr]) {
+      expect(output).not.toContain(privateValue);
+    }
+  });
+
+  test("masks a secret-reference password on the dispatch path", async () => {
+    // Given
+    const { human, json } = await runInfoDispatch("secret-reference-password", [
+      "name: info-secret-password",
+      "services:",
+      "  database:",
+      "    type: postgres:16",
+      "    creds:",
+      "      user: app",
+      "      password: '${secret:DB_PASSWORD}'",
+      "      database: app",
+    ]);
+
+    // Then
+    expect(human.exitCode).toBe(0);
+    expect(human.stdout).toContain("password=[redacted]");
+    expect(json.exitCode).toBe(0);
+    expect(jsonResult(json.stdout).services[0]?.creds?.password).toBe(REDACTED);
+  });
+});
