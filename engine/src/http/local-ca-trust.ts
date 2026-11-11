@@ -53,14 +53,13 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const domain = yield* Effect.cached(readDomain);
     const root = yield* Effect.cached(readRoot);
-    const prepare = (hostname: string) =>
-      Effect.gen(function* () {
-        const zone = yield* domain;
-        const isLocalHost = (host: string) => isLocalProbeHost(host, zone);
-        if (!isLocalHost(hostname)) return { pem: undefined, isLocalHost } satisfies LocalCaHopTrust;
-        const found = yield* root;
-        return { pem: found?.certificate, isLocalHost } satisfies LocalCaHopTrust;
-      });
+    const prepare = Effect.fnUntraced(function* (hostname: string) {
+      const zone = yield* domain;
+      const isLocalHost = (host: string) => isLocalProbeHost(host, zone);
+      if (!isLocalHost(hostname)) return { pem: undefined, isLocalHost } satisfies LocalCaHopTrust;
+      const found = yield* root;
+      return { pem: found?.certificate, isLocalHost } satisfies LocalCaHopTrust;
+    });
     return LocalCaTrustSource.of({
       prepare,
       trusted: Effect.flatMap(root, (found) => Effect.succeed(found?.trusted === true)),
