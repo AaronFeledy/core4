@@ -51,6 +51,9 @@ export const LogsAppResult = Schema.Struct({
       }),
     ),
   ).annotate({ description: "Collected log lines; omitted when delivered to a live stream sink." }),
+  build: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "True when the lines are recorded build output rather than service logs.",
+  }),
 });
 export type LogsAppResult = typeof LogsAppResult.Type;
 export type LogsAppLine = NonNullable<LogsAppResult["lines"]>[number];
@@ -76,7 +79,7 @@ const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError
   });
 };
 
-const selectServices = (
+export const selectLogServices = (
   plan: AppPlan,
   filter?: string,
 ): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
@@ -206,7 +209,7 @@ const servicesForPlan = Effect.fnUntraced(function* (
     );
   }
 
-  const services = yield* selectServices(plan, options.service);
+  const services = yield* selectLogServices(plan, options.service);
   yield* validateSource(options.source, services, provider.capabilities.serviceLogSources);
   return {
     services: services.filter(
