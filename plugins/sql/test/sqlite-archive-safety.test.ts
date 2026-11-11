@@ -18,8 +18,8 @@ import {
   unpackSqliteTarFile,
 } from "../src/sqlite-archive.ts";
 import { sqliteSnapshotStore } from "../src/sqlite-path.ts";
-import { copySqliteSnapshotArchive, stageVerifiedSqliteImport } from "../src/sqlite-snapshot-transfer.ts";
 import { persistSqliteSnapshot } from "../src/sqlite-snapshot.ts";
+import { copySqliteSnapshotArchive, stageVerifiedSqliteImport } from "../src/sqlite-snapshot-transfer.ts";
 
 const payload = new TextEncoder().encode("SQLite format 3\0snapshot payload");
 const roots: string[] = [];

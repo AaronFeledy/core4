@@ -11,13 +11,11 @@
  * receives another app's already-built planner or registries.
  */
 import { resolve } from "node:path";
-
-import { Context, Deferred, Effect, Exit, Layer, Ref, Scope, Semaphore, SynchronizedRef } from "effect";
-
 import { findAppRoot } from "@lando/landofile/discovery";
 import { OperationDiscovery } from "@lando/landofile/operation-discovery";
 import type { PluginLoadError, StateStoreError } from "@lando/sdk/errors";
 import { PathsService } from "@lando/sdk/services";
+import { Context, Deferred, Effect, Exit, Layer, Ref, Scope, Semaphore, SynchronizedRef } from "effect";
 import { bundledPluginModules } from "../composition.ts";
 import { canonicalAppRoot } from "../operations/app-mutation-lock.ts";
 import { registerPluginReloadDrain } from "../plugins/module-cache.ts";

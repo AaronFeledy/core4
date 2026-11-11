@@ -1,11 +1,8 @@
+import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterAll, describe, expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import {
   type InstallOwnershipError,
   isLandoExecutableName,
@@ -13,6 +10,7 @@ import {
   resolveOwnedExecutable,
 } from "@lando/engine/install/owned-executable";
 import { decodeInstallRecord } from "@lando/engine/install/record";
+import { Effect, Result } from "effect";
 
 const roots: string[] = [];
 

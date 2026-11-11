@@ -10,14 +10,13 @@
  * interactive; otherwise it honors the resolved selection. `setupProviderPlan`
  * is the minimal plan used to drive provider selection from the registry.
  */
-import { DateTime, Effect } from "effect";
-
-import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
 import type { ProviderSelectionResolution } from "@lando/engine/providers/precedence";
 import type { InteractionUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import type { InteractionError, InteractionServiceShape } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 
 export const SYSTEM_RUNTIME_PROVIDERS: Record<string, string> = {
   docker: "Docker",

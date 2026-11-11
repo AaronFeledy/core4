@@ -619,5 +619,6 @@ test("accepts declared flags when arguments is false", async () => {
   expect(result).toMatchObject({ _tag: "Success" });
   expect(f.selections).toHaveLength(0);
 });
+
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { type Context, DateTime, type Effect, Schema, type Stream } from "effect";
-
 import type {
   BuildStepSkipEvent,
   CliCommandErrorEvent,
@@ -12,6 +9,7 @@ import type {
 } from "@lando/sdk/events";
 import { CliCommandRunEvent as CliCommandRunEventSchema } from "@lando/sdk/events";
 import type { EventService, LandoEvent } from "@lando/sdk/services";
+import { type Context, DateTime, type Effect, Schema, type Stream } from "effect";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 

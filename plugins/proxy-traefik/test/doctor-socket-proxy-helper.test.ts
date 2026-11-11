@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { doctorReportsForHelper } from "../src/doctor-socket-proxy-helper.ts";
-import { socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
-import { classifySocketProxyArtifacts } from "../src/socket-proxy-helper.ts";
+import { classifySocketProxyArtifacts, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
 
 const root = "/lando/root";
 const other = "/lando/other";

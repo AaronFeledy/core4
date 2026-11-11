@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Context, Effect, Layer, Option } from "effect";
-
 import { DataMover } from "@lando/sdk/services";
+import { Context, Effect, Layer, Option } from "effect";
 
 import { makeLandoRuntime } from "../../src/index.ts";
 

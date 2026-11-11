@@ -1,5 +1,5 @@
-import { Cause, Clock, Context, DateTime, Effect, Exit, Option, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { RedactionService } from "@lando/redaction/service";
 import {
   type CompletedCommandResult,
   failureOutcomeFromCause,
@@ -9,9 +9,7 @@ import {
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import type { CommandCompletion } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, Logger, OnlineAcquisition } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { RedactionService } from "@lando/redaction/service";
+import { Cause, Clock, Context, DateTime, Effect, Exit, Option, Schema } from "effect";
 import { CliInvocation } from "../runtime/invocation-context";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { summarizeInvocationArgv, summarizeInvocationRecord } from "./invocation-summary";

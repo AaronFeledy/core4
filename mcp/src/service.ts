@@ -26,8 +26,8 @@ import type { McpCommandEntry } from "./registry";
 import type { McpResourceEntry } from "./resources";
 import { serveSession } from "./session";
 
-export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 export type { McpResourceEntry } from "./resources";
+export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 
 export interface McpRuntimeConfigShape {
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;

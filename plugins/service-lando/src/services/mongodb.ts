@@ -1,20 +1,18 @@
 import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
-import { Effect, Schema } from "effect";
-
 import {
   type EnvironmentValue,
   PortablePath,
   type ServiceConfig,
   type ServiceCreds,
+  ServiceName,
 } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
-
+import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   assertListenerConfig,
   launcherAuthority,

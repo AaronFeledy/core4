@@ -1,9 +1,7 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
+import { createHash } from "node:crypto";
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   MARIADB_CONFIG_TARGET,

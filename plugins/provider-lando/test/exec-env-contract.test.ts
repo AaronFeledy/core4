@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema, Stream } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
@@ -24,6 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 import { nodeLtsServiceType, serviceFeatures } from "@lando/service-lando";
+import { DateTime, Effect, Schema, Stream } from "effect";
 import { decodeNetworkCreate } from "./network-fixture.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 

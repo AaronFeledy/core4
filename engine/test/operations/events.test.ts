@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, type Context, DateTime, Effect, Layer } from "effect";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import {
   LandofileEventLifecycleReentryError,
@@ -16,6 +16,7 @@ import {
   type AppLifecycleEventName,
   type AppPlan,
   type HostEvents,
+  LANDO_HOST_EVENT_ENV,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -28,10 +29,8 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, type Context, DateTime, Effect, Layer } from "effect";
 import {
   publishAndRunAppEvent,
   publishAndRunPostAppEvent,
@@ -1299,4 +1298,5 @@ describe("hostEvents runtime", () => {
     expect(invocations).toHaveLength(0);
   });
 });
+
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";

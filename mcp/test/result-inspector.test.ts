@@ -1,8 +1,4 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
-import { McpTransportError, SqlConfirmRequiredError } from "@lando/sdk/errors";
-
 import {
   MAX_ADDITIONAL_FAILURE_COUNT,
   inspectMcpCommandOutcome,
@@ -10,6 +6,8 @@ import {
 } from "@lando/mcp/result-inspector";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { buildCommandResultEnvelope, identityRedactor } from "@lando/sdk/command-result";
+import { McpTransportError, SqlConfirmRequiredError } from "@lando/sdk/errors";
+import { DateTime, Effect, Schema } from "effect";
 
 test("bounds the combined encoded error rather than each failure independently", () => {
   // Given: individually bounded failures whose combined encoding exceeds the limit.

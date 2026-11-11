@@ -11,6 +11,7 @@
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { CommandCompletion, ToolingInputDeclaration } from "@lando/sdk/schema";
 import { appPathInputSchema, toolingInputSchema } from "./tooling-input-schema";
+
 export { appPathInputSchema } from "./tooling-input-schema";
 
 import type { Effect, Schema } from "effect";

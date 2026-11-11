@@ -1,12 +1,9 @@
 import { availableParallelism } from "node:os";
-import { mapFailures } from "@lando/sdk/command-result";
-
 import { gateId } from "@lando/container-runtime/dependency-gates";
 import { runDependencySchedule } from "@lando/container-runtime/dependency-schedule";
 import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { dependencyGateRemediation } from "@lando/container-runtime/podman/bring-up";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { BuildPhaseFailedError, BuildStepFailedError, ProviderInternalError } from "@lando/sdk/errors";
 import {
   TaskCompleteEvent,
@@ -17,6 +14,7 @@ import {
 } from "@lando/sdk/events";
 import type { BuildStep } from "@lando/sdk/schema";
 import type { BuildAppOptions } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { type AppBuildGateResult, runAppBuildGate } from "./build-app-gates.ts";

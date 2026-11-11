@@ -1,4 +1,8 @@
 import { mapFailures } from "@lando/sdk/command-result";
+import { LandofileParseError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import type { TemplateRenderContext } from "@lando/sdk/schema";
+import type { TemplateEngine } from "@lando/sdk/template";
 /**
  * Pre-parse Landofile template rendering.
  *
@@ -24,11 +28,6 @@ import { mapFailures } from "@lando/sdk/command-result";
  * `LandofileService.discover` error union remains unchanged.
  */
 import { Effect } from "effect";
-
-import { LandofileParseError } from "@lando/sdk/errors";
-import type { LandoPluginModule } from "@lando/sdk/plugins";
-import type { TemplateRenderContext } from "@lando/sdk/schema";
-import type { TemplateEngine } from "@lando/sdk/template";
 
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 

@@ -1,10 +1,9 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Option, Schema } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, AppPlan, type AppPlan as AppPlanShape, type AppliedStateInventory } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
+import { Effect, Option, Schema } from "effect";
 
 import { APPLIED_PLAN_NAMESPACE, listAppliedPlanInventory } from "./applied-state-inventory.ts";
 import {
@@ -20,12 +19,12 @@ import {
 } from "./applied-state-read.ts";
 
 export { appliedPlanPath, appliedPlansDir } from "./applied-state-inventory.ts";
-export { type AppliedPlanRead, unreadableAppliedStateError } from "./applied-state-read.ts";
 export {
   APPLIED_STATE_VERSION,
   migrateAppliedPlan,
   migrateAppliedPlansRecord,
 } from "./applied-state-migrate.ts";
+export { type AppliedPlanRead, unreadableAppliedStateError } from "./applied-state-read.ts";
 
 const APPLIED_PLANS_KEY = "applied-plans.json";
 const AppliedPlans = Schema.Record(AppId, AppPlan);
@@ -131,6 +130,10 @@ export function makeAppliedPlanStore(
               return Effect.succeed(read.plan);
             case "unreadable":
               return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path, appId }));
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
+            }
           }
         }),
       );
@@ -197,6 +200,10 @@ export function makeAppliedPlanStore(
             );
           case "readable":
             return Effect.succeed(read.plans);
+          default: {
+            const exhaustive: never = read;
+            return exhaustive;
+          }
         }
       }),
     );
@@ -213,6 +220,10 @@ export function makeAppliedPlanStore(
             case "readable": {
               const plan = read.plans?.[appId];
               return plan === undefined ? { status: "missing" } : { status: "readable", plan };
+            }
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
             }
           }
         }),
@@ -238,6 +249,10 @@ export function makeAppliedPlanStore(
               return { plans: Object.values(read.plans ?? {}), unreadable: [] };
             case "unreadable":
               return { plans: [], unreadable: [{ path: read.path }] };
+            default: {
+              const exhaustive: never = read;
+              return exhaustive;
+            }
           }
         }),
       ),

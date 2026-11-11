@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import type { EngineApiClient, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
-import { nativeInitFixture } from "./support/native-init-fixture.ts";
 import {
   NATIVE_INIT_CASE_IDS,
   NATIVE_INIT_IMAGE,
@@ -16,6 +15,7 @@ import {
   nativeInitStopDeadlineMs,
   runNativeInit,
 } from "./support/native-init.ts";
+import { nativeInitFixture } from "./support/native-init-fixture.ts";
 
 const recordingApi = (respond: (input: EngineHttpRequest) => EngineHttpResponse) => {
   const calls: EngineHttpRequest[] = [];

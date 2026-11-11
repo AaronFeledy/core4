@@ -2,9 +2,6 @@
 /** Build the helper through Lando's scoped ephemeral-container lifecycle, without needing a helper first. */
 import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import { Cause, Context, Effect, type Scope, Stream } from "effect";
-
 import {
   CONTAINER_HELPER_ARCHES,
   CONTAINER_HELPER_FILE,
@@ -12,12 +9,14 @@ import {
 } from "@lando/container-runtime/container-helper";
 import { END_OF_ARCHIVE, TAR_BLOCK_SIZE, encodeUstarHeader, padToBlock } from "@lando/container-runtime/tar";
 import { hostProviderId } from "@lando/engine/providers/host-provider";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
 import {
   type EphemeralRunSpec,
   type ExecChunk,
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { Cause, Context, Effect, type Scope, Stream } from "effect";
 
 import "@lando/core/bundled-plugins";
 import { containerHelperNotices } from "@lando/container-runtime/container-helper/notices";

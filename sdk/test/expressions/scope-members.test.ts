@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Result } from "effect";
-
 import { expressionScopeMembers, parseExpressionEither } from "@lando/sdk/expressions";
+import { Result } from "effect";
 
 const parse = (source: string) => {
   const parsed = parseExpressionEither(source, {

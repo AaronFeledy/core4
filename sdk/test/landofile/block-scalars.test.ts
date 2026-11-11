@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import {
   type LandofileTagOccurrence,
   detectLandofileTags,
@@ -8,6 +6,7 @@ import {
   parseLandofile,
   reset,
 } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 const parse = (content: string) =>
   Effect.runPromise(parseLandofile({ file: ".lando.local.yml", content, cwd: "/tmp" })) as Promise<

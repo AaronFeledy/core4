@@ -1,9 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { DateTime, Effect } from "effect";
-
 import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "@lando/sdk/events";
 import type { AppRef } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 
 export const makeHostProxyCallId = (): string => `hp-${randomBytes(12).toString("hex")}`;
 

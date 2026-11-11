@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect";
+import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 
 import { FileIoError, ShellExecError } from "@lando/sdk/errors";
 import { REDACTED, type Redactor } from "@lando/sdk/secrets";
@@ -11,9 +11,8 @@ import {
   type ShellReplIO,
   type ShellReplInput,
 } from "@lando/sdk/services";
-
-import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, Option } from "effect";
 import {
   applyBunShellReplacements,
   bunShellDialectIssues,

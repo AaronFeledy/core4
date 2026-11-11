@@ -1,5 +1,5 @@
-import { ansiToNativeStyledText } from "./ansi-styled-text.ts";
 import type { NativeStyledTextModuleLike } from "./ansi-styled-text.ts";
+import { ansiToNativeStyledText } from "./ansi-styled-text.ts";
 import type { LiveRegionRenderableLike, OpenTuiLiveRegionModuleLike } from "./live-region-types.ts";
 
 export type ReplayLine = ReturnType<typeof ansiToNativeStyledText>;

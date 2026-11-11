@@ -25,11 +25,18 @@ import {
 import type { ArtifactDownload } from "./runtime-bundle.ts";
 
 export {
+  isUsableManagedCatatonit,
+  readInstalledRuntimeVersion,
+  verifyManagedCatatonitIdentity,
+  verifyManagedCatatonitNotices,
+} from "./catatonit-installation.ts";
+export { DebianArchiveError, extractCatatonit, verifyStaticCatatonit } from "./catatonit-payload.ts";
+export {
   CATATONIT_IDENTITY_RECEIPT,
   CATATONIT_MANIFEST,
+  type CatatonitPackage,
   LEGACY_NATIVE_INIT_BRIDGE_VERSION,
   RUNTIME_INSTALLED_VERSION_MARKER,
-  type CatatonitPackage,
   buildCatatonitIdentity,
   catatonitPackageForArch,
   managedCatatonitIdentityPath,
@@ -39,13 +46,6 @@ export {
   runtimeRecipeIncludesNativeInitHelper,
   serializeCatatonitIdentity,
 } from "./catatonit-pins.ts";
-export { DebianArchiveError, extractCatatonit, verifyStaticCatatonit } from "./catatonit-payload.ts";
-export {
-  isUsableManagedCatatonit,
-  readInstalledRuntimeVersion,
-  verifyManagedCatatonitIdentity,
-  verifyManagedCatatonitNotices,
-} from "./catatonit-installation.ts";
 
 const provisionError = (message: string, cause?: unknown) =>
   new ProviderUnavailableError({

@@ -21,6 +21,7 @@ import { PreparedProcessBinding } from "./prepared-process.ts";
 import { runProcess, streamProcess } from "./process-execution.ts";
 import { type RunnerRedactionCarrier, runnerEnvRedaction } from "./runner-redaction.ts";
 import { environmentForRedaction } from "./tooling-input-environment.ts";
+
 export { withPreparedProcess } from "./prepared-process.ts";
 
 export { awaitSinkResult } from "./process-io.ts";

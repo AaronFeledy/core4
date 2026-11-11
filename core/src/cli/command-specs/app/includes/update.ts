@@ -1,5 +1,3 @@
-import { Args, Flags } from "../../../spec/metadata";
-
 import type { IncludeUpdateReport } from "@lando/landofile/includes";
 import type { StateStore } from "@lando/sdk/services";
 import {
@@ -10,6 +8,7 @@ import {
 } from "../../../commands/app-includes-update";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { booleanFlag, specArgsOf, specFlagsOf } from "../../../spec/input-coercion";
+import { Args, Flags } from "../../../spec/metadata";
 
 const checkFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "check");
 

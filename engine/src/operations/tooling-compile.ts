@@ -4,11 +4,12 @@ import {
   type NormalizedToolingTask,
   normalizeToolingTask,
 } from "@lando/landofile/tooling-normalize";
-import { Effect, Option, type Scope } from "effect";
+import { planRedactionValues } from "@lando/redaction/plan-values";
 
 import { ToolingCompileError, type ToolingExecError, type ToolingInputError } from "@lando/sdk/errors";
 import type { AppPlan, HostTerminal, ToolingTaskShape } from "@lando/sdk/schema";
 import {
+  EnvironmentValueResolver,
   type ProviderError,
   type ProviderSelectionError,
   RuntimeProviderRegistry,
@@ -17,9 +18,7 @@ import {
   type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-
-import { planRedactionValues } from "@lando/redaction/plan-values";
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+import { Effect, Option, type Scope } from "effect";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";

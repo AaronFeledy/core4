@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Option } from "effect";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 
 import type {
   AmbiguousCertificateAuthoritiesError,
@@ -6,8 +6,7 @@ import type {
   NoCertificateAuthorityError,
   PluginLoadError,
 } from "@lando/sdk/errors";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
 import { CERTS_SPEC, type DoctorSubsystemCheck, buildDegradedCheck } from "./doctor-subsystem-checks";

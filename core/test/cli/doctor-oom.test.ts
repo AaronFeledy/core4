@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-
+import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import {
   OOM_CHECK_NAME,
   buildOomDoctorCheck,
   classifyDiedEvent,
   collectOomDoctorChecks,
 } from "../../src/cli/commands/doctor-oom.ts";
-import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 
 const PROVIDER = { id: "lando", displayName: "Lando Managed Runtime", version: "0.0.0" } as const;
 const CONTEXT = { provider: PROVIDER, providerKind: "managed" as const, platform: "linux" as const };

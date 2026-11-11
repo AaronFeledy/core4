@@ -1,6 +1,3 @@
-import { yesFlag } from "../../../spec/confirmation-flag";
-import { Flags } from "../../../spec/metadata";
-
 import {
   type ScratchStartResult,
   ScratchStartResultSchema,
@@ -9,6 +6,8 @@ import {
   scratchStartOptionsFromInput,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { yesFlag } from "../../../spec/confirmation-flag";
+import { Flags } from "../../../spec/metadata";
 
 export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
   resultSchema: ScratchStartResultSchema,

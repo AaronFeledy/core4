@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { Schema } from "effect";
-
 import {
   AbsolutePath,
   LogSourceId,
@@ -10,6 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { planMysqlApp as planApp } from "./support/mysql-planner.ts";
 
 const web = ServiceName.make("web");

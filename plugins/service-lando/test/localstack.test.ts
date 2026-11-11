@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
+import { Effect, Schema } from "effect";
 
 import {
   LOCALSTACK_FEATURE_ID,

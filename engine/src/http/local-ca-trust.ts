@@ -1,5 +1,3 @@
-import { Cause, DateTime, Duration, Effect, Layer, Option } from "effect";
-
 import {
   type LocalCaHopTrust,
   LocalCaTrustSource,
@@ -8,6 +6,7 @@ import {
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { CommandWarning } from "@lando/sdk/schema";
 import { ConfigService, EventService } from "@lando/sdk/services";
+import { Cause, DateTime, Duration, Effect, Layer, Option } from "effect";
 
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";

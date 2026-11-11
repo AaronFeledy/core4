@@ -18,12 +18,12 @@ import {
   withoutIncludeCondition,
 } from "./include-condition-shape.ts";
 import type { ResolveLandofileIncludesOptions } from "./include-context.ts";
+import { resolveLandofileLoadExpressions } from "./load-expression.ts";
 import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression-file.ts";
 import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
-import { resolveLandofileLoadExpressions } from "./load-expression.ts";
 import { createLoadFailureRecorder, finishLoadStage, loadPathBlocked } from "./load-failures.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";

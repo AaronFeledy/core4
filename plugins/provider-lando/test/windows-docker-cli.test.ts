@@ -2,10 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Result } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect, Result } from "effect";
 
 import { prepareWindowsDockerCli } from "../src/windows-docker-cli.ts";
 

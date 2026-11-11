@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import type { AppFeatureContext, AppFeatureDefinition, AppFeatureServiceView } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import { phpDbClientBuildStepsForSources } from "./php-db-client-sources.ts";

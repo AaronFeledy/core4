@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import type { HostPlatform } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { type ResourceControl, linuxResourceControl } from "./capabilities.ts";
 import { type DelegatedScopeHost, runningSharedServiceRemediation } from "./delegated-scope.ts";

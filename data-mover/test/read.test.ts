@@ -1,10 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Layer, Option, Queue, Stream } from "effect";
-
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -26,6 +23,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { Cause, Effect, Layer, Option, Queue, Stream } from "effect";
 
 import { makeDataMoverService } from "../src/service.ts";
 import { privateFileAccess } from "./private-file-access.ts";

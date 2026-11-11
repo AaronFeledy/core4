@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import type { EndpointPlan, PublishedEndpoint } from "@lando/sdk/schema";
 
 import { DEFAULT_ROUTER_HTTPS_PORTS, DEFAULT_ROUTER_HTTP_PORTS } from "@lando/sdk/schema";
-import type { EndpointPlan, PublishedEndpoint } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import {
   SERVICE_PUBLISH_PORT_MAX,

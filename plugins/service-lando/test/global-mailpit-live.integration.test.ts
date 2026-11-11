@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Clock, DateTime, Effect } from "effect";
-
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -12,6 +10,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Clock, DateTime, Effect } from "effect";
 
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../src/mailpit-constants.ts";
 

@@ -2,21 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Schema } from "effect";
-
 import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
-import { McpToolInputError } from "@lando/sdk/errors";
+import { MalformedCliFlagValueError, McpToolInputError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
-
-import { MalformedCliFlagValueError } from "@lando/sdk/errors";
+import { Effect, Schema } from "effect";
 import { appsListStatusFromInput, listSpec } from "../../src/cli/command-specs/apps/list.ts";
-import {
-  appsFromContainerList,
-  discoverRunningAppsEvidenceFromSockets,
-} from "../../src/cli/commands/list-discovery.ts";
 import {
   APPS_LIST_STATUSES,
   AppsListResultSchema,
@@ -26,6 +18,10 @@ import {
   listServices,
   renderAppsListResult,
 } from "../../src/cli/commands/list.ts";
+import {
+  appsFromContainerList,
+  discoverRunningAppsEvidenceFromSockets,
+} from "../../src/cli/commands/list-discovery.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { applyJqToRedactedJsonLine } from "../../src/cli/jq/eval.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";

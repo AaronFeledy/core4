@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import { type PullChecks, openPullChecks, overduePullChecks } from "@lando/engine/services/artifact-refresh";
 import { StateStore } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract";
 import { providerKindFor } from "./doctor-contract";

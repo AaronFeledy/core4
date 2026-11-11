@@ -1,6 +1,4 @@
 import { basename } from "node:path";
-import { Effect } from "effect";
-
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
@@ -18,6 +16,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { routeOwnerFromPlan, routeOwnerFromRoot } from "../lifecycle/route-owner.ts";

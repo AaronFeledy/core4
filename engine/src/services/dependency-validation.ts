@@ -1,9 +1,12 @@
-import { Effect, Graph, Option, Schema } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { type AppPlan, DependencyPlan, HealthcheckPlan } from "@lando/sdk/schema";
-import { validationIssue } from "@lando/sdk/schema";
-import { effectiveReadiness } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  DependencyPlan,
+  HealthcheckPlan,
+  effectiveReadiness,
+  validationIssue,
+} from "@lando/sdk/schema";
+import { Effect, Graph, Option, Schema } from "effect";
 
 const DependencyServicePlan = Schema.Struct({
   dependsOn: Schema.Array(DependencyPlan),

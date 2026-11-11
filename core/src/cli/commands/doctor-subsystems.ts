@@ -17,10 +17,10 @@
  * `setup()` recovery step — are never auto-run and always fall back to a manual
  * remediation, matching the no-silent-elevation rule for diagnostics.
  */
-import { Effect, Option } from "effect";
 
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { RouterService, SshService } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsSubsystemCheck } from "./doctor-certs-status";
 import { idleGlobalProvider } from "./doctor-global-runtime";
@@ -34,11 +34,11 @@ import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-a
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export {
+  type DoctorSubsystemCheck,
   DoctorSubsystemFailure,
+  type SubsystemRecovery,
   classifySubsystemFailure,
   subsystemFailureDiagnostic,
-  type DoctorSubsystemCheck,
-  type SubsystemRecovery,
 } from "./doctor-subsystem-checks";
 
 export interface SubsystemDoctorResult {

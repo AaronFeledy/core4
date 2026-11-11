@@ -73,6 +73,10 @@ const stripStep = (step: GuideStepNode, ctx: StripContext): ReadonlyArray<RootCo
         case "UseFixture":
         case "Cleanup":
           return [];
+        default: {
+          const exhaustive: never = component;
+          return exhaustive;
+        }
       }
     }),
   ];

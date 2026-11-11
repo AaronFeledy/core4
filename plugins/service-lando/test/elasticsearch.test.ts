@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import {
   ELASTICSEARCH_FEATURE_ID,

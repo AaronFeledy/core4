@@ -1,19 +1,17 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Layer } from "effect";
-
-import { makeLandoPaths } from "@lando/paths";
-import { FileSyncSelectionError, type FileSyncStartError } from "@lando/sdk/errors";
-import type { HostPlatform } from "@lando/sdk/schema";
-import { FileSyncEngine, PathsService } from "@lando/sdk/services";
-import { TestFileSyncEngine } from "@lando/sdk/test";
-
 import {
   type FileSyncCandidateDefinition,
   FileSyncResolver,
   type FileSyncResolverShape,
   type FileSyncSelectionPolicy,
 } from "@lando/engine/plugins/file-sync-resolver";
+
+import { makeLandoPaths } from "@lando/paths";
+import { FileSyncSelectionError, type FileSyncStartError } from "@lando/sdk/errors";
+import type { HostPlatform } from "@lando/sdk/schema";
+import { FileSyncEngine, PathsService } from "@lando/sdk/services";
+import { TestFileSyncEngine } from "@lando/sdk/test";
+import { Effect, Layer } from "effect";
 import {
   type SetupReadinessRecorder,
   runFileSyncSetupStep,

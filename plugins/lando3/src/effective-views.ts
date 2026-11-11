@@ -1,7 +1,6 @@
 import type { ConfigTranslateSourceId, LandofileLayer } from "@lando/sdk/schema";
-
-import { lando3SourceLayerOrder, lando3TargetLayer } from "./contract.ts";
 import type { Lando3Source, Lando3SourceLayer, MergedLegacyValue } from "./contract.ts";
+import { lando3SourceLayerOrder, lando3TargetLayer } from "./contract.ts";
 import { mergeLegacySources, mergedToPlain } from "./legacy-merge.ts";
 
 export interface LegacyPrefixView {

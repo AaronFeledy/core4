@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -9,14 +7,14 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { type LifecycleDialect, dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
-import { bringUp } from "./support/service-creation.ts";
-
 import { KNOB_FIXTURES_BY_DIALECT } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { bringUp } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;

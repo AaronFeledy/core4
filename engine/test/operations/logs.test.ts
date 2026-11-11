@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
-
 import { CapabilityError, ToolingExecError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
@@ -12,6 +9,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
 
 import { logsForPlan } from "../../src/operations/logs.ts";
 

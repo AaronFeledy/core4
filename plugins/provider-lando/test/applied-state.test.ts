@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { APPLIED_STATE_VERSION, inspectAppliedPlan, migrateAppliedPlan } from "../src/applied-state.ts";
 
 describe("provider-lando applied plan inspection versioning", () => {

@@ -1,12 +1,10 @@
 import { realpath } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-
-import { Effect } from "effect";
+import { isPathWithin, resolveLandoRoots } from "@lando/paths";
 
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { LandoRoots, StateRoot } from "@lando/sdk/services";
-
-import { isPathWithin, resolveLandoRoots } from "@lando/paths";
+import { Effect } from "effect";
 
 /** Climb only when the caller reports an unresolved candidate; thrown errors propagate. */
 export const findRealpathAncestor = async (

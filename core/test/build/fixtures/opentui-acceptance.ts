@@ -1,8 +1,7 @@
+import { expect } from "bun:test";
 import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { expect } from "bun:test";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Schema } from "effect";
 

@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-
-import { Context, Effect, Fiber, Layer, Queue, Schema } from "effect";
-
 import {
   AppPlanner,
   CacheService,
@@ -38,23 +35,22 @@ import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, Fiber, Layer, Queue, Schema } from "effect";
 
 const CacheValue = Schema.Struct({
   name: Schema.String,
   count: Schema.Number,
 });
 
-type LayerOutput<LayerValue> = LayerValue extends Layer.Layer<infer Output, infer _Error, infer _Input>
-  ? Output
-  : never;
+type LayerOutput<LayerValue> =
+  LayerValue extends Layer.Layer<infer Output, infer _Error, infer _Input> ? Output : never;
 
-type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends <
-  Value,
->() => Value extends Right ? 1 : 2
-  ? (<Value>() => Value extends Right ? 1 : 2) extends <Value>() => Value extends Left ? 1 : 2
-    ? true
-    : false
-  : false;
+type TypeEquals<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <Value>() => Value extends Right ? 1 : 2
+    ? (<Value>() => Value extends Right ? 1 : 2) extends <Value>() => Value extends Left ? 1 : 2
+      ? true
+      : false
+    : false;
 
 type AssertType<Value extends true> = Value;
 

@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
-
 import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest, SubscriberManifestEntry } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import type { IndexedSubscriber } from "../../src/lifecycle/subscriber-index.ts";
 import { loadSubscriberFactory } from "../../src/lifecycle/subscribers.ts";

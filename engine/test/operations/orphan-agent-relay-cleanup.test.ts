@@ -17,14 +17,13 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Stream } from "effect";
-import { emptySnapshotsLayer } from "./data-mover-support.ts";
-
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("orphan-relay");

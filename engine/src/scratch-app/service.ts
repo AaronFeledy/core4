@@ -2,12 +2,11 @@ import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
+import type { UserAppResolution } from "@lando/landofile/app-resolution";
 import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
-
 import {
   AppPlacementError,
   type DebuggerHostUnavailableError,
@@ -32,6 +31,7 @@ import {
   AppPlanner,
   BuildOrchestrator,
   DataMover,
+  EnvironmentValueResolver,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -51,10 +51,7 @@ import {
   type ScratchSummary,
   StateStore,
 } from "@lando/sdk/services";
-
-import type { UserAppResolution } from "@lando/landofile/app-resolution";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import {

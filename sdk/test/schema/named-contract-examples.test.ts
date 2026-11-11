@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { JSON_SCHEMA_NAMES, publicSchemaRegistry } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 import { namedContractTables } from "./contract-examples/index.ts";
 import { PUBLIC_SCHEMA_CONTRACT_FIXTURES } from "./public-schema-contracts.ts";

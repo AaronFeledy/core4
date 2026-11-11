@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
@@ -14,6 +12,7 @@ import {
   type DoctorCheckResult,
   runDoctorCheckContractSuite,
 } from "@lando/sdk/test";
+import { type Context, Effect, Layer } from "effect";
 
 import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
 

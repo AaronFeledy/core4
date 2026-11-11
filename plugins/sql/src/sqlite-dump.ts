@@ -7,8 +7,8 @@ import type { ExportDestination } from "./actions.ts";
 import { type DumpCompression, compressDumpStream } from "./compression.ts";
 import { ensureSqliteExportDestination } from "./sqlite-export-destination.ts";
 import { runSqliteHelper, sqliteScratchFile, withSqliteHelper } from "./sqlite-helper.ts";
-import { captureSqliteDatabase } from "./sqlite-snapshot-capture.ts";
 import type { SqliteSnapshotDeps } from "./sqlite-snapshot.ts";
+import { captureSqliteDatabase } from "./sqlite-snapshot-capture.ts";
 import type { SqlFileTarget } from "./target.ts";
 import type { SqlPlanService } from "./views.ts";
 

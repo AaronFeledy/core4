@@ -9,11 +9,9 @@
  * the feature stays a pure mount/env application.
  */
 import { resolve } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
-
-import { type Context, Effect, Result, Schema } from "effect";
-
+import { assertUnderRoot } from "@lando/landofile/include-guard";
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   type AmbiguousCertificateAuthoritiesError,
   LandofileValidationError,
@@ -30,8 +28,7 @@ import {
   validationIssue,
 } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
-
-import { assertUnderRoot } from "@lando/landofile/include-guard";
+import { type Context, Effect, Result, Schema } from "effect";
 import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import { serviceCertificatePaths } from "../lifecycle/service-certificate-paths.ts";
 

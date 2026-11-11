@@ -9,8 +9,7 @@ import {
   planAppIdentity,
   planDataId,
 } from "@lando/sdk/schema";
-import { Schema } from "effect";
-import { Predicate } from "effect";
+import { Predicate, Schema } from "effect";
 import type { SqlCreds } from "./creds.ts";
 
 export type SqlLandofileService = {

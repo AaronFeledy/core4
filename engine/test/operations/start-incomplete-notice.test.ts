@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -20,6 +16,8 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import {

@@ -1,9 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { CliInvocation } from "../../runtime/invocation-context";
-
 import { PluginManifestError, isErrnoCode } from "@lando/sdk/errors";
 import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 const parsePackageJson = async (
   packagePath: string,

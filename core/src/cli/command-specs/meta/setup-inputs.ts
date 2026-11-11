@@ -7,14 +7,12 @@
  * install dir used when the caller did not supply one.
  */
 import { fileURLToPath } from "node:url";
-
-import { Schema } from "effect";
-
 import {
   type SetupProviderSwitchResult,
   SetupProviderSwitchResultSchema,
 } from "@lando/engine/operations/setup-provider-switch";
 import { ProviderId } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import type { SetupNetworkTrustProbe } from "../../commands/setup-network-trust";
 

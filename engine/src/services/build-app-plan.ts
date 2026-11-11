@@ -1,6 +1,5 @@
-import { Graph, Result, Schema } from "effect";
-
 import type { AppPlan, BuildStep, ServicePlan } from "@lando/sdk/schema";
+import { Graph, Result, Schema } from "effect";
 
 import { appBuildKeyForStep } from "./build-key.ts";
 

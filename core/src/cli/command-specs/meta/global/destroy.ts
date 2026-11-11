@@ -1,18 +1,17 @@
-import { ProviderId } from "@lando/sdk/schema";
-import { Effect } from "effect";
-import { yesFlag } from "../../../spec/confirmation-flag";
-import { Flags } from "../../../spec/metadata";
-
 import {
   type GlobalDestroyOptions,
   type GlobalDestroyResult,
   GlobalDestroyResultSchema,
   globalDestroy,
 } from "@lando/engine/operations/global-destroy";
+import { ProviderId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { renderGlobalDestroyResult } from "../../../commands/meta/global-destroy";
 import { publishShutdownWarnings } from "../../../commands/shutdown-summary";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { yesFlag } from "../../../spec/confirmation-flag";
 import { specFlagsOf } from "../../../spec/input-coercion";
+import { Flags } from "../../../spec/metadata";
 
 export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOptions => {
   if (typeof input !== "object" || input === null) return {};

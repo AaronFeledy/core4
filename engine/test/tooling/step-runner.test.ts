@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
-
 import { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
 
 import { compileAuthoredEventStepProgram as compileEventStepProgram } from "../../src/tooling/authored-step-compiler.ts";
 import type { ResolvedToolingStepLeaf, ToolingStepRunners } from "../../src/tooling/step-runner.ts";

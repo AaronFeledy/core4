@@ -1,8 +1,11 @@
-import { Result, Schema } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { LogSource, type LogSource as LogSourceType } from "@lando/sdk/schema";
-import { type ValidationIssuePath, validationIssue } from "@lando/sdk/schema";
+import {
+  LogSource,
+  type LogSource as LogSourceType,
+  type ValidationIssuePath,
+  validationIssue,
+} from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 export interface MergeLogSourcesInput {
   readonly appRoot: string;

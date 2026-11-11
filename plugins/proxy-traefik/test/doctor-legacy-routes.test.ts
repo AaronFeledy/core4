@@ -2,11 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, Effect, Exit, Option, Result } from "effect";
-
 import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckInput } from "@lando/sdk/plugins";
 import { AppId, type HostPlatform } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Result } from "effect";
 
 import { legacyRouteFilesCheck } from "../src/doctor-legacy-routes.ts";
 import { dynamicConfigDir } from "../src/proxy-paths.ts";

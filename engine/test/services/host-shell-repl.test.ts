@@ -2,14 +2,12 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { SecretNotFoundError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, type ShellReplInput } from "@lando/sdk/services";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
 import { hostShellEvaluatorArgv, runHostShellLine } from "../../src/services/host-shell-line";
 import { makeStatefulShellRedactor } from "../../src/services/host-shell-redactor";
 import { runHostShellRepl as runHostShellReplWithPrivateFileAccess } from "../../src/services/host-shell-repl";

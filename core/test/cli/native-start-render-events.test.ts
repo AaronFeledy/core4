@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
 
 import { destroySpec } from "../../src/cli/command-specs/app/destroy.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";

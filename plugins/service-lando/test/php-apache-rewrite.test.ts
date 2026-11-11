@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { ServiceBuildDirectoryCommand } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { php83ServiceType } from "../src/services/php.ts";
 import { apacheLauncherDirectives } from "./support/apache-directives.ts";

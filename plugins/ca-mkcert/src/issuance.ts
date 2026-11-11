@@ -2,13 +2,11 @@
 import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Redacted, Schema } from "effect";
-
 import { mapFailures } from "@lando/sdk/command-result";
 import { CaError } from "@lando/sdk/errors";
 import { CertificateSpec } from "@lando/sdk/schema";
 import type { CaRootCertificate, IssuedCertificate } from "@lando/sdk/services";
+import { Effect, Redacted, Schema } from "effect";
 
 import { CA_ID, type MkcertContext, caError, failureDetail } from "./mkcert-command.ts";
 

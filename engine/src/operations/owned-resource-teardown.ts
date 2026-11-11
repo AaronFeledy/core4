@@ -73,12 +73,14 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
     yield* runAllAndMergeFailures(
       providers.map((cleanup) =>
         cleanup(root, options).pipe(
-          Effect.map((removed) => {
-            result.servicesRemoved.push(...removed.servicesRemoved);
-            result.networksRemoved += removed.networksRemoved;
-            result.volumesRemoved += removed.volumesRemoved;
-            result.skipped.push(...(removed.skipped ?? []));
-          }),
+          Effect.flatMap((removed) =>
+            Effect.sync(() => {
+              result.servicesRemoved.push(...removed.servicesRemoved);
+              result.networksRemoved += removed.networksRemoved;
+              result.volumesRemoved += removed.volumesRemoved;
+              result.skipped.push(...(removed.skipped ?? []));
+            }),
+          ),
         ),
       ),
     );

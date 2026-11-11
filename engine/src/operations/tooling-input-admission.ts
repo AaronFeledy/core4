@@ -13,11 +13,12 @@ import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize"
 import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
 import { RedactionService } from "@lando/redaction/service";
 import { ToolingCompileError, ToolingDisabledError } from "@lando/sdk/errors";
-import type { ParsedPendingSite, ToolingTaskShape } from "@lando/sdk/schema";
 import type {
+  ParsedPendingSite,
   ToolingInputDeclaration,
   ToolingInputRevision,
   ToolingInvocationInput,
+  ToolingTaskShape,
 } from "@lando/sdk/schema";
 import { Effect, Option } from "effect";
 

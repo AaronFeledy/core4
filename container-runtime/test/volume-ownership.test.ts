@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import { podmanVolumeCreationLabels } from "../src/podman/bring-up.ts";
 import { renderCompose } from "../src/podman/compose.ts";

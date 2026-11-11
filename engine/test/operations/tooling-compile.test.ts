@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema, Stream } from "effect";
-
 import { PortablePath, ToolingTaskInput, type ToolingTaskShape } from "@lando/sdk/schema";
+import { Effect, Schema, Stream } from "effect";
 
 import { admitAndCompileTooling as compileToolingInvocations } from "./compile-tooling-fixture.ts";
 

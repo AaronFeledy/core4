@@ -2,8 +2,7 @@ import { isLegacyTagged, parseRouteHostname } from "@lando/sdk/landofile";
 import type { RouteFilter, RouteObjectInput } from "@lando/sdk/schema";
 import { Result } from "effect";
 import { resolveCatalogType } from "./catalog.ts";
-import type { Lando3TranslatorPorts } from "./contract.ts";
-import type { Lando3Path } from "./contract.ts";
+import type { Lando3Path, Lando3TranslatorPorts } from "./contract.ts";
 import { type V4Wire, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 

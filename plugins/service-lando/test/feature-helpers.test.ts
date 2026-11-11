@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { Effect, Result } from "effect";
 
 import {
   ServiceConfigIssue,

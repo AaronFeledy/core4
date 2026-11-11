@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { MAILPIT_IMAGE } from "../src/mailpit-constants.ts";
 import { MAILPIT_FEATURE_ID, mailpitServiceFeature, mailpitServiceType } from "../src/services/mailpit.ts";

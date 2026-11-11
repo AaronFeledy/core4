@@ -1,9 +1,8 @@
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
 
 import {

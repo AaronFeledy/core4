@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit } from "effect";
 
 import {
   type PodmanCommandRunner,

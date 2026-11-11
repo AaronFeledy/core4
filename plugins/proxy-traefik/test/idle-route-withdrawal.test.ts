@@ -13,8 +13,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
-import { routeFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { routeFile } from "../src/proxy-paths.ts";
 import { makeAcceptanceFixture } from "./route-acceptance-fixture.ts";
 import { routeMetadataLine, routeOwner } from "./route-owner-fixture.ts";
 

@@ -1,10 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Option, Schema } from "effect";
-
 import { type ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { AppId, type AppliedStateInventory } from "@lando/sdk/schema";
+import { Effect, Option, Schema } from "effect";
 import type { AppliedPlanRead } from "./applied-state-read.ts";
 
 export const APPLIED_PLAN_NAMESPACE = "applied-plans";

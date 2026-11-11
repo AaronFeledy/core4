@@ -1,4 +1,11 @@
 import {
+  type RedactionForProfileOptions,
+  RedactionService,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
+import type { EventError } from "@lando/sdk/errors";
+import { ConfigService, type EventFor, EventService, type LandoEvent } from "@lando/sdk/services";
+import {
   Cause,
   Context,
   type Duration,
@@ -11,23 +18,16 @@ import {
   Ref,
   Stream,
 } from "effect";
-import { HostExecutionDefaults } from "./host-execution-context.ts";
-
-import type { EventError } from "@lando/sdk/errors";
-import { ConfigService, type EventFor, EventService, type LandoEvent } from "@lando/sdk/services";
-
-import {
-  type RedactionForProfileOptions,
-  RedactionService,
-  createStandaloneRedactor,
-} from "@lando/redaction/service";
 import {
   EventDeliveryMetrics,
   type EventDeliveryMetricsSnapshot,
   type EventDeliveryState,
   makeEventDelivery,
 } from "./event-delivery.ts";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
+
 export { EventDeliveryMetrics, type EventDeliveryMetricsSnapshot } from "./event-delivery.ts";
+
 import {
   eventError,
   matchesName,

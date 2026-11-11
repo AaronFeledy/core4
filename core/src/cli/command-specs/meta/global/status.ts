@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import {
   type GlobalStatusOptions,
   type GlobalStatusResult,
@@ -9,6 +7,7 @@ import {
 } from "../../../commands/meta/global-status";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { formatFlag, serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { Flags } from "../../../spec/metadata";
 
 export const globalStatusFormatFromInput = (input: unknown): "json" | "table" =>
   formatFlag(specFlagsOf(input), ["json", "table"], "table");

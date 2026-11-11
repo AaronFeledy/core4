@@ -1,9 +1,8 @@
-import { Duration, Effect, Result, Schema } from "effect";
-
 import { HOST_PROXY_CONTAINER_SOCKET } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { runProbe } from "@lando/sdk/probe";
 import { AppId, CommandResultEnvelope, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import { Duration, Effect, Result, Schema } from "effect";
 
 import { compareCodePointStrings } from "./doctor-host-proxy-order";
 import { OpenAppResultSchema } from "./open";

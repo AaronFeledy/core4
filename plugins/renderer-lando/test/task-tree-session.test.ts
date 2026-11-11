@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import type { LandoEvent } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import {
   isProvisionalStartupCommand,

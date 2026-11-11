@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import { ConfigService, FileSystem, Logger, ProcessRunner } from "@lando/core/services";
 import { makeTestRuntime } from "@lando/core/testing";
+import { Effect } from "effect";
 
 describe("makeTestRuntime", () => {
   test("provides in-memory service doubles that record calls", async () => {

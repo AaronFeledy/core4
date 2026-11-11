@@ -1,9 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { Effect, Result } from "effect";
-
 import {
   type BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
@@ -12,14 +9,17 @@ import {
   isErrnoCode,
 } from "@lando/sdk/errors";
 import type { BunShellScriptFrontMatter } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 import type { BunShellFrontMatterProblem } from "./bun-sh-frontmatter.ts";
 import { BUN_SHELL_SCRIPT_EXTENSION, canonicalIdFromRelativePath } from "./bun-sh-identity.ts";
+
 export { BUN_SHELL_SCRIPT_EXTENSION, canonicalIdFromRelativePath } from "./bun-sh-identity.ts";
+
 import { inspectScriptContent, readScriptContent, scriptServiceProblem } from "./bun-sh-inspection.ts";
 import { isBunShellScriptMetadataFailure } from "./bun-sh-metadata.ts";
-export { parseScriptFile, inspectScriptContent } from "./bun-sh-inspection.ts";
 
 export { bunShellFrontMatterCoordinates } from "./bun-sh-frontmatter.ts";
+export { inspectScriptContent, parseScriptFile } from "./bun-sh-inspection.ts";
 
 export const SCRIPTS_DIRNAME = join(".lando", "scripts");
 

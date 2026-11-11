@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { ToolingInputRevision } from "@lando/sdk/schema";
-import { Effect } from "effect";
-
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
+import { ToolingInputRevision } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import {
   type RouterFixture,
   type RunResult,

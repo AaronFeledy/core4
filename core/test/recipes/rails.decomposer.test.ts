@@ -7,6 +7,7 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { RAILS_GEMFILE } from "../../src/recipes/builtin/rails/scaffold.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: railsDecomposer,
   defaults: railsDefaults,
@@ -15,6 +16,7 @@ const {
   contentDigest: RAILS_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("rails");
+
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 
 const defaults = { ...railsDefaults };

@@ -1,18 +1,15 @@
-import { Effect } from "effect";
-import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
-import { Args } from "../../../spec/metadata";
-
 import { NotImplementedError } from "@lando/sdk/errors";
-
+import { Effect } from "effect";
 import {
   type PluginRemoveResult,
   PluginRemoveResultSchema,
   pluginRemove,
   renderPluginRemoveResult,
 } from "../../../commands/plugin-remove";
-
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
 import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args } from "../../../spec/metadata";
 
 const extractInput = (input: unknown): { name: string } => {
   return { name: stringFlag(specArgsOf(input), "name") ?? "" };

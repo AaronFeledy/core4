@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
-
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
   CONTAINER_HELPER_JOB_ID,
@@ -458,10 +457,10 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 
       - name: Prepare provider via lando setup
         run: |
-          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
-          mkdir -p "\$XDG_RUNTIME_DIR"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
           dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
-          echo "LANDO_CONFIG__default_provider_id=lando" >> "\$GITHUB_ENV"
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
 
       - name: Verify managed runtime socket
         run: |
@@ -1107,7 +1106,7 @@ const main = async (): Promise<void> => {
   const workflow = renderCiWorkflow();
 
   await Bun.write(OUTPUT, workflow);
-  // Biome 1 cannot check YAML; include the generator so this remains a real check.
+  // YAML stays outside Biome's scope; include the generator so this remains a real check.
   await formatGeneratedPaths([OUTPUT, import.meta.path]);
   console.log(`[build-ci-workflow] wrote ${OUTPUT}`);
 };

@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { TestRuntimeProvider, runProviderContract } from "@lando/sdk/test";
+import { Effect, Result } from "effect";
 
 test("provider contract accepts a present agentSocket capability", async () => {
   // Given

@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import { ConfigService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import {
   type AgentEnvPolicy,

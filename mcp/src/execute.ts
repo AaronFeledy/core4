@@ -7,7 +7,6 @@
  * translating the command lifecycle `Exit` into a `CommandResultOutcome`.
  * Interrupts (cancellation) propagate; this seam must not swallow them.
  */
-import { Cause, type Context, Effect, Exit } from "effect";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
@@ -18,6 +17,7 @@ import {
   failureOutcomeFromCause,
   normalizeDefect,
 } from "@lando/sdk/command-result";
+import { Cause, type Context, Effect, Exit } from "effect";
 import type { McpExecute } from "./dispatch";
 import type { McpCommandExecutorShape } from "./port";
 

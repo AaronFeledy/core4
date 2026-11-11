@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   LandofileShape,
@@ -13,6 +11,7 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { GlobalConfigSources } from "../../src/services/config.ts";

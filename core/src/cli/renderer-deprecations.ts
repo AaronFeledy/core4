@@ -7,14 +7,14 @@
  * as byte-stable `deprecation-used` stream frames for the JSON renderer, or as
  * warn/info messages otherwise.
  */
-import { Effect, Option } from "effect";
-import { CliInvocation } from "../runtime/invocation-context";
-
-import type { DeprecationUse } from "@lando/sdk/schema";
-import { DeprecationService, Renderer } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { encodeStreamEventFrame } from "@lando/sdk/command-result";
+
+import type { DeprecationUse } from "@lando/sdk/schema";
+import { DeprecationService, Renderer } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 import { scanArgvFlags } from "./argv-walk";
 

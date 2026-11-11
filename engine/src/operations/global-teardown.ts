@@ -1,9 +1,8 @@
 import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
-import { DateTime, Effect } from "effect";
-
 import { AbsolutePath, AppId, type ServiceShutdownObservation, isActiveRunStatus } from "@lando/sdk/schema";
 import { EventService, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 
 import { globalObserveProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";

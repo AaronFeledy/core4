@@ -1,8 +1,7 @@
 import type { RendererIO } from "@lando/sdk/renderer";
 import { Effect } from "effect";
 import { isBrokenPipeError } from "./io.ts";
-import { outputDrainWaiters } from "./output-streams.ts";
-import { outputStreams } from "./output-streams.ts";
+import { outputDrainWaiters, outputStreams } from "./output-streams.ts";
 
 const awaitOutputDrain = (stream: NodeJS.WriteStream): Effect.Effect<void> =>
   Effect.callback<void>((resume) => {

@@ -1,10 +1,9 @@
 import { dirname } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Context, Effect, type Scope } from "effect";
-
 import { AppLockTimeoutError, GlobalAppError, StateStoreError } from "@lando/sdk/errors";
 import { GlobalAppService, type PathsService, type StateStore } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, type Scope } from "effect";
 
 import {
   canonicalMissingAppRoot,

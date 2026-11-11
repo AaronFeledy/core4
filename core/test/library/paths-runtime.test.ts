@@ -1,14 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import { makeLandoRuntime } from "@lando/core";
 import { AbsolutePath } from "@lando/core/schema";
 import { ConfigService, PathsService } from "@lando/core/services";
+import { Effect } from "effect";
 
 describe("library makeLandoRuntime paths surface", () => {
   test("PathsService is available at bootstrap minimal and resolves roots + a derived path", async () => {

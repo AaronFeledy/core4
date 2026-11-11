@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
-import { AbsolutePath, AppPlan, appIdentityKey } from "@lando/sdk/schema";
-import { EventService } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { renderPlain } from "@lando/renderer/runtime";
+import { AbsolutePath, AppPlan, appIdentityKey } from "@lando/sdk/schema";
+import { EventService } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Layer, Schema } from "effect";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { SPINNER_FRAMES, styleFrame } from "../src/task-tree-render.ts";

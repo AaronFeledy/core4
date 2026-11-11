@@ -1,8 +1,7 @@
 import { resolve } from "node:path";
-import { Effect, absurd } from "effect";
-
 import { SqlSeedSourceError, SqlServiceAmbiguousError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
+import { Effect, absurd } from "effect";
 
 import { secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";

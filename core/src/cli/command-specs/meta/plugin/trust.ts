@@ -1,5 +1,3 @@
-import { Args } from "../../../spec/metadata";
-
 import {
   PluginTrustCommandResultSchema,
   type PluginTrustListResult,
@@ -14,6 +12,7 @@ import {
 } from "../../../commands/plugin-trust";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args } from "../../../spec/metadata";
 
 const extractInput = (input: unknown): { action: string; name: string } => {
   const args = specArgsOf(input);

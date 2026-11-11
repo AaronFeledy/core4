@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { RecipeRegistryResolution, RecipeRegistryResponse } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("RecipeRegistryResolution", () => {
   test("decodes a valid git resolution", () => {

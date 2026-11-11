@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-
-import { DateTime, Result, Schema } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -17,6 +13,7 @@ import {
   appIdentityKey,
   planDataId,
 } from "@lando/sdk/schema";
+import { DateTime, Result, Schema, SchemaIssue } from "effect";
 
 const FIXED_RESOLVED_AT = DateTime.makeUnsafe("2026-05-10T18:51:00Z");
 

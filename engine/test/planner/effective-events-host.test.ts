@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
-
 import { authoredInvocationSites } from "@lando/landofile/compiled-sites";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, LANDO_HOST_EVENT_ENV, ProviderId } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 import {
   compileEffectiveEvents,

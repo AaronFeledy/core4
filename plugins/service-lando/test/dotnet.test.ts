@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import {
   DOTNET_FEATURE_ID,
@@ -146,4 +145,5 @@ describe("dotnet ServiceType", () => {
     expect(resolution.normalizedConfig.routes).toEqual(routes);
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

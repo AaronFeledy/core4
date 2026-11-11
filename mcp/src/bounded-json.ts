@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import { McpTransportError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
+import { Effect } from "effect";
 
 import { isRuntimeProxy } from "./runtime-proxy";
 import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";

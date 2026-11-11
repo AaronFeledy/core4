@@ -12,8 +12,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Logger, Queue, References, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { makeLandoPaths } from "@lando/paths";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   type LandoEvent,
   MessageWarnEvent,
@@ -27,10 +28,7 @@ import {
 import { RENDERER_CAPABILITIES_TTY, type RendererIO } from "@lando/sdk/renderer";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PathsService, Renderer } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { makeLandoPaths } from "@lando/paths";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Logger, Queue, References, Schema } from "effect";
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
@@ -254,14 +252,10 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     const controller = new FakeController();
     let acquisitions = 0;
     await Effect.runPromise(
-      drive(
-        io,
-        () => {
-          acquisitions += 1;
-          return Promise.resolve(controller);
-        },
-        [warn("prompt-only output")],
-      ),
+      drive(io, () => {
+        acquisitions += 1;
+        return Promise.resolve(controller);
+      }, [warn("prompt-only output")]),
     );
 
     expect(acquisitions).toBe(0);
@@ -1211,14 +1205,10 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     };
     let created = false;
     await Effect.runPromise(
-      drive(
-        io,
-        () => {
-          created = true;
-          return Promise.resolve(new FakeController());
-        },
-        [treeStart(["web"]), taskStart("web")],
-      ),
+      drive(io, () => {
+        created = true;
+        return Promise.resolve(new FakeController());
+      }, [treeStart(["web"]), taskStart("web")]),
     );
     expect(created).toBe(false);
     expect(base.stderr()).toContain("web");

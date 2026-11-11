@@ -1,8 +1,7 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { appConfigOptionsFromInput, appConfigSpec } from "../../../src/cli/command-specs/app/config";

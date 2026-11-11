@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Layer, Option, Stream } from "effect";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Effect, Layer, Option, Stream } from "effect";
 import { runAppEvent, runAppInitEvents } from "../../src/operations/events.ts";
 import * as EnvironmentResolver from "../../src/services/environment-value-resolver.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";

@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import type { AppFeatureContext, AppFeatureDefinition, ServiceAppMountIntent } from "@lando/sdk/services";
-import { finalizeDraft } from "../../src/services/finalize-service.ts";
-
+import { Cause, Effect, Exit, Option } from "effect";
 import {
   type AppFeatureServiceDraft,
   type ComposeAppFeature,
   type ComposeAppFeaturesInput,
   composeAppFeatures,
 } from "../../src/services/app-feature.ts";
+import { finalizeDraft } from "../../src/services/finalize-service.ts";
 
 const draft = (over: Partial<AppFeatureServiceDraft> & { serviceName: string }): AppFeatureServiceDraft => ({
   serviceName: over.serviceName,

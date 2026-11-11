@@ -1,12 +1,10 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 
 import { resolveStatePath } from "../../src/paths.ts";
 

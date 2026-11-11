@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
+import { makeTestManagedFileStore } from "@lando/managed-file/testing";
+import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 import type { Scope } from "effect";
+import { Effect } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { makeTestManagedFileStore } from "@lando/managed-file/testing";
-import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

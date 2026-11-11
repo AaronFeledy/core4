@@ -1,4 +1,4 @@
-import { Result } from "effect";
+import { ConfigError } from "@lando/sdk/errors";
 /**
  * Doctor self-resilience substrate.
  *
@@ -17,9 +17,7 @@ import { Result } from "effect";
  * child fiber, so interrupting the parent still cancels the whole run, while a
  * section that interrupts itself is recorded as a section defect.
  */
-import { Cause, Duration, Effect, Exit, Fiber, Option } from "effect";
-
-import { ConfigError } from "@lando/sdk/errors";
+import { Cause, Duration, Effect, Exit, Fiber, Option, Result } from "effect";
 
 import {
   DOCTOR_SELF_CHECK_NAME,

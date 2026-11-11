@@ -1,6 +1,5 @@
-import { Effect, Schema } from "effect";
-
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import {
   ServiceConfigIssue,
@@ -48,10 +47,9 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly featureId: string;
   readonly priority: number;
   readonly featureSchema: Schema.Codec<unknown>;
-  readonly configFor: (ctx: { readonly config: Readonly<Record<string, unknown>> }) => LanguageFeatureConfig<
-    V,
-    F
-  >;
+  readonly configFor: (ctx: {
+    readonly config: Readonly<Record<string, unknown>>;
+  }) => LanguageFeatureConfig<V, F>;
   readonly applyFallback: string;
   readonly resolveFallback: (version: V) => string;
 }

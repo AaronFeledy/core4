@@ -1,10 +1,9 @@
-import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
+import { waitForRendererOutput } from "@lando/renderer/output-drain";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import type { RendererCapabilities, RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
-
-import { waitForRendererOutput } from "@lando/renderer/output-drain";
+import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
 import { renderLandoLine } from "./format.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 

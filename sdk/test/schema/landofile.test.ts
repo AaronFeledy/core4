@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema, SchemaIssue } from "effect";
-import * as AST from "effect/SchemaAST";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -20,6 +16,8 @@ import {
   formatValidationIssuePath,
   getJsonSchema,
 } from "@lando/sdk/schema";
+import { Result, Schema, SchemaIssue } from "effect";
+import * as AST from "effect/SchemaAST";
 
 const SUPPORTED_TOOLING_FIELDS = [
   "service",

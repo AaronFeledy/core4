@@ -4,8 +4,6 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Cause, Effect, Exit } from "effect";
-
 import {
   IntelMacUnsupportedError,
   ProviderBundleChecksumError,
@@ -17,6 +15,7 @@ import {
   setupProviderLando,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit } from "effect";
 
 import {
   type ArtifactDownload,

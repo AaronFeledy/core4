@@ -64,7 +64,6 @@ export const parseLegacyLandofile = (
   });
 
 export {
-  isLegacyTagged,
   LEGACY_TAGGED,
   type LegacyAliasNode,
   type LegacyDocument,
@@ -78,7 +77,8 @@ export {
   type LegacySequenceNode,
   type LegacySourcePosition,
   type LegacySourceSpan,
-  type LegacyTagged,
   type LegacyTagOccurrence,
+  type LegacyTagged,
   type LegacyTree,
+  isLegacyTagged,
 } from "./contract.ts";

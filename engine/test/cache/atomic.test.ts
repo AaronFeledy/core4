@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { writeAtomicCacheFile, writeFileAtomicViaRename } from "../../src/cache/atomic.ts";

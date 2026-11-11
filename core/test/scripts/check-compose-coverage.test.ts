@@ -1,16 +1,13 @@
+import { describe, expect, test } from "bun:test";
 import { appendFile, copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-
-import { ComposeServiceKnobKey } from "@lando/sdk/schema";
-
 import {
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTopLevelDispositions,
 } from "@lando/sdk/landofile";
+import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 import {
   checkComposeCoverage,
   formatComposeCoverageFailure,

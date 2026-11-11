@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { DownloadFetchError } from "@lando/sdk/errors";
 import { Downloader } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { makeMkcertCertificateAuthority } from "../src/ca.ts";
 import { failure, makeCaHarness, makeFakeMkcertRunner } from "./_fixtures.ts";
 

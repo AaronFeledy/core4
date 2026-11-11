@@ -12,12 +12,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit, Option, type Scope } from "effect";
+import { makeLandoPaths } from "@lando/paths";
 
 import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
-
-import { makeLandoPaths } from "@lando/paths";
+import { Cause, Effect, Exit, Option, type Scope } from "effect";
 import { makeDiskBackend, makeManagedFileService, makeManagedFileServiceFactory } from "../src/service.ts";
 import { makeTestManagedFileStore } from "../src/testing.ts";
 import { ownerOnlyFileAccess } from "./transaction-fixture.ts";

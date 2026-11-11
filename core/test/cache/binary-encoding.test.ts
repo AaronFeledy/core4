@@ -1,12 +1,9 @@
+import { describe, expect, test } from "bun:test";
 import { type BinaryLike, createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { deserialize, serialize } from "node:v8";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/core/schema";
 import type { CacheService } from "@lando/core/services";
 import {
@@ -25,6 +22,7 @@ import {
 } from "@lando/engine/cache/command-index";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 import * as AppCacheService from "@lando/engine/cache/service";
+import { DateTime, Effect } from "effect";
 
 const fixtureRoot = resolve(import.meta.dirname, "fixtures", "binary-cache");
 

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { Context, Effect } from "effect";
-
 import type {
   AppPlanResolutionError,
   ExecAppError,
@@ -99,6 +97,7 @@ import type {
   ShellInteractiveSpec,
   UserLandofileError,
 } from "@lando/sdk/services";
+import type { Context, Effect } from "effect";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const assertType = <T extends true>(value: T): T => value;

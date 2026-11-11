@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import {
   ProviderLandoConflictError,
   ProviderLandoStateError,
@@ -11,6 +9,7 @@ import {
   makeRuntimeProvider,
 } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Option } from "effect";
 import { providerLandoSetupStatePath } from "../src/provider-lando-state.ts";
 import { withPing } from "./podman-api-fixtures.ts";
 

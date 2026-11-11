@@ -1,6 +1,4 @@
-import { SchemaIssue, SchemaTransformation } from "effect";
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import { mapInputWithPrecheck } from "./map-input.ts";
 
 const RESERVED_KEY_PROPERTY_NAMES = { not: { const: "__proto__" } } as const;

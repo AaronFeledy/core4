@@ -9,12 +9,10 @@
  * never imports a plugin module.
  */
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
 import type { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { ResolvedPluginInput } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { canonicalAppRoot } from "../operations/app-root-identity.ts";
 import { type PluginImplementation, pluginImplementationIdentity } from "./implementation-identity.ts";

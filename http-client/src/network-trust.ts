@@ -37,12 +37,12 @@ import { Context, Effect, Option, Schema } from "effect";
 
 export type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 export {
-  fetchInitForNetwork,
   NetworkTrustResolutionError,
+  fetchInitForNetwork,
   shouldBypassProxy,
 } from "@lando/sdk/network-trust";
-export { resolveNetworkTrustPlan };
 export type { NetworkTrustPlan };
+export { resolveNetworkTrustPlan };
 
 export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemLoadError", {
   message: Schema.String,

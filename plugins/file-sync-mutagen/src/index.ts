@@ -6,8 +6,6 @@ import { mapFailures } from "@lando/sdk/command-result";
  */
 
 import path from "node:path";
-import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
-
 import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
@@ -37,6 +35,7 @@ import {
   ProcessRunner,
 } from "@lando/sdk/services";
 import type { ToolError } from "@lando/sdk/tool-provisioning";
+import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
 import {
   dockerCliConfigDir,
@@ -438,27 +437,26 @@ export const plugin = definePlugin({
 
 export {
   type FakeMutagenClient,
+  MUTAGEN_FAKE_SENTINELS,
   type MutagenClient,
   type MutagenCreateArgs,
   type MutagenSessionRecord,
-  MUTAGEN_FAKE_SENTINELS,
   makeFakeMutagenClient,
   makeUnavailableMutagenClient,
   toFileSyncSessionInfo,
 } from "./mutagen-client.ts";
+export {
+  type MutagenProcessClientOptions,
+  type PreparedWindowsMutagenProcessClientOptions,
+  WINDOWS_LANDO_DOCKER_HOST,
+  makeMutagenProcessClient,
+  makePreparedWindowsMutagenProcessClient,
+} from "./mutagen-process-client.ts";
 
 export {
-  MUTAGEN_NAME_MAX,
-  isValidMutagenSessionName,
-  mutagenSessionName,
-  mutagenSessionNameFromParts,
-  mutagenSessionRef,
-} from "./session-name.ts";
-
-export {
+  type InstalledMutagenStatus,
   MUTAGEN_TOOL_MANIFEST,
   MUTAGEN_TOOL_VERSION,
-  type InstalledMutagenStatus,
   type ProvisionMutagenInput,
   mutagenAgentInstallPath,
   mutagenHostInstallName,
@@ -467,14 +465,13 @@ export {
   provisionMutagen,
   readInstalledMutagenStatus,
 } from "./provision.ts";
-
 export {
-  type MutagenProcessClientOptions,
-  type PreparedWindowsMutagenProcessClientOptions,
-  WINDOWS_LANDO_DOCKER_HOST,
-  makeMutagenProcessClient,
-  makePreparedWindowsMutagenProcessClient,
-} from "./mutagen-process-client.ts";
+  MUTAGEN_NAME_MAX,
+  isValidMutagenSessionName,
+  mutagenSessionName,
+  mutagenSessionNameFromParts,
+  mutagenSessionRef,
+} from "./session-name.ts";
 
 export {
   type PreparedWindowsMutagenAppClientOptions,

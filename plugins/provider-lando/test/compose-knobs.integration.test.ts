@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
-import { DateTime, Effect } from "effect";
-
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -12,6 +10,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 // Runtime counterpart to `compose-knobs-bringup.test.ts`. That suite pins the
 // create-request body this provider sends; this one pins that Podman actually

@@ -11,15 +11,14 @@
  * provide `DefaultGlobalAppDoctorLayer` which composes those services from
  * the ambient `ConfigService`.
  */
-import { DateTime, Effect, Layer } from "effect";
-
-import type { ConfigService } from "@lando/sdk/services";
-import { FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import * as LandoLogger from "@lando/engine/logging/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
+import type { ConfigService } from "@lando/sdk/services";
+import { FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
+import { DateTime, Effect, Layer } from "effect";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { failCheck, passCheckNamed, warnCheck } from "./doctor-check-builders";
 import { renderDoctorChecksAsNdjson, sectionCheckEventPayload } from "./doctor-ndjson";

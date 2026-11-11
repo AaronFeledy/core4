@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { encodeCommandResult } from "@lando/sdk/command-result";
 import { ConfigError, LandofileValidationError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
+import { Effect, Schema } from "effect";
 
 import { buildBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 

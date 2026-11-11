@@ -9,6 +9,7 @@ import {
 } from "../../src/data-plane.ts";
 import { FakeAssets } from "./fake-engine-assets.ts";
 import { FakeContainers } from "./fake-engine-containers.ts";
+import { Filters, type Operation, route } from "./fake-engine-routes.ts";
 import {
   type ContainerConfig,
   FakeEngineContractError,
@@ -17,7 +18,6 @@ import {
   missing,
 } from "./fake-engine-state.ts";
 
-import { Filters, type Operation, route } from "./fake-engine-routes.ts";
 export type { Operation } from "./fake-engine-routes.ts";
 export class FakeEngine implements DataPlaneApiClient {
   readonly containers = new FakeContainers();

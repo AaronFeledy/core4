@@ -1,9 +1,6 @@
 import { lstat, mkdir, readdir, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Schema, type Scope } from "effect";
-
 import { ToolExtractError, ToolInstallPathError, ToolManifestError } from "@lando/sdk/errors";
 import { ToolManifest, type ToolManifest as ToolManifestType } from "@lando/sdk/schema";
 import { type Downloader, ProcessRunner } from "@lando/sdk/services";
@@ -16,6 +13,7 @@ import {
   resolveHostKey,
   toolVersionMarkerPath,
 } from "@lando/sdk/tool-provisioning";
+import { Effect, Schema, type Scope } from "effect";
 
 import manifestData from "../docker-cli-versions.json" with { type: "json" };
 

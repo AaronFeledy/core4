@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import {
   type FileSyncContractMatrixCell,
   runFileSyncEngineContract,
   runFileSyncEngineContractMatrix,
 } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 import { ENGINE_ID, makeFakeMutagenClient, makeFileSyncEngine } from "../src/index.ts";
 

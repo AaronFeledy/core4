@@ -1,9 +1,8 @@
-import { Effect, Queue, Stream } from "effect";
-
 import { hostDisablesColor } from "@lando/renderer";
 import type { ExecAppOptions } from "@lando/sdk/app";
 import type { HostTerminal } from "@lando/sdk/schema";
 import type { ToolingInvocation } from "@lando/sdk/services";
+import { Effect, Queue, Stream } from "effect";
 
 import { cancellableTerminalStdin } from "./commands/terminal-stdin";
 

@@ -2,14 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import { GlobalServiceMissingError } from "@lando/core/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/core/schema";
 import {
   ensureGlobalServicesRunning,
   requiredGlobalServicesForPlan,
 } from "@lando/engine/operations/ensure-global-services";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import { type Harness, makeHarness } from "../_support/ensure-global-harness.ts";
 
 const providerId = ProviderId.make("docker");

@@ -31,7 +31,7 @@ export const applyCiSelection = (workflow: string): string => {
       const needsLine = /^ {4}needs: (.+)\n/m.exec(block)?.[1];
       const needs = needsLine
         ? needsLine
-            .replace(/[\[\]]/g, "")
+            .replace(/[[\]]/g, "")
             .split(",")
             .map((value) => value.trim())
         : [];

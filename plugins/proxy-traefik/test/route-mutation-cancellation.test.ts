@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Fiber } from "effect";
-
-import { appCertificateFiles, routeFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { appCertificateFiles, routeFile } from "../src/proxy-paths.ts";
 import { removeAppCertificates } from "../src/tls.ts";
 import { app } from "./proxy-tls-harness.ts";
 import { makeAcceptanceFixture } from "./route-acceptance-fixture.ts";

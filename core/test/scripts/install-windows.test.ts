@@ -1,4 +1,6 @@
 // allow: SIZE_OK — exclusive single-file installer harness; trust, roots, and ownership scenarios share fixtures.
+
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   chmod,
   lstat,
@@ -14,8 +16,6 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { afterEach, describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandoEvent } from "@lando/sdk/events";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest, type SubscriberManifestEntry } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import type { RuntimeSubscriberFactory } from "../../src/lifecycle/subscriber-loader.ts";
 import { subscriberRuntime } from "./subscriber-runtime-fixture.ts";

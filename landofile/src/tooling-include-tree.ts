@@ -2,9 +2,6 @@ import { dirname } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 
 import { LandofileLoadFailure } from "@lando/sdk/errors";
-import { Effect, Result, Schema } from "effect";
-import { loadPathBlocked } from "./load-failures.ts";
-
 import {
   type ValueOrigins,
   isMergeDirective,
@@ -12,10 +9,11 @@ import {
   override,
   valueOriginAt,
 } from "@lando/sdk/landofile";
-
+import { Effect, Result, Schema } from "effect";
 import { hasIncludeCycle } from "./include-graph.ts";
 import { attributeIncludeError, includeError, realpathOrSelf } from "./include-guard.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
+import { loadPathBlocked } from "./load-failures.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 import type { SourceDocument } from "./pipeline/source-table.ts";
 import { type ToolingIncludeDefaults, layerIncludeDefaults } from "./tooling-include-defaults.ts";

@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const workflowPath = resolve(repoRoot, ".github/workflows/platform-readiness.yml");

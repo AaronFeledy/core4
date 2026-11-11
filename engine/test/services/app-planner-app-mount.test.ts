@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import {
@@ -12,10 +10,10 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { literalTestLandofile } from "../compiled-landofile.ts";
-
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const APP_ROOT = process.cwd();
 const planExit = (service: typeof ServiceConfig.Encoded, capabilities = TestRuntimeProvider.capabilities) => {
@@ -262,4 +260,5 @@ for (const type of ["php:8.3", "nginx", "apache", "static:nginx", "tomcat"]) {
     },
   );
 }
+
 import { serviceAppMount } from "@lando/sdk/schema";

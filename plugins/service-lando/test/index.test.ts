@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Layer, Schema } from "effect";
 
 import { PLUGIN_NAME, globalServices, manifest, serviceTypes, services } from "../src/index.ts";
 import { MAILPIT_IMAGE } from "../src/mailpit-constants.ts";

@@ -1,9 +1,8 @@
 import { activeHostHttpUrls } from "@lando/engine/operations/service-connections";
+import { type SummaryDocument, formatQuietSummary, worstSummaryTone } from "@lando/renderer/summary";
 /** `lando start` result rendering. */
 import type { StartAppResult } from "@lando/sdk/app";
 import type { CheckResult, ServiceConnection } from "@lando/sdk/schema";
-
-import { type SummaryDocument, formatQuietSummary, worstSummaryTone } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionText, scopedConnectionText } from "./connection-summary";

@@ -2,14 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect } from "effect";
-import { TestClock } from "effect/testing";
-
 import { makeLandoPaths } from "@lando/paths";
 import { ScratchAppError } from "@lando/sdk/errors";
 import { StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
+import { Effect } from "effect";
+import { TestClock } from "effect/testing";
 
 import { type ScratchRegistryEntry, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { detachScratchApp } from "../../src/scratch-app/service.ts";

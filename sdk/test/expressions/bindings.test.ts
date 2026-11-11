@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { evaluateTemplateEither, parseExpressionEither } from "@lando/sdk/expressions";
 import type { ExpressionContext } from "@lando/sdk/expressions";
+import { evaluateTemplateEither, parseExpressionEither } from "@lando/sdk/expressions";
 import { Result } from "effect";
 
 const reference = { _tag: "SecretRef", reference: "PASSWORD" } as const;

@@ -1,9 +1,5 @@
 import { existsSync } from "node:fs";
 import { chmod, lstat, readFile, rename } from "node:fs/promises";
-import { mapFailures } from "@lando/sdk/command-result";
-import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
-import { RecordedMachineOwnership, SetupMachineOwnership } from "./setup-machine-ownership.ts";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { withoutPodmanRedirectsDefined } from "@lando/container-runtime/podman/managed-invocation";
@@ -13,7 +9,10 @@ import {
   podmanVersionMeetsFloor,
 } from "@lando/container-runtime/podman/version-floor";
 import { redactDetails, redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
+import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
+import { RecordedMachineOwnership, SetupMachineOwnership } from "./setup-machine-ownership.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
@@ -48,6 +47,7 @@ export {
   isIntelMacHost,
   rejectIntelMacHost,
 } from "./host-support.ts";
+
 import { type CatatonitPackage, ensureManagedCatatonit } from "./catatonit-provision.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import { providerContextForEnv } from "./provider-context.ts";

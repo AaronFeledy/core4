@@ -1,6 +1,5 @@
-import { Context, Duration, Effect, Layer, Option, Queue, type Scope, Stream } from "effect";
-
 import { Telemetry } from "@lando/sdk/services";
+import { Context, Duration, Effect, Layer, Option, Queue, type Scope, Stream } from "effect";
 
 import { redactTelemetryData } from "./redaction.ts";
 

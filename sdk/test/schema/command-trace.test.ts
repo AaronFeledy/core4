@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import {
   CommandTrace,
   CommandTraceSpan,
@@ -9,6 +7,7 @@ import {
   JSON_SCHEMA_NAMES,
   TracingConfig,
 } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const rootSpan = {
   id: "root",

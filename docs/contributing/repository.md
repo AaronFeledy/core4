@@ -124,7 +124,9 @@ sources, and building the helper when the selected tests need it.
 | `bun test` | Full test suite; live tests may have additional prerequisites |
 | `bun run test:unit` | Unsharded run of the CI unit file set: every `*.test.ts` outside the dedicated library, recipe, docs and nightly suites |
 | `bun run test:selection <id>` | Run one named CI selection from `scripts/test-selections.ts`, exactly as its workflow job does |
-| `bun run format` | Write Biome formatting changes |
+| `bun run lint` | Report Biome formatting and lint diagnostics without writing |
+| `bun run fix` | Apply every fixable Biome diagnostic, including import order |
+| `bun run format` | Write Biome formatting changes only |
 | `bun run codegen` | Regenerate catalog-owned sources and artifacts |
 | `bun run lint:guides` | Validate executable-guide structure and Landofile examples |
 | `bun run docs:check` / `bun run docs:test` | Check and test the Astro-owned docs tree |
@@ -143,6 +145,35 @@ and `provider: test` can model operations without starting containers. They do
 not prove live runtime behavior or produce a real transcript of every displayed
 command. Use real-provider e2e scenarios for that evidence. Keep regressions
 with no documentation purpose in tests rather than inventing a guide to hold them.
+
+## Format and lint
+
+`biome.jsonc` holds the formatting and lint configuration. Biome parses a file
+named `biome.json` as strict JSON and rejects comments, so the rationale
+comments in this repository require the `.jsonc` name.
+
+Run `bun run fix` to apply every fixable diagnostic. Use `bun run format` when
+you want formatting without lint changes, and `bun run lint` to report without
+writing. `bun run lint` also runs the deprecation check.
+
+Biome 2's `recommended` preset stopped reporting rules that Biome 1 raised as
+errors. Every demoted rule this repository relied on is pinned back to `error`
+in `biome.jsonc`, and `core/test/build/biome-config-pins.test.ts` fails when a
+pin is removed or weakened. When Biome promotes one of those rules back into the
+preset, that test names the pin to delete.
+
+To upgrade Biome across a major version, install the last minor of the previous
+major, run `biome migrate --write`, then install the target version and migrate
+again. Skipping that bridge loses the rule severities the intermediate major
+still carries.
+
+The Biome 2 reformat commit is listed in `.git-blame-ignore-revs`. Set
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` once to skip it in
+`git blame`; GitHub's blame view applies the file automatically.
+
+Markdown and YAML stay outside Biome's scope. Enabling them would rewrite
+workflow YAML that codegen owns, and this repository has no Markdown formatter
+contract yet.
 
 ## Keep development and release artifacts distinct
 

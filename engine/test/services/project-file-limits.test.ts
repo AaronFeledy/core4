@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Effect, Result, Stream } from "effect";
-
 import { FileSystem } from "@lando/sdk/services";
+import { Effect, Result, Stream } from "effect";
 import { loadServiceTypeProjectFiles } from "../../src/planner/project-files.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 

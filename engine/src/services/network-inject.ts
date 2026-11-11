@@ -1,18 +1,14 @@
 import { join, resolve } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { type Context, Effect } from "effect";
-
-import { LandofileValidationError } from "@lando/sdk/errors";
-import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
-import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
-import type { StringImportRef } from "@lando/sdk/schema";
-import type { FileSystem, LandoPaths } from "@lando/sdk/services";
-
 import { type LoadedCaPem, loadCaPems, resolveServiceNetworkInject } from "@lando/http-client/network-trust";
 import { assertUnderRoot } from "@lando/landofile/include-guard";
+import { mapFailures } from "@lando/sdk/command-result";
+import { sha256Hex } from "@lando/sdk/digest";
+import { LandofileValidationError } from "@lando/sdk/errors";
+import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
+import type { NetworkConfig, ServiceConfig, StringImportRef } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
+import type { FileSystem, LandoPaths } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 const CERTIFICATE_PEM_PATTERN = /^(?:\s*-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----\s*)+$/u;
 export const SECURITY_FEATURE_ID = "lando.security" as const;

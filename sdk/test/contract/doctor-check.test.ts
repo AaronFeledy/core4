@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Ref } from "effect";
-
 import {
   ContractFailure,
   type DoctorCheckContractHarness,
@@ -9,6 +7,7 @@ import {
   makeDoctorCheckContractSuite,
   runDoctorCheckContractSuite,
 } from "@lando/sdk/test";
+import { Effect, Ref } from "effect";
 
 // Reference check: reports one warning with context + a manual solution.
 const manualWarningCheck = {
@@ -83,7 +82,9 @@ describe("Doctor check contract", () => {
       id: "daemon-socket",
       run: Effect.fnUntraced(function* ({
         fix,
-      }: { fix: boolean }): Effect.fn.Return<DoctorCheckResult, DoctorCheckError> {
+      }: {
+        fix: boolean;
+      }): Effect.fn.Return<DoctorCheckResult, DoctorCheckError> {
         if (fix) {
           yield* Ref.set(stateRef, "fixed");
           yield* Ref.set(fixedRef, true);

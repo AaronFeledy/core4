@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { GlobalConfig } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { readProxyDefaultDomain } from "../../src/config/proxy-default-domain.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../../src/planner/naming.ts";

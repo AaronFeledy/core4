@@ -1,5 +1,3 @@
-import { Args } from "../../../spec/metadata";
-
 import {
   type AppConfigResult,
   AppConfigResultSchema,
@@ -8,6 +6,7 @@ import {
 } from "../../../commands/app-config";
 import { runAppConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Args } from "../../../spec/metadata";
 import { dryRunFlag, editorFlag, typeFlag } from "../../config-flags";
 import { appConfigOptionsFromInput } from "./";
 

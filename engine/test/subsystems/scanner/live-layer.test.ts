@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { ProviderConfigError, ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
@@ -10,6 +8,7 @@ import {
   UrlScanner,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";

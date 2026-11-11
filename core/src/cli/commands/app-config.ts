@@ -15,7 +15,7 @@ import { configRedactionTokens } from "./config-redaction";
 import { renderConfigWriteResult } from "./config-write-render";
 import { hostEventStatusesForPlan, renderHostEventStatuses } from "./host-event-status";
 
-export { AppConfigResultSchema, type AppConfigResult };
+export { type AppConfigResult, AppConfigResultSchema };
 export type AppConfigSubcommand = NonNullable<AppConfigViewOptions["subcommand"]>;
 export interface AppConfigOptions extends AppConfigViewOptions, Writes.AppConfigWriteOptions {
   readonly format?: "json" | "yaml" | "table";

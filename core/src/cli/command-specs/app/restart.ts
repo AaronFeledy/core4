@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { restartApp } from "@lando/engine/operations/restart";
 import { withIncompleteStartNotice } from "@lando/engine/operations/start-incomplete-notice";
 import { RestartAppResult } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderRestartAppResult } from "../../commands/restart";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";

@@ -1,14 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererOutput from "@lando/renderer/output";
 import { internalErrorRemediation } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService, Renderer } from "@lando/sdk/services";
-
-import { createBufferedRendererIO } from "@lando/renderer/io";
-import * as RendererOutput from "@lando/renderer/output";
-import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { DateTime, Effect, Layer, Schema } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 

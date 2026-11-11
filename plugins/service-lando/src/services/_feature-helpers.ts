@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import type {
   EndpointPlan,
@@ -15,6 +13,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceImageIdentity,
 } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export class ServiceConfigIssue extends Error {
   constructor(

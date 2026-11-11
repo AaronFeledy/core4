@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, type Context, Effect, Exit, Schema } from "effect";
-
 import type {
   PrivilegeService,
   ProcessResult,
@@ -11,21 +9,22 @@ import type {
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-import {
-  classifySocketProxyArtifacts,
-  socketProxyPolkitHeader,
-  socketProxyUnitHeader,
-} from "../src/socket-proxy-helper.ts";
-
-import { AcquisitionState } from "../src/port-acquisition-state.ts";
+import { Cause, type Context, Effect, Exit, Schema } from "effect";
 import {
   DEFAULT_BACKEND_HTTPS_TRY_LIST,
   DEFAULT_BACKEND_HTTP_TRY_LIST,
   DEFAULT_HTTPS_TRY_LIST,
   DEFAULT_HTTP_TRY_LIST,
 } from "../src/port-acquisition.ts";
-import { acquisitionStateFile } from "../src/proxy-paths.ts";
+
+import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
+import {
+  classifySocketProxyArtifacts,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
+} from "../src/socket-proxy-helper.ts";
 import {
   POLKIT_RULE_PATH,
   PROXYD_CANDIDATES,

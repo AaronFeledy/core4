@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
-import { Effect, Schema } from "effect";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
@@ -19,6 +18,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 const bundledProviders: ReadonlyArray<readonly [string, (platform: HostPlatform) => ProviderCapabilities]> = [
   ["lando", (platform) => providerLandoCapabilitiesForPlatform(platform)],

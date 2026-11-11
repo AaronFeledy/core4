@@ -1,9 +1,6 @@
+import { NotImplementedError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { CliInvocation } from "../../../../runtime/invocation-context";
-import { Args } from "../../../spec/metadata";
-
-import { NotImplementedError } from "@lando/sdk/errors";
-
 import {
   type RecipesValidateResult,
   RecipesValidateResultSchema,
@@ -12,6 +9,7 @@ import {
   renderRecipesValidateResult,
 } from "../../../commands/recipes";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Args } from "../../../spec/metadata";
 
 export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = {
   resultSchema: RecipesValidateResultSchema,

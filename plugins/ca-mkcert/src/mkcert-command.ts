@@ -1,10 +1,10 @@
 /** Running the pinned mkcert binary and shaping its failures as `CaError`s. */
-import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { type Context, Effect } from "effect";
 
 import { mapFailures } from "@lando/sdk/command-result";
 import { CaError } from "@lando/sdk/errors";
 import type { ProcessResult, ProcessRunner } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { type Context, Effect } from "effect";
 
 export const CA_ID = "mkcert" as const;
 

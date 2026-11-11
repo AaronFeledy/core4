@@ -1,11 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Schema } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import manifestData from "../runtime-bundle-versions.json" with { type: "json" };
 

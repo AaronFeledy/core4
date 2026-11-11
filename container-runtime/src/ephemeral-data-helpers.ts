@@ -38,10 +38,10 @@ export interface VolumeHolder {
 
 // Discovery is diagnostic only: stopped containers may still belong to an active output drain.
 export const listVolumeHolders = (
-  request: (input: { readonly method: "GET"; readonly path: `/${string}` }) => Effect.Effect<
-    { readonly status: number; readonly body: string },
-    unknown
-  >,
+  request: (input: {
+    readonly method: "GET";
+    readonly path: `/${string}`;
+  }) => Effect.Effect<{ readonly status: number; readonly body: string }, unknown>,
   volumeName: string,
 ): Effect.Effect<ReadonlyArray<VolumeHolder>> =>
   request({

@@ -1,8 +1,6 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import { CliInvocation } from "../../../../runtime/invocation-context";
-import { Flags } from "../../../spec/metadata";
-
 import {
   type PluginPublishOptions,
   type PluginPublishResult,
@@ -13,6 +11,7 @@ import {
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { Flags } from "../../../spec/metadata";
 
 const extractInput = (input: unknown, isTTY: boolean): PluginPublishOptions => {
   const flags = specFlagsOf(input);

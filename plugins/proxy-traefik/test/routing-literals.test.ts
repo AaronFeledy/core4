@@ -47,7 +47,7 @@ test.each([
   // Then
   expect(Bun.YAML.parse(yaml)).toHaveProperty(
     `http.routers.${router0Http}.rule`,
-    `${rule} && PathPrefix("/a\`b\\\"\\\\c")`,
+    `${rule} && PathPrefix("/a\`b\\"\\\\c")`,
   );
   expect(persistedAuthorities(yaml, DEFAULT_AUTHORITY_PORTS)).toEqual([
     { scheme: "http", hostname: hostname.toLowerCase(), port: DEFAULT_AUTHORITY_PORTS.http },

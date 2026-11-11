@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test";
 import { makeTestDownloader } from "@lando/engine/testing/downloader";
-import { Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
-import { TestClock } from "effect/testing";
-
 import { McpCommandExecutor } from "@lando/mcp/port";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { EventService, OnlineAcquisition, Renderer } from "@lando/sdk/services";
+import { Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { type CliInvocationSnapshot, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";

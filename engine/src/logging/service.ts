@@ -11,6 +11,11 @@
  *
  * `--debug` raises the floor to `debug`. `--verbose` only changes Renderer.
  */
+
+import { RedactionService } from "@lando/redaction/service";
+import type { LogLevel as DiagnosticLogLevel } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Logger } from "@lando/sdk/services";
 import {
   type Context,
   Effect,
@@ -21,11 +26,6 @@ import {
   References,
   absurd,
 } from "effect";
-
-import { RedactionService } from "@lando/redaction/service";
-import type { LogLevel as DiagnosticLogLevel } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
-import { Logger } from "@lando/sdk/services";
 import { withLandoLogDefaults } from "../runtime/observability.ts";
 import {
   type DiagnosticLineWriter,
@@ -34,8 +34,8 @@ import {
   makeStderrEffectLogger,
 } from "./effect-logger.ts";
 
-export { Logger };
 export type { DiagnosticLineWriter, LoggerMode };
+export { Logger };
 
 export interface LoggerLayerOptions {
   readonly mode?: LoggerMode;

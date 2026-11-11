@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 type PinFile = {
   readonly vendored: string;

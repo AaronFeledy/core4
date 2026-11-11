@@ -1,14 +1,4 @@
 import { dirname, join } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
-import { CliInvocation } from "../runtime/invocation-context";
-
-import { Effect, Schema, Scope } from "effect";
-
-import type { App, AppSelector } from "@lando/sdk/app";
-import { AppResolveError } from "@lando/sdk/errors";
-import { type AppPlan, LandofileShape, type LoadScopedLandofile } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry, type StateStore } from "@lando/sdk/services";
-
 import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
 import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
 import { type NormalizedAppSelector, normalizeAppSelector } from "@lando/engine/app/selector";
@@ -28,6 +18,13 @@ import { scopedLandofileRuntimeInputs } from "@lando/engine/services/landofile-l
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import type { App, AppSelector } from "@lando/sdk/app";
+import { mapFailures } from "@lando/sdk/command-result";
+import { AppResolveError } from "@lando/sdk/errors";
+import { type AppPlan, LandofileShape, type LoadScopedLandofile } from "@lando/sdk/schema";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry, type StateStore } from "@lando/sdk/services";
+import { Effect, Schema, Scope } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import {
   type ComposeKnobCapabilities,
   type ComposeServiceKnobKey,
@@ -10,6 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import {
   collectComposeKnobs,

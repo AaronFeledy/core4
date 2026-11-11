@@ -1,10 +1,10 @@
 import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
-import { Effect, Schema } from "effect";
-
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import { MINIO_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { dataNameFor } from "../app-name.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
@@ -13,8 +13,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 import { assertListenerConfig, launcherAuthority, plannedPort } from "./_port-helpers.ts";
-
-import { dataNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const DEFAULT_API_PORT = 9000;

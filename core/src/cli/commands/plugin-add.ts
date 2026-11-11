@@ -1,6 +1,9 @@
 import { rm } from "node:fs/promises";
-
-import { Effect, Schema } from "effect";
+import {
+  type PluginAddResult,
+  finalizePluginInstall,
+  validatePluginManifest,
+} from "@lando/engine/operations/plugin-install";
 
 import {
   InteractionRequiredError,
@@ -11,17 +14,8 @@ import {
 import { PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 import { SourceAcquisitionError } from "@lando/source-acquisition";
 import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
-
-import {
-  type PluginAddResult,
-  finalizePluginInstall,
-  validatePluginManifest,
-} from "@lando/engine/operations/plugin-install";
+import { Effect, Schema } from "effect";
 import { bunSelfInstall } from "./bun-self-runner";
-import { failPluginNetworkPolicy, redactPluginPackageError } from "./plugin-package-error";
-import { resolvePluginsRoot } from "./plugin-roots";
-import { withPluginSourceSession } from "./plugin-source-session";
-
 import type { PluginAddOptions } from "./plugin-add-options";
 import { ensureTrust, globalTrustStore } from "./plugin-add-trust";
 import {
@@ -29,6 +23,10 @@ import {
   ensurePluginsRoot,
   packageDeclaresPostinstall,
 } from "./plugin-package-acquisition";
+import { failPluginNetworkPolicy, redactPluginPackageError } from "./plugin-package-error";
+import { resolvePluginsRoot } from "./plugin-roots";
+import { withPluginSourceSession } from "./plugin-source-session";
+
 export type { PluginAddOptions, PluginAddPrompter, PluginTrustStore } from "./plugin-add-options";
 export { globalTrustStore } from "./plugin-add-trust";
 

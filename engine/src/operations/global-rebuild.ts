@@ -1,11 +1,11 @@
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 import { revalidateAppliedGlobalRouterStartup } from "@lando/engine/global-app/router-admission";
 import { captureGlobalStartupAdmission } from "@lando/engine/global-app/startup-admission";
-import { DateTime, Effect, Schema } from "effect";
-
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { requireSelectableGlobalRouter } from "@lando/engine/operations/global-consumer-admission";
+import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
+import type { LoadGlobalPlanError } from "@lando/engine/operations/global-plan";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import type {
   DebuggerHostUnavailableError,
@@ -37,12 +37,10 @@ import {
   RouterService,
   type RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { DateTime, Effect, Schema } from "effect";
 import { selectPreparedProvider } from "../providers/prepared.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { globalAppRef, withGlobalLifecycleEvents } from "./global-common";
-
-import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
-import type { LoadGlobalPlanError } from "@lando/engine/operations/global-plan";
 
 const now = () => DateTime.nowUnsafe();
 

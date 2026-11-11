@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { AppFeatureSelectorMatchedNothingError, MailpitMsmtpBaseFamilyError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 import type { AppFeatureDefinition, AppFeatureServiceMutators } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
 import { PHP_FEATURE_ID } from "../services/php-feature.ts";

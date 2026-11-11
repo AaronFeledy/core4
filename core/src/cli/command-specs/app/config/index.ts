@@ -1,8 +1,5 @@
 import { APP_CONFIG_SUBCOMMANDS } from "@lando/engine/operations/app-config-view";
 import type { Effect } from "effect";
-import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
-import { Args, Flags } from "../../../spec/metadata";
-
 import {
   type AppConfigOptions,
   type AppConfigResult,
@@ -13,6 +10,8 @@ import {
 } from "../../../commands/app-config";
 import { runAppConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args, Flags } from "../../../spec/metadata";
 import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../../config-flags";
 import { configWriteOptionsFromInput } from "../../config-write-input";
 

@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { createServer as createHttpServer } from "node:http";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
@@ -14,6 +10,8 @@ import {
   fixtureHelperMount,
   resolveBuiltContainerHelperForTest,
 } from "@lando/container-runtime/testing/exec-supervision";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makePodmanApiClient } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {
@@ -28,10 +26,9 @@ import {
   landoServiceContainerName,
 } from "@lando/sdk/schema";
 import { type LandoEvent, RuntimeProvider } from "@lando/sdk/services";
-import { Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 import { decodeNetworkCreate } from "./network-fixture.ts";
-import { bringUp } from "./provider-fixture.ts";
-import { makeProviderLayer } from "./provider-fixture.ts";
+import { bringUp, makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringupapp");

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { removeAcceptanceRoot } from "./fixtures/opentui-acceptance-cleanup.ts";
 import {
   capturedTranscript,
   cleanEnv,
@@ -14,6 +13,7 @@ import {
   repoRoot,
   scrubPtyNoise,
 } from "./fixtures/opentui-acceptance.ts";
+import { removeAcceptanceRoot } from "./fixtures/opentui-acceptance-cleanup.ts";
 import { runPrompt } from "./fixtures/opentui-prompt.ts";
 
 describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acceptance", () => {

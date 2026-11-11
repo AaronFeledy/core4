@@ -1,7 +1,6 @@
+import { expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { expect, test } from "bun:test";
 import ts from "@typescript/typescript6";
 
 import { biomeCheckArgv } from "../../../scripts/_codegen-output.ts";

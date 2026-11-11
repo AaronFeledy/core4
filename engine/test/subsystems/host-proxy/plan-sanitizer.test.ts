@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -11,6 +9,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 
 import * as AppPlanSanitizerLayer from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
 import {

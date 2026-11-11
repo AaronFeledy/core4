@@ -1,6 +1,5 @@
-import { sha256Hex } from "@lando/sdk/digest";
-
 import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
+import { sha256Hex } from "@lando/sdk/digest";
 
 // Thin delegation over the single Paths primitive; name/signature preserved.
 // Do not re-inline an XDG fallback here — keep one resolver for all roots.

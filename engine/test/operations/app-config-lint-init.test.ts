@@ -7,10 +7,10 @@ import { PluginManifest, ServiceName } from "@lando/sdk/schema";
 import {
   type AppFeatureDefinition,
   AppPlanner,
+  PluginRegistry,
   type ServiceFeatureDefinition,
   type ServiceType,
 } from "@lando/sdk/services";
-import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledPluginModules } from "../../src/composition.ts";

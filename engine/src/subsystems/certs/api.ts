@@ -16,10 +16,10 @@
  * - Trust-store install is `PrivilegeService`-aware on platforms that
  *   require elevation.
  */
-import { Effect, Layer } from "effect";
 
 import { CaError } from "@lando/sdk/errors";
 import { CertificateAuthority } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 
 export { CertificateAuthority };

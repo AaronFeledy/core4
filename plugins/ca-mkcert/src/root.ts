@@ -1,13 +1,11 @@
 /** Locating, reading and creating the shared mkcert root in `CAROOT`. */
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { withAdvisoryLockUsing } from "@lando/state-store/lock";
-import { Effect } from "effect";
-
 import { mapFailures } from "@lando/sdk/command-result";
 import { type CaError, isErrnoCode } from "@lando/sdk/errors";
 import type { CaRootCertificate } from "@lando/sdk/services";
+import { withAdvisoryLockUsing } from "@lando/state-store/lock";
+import { Effect } from "effect";
 
 import { hostTrustsPem } from "./host-trust.ts";
 

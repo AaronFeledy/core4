@@ -1,6 +1,4 @@
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { Effect, Schema, type Scope } from "effect";
-
 import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
 import { type StateStoreError, TunnelProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -22,6 +20,7 @@ import {
   type TunnelError,
   TunnelService,
 } from "@lando/sdk/services";
+import { Effect, Schema, type Scope } from "effect";
 
 import { routerEnabled } from "../config/router-config.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";

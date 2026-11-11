@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime, Schema } from "effect";
-
 import { LandoEvent, TaskDetailCollapseEvent, TaskDetailExpandEvent } from "@lando/sdk/events";
+import { DateTime, Schema } from "effect";
 
 const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-05-11T07:30:00Z");
 const timestamp = DateTime.formatIso(FIXED_TIMESTAMP);

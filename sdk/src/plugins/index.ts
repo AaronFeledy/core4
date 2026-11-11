@@ -11,18 +11,14 @@ import type { PluginManifest, PluginStateLockOptions } from "../schema/plugin.ts
 import type { SubscriberManifestEntry } from "../schema/subscriber.ts";
 import type { StateBucket, StateBucketSpec } from "../services/state-store.ts";
 
+export type { RenderEvent } from "../events/rich-render.ts";
 export type {
   PluginContribution,
   PluginManifest,
-  PluginStateLockOptions,
   PluginSetupContribution,
   PluginSetupFlagContribution,
+  PluginStateLockOptions,
 } from "../schema/plugin.ts";
-export type {
-  PublishedGlobalConfigKey,
-  SubscriberManifestEntry,
-  SubscriberSelector,
-} from "../schema/subscriber.ts";
 export type {
   RendererPanel,
   RendererPanelId,
@@ -30,9 +26,13 @@ export type {
   RendererPanelSlot,
   RendererPanelWatch,
 } from "../schema/renderer-panel.ts";
-export type { RenderEvent } from "../events/rich-render.ts";
-export * from "./module.ts";
+export type {
+  PublishedGlobalConfigKey,
+  SubscriberManifestEntry,
+  SubscriberSelector,
+} from "../schema/subscriber.ts";
 export type * from "./command.ts";
+export * from "./module.ts";
 
 /**
  * Constrained publish-only seam onto the closed `RenderEvent` vocabulary.

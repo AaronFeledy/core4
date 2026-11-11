@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { encodeCommandResult } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
+import { Effect, Schema } from "effect";
 import { requestContainerBuild } from "../src/image-build-http.ts";
 
 test.each(["error", "errorDetail"] as const)(

@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
-
-import { Schema } from "effect";
-
 import { StreamFrame } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import {
   type SubsystemDoctorResult,

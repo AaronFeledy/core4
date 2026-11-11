@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError, VolumeOperationError } from "@lando/sdk/errors";
-import { Effect } from "effect";
-
 import { AbsolutePath, AppId, PortablePath } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { resolveNativeVolumeIdentity, volumeCoordinationKey } from "../src/native-volume-identity.ts";
 import { locateVolume, observeMountedVolume } from "../src/volume-observation.ts";
 

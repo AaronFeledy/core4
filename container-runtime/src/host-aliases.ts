@@ -1,7 +1,6 @@
-import { Result, Schema } from "effect";
-
 import { ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
+import { Result, Schema } from "effect";
 
 export type HostAliasMap = Readonly<Record<string, string | ReadonlyArray<string>>>;
 

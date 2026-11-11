@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Layer } from "effect";
-
 import type { PluginManifest } from "@lando/sdk/schema";
 import { ContractFailure, TestPluginManifest, runPluginContract } from "@lando/sdk/test";
+import { Cause, Effect, Layer } from "effect";
 
 const expectPluginContractFailure = async (
   input: Parameters<typeof runPluginContract>[0],

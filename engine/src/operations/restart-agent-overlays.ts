@@ -6,9 +6,9 @@ import { type AppPlan, type AppRef, SSH_AGENT_SOCKET_NAME } from "@lando/sdk/sch
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Option } from "effect";
+import { sshAgentPlanExtension } from "../subsystems/ssh/intent.ts";
 import { hostKnownHostsFile } from "../subsystems/ssh-agent/host-known-hosts.ts";
 import { readAgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-state.ts";
-import { sshAgentPlanExtension } from "../subsystems/ssh/intent.ts";
 import { startOverlayRegistry } from "../subsystems/start-overlay-registry.ts";
 
 export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {

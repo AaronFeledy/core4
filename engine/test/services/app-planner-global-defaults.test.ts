@@ -2,17 +2,14 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { literalTestLandofile } from "../compiled-landofile.ts";
-
+import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const configLayer = (config: GlobalConfig) => {
   const load = Effect.succeed(config);

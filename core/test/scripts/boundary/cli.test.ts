@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 const repositoryRoot = join(import.meta.dirname, "../../../..");
 const command = join(repositoryRoot, "scripts/check-boundaries.ts");

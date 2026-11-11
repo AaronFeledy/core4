@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { resolveTraefikPublication } from "../src/global-services/traefik.ts";
+import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
 import {
   AcquisitionState,
   persistPortAcquisition,
   readAcquisitionState,
 } from "../src/port-acquisition-state.ts";
-import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
 import { POLKIT_RULE_PATH, SOCKET_UNIT_PATHS } from "../src/socket-proxy-units.ts";

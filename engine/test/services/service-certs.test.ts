@@ -1,11 +1,9 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { FilePermissionError, LandofileValidationError } from "@lando/sdk/errors";
+import { Effect, Result } from "effect";
 
 import { serviceCertificatePaths } from "../../src/lifecycle/service-certificate-paths";
 import { resolveCertsFeature } from "../../src/services/service-certs";

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { effectiveReadiness } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
 import { rabbitmqServiceType } from "../src/services/rabbitmq.ts";
+import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
 import { composeCatalogConfigPlan } from "./support/catalog-config-app.ts";
 
 test.skipIf(process.platform === "win32").each([

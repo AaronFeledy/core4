@@ -1,10 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Redacted } from "effect";
-
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { ProviderId } from "@lando/core/schema";
 import {
@@ -15,6 +12,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
+import { Effect, Layer, Redacted } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const testProviderLayers = [

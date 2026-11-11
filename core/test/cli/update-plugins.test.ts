@@ -1,16 +1,14 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import type { NpmPackument, NpmRegistryTransport } from "@lando/source-acquisition";
 import { makeTestStateStore } from "@lando/state-store/testing";
+import { Effect, Layer } from "effect";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins.ts";
 
 let root: string;

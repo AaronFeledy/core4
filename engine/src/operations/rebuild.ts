@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import type { RedactionService } from "@lando/redaction/service";
 
 import type {
   RebuildAppOptions,
@@ -6,7 +6,10 @@ import type {
   RebuildAppError as SdkRebuildAppError,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
+import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type {
+  EnvironmentValueResolver,
   FileSystem,
   GlobalAppService,
   ManagedFileTransactionGuard,
@@ -23,12 +26,8 @@ import {
   type RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-
-import type { RedactionService } from "@lando/redaction/service";
-import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect } from "effect";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
@@ -52,6 +51,7 @@ import {
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
+import { type StartManagedScope, startApp } from "./start.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import {
@@ -60,9 +60,8 @@ import {
   projectDebuggerOverlay,
   withAcquiredStartOverlays,
 } from "./start-overlays.ts";
-import { type StartManagedScope, startApp } from "./start.ts";
-import { preflightStopApp } from "./stop-internal.ts";
 import { haltAppRuntime } from "./stop.ts";
+import { preflightStopApp } from "./stop-internal.ts";
 import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
 import {
   publishPlacementVolumeTransitionNotices,

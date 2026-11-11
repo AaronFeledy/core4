@@ -1,9 +1,8 @@
-import { Effect, Layer, Schema } from "effect";
-
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { CertificateAuthority, Downloader, PathsService, ProcessRunner } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Schema } from "effect";
 
 import { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
 
@@ -55,12 +54,12 @@ export const plugin = definePlugin({
   certificateAuthorities: new Map([[CA_ID, layer]]),
 });
 
-export { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
 export type { MkcertCertificateAuthorityOptions } from "./ca.ts";
+export { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
 export {
+  type InstalledMkcertStatus,
   MKCERT_TOOL_MANIFEST,
   MKCERT_TOOL_VERSION,
-  type InstalledMkcertStatus,
   type ProvisionMkcertInput,
   mkcertInstallName,
   mkcertInstallPath,

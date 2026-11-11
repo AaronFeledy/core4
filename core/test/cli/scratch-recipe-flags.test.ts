@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { ScratchAppService } from "@lando/core/services";
-import { Effect } from "effect";
-
 import { resolveScratchAcquireIsolation } from "@lando/engine/scratch-app/service";
 import { MalformedCliFlagValueError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 import {
   normalizeScratchStartArgv,
   scratchStart,

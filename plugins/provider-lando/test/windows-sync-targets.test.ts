@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Result } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -11,6 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect, Result } from "effect";
 
 import { type WindowsSyncTargetOperations, prepareWindowsSyncTargets } from "../src/windows-sync-targets.ts";
 

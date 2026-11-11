@@ -1,8 +1,5 @@
+import { RedactionService, collectSecretStructuralValues } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
-// allow: SIZE_OK - the lifecycle bracket owns admission, execution, and failure compensation as one scoped coordinator.
-import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
-import { DateTime, Effect, Option } from "effect";
-
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
@@ -15,10 +12,17 @@ import type {
   ServiceRunStatus,
 } from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV, ServiceName, isIdleRunStatus } from "@lando/sdk/schema";
-import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
-
-import { RedactionService, collectSecretStructuralValues } from "@lando/redaction/service";
+// allow: SIZE_OK - the lifecycle bracket owns admission, execution, and failure compensation as one scoped coordinator.
+import {
+  EnvironmentValueResolver,
+  EventService,
+  type LandoEvent,
+  ProcessRunner,
+  RuntimeProviderRegistry,
+  ShellRunner,
+} from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Option } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";

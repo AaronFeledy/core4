@@ -1,8 +1,4 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Result, Schema, Stream } from "effect";
-import { testProviderPlan } from "./test-provider-plan.ts";
-
 import {
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -18,6 +14,8 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
+import { Cause, Effect, Result, Schema, Stream } from "effect";
+import { testProviderPlan } from "./test-provider-plan.ts";
 
 const TEST_APP_ID = AppId.make("myapp");
 const TEST_SERVICE_NAME = ServiceName.make("web");

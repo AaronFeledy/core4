@@ -1,5 +1,3 @@
-import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
-
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
   RENDERER_CAPABILITIES_NONE,
@@ -10,6 +8,7 @@ import {
   renderVerboseLine,
 } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
+import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import { type RendererIO, type RendererNarrationIO, withStdioTerminalNewlines } from "./io.ts";
 import { waitForRendererOutput } from "./output-drain.ts";

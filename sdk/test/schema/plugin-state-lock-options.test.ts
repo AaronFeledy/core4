@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { PluginStateLockOptions } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("plugin state lock options", () => {
   test("accepts finite bounded waits and rejects unbounded or invalid waits", () => {

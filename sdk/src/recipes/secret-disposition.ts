@@ -5,8 +5,8 @@ import {
   RecipeSecretSinkError,
 } from "../errors/recipe.ts";
 import { ConfigTranslateSecretReference } from "../schema/config-translate.ts";
-import type { RecipeDecomposeInput } from "../schema/recipe-decompose.ts";
 import type { RecipeManifest, RecipeSecretDisposition } from "../schema/recipe.ts";
+import type { RecipeDecomposeInput } from "../schema/recipe-decompose.ts";
 
 type InitBinding = { readonly kind: "stdin" } | { readonly kind: "secretEnv"; readonly name: string };
 

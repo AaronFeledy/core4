@@ -1,17 +1,15 @@
-import { Effect } from "effect";
-import { CliInvocation } from "../../../../runtime/invocation-context";
-import { Args, Flags } from "../../../spec/metadata";
-
 import {
   PLUGIN_NEW_TEMPLATE_IDS,
   type PluginNewResult,
   PluginNewResultSchema,
 } from "@lando/engine/operations/plugin-scaffold";
-
+import { Effect } from "effect";
+import { CliInvocation } from "../../../../runtime/invocation-context";
 import { pluginNew, renderPluginNewResult } from "../../../commands/plugin-new";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args, Flags } from "../../../spec/metadata";
 
 const extractInput = (input: unknown, isTTY: boolean) => {
   const args = specArgsOf(input);

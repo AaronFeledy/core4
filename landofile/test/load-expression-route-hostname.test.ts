@@ -1,15 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
-
-import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
+import { Cause, Effect, Exit, Option } from "effect";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { loadLandofileLayers } from "../src/service.ts";
 
 const withApp = async <A>(run: (appRoot: string) => Promise<A>): Promise<A> => {

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 
 import {
   AmbiguousCertificateAuthoritiesError,
@@ -9,8 +8,7 @@ import {
   PluginLoadError,
 } from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { Effect } from "effect";
 import {
   type CertsDoctorStatus,
   UNRESOLVED_CERTS_STATUS,

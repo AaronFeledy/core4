@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   POSTGRES_CONFIG_TARGET,

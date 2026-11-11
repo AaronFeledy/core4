@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-
-import { Result, Schema } from "effect";
-
 import { IsolateMode, ProviderCapabilities } from "@lando/sdk/schema";
+import { Result, Schema, SchemaIssue } from "effect";
 
 const BOOLEAN_FIELDS = [
   "artifactBuild",

@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { BOOTSTRAP_RANK } from "@lando/sdk/schema";
 

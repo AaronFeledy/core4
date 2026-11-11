@@ -1,4 +1,4 @@
-import { Effect, Option, Scope } from "effect";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
@@ -10,8 +10,7 @@ import {
   makeTaskTree,
   runWithTaskTree,
 } from "@lando/sdk/task-progress";
-
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { Effect, Option, Scope } from "effect";
 
 import { acquireFileSyncEngine, requireFileSyncPlanCapabilities } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
