@@ -5,7 +5,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
-import { stopApp, stopAppForTarget, stopAppWithPlan } from "../../src/operations/stop.ts";
+import { haltAppRuntime, stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
 import { resolveTeardownEvidence } from "../../src/providers/applied-state-resolution.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
@@ -21,7 +21,7 @@ test("whole-app internal stop never prepares ownership cleanup", async () => {
   });
   // When
   const { result } = await Effect.runPromise(
-    withResolvedCwd(plan.root, stopAppWithPlan()).pipe(Effect.provide(harness.layer)),
+    withResolvedCwd(plan.root, haltAppRuntime()).pipe(Effect.provide(harness.layer)),
   );
   // Then
   expect(result.outcome).toBe("stopped");
@@ -57,7 +57,7 @@ test("selected internal stop preserves the non-teardown orphan refusal", async (
   });
   // When
   const exit = await Effect.runPromiseExit(
-    stopAppWithPlan(
+    haltAppRuntime(
       {},
       {
         plan,
