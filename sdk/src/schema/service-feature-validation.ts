@@ -3,7 +3,7 @@ import { Schema } from "effect";
 // ==== Effective service feature validation claims
 export const ServiceFeatureValidationResult = Schema.Struct({
   handledServiceFields: Schema.Array(
-    Schema.Literals(["webroot", "consolePort", "uploadDirs", "bucket"]),
+    Schema.Literals(["webroot", "consolePort", "uploadDirs", "bucket", "creds"]),
   ).annotate({
     description: "Effective service fields this feature validates and actually represents in its intent.",
   }),

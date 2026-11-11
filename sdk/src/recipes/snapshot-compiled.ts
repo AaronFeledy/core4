@@ -61,9 +61,8 @@ export const renderCompiledRecipeSnapshot = (
         if (Result.isFailure(parsed)) return Result.fail(fail(sourcePath, parsed.failure.message));
         const bindingSite =
           (path[0] === "services" &&
-            (path[2] === "environment"
-              ? path.length === 4
-              : path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword"))) ||
+            ((path[2] === "environment" && path.length === 4) ||
+              (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")))) ||
           (path[0] === "tooling" && path.includes("env"));
         if (
           !expressionInterpolationsTouchOnlyScopes(parsed.success, [

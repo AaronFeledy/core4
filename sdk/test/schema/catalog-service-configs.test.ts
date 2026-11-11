@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { ServiceConfig, ServiceCreds, ServiceCredsConfig } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";

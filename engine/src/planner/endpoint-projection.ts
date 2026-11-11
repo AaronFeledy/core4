@@ -103,7 +103,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
           .filter((feature) => !substituted.has(feature.id))
           .flatMap((feature) => feature.validation?.handledServiceFields ?? []),
       );
-      for (const field of ["webroot", "consolePort", "uploadDirs", "bucket"] as const) {
+      for (const field of ["webroot", "consolePort", "uploadDirs", "bucket", "creds"] as const) {
         if (seed.authoredService[field] === undefined || claims.has(field)) continue;
         if (field === "uploadDirs" && seed.authoredService.uploadDirs?.length === 0) continue;
         const { message, remediation } = {
@@ -125,6 +125,11 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
           bucket: {
             message: `Service ${name} sets bucket, but nothing in this service uses it.`,
             remediation: "Remove bucket. Only object-storage services such as MinIO create a bucket from it.",
+          },
+          creds: {
+            message: `Service ${name} sets creds, but nothing in this service uses them.`,
+            remediation:
+              "Remove creds. Database services, Redis, and phpMyAdmin read them; other services take credentials through their own environment variables.",
           },
         }[field];
         record(

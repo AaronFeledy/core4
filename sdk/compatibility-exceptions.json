@@ -6325,19 +6325,19 @@
     "surface": "schema:MinIOServiceConfig",
     "changeKind": "property-removed",
     "path": "$.database",
-    "justification": "Issue #2235 removes the accepted-but-unused service-level database key from this catalog type so its data name has one home: creds.database. The unreleased key was silently ignored by the service implementation; a Landofile that still writes it now fails with a path and a suggestion pointing at the replacement."
+    "justification": "Issue #2235 replaces MinIO's consumed service-level database key with bucket. The old spelling selected the bucket name; an existing Landofile now fails with a path and a suggestion naming bucket."
   },
   {
     "surface": "schema:MssqlServiceConfig",
     "changeKind": "property-removed",
     "path": "$.database",
-    "justification": "Issue #2235 removes the accepted-but-unused service-level database key from this catalog type so its data name has one home: creds.database. The unreleased key was silently ignored by the service implementation; a Landofile that still writes it now fails with a path and a suggestion pointing at the replacement."
+    "justification": "Issue #2235 replaces SQL Server's consumed service-level database key with creds.database. The old spelling selected the database name; an existing Landofile now fails with a path and a suggestion naming creds.database."
   },
   {
     "surface": "schema:MysqlServiceConfig",
     "changeKind": "property-removed",
     "path": "$.database",
-    "justification": "Issue #2235 removes the accepted-but-unused service-level database key from this catalog type so its data name has one home: creds.database. The unreleased key was silently ignored by the service implementation; a Landofile that still writes it now fails with a path and a suggestion pointing at the replacement."
+    "justification": "Issue #2235 replaces MySQL's consumed service-level database key with creds.database. The old spelling selected the database name; an existing Landofile now fails with a path and a suggestion naming creds.database."
   },
   {
     "surface": "schema:RabbitMQServiceConfig",

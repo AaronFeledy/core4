@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { effectiveLeaves } from "../src/claims.ts";
 import { lowerCatalogCommon } from "../src/lower-catalog-common.ts";
 import type { ServiceLoweringContext } from "../src/lowering-contract.ts";
 import { testPorts } from "./fixtures/test-ports.ts";
@@ -12,7 +13,109 @@ const ctx: ServiceLoweringContext = {
   topLevel: { excludes: [], includes: [] },
 };
 
+type CredentialFinding = ["dropped" | "unsupported", Array<string | number>];
+
+type CredentialCase = {
+  readonly type: string;
+  readonly creds: unknown;
+  readonly emitted: Readonly<Record<string, string>> | undefined;
+  readonly findings: CredentialFinding[];
+};
+
 describe("lowerCatalogCommon", () => {
+  const credentialCases: ReadonlyArray<CredentialCase> = [
+    ...["mysql:8.0", "mariadb:11.4", "postgres:16"].map(
+      (type): CredentialCase => ({
+        type,
+        creds: { user: "app", password: "secret", database: "app" },
+        emitted: { user: "app", password: "secret", database: "app" },
+        findings: [],
+      }),
+    ),
+    ...["redis:7", "node:22"].map(
+      (type): CredentialCase => ({
+        type,
+        creds: { user: "app", password: "secret", database: "app" },
+        emitted: undefined,
+        findings: ["user", "password", "database"].map(
+          (key): CredentialFinding => ["dropped", [...ctx.keyPath, "creds", key]],
+        ),
+      }),
+    ),
+    {
+      type: "mongodb:7",
+      creds: { user: "app", password: "secret", database: "app" },
+      emitted: { user: "app", password: "secret", database: "app" },
+      findings: [],
+    },
+    {
+      type: "phpmyadmin:5",
+      creds: { user: "root", password: "secret", database: "ignored" },
+      emitted: { user: "root", password: "secret" },
+      findings: [["dropped", [...ctx.keyPath, "creds", "database"]]],
+    },
+    {
+      type: "phpmyadmin:5",
+      creds: { user: "app" },
+      emitted: undefined,
+      findings: [["unsupported", [...ctx.keyPath, "creds", "user"]]],
+    },
+    {
+      type: "mssql:2022",
+      creds: { user: "sa", password: "secret", database: "app" },
+      emitted: { user: "sa", password: "secret", database: "app" },
+      findings: [],
+    },
+    { type: "mysql:8.0", creds: {}, emitted: undefined, findings: [] },
+    {
+      type: "mysql:8.0",
+      creds: "secret",
+      emitted: undefined,
+      findings: [["unsupported", [...ctx.keyPath, "creds"]]],
+    },
+    {
+      type: "mysql:8.0",
+      creds: { password: { nested: 42 }, user: "app", extra: "ignored" },
+      emitted: { user: "app" },
+      findings: [
+        ["unsupported", [...ctx.keyPath, "creds", "password"]],
+        ["dropped", [...ctx.keyPath, "creds", "extra"]],
+      ],
+    },
+    {
+      type: "redis:7",
+      creds: { password: 42 },
+      emitted: undefined,
+      findings: [["unsupported", [...ctx.keyPath, "creds", "password"]]],
+    },
+    {
+      type: "mssql:2022",
+      creds: { user: "app" },
+      emitted: undefined,
+      findings: [["unsupported", [...ctx.keyPath, "creds", "user"]]],
+    },
+  ];
+
+  test.each(credentialCases)(
+    "accounts for credential leaves exactly once on $type with $creds",
+    ({ type, creds, emitted, findings }) => {
+      const result = lowerCatalogCommon({ type, creds }, ctx);
+
+      expect(result.patch).toEqual({ type, ...(emitted === undefined ? {} : { creds: emitted }) });
+      expect(result.diagnostics.map(({ kind, keyPath }) => [kind, keyPath])).toEqual(findings);
+      expect(
+        result.claims
+          ?.filter((path) => path[0] === "creds")
+          .map((path) => JSON.stringify(path))
+          .sort(),
+      ).toEqual(
+        effectiveLeaves(creds, ["creds"])
+          .map((path) => JSON.stringify(path))
+          .sort(),
+      );
+    },
+  );
+
   test.each([undefined, ".", "./", "", "././", ".///"])(
     "translates Tomcat webroot %s to the ROOT webapp",
     (webroot) => {

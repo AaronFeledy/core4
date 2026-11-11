@@ -136,7 +136,7 @@ describe("Landofile validation issues", () => {
   });
 });
 
-describe("removed flat credential keys point at their replacement", () => {
+describe("service-level database and password point at the key their service type reads", () => {
   const issuesFor = async (value: unknown) => {
     const error = await Effect.runPromise(validateLandofile("/app/.lando.yml", value).pipe(Effect.flip));
     if (error._tag !== "LandofileValidationError") throw new Error("expected LandofileValidationError");
@@ -144,10 +144,25 @@ describe("removed flat credential keys point at their replacement", () => {
   };
 
   test("services.<name>.database suggests creds.database", async () => {
-    const issues = await issuesFor({ services: { db: { type: "postgres", database: "appdata" } } });
+    const issues = await issuesFor({ services: { db: { type: "postgres:16", database: "appdata" } } });
     const issue = issues.find((candidate) => candidate.path.at(-1) === "database");
     expect(issue?.path).toEqual(["services", "db", "database"]);
     expect(issue?.suggestion).toContain("creds.database");
+  });
+
+  test("a service type that reads neither key gets no pointer to creds", async () => {
+    const issues = await issuesFor({
+      services: { mq: { type: "rabbitmq:4", database: "orders", password: "hunter2" } },
+    });
+    const suggestions = issues
+      .filter((candidate) => candidate.path[1] === "mq")
+      .map((candidate) => candidate.suggestion ?? "");
+    expect(suggestions).toHaveLength(2);
+    for (const suggestion of suggestions) {
+      expect(suggestion).not.toContain("creds.");
+      expect(suggestion).not.toContain("bucket");
+      expect(suggestion).not.toContain("hunter2");
+    }
   });
 
   test("services.<name>.database suggests bucket on a MinIO service", async () => {

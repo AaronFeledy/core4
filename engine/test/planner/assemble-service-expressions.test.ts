@@ -6,7 +6,12 @@ import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
-import { FileSystem, PluginRegistry, type ServiceType } from "@lando/sdk/services";
+import {
+  FileSystem,
+  PluginRegistry,
+  type ServiceFeatureDefinition,
+  type ServiceType,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
@@ -36,7 +41,7 @@ const databaseType: ServiceType = {
         creds,
         environment: { ...input.service.environment, DB_PASSWORD: creds.password },
       },
-      features: [],
+      features: [{ id: "expression-database.creds" }],
       connection: { family: "postgres", port: PortNumber.make(5432), creds },
     });
   },
@@ -72,6 +77,13 @@ const appType: ServiceType = {
 };
 
 const serviceTypes = new Map([databaseType, appType].map((type) => [type.id, type]));
+const credentialFeature: ServiceFeatureDefinition = {
+  id: "expression-database.creds",
+  schema: Schema.Unknown,
+  priority: 600,
+  validateEffective: () => Effect.succeed({ handledServiceFields: ["creds"] }),
+  apply: () => Effect.void,
+};
 
 const plan = Effect.fnUntraced(
   function* (landofile: LandofileShape, withFileSystem = false) {
@@ -89,6 +101,8 @@ const plan = Effect.fnUntraced(
             const type = serviceTypes.get(id);
             return type === undefined ? registry.loadServiceType(id) : Effect.succeed(type);
           },
+          loadServiceFeature: (id) =>
+            id === credentialFeature.id ? Effect.succeed(credentialFeature) : registry.loadServiceFeature(id),
         }),
         fileSystem === undefined ? Layer.empty : Layer.succeed(FileSystem, fileSystem),
       ),

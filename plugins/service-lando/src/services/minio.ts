@@ -43,20 +43,26 @@ const minioPorts = (ctx: Pick<ServiceFeatureContext, "config" | "normalizedConfi
   return { apiPort: plannedPort(ctx.normalizedConfig, MINIO_LISTENER), consolePort };
 };
 
-const defaultBucketNameFor = (value: string): string => {
-  const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "-");
-  return sanitized.length > 0 ? sanitized : "app";
+// The names MinIO accepts as buckets.
+const BUCKET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{1,61}[A-Za-z0-9]$/u;
+const isBucketName = (name: string): boolean => BUCKET_NAME.test(name) && !name.includes("..");
+
+const defaultBucketNameFor = (dataName: string): string => {
+  const name = dataName
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .slice(0, 63)
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+  if (name.length >= 3) return name;
+  return name.length === 0 ? "app" : `${name}-bucket`;
 };
 
-// Object-storage naming rules: 3-63 lowercase letters, digits, or hyphens, starting and ending
-// with a letter or digit. Authored names are used verbatim; only the derived default is sanitized.
-const BUCKET_NAME = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/u;
-
+// An authored name is used verbatim, so it must already be one MinIO accepts.
 const assertBucketName = (bucket: string | undefined): void => {
-  if (bucket === undefined || BUCKET_NAME.test(bucket)) return;
+  if (bucket === undefined || isBucketName(bucket)) return;
   throw new ServiceConfigIssue(
     ["bucket"],
-    "MinIO bucket names are 3 to 63 lowercase letters, digits, or hyphens, and must start and end with a letter or digit.",
+    "MinIO bucket names are 3 to 63 letters, digits, dots, hyphens, or underscores, start and end with a letter or digit, and have no two dots in a row.",
     "Use a bucket name such as uploads, or remove bucket to derive a name from the app's data name.",
   );
 };

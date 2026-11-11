@@ -15,6 +15,31 @@ const translate = (text: string) => {
   return Effect.runPromise(translator.translate(documentSet([document(".lando.yml", text)])));
 };
 
+test("keeps only honored credentials when translating catalog services", async () => {
+  const result = await translate(`services:
+  cache: {type: "redis:7", password: actual, creds: {user: ignored, password: ignored}}
+  admin: {type: "phpmyadmin:5", creds: {user: root, password: kept, database: ignored}}
+  db: {type: "mysql:8.0", creds: {password: actual}}
+  empty: {type: "mysql:8.0", creds: {}}
+`);
+
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    {
+      services: {
+        cache: { type: "redis:7", creds: { password: "actual" } },
+        admin: { type: "phpmyadmin:5", creds: { user: "root", password: "kept" } },
+        db: { type: "mysql:8.0", creds: { password: "actual" } },
+        empty: { type: "mysql:8.0" },
+      },
+    },
+  ]);
+  expect(result.diagnostics.map(({ kind, keyPath }) => [kind, keyPath])).toEqual([
+    ["dropped", ["services", "cache", "creds", "user"]],
+    ["dropped", ["services", "cache", "creds", "password"]],
+    ["dropped", ["services", "admin", "creds", "database"]],
+  ]);
+});
+
 test.each(["api: 4, type: lando", "type: lando, services: {image: 'alpine:3.21'}"])(
   "carries legacy healthcheck identity through %s",
   async (service) => {

@@ -269,27 +269,45 @@ describe("minio ServiceType", () => {
     expect(plan.user).toBe("1000:1000");
   });
 
-  test("rejects an authored bucket that is not a valid object-storage name", async () => {
-    await expect(planMinioService({ type: "minio", bucket: "Bad_Bucket" })).rejects.toMatchObject({
-      _tag: "ServiceFeatureError",
-      feature: MINIO_FEATURE_ID,
-      cause: { path: ["bucket"], suggestion: expect.any(String) },
-      remediation: expect.any(String),
-    });
-  });
+  test.each(["my uploads", "ab", "-uploads", "uploads.", "a..b", "team/uploads", "u".repeat(64)])(
+    "rejects the authored bucket %j, which MinIO would not accept",
+    async (bucket) => {
+      await expect(planMinioService({ type: "minio", bucket })).rejects.toMatchObject({
+        _tag: "ServiceFeatureError",
+        feature: MINIO_FEATURE_ID,
+        cause: { path: ["bucket"], suggestion: expect.any(String) },
+        remediation: expect.any(String),
+      });
+    },
+  );
 
-  test("sanitizes only the derived default bucket name", async () => {
+  test.each(["assets.example.com", "Team_Uploads", "abc", "u".repeat(63)])(
+    "uses the authored bucket %j verbatim",
+    async (bucket) => {
+      const plan = await planMinioService({ type: "minio", bucket });
+
+      expect(plan.environment?.MINIO_BUCKET).toBe(bucket);
+    },
+  );
+
+  test.each([
+    ["My App", "My-App"],
+    ["a", "a-bucket"],
+    ["_app_", "app"],
+    ["u".repeat(64), "u".repeat(63)],
+    ["...", "app"],
+  ])("derives a MinIO-valid default bucket from data name %j", async (dataName, bucket) => {
     const plan = await composeServicePlan({
       serviceType: minioServiceType,
       service: minioService({ type: "minio" }),
       appRoot: "/srv/apps/myapp",
       appName: "myapp",
-      dataName: "My App",
+      dataName,
       serviceName: "storage",
       metadata,
       featureOverrides,
     });
 
-    expect(plan.environment?.MINIO_BUCKET).toBe("My-App");
+    expect(plan.environment?.MINIO_BUCKET).toBe(bucket);
   });
 });

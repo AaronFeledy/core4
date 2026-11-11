@@ -1,5 +1,10 @@
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
-import { composeServiceDispositions, composeTopLevelDispositions, isPlainRecord } from "@lando/sdk/landofile";
+import {
+  composeServiceDispositions,
+  composeTopLevelDispositions,
+  isLandofileOverride,
+  isPlainRecord,
+} from "@lando/sdk/landofile";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -44,22 +49,45 @@ const plannerScopeSuggestion = (value: unknown, path: ValidationIssuePath): stri
     : undefined;
 };
 
-/** Service keys that moved into a typed block; the suggestion never repeats the authored value. */
-const SERVICE_KEY_REPLACEMENTS: Readonly<Record<string, string>> = {
-  database: "creds.database",
-  password: "creds.password",
+const DATABASE_SERVICE_TYPES = ["mysql", "mariadb", "postgres", "mongodb", "mssql"];
+
+/**
+ * Where a service type reads what people write as a service-level `database` or `password`.
+ * A type that reads neither gets no pointer, and the suggestion never repeats the authored value.
+ */
+const SERVICE_KEY_HOMES: Readonly<
+  Record<
+    string,
+    { readonly byType: ReadonlyArray<readonly [string, ReadonlyArray<string>]>; readonly anyType: string }
+  >
+> = {
+  database: {
+    byType: [
+      ["creds.database", DATABASE_SERVICE_TYPES],
+      ["bucket", ["minio"]],
+    ],
+    anyType: "Database services read creds.database, and MinIO reads bucket.",
+  },
+  password: {
+    byType: [["creds.password", [...DATABASE_SERVICE_TYPES, "redis", "phpmyadmin"]]],
+    anyType: "Services that take a password read creds.password.",
+  },
 };
 
-const replacedServiceKeySuggestion = (path: ValidationIssuePath, parsed: unknown): string | undefined => {
-  if (path.length !== 3 || path[0] !== "services" || typeof path[1] !== "string") return undefined;
+const unwrapOverride = (node: unknown): unknown => (isLandofileOverride(node) ? node.value : node);
+
+const serviceKeyHomeSuggestion = (path: ValidationIssuePath, parsed: unknown): string | undefined => {
+  const homes = path.length === 3 && path[0] === "services" ? SERVICE_KEY_HOMES[String(path[2])] : undefined;
+  if (homes === undefined) return undefined;
   const key = String(path[2]);
-  const replacement =
-    key === "database" && valueAtPath(parsed, ["services", path[1], "type"]) === "minio"
-      ? "bucket"
-      : SERVICE_KEY_REPLACEMENTS[key];
-  return replacement === undefined
-    ? undefined
-    : `Use ${replacement} instead: "${key}" is not a service-level key.`;
+  const services = unwrapOverride(valueAtPath(parsed, ["services"]));
+  const service = isPlainRecord(services) ? unwrapOverride(services[String(path[1])]) : undefined;
+  const type = isPlainRecord(service) ? unwrapOverride(service.type) : undefined;
+  // A layer may set the key without the type; say where each kind of service reads it.
+  if (typeof type !== "string") return `"${key}" is not a service-level key. ${homes.anyType}`;
+  const typeId = type.split(":", 1)[0] ?? type;
+  const home = homes.byType.find(([, types]) => types.includes(typeId));
+  return home === undefined ? undefined : `Use ${home[0]} instead: "${key}" is not a service-level key.`;
 };
 
 const composeSuggestedFix = (issue: SchemaIssueLeaf): string | undefined => {
@@ -106,7 +134,7 @@ const suggestionForLeaf = (issue: SchemaIssueLeaf, parsed: unknown): string | un
   switch (issue._tag) {
     case "Unexpected":
       return (
-        replacedServiceKeySuggestion(path, parsed) ??
+        serviceKeyHomeSuggestion(path, parsed) ??
         composeSuggestedFix(issue) ??
         issue.suggestion ??
         `Remove the unknown key${key === undefined ? "" : ` "${String(key)}"`}; it is not part of the canonical Landofile schema.`

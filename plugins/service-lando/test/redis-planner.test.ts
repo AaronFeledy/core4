@@ -50,7 +50,7 @@ test("refuses an authored Redis command that bypasses explicit authentication", 
   expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") {
     expect(result.failure).toBeInstanceOf(LandofileValidationError);
-    expect(result.failure.message).toMatch(/authored command.*password/);
+    expect(result.failure.message).toContain("creds.password");
   }
 });
 

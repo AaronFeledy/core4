@@ -1,14 +1,14 @@
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { REDIS_UNUSED_CREDS, assertCredsMembersUsed, claimsCreds } from "./_creds-helpers.ts";
 import {
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
-import { REDIS_CREDS_APPLICABILITY, assertCredsApplicability } from "./_creds-helpers.ts";
 
 import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -64,6 +64,7 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   id: REDIS_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(REDIS_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
@@ -80,7 +81,7 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
           : undefined;
     const managedOption =
       ctx.normalizedConfig.creds?.password !== undefined
-        ? "password"
+        ? "creds.password"
         : ctx.normalizedConfig.persist !== undefined
           ? "persist"
           : undefined;
@@ -111,7 +112,7 @@ export const redisServiceType: ServiceType = {
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve("redis", "redis service type failed to resolve", () => {
-      assertCredsApplicability(input.service.creds, REDIS_CREDS_APPLICABILITY);
+      assertCredsMembersUsed(input.service.creds, REDIS_UNUSED_CREDS);
       const password = input.service.creds?.password;
       const auth = password === undefined ? {} : { REDISCLI_AUTH: password };
       return {

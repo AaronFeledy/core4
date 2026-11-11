@@ -364,7 +364,7 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-bound-password-helper",
-      "digest": "9f18bbe623991927e5c0172d07e1320aa9d21bef958c3e8455bad28e49295533"
+      "digest": "bca7e336a239f70aacbf01dbd4c781d39f1b9dcf9e21e8385019ac8cd8b066da"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-escaped-literals",
@@ -387,7 +387,7 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-plan-time",
-      "digest": "09d1a74db14a5428d62b434724eaf9c77030210ad3f1bd2260168253c28a3b9f"
+      "digest": "356b7260d10d8f13ac2a85aceb7f4ee600cba7be8b55efcac7c0713088ed6fde"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
@@ -687,7 +687,7 @@
     },
     {
       "fixture": "docs/guides/minio/fixtures/minio-demo",
-      "digest": "0446342a288090ae211c4171c9aa4a0fd0eb63974775e1d3534b83d653e92010"
+      "digest": "9e618eaa29725f5f3d967bc45d229f9b61fcd73de198a0031af2ac704f0e90e5"
     },
     {
       "fixture": "docs/guides/minio/fixtures/missing-artifact",
@@ -1125,7 +1125,7 @@
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-bound-creds",
-      "digest": "4ca83b9cfe7169e2ff669a2c9ba702f47b64f5566abcf688531369c6b86bb1af"
+      "digest": "aa89d95cadfd6034a8dc266dbc00ce4494744acaca9cd2931186dd2b0e5020f6"
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-build-args",
