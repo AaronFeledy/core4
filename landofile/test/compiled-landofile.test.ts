@@ -78,7 +78,7 @@ test("registers mixed, credential, Redis, tooling and event binding sites withou
         creds: { user: "lando", database: "app", password: "${secret:DB}" },
         environment: { URL: "prefix-${secret:DB}" },
       },
-      cache: { password: "${secret:CACHE}" },
+      cache: { creds: { password: "${secret:CACHE}" } },
     },
     tooling: { task: { cmd: "echo", env: { TOKEN: "${secret:TOKEN}" } } },
     events: { "post-start": [{ cmd: "echo", service: "db", env: { HOOK: "${secret:HOOK}" } }] },
@@ -91,7 +91,7 @@ test("registers mixed, credential, Redis, tooling and event binding sites withou
     _tag: "BoundText",
     parts: ["prefix-", { reference: "DB", encoding: "raw" }],
   });
-  expect(compiled.document.services?.[ServiceName.make("cache")]?.password).toEqual({
+  expect(compiled.document.services?.[ServiceName.make("cache")]?.creds?.password).toEqual({
     _tag: "SecretRef",
     reference: "CACHE",
   });

@@ -135,7 +135,7 @@ describe("landofile load-time route hostname expressions", () => {
         _tag: "LandofileValidationError",
         message: "Secret references are not supported at services.appserver.image.",
         remediation:
-          "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+          "Use ${secret:...} only in a service environment value, a database password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
         issues: [{ path: ["services", "appserver", "image"], rule: "unsupported-secret-reference" }],
       });
     });

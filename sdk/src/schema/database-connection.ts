@@ -19,6 +19,23 @@ export const ServiceCreds = Schema.Struct({
 });
 export type ServiceCreds = typeof ServiceCreds.Type;
 
+export const ServiceCredsConfig = Schema.Struct({
+  user: Schema.optionalKey(Schema.String).annotate({ description: "Authored database username." }),
+  password: Schema.optionalKey(EnvironmentValue).annotate({
+    description: "Authored user password literal or deferred binding.",
+  }),
+  database: Schema.optionalKey(Schema.String).annotate({ description: "Authored database name." }),
+  rootPassword: Schema.optionalKey(EnvironmentValue).annotate({
+    description: "Authored administrative password literal or deferred binding.",
+  }),
+}).annotate({
+  identifier: "ServiceCredsConfig",
+  title: "Service Creds Config",
+  description:
+    "Authored credential members; every member is optional and omitted members take the service type's defaults.",
+});
+export type ServiceCredsConfig = typeof ServiceCredsConfig.Type;
+
 export const DatabaseConnection = Schema.Struct({
   family: Schema.Literals(["mysql", "mariadb", "postgres", "mongodb", "mssql"]).annotate({
     description: "Database protocol family.",

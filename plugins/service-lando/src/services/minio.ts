@@ -45,9 +45,22 @@ const minioPorts = (ctx: Pick<ServiceFeatureContext, "config" | "normalizedConfi
   return { apiPort: plannedPort(ctx.normalizedConfig, MINIO_LISTENER), consolePort };
 };
 
-const bucketNameFor = (value: string): string => {
+const defaultBucketNameFor = (value: string): string => {
   const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "-");
   return sanitized.length > 0 ? sanitized : "app";
+};
+
+// Object-storage naming rules: 3-63 lowercase letters, digits, or hyphens, starting and ending
+// with a letter or digit. Authored names are used verbatim; only the derived default is sanitized.
+const BUCKET_NAME = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/u;
+
+const assertBucketName = (bucket: string | undefined): void => {
+  if (bucket === undefined || BUCKET_NAME.test(bucket)) return;
+  throw new ServiceConfigIssue(
+    ["bucket"],
+    "MinIO bucket names are 3 to 63 lowercase letters, digits, or hyphens, and must start and end with a letter or digit.",
+    "Use a bucket name such as uploads, or remove bucket to derive a name from the app's data name.",
+  );
 };
 
 const defaultServerCommand = (apiPort: number, consolePort: number): string =>
@@ -59,7 +72,7 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   const { apiPort, consolePort } = minioPorts(ctx);
   const rootUser = service.environment?.MINIO_ROOT_USER ?? "lando";
   const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? MINIO_DEFAULT_PASSWORD;
-  const bucket = bucketNameFor(service.database ?? appName);
+  const bucket = service.bucket ?? defaultBucketNameFor(appName);
 
   if (service.image?.trim()) ctx.setArtifact({ kind: "ref", ref: service.image });
   ctx.addEnv("MINIO_ROOT_USER", rootUser);
@@ -118,7 +131,8 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
       );
     }
     minioPorts(ctx);
-    return { handledServiceFields: ["consolePort"] };
+    assertBucketName(service.bucket);
+    return { handledServiceFields: ["consolePort", "bucket"] };
   }),
   declareEndpoints: serviceFeatureDeclareEndpoints(MINIO_FEATURE_ID, (ctx) => {
     const { apiPort, consolePort } = minioPorts(ctx);

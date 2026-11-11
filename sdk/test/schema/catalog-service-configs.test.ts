@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { ServiceConfig, ServiceCreds } from "@lando/sdk/schema";
+import { ServiceConfig, ServiceCreds, ServiceCredsConfig } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
@@ -105,14 +105,13 @@ describe("catalog service config schemas", () => {
   );
 
   test.each(["mssql", "mssql:2019", "mssql:2022"] as const)(
-    "Given SQL Server type %s with database and creds, when decoding, then it succeeds",
+    "Given SQL Server type %s with creds, when decoding, then it succeeds",
     (type) => {
       // Given
       const input = {
         type,
         image: "mcr.microsoft.com/mssql/server:2022-latest",
         port: 1433,
-        database: "lando",
         creds: { user: "sa", password: "secret", database: "lando" },
       };
 
@@ -125,13 +124,12 @@ describe("catalog service config schemas", () => {
   );
 
   test.each(["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7"] as const)(
-    "Given MySQL type %s with database and creds, when decoding, then it succeeds",
+    "Given MySQL type %s with creds, when decoding, then it succeeds",
     (type) => {
       // Given
       const input = {
         type,
         port: 3306,
-        database: "lando",
         creds: { user: "lando", password: "secret", database: "lando" },
       };
 
@@ -175,14 +173,14 @@ describe("catalog service config schemas", () => {
     expect(result._tag).toBe("Success");
   });
 
-  test("Given phpMyAdmin with complete creds, when decoding, then it succeeds", () => {
+  test("Given phpMyAdmin with partial creds, when decoding, then it succeeds", () => {
     // Given
     const input = {
       type: "phpmyadmin",
       image: "phpmyadmin:5",
       port: 80,
       hosts: ["database"],
-      creds: { user: "lando", password: "secret", database: "app" },
+      creds: { user: "lando", password: "secret" },
     };
 
     // When
@@ -229,6 +227,36 @@ describe("catalog service config schemas", () => {
     expect(result._tag).toBe("Failure");
   });
 
+  test("Given MinIO with a bucket, when decoding, then it succeeds", () => {
+    // Given / When
+    const result = strictDecode(MinIOServiceConfig, {
+      type: "minio",
+      image: "minio/minio",
+      port: 9000,
+      bucket: "uploads",
+    });
+
+    // Then
+    expect(result._tag).toBe("Success");
+  });
+
+  test.each([
+    ["MinIOServiceConfig", MinIOServiceConfig, { type: "minio", database: "uploads" }],
+    ["RabbitMQServiceConfig", RabbitMQServiceConfig, { type: "rabbitmq", database: "app" }],
+    ["LocalStackServiceConfig", LocalStackServiceConfig, { type: "localstack", database: "app" }],
+    ["MailpitServiceConfig", MailpitServiceConfig, { type: "mailpit", database: "app" }],
+    ["MailhogServiceConfig", MailhogServiceConfig, { type: "mailhog", database: "app" }],
+  ] as const)(
+    "Given %s with the removed database key, when strictly decoding, then it fails",
+    (_name, schema, input) => {
+      // Given / When
+      const result = strictDecode(schema, input);
+
+      // Then
+      expect(result._tag).toBe("Failure");
+    },
+  );
+
   test.each([
     ["RabbitMQServiceConfig", RabbitMQServiceConfig, { type: "rabbitmq", buckets: ["data"] }],
     ["MinIOServiceConfig", MinIOServiceConfig, { type: "minio", consoleSocket: 9001 }],
@@ -261,7 +289,32 @@ describe("catalog service config schemas", () => {
   });
 });
 
-describe("ServiceCreds and ServiceConfig hosts", () => {
+describe("ServiceCreds, ServiceCredsConfig, and ServiceConfig hosts", () => {
+  test.each([
+    {},
+    { user: "lando" },
+    { password: "secret" },
+    { database: "app" },
+    { rootPassword: "root-secret" },
+  ])("Given authored ServiceCredsConfig %j, when decoding, then it succeeds", (input) => {
+    // Given / When
+    const result = strictDecode(ServiceCredsConfig, input);
+
+    // Then
+    expect(result._tag).toBe("Success");
+  });
+
+  test.each(["database", "password"])(
+    "Given a flat ServiceConfig %s, when strictly decoding, then it fails",
+    (key) => {
+      // Given / When
+      const result = strictDecode(ServiceConfig, { [key]: "app" });
+
+      // Then
+      expect(result._tag).toBe("Failure");
+    },
+  );
+
   test("Given complete ServiceCreds, when decoding, then it succeeds", () => {
     // Given
     const input = { user: "lando", password: "secret", database: "app", rootPassword: "root-secret" };

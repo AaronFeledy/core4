@@ -133,20 +133,39 @@ export const lowerCatalogCommon = (
   }
   if (service.creds !== undefined) {
     const creds = service.creds;
-    if (
-      hasPlainObjectPrototype(creds) &&
-      ["user", "password", "database"].every((key) => typeof creds[key] === "string")
-    ) {
-      patch.creds = creds;
-      for (const key of ["user", "password", "database"]) cursor.take(["creds", key]);
+    if (hasPlainObjectPrototype(creds)) {
+      const lowered: Record<string, string> = {};
+      for (const key of ["user", "password", "database"] as const) {
+        if (!Object.hasOwn(creds, key)) continue;
+        const value = creds[key];
+        if (value === undefined) {
+          cursor.acceptNoOp(["creds", key]);
+          continue;
+        }
+        if (typeof value !== "string") {
+          cursor.mapTo(["creds", key]);
+          diagnostics.push(
+            unsupportedServiceKey({
+              ctx,
+              relative: ["creds", key],
+              message: `Credential member ${key} must be literal text and cannot be converted.`,
+              remediation: "Author this credential as literal text in the generated service.",
+            }),
+          );
+          continue;
+        }
+        lowered[key] = value;
+        cursor.take(["creds", key]);
+      }
+      if (Object.keys(lowered).length > 0) patch.creds = lowered;
     } else {
       cursor.acceptNoOp(["creds"]);
       diagnostics.push(
         unsupportedServiceKey({
           ctx,
           relative: ["creds"],
-          message: "Partial legacy credentials cannot form an independently valid native layer.",
-          remediation: "Supply user, password, and database together before converting this layer.",
+          message: "Legacy credentials must be a mapping to convert.",
+          remediation: "Author credentials under creds: as literal text in the generated service.",
         }),
       );
     }

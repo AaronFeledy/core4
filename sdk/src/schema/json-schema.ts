@@ -241,7 +241,12 @@ import {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
-import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
+import {
+  DatabaseConnection,
+  ServiceCreds,
+  ServiceCredsConfig,
+  ServiceCredsDisplay,
+} from "./database-connection.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -613,6 +618,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   EnvironmentValue,
   Environment,
   ServiceCreds,
+  ServiceCredsConfig,
   DatabaseConnection,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
@@ -2355,7 +2361,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfig.appMount",
   "ServiceConfig.command",
   "ServiceConfig.cores",
-  "ServiceConfig.database",
   "ServiceConfig.endpoints",
   "ServiceConfig.entrypoint",
   "ServiceConfig.framework",
@@ -2375,7 +2380,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.build",
   "ServiceConfigInput.command",
   "ServiceConfigInput.cores",
-  "ServiceConfigInput.database",
   "ServiceConfigInput.dependsOn",
   "ServiceConfigInput.endpoints",
   "ServiceConfigInput.entrypoint",

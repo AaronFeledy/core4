@@ -11,7 +11,7 @@ test("collects an authored Redis password before service resolution", () => {
   // Given
   const password = "authored-redis-secret";
   // When
-  const tokens = tokensOf({ services: { cache: { password } } });
+  const tokens = tokensOf({ services: { cache: { creds: { password } } } });
   // Then
   expect(tokens).toContain(password);
 });
@@ -22,7 +22,7 @@ test("collects an authored Redis password without dropping environment secrets",
   const envPassword = "env-password-secret";
   // When
   const tokens = tokensOf({
-    services: { cache: { password, environment: { password: envPassword } } },
+    services: { cache: { creds: { password }, environment: { password: envPassword } } },
   });
   // Then
   expect(tokens).toContain(password);
@@ -37,7 +37,7 @@ test.each([
   const envPassword = "literal-environment-secret";
   // When
   const tokens = tokensOf({
-    services: { cache: { password, environment: { PASSWORD: envPassword } } },
+    services: { cache: { creds: { password }, environment: { PASSWORD: envPassword } } },
   });
   // Then
   expect(tokens).toEqual([envPassword]);

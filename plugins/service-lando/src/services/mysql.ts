@@ -84,18 +84,8 @@ const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceCon
       database: appName,
       rootPassword: defaultRootPassword(appName, serviceName),
     },
-    ...(authored === undefined
-      ? {}
-      : {
-          authored: {
-            user: authored.user,
-            password: authored.password,
-            database: authored.database,
-            ...(authored.rootPassword === undefined ? {} : { rootPassword: authored.rootPassword }),
-          },
-        }),
+    ...(authored === undefined ? {} : { authored }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
-    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
 

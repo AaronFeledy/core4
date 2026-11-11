@@ -103,7 +103,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
           .filter((feature) => !substituted.has(feature.id))
           .flatMap((feature) => feature.validation?.handledServiceFields ?? []),
       );
-      for (const field of ["webroot", "consolePort", "uploadDirs"] as const) {
+      for (const field of ["webroot", "consolePort", "uploadDirs", "bucket"] as const) {
         if (seed.authoredService[field] === undefined || claims.has(field)) continue;
         if (field === "uploadDirs" && seed.authoredService.uploadDirs?.length === 0) continue;
         const { message, remediation } = {
@@ -121,6 +121,10 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
             message: `Service ${name} lists uploadDirs, but Lando can't keep PHP out of them on this service.`,
             remediation:
               "Set uploadDirs on the service that serves PHP: an nginx service with a PHP-FPM backend, or a php service using via: apache, with Lando's generated server configuration. Otherwise remove it or set uploadDirs: [], and block PHP in those directories in your own server configuration.",
+          },
+          bucket: {
+            message: `Service ${name} sets bucket, but nothing in this service uses it.`,
+            remediation: "Remove bucket. Only object-storage services such as MinIO create a bucket from it.",
           },
         }[field];
         record(

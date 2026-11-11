@@ -51,19 +51,9 @@ const credsFor = (
   const creds = service.creds;
   return resolveServiceCreds({
     family: FAMILY,
-    ...(creds === undefined
-      ? {}
-      : {
-          authored: {
-            user: creds.user,
-            password: creds.password,
-            database: creds.database,
-            ...(creds.rootPassword === undefined ? {} : { rootPassword: creds.rootPassword }),
-          },
-        }),
+    ...(creds === undefined ? {} : { authored: creds }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
     defaults: { user: "lando", password: DEFAULT_PASSWORD, database: dataNameFor(input) },
-    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
 

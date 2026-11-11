@@ -40,7 +40,7 @@ test("refuses an authored Redis command that bypasses explicit authentication", 
   // Given
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "command-auth",
-    services: { cache: { type: "redis", password: "redis-secret", command: ["redis-server"] } },
+    services: { cache: { type: "redis", creds: { password: "redis-secret" }, command: ["redis-server"] } },
   });
 
   // When
@@ -87,4 +87,32 @@ test("preserves an authored Redis command when no managed startup options are pr
   expect(result._tag).toBe("Success");
   if (result._tag === "Success")
     expect(Object.values(result.success.services).map((service) => service.command)).toContainEqual(command);
+});
+
+test.each([
+  ["user", { user: "someone" }],
+  ["database", { database: "app" }],
+  ["rootPassword", { rootPassword: "root-secret" }],
+] as const)("rejects the unused Redis creds.%s member", async (member, creds) => {
+  // Given
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: "redis-creds",
+    services: { cache: { type: "redis", creds } },
+  });
+
+  // When
+  const result = await planEither(landofile);
+
+  // Then
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  if (!(result.failure instanceof LandofileValidationError)) {
+    throw new Error("Expected LandofileValidationError");
+  }
+  expect(result.failure.issues.map((issue) => issue.path)).toContainEqual([
+    "services",
+    "cache",
+    "creds",
+    member,
+  ]);
 });

@@ -13,6 +13,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { PHPMYADMIN_CREDS_APPLICABILITY, assertCredsApplicability } from "./_creds-helpers.ts";
 import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
@@ -81,6 +82,7 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   schema: PhpMyAdminServiceConfig,
   resolve: (input) => {
     return serviceTypeResolve(id, "phpmyadmin service type failed to resolve", () => {
+      assertCredsApplicability(input.service.creds, PHPMYADMIN_CREDS_APPLICABILITY);
       assertListenerConfig(input.service, PHPMYADMIN_LISTENER);
       return {
         base: "lando",

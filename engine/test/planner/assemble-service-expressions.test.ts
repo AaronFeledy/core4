@@ -131,7 +131,7 @@ test("rejects non-string results in the deferred service-credential pass", () =>
           [ServiceName.make("web")]: {
             type: appType.id,
             image: "alpine:3.22",
-            database: "{{ eq(services.database.creds.user, 'lando') }}",
+            framework: "{{ eq(services.database.creds.user, 'lando') }}",
           },
         },
       },
@@ -140,7 +140,7 @@ test("rejects non-string results in the deferred service-credential pass", () =>
     // When
     const error = await failure(landofile);
     // Then
-    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "web", "database"] });
+    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "web", "framework"] });
     expect(error.message).toContain("Expected string");
   }));
 

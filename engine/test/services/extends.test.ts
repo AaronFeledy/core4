@@ -67,7 +67,7 @@ describe("composeExtendedServiceType", () => {
       base: "lando",
       resolution: (input) => ({
         base: "lando",
-        normalizedConfig: { ...input.service, database: "parentdb" } as ServiceConfig,
+        normalizedConfig: { ...input.service, bucket: "parentdb" } as ServiceConfig,
         features: [{ id: "lando.storage" }, { id: "lando.env", config: { from: "parent" } }],
       }),
     });
@@ -86,7 +86,7 @@ describe("composeExtendedServiceType", () => {
     const resolution = await Effect.runPromise(composed.resolve(runInput()));
 
     expect(resolution.base).toBe("lando");
-    expect(resolution.normalizedConfig.database).toBe("parentdb");
+    expect(resolution.normalizedConfig.bucket).toBe("parentdb");
     expect(resolution.normalizedConfig.user).toBe("drupal");
     const featureIds = resolution.features.map((f: FeatureRef) => f.id);
     expect(featureIds).toEqual(["lando.storage", "lando.env", "drupal.settings"]);
@@ -252,7 +252,7 @@ describe("mergeResolutionOverParent", () => {
   test("child base, merged config, features-by-id, child-wins tooling", () => {
     const parent: ServiceTypeResolution = {
       base: "l337",
-      normalizedConfig: { database: "a", user: "p" } as ServiceConfig,
+      normalizedConfig: { bucket: "a", user: "p" } as ServiceConfig,
       features: [{ id: "x" }, { id: "y", config: { k: 1 } }],
       tooling: { db: { service: "web", cmd: "parent" } },
     };
@@ -265,7 +265,7 @@ describe("mergeResolutionOverParent", () => {
 
     const merged = mergeResolutionOverParent(parent, child);
     expect(merged.base).toBe("lando");
-    expect(merged.normalizedConfig.database).toBe("a");
+    expect(merged.normalizedConfig.bucket).toBe("a");
     expect(merged.normalizedConfig.user).toBe("c");
     expect(merged.features.map((f) => f.id)).toEqual(["x", "y", "z"]);
     expect(merged.features.find((f) => f.id === "y")?.config).toEqual({ k: 2 });

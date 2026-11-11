@@ -44,6 +44,24 @@ const plannerScopeSuggestion = (value: unknown, path: ValidationIssuePath): stri
     : undefined;
 };
 
+/** Service keys that moved into a typed block; the suggestion never repeats the authored value. */
+const SERVICE_KEY_REPLACEMENTS: Readonly<Record<string, string>> = {
+  database: "creds.database",
+  password: "creds.password",
+};
+
+const replacedServiceKeySuggestion = (path: ValidationIssuePath, parsed: unknown): string | undefined => {
+  if (path.length !== 3 || path[0] !== "services" || typeof path[1] !== "string") return undefined;
+  const key = String(path[2]);
+  const replacement =
+    key === "database" && valueAtPath(parsed, ["services", path[1], "type"]) === "minio"
+      ? "bucket"
+      : SERVICE_KEY_REPLACEMENTS[key];
+  return replacement === undefined
+    ? undefined
+    : `Use ${replacement} instead: "${key}" is not a service-level key.`;
+};
+
 const composeSuggestedFix = (issue: SchemaIssueLeaf): string | undefined => {
   if (issue.path[0] === "services" && issue.path.length > 2) {
     const servicePath = issue.path.slice(2).map(String);
@@ -88,6 +106,7 @@ const suggestionForLeaf = (issue: SchemaIssueLeaf, parsed: unknown): string | un
   switch (issue._tag) {
     case "Unexpected":
       return (
+        replacedServiceKeySuggestion(path, parsed) ??
         composeSuggestedFix(issue) ??
         issue.suggestion ??
         `Remove the unknown key${key === undefined ? "" : ` "${String(key)}"`}; it is not part of the canonical Landofile schema.`

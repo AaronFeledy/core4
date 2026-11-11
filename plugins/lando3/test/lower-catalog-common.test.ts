@@ -65,6 +65,18 @@ describe("lowerCatalogCommon", () => {
     readonly kinds: readonly string[];
   }> = [
     {
+      name: "partial credentials lower member by member",
+      service: { type: "mysql:8.0", creds: { password: "app-secret" } },
+      patch: { type: "mysql:8.0", creds: { password: "app-secret" } },
+      kinds: [],
+    },
+    {
+      name: "a malformed credential member keeps its diagnostic",
+      service: { type: "mysql:8.0", creds: { password: 42 } },
+      patch: { type: "mysql:8.0" },
+      kinds: ["unsupported"],
+    },
+    {
       name: "unpinned MySQL publication",
       service: {
         type: "mysql:8.0",

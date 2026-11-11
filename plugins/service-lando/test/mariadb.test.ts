@@ -280,4 +280,13 @@ describe("mariadb ServiceType", () => {
       ...(relativeTo === undefined ? {} : { relativeTo }),
     });
   });
+
+  test("a password-only creds block keeps the default user and database", async () => {
+    const plan = await planMariadb({ type: "mariadb", creds: { password: "hunter2" } });
+    const environment = plan.environment ?? {};
+
+    expect(environment.MARIADB_USER).toBe("lando");
+    expect(environment.MARIADB_PASSWORD).toBe("hunter2");
+    expect(environment.MARIADB_DATABASE).toBe("myapp");
+  });
 });

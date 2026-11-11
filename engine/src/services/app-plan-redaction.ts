@@ -45,10 +45,7 @@ export const collectAuthoredRedactionTokens = (document: unknown): LandofileReda
     if (path.length === 2 && path[0] === "services") {
       const authoredCreds = isLandofileOverride(node.creds) ? node.creds.value : node.creds;
       const creds = isPlainRecord(authoredCreds) ? authoredCreds : undefined;
-      const password = isLandofileOverride(node.password) ? node.password.value : node.password;
       for (const value of collectPublicCredentialValues(undefined, creds)) publicValues.add(value);
-      for (const value of collectPublicCredentialValues(undefined, { ...creds, password }))
-        publicValues.add(value);
     }
     if (path.length === 3 && path[0] === "services" && path[2] === "environment") {
       for (const value of collectPublicCredentialValues(node)) publicValues.add(value);

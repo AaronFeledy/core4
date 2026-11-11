@@ -8,11 +8,75 @@ import {
   type Environment,
   type EnvironmentValue,
   type ServiceCreds,
+  type ServiceCredsConfig,
   normalizeEnvironmentValue,
 } from "@lando/sdk/schema";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 export type CredsFamily = DatabaseFamily;
+
+export type CredsMember = keyof ServiceCreds;
+
+const CREDS_MEMBERS: ReadonlyArray<CredsMember> = ["user", "password", "database", "rootPassword"];
+
+export type CredsApplicability = {
+  readonly accepts: ReadonlyArray<CredsMember>;
+  readonly message: (member: CredsMember) => string;
+  readonly remediation: string;
+};
+
+const acceptsEveryMember = (): CredsApplicability => ({
+  accepts: CREDS_MEMBERS,
+  message: (member) => `creds.${member} is not used by this service type.`,
+  remediation: "Remove the unused credential member.",
+});
+
+/** Which authored `creds` members a service type reads; a rejected member fails at `creds.<member>`. */
+export const DB_CREDS_APPLICABILITY: Readonly<Record<CredsFamily, CredsApplicability>> = {
+  mysql: acceptsEveryMember(),
+  mariadb: acceptsEveryMember(),
+  postgres: {
+    accepts: ["user", "password", "database"],
+    message: () => "PostgreSQL has no separate root account; creds.password is the superuser password.",
+    remediation: "Remove creds.rootPassword and set the superuser password with creds.password.",
+  },
+  mongodb: {
+    accepts: ["user", "password", "database"],
+    message: () =>
+      "MongoDB has no separate root account; creds.user and creds.password are the root account.",
+    remediation: "Remove creds.rootPassword and set the root account with creds.user and creds.password.",
+  },
+  mssql: acceptsEveryMember(),
+};
+
+export const REDIS_CREDS_APPLICABILITY: CredsApplicability = {
+  accepts: ["password"],
+  message: (member) =>
+    member === "rootPassword"
+      ? "Redis has no separate root account; creds.password is the only Redis password."
+      : "Redis authenticates its single default user with creds.password; there is no per-user or per-database login.",
+  remediation: "Remove this member and keep only creds.password.",
+};
+
+export const PHPMYADMIN_CREDS_APPLICABILITY: CredsApplicability = {
+  accepts: ["user", "password"],
+  message: (member) =>
+    member === "rootPassword"
+      ? "phpMyAdmin has no separate root account; it signs in with creds.user and creds.password."
+      : "phpMyAdmin does not select a database; it signs in with creds.user and creds.password.",
+  remediation: "Remove this member and keep only creds.user and creds.password.",
+};
+
+export const assertCredsApplicability = (
+  authored: Partial<ServiceCredsConfig> | undefined,
+  applicability: CredsApplicability,
+): void => {
+  if (authored === undefined) return;
+  for (const member of CREDS_MEMBERS) {
+    if (authored[member] === undefined || applicability.accepts.includes(member)) continue;
+    throw new ServiceConfigIssue(["creds", member], applicability.message(member), applicability.remediation);
+  }
+};
 
 export type ResolveServiceCredsInput = {
   readonly family: CredsFamily;
@@ -24,7 +88,6 @@ export type ResolveServiceCredsInput = {
     readonly database: string;
     readonly rootPassword?: string;
   };
-  readonly topLevelDatabase?: string;
 };
 
 const optionalRoot = (key: string, rootPassword: EnvironmentValue | undefined): Environment =>
@@ -48,6 +111,7 @@ export const credentialValuesAgree = (left: EnvironmentValue, right: Environment
 };
 
 export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCreds => {
+  assertCredsApplicability(input.authored, DB_CREDS_APPLICABILITY[input.family]);
   const fact = (field: keyof ServiceCreds): EnvironmentValue | undefined => {
     let selected = input.authored?.[field];
     let path = `creds.${field}`;
@@ -103,7 +167,7 @@ export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCre
       authoredPassword ?? authoredRoot ?? input.defaults.rootPassword ?? input.defaults.password;
     return {
       user: "sa",
-      database: literal("database") ?? input.topLevelDatabase ?? input.defaults.database,
+      database: literal("database") ?? input.defaults.database,
       password,
       rootPassword: password,
     };
@@ -112,7 +176,7 @@ export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCre
   return {
     user: literal("user") ?? input.defaults.user,
     password: authoredPassword ?? input.defaults.password,
-    database: literal("database") ?? input.topLevelDatabase ?? input.defaults.database,
+    database: literal("database") ?? input.defaults.database,
     ...optionalRoot("rootPassword", rootPassword),
   };
 };

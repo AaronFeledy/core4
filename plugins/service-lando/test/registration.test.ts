@@ -159,7 +159,7 @@ describe("@lando/service-lando registration", () => {
         [ServiceName.make("queue")]: { type: "rabbitmq" },
         [ServiceName.make("object-store")]: {
           type: "minio",
-          database: "uploads",
+          bucket: "uploads",
           image: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z",
         },
         [ServiceName.make("aws")]: { type: "localstack" },
@@ -449,7 +449,7 @@ describe("@lando/service-lando registration", () => {
         [ServiceName.make("pma")]: {
           type: "phpmyadmin",
           hosts: ["db-a", "db-b"],
-          creds: { user: "pmauser", password: "pmapass", database: "pmadb" },
+          creds: { user: "pmauser", password: "pmapass" },
           certs: false,
         },
       },

@@ -54,18 +54,8 @@ const credsFor = (input: {
       password: defaultPassword(appName),
       database: appName,
     },
-    ...(authored === undefined
-      ? {}
-      : {
-          authored: {
-            user: authored.user,
-            password: authored.password,
-            database: authored.database,
-            ...(authored.rootPassword === undefined ? {} : { rootPassword: authored.rootPassword }),
-          },
-        }),
+    ...(authored === undefined ? {} : { authored }),
     ...(input.service.environment === undefined ? {} : { environment: input.service.environment }),
-    ...(input.service.database === undefined ? {} : { topLevelDatabase: input.service.database }),
   });
 };
 

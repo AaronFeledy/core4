@@ -10,6 +10,7 @@ import {
   LogSourceId,
   PortablePath,
   type ServiceCreds,
+  type ServiceCredsConfig,
 } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
@@ -73,25 +74,15 @@ const mariadbCreds = (
   },
   serviceName: string,
   service: {
-    readonly creds?: ServiceCreds | undefined;
+    readonly creds?: ServiceCredsConfig | undefined;
     readonly environment?: Environment | undefined;
-    readonly database?: string | undefined;
   },
 ): ServiceCreds => {
   const appName = dataNameFor(input);
   const creds = service.creds;
   return resolveServiceCreds({
     family: "mariadb",
-    ...(creds === undefined
-      ? {}
-      : {
-          authored: {
-            user: creds.user,
-            password: creds.password,
-            database: creds.database,
-            ...(creds.rootPassword === undefined ? {} : { rootPassword: creds.rootPassword }),
-          },
-        }),
+    ...(creds === undefined ? {} : { authored: creds }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
     defaults: {
       user: "lando",
@@ -99,7 +90,6 @@ const mariadbCreds = (
       database: appName,
       rootPassword: defaultRootPassword(appName, serviceName),
     },
-    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
 

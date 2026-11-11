@@ -137,3 +137,34 @@ describe("Landofile validation issues", () => {
     }
   });
 });
+
+describe("removed flat credential keys point at their replacement", () => {
+  const issuesFor = async (value: unknown) => {
+    const error = await Effect.runPromise(validateLandofile("/app/.lando.yml", value).pipe(Effect.flip));
+    if (error._tag !== "LandofileValidationError") throw new Error("expected LandofileValidationError");
+    return error.issues;
+  };
+
+  test("services.<name>.database suggests creds.database", async () => {
+    const issues = await issuesFor({ services: { db: { type: "postgres", database: "appdata" } } });
+    const issue = issues.find((candidate) => candidate.path.at(-1) === "database");
+    expect(issue?.path).toEqual(["services", "db", "database"]);
+    expect(issue?.suggestion).toContain("creds.database");
+  });
+
+  test("services.<name>.database suggests bucket on a MinIO service", async () => {
+    const issues = await issuesFor({ services: { store: { type: "minio", database: "uploads" } } });
+    const issue = issues.find((candidate) => candidate.path.at(-1) === "database");
+    expect(issue?.path).toEqual(["services", "store", "database"]);
+    expect(issue?.suggestion).toContain("bucket");
+    expect(issue?.suggestion).not.toContain("creds.database");
+  });
+
+  test("services.<name>.password suggests creds.password without echoing the value", async () => {
+    const issues = await issuesFor({ services: { cache: { type: "redis", password: "hunter2" } } });
+    const issue = issues.find((candidate) => candidate.path.at(-1) === "password");
+    expect(issue?.path).toEqual(["services", "cache", "password"]);
+    expect(issue?.suggestion).toContain("creds.password");
+    expect(JSON.stringify(issue)).not.toContain("hunter2");
+  });
+});

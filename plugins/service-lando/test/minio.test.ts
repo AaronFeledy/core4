@@ -209,10 +209,10 @@ describe("minio ServiceType", () => {
     expect(plan.environment?.MINIO_DEFAULT_BUCKETS).toBeUndefined();
   });
 
-  test("uses database for the created bucket and preserves authored credentials", async () => {
+  test("uses the authored bucket and preserves authored credentials", async () => {
     const plan = await planMinioService({
       type: "minio",
-      database: "assets",
+      bucket: "assets",
       environment: {
         MINIO_ROOT_USER: "author",
         MINIO_ROOT_PASSWORD: "secret",
@@ -268,5 +268,29 @@ describe("minio ServiceType", () => {
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(String(plan.workingDirectory)).toBe("/data");
     expect(plan.user).toBe("1000:1000");
+  });
+
+  test("rejects an authored bucket that is not a valid object-storage name", async () => {
+    await expect(planMinioService({ type: "minio", bucket: "Bad_Bucket" })).rejects.toMatchObject({
+      _tag: "ServiceFeatureError",
+      feature: MINIO_FEATURE_ID,
+      cause: { path: ["bucket"], suggestion: expect.any(String) },
+      remediation: expect.any(String),
+    });
+  });
+
+  test("sanitizes only the derived default bucket name", async () => {
+    const plan = await composeServicePlan({
+      serviceType: minioServiceType,
+      service: minioService({ type: "minio" }),
+      appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      dataName: "My App",
+      serviceName: "storage",
+      metadata,
+      featureOverrides,
+    });
+
+    expect(plan.environment?.MINIO_BUCKET).toBe("My-App");
   });
 });
