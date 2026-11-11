@@ -70,7 +70,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload listener diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: service-listener-acceptance-linux-x64
           path: |

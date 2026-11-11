@@ -41,7 +41,7 @@ ${id === "linux-x64" ? landoRootlessPrereqSteps : ""}
 
       - name: Upload lifecycle evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: install-lifecycle-${id}
           path: \${{ runner.temp }}/install-lifecycle.json
