@@ -141,12 +141,18 @@ test.each([
     suggestion:
       "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
-  ...["healthcheck", "readiness"].map((field) => ({
-    path: ["services", "app", field, "command"],
+  {
+    path: ["services", "app", "healthcheck", "command"],
     extra: "",
     suggestion:
       "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in a string healthcheck command. A list command runs without a shell, so the program must read TOKEN from its environment.",
-  })),
+  },
+  {
+    path: ["services", "app", "readiness", "command"],
+    extra: "",
+    suggestion:
+      "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in a string readiness command. A list command runs without a shell, so the program must read TOKEN from its environment.",
+  },
   ...[["command"], ["raw", 0], ["flags", "TOKEN"], ["args", "TOKEN"]].map((suffix) => ({
     path: ["events", "post-start", 0, ...suffix],
     extra: "",
@@ -157,7 +163,7 @@ test.each([
     path: ["tooling", "task", "vars", "token", "sh"],
     extra: "",
     suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+      "Bind the ${secret:...} reference as TOKEN in the environment of the service that runs the var and write $TOKEN in the var command. The var command does not receive the task's env. Set sensitive: true on the var when its output is secret.",
   },
 ] as const)("provides site-aware guidance at $path", ({ path, extra, suggestion }) => {
   // Given an authored secret at an unsupported site.
@@ -173,6 +179,70 @@ test.each([
     message: `Secret references are not supported at ${formatValidationIssuePath(path)}.${extra}`,
     suggestion,
   });
+});
+
+test.each([
+  {
+    name: "service var command",
+    document: { tooling: { task: { vars: { token: { service: "app" } } } } },
+    includes: ["services.app.environment.TOKEN", "$TOKEN"],
+    excludes: ["tooling.task.env.TOKEN"],
+  },
+  {
+    name: "task-level service var command",
+    document: { tooling: { task: { service: "app" } } },
+    includes: ["services.app.environment.TOKEN"],
+    excludes: ["tooling.task.env.TOKEN"],
+  },
+  {
+    name: "host var command",
+    document: { tooling: { task: { vars: { token: { service: ":host" } } } } },
+    includes: ["on the host"],
+    excludes: ["services.app.environment.TOKEN", "tooling.task.env.TOKEN"],
+  },
+  {
+    name: "unknown flag var target",
+    document: { tooling: { task: { service: ":flag" } } },
+    includes: ["the service that runs the var"],
+    excludes: ["services.app.environment.TOKEN", "tooling.task.env.TOKEN"],
+  },
+])("gives var-command advice for a $name", ({ document, includes, excludes }) => {
+  const diagnostic = unsupportedSecretReference({
+    source: { file: ".lando.yml", layer: "base", path: ["tooling", "task", "vars", "token", "sh"] },
+    references: ["TOKEN"],
+    value: "echo ${secret:TOKEN}",
+    document,
+  });
+  for (const token of includes) expect(diagnostic.suggestion).toContain(token);
+  for (const token of excludes) expect(diagnostic.suggestion).not.toContain(token);
+  expect(diagnostic.suggestion).toContain("sensitive: true");
+  expect(diagnostic.fix).toBeUndefined();
+});
+
+test("gives host-readiness advice that moves the probe into the service", () => {
+  const source = {
+    file: ".lando.yml",
+    layer: "base" as const,
+    path: ["services", "app", "readiness", "command"],
+  };
+  const host = unsupportedSecretReference({
+    source,
+    references: ["TOKEN"],
+    value: "echo ${secret:TOKEN}",
+    document: { services: { app: { readiness: { target: "host" } } } },
+  });
+  expect(host.suggestion).toContain("on the host");
+  expect(host.suggestion).toContain("target: service");
+  expect(host.suggestion).toContain("services.app.environment.TOKEN");
+  expect(host.fix).toBeUndefined();
+
+  const service = unsupportedSecretReference({
+    source,
+    references: ["TOKEN"],
+    value: "echo ${secret:TOKEN}",
+    document: { services: { app: { readiness: { target: "service" } } } },
+  });
+  expect(service.suggestion).toContain("string readiness command");
 });
 
 test.each([

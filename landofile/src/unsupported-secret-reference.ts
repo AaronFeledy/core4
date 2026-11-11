@@ -1,3 +1,4 @@
+// allow: SIZE_OK — one exhaustive site-to-suggestion table; splitting it would fragment the remediation matrix.
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import {
@@ -85,8 +86,40 @@ export const unsupportedSecretReference = (
     switch (site) {
       case undefined:
       case "secret-binding":
-      case "tooling-var":
         return { suggestion: genericSuggestion() };
+      case "tooling-var": {
+        const authoredTarget = valueAtPath(input.document, [
+          "tooling",
+          String(path[1]),
+          "vars",
+          String(path[3]),
+          "service",
+        ]);
+        const candidate =
+          authoredTarget === undefined
+            ? valueAtPath(input.document, ["tooling", String(path[1]), "service"])
+            : authoredTarget;
+        const target =
+          typeof candidate === "string" && !candidate.includes("{{")
+            ? candidate === ":host"
+              ? "host"
+              : candidate.startsWith(":")
+                ? undefined
+                : candidate
+            : undefined;
+        const sensitive = "Set sensitive: true on the var when its output is secret.";
+        if (target === "host")
+          return {
+            suggestion: `A var command that runs on the host receives no Lando secret binding and not the task's env. To use ${name}, run the var in a service by setting service on the var, with the ${binding} in that service's environment and ${shell} in the var command. ${sensitive}`,
+          };
+        if (target === undefined)
+          return {
+            suggestion: `Bind the ${binding} as ${name} in the environment of the service that runs the var and write ${shell} in the var command. The var command does not receive the task's env. ${sensitive}`,
+          };
+        return {
+          suggestion: `Set ${bindings(`services.${target}.environment`)} to the ${binding} and write ${shell} in the var command. The var command does not receive the task's env. ${sensitive}`,
+        };
+      }
       case "build-arg":
         return { suggestion: afterStart, extra: " Build arguments can be recorded in image history." };
       case "build-dockerfile":
@@ -150,10 +183,19 @@ export const unsupportedSecretReference = (
           suggestion:
             "Lando command inputs cannot carry secrets. Move the work into a cmd step with the secret in that step's env.",
         };
-      case "healthcheck":
+      case "healthcheck": {
+        const role = path[2] === "readiness" ? "readiness" : "healthcheck";
+        const hostReadiness =
+          role === "readiness" &&
+          valueAtPath(input.document, ["services", String(path[1]), "readiness", "target"]) === "host";
+        if (hostReadiness)
+          return {
+            suggestion: `A host readiness probe runs on the host and receives no Lando secret binding. To use ${name}, keep target: service (the default) and set ${bindings(`${service}.environment`)} to the ${binding}, then write ${shell} in the readiness command. A list command runs without a shell, so the program must read ${name} from its environment.`,
+          };
         return {
-          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string healthcheck command. A list command runs without a shell, so the program must read ${name} from its environment.`,
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string ${role} command. A list command runs without a shell, so the program must read ${name} from its environment.`,
         };
+      }
       case "service-command": {
         const compose =
           relative.length === 0
