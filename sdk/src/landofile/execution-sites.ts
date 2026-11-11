@@ -40,7 +40,7 @@ const branches = (candidate: Candidate, index: number): ReadonlyArray<Candidate>
   }
 };
 
-/** Resolve authored string sites only on diagnostic paths, never during successful loading. */
+/** Resolve an authored string site; callers reach this only for values that hold a secret reference outside a binding site. */
 export const executionSiteAt = (path: ReadonlyArray<string | number>): ExecutionSiteMatch | undefined => {
   let candidates = branches({ ast: LandofileShape.ast, match: undefined }, -1);
   for (const [index, key] of path.entries()) {

@@ -65,11 +65,15 @@ export const shellContext = (text: string) => {
         return "unquoted";
     }
   };
+  // The shell removes a trailing backslash-newline before the next word, so a `$`
+  // just before one still glues to whatever is inserted after it.
+  let last = text.length - 1;
+  while (last > 0 && text[last] === "\n" && text[last - 1] === "\\") last -= 2;
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     const frame = frames.at(-1);
     if (frame === undefined) break;
-    if (i === text.length - 1) dollar = char === "$" && !escaped && frame.quote !== "single";
+    if (i === last) dollar = char === "$" && !escaped && frame.quote !== "single";
     if (inHeredoc) {
       const end = text.indexOf("\n", i);
       if (end === -1)

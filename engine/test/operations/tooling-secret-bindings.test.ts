@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { compileInvocationSites } from "@lando/landofile/compiled-sites";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -178,6 +179,36 @@ const compileResolved = async (loaded: Awaited<ReturnType<typeof load>>, name = 
     }),
   );
 };
+
+test("a caller env that already sets the generated name to another value is refused", async () => {
+  // Given a caller-supplied env that claims the name Lando generates for secret A.
+  const loaded = await load({ name: "probe", tooling: { deploy: { cmd: "printf '%s' ${secret:A}" } } });
+  const resolved = await resolveTask(loaded, "deploy");
+  const sites = sitesUnder(loaded.sites, ["tooling", "deploy"]);
+  const admitted = await Effect.runPromise(
+    admitToolingTask({ name: "deploy", task: resolved.task, source: { ...SOURCE, task: "deploy" }, sites }),
+  );
+  const name = `LANDO_BOUND_SECRET_${createHash("sha256").update("A").digest("hex").slice(0, 16)}`;
+  // When
+  const result = await Effect.runPromise(
+    Effect.result(
+      compileToolingInvocations({
+        name: "deploy",
+        lookupKey: "deploy",
+        task: resolved.task,
+        bindings: resolved.bindings,
+        source: { ...SOURCE, task: "deploy" },
+        admitted,
+        env: { [name]: "caller value" },
+      }),
+    ),
+  );
+  // Then
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ToolingCompileError", message: expect.stringContaining(name) },
+  });
+});
 
 test.each([
   ["cmd", { cmd: "printf '%s' ${secret:A}" }],

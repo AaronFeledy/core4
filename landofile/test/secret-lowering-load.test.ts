@@ -68,6 +68,11 @@ const refusals = [
   { name: "dollar-quote", command: "echo $'${secret:A}'", context: "quoted string" },
   { name: "escaped", command: "echo \\${secret:A}", context: "an escaped reference" },
   {
+    name: "dollar before a line continuation",
+    command: "echo $\\\n${secret:A} end",
+    context: "an unescaped dollar sign",
+  },
+  {
     name: "case in a command substitution",
     command: 'echo "$(case x in x) echo ${secret:A};; esac)"',
     context: "a `case` statement",

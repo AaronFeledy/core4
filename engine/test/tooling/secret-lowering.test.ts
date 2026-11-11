@@ -249,6 +249,11 @@ const refused: ReadonlyArray<{ readonly name: string; readonly command: string; 
     { name: "dollar-quote", command: "printf '%s' $'${secret:A}'", context: "quoted string" },
     { name: "escaped", command: "printf '%s' \\${secret:A}", context: "an escaped reference" },
     {
+      name: "dollar before a line continuation",
+      command: "printf '%s' $\\\n${secret:A} end",
+      context: "an unescaped dollar sign",
+    },
+    {
       name: "case inside a command substitution",
       command: 'printf "%s" "$(case x in x) printf %s ${secret:A};; esac)"',
       context: "a `case` statement",
