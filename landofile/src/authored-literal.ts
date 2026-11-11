@@ -121,10 +121,7 @@ export const committedSensitiveLiterals = (document: object): ReadonlySet<string
   for (const { path, value } of sensitiveLandofileOccurrences(document)) {
     if (
       !(isEnvMap(path.slice(0, -1)) && !["appEnv", "appLabels", "hostEvents"].includes(String(path[0]))) &&
-      !(
-        path[0] === "services" &&
-        ((path.length === 4 && path[2] === "creds") || (path.length === 3 && path[2] === "password"))
-      )
+      !(path[0] === "services" && path.length === 4 && path[2] === "creds")
     )
       continue;
     const literal = authoredLiteralAt(document, path);

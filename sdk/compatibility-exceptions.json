@@ -6302,5 +6302,71 @@
     "changeKind": "unsupported-construct",
     "path": "$.artifact.anyOf",
     "justification": "Issue #2251 adds optional origin: \"build\" to the ArtifactRef arm so bring-up never pulls an image a Lando build produced. The change is purely additive: every previously accepted artifact still decodes, origin is never required, and records without it keep registry semantics. Schema, build-orchestrator, image-ensure, and bring-up tests cover the marker."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 removes the accepted-but-unused service-level database key from this catalog type so its data name has one home: creds.database. The unreleased key was silently ignored by the service implementation; a Landofile that still writes it now fails with a path and a suggestion pointing at the replacement."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 removes the accepted-but-unused service-level database key from this catalog type so its data name has one home: creds.database. The unreleased key was silently ignored by the service implementation; a Landofile that still writes it now fails with a path and a suggestion pointing at the replacement."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 removes the accepted-but-unused service-level database key from this catalog type so its data name has one home: creds.database. The unreleased key was silently ignored by the service implementation; a Landofile that still writes it now fails with a path and a suggestion pointing at the replacement."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 replaces MinIO's consumed service-level database key with bucket. The old spelling selected the bucket name; an existing Landofile now fails with a path and a suggestion naming bucket."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 replaces SQL Server's consumed service-level database key with creds.database. The old spelling selected the database name; an existing Landofile now fails with a path and a suggestion naming creds.database."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 replaces MySQL's consumed service-level database key with creds.database. The old spelling selected the database name; an existing Landofile now fails with a path and a suggestion naming creds.database."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 removes the accepted-but-unused service-level database key from this catalog type so its data name has one home: creds.database. The unreleased key was silently ignored by the service implementation; a Landofile that still writes it now fails with a path and a suggestion pointing at the replacement."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 deletes the flat service-level database key. Database services read creds.database, object storage authors bucket, and every other type rejects the removed key as unknown with a suggestion naming creds.database (or bucket for MinIO)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "property-removed",
+    "path": "$.password",
+    "justification": "Issue #2235 deletes the flat Redis password key. Redis now authenticates from creds.password, so a service-level password would be a second, ignored spelling. The removed key fails as unknown with a suggestion naming creds.password and never echoes its value."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "property-removed",
+    "path": "$.database",
+    "justification": "Issue #2235 propagates the authored database narrowing into the derived ServiceConfig input projection. The replacement is creds.database, with bucket for MinIO; the loader rejects the old key before planning."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "property-removed",
+    "path": "$.password",
+    "justification": "Issue #2235 propagates the authored Redis password narrowing into the derived ServiceConfig input projection. The replacement is creds.password, and the loader rejects the old key before planning."
   }
 ]

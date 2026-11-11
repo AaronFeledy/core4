@@ -25,11 +25,6 @@ export const SECRET_BINDING_SITES: ReadonlyArray<{
       (path[3] === "password" || path[3] === "rootPassword"),
   },
   {
-    label: "a Redis password",
-    paths: ["services.<name>.password"],
-    matches: (path) => path[0] === "services" && path[2] === "password" && path.length === 3,
-  },
-  {
     label: "a tooling `env` value",
     paths: ["tooling.<task>.env.<KEY>", "tooling.<task>.cmds.<index>.env.<KEY>", "toolingDefaults.env.<KEY>"],
     matches: (path) =>

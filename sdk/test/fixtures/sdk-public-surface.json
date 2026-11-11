@@ -76,6 +76,7 @@
   "publicDefaultCredentialExports": [
     "DEFAULT_PASSWORD",
     "MINIO_DEFAULT_PASSWORD",
+    "MSSQL_DEFAULT_PASSWORD",
     "PUBLIC_DEFAULT_CREDENTIALS",
     "isPublicDefaultCredential"
   ],
@@ -1763,6 +1764,7 @@
       "ServiceCopyInSpec",
       "ServiceCopyOutSpec",
       "ServiceCreds",
+      "ServiceCredsConfig",
       "ServiceCredsDisplay",
       "ServiceDependency",
       "ServiceDependencyCondition",
@@ -2060,6 +2062,7 @@
       "DEFAULT_PASSWORD",
       "HOST_PROXY_CREDENTIAL_ENV_NAMES",
       "MINIO_DEFAULT_PASSWORD",
+      "MSSQL_DEFAULT_PASSWORD",
       "PATTERN_CLASSES",
       "PUBLIC_DEFAULT_CREDENTIALS",
       "REDACTED",

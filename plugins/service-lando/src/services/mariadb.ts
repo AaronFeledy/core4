@@ -1,4 +1,3 @@
-import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
   type Environment,
@@ -6,6 +5,7 @@ import {
   LogSourceId,
   PortablePath,
   type ServiceCreds,
+  type ServiceCredsConfig,
   ServiceName,
 } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
@@ -13,7 +13,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
-import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
@@ -59,44 +59,29 @@ const MARIADB_LOG_SOURCES: ReadonlyArray<LogSource> = [
   },
 ];
 
-const defaultRootPassword = (appName: string, serviceName: string): string =>
-  `lando-${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
-
 const mariadbCreds = (
   input: {
     readonly appName?: string | undefined;
     readonly dataName?: string | undefined;
     readonly appRoot: string;
   },
-  serviceName: string,
   service: {
-    readonly creds?: ServiceCreds | undefined;
+    readonly creds?: ServiceCredsConfig | undefined;
     readonly environment?: Environment | undefined;
-    readonly database?: string | undefined;
   },
 ): ServiceCreds => {
   const appName = dataNameFor(input);
   const creds = service.creds;
   return resolveServiceCreds({
     family: "mariadb",
-    ...(creds === undefined
-      ? {}
-      : {
-          authored: {
-            user: creds.user,
-            password: creds.password,
-            database: creds.database,
-            ...(creds.rootPassword === undefined ? {} : { rootPassword: creds.rootPassword }),
-          },
-        }),
+    ...(creds === undefined ? {} : { authored: creds }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
     defaults: {
       user: "lando",
       password: DEFAULT_PASSWORD,
       database: appName,
-      rootPassword: defaultRootPassword(appName, serviceName),
+      rootPassword: DEFAULT_PASSWORD,
     },
-    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
 
@@ -143,6 +128,7 @@ export const mariadbServiceFeature: ServiceFeatureDefinition = {
   id: MARIADB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(MARIADB_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(
@@ -186,7 +172,7 @@ export const mariadbServiceType: ServiceType = {
   toolingForConnection: mariadbToolingForConnection,
   resolve: (input) => {
     return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
-      const creds = mariadbCreds(input, input.name, input.service);
+      const creds = mariadbCreds(input, input.service);
       const port = plannedPort(input.service, MARIADB_LISTENER);
       assertListenerConfig(input.service, MARIADB_LISTENER);
       return {

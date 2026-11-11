@@ -7,7 +7,7 @@ import { catalogServiceConfig, catalogServiceType } from "./_catalog.ts";
 // ============================================================================
 
 export const MssqlServiceConfig = catalogServiceConfig({
-  extraKeys: ["database", "creds"],
+  extraKeys: ["creds"],
   type: catalogServiceType(
     Schema.Literals(["mssql", "mssql:2019", "mssql:2022"]),
     "SQL Server catalog service type and supported major-version aliases.",

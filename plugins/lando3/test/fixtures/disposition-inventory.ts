@@ -406,11 +406,9 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
         ["services", "s", "creds"],
         { user: "app", password: "app", database: "app" },
       ),
-      diagnostic(service("type: mysql:8.0, creds: {database: app}"), "unsupported", [
-        "services",
-        "s",
-        "creds",
-      ]),
+      output(service("type: mysql:8.0, creds: {database: app}"), ["services", "s", "creds"], {
+        database: "app",
+      }),
     ],
   },
   {
@@ -572,18 +570,18 @@ const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
   ),
   ...(
     [
-      ["password", "redis:7", "secret", "secret"],
-      ["persist", "redis:7", "true", true],
-      ["mailFrom", "mailpit", "[appserver]", ["appserver"]],
-      ["hosts", "phpmyadmin:5", "[database]", ["database"]],
-      ["backend", "varnish:6", "appserver", "appserver"],
+      ["password", "redis:7", "secret", ["services", "s", "creds", "password"], "secret"],
+      ["persist", "redis:7", "true", ["services", "s", "persist"], true],
+      ["mailFrom", "mailpit", "[appserver]", ["services", "s", "mailFrom"], ["appserver"]],
+      ["hosts", "phpmyadmin:5", "[database]", ["services", "s", "hosts"], ["database"]],
+      ["backend", "varnish:6", "appserver", ["services", "s", "backend"], "appserver"],
     ] as const
   ).map(
-    ([key, type, value, expected]): DispositionEntry => ({
+    ([key, type, value, outputPath, expected]): DispositionEntry => ({
       pattern: ["services", "*", key],
       disposition: "target",
       owner: "lower-type-options",
-      golden: [output(service(`type: ${type}, ${key}: ${value}`), ["services", "s", key], expected)],
+      golden: [output(service(`type: ${type}, ${key}: ${value}`), outputPath, expected)],
     }),
   ),
   {

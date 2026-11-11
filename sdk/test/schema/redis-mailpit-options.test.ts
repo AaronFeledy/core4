@@ -27,9 +27,9 @@ test.each([true, "sender", [3]].map((mailFrom) => ({ mailFrom })))(
   },
 );
 
-test("retains Redis password and ephemeral intent across strict repeated decoding", () => {
+test("retains Redis credentials and ephemeral intent across strict repeated decoding", () => {
   // Given
-  const input = { type: "redis", password: "a-redis-password", persist: false };
+  const input = { type: "redis", creds: { password: "a-redis-password" }, persist: false };
   const decode = Schema.decodeUnknownSync(ServiceConfig, { onExcessProperty: "error" });
   // When
   const result = decode(decode(input));

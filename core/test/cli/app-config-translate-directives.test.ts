@@ -4,7 +4,7 @@ import { encodeTranslateOutputs } from "../../src/cli/commands/app-config-transl
 
 test.each([
   { services: { web: { routes: [{ hostname: { _tag: "LandofileOverride", value: "web.test" } }] } } },
-  { services: { db: { creds: { user: "only-user" } } } },
+  { services: { db: { creds: { user: "only-user", extra: "nope" } } } },
 ])("translation rejects independently invalid native layers %j", async (fragment) => {
   const encoded: unknown[] = [];
   const result = await Effect.runPromise(

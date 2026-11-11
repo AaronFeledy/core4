@@ -6,7 +6,7 @@ test.each([
   [["services", "x", "environment", "K"], true],
   [["services", "x", "creds", "password"], true],
   [["services", "x", "creds", "rootPassword"], true],
-  [["services", "x", "password"], true],
+  [["services", "x", "password"], false],
   [["tooling", "t", "env", "K"], true],
   [["tooling", "t", "cmds", 0, "env", "K"], true],
   [["toolingDefaults", "env", "K"], true],

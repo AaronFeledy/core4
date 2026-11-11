@@ -82,16 +82,14 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). Both w
 
 Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you don't need it for the site user.
 
-For Postgres answers, use host `database`, port `5432`, user `lando`, and database the app name. The default password is derived per app and `lando info` redacts it. For a new app initialized with `--answer=database=postgres:16`, set explicit local-development credentials in `.lando.yml` before its first `lando start`:
+For Postgres answers, use host `database`, port `5432`, user `lando`, and database the app name. The default password is derived per app and `lando info` redacts it. For a new app initialized with `--answer=database=postgres:16`, set a local-development password in `.lando.yml` before its first `lando start`:
 
 ```yaml
 services:
   database:
     type: postgres:16
     creds:
-      user: lando
       password: drupal-local
-      database: drupal-demo
 ```
 
 Keep the rest of the generated Landofile. After starting and scaffolding, replace the MariaDB install command above with:
@@ -106,7 +104,7 @@ lando drush site:install standard \
 lando drush status
 ```
 
-Match `creds.database` and the URL to your app name. Changing `creds.password` does not reset the password in an existing Postgres volume; keep that database's existing credentials instead. `lando psql` opens its client with the configured credentials.
+Match the database name in the URL to your app name. Changing `creds.password` does not reset the password in an existing Postgres volume; keep that database's existing credentials instead. `lando psql` opens its client with the configured credentials.
 
 ## Log in and clear caches with Drush
 

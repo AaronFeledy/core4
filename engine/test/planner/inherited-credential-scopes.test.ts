@@ -12,7 +12,7 @@ const root = process.cwd();
 const cases = [
   {
     parent: "redis",
-    options: { password: "${secret:INHERITED}" },
+    options: { creds: { password: "${secret:INHERITED}" } },
     native: "REDISCLI_AUTH",
     client: "redis-cli",
     clientEnv: "REDISCLI_AUTH",

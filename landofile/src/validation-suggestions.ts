@@ -50,6 +50,47 @@ const plannerScopeSuggestion = (value: unknown, path: ValidationIssuePath): stri
     : undefined;
 };
 
+const DATABASE_SERVICE_TYPES = ["mysql", "mariadb", "postgres", "mongodb", "mssql"];
+
+/**
+ * Where a service type reads what people write as a service-level `database` or `password`.
+ * A type that reads neither gets no pointer, and the suggestion never repeats the authored value.
+ */
+const SERVICE_KEY_HOMES: Readonly<
+  Record<
+    string,
+    { readonly byType: ReadonlyArray<readonly [string, ReadonlyArray<string>]>; readonly anyType: string }
+  >
+> = {
+  database: {
+    byType: [
+      ["creds.database", DATABASE_SERVICE_TYPES],
+      ["bucket", ["minio"]],
+    ],
+    anyType: "Database services read creds.database, and MinIO reads bucket.",
+  },
+  password: {
+    byType: [["creds.password", [...DATABASE_SERVICE_TYPES, "redis", "phpmyadmin"]]],
+    anyType: "Services that take a password read creds.password.",
+  },
+};
+
+const unwrapOverride = (node: unknown): unknown => (isLandofileOverride(node) ? node.value : node);
+
+const serviceKeyHomeSuggestion = (path: ValidationIssuePath, parsed: unknown): string | undefined => {
+  const homes = path.length === 3 && path[0] === "services" ? SERVICE_KEY_HOMES[String(path[2])] : undefined;
+  if (homes === undefined) return undefined;
+  const key = String(path[2]);
+  const services = unwrapOverride(valueAtPath(parsed, ["services"]));
+  const service = isPlainRecord(services) ? unwrapOverride(services[String(path[1])]) : undefined;
+  const type = isPlainRecord(service) ? unwrapOverride(service.type) : undefined;
+  // A layer may set the key without the type; say where each kind of service reads it.
+  if (typeof type !== "string") return `"${key}" is not a service-level key. ${homes.anyType}`;
+  const typeId = type.split(":", 1)[0] ?? type;
+  const home = homes.byType.find(([, types]) => types.includes(typeId));
+  return home === undefined ? undefined : `Use ${home[0]} instead: "${key}" is not a service-level key.`;
+};
+
 const composeSuggestedFix = (issue: SchemaIssueLeaf): string | undefined => {
   if (issue.path[0] === "services" && issue.path.length > 2) {
     const servicePath = issue.path.slice(2).map(String);
@@ -94,6 +135,7 @@ const suggestionForLeaf = (issue: SchemaIssueLeaf, parsed: unknown): string | un
   switch (issue._tag) {
     case "Unexpected":
       return (
+        serviceKeyHomeSuggestion(path, parsed) ??
         composeSuggestedFix(issue) ??
         issue.suggestion ??
         `Remove the unknown key${key === undefined ? "" : ` "${String(key)}"`}; it is not part of the canonical Landofile schema.`

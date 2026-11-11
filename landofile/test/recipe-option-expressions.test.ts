@@ -144,8 +144,8 @@ describe("recipe option expressions in a loaded Landofile", () => {
     },
     {
       options: "    flag: false",
-      field: 'database: "flag={{ recipe.flag }}"',
-      expected: { database: "flag=false" },
+      field: 'bucket: "flag={{ recipe.flag }}"',
+      expected: { bucket: "flag=false" },
     },
   ])("preserves the concrete result before decoding $field", async ({ options, field, expected }) => {
     // Given

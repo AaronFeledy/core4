@@ -1,3 +1,4 @@
+import { isPublicDefaultCredential } from "./public-default-credentials.ts";
 import { REDACTED } from "./redactor.ts";
 
 export const redactValueWith = (
@@ -39,7 +40,13 @@ export const redactValueWith = (
           // credential material. Keep its type in structured command output.
           try {
             const field = Reflect.get(current, key);
-            output[key] = typeof field === "boolean" ? field : REDACTED;
+            if (typeof field === "boolean") output[key] = field;
+            // A published development default is public only as authored bytes;
+            // the ordinary string path still masks it when it was registered or
+            // resolved from a secret store.
+            else if (typeof field === "string" && isPublicDefaultCredential(field))
+              output[key] = visit(field);
+            else output[key] = REDACTED;
           } catch {
             output[key] = REDACTED;
           }

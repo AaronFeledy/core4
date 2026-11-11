@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 
@@ -158,7 +159,7 @@ describe("@lando/service-lando registration", () => {
         [ServiceName.make("queue")]: { type: "rabbitmq" },
         [ServiceName.make("object-store")]: {
           type: "minio",
-          database: "uploads",
+          bucket: "uploads",
           image: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z",
         },
         [ServiceName.make("aws")]: { type: "localstack" },
@@ -370,7 +371,7 @@ describe("@lando/service-lando registration", () => {
     expect(database.environment).toMatchObject({ ACCEPT_EULA: "Y", MSSQL_PID: "Developer" });
     const saPassword = database.environment.SA_PASSWORD;
     if (typeof saPassword !== "string") throw new Error("default mssql SA_PASSWORD must be literal");
-    expect(saPassword).toStartWith("Lando!");
+    expect(saPassword).toBe(MSSQL_DEFAULT_PASSWORD);
     expect(database.environment.SQLCMDPASSWORD).toBe(saPassword);
     expect(database.environment.LANDO_DB_USER).toBe("sa");
     expect(database.environment.LANDO_DB_PASSWORD).toBe(saPassword);
@@ -448,7 +449,7 @@ describe("@lando/service-lando registration", () => {
         [ServiceName.make("pma")]: {
           type: "phpmyadmin",
           hosts: ["db-a", "db-b"],
-          creds: { user: "pmauser", password: "pmapass", database: "pmadb" },
+          creds: { user: "pmauser", password: "pmapass" },
           certs: false,
         },
       },

@@ -60,7 +60,6 @@ describe("resolveServiceCreds", () => {
       family: "mysql" as const,
       authored: { database: "authored-db" },
       environment: { MYSQL_DATABASE: "env-db" },
-      topLevelDatabase: "top-db",
       defaults: LANDO_DEFAULTS,
     };
 
@@ -70,12 +69,11 @@ describe("resolveServiceCreds", () => {
     );
   });
 
-  test("MYSQL_DATABASE wins over topLevelDatabase", () => {
+  test("MYSQL_DATABASE wins over the default database", () => {
     // Given
     const input = {
       family: "mysql" as const,
       environment: { MYSQL_DATABASE: "env-db" },
-      topLevelDatabase: "top-db",
       defaults: LANDO_DEFAULTS,
     };
 
@@ -84,21 +82,6 @@ describe("resolveServiceCreds", () => {
 
     // Then
     expect(creds.database).toBe("env-db");
-  });
-
-  test("topLevelDatabase wins over default database", () => {
-    // Given
-    const input = {
-      family: "mysql" as const,
-      topLevelDatabase: "top-db",
-      defaults: LANDO_DEFAULTS,
-    };
-
-    // When
-    const creds = resolveServiceCreds(input);
-
-    // Then
-    expect(creds.database).toBe("top-db");
   });
 
   test("default database is used when nothing else is set", () => {
