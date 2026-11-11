@@ -85,7 +85,10 @@ test("an older check does not overwrite a newer one", () => {
     },
   };
   expect(nextPullChecks(current, "key", { ...current.key, checkedAt: 10 })).toBeUndefined();
-  expect(nextPullChecks(current, "key", { ...current.key, checkedAt: 30 })?.key.checkedAt).toBe(30);
+  const updated = nextPullChecks(current, "key", { ...current.key, checkedAt: 30 });
+  const row = updated?.key;
+  if (row === undefined) throw new Error("expected a newer check to be stored");
+  expect(row.checkedAt).toBe(30);
 });
 
 test("doctor overdue rows are the ones past their own window", () => {
