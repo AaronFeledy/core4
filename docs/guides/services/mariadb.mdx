@@ -16,7 +16,7 @@ services:
     type: mariadb
 ```
 
-Set a member under `creds:` when you want an explicit value. A member you leave out keeps its default. By default, the username and password are both `lando`, the database is named after the app, and the root password is generated. `creds.user` is the database username. Container `user:` is not.
+Set a member under `creds:` when you want an explicit value. A member you leave out keeps its default. By default, the username, password, and root password are `lando`, and the database is named after the app. `lando info` prints those published defaults. `creds.user` is the database username. Container `user:` is not.
 
 ```yaml
 services:

@@ -16,7 +16,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const DEFAULT_PASSWORD = "lando-c1b70247946b2297";
+const DEFAULT_PASSWORD = "lando";
 const featureOverrides = new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]);
 
 const serviceConfig = (definition: Record<string, unknown>): ServiceConfig => {

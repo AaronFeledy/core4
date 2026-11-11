@@ -1,4 +1,3 @@
-import { sha256Hex } from "@lando/sdk/digest";
 import { ServiceTypeError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -68,10 +67,7 @@ const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
   },
 ];
 
-const defaultRootPassword = (appId: string, serviceName: string): string =>
-  `lando-${sha256Hex(`${appId}:${serviceName}:root`).slice(0, 24)}`;
-
-const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceConfig): ServiceCreds => {
+const mysqlCredsFor = (appName: string, service: ServiceConfig): ServiceCreds => {
   const authored = service.creds;
   return resolveServiceCreds({
     family: "mysql",
@@ -79,7 +75,7 @@ const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceCon
       user: "lando",
       password: DEFAULT_PASSWORD,
       database: appName,
-      rootPassword: defaultRootPassword(appName, serviceName),
+      rootPassword: DEFAULT_PASSWORD,
     },
     ...(authored === undefined ? {} : { authored }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
@@ -183,7 +179,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
       );
     }
     return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
-      const creds = mysqlCredsFor(dataNameFor(input), input.name, input.service);
+      const creds = mysqlCredsFor(dataNameFor(input), input.service);
       const port = plannedPort(input.service, MYSQL_LISTENER);
       assertListenerConfig(input.service, MYSQL_LISTENER);
       return {
