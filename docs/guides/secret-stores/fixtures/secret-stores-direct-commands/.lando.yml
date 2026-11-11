@@ -1,0 +1,30 @@
+name: secret-direct-commands
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      ASSETS_TOKEN: '${secret:ASSETS_TOKEN}'
+    build:
+      app:
+        - 'curl -fsSL -H "Authorization: Bearer $ASSETS_TOKEN" https://assets.example.com/fonts.tgz | tar -xz -C /app/public'
+tooling:
+  deploy:
+    service: app
+    cmd: "curl -fsS -X POST -H 'Authorization: Bearer ${secret:DEPLOY_TOKEN}' https://deploy.example.com/hooks/secret-commands"
+  ping: "curl -fsS -H 'Authorization: Bearer ${secret:DEPLOY_TOKEN}' https://deploy.example.com/ping"
+  release:
+    service: ":host"
+    vars:
+      NOTES:
+        sh: 'curl -fsS -H "Authorization: Bearer ${secret:DEPLOY_TOKEN}" https://deploy.example.com/notes'
+      BUILD:
+        sh: 'curl -fsS -H "Authorization: Bearer $CI_TOKEN" https://ci.example.com/latest'
+        env:
+          CI_TOKEN: '${secret:CI_TOKEN}'
+    cmds:
+      - 'echo "build {{ vars.BUILD }}"'
+      - cmd: 'curl -fsS -X POST -H "Authorization: Bearer ${secret:DEPLOY_TOKEN}" https://deploy.example.com/release'
+events:
+  post-rebuild:
+    - "curl -fsS -H 'Authorization: Bearer ${secret:DEPLOY_TOKEN}' https://deploy.example.com/rebuilt"

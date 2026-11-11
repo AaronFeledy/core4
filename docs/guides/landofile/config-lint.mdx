@@ -105,12 +105,12 @@ lando app:config:lint --format=json
 JSON output is a stable `ConfigLintResult` for editor integrations:
 
 ```
-{ app, file, valid, violations: [{ rule, reason?, severity, path, message, scopes, source: { file, layer, path }, suggestion?, fix?, line?, column? }] }
+{ app, file, valid, violations: [{ rule, reason?, severity, path, message, scopes, source: { file, layer, path }, suggestion?, line?, column? }] }
 ```
 
 Each finding extends `ValidationIssue` with a stable `rule` and a `severity` of `error` or `warning`. `valid` means there are no error-severity findings; warnings alone leave it true. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it. A `landofile.load` finding also carries `reason`, a stable id for the cause: the failing issue's own rule, such as `unsupported-secret-reference` or `unsupported-expression`, or the failure's error tag, such as `LandofileIncludeError`. Match on `reason` instead of parsing `message`.
 
-Some findings also carry `fix`, a list of edits that resolves the finding: `{ edits: [{ op: "set", path, value }] }`. Apply them in order to `source.file`. `set` creates any missing mappings along `path` and replaces the value there; inside an `override` directive, it edits the wrapped authored value and keeps the directive. A finding has `fix` only when applying it fully resolves the problem, so an editor or agent can apply it without reading `suggestion`. When Lando can't make the edit safely, for example when output redaction would hide part of the command, it leaves `fix` out and `suggestion` says what to change. Never apply a fix if `source.file`, an edit path, or an edit value contains `[redacted]`. Re-lint after each fix before applying another: separate findings can propose conflicting edits to the same binding. Text output prints the same edits under `fix:`.
+Text output prints `suggestion` under `fix:`.
 
 `scopes` lists `fragment`, `effective`, or both: `fragment` means the file is wrong on its own, `effective` means the composed app is. `source.path` is the original authored path, so `working_dir` can be the source of an effective `workingDirectory` finding. Coordinates come only from retained source content; transformed templates and TypeScript don't get guessed YAML coordinates.
 

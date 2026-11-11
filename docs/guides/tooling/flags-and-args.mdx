@@ -211,7 +211,7 @@ tooling:
 
 ## Compute a value with a shell command
 
-A task var is a literal, or an object with an `sh` key that names a command and optional `service` and `sensitive` keys. Lando runs that command once per invocation and substitutes its output wherever the task reads `{{ vars.<name> }}`. This task reads the version out of `package.json` on the host:
+A task var is a literal, or an object with an `sh` key that names a command and optional `service`, `sensitive`, and `env` keys. Lando runs that command once per invocation and substitutes its output wherever the task reads `{{ vars.<name> }}`. This task reads the version out of `package.json` on the host:
 
 ```yaml
 tooling:
@@ -226,7 +226,7 @@ tooling:
 
 With `"version": "1.4.2"` in `package.json`, `lando pkg-version` prints `version 1.4.2`, and `lando pkg-version --format=json` returns it as `result.stdout`.
 
-The command runs where the task runs: `service: ":host"` runs it on the host through Bun Shell, a service name or `:<flag>` runs it inside that container, and no `service` at all runs it in the primary service. It uses the task-level `user` (containers only) and `dir`, but not the task's `env` or the arguments you passed; `env` values commonly derive from vars, so the command cannot see them. Lando runs it after it has validated your flags and args and before any `pre-<task>` event step or task step. Output is captured, never streamed: the value is stdout with its trailing newlines removed, up to 64 KiB. Help never runs it.
+The command runs where the task runs: `service: ":host"` runs it on the host through Bun Shell, a service name or `:<flag>` runs it inside that container, and no `service` at all runs it in the primary service. It uses the task-level `user` (containers only) and `dir`, but not the task's `env` or the arguments you passed; `env` values commonly derive from vars, so the command cannot see them. Give the command its own variables with `env` on the var. Lando runs it after it has validated your flags and args and before any `pre-<task>` event step or task step. Output is captured, never streamed: the value is stdout with its trailing newlines removed, up to 64 KiB. Help never runs it.
 
 Set `service` on an individual var to compute it somewhere else. For example, a task in `web` can read the host's current Git branch:
 
@@ -289,7 +289,7 @@ tooling:
 
 `lando literal` prints `[a$(echo PWNED)b]`. A site inside backticks, a here-document, `$((...))`, or `${...}` cannot be quoted safely, so Lando refuses the task with `ToolingCompileError`. Argv-list `cmd` entries and `env` values receive the value unchanged. Literal vars remain authored command text only when their definitions are independent of invocation data and no caller replaced them. A literal var that reads a flag or another data var, directly or through a helper, stays data through later references.
 
-A few positions cannot read a computed var: another var's definition (including its target) and the task-level `service`, `user`, and `dir`. Lando refuses the task with `ToolingCompileError` when you run it, and `lando app:config:lint` reports the same site as a `landofile.tooling` finding. Use a literal or a declared flag there, and read the computed value in commands or step-level overrides. Any var whose effective target is `:host` runs in Bun Shell, so lint also checks its syntax (`landofile.host-shell` at `tooling.<task>.vars.<name>.sh`) and `lando app:cache:refresh` warns about it. Other computed values appear in output normally; mark sensitive values explicitly or use `${secret:...}` in `env` for secret-store lookup.
+A few positions cannot read a computed var: another var's definition (including its target) and the task-level `service`, `user`, and `dir`. Lando refuses the task with `ToolingCompileError` when you run it, and `lando app:config:lint` reports the same site as a `landofile.tooling` finding. Use a literal or a declared flag there, and read the computed value in commands or step-level overrides. Any var whose effective target is `:host` runs in Bun Shell, so lint also checks its syntax (`landofile.host-shell` at `tooling.<task>.vars.<name>.sh`) and `lando app:cache:refresh` warns about it. Other computed values appear in output normally; mark sensitive values explicitly. For a secret-store lookup, write `${secret:...}` in the var's `sh` command or in its `env`.
 
 `{ default: ... }` and `{ prompt: ... }` are not var forms. Lando rejects them at load with `NotImplementedError`. Write the value directly as `vars.<name>: <value>`; for a value the caller should supply, declare a flag or argument, or compute it with `sh`.
 
