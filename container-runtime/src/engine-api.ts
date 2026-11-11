@@ -26,6 +26,11 @@ export interface EngineHttpRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
+  /**
+   * Ordinary HTTP request body written while a streamed response is read. Mutually exclusive with `body`
+   * and `stdin`; unlike `stdin` it adds no upgrade headers and keeps the response framed and complete.
+   */
+  readonly upload?: AsyncIterable<Uint8Array>;
   /** Called after successful stream response headers arrive, before body bytes are emitted. */
   readonly onResponseHead?: () => void;
 }
