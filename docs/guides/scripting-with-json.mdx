@@ -523,7 +523,8 @@ and `kind` classifies a schema problem as `type`, `value`, `missing`, or
 `unexpected`. Match on those instead of parsing `message`. Some issues also
 carry `fix`, a list of edits that resolves the problem. When `fix` is present,
 apply `fix.edits` in order to the file named by `source.file`. Without it,
-follow `suggestion`. Never apply an edit whose value contains `[redacted]`.
+follow `suggestion`. Skip the fix if its source file, an edit path, or an edit
+value contains `[redacted]`. Re-lint after each fix before applying another.
 [Lint a Landofile](./landofile/config-lint.mdx#print-json) has the full
 contract.
 
