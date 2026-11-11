@@ -82,9 +82,15 @@ For the image phase, Lando resolves every step's user during planning and only e
 
 Lando shows every line a step prints while the step runs, in both phases. In a terminal the latest lines sit under the running step in the task tree. Piped or in CI, each line is printed with the step's id in front. For `build.artifact` steps the lines are the container engine's build output: each instruction, then what its command printed.
 
-Each step that runs also writes its full output to a transcript file under `builds/` in Lando's user data root, `~/.local/share/lando/builds/` on Linux. Secrets Lando knows about are masked as `[redacted]` in the live lines and before the file is written.
+Lando also saves the full output of each step that runs. Print the output of the app's most recent build with `lando logs --build`, and add `--service <name>` to see one service:
 
-A step that already succeeded with the same inputs doesn't run again on the next `lando start`. It is reported as cached and prints nothing new.
+```sh
+lando logs --build
+```
+
+Image build lines are labeled `[build]` and `build.app` lines `[build:<step id>]`. Secrets Lando knows about are masked as `[redacted]` in the live lines and before the output is saved. A live line longer than 512 characters is cut there; the saved output keeps the line, up to 64 KiB.
+
+A step that already succeeded with the same inputs doesn't run again on the next `lando start`. It is reported as cached and prints nothing new. `lando destroy` changes that for `build.app` steps: it removes the app's saved build output and forgets those steps' results, so the next `lando start` runs them again. A built image that still exists is reused, not rebuilt.
 
 The two phases fail differently:
 
@@ -93,7 +99,7 @@ The two phases fail differently:
 | `build.artifact` | Stops the start, along with the other services' image builds | Nothing. No container exists yet |
 | `build.app` | Lets steps that don't depend on the failed one finish, then fails the start with every failed step listed | The app's containers |
 
-Either way the error names the service, repeats the last lines of the step's output, and gives the transcript path. To read it and get going again, see [Recover from a failed build step](./php-build-failures.mdx).
+Either way the error names the service, repeats the last lines of the step's output, and gives the `lando logs --build` command that prints all of it. To read it and get going again, see [Recover from a failed build step](./php-build-failures.mdx).
 
 ## Check what the planner sees
 
@@ -147,6 +153,6 @@ lando app:cache:refresh
 
 ## Next
 
-- Reading a build error and its transcript: [Recover from a failed build step](./php-build-failures.mdx)
+- Reading a build error and the full build output: [Recover from a failed build step](./php-build-failures.mdx)
 - What the bundled scaffold step adds to every `lando` service: [See what lando.boot adds](./lando-boot-scaffold.mdx)
 - Checking a plan without starting services: [Check that your app plans without starting it](../cli/cache-refresh.mdx)

@@ -119,6 +119,26 @@ and `line`, plus `source` and a timestamp in epoch milliseconds when available.
 With `--follow --format=json`, lines arrive as stream frames instead; the final
 result contains `app` but omits `lines` rather than returning an empty array.
 
+## Print build output
+
+Lando saves build step output separately from a service's console, so plain `lando logs` doesn't show it. Add `--build` to print the saved output of the app's most recent build instead of service logs:
+
+```sh
+lando logs --build --tail 3
+```
+
+For an app whose one `build.app` step printed a single line, that is:
+
+```text
+app stdout [build:app:app:authored-app:1]: app build step ok
+```
+
+The label after the service name says which step printed the line. `[build]` is the service's image build, and `[build:<step id>]` is a `build.app` step. `--service` limits the output to one service. `--tail` keeps the last lines of each build step's output, not one total.
+
+`--build` prints what was saved and exits, so it can't be combined with `--follow`, `--since`, or `--source`. Lando rejects those combinations as a usage error with exit code `2`. An app with no saved build output prints one line that tells you to run `lando rebuild`. `lando destroy` removes an app's saved build output.
+
+With `--format=json`, each line's `source` is `build` or `build:<step id>`, and the result carries `"build": true`. To read a failed build with this command, see [Recover from a failed build step](../services/php-build-failures.mdx#read-the-full-build-output).
+
 ## Read a start-failure log tail
 
 When the provider cannot apply a service, Lando tries to capture its console logs for the failure report, including in non-interactive runs. Containers stay in place so you can inspect any available logs afterward with `lando logs -s <service>`. A container that was created but never started may have no logs. The snapshot keeps the last 50 whole lines within 4,000 characters; an oversized line keeps its end.
@@ -157,6 +177,7 @@ Known secrets and credential patterns are redacted before truncation. Unregister
       <Run command="lando logs --help" />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "--service" } }} />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "--source" } }} />
+      <Verify command="lando logs --help" expect={{ stdout: { regex: "--build" } }} />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "aliases on the same pipe share" } }} />
     </Step>
   </Scenario>

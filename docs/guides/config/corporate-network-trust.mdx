@@ -211,7 +211,7 @@ run through the command redaction boundary before they reach a human or a `--for
 
 A proxy URL you inject can still show up in a service's own output, for example when a build step
 prints its environment. Lando masks the username and password inside proxy URLs as `[redacted]` in
-command output, events, and build transcripts. That covers `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`,
+command output, events, and saved build output. That covers `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`,
 and `FTP_PROXY` in service environment and build args, and your host's own proxy variables. The host
 and port stay readable. See [What is masked](../services/php-build-failures.mdx#what-is-masked).
 
