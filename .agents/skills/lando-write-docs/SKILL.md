@@ -33,7 +33,7 @@ Voice: concrete, command-first, little ceremony. Sound like someone who ships La
 
 Any of these fails the page. Rewrite that item. Do not ship.
 
-- Em dash (`—`) or en dash (`–`) in user-facing prose, including ranges (literal glyphs in code spans are fine). Use a comma, period, parentheses, or "to". The Bad specimen in [examples.md](examples.md#bad) illustrates the ban
+- Em dash (`—`) or en dash (`–`) in user-facing prose, including ranges written in words (literal glyphs in code spans are fine). Use a comma, period, parentheses, or "to". An en dash that only joins two identifiers in a table, such as `US-483–US-489`, stays. The Bad specimen in [examples.md](examples.md#bad) illustrates the ban
 - Throat-clearing: "In this guide we will", "In this document we will", "It's important to note", "Let's explore"
 - Marketing adjectives: robust, seamless, leverage, comprehensive, utilize, empower, unlock, cutting-edge, "Simply just easily"
 - Machine-voice filler: delve, journey, landscape, tapestry, "not just X but Y", "Whether you're"
@@ -71,7 +71,7 @@ You, not we. Imperative steps. Contractions in guides.
 
 H1 is the goal or question. First body sentence is the outcome or direct answer, then the minimum context needed to use it. Do not open with implementation machinery unless this is an implementation explanation.
 
-Humor, if already appropriate, is at most one line next to a real command. Do not add decorative analogies, forced friendliness, or jokes. The goal is clarity, not a stylized voice.
+Humor, if already appropriate, is at most one line next to a real command. Do not add decorative analogies, forced friendliness, or jokes. The fail-if list above is this contract's own word list. The goal is clarity, not a stylized voice.
 
 Brand shows up in the writing, not as slogans: easy path, full stack when you need it, plugins without starting over, app-level DX.
 
