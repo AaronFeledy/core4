@@ -88,7 +88,7 @@ export type EventCommandStep = typeof EventCommandStep.Type;
 
 export const EventTaskStep = Schema.Struct({
   cmd: Forbidden,
-  task: Schema.String,
+  task: executionSiteKey(Schema.String, "event-lando-command"),
   command: Forbidden,
   defer: Forbidden,
   for: Forbidden,
@@ -176,7 +176,7 @@ const EventDeferredCmdStep = Schema.Struct({
 
 const EventDeferredTaskStep = Schema.Struct({
   cmd: Forbidden,
-  task: Schema.String,
+  task: executionSiteKey(Schema.String, "event-lando-command"),
   command: Forbidden,
   defer: Schema.Literal(true),
   for: Forbidden,
@@ -217,7 +217,7 @@ const EventForCmdStep = Schema.Struct({
 
 const EventForTaskStep = Schema.Struct({
   cmd: Forbidden,
-  task: Schema.String,
+  task: executionSiteKey(Schema.String, "event-lando-command"),
   command: Forbidden,
   defer: Forbidden,
   for: EventForSelector,

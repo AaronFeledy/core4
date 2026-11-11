@@ -29,6 +29,7 @@ test("execution annotations preserve shared authoring schema artifacts", () => {
 
 const commandKeys = new Set([
   "command",
+  "task",
   "entrypoint",
   "cmd",
   "cmds",
@@ -147,6 +148,7 @@ test.each([
   [["events", "post-start", 0, "cmd"], "event-step", []],
   [["events", "post-start", 0, "defer"], "event-step", []],
   [["events", "post-start", 0, "command"], "event-lando-command", []],
+  [["events", "post-start", 0, "task"], "event-lando-command", []],
   [["events", "post-start", 0, "raw", 0], "event-lando-command", [0]],
   [["events", "post-start", 0, "flags", "token"], "event-lando-command", ["token"]],
   [["events", "post-start", 0, "args", "token"], "event-lando-command", ["token"]],
