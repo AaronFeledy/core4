@@ -6,7 +6,7 @@ import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppAtRoot } from "../../src/operations/destroy.ts";
-import { stopApp, stopAppWithPlan } from "../../src/operations/stop.ts";
+import { haltAppRuntime, stopApp } from "../../src/operations/stop.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { current, fixture, stale, target } from "./legacy-teardown-support.ts";
@@ -46,7 +46,7 @@ test.each([false, true])(
     try {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          return withPlan ? (yield* stopAppWithPlan({}, target)).result : yield* stopApp({}, target);
+          return withPlan ? (yield* haltAppRuntime({}, target)).result : yield* stopApp({}, target);
         }).pipe(Effect.provide(harness.layer)),
       );
       expect(result.app).toBe(current.name);

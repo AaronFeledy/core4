@@ -22,7 +22,7 @@ import {
   FileSyncEngine,
   type FileSyncEngineShape,
   type LandofileService,
-  PathsService,
+  type PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type StateStore,
@@ -33,11 +33,10 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
-import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { acceleratedStartStopError } from "./accelerated-start-disposal.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { recordedSessionInventory } from "./accelerated-start-resume.ts";
+import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent, runAppInitEvents } from "./events.ts";
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
@@ -176,7 +175,6 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   StopAppServices
 > {
   const events = yield* EventService;
-  const paths = yield* PathsService;
   const plan = target.plan;
   const ref = target.app;
   const preflight = prepared ?? (yield* preflightStopApp(target));
@@ -218,11 +216,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     ? stopIdleApp(target, preflight)
     : provider
         .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
-        .pipe(
-          Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
-          Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
-          Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
-        );
+        .pipe(Effect.ensuring(cleanupAppWorkers(ref)));
   const shutdownObservations: readonly ServiceShutdownObservation[] | undefined =
     "shutdownObservations" in destroyOutcome ? destroyOutcome.shutdownObservations : undefined;
 

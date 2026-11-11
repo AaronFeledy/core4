@@ -12,7 +12,10 @@ import type { HostProxyInFlightRequest } from "./transport-handler.ts";
 import type { HostProxySessionPaths } from "./transport-session.ts";
 
 export const cleanupHostProxyRunLandoState = Effect.fnUntraced(
-  function* (app: AppRef, paths?: RootOverrides): Effect.fn.Return<void, never, PrivateFileAccessService> {
+  function* (
+    app: Pick<AppRef, "id" | "root">,
+    paths?: RootOverrides,
+  ): Effect.fn.Return<void, never, PrivateFileAccessService> {
     const privateFileAccess = yield* PrivateFileAccessService;
     const { removeOwnedHostProxyWorkerState } = yield* Effect.promise(() => import("./worker-ownership.ts"));
     yield* removeOwnedHostProxyWorkerState(app, paths, {

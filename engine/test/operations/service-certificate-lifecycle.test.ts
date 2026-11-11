@@ -18,7 +18,7 @@ import {
 } from "../../src/lifecycle/service-certificate-paths.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { stopAppWithPlan } from "../../src/operations/stop.ts";
+import { haltAppRuntime, stopAppForTarget } from "../../src/operations/stop.ts";
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -128,8 +128,8 @@ test.each(["stop", "destroy"] as const)("%s succeeds while the CA cannot issue",
     const target = targetOf(certsPlan);
     const outcome =
       operation === "stop"
-        ? (await Effect.runPromise(provide(stopAppWithPlan({}, target)).pipe(Effect.provide(harness.layer))))
-            .result.outcome
+        ? (await Effect.runPromise(provide(stopAppForTarget({}, target)).pipe(Effect.provide(harness.layer))))
+            .outcome
         : (
             await Effect.runPromise(
               provide(destroyAppForTarget({}, target)).pipe(Effect.provide(harness.layer)),
@@ -200,7 +200,7 @@ test("stop keeps the owner's leaf material", async () => {
     await Bun.write(leaf.certPath, "certificate\n");
     const harness = makeHarness({ plannedApp: certsPlan, appliedPlans: [certsPlan] });
     await Effect.runPromise(
-      provide(stopAppWithPlan({}, targetOf(certsPlan))).pipe(Effect.provide(harness.layer)),
+      provide(haltAppRuntime({}, targetOf(certsPlan))).pipe(Effect.provide(harness.layer)),
     );
     expect(await readdir(ownerDir)).toEqual([basename(leaf.certPath)]);
   });

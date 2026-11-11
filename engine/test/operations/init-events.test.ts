@@ -201,7 +201,7 @@ describe("app initialization lifecycle events", () => {
     expect(preflightIndex).toBeGreaterThan(-1);
     expect(preflightIndex).toBeLessThan(initIndex);
     expect(initIndex).toBeLessThan(preRebuildIndex);
-    expect(source).toContain("stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true })");
+    expect(source).toContain("haltAppRuntime({}, resolvedTarget, { skipInitEvents: true })");
     expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 
@@ -218,7 +218,7 @@ describe("app initialization lifecycle events", () => {
     expect(initCalls).toHaveLength(1);
     expect(preflightIndex).toBeGreaterThan(-1);
     expect(preflightIndex).toBeLessThan(initIndex);
-    expect(source).toContain("stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true })");
+    expect(source).toContain("haltAppRuntime({}, resolvedTarget, { skipInitEvents: true })");
     expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 });

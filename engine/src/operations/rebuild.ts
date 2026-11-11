@@ -62,7 +62,7 @@ import {
 } from "./start-overlays.ts";
 import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
-import { stopAppWithPlan } from "./stop.ts";
+import { haltAppRuntime } from "./stop.ts";
 import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
 import {
   publishPlacementVolumeTransitionNotices,
@@ -259,7 +259,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                 }
               : yield* Effect.gen(function* () {
                   yield* markStartMutation(plan);
-                  yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
+                  yield* haltAppRuntime({}, resolvedTarget, { skipInitEvents: true });
                   yield* managed?.onStopped ?? Effect.void;
                   return yield* startApp(
                     {

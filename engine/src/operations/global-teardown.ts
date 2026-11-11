@@ -247,14 +247,14 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       root: resolved.paths.root,
       app: globalTeardownAppRef(resolved),
     };
-    // The idle stop already withdrew the plan's routes; the receipt carries that so callers do not repeat it.
-    const idle = yield* stopIdleApp(target, yield* preflightStopApp(target, "idle"));
+    yield* stopIdleApp(target, yield* preflightStopApp(target, "idle"));
+    const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromPlan(resolved.evidence.plan));
     return withShutdownObservations({
       changed: true,
       services: [],
       volumesRemoved: false,
       cleanup: "routes" as const,
-      routes: idle.routes,
+      routes: withdrawal.kind,
     });
   }
   const work = removeGlobalResources(resolved, {
