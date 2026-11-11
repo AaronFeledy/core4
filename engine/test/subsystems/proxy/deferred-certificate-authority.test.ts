@@ -33,12 +33,12 @@ describe("deferred proxy certificate authority", () => {
         return {
           id: "test-ca",
           setup: () => Effect.void,
-          root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA }),
+          root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
           issueCert: () =>
             Effect.succeed({
               certificate: TEST_CERTIFICATES.service.certificate,
               privateKey: Redacted.make(TEST_CERTIFICATES.service.privateKey),
-              root: { certificate: TEST_CERTIFICATES.rootA },
+              root: { certificate: TEST_CERTIFICATES.rootA, trusted: true },
             }),
         };
       }),
@@ -60,12 +60,12 @@ describe("deferred proxy certificate authority", () => {
         return {
           id: "test-ca",
           setup: () => Effect.void,
-          root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA }),
+          root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
           issueCert: () =>
             Effect.succeed({
               certificate: TEST_CERTIFICATES.service.certificate,
               privateKey: Redacted.make(TEST_CERTIFICATES.service.privateKey),
-              root: { certificate: TEST_CERTIFICATES.rootA },
+              root: { certificate: TEST_CERTIFICATES.rootA, trusted: true },
             }),
         };
       }),

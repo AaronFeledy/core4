@@ -140,7 +140,7 @@ When mkcert is installed but the local CA is missing, the second line reads `mkc
 lando setup --skip-install-ca
 ```
 
-That installs mkcert and still creates the local CA, but doesn't add it to the system trust store. Apps with `certs: true` start as usual. Browsers will warn on HTTPS until you trust the CA yourself.
+That installs mkcert and still creates the local CA, but doesn't add it to the system trust store. Apps with `certs: true` start as usual. Lando's own URL check trusts that CA, so it does not report the route as unreachable. Start prints one warning instead: browsers will warn until you run `lando setup` without `--skip-install-ca`.
 
 ## Verify
 
@@ -148,6 +148,6 @@ That installs mkcert and still creates the local CA, but doesn't add it to the s
 lando doctor
 ```
 
-Doctor lists `certs` as skipped, with the reason, once a certificate authority is selected. It can't inspect whether mkcert is installed or trusted, so it doesn't claim a pass. A `certs` finding means Lando couldn't select or load a certificate authority; it doesn't tell you mkcert is missing or that host trust is broken. Follow the remediation it prints.
+When this machine trusts the local CA, the certs check passes. When the CA exists but is not in the host trust store, doctor warns and tells you to run `lando setup` without `--skip-install-ca`. When mkcert is missing or the CA was never created, doctor warns with that authority's own remediation. Doctor does not install the CA for you, including with `--fix`. In JSON, `certsTrusted` is `"true"` or `"false"` on the certs check. A finding that Lando couldn't select or load a certificate authority is separate. Follow the remediation it prints.
 
 To check the result end to end, start an app with an HTTPS route and open its URL: a trusted padlock means the CA is installed and trusted.

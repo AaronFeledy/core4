@@ -61,6 +61,7 @@
     "./global-app/runtime": "./src/global-app/runtime.ts",
     "./global-app/service": "./src/global-app/service.ts",
     "./global-app/startup-admission": "./src/global-app/startup-admission.ts",
+    "./http/local-ca-trust": "./src/http/local-ca-trust.ts",
     "./install/owned-executable": "./src/install/owned-executable.ts",
     "./install/record": "./src/install/record.ts",
     "./install/uninstall-discovery": "./src/install/uninstall-discovery.ts",
@@ -277,8 +278,16 @@
     "./testing/state-store": "./src/testing/state-store.ts",
     "./version": "./src/version.ts"
   },
-  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
-  "keywords": ["lando", "engine", "runtime"],
+  "files": [
+    "./src",
+    "./dist",
+    "!./dist/**/*.tsbuildinfo"
+  ],
+  "keywords": [
+    "lando",
+    "engine",
+    "runtime"
+  ],
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
     "@lando/http-client": "workspace:*",

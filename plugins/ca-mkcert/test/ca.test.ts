@@ -192,8 +192,8 @@ describe("mkcert CertificateAuthority issuance", () => {
         // Then: the returned values are the files mkcert wrote, under the root it reports
         expect(issued.certificate).toBe("leaf certificate PEM\n");
         expect(Redacted.value(issued.privateKey)).toBe("leaf key PEM\n");
-        expect(issued.root).toEqual({ certificate: FAKE_ROOT_PEM });
-        expect(await Effect.runPromise(ca.root)).toEqual({ certificate: FAKE_ROOT_PEM });
+        expect(issued.root).toEqual({ certificate: FAKE_ROOT_PEM, trusted: false });
+        expect(await Effect.runPromise(ca.root)).toEqual({ certificate: FAKE_ROOT_PEM, trusted: false });
         const issueCall = issuingCalls(runner).at(-1);
         expect(issueCall?.args.slice(5)).toEqual(["web", "web.app.internal", "localhost", "127.0.0.1"]);
         expect(issueCall?.env?.CAROOT).toBe(harness.caRoot);
