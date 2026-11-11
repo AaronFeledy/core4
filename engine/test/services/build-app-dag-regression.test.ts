@@ -89,10 +89,21 @@ test("blocks failed descendants while independent app siblings continue", async 
     expect(calls.sort()).toEqual(["node:install", "web:prepare"]);
     expect(result.error).toMatchObject({ _tag: "BuildPhaseFailedError", phase: "app" });
     if (result.error._tag !== "BuildPhaseFailedError") throw result.error;
-    expect(result.error.failures.map((failure) => [failure.step.id, failure.summary])).toEqual([
-      ["web:app:prepare", "web:app:prepare failed"],
-      ["web:app:install", "web:app:install blocked by web:app:prepare"],
+    expect(result.error.message).toBe("App build failed: 2 of 3 build steps failed.");
+    expect(result.error.failures.map((failure) => [failure.step.id, failure.message])).toEqual([
+      ["web:app:prepare", "Build step web:app:prepare for service web exited with code 7."],
+      [
+        "web:app:install",
+        "Build step web:app:install for service web did not run: blocked by web:app:prepare.",
+      ],
     ]);
+    // A blocked step never dispatches, so neither its error nor its start advertises a transcript.
+    expect(result.error.failures[1]?.transcriptPath).toBeUndefined();
+    const blockedStart = result.events.find(
+      (event) => event._tag === "task.start" && event.taskId === "web:app:install",
+    );
+    expect(blockedStart?._tag).toBe("task.start");
+    if (blockedStart?._tag === "task.start") expect(blockedStart.transcriptPath).toBeUndefined();
     expect(
       result.events
         .filter((event) => event._tag === "build-step-skip")

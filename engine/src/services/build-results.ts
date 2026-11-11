@@ -4,8 +4,9 @@ import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
 
 // Version 2 records `artifactOrigin`; version 1 entries cannot tell a produced image from an acquired
-// source ref, so they are discarded and rebuilt once.
-const BUILD_RESULTS_VERSION = 2;
+// source ref. Version 3 follows transcript redaction: entries recorded earlier can point at transcripts
+// that were written unredacted, so they are discarded and their steps run once more.
+const BUILD_RESULTS_VERSION = 3;
 const KEEP_COMPLETE = 10;
 const KEEP_FAIL = 5;
 

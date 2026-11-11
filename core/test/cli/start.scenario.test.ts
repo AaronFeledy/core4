@@ -1450,6 +1450,7 @@ describe("lando start", () => {
     const failure = new BuildPhaseFailedError({
       app: { kind: "user", id: plan.id, root: plan.root },
       phase: "app",
+      message: "App build failed: 0 of 0 build steps failed.",
       failures: [],
       remediation: "Inspect the reported app-phase build step failures, fix them, and rebuild.",
     });

@@ -11,7 +11,6 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
@@ -83,13 +82,10 @@ export const makeLayer = (provider: RuntimeProviderShape) => {
       select: () => Effect.succeed(provider),
     }),
   );
-  const redaction = Layer.succeed(
+  // Live registry: values registered by the build's own redaction scope must apply.
+  const redaction = Layer.effect(
     RedactionService,
-    RedactionService.of({
-      ...makeRedactionService(),
-      payloadValues: () => Effect.succeed(() => ({ substring: [], wholeToken: [] })),
-      forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-    }),
+    Effect.sync(() => makeRedactionService()),
   );
   const dependencies = Layer.mergeAll(LandoEventService.layer, paths, registry, stateStoreLayer, redaction);
   return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
