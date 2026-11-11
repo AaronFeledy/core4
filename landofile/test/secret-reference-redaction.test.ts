@@ -10,7 +10,7 @@ import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 const commandFix: ValidationFix = {
   edits: [
     { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
-    { op: "set", path: ["tooling", "deploy", "cmd"], value: "echo Bearer $TOKEN" },
+    { op: "set", path: ["tooling", "deploy", "cmd"], value: 'echo Bearer "$TOKEN"' },
   ],
 };
 const cases: readonly {
@@ -24,9 +24,36 @@ const cases: readonly {
     label: "URL password",
     document: { tooling: { deploy: { cmd: "curl https://user:${secret:TOKEN}@host" } } },
   },
-  { label: "identifier suffix", document: { tooling: { deploy: { cmd: "echo ${secret:TOKEN}suffix" } } } },
-  { label: "digit suffix", document: { tooling: { deploy: { cmd: "echo ${secret:TOKEN}1" } } } },
-  { label: "underscore suffix", document: { tooling: { deploy: { cmd: "echo ${secret:TOKEN}_" } } } },
+  {
+    label: "identifier suffix",
+    document: { tooling: { deploy: { cmd: "echo ${secret:TOKEN}suffix" } } },
+    fix: {
+      edits: [
+        { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
+        { op: "set", path: ["tooling", "deploy", "cmd"], value: 'echo "$TOKEN"suffix' },
+      ],
+    },
+  },
+  {
+    label: "digit suffix",
+    document: { tooling: { deploy: { cmd: "echo ${secret:TOKEN}1" } } },
+    fix: {
+      edits: [
+        { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
+        { op: "set", path: ["tooling", "deploy", "cmd"], value: 'echo "$TOKEN"1' },
+      ],
+    },
+  },
+  {
+    label: "underscore suffix",
+    document: { tooling: { deploy: { cmd: "echo ${secret:TOKEN}_" } } },
+    fix: {
+      edits: [
+        { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
+        { op: "set", path: ["tooling", "deploy", "cmd"], value: 'echo "$TOKEN"_' },
+      ],
+    },
+  },
   { label: "single quotes", document: { tooling: { deploy: { cmd: "echo '${secret:TOKEN}'" } } } },
   { label: "backslash escape", document: { tooling: { deploy: { cmd: "echo \\${secret:TOKEN}" } } } },
   { label: "double-quoted escape", document: { tooling: { deploy: { cmd: 'echo "\\${secret:TOKEN}"' } } } },
@@ -45,7 +72,7 @@ const cases: readonly {
     document: { events: { "post-start": ["echo Bearer ${secret:DEPLOY_TOKEN}"] } },
     fix: {
       edits: [
-        { op: "set", path: ["events", "post-start", 0], value: { cmd: "echo Bearer $DEPLOY_TOKEN" } },
+        { op: "set", path: ["events", "post-start", 0], value: { cmd: 'echo Bearer "$DEPLOY_TOKEN"' } },
         {
           op: "set",
           path: ["events", "post-start", 0, "env", "DEPLOY_TOKEN"],

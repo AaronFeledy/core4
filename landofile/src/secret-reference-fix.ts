@@ -17,6 +17,9 @@ export const secretReferenceFix = (input: {
   readonly shorthand: boolean;
 }): ValidationFix | undefined => {
   if (input.document === undefined) return undefined;
+  // A here-document body and a command substitution each have their own quoting,
+  // which the single-pass tracker below does not follow.
+  if (/<<|\$\(|`/.test(input.value)) return undefined;
   let replacements = 0;
   let cursor = 0;
   let quote: "'" | '"' | undefined;
@@ -36,15 +39,18 @@ export const secretReferenceFix = (input: {
           cursor++;
         }
       }
+      // A container shell splits and globs an unquoted expansion, so an unquoted
+      // reference becomes the quoted form; the closing quote also ends the name.
+      const doubleQuoted = quote === '"';
       if (
         quote === "'" ||
         input.value[offset - 1] === "\\" ||
-        /^[A-Za-z0-9_]/.test(input.value.slice(offset + text.length))
+        (doubleQuoted && /^[A-Za-z0-9_]/.test(input.value.slice(offset + text.length)))
       )
         shellSafe = false;
       cursor = offset + text.length;
       replacements++;
-      return `$${name}`;
+      return doubleQuoted ? `$${name}` : `"$${name}"`;
     },
   );
   const parsed = parseExpressionEither(replacement, {

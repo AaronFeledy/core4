@@ -123,7 +123,7 @@ test("lint retains complete multi-reference fixes with physical source attributi
         edits: [
           { op: "set", path: ["tooling", "deploy", "env", "A"], value: "${secret:A}" },
           { op: "set", path: ["tooling", "deploy", "env", "B"], value: "${secret:B}" },
-          { op: "set", path: ["tooling", "deploy", "cmd"], value: "deploy $A $B" },
+          { op: "set", path: ["tooling", "deploy", "cmd"], value: 'deploy "$A" "$B"' },
         ],
       },
     },

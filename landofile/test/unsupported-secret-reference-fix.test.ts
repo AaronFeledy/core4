@@ -20,7 +20,7 @@ test("fixes every distinct reference together while retaining repeated occurrenc
       edits: [
         { op: "set", path: ["tooling", "deploy", "env", "A"], value: "${secret:A}" },
         { op: "set", path: ["tooling", "deploy", "env", "B"], value: "${secret:B}" },
-        { op: "set", path: source.path, value: "deploy $A $B $A" },
+        { op: "set", path: source.path, value: 'deploy "$A" "$B" "$A"' },
       ],
     },
   });
@@ -39,7 +39,7 @@ test("deduplicates generated names and never binds reserved names", () => {
     { op: "set", path: ["tooling", "deploy", "env", "SECRET_2"], value: "${secret:LANDO_TOKEN}" },
     { op: "set", path: ["tooling", "deploy", "env", "SECRET_3"], value: "${secret:SECRET}" },
     { op: "set", path: ["tooling", "deploy", "env", "SECRET_4"], value: "${secret:db.pass}" },
-    { op: "set", path: source.path, value: "deploy $SECRET $SECRET_2 $SECRET_3 $SECRET_4" },
+    { op: "set", path: source.path, value: 'deploy "$SECRET" "$SECRET_2" "$SECRET_3" "$SECRET_4"' },
   ]);
 });
 
@@ -63,7 +63,7 @@ test("keeps an existing identical binding instead of setting it again", () => {
     references: ["TOKEN"],
     document: { tooling: { deploy: { env: { TOKEN: "${secret:TOKEN}" }, cmd: "echo ${secret:TOKEN}" } } },
   });
-  expect(result.fix).toEqual({ edits: [{ op: "set", path: source.path, value: "echo $TOKEN" }] });
+  expect(result.fix).toEqual({ edits: [{ op: "set", path: source.path, value: 'echo "$TOKEN"' }] });
 });
 
 test("converts event shorthand with separate binding edits", () => {
@@ -77,7 +77,7 @@ test("converts event shorthand with separate binding edits", () => {
   });
   expect(result.fix).toEqual({
     edits: [
-      { op: "set", path, value: { cmd: "echo $TOKEN" } },
+      { op: "set", path, value: { cmd: 'echo "$TOKEN"' } },
       { op: "set", path: [...path, "env", "TOKEN"], value: "${secret:TOKEN}" },
     ],
   });
@@ -89,7 +89,7 @@ test.each([
     fix: {
       edits: [
         { op: "set", path: ["services", "app", "environment", "TOKEN"], value: "${secret:TOKEN}" },
-        { op: "set", path: ["services", "app", "command"], value: "echo $TOKEN" },
+        { op: "set", path: ["services", "app", "command"], value: 'echo "$TOKEN"' },
       ],
     },
   },
@@ -113,7 +113,7 @@ test.each([
     expected: {
       edits: [
         { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
-        { op: "set", path: source.path, value: "echo $${secret:TOKEN} $TOKEN" },
+        { op: "set", path: source.path, value: 'echo $${secret:TOKEN} "$TOKEN"' },
       ],
     },
   },
@@ -122,6 +122,49 @@ test.each([
 ])("only fixes completely reparsable replacements: $value", ({ value, references, expected }) => {
   const result = unsupportedSecretReference({ source, value, references, document: {} });
   expect(result.fix).toEqual(expected);
+});
+
+test.each([
+  {
+    name: "double quotes keep the expansion unquoted",
+    value: 'echo "${secret:TOKEN}"',
+    expected: 'echo "$TOKEN"',
+  },
+  {
+    name: "an unquoted identifier suffix is separated by the added quote",
+    value: "echo pre${secret:TOKEN}post",
+    expected: 'echo pre"$TOKEN"post',
+  },
+  {
+    name: "a quoted identifier suffix still changes the variable",
+    value: 'echo "pre${secret:TOKEN}post"',
+    expected: undefined,
+  },
+  {
+    name: "a here-document body would not expand",
+    value: "cat <<EOF\n${secret:TOKEN}\nEOF",
+    expected: undefined,
+  },
+  {
+    name: "a quoted here-document body stays literal",
+    value: "cat <<'EOF'\n${secret:TOKEN}\nEOF",
+    expected: undefined,
+  },
+  {
+    name: "an indented here-document is still a here-document",
+    value: "cat <<-EOF\n${secret:TOKEN}\nEOF",
+    expected: undefined,
+  },
+  { name: "a here-string expands its own way", value: "cat <<< ${secret:TOKEN}", expected: undefined },
+  {
+    name: "a command substitution restarts quoting",
+    value: 'echo "$(printf %s "${secret:TOKEN}")"',
+    expected: undefined,
+  },
+  { name: "backticks restart quoting", value: 'echo "`printf %s ${secret:TOKEN}`"', expected: undefined },
+])("rewrites only quoting contexts that keep the expansion exact: $name", ({ value, expected }) => {
+  const result = unsupportedSecretReference({ source, value, references: ["TOKEN"], document: {} });
+  expect(result.fix?.edits.at(-1)?.value).toEqual(expected);
 });
 
 test.each([
@@ -167,7 +210,7 @@ test.each([
   expect(result.fix).toEqual({
     edits: [
       { op: "set", path: [...parent, "TOKEN"], value: "${secret:TOKEN}" },
-      { op: "set", path, value: "echo $TOKEN" },
+      { op: "set", path, value: 'echo "$TOKEN"' },
     ],
   });
 });
@@ -216,7 +259,7 @@ test("reads the authored service type and bindings through merge directives", ()
     }),
   });
   expect(result.fix?.edits).toEqual([
-    { op: "set", path: ["services", "app", "command"], value: "echo $TOKEN" },
+    { op: "set", path: ["services", "app", "command"], value: 'echo "$TOKEN"' },
   ]);
 });
 
@@ -230,7 +273,7 @@ test("treats a reset environment as a missing mapping", () => {
   expect(result.fix).toEqual({
     edits: [
       { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
-      { op: "set", path: source.path, value: "echo $TOKEN" },
+      { op: "set", path: source.path, value: 'echo "$TOKEN"' },
     ],
   });
 });
