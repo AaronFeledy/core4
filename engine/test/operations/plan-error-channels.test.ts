@@ -127,6 +127,7 @@ type ExpectedGlobalInstallError =
 
 type ExpectedEnsureGlobalServicesError =
   | import("@lando/sdk/errors").AppDataIdentityError
+  | import("@lando/sdk/errors").CaError
   | AppResolveError
   | DebuggerHostUnavailableError
   | StateStoreError
@@ -253,6 +254,7 @@ describe("Engine plan-carrying error channels", () => {
     assertType<
       Equal<
         EnsureGlobalServicesError,
+        | import("@lando/sdk/errors").CaError
         | DebuggerHostUnavailableError
         | ServiceNotReadyError
         | LoadGlobalPlanError

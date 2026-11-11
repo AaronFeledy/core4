@@ -5,6 +5,7 @@ import { DateTime, Effect, Schema } from "effect";
 
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
+import { requireSelectableGlobalRouter } from "@lando/engine/operations/global-consumer-admission";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import type {
   DebuggerHostUnavailableError,
@@ -15,6 +16,7 @@ import type {
   PluginManifestError,
   ProxyApplyError,
   ProxyError,
+  ProxySetupError,
   RouterWatcherError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
@@ -56,6 +58,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 
 export type GlobalRebuildError =
+  | import("@lando/sdk/errors").CaError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>
   | ServiceNotReadyError
   | GlobalAppError
@@ -69,6 +72,7 @@ export type GlobalRebuildError =
   | ProxyApplyError
   | ProviderError
   | ProxyError
+  | ProxySetupError
   | RouterWatcherError
   | SecretNotFoundError
   | SecretStoreUnavailableError
@@ -98,6 +102,10 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
       yield* revalidateAppliedGlobalRouterStartup(loaded.plan);
       return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
     }
+    yield* requireSelectableGlobalRouter(
+      loaded.plan,
+      new Set(services.map((service) => String(service.name))),
+    );
     const preparedOverlays = yield* prepareDebuggerOverlay(loaded.plan);
 
     const provider = yield* selectPreparedProvider(loaded.plan);

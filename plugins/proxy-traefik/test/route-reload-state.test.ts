@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createPublicKey } from "node:crypto";
 
 import { certificatePairIsCurrent } from "../src/route-reload-state.ts";
 
@@ -68,6 +69,14 @@ describe("certificatePairIsCurrent", () => {
     expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.lndo.site"], now)).toBe(false);
     // *-demo.lndo.site maps to *.lndo.site, which this leaf does not carry.
     expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*-demo.lndo.site"], now)).toBe(false);
+  });
+
+  test("rejects a public key passed as the private key", () => {
+    // Given: the public half of the certificate's own key pair
+    const publicKeyPem = createPublicKey(privateKeyPem).export({ type: "spki", format: "pem" }).toString();
+    // Then
+    expect(certificatePairIsCurrent(certificatePem, publicKeyPem, ["demo.lndo.site"], now)).toBe(false);
+    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["demo.lndo.site"], now)).toBe(true);
   });
 
   test("rejects an expired certificate", () => {

@@ -32,6 +32,7 @@ import {
 } from "../global-app/resolution.ts";
 import { runtimeOnline } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
+import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import { readGlobalConsumerReservations } from "./global-consumer-lease.ts";
 import {
   GlobalConsumerProtectionError,
@@ -361,7 +362,9 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           ...(placement._tag === "Success"
             ? { providerId: placement.success.realized ?? placement.success.desired }
             : {}),
-          routerId: (yield* RouterService).id,
+          routerId: yield* Effect.map(RouterService, (router) =>
+            unavailableRouterReason(router) === undefined ? router.id : undefined,
+          ),
         });
   const reservations =
     operation === "enable" ? undefined : yield* Effect.result(readGlobalConsumerReservations(ids));

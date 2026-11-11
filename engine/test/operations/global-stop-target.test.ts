@@ -7,9 +7,11 @@ import { EventService, FileSystem, GlobalAppService } from "@lando/sdk/services"
 import { Effect } from "effect";
 import { readGlobalReconciliation, recordGlobalReconciliation } from "../../src/global-app/reconciliation.ts";
 import { makeGlobalAppServiceForRoot, renderGlobalDist } from "../../src/global-app/service.ts";
+import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { appMutationLockKey } from "../../src/operations/app-mutation-lock.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { layerSelected } from "../../src/subsystems/proxy/registry.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 
 test.each([false, true])("targets discovery with route failure=%s", async (routeFailure) => {
@@ -72,6 +74,109 @@ test.each([false, true])("targets discovery with route failure=%s", async (route
     expect(await readdir(configuredData)).not.toContain(
       `.lando-global-${appMutationLockKey("global", join(configuredData, "global"))}`,
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  { routers: "unselectable" as const, withdrawn: true },
+  { routers: "uninstalled" as const, withdrawn: false },
+])("targets discovery with no selectable router and $routers routers", async ({ routers, withdrawn }) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-global-stop-target-unavailable-")));
+  try {
+    // Given: a discovered global root, a different configured root, and no selectable router,
+    // bootstrapped against the configured root.
+    const actualData = join(root, "actual");
+    const configuredData = join(root, "configured");
+    await mkdir(actualData);
+    await mkdir(configuredData);
+    const actualRoot = AbsolutePath.make(join(actualData, "global"));
+    const plan = globalPlanAt(actualRoot);
+    const configured = await globalTeardownHarness(configuredData, { plan, routers });
+    const actual = await globalTeardownHarness(actualData);
+    const pending = [
+      { phase: "containers" as const, services: ["ssh-agent"], message: "Remove containers." },
+      { phase: "routes" as const, services: ["ssh-agent"], message: "Withdraw routes." },
+    ] as const;
+    await Effect.runPromise(
+      recordGlobalReconciliation({
+        revision: 7,
+        contributions: ["ssh-agent"],
+        servicesRemoved: [],
+        pending,
+      }).pipe(Effect.provide(actual.layer)),
+    );
+
+    // When
+    const result = await Effect.runPromise(
+      globalStop({ target: { root: actualRoot, providerId: ProviderId.make("lando") } }).pipe(
+        Effect.provide(layerSelected),
+        Effect.provide(configured.layer),
+      ),
+    );
+
+    // Then: an installed router withdraws the discovered root's routes and cleanup proof is recorded;
+    // with none installed, withdrawal is skipped with a warning and routes stay pending.
+    expect(result.outcome).toBe("stopped");
+    expect(configured.destroyed).toEqual([plan]);
+    expect(configured.builtRoots).toEqual(withdrawn ? [actualRoot] : []);
+    expect(configured.routeRoots).toEqual(withdrawn ? [actualRoot] : []);
+    expect(configured.routeOwners).toEqual(withdrawn ? [routeOwnerFromPlan(plan)] : []);
+    expect(configured.calls).toEqual([
+      "pre-global-stop",
+      "destroy",
+      withdrawn ? "removeRoutes" : "message.warn",
+      "post-global-stop",
+    ]);
+    const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(actual.layer)));
+    expect(receipt.pending).toEqual(withdrawn ? [] : pending);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rebinds a router selected at bootstrap to the discovered root", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-global-stop-target-selected-")));
+  try {
+    // Given: a discovered global root, a different configured root, and a selectable router
+    // bootstrapped against the configured root.
+    const actualData = join(root, "actual");
+    const configuredData = join(root, "configured");
+    await mkdir(actualData);
+    await mkdir(configuredData);
+    const actualRoot = AbsolutePath.make(join(actualData, "global"));
+    const plan = globalPlanAt(actualRoot);
+    const configured = await globalTeardownHarness(configuredData, { plan });
+    const actual = await globalTeardownHarness(actualData);
+    const pending = [
+      { phase: "containers" as const, services: ["ssh-agent"], message: "Remove containers." },
+      { phase: "routes" as const, services: ["ssh-agent"], message: "Withdraw routes." },
+      { phase: "generation" as const, services: [], message: "Regenerate configuration." },
+    ] as const;
+    await Effect.runPromise(
+      recordGlobalReconciliation({
+        revision: 7,
+        contributions: ["ssh-agent"],
+        servicesRemoved: [],
+        pending,
+      }).pipe(Effect.provide(actual.layer)),
+    );
+
+    // When
+    await Effect.runPromise(
+      globalStop({ target: { root: actualRoot, providerId: ProviderId.make("lando") } }).pipe(
+        Effect.provide(layerSelected),
+        Effect.provide(configured.layer),
+      ),
+    );
+
+    // Then: the router that withdraws was built for the discovered root, and only its routes are proven clean.
+    expect(configured.routeRoots).toEqual([actualRoot]);
+    expect(configured.builtRoots).toEqual([join(configuredData, "global"), actualRoot]);
+    expect(configured.routeOwners).toEqual([routeOwnerFromPlan(plan)]);
+    const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(actual.layer)));
+    expect(receipt.pending).toEqual([pending[2]]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

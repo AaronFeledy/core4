@@ -796,10 +796,8 @@ describe("lando destroy", () => {
     await runDestroyCli(["-y"], harness, io, "plain");
 
     // Then
-    expect(io.stderr()).toContain(
-      "Proxy service is unavailable; destroying test-destroy without route cleanup.",
-    );
-    expect(io.stdout()).not.toContain("Proxy service is unavailable");
+    expect(io.stderr()).toMatch(/test-destroy.*not withdrawn/);
+    expect(io.stdout()).not.toContain("not withdrawn");
   });
 
   test("paints a real destroy task tree through the native destroy spec in plain mode", async () => {
@@ -874,12 +872,12 @@ describe("lando destroy", () => {
 
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.routeRemovals).toEqual([]);
-    expect(harness.publishedEvents).toContainEqual(
+    expect(harness.publishedEvents.filter((event) => event._tag === "message.warn")).toEqual([
       expect.objectContaining({
         _tag: "message.warn",
-        body: "Proxy service is unavailable; destroying test-destroy without route cleanup.",
+        body: expect.stringMatching(/test-destroy.*not withdrawn/),
       }),
-    );
+    ]);
   });
 
   test("removes routes when provider destroy fails and reports both failures", async () => {

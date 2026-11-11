@@ -41,6 +41,7 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
@@ -53,7 +54,7 @@ import { collectPlanConnections, startedServices } from "./connection-collector.
 import { claimAppDataIdentity, claimDataIdentityBeforeRetirement } from "./data-identity-claim.ts";
 import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
-import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
+import { requireSelectableRouter, withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
@@ -142,9 +143,14 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       ] as const;
     }),
   );
+  // Stamped before the recreate preflight, so changed certificate material is rejected
+  // while every selected service is still running.
   const runtimePlan = yield* retainStartOverlays(
     {
-      plan: { ...selectedPlan, services: Object.fromEntries(projectedServices) },
+      plan: yield* prepareServiceCertificates({
+        ...selectedPlan,
+        services: Object.fromEntries(projectedServices),
+      }),
       app: target.app,
     },
     preparedOverlays,
@@ -294,6 +300,8 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         // FIRST under root lock: reconcile before overlays, placement, retirement, or mutation.
         const resolvedTarget = yield* reconcileAppDataIdentity(initialTarget);
         const plan = resolvedTarget.plan;
+        // Refuse a routed restart without a selectable router before stopping or starting anything.
+        yield* requireSelectableRouter(plan);
         const scoped = options.services !== undefined && options.services.length > 0;
         const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
         const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);

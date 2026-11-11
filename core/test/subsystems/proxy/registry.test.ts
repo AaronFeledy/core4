@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Effect, Layer, Redacted, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
@@ -22,6 +22,7 @@ import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
 } from "@lando/engine/plugins/certificate-authority-resolver";
+import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";
 import {
   type RouterServiceRegistration,
@@ -275,7 +276,13 @@ describe("RouterService registry selection", () => {
         return {
           id: "test-ca",
           setup: () => Effect.void,
-          issueCert: () => Effect.succeed({ certPath: "/cert", keyPath: "/key", caPath: "/ca" }),
+          root: Effect.succeed({ certificate: "ca" }),
+          issueCert: () =>
+            Effect.succeed({
+              certificate: "cert",
+              privateKey: Redacted.make("key"),
+              root: { certificate: "ca" },
+            }),
         };
       }),
     };
@@ -308,7 +315,13 @@ describe("RouterService registry selection", () => {
         return {
           id: "unused-ca",
           setup: () => Effect.void,
-          issueCert: () => Effect.succeed({ certPath: "/cert", keyPath: "/key", caPath: "/ca" }),
+          root: Effect.succeed({ certificate: "ca" }),
+          issueCert: () =>
+            Effect.succeed({
+              certificate: "cert",
+              privateKey: Redacted.make("key"),
+              root: { certificate: "ca" },
+            }),
         };
       }),
     };
@@ -335,5 +348,68 @@ describe("RouterService registry selection", () => {
     // Then
     expect(selected.id).toBe("unavailable");
     expect(resolutions).toBe(0);
+  });
+
+  test.each([
+    {
+      name: "with other routers installed",
+      registrations: [registration("traefik", { platform: ["linux"] })],
+      removed: Result.succeed(undefined),
+      proxyId: "missing",
+    },
+    {
+      name: "with no routers installed",
+      registrations: [],
+      removed: undefined,
+      proxyId: "unavailable",
+    },
+  ])("#2138 a missing configured router $name builds an unavailable router", async (row) => {
+    // Given: config names a router that no installed plugin contributes.
+    const registry = makeRouterServiceRegistry({
+      registrations: row.registrations,
+      configured: Effect.succeed("missing"),
+      platform: "linux",
+    });
+    const owner = { id: AppId.make("demo"), ownerKey: appIdentityKey("owner", "/apps/demo") };
+    const resolver: CertificateAuthorityResolverShape = {
+      resolve: Effect.die("An unavailable router must not resolve a certificate authority."),
+    };
+
+    // When: the runtime router layer is built and exercised.
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const router = yield* buildSelectedProxy(registry, resolver);
+          return {
+            id: router.id,
+            reason: unavailableRouterReason(router)?.proxyId,
+            setup: yield* Effect.scoped(router.setup({ defaultDomain: "lndo.site", router: {} })).pipe(
+              Effect.result,
+            ),
+            apply: yield* router.applyRoutes([], owner).pipe(Effect.result),
+            remove: yield* router.removeRoutes(owner).pipe(Effect.result),
+            status: (yield* router.status).state,
+            observed: (yield* router.observeRoutes(owner, [])).observation.status,
+            stop: yield* router.stop.pipe(Effect.result),
+          };
+        }),
+      ),
+    );
+
+    // Then: building succeeds; publication fails with the selection reason, and so does withdrawal
+    // when no router is installed; observation stays soft.
+    expect(result).toEqual({
+      id: "unavailable",
+      reason: row.proxyId,
+      setup: Result.fail(expect.objectContaining({ _tag: "ProxySetupError", proxyId: row.proxyId })),
+      apply: Result.fail(
+        expect.objectContaining({ _tag: "ProxyApplyError", proxyId: row.proxyId, app: "demo" }),
+      ),
+      remove:
+        row.removed ?? Result.fail(expect.objectContaining({ _tag: "ProxyError", proxyId: row.proxyId })),
+      status: "stopped",
+      observed: "unknown",
+      stop: Result.succeed(undefined),
+    });
   });
 });

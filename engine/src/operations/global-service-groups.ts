@@ -2,6 +2,7 @@ import { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
@@ -81,12 +82,14 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
         );
         const result = yield* Effect.result(
           Effect.gen(function* () {
-            const builtPlan = yield* build({
-              ...plan,
-              services: Object.fromEntries(
-                Object.entries(plan.services).filter(([, service]) => names.has(service.name)),
-              ),
-            });
+            const builtPlan = yield* prepareServiceCertificates(
+              yield* build({
+                ...plan,
+                services: Object.fromEntries(
+                  Object.entries(plan.services).filter(([, service]) => names.has(service.name)),
+                ),
+              }),
+            );
             if (apply.beforeApply !== undefined) yield* apply.beforeApply;
             const removalIds = removals.map(({ observation }) => String(observation.service));
             const candidateRecordedPlan =

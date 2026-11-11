@@ -26,6 +26,7 @@ import {
   ProviderId,
   ServiceName,
   type VolumeInfo,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
@@ -43,6 +44,10 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import {
+  serviceCertificatePaths,
+  serviceCertificatesOwnerDir,
+} from "../../src/lifecycle/service-certificate-paths.ts";
 import { beginOrResumeAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import {
   teardownDesiredOrUnchanged,
@@ -1229,6 +1234,48 @@ describe("applied-state teardown", () => {
 
         expect(result.outcome).toBe("unchanged");
         expect(harness.destroyCalls).toEqual([]);
+      });
+    },
+  );
+
+  test.each([
+    ["unscoped", false],
+    ["provider-scoped", true],
+  ] as const)(
+    "%s destroy with only leftover leaf certificates reports unchanged without provider calls",
+    async (_label, scoped) => {
+      await withTempRoot(async (root) => {
+        // Given: a first start failed after certificate preparation, so only the leaf directory exists.
+        const certsDir = makeLandoPaths({
+          userDataRoot: isolatedDataRoot,
+          userCacheRoot: join(isolatedDataRoot, "cache"),
+          userConfRoot: join(isolatedDataRoot, "conf"),
+          systemPluginRoot: join(isolatedDataRoot, "sys"),
+          env: {},
+          platform: "linux",
+        }).certsDir;
+        const ownerKey = appIdentityKey("owner", root);
+        const ownerDir = serviceCertificatesOwnerDir(certsDir, ownerKey);
+        const { certPath } = serviceCertificatePaths(certsDir, ownerKey, "web");
+        await Bun.write(certPath, "certificate\n");
+        const harness = makeLayer({});
+
+        try {
+          // When
+          const result = await Effect.runPromise(
+            withResolvedCwd(root, destroyApp(scoped ? { providerId } : {})).pipe(
+              Effect.provide(harness.layer),
+            ),
+          );
+
+          // Then: nothing is torn down, and only an unscoped destroy removes the leaf directory.
+          expect(result.outcome).toBe("unchanged");
+          expect(harness.mutationOrder).toEqual([]);
+          expect(harness.listFilters).toEqual([]);
+          expect(await Bun.file(certPath).exists()).toBe(scoped);
+        } finally {
+          await rm(ownerDir, { recursive: true, force: true });
+        }
       });
     },
   );

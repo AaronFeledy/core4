@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
+
+import { makeUnavailableRouter } from "@lando/engine/subsystems/proxy/api";
+import { ProxyError, ProxySetupError } from "@lando/sdk/errors";
 
 import type { ProxyConfig } from "@lando/sdk/schema";
 import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
@@ -63,4 +66,28 @@ test("preserves interactive consent when setup has no approval flags", async () 
   expect(configs).toHaveLength(1);
   expect(configs[0]).not.toHaveProperty("autoApprove");
   expect(approvals).toEqual([{ intent: "configure", autoApprove: false, reacquirePorts: true }]);
+});
+
+test("#2138 reports the router selection failure when no router can be selected", async () => {
+  // Given: a runtime whose configured router is not installed.
+  const reason = new ProxyError({
+    message: "Router service missing is not installed.",
+    proxyId: "missing",
+    remediation: "Install a RouterService plugin or configure `defaultRouterService` to an installed id.",
+  });
+
+  // When: setup runs its router step.
+  const result = await Effect.runPromise(
+    runProxySetupStep({ flags: {} }, makeSetupReadinessRecorder(undefined, "lando")).pipe(
+      Effect.provideService(RouterService, makeUnavailableRouter(reason)),
+      Effect.result,
+    ),
+  );
+
+  // Then: setup fails with the selection message and its remediation.
+  expect(result).toEqual(
+    Result.fail(
+      new ProxySetupError({ message: reason.message, proxyId: "missing", remediation: reason.remediation }),
+    ),
+  );
 });

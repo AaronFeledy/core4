@@ -33,7 +33,7 @@ export const SETUP_BUILTIN_FLAGS = {
     default: false,
   }),
   "skip-install-ca": Flags.boolean({
-    description: "Skip installing certificate authority trust on the host.",
+    description: "Create the local certificate authority without adding it to the host trust store.",
     default: false,
   }),
   "skip-shell-integration": Flags.boolean({

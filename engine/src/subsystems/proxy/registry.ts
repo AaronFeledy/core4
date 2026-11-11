@@ -22,8 +22,10 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { bundledPluginModules } from "../../composition.ts";
 import { type GlobalMutationServices, withGlobalMutation } from "../../global-app/mutation.ts";
+import { runAllAndMergeFailures } from "../../lifecycle/failure-compensation.ts";
 import { makePublishRender } from "../../lifecycle/publish-render.ts";
 import { indexContributions } from "../../plugins/capability-registry.ts";
+import type { CertificateAuthorityResolver } from "../../plugins/certificate-authority-resolver.ts";
 import { makeLandoPluginContext } from "../../plugins/context.ts";
 import * as UnavailableRouterService from "./api.ts";
 import * as DeferredCertificateAuthority from "./deferred-certificate-authority.ts";
@@ -34,6 +36,8 @@ export type RouterServiceLayer = Layer.Layer<
   ProxyError,
   CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
+
+type InstalledRouterServices = CertificateAuthorityResolver | FileSystem | GlobalAppService | PathsService;
 
 export interface RouterServiceRegistration {
   readonly id: string;
@@ -179,49 +183,78 @@ const registrationsFromModules = Effect.fnUntraced(function* (
   });
 });
 
+const layerInstalled = (selected: RouterServiceRegistration) =>
+  Effect.map(Effect.context<GlobalMutationServices>(), (captured) =>
+    Layer.effect(
+      RouterService,
+      Effect.gen(function* () {
+        const router = yield* RouterService;
+        return RouterService.of({
+          ...router,
+          // Router plugins may hold a route lock while ensuring global services.
+          // Acquire the global lock first, as explicit global lifecycle commands do.
+          setup: Effect.fn("RouterService.setupWithGlobalMutation")((config, options) =>
+            withGlobalMutation(router.setup(config, options)).pipe(
+              Effect.provide(
+                Context.pick(GlobalAppService, PathsService, StateStore, PrivateFileAccessService)(captured),
+              ),
+              Effect.catchTag("GlobalAppError", (cause) =>
+                Effect.fail(
+                  new ProxySetupError({
+                    proxyId: router.id,
+                    message: "Unable to coordinate router setup with global service changes.",
+                    remediation: cause.remediation,
+                    cause,
+                  }),
+                ),
+              ),
+            ),
+          ),
+        });
+      }),
+    ).pipe(Layer.provide(selected.layer.pipe(Layer.provide(DeferredCertificateAuthority.layer)))),
+  );
+
+/**
+ * Withdraw an owner's routes through every installed router. Registrations are built only when a
+ * withdrawal runs, so a broken router that is not selected cannot fail bootstrap. Every router is
+ * attempted; the withdrawal fails when any of them could not be built or could not withdraw.
+ */
+const withdrawThroughInstalled = (registry: RouterServiceRegistryShape, ids: ReadonlyArray<string>) =>
+  Effect.map(
+    Effect.context<InstalledRouterServices>(),
+    (captured): UnavailableRouterService.UnavailableRouterWithdrawal =>
+      (owner) =>
+        runAllAndMergeFailures(
+          ids.map((id) =>
+            registry.select({ explicit: id }).pipe(
+              Effect.flatMap((registration) =>
+                Layer.build(registration.layer.pipe(Layer.provide(DeferredCertificateAuthority.layer))),
+              ),
+              Effect.flatMap((context) => Context.get(context, RouterService).removeRoutes(owner)),
+              Effect.scoped,
+            ),
+          ),
+        ).pipe(Effect.provide(captured)),
+  );
+
+/**
+ * Only selection failures become unavailable routers; selected plugin build failures still
+ * fail bootstrap.
+ */
 export const layerSelected = Layer.unwrap(
   Effect.flatMap(RouterServiceRegistry, (registry) =>
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0
         ? Effect.succeed(UnavailableRouterService.layerUnavailable)
         : registry.select().pipe(
-            Effect.flatMap((selected) =>
-              Effect.map(Effect.context<GlobalMutationServices>(), (captured) =>
-                Layer.effect(
-                  RouterService,
-                  Effect.gen(function* () {
-                    const router = yield* RouterService;
-                    return RouterService.of({
-                      ...router,
-                      // Router plugins may hold a route lock while ensuring global services.
-                      // Acquire the global lock first, as explicit global lifecycle commands do.
-                      setup: Effect.fn("RouterService.setupWithGlobalMutation")((config, options) =>
-                        withGlobalMutation(router.setup(config, options)).pipe(
-                          Effect.provide(
-                            Context.pick(
-                              GlobalAppService,
-                              PathsService,
-                              StateStore,
-                              PrivateFileAccessService,
-                            )(captured),
-                          ),
-                          Effect.catchTag("GlobalAppError", (cause) =>
-                            Effect.fail(
-                              new ProxySetupError({
-                                proxyId: router.id,
-                                message: "Unable to coordinate router setup with global service changes.",
-                                remediation: cause.remediation,
-                                cause,
-                              }),
-                            ),
-                          ),
-                        ),
-                      ),
-                    });
-                  }),
-                ).pipe(Layer.provide(selected.layer.pipe(Layer.provide(DeferredCertificateAuthority.layer)))),
-              ),
-            ),
+            Effect.matchEffect({
+              onFailure: (reason) =>
+                Effect.map(withdrawThroughInstalled(registry, ids), (withdraw) =>
+                  UnavailableRouterService.layerUnavailableFor(reason, withdraw),
+                ),
+              onSuccess: layerInstalled,
+            }),
           ),
     ),
   ),

@@ -18,6 +18,7 @@ import type {
   AppResolveError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
+  CaError,
   CacheError,
   CommandAliasConflictError,
   DebuggerHostUnavailableError,
@@ -236,6 +237,7 @@ export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError
 export type StartAppError =
   | AppPlacementError
   | AppResolveError
+  | CaError
   | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError

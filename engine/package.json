@@ -68,6 +68,7 @@
     "./landofile/command-warnings": "./src/landofile/command-warnings.ts",
     "./lifecycle/events": "./src/lifecycle/events.ts",
     "./lifecycle/schema": "./src/lifecycle/schema.ts",
+    "./lifecycle/service-certificates": "./src/lifecycle/service-certificates.ts",
     "./lifecycle/startup-completion": "./src/lifecycle/startup-completion.ts",
     "./lifecycle/subscriber-config": "./src/lifecycle/subscriber-config.ts",
     "./lifecycle/subscriber-index": "./src/lifecycle/subscriber-index.ts",

@@ -1640,6 +1640,15 @@
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
+    "docs/guides/phpmyadmin/fixtures/phpmyadmin-demo": {
+      "before": {
+        "digest": "ac8ba6c81a9d56b47f54cf5c3d4c87f24e252ea4d71f516629f772f1c47fe7ca"
+      },
+      "after": {
+        "digest": "8cefe741b67af3abf128502c5e69fbf2af9514ad524f8dd24700656c7b1ed03d"
+      },
+      "reason": "Planning no longer contacts a certificate authority, so a guide app plans without one. The guide fixture dropped its workaround-only certs: false."
+    },
     "docs/guides/postgres-pgvector/fixtures/pgvector-demo": {
       "before": {
         "digest": "0ebf4df0f481601fa8e74c0f68e66c0a352e0e6d39f9e6cf9caf8af89416e25e"
@@ -1696,6 +1705,15 @@
         "digest": "40a6b4a9e3e779d555c8be3bf18d0cd22543242a2d7499acb425372beb37e48e"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/varnish/fixtures/varnish-unknown-backend": {
+      "before": {
+        "digest": "8827f31b0a039e240264992e1edba873a77eee6806d3c8ea86a36d6de45166f7"
+      },
+      "after": {
+        "digest": "1c0bcc63ed7647955c92328584a52ba3f8ec0536295b5fa8271b6a8460a4c8da"
+      },
+      "reason": "Planning no longer contacts a certificate authority, so a guide app plans without one. The guide fixture dropped its workaround-only certs: false."
     },
     "docs/guides/xhprof-xhgui/fixtures/xhprof-demo": {
       "before": {
