@@ -173,9 +173,11 @@ the merged config and in the plan, the same as one written in `.lando.yml`. A ba
 1Password store. Lando reads the store only when it creates the container or
 runs a tooling command that needs the value; `lando app:config` shows the
 reference as a typed descriptor and never reads a store. A reference you write
-in `build.args` or a build script fails loading with `LandofileValidationError`;
-[secret stores](../config/secret-stores.mdx#where-references-resolve) lists the
-sites that accept one.
+anywhere else, such as a `build.args` value or the text of a command, fails
+loading with `LandofileValidationError`, and the error says what to write
+instead. For a command or a `build.app` step, bind the secret in the service
+`environment` and read `$NAME`; see
+[secret stores](../config/secret-stores.mdx#use-a-secret-in-a-command-or-build).
 
 No profile is loaded automatically. Opting in trusts its build and tooling
 commands, not just its environment values. Profiles must use `.yml` or `.yaml`;
