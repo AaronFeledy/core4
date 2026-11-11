@@ -111,41 +111,41 @@ export const acquireReferencedArtifact = Effect.fnUntraced(function* <A, E>(inpu
   readonly onChecked: Effect.Effect<void, unknown>;
   readonly onFallback: (error: E) => Effect.Effect<void, unknown>;
 }) {
-    if (!input.forced && input.refreshAfterMs === undefined) return yield* input.pull("missing");
+  if (!input.forced && input.refreshAfterMs === undefined) return yield* input.pull("missing");
 
-    const refreshed = Effect.fnUntraced(function* (fallback?: A) {
-        const pulled = yield* Effect.result(input.pull("always"));
-        if (Result.isSuccess(pulled)) {
-          yield* input.onChecked.pipe(Effect.catch(() => Effect.void));
-          return pulled.success;
-        }
-        if (fallback !== undefined) {
-          yield* input.onFallback(pulled.failure).pipe(Effect.catch(() => Effect.void));
-          return fallback;
-        }
-        const local = yield* Effect.result(input.pull("never"));
-        if (Result.isSuccess(local)) {
-          yield* input.onFallback(pulled.failure).pipe(Effect.catch(() => Effect.void));
-          return local.success;
-        }
-        return yield* Effect.fail(pulled.failure);
-    });
-
-    if (input.forced) return yield* refreshed();
-
-    const local = yield* Effect.result(input.pull("never"));
-    if (Result.isFailure(local)) {
-      const pulled = yield* input.pull("missing");
+  const refreshed = Effect.fnUntraced(function* (fallback?: A) {
+    const pulled = yield* Effect.result(input.pull("always"));
+    if (Result.isSuccess(pulled)) {
       yield* input.onChecked.pipe(Effect.catch(() => Effect.void));
-      return pulled;
+      return pulled.success;
     }
-    const action = decideArtifactPull({
-      forced: false,
-      refreshAfterMs: input.refreshAfterMs,
-      localPresent: true,
-      checkedAt: input.checkedAt,
-      now: input.now,
-    });
-    if (action === "reuse-local") return local.success;
-    return yield* refreshed(local.success);
- });
+    if (fallback !== undefined) {
+      yield* input.onFallback(pulled.failure).pipe(Effect.catch(() => Effect.void));
+      return fallback;
+    }
+    const local = yield* Effect.result(input.pull("never"));
+    if (Result.isSuccess(local)) {
+      yield* input.onFallback(pulled.failure).pipe(Effect.catch(() => Effect.void));
+      return local.success;
+    }
+    return yield* Effect.fail(pulled.failure);
+  });
+
+  if (input.forced) return yield* refreshed();
+
+  const local = yield* Effect.result(input.pull("never"));
+  if (Result.isFailure(local)) {
+    const pulled = yield* input.pull("missing");
+    yield* input.onChecked.pipe(Effect.catch(() => Effect.void));
+    return pulled;
+  }
+  const action = decideArtifactPull({
+    forced: false,
+    refreshAfterMs: input.refreshAfterMs,
+    localPresent: true,
+    checkedAt: input.checkedAt,
+    now: input.now,
+  });
+  if (action === "reuse-local") return local.success;
+  return yield* refreshed(local.success);
+});
