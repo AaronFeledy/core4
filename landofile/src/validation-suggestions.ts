@@ -3,7 +3,6 @@ import {
   composeServiceDispositions,
   composeTopLevelDispositions,
   isLandofileOverride,
-  isLandofileReset,
   isPlainRecord,
 } from "@lando/sdk/landofile";
 import {
@@ -31,10 +30,7 @@ const isMisplacedComposeSurfaceKey = (
   Object.hasOwn(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
 
 export const valueAtPath = (value: unknown, path: ValidationIssuePath): unknown => {
-  const unwrap = (entry: unknown): unknown => {
-    if (isLandofileOverride(entry)) return unwrap(entry.value);
-    return isLandofileReset(entry) ? undefined : entry;
-  };
+  const unwrap = (entry: unknown): unknown => (isLandofileOverride(entry) ? unwrap(entry.value) : entry);
   let current = unwrap(value);
   for (const key of path) {
     if (Array.isArray(current) && typeof key === "number") current = unwrap(current[key]);

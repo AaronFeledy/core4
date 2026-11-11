@@ -1,5 +1,5 @@
 import { parseExpressionEither } from "@lando/sdk/expressions";
-import { isPlainRecord } from "@lando/sdk/landofile";
+import { isLandofileReset, isPlainRecord } from "@lando/sdk/landofile";
 import type { ValidationFix, ValidationFixEdit, ValidationIssuePath } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Result } from "effect";
@@ -20,6 +20,13 @@ export const secretReferenceFix = (input: {
   // A here-document body and a command substitution each have their own quoting,
   // which the single-pass tracker below does not follow.
   if (/<<|\$\(|`/.test(input.value)) return undefined;
+  // An escaped reference is literal text, not a variable mention, so blank every
+  // form before looking for a chosen name the command already uses.
+  const withoutReferences = input.value.replace(/\$\{secret:[^}]+\}/g, "");
+  const collides = [...input.names.values()].some((name) =>
+    new RegExp(`(?<![A-Za-z0-9_])${name}(?![A-Za-z0-9_])`).test(withoutReferences),
+  );
+  if (collides) return undefined;
   let replacements = 0;
   let cursor = 0;
   let quote: "'" | '"' | undefined;
@@ -33,7 +40,16 @@ export const secretReferenceFix = (input: {
       while (cursor < offset) {
         const char = input.value[cursor];
         if (char === "\\" && quote !== "'") cursor += 2;
-        else {
+        else if (
+          quote === undefined &&
+          char === "#" &&
+          (cursor === 0 || /[\s;&|(]/.test(input.value[cursor - 1] ?? ""))
+        ) {
+          // A shell comment carries no quoting syntax and is not command text.
+          shellSafe = false;
+          const newline = input.value.indexOf("\n", cursor);
+          cursor = newline < 0 ? input.value.length : newline + 1;
+        } else {
           if (char === quote) quote = undefined;
           else if (quote === undefined && (char === "'" || char === '"')) quote = char;
           cursor++;
@@ -42,10 +58,14 @@ export const secretReferenceFix = (input: {
       // A container shell splits and globs an unquoted expansion, so an unquoted
       // reference becomes the quoted form; the closing quote also ends the name.
       const doubleQuoted = quote === '"';
+      // The shell removes a backslash-newline before it expands a name, so look
+      // past continuations for the character that would extend or end it.
+      let next = offset + text.length;
+      while (input.value[next] === "\\" && input.value[next + 1] === "\n") next += 2;
       if (
         quote === "'" ||
         input.value[offset - 1] === "\\" ||
-        (doubleQuoted && /^[A-Za-z0-9_]/.test(input.value.slice(offset + text.length)))
+        (doubleQuoted && /^[A-Za-z0-9_]/.test(input.value.slice(next)))
       )
         shellSafe = false;
       cursor = offset + text.length;
@@ -68,7 +88,7 @@ export const secretReferenceFix = (input: {
     [...input.names].map(([reference, name]) => [name, `\${secret:${reference}}`]),
   );
   const parent = valueAtPath(input.document, input.bindingParent);
-  if (parent !== undefined && !isPlainRecord(parent)) return undefined;
+  if (parent !== undefined && (isLandofileReset(parent) || !isPlainRecord(parent))) return undefined;
   const edits: ValidationFixEdit[] = [];
   for (const [name, value] of Object.entries(env)) {
     if (parent !== undefined && Object.hasOwn(parent, name)) {

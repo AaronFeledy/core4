@@ -162,10 +162,48 @@ test.each([
     expected: undefined,
   },
   { name: "backticks restart quoting", value: 'echo "`printf %s ${secret:TOKEN}`"', expected: undefined },
+  {
+    name: "a line continuation extends the name even after a quote closes",
+    value: 'printf %s "${secret:TOKEN}\\\nB"',
+    expected: undefined,
+  },
+  {
+    name: "a quote inside a comment is not quoting syntax",
+    value: 'echo hi # don"t\nprintf %s ${secret:TOKEN}',
+    expected: undefined,
+  },
+  {
+    name: "a comment after the last reference does not block the fix",
+    value: 'printf %s ${secret:TOKEN} # don"t',
+    expected: 'printf %s "$TOKEN" # don"t',
+  },
 ])("rewrites only quoting contexts that keep the expansion exact: $name", ({ value, expected }) => {
   const result = unsupportedSecretReference({ source, value, references: ["TOKEN"], document: {} });
   if (expected === undefined) expect(result.fix).toBeUndefined();
   expect(result.fix?.edits.at(-1)?.value).toEqual(expected);
+});
+
+test.each([
+  { name: "assigns the chosen name first", value: "A=public; printf %s ${secret:A}" },
+  { name: "reads the chosen name elsewhere", value: "echo $A; printf %s ${secret:A}" },
+])("withholds a fix when the command already uses the chosen name: $name", ({ value }) => {
+  const result = unsupportedSecretReference({ source, value, references: ["A"], document: {} });
+  expect(result.fix).toBeUndefined();
+});
+
+test("never binds a prototype key as a generated name", () => {
+  const result = unsupportedSecretReference({
+    source,
+    value: "echo ${secret:__proto__}",
+    references: ["__proto__"],
+    document: {},
+  });
+  expect(result.fix).toEqual({
+    edits: [
+      { op: "set", path: ["tooling", "deploy", "env", "SECRET"], value: "${secret:__proto__}" },
+      { op: "set", path: source.path, value: 'echo "$SECRET"' },
+    ],
+  });
 });
 
 test.each([
@@ -264,19 +302,14 @@ test("reads the authored service type and bindings through merge directives", ()
   ]);
 });
 
-test("treats a reset environment as a missing mapping", () => {
+test("does not fix a binding parent removed with a reset directive", () => {
   const result = unsupportedSecretReference({
     source,
     value: "echo ${secret:TOKEN}",
     references: ["TOKEN"],
     document: { tooling: { deploy: { env: reset() } } },
   });
-  expect(result.fix).toEqual({
-    edits: [
-      { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
-      { op: "set", path: source.path, value: 'echo "$TOKEN"' },
-    ],
-  });
+  expect(result.fix).toBeUndefined();
 });
 
 test("omits a service fix when its environment is authored as a list", () => {

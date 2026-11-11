@@ -5,6 +5,7 @@ const usableName = (candidate: unknown): candidate is string =>
   typeof candidate === "string" &&
   /^[A-Za-z_][A-Za-z0-9_]*$/.test(candidate) &&
   candidate !== "LANDO" &&
+  candidate !== "__proto__" &&
   !candidate.startsWith("LANDO_");
 
 export const secretVariableNames = (
