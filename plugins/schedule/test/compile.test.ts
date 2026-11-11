@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { AppFeatureCloneError } from "@lando/sdk/errors";
 import type { AppFeatureContext, ClonedServiceRequest } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { scheduleCompileFeature } from "../src/app-feature.ts";
 import { SUPERCRONIC_BIN, SUPERCRONIC_STEP_ID } from "../src/supercronic.ts";

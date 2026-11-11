@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { ScheduleConfig, ServiceConfig } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const strictDecode = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown) =>
   Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);

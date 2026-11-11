@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import type { AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { staleClonedServices } from "../planner/cloned-services.ts";
 

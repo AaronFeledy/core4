@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { AppResolveError } from "@lando/sdk/errors";
 import { type AppPlan, ProviderId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { removeStaleClonedServices } from "../../src/operations/stale-cloned-services.ts";

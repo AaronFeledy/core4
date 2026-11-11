@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { AppFeatureCloneError } from "@lando/sdk/errors";
 import { imageLacksInstallShell } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { crontabLine, supercronicInstallCommand } from "./crontab.ts";
 import { scheduleSidecarName } from "./jobs.ts";
