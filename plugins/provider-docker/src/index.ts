@@ -580,6 +580,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       displayName: "Docker Runtime Provider",
       version: "0.0.0",
       platform,
+      runtimeIdentity: resolvedDockerHost,
       capabilities: resolvedCapabilities,
       ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
         ? {

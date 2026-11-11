@@ -28,6 +28,7 @@ export const providerMemberPolicy = {
   displayName: ["metadata", "none"],
   version: ["metadata", "none"],
   platform: ["metadata", "none"],
+  runtimeIdentity: ["metadata", "none"],
   capabilities: ["metadata", "none"],
   isAvailable: ["lifecycle", "effect"],
   appliedPlans: ["metadata", "effect"],

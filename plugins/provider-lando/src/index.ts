@@ -1447,6 +1447,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         displayName: "Lando Runtime Provider",
         version: "0.0.0",
         platform,
+        runtimeIdentity: socketPath ?? `lando:${platform}`,
         capabilities: {
           ...resolvedCapabilities,
           ...(windowsSyncTargets === undefined ? {} : { fileSyncTargets: "prepared-volume" as const }),

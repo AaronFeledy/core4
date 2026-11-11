@@ -15,6 +15,7 @@ export * from "./compiled-landofile.ts";
 export * from "./database-connection.ts";
 export * from "./sqlite.ts";
 export * from "./artifacts.ts";
+export * from "./artifact-refresh.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";
 export * from "./config-key.ts";
