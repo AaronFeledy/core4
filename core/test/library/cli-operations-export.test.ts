@@ -1,12 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Result } from "effect";
-
-import { describe, expect, test } from "bun:test";
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import { Cause, Context, Effect, Exit } from "effect";
-
 import { makeLandoRuntime } from "@lando/core";
 import {
   ConfigResultSchema,
@@ -20,6 +15,8 @@ import {
   renderConfigResult,
   renderGlobalPolicyChangeResult,
 } from "@lando/core/cli/operations";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, Exit, Result } from "effect";
 
 import corePackage from "../../package.json";
 

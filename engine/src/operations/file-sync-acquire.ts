@@ -1,12 +1,11 @@
-import { Effect, Option } from "effect";
-
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import type { FileSyncEngineShape, RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 
 import { FileSyncResolver } from "../plugins/file-sync-resolver.ts";
-import { fileSyncBundle } from "./file-sync-bundle.ts";
 import type { FileSyncExecutionBundle } from "./file-sync-bundle.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 
 export const requireFileSyncProvider = Effect.fnUntraced(function* (
   bundle: FileSyncExecutionBundle,

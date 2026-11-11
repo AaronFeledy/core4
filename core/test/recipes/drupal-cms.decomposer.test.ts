@@ -5,13 +5,16 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import { ConfigTranslateInput, type RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
-import { drupalCmsInstallCommand } from "../../src/recipes/builtin/drupal-cms/commands.ts";
+import {
+  DRUPAL_CMS_SCAFFOLD_COMMAND,
+  drupalCmsInstallCommand,
+} from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import {
   DRUPAL_CMS_PHP_INI,
   DRUPAL_CMS_PHP_INI_PATH,
   DRUPAL_CMS_PHP_INI_TARGET,
 } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
+
 const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
   "mysql",
   "{{ services.database.creds.database }}",
@@ -20,7 +23,9 @@ const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand(
   "pgsql",
   "{{ services.database.creds.database }}",
 );
+
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: drupalCmsDecomposer,
   defaults: drupalCmsDefaults,
@@ -29,6 +34,7 @@ const {
   contentDigest: DRUPAL_CMS_CONTENT_DIGEST,
   manifest,
 } = bundledRecipe("drupal-cms");
+
 import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 

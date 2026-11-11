@@ -1,14 +1,12 @@
+import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { type ContainerBuildHttpRequest, buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceCaFileDescriptor } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 
 const providerId = ProviderId.make("docker");
 const serviceName = ServiceName.make("web");

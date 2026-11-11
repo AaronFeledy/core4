@@ -1,10 +1,8 @@
-import { Effect, Schema } from "effect";
-
 import { describe, expect, test } from "bun:test";
-
 import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
 import { AppPlanSanitizer, ContainerHelperAssets } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 describe("AppPlanSanitizer tag", () => {
   test("resolves via Effect.provideService roundtrip", async () => {

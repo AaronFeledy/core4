@@ -1,8 +1,7 @@
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { DEFAULT_PROXY_DOMAIN } from "@lando/engine/planner/naming";
-import { Duration, Effect, Ref, Result } from "effect";
-
 import { runProbe } from "@lando/sdk/probe";
+import { Duration, Effect, Ref, Result } from "effect";
 
 import { HostDnsResolver } from "./doctor-host-dns";
 import { type DoctorSubsystemCheck, HOST_DNS_SPEC, passCheck } from "./doctor-subsystem-checks";

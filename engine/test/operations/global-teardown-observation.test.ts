@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { appMutationLockKey } from "@lando/engine/operations/app-mutation-lock";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";

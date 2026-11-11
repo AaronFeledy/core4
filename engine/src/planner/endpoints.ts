@@ -1,6 +1,3 @@
-import type { FileSystem } from "@lando/sdk/services";
-import { type Context, Effect, Predicate } from "effect";
-
 import {
   type CapabilityError,
   DataTreeOwnershipCapabilityError,
@@ -28,6 +25,8 @@ import {
   serviceAppMount,
   validationIssue,
 } from "@lando/sdk/schema";
+import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect, Predicate } from "effect";
 
 import {
   type SelectedFileSyncPolicy,
@@ -57,6 +56,7 @@ import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import { resolveServiceArtifact } from "./service-artifact.ts";
 import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
 import type { ShadowHostCheck } from "./shadow-host-checks.ts";
+
 export { resolveRoute } from "./endpoint-routes.ts";
 
 export interface FinalizedServices {

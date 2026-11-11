@@ -1,13 +1,10 @@
 import { join } from "node:path";
-
-import { Context, Effect, Layer, Result } from "effect";
-
+import { findAppRoot } from "@lando/landofile/discovery";
+import { makeLandoPaths } from "@lando/paths";
 import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
-
-import { findAppRoot } from "@lando/landofile/discovery";
-import { makeLandoPaths } from "@lando/paths";
+import { Context, Effect, Layer, Result } from "effect";
 import { bundledPluginModules } from "../composition.ts";
 import { resolveUserDataRoot } from "../config/roots.ts";
 import { composeExtendedServiceType } from "../services/extends.ts";

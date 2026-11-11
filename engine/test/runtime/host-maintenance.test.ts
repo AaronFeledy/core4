@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Schema } from "effect";
+import { makeLandoPaths } from "@lando/paths";
 
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
-
-import { makeLandoPaths } from "@lando/paths";
 import { makeTestStateStore } from "@lando/state-store/testing";
+import { Effect, Schema } from "effect";
 import {
   HostMaintenanceRegistry,
   makeHostMaintenanceRegistryLayer,

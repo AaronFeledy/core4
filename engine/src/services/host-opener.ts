@@ -1,10 +1,9 @@
 import { posix } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Schema } from "effect";
-
 import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { HostProxyOpenUrlSchemeError } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 export interface HostOpenerCapabilityInput {
   readonly platform: NodeJS.Platform;

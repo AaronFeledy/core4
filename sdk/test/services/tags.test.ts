@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-
-import { Context, DateTime, Effect, Stream } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -22,6 +18,7 @@ import {
   RuntimeProviderRegistry,
   ShellRunner,
 } from "@lando/sdk/services";
+import { Context, DateTime, Effect, Stream } from "effect";
 
 const EXPECTED_TAGS = [
   { tag: Logger, key: "@lando/core/Logger", methods: ["debug", "info", "warn", "error"] },
@@ -105,11 +102,12 @@ const EXPECTED_TAGS = [
   },
 ] as const;
 
-type FailureOf<T> = T extends Effect.Effect<unknown, infer E, unknown>
-  ? E
-  : T extends Stream.Stream<unknown, infer E, unknown>
+type FailureOf<T> =
+  T extends Effect.Effect<unknown, infer E, unknown>
     ? E
-    : never;
+    : T extends Stream.Stream<unknown, infer E, unknown>
+      ? E
+      : never;
 
 type TaggedFailure<E> = [E] extends [never] ? never : E extends { readonly _tag: string } ? true : never;
 

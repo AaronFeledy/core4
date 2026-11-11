@@ -1,6 +1,5 @@
-import { Context, Effect, Exit, Layer, Scope } from "effect";
-
 import { PathsService } from "@lando/sdk/services";
+import { Context, Effect, Exit, Layer, Scope } from "effect";
 import { bundledPluginModules } from "../composition.ts";
 import { pluginImplementationIdentity } from "../plugins/implementation-identity.ts";
 import { PluginManifestResolution } from "../plugins/manifest-resolution.ts";

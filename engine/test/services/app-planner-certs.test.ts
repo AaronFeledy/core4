@@ -1,11 +1,9 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { serviceCertificatePaths } from "../../src/lifecycle/service-certificate-paths.ts";

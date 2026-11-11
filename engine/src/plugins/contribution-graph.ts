@@ -1,6 +1,4 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
-
 import {
   LandoRuntimeBootstrapError,
   PluginDescriptorMismatchError,
@@ -17,12 +15,15 @@ import {
   type ResolvedPluginInput,
 } from "@lando/sdk/schema";
 import { CertificateAuthority, PathsService } from "@lando/sdk/services";
+import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
 import { bundledPluginModules } from "../composition.ts";
 import { resolveGraphCommands } from "./command-contributions.ts";
 import type { PluginImplementation } from "./implementation-identity.ts";
 import { loadInstalledPluginImplementation } from "./installed-plugin-loader.ts";
+
 export { pluginCommandCandidates } from "./command-contributions.ts";
+
 import { PluginManifestResolution, resolvePluginManifests } from "./manifest-resolution.ts";
 import { type ManifestDiagnostic, selectPluginManifests } from "./manifest-selection.ts";
 import { type PluginCapabilityIndexError, makePluginCapabilityIndex } from "./module-set.ts";

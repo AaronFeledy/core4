@@ -4,7 +4,6 @@
  * A recipe request is delegated to an injected `RecipeDecomposer`. Encode is
  * absent so `app:config:translate --to recipe` fails closed at selection.
  */
-import { Effect, Match, Result, Schema } from "effect";
 
 import { mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { ConfigTranslateError } from "@lando/sdk/errors";
@@ -17,6 +16,7 @@ import type {
 } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ConfigTranslatorShape, RecipeDecomposerFactory } from "@lando/sdk/services";
+import { Effect, Match, Result, Schema } from "effect";
 
 export const RECIPE_TRANSLATOR_ID = "recipe";
 

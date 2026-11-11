@@ -1,6 +1,7 @@
 import type {
   CleanupProps,
   GuideFrontmatter,
+  GuidePlatform,
   InlineProps,
   InspectProps,
   RunProps,
@@ -8,7 +9,6 @@ import type {
   VariableProps,
   VerifyProps,
 } from "@lando/sdk/docs/components";
-import type { GuidePlatform } from "@lando/sdk/docs/components";
 import type { Root } from "mdast";
 import type { MdxNode } from "./mdx.ts";
 

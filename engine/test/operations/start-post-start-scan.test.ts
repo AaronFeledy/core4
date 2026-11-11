@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
 import { type AppPlan, ServiceName, StartedService } from "@lando/sdk/schema";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
 import { UrlScanner } from "@lando/sdk/services";
 import { makeTestUrlScanner } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Schema } from "effect";
 
 import { startApp } from "../../src/operations/start.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";

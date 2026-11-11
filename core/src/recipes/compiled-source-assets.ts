@@ -1,6 +1,6 @@
 import { RecipeManifestValidationError, causeMessage } from "@lando/sdk/errors";
-import { RecipeContentDigest, validationIssue } from "@lando/sdk/schema";
 import type { RecipeFile } from "@lando/sdk/schema";
+import { RecipeContentDigest, validationIssue } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { bundledRecipeContentSource } from "./builtin/scaffold-assets.ts";
 import { readAuxiliaryScaffoldContent } from "./init-pipeline/files.ts";

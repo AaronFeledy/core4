@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
 import { Effect, Layer, Schema } from "effect";
-import { renderPlainBugReport } from "../../src/cli/bug-report-render.ts";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
+import { renderPlainBugReport } from "../../src/cli/bug-report-render.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const error = new ServiceNotReadyError({

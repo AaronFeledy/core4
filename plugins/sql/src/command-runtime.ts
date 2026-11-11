@@ -1,7 +1,4 @@
 import { realpath } from "node:fs/promises";
-
-import { Effect } from "effect";
-
 import { PlanReplanRequiredError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import {
@@ -18,6 +15,7 @@ import {
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 
 import { requireAppliedSqliteTargets } from "./applied-sqlite.ts";
 import { validateExportCompression } from "./command-input.ts";

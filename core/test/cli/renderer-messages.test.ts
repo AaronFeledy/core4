@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import {
   ImagePullProgressEvent,
   MessageErrorEvent,
@@ -9,11 +11,7 @@ import {
 } from "@lando/sdk/events";
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
-import { createBufferedRendererIO } from "@lando/renderer/io";
-import * as RendererRuntime from "@lando/renderer/runtime";
+import { Effect, Layer, Schema } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";

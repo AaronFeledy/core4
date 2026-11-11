@@ -5,21 +5,6 @@ import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { encodeCommandResult } from "@lando/sdk/command-result";
-import { DateTime, Effect, Exit, Fiber, Schema } from "effect";
-
-import {
-  AbsolutePath,
-  AppId,
-  AppPlan,
-  PortNumber,
-  PortablePath,
-  ProviderId,
-  ServiceName,
-  type ServicePlan,
-} from "@lando/sdk/schema";
-
 import { hostProxyWorkerEntry } from "@lando/engine/composition";
 import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "@lando/engine/subsystems/host-proxy/session-env";
 import { sendHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
@@ -46,6 +31,19 @@ import {
 } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { encodeCommandResult } from "@lando/sdk/command-result";
+import {
+  AbsolutePath,
+  AppId,
+  AppPlan,
+  PortNumber,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
+import { DateTime, Effect, Exit, Fiber, Schema } from "effect";
 import "../../../src/runtime/engine-composition.ts";
 import { ownerOnlyFileAccess } from "../../_support/private-file-access.ts";
 

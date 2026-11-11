@@ -1,10 +1,8 @@
 import { lstat as nodeLstat, rename } from "node:fs/promises";
-
-import { type Context, Effect, Layer, Stream } from "effect";
-
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
 import { type FileStat, FileSystem, type FileSystemError } from "@lando/sdk/services";
 import { writeFileAtomic } from "@lando/state-store/atomic";
+import { type Context, Effect, Layer, Stream } from "effect";
 
 const permissionCodes = new Set(["EACCES", "EPERM"]);
 

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
-
 import { PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import {
   type SubscriberIndex,

@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import {
   type AppPlan,
   PortablePath,
@@ -20,8 +18,6 @@ import {
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -33,14 +29,18 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Effect, Layer, Stream } from "effect";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(
   Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
+
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -468,4 +468,5 @@ describe("ScratchAppServiceLayer.layer mount-cwd + share-global-storage together
     });
   });
 });
+
 import { environmentResolverLayer } from "../_support/value-contracts.ts";

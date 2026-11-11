@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { ComposeKeyRejectedError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
+import { Cause, Effect, Exit } from "effect";
 import { loadLandofileFile, loadLandofileLayers } from "../../src/services/landofile-live";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 

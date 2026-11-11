@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-
-import type { FileFormat } from "@lando/sdk/schema";
-
 import {
   commentPrefix,
   composeFileContent,
   hasFileMarker,
   stripFileMarker,
 } from "@lando/managed-file/marker";
+import type { FileFormat } from "@lando/sdk/schema";
 
 describe("managed-file marker — commentPrefix", () => {
   test.each([

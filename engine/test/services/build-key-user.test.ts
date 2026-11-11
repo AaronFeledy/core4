@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
-import { DateTime, Effect } from "effect";
-
-import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import {
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+  landoServiceHomeStoreName as homeStoreName,
+} from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect } from "effect";
 
 import { appBuildKeyForStep, buildKeyForService } from "../../src/services/build-key.ts";
 

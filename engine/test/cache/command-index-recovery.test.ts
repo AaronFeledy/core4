@@ -6,14 +6,14 @@ import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize"
 import { sha256Hex } from "@lando/sdk/digest";
 import { Effect, Result } from "effect";
 import {
-  readAppCommandCacheForCwdDetailed,
-  writeAppCommandCacheStrict,
-} from "../../src/cache/command-index-writer.ts";
-import {
   type AppCommandIndexPayload,
   decodeAppCommandIndex,
   encodeAppCommandIndex,
 } from "../../src/cache/command-index.ts";
+import {
+  readAppCommandCacheForCwdDetailed,
+  writeAppCommandCacheStrict,
+} from "../../src/cache/command-index-writer.ts";
 import { appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 import { currentAbiBytes } from "./fixtures/command-index-codec.ts";
 

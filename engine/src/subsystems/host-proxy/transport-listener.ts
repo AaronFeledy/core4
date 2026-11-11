@@ -3,14 +3,12 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname } from "node:path";
 import { setImmediate as waitImmediate } from "node:timers/promises";
-
-import { Effect } from "effect";
-
 import {
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   causeMessage,
 } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 import { verifyHostProxyRunDirectory } from "./run-directory.ts";
 import type { HostProxyRunLandoSessionOptions, HostProxySessionPaths } from "./transport-session.ts";

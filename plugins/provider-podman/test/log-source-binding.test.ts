@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema, Stream } from "effect";
-
 import * as PodmanProvider from "@lando/provider-podman";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { AbsolutePath, AppId, type AppPlan, LogSource, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 const FileLogSource = LogSource.members[0];
 

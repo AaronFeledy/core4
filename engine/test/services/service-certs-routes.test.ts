@@ -1,11 +1,9 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { planAppPlannerCerts } from "./app-planner-certs-harness.ts";
 

@@ -1,8 +1,7 @@
-import { Effect, Schema } from "effect";
-
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";

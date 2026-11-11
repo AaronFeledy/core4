@@ -2,8 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import {
   SqlCommandFailedError,
@@ -13,6 +11,7 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
 import type { EphemeralRunSpec } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Option } from "effect";
 import { dbInputFromCommand } from "../src/command-input.ts";
 import { executeDbCommand } from "../src/run.ts";
 import { packSqliteTar, unpackSqliteTar } from "../src/sqlite-archive.ts";

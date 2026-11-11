@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import {
   PortNumber,
   PortablePath,
@@ -10,6 +8,7 @@ import {
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   literalEnvironmentValue,

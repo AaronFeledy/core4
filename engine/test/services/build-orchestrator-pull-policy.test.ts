@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Layer } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -26,6 +23,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Effect, Layer } from "effect";
 
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { renderVerboseLine } from "@lando/renderer-lando/format";
 import {
   CliCommandInitEvent,
   type LandoEvent,
@@ -10,11 +12,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { renderVerboseLine } from "@lando/renderer-lando/format";
-import { createBufferedRendererIO } from "@lando/renderer/io";
-import * as RendererRuntime from "@lando/renderer/runtime";
+import { Effect, Layer, Schema } from "effect";
 import { RENDERER_MODES, isRendererMode, resolveRendererMode } from "../../src/cli/renderer-selection.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";

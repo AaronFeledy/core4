@@ -6,14 +6,11 @@
  * `tcp` endpoint, never an `http` route) so `app.start()` never auto-starts the
  * global proxy or touches a real provider/file-sync backend.
  */
+
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { currentTestPlan } from "../_support/value-contracts.ts";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
-
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import {
   AbsolutePath,
@@ -39,9 +36,11 @@ import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const testProvider = makeScenarioProvider();
 const testProviderLayers = [

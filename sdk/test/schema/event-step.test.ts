@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { ToolingStepConditionError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
-import { AppLifecycleEventName, EventStep, LandofileEvents, PortablePath } from "@lando/sdk/schema";
 import * as schemas from "@lando/sdk/schema";
+import { AppLifecycleEventName, EventStep, LandofileEvents, PortablePath } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const decodeOptions = [undefined, { onExcessProperty: "error" }] as const;
 

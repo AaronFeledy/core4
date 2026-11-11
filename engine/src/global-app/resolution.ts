@@ -1,7 +1,6 @@
-import { Context, Effect, Option } from "effect";
-
 import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import { PathsService, PluginRegistry } from "@lando/sdk/services";
+import { Context, Effect, Option } from "effect";
 
 import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
@@ -10,14 +9,14 @@ import { resolveGlobalServices } from "../services/global-services.ts";
 import { type GlobalPolicy, readGlobalPolicy } from "./enablement.ts";
 
 export {
-  GlobalContributionStateSchema,
-  type GlobalContributionState,
-  type GlobalResolution,
-  assertGlobalResolution,
-  assertEffectiveGlobalServices,
-  resolveEffectiveGlobalServices,
-  projectEffectiveGlobalResolution,
   type EffectiveGlobalServices,
+  type GlobalContributionState,
+  GlobalContributionStateSchema,
+  type GlobalResolution,
+  assertEffectiveGlobalServices,
+  assertGlobalResolution,
+  projectEffectiveGlobalResolution,
+  resolveEffectiveGlobalServices,
 } from "../services/global-services.ts";
 
 const RuntimeGlobalCapabilities = Context.Reference<

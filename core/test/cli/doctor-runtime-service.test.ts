@@ -2,10 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TestClock } from "effect/testing";
-
-import { type Context, Deferred, Effect, Fiber, Layer } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
@@ -13,6 +9,8 @@ import type { RuntimeServiceStatus } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { type Context, Deferred, Effect, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 import { type DoctorCheck, doctor, renderDoctorResult } from "../../src/cli/commands/doctor.ts";
 import { type SetupReadinessStep, writeSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";

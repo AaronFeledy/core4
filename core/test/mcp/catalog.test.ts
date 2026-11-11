@@ -1,9 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
-import { McpToolInputError } from "@lando/sdk/errors";
-import { ToolingInputRevision } from "@lando/sdk/schema";
-
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import {
   type McpCommandEntry,
@@ -11,6 +6,9 @@ import {
   deriveToolInputSchema,
   validateToolInput,
 } from "@lando/mcp/registry";
+import { McpToolInputError } from "@lando/sdk/errors";
+import { ToolingInputRevision } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { appConfigDescribeSpec } from "../../src/cli/command-specs/app/config/describe.ts";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";

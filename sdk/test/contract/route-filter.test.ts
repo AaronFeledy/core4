@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import {
   ContractFailure,
   type RouteFilterContractHarness,
@@ -8,6 +6,7 @@ import {
   makeRouteFilterContractSuite,
   runRouteFilterContractSuite,
 } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 // Fixture-local RoutePlan extension carrying header/redirect metadata so the
 // six built-in filters can be exercised WITHOUT widening the SDK RoutePlan

@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect } from "effect";
-
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import {
   AbsolutePath,
@@ -14,6 +12,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("build-boundary-app");

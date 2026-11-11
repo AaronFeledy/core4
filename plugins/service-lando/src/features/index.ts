@@ -41,8 +41,8 @@ import { landoHostProxyFeature } from "./host-proxy.ts";
 import { landoSecurityFeature } from "./security.ts";
 import { landoSshAgentFeature } from "./ssh-agent.ts";
 import { landoStorageFeature } from "./storage.ts";
-import { landoUserIdFeature } from "./user-id.ts";
 import { landoUserFeature } from "./user.ts";
+import { landoUserIdFeature } from "./user-id.ts";
 
 export {
   landoAppMountFeature,

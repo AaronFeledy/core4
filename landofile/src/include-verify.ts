@@ -1,8 +1,7 @@
 import { join } from "node:path";
 import { taggedErrorJson } from "@lando/sdk/command-result";
 import { LandofileLockMismatchError } from "@lando/sdk/errors";
-import type { TaggedErrorJson } from "@lando/sdk/schema";
-import type { LandofileShape } from "@lando/sdk/schema";
+import type { LandofileShape, TaggedErrorJson } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { displaySource } from "@lando/source-acquisition";
 import { Effect, Schema, type Scope } from "effect";

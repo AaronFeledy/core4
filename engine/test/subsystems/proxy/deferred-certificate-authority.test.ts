@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Context, Effect, Exit, Layer, Option, Redacted } from "effect";
-
 import { CaError, NoCertificateAuthorityError } from "@lando/sdk/errors";
 import { CertificateAuthority } from "@lando/sdk/services";
 import { TEST_CERTIFICATES } from "@lando/sdk/test";
+import { Cause, Context, Effect, Exit, Layer, Option, Redacted } from "effect";
 
 import {
   CertificateAuthorityResolver,

@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-
-import { Effect, Schema } from "effect";
-
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Schema } from "effect";
 import {
   clearActiveCommandInvocation,
   resetActiveCommandInvocation,

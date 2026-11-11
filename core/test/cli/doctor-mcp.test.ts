@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
+import { Effect, Layer } from "effect";
 import {
   DefaultMcpDoctorLayer,
   MCP_DOCTOR_CANARY_SECRET,

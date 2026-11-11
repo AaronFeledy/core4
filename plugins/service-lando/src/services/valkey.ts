@@ -1,12 +1,10 @@
-import { Effect, Schema } from "effect";
-
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
-import { tcpProbe } from "./_tcp-probe.ts";
-
 import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
 export const VALKEY_LISTENER = {

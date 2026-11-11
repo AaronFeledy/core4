@@ -103,7 +103,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
           const controller = new AbortController();
           const scoped = yield* Effect.serviceOption(Scope.Scope);
           let published = false;
-          let status: number | undefined = undefined;
+          let status: number | undefined;
           const complete = Effect.fnUntraced(function* (exit: Exit.Exit<unknown, unknown>) {
             if (published) return;
             published = true;

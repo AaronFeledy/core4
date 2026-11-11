@@ -1,16 +1,14 @@
 import { Clock, Effect, Redacted } from "effect";
 import { certificatePairIsCurrent } from "../certificates/index.ts";
 import { mapFailures } from "../command-result/failure.ts";
-
-import { ContractFailure } from "./_shared.ts";
-import { TEST_CERTIFICATES } from "./certificate-fixtures.ts";
-
 import type {
   CaSetupOptions,
   CertificateAuthorityShape,
   CertificateSpec,
   IssuedCertificate,
 } from "../services/index.ts";
+import { ContractFailure } from "./_shared.ts";
+import { TEST_CERTIFICATES } from "./certificate-fixtures.ts";
 
 const caContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `CertificateAuthority contract failed: ${assertion}`, assertion, details });

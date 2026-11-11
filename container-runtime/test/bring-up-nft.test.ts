@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -9,6 +7,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";

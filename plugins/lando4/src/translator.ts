@@ -1,15 +1,4 @@
 import { mapFailures } from "@lando/sdk/command-result";
-/**
- * The canonical v4 Landofile codec.
- *
- * Decode parses a core-ordered set of bounded v4 YAML documents into authoring
- * fragments; encode serializes an authoring value back to tag-free block-style
- * YAML through the canonical serializer. Neither direction resolves environment
- * values, secrets, files, provider data, includes, `.lando.ts`, or commands:
- * expressions survive as their verbatim source text.
- */
-import { Effect, Result, Schema } from "effect";
-
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither, parseLandofile, validateConfigTranslateInput } from "@lando/sdk/landofile";
 import type {
@@ -31,6 +20,16 @@ import {
   LandofileLayer,
 } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
+/**
+ * The canonical v4 Landofile codec.
+ *
+ * Decode parses a core-ordered set of bounded v4 YAML documents into authoring
+ * fragments; encode serializes an authoring value back to tag-free block-style
+ * YAML through the canonical serializer. Neither direction resolves environment
+ * values, secrets, files, provider data, includes, `.lando.ts`, or commands:
+ * expressions survive as their verbatim source text.
+ */
+import { Effect, Result, Schema } from "effect";
 
 /** Translator id; must match the `configTranslators` contribution id. */
 export const LANDO4_TRANSLATOR_ID = "lando4";

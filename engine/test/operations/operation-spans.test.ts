@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Option, References, Tracer } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Option, References, Tracer } from "effect";
 
 import { infoForPlan } from "../../src/operations/info.ts";
 

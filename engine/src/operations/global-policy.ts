@@ -1,9 +1,8 @@
-import { Effect, Schema } from "effect";
-
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { type AppPlan, type ServiceConfig, ServicePlan, isActiveRunStatus } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import {
   activeGlobalPolicyChange,
@@ -40,8 +39,8 @@ import {
   readGlobalConsumerImpact,
 } from "./global-consumers.ts";
 import { GlobalDistResultSchema } from "./global-install.ts";
-import { dependencyError } from "./global-policy-cleanup-evidence.ts";
 import { cleanupDisabledGlobalResources } from "./global-policy-cleanup.ts";
+import { dependencyError } from "./global-policy-cleanup-evidence.ts";
 
 export type GlobalPolicyChangeOptions = {
   readonly selectors?: ReadonlyArray<string>;

@@ -1,8 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
+import { variantFileSuffix } from "@lando/core/docs/variant";
 import type { Root } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import {
@@ -14,8 +14,6 @@ import {
 import { mdxjs } from "micromark-extension-mdxjs";
 import type { Node, Parent } from "unist";
 import { VFile } from "vfile";
-
-import { variantFileSuffix } from "@lando/core/docs/variant";
 
 import { buildGuideScenarioAst, emitPublicTranscripts } from "../../scripts/build-guide-scenarios.ts";
 import { resolveTranscript, transcriptPathFor } from "../src/lib/transcripts.ts";

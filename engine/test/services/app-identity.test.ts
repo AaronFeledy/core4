@@ -3,10 +3,9 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Context, Effect, Exit, Stream } from "effect";
-
 import { appIdentityKey } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
+import { type Context, Effect, Exit, Stream } from "effect";
 
 import { resolveAppIdentity } from "../../src/planner/app-identity.ts";
 

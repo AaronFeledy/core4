@@ -1,10 +1,10 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Context, Effect, Layer, Schema } from "effect";
+import type { StateStoreError } from "@lando/sdk/errors";
 
 import { ScratchAppError } from "@lando/sdk/errors";
-import type { StateStoreError } from "@lando/sdk/errors";
 import { type StateBucket, StateStore, type StateWrite } from "@lando/sdk/services";
 import { defineTransitions, illegalTransitionMessage, planTransition } from "@lando/sdk/transitions";
+import { Context, Effect, Layer, Schema } from "effect";
 
 // The scratch registry — a thin, scratch-shaped view over a single durable
 // `StateBucket` under the user data root. All atomic write, advisory

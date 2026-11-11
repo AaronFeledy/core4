@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { AppResolveError } from "@lando/sdk/errors";
-import { AppId, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import type { AbsolutePath } from "@lando/sdk/schema";
+import { AppId, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import type { AppliedStateProvider } from "../../src/providers/applied-state-resolution.ts";

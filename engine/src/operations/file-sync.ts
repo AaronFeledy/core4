@@ -1,9 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
-import { Effect, Option } from "effect";
-
 import { FileSyncStopError } from "@lando/sdk/errors";
 import type { AppRef, FileSyncSessionInfo, FileSyncSessionSpec } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 

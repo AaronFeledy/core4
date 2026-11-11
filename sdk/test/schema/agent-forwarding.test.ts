@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import * as Contracts from "@lando/sdk/schema";
-import { Struct } from "effect";
-import { Result, Schema } from "effect";
+import { Result, Schema, Struct } from "effect";
 
 test("AgentSocketBridgeResult decodes bind-directory and volume members", () => {
   // Given

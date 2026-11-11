@@ -1,14 +1,13 @@
 import { join } from "node:path";
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
-import { getLandofileValueSource } from "@lando/landofile/validation";
-import { type AppPlan, type LandofileShape, ServiceName, ToolingTaskShape } from "@lando/sdk/schema";
-import { Schema } from "effect";
-
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
 } from "@lando/landofile/tooling-include-provenance";
+import { getLandofileValueSource } from "@lando/landofile/validation";
+import { type AppPlan, type LandofileShape, ServiceName, ToolingTaskShape } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 export type EffectiveTooling = Readonly<Record<string, ToolingTaskShape>>;
 

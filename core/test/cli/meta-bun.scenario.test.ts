@@ -4,13 +4,12 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { ChildOutput, makeChildOutputPolicy } from "../../src/cli/child-output.ts";
-import { processRunnerFor } from "../_support/process-runner.ts";
-
 import { metaBunSpec } from "../../src/cli/command-specs/meta/bun.ts";
 import { metaXSpec } from "../../src/cli/command-specs/meta/x.ts";
 import { metaBun, metaX } from "../../src/cli/commands/bun.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
+import { processRunnerFor } from "../_support/process-runner.ts";
 
 const cliEntry = resolve(import.meta.dirname, "../../bin/lando.ts");
 

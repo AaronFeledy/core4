@@ -6,13 +6,13 @@ import { expressionScopeMembers, expressionTouchesOnlyScopes } from "../expressi
 import { mergeValuesWithOrigins } from "../landofile/overlay-merge.ts";
 import { type ValueWithOrigins, withValueOrigins } from "../landofile/overlay-origins.ts";
 import { validateSnapshotTemplate } from "../recipes/snapshot-template.ts";
+import { LandofileShape } from "./landofile.ts";
 import { LandofileAuthoringFragmentWire } from "./landofile-authoring.ts";
 import { directiveMember } from "./landofile-directive-codec.ts";
 import { LandofileSourceValue } from "./landofile-source.ts";
-import { LandofileShape } from "./landofile.ts";
+import type { RecipeConfigLayer, RecipeSource } from "./recipe-source.ts";
 import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 import { lowerSourceConfig, validateSourceConfig } from "./recipe-source-literals.ts";
-import type { RecipeConfigLayer, RecipeSource } from "./recipe-source.ts";
 
 export const RECIPE_SOURCE_VARIANT_BUDGET = 256;
 

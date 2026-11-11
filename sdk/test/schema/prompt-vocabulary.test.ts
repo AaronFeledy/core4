@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import {
   ChoicesUnavailableError,
   InteractionCancelledError,
@@ -27,6 +25,7 @@ import {
   RecipePromptValidate,
 } from "@lando/sdk/schema";
 import { InteractionService } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 describe("PromptSpec vocabulary", () => {
   test("PromptType exposes all eight prompt types including editor, with editor last", () => {

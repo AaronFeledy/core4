@@ -1,6 +1,8 @@
+import { type GlobalStopServices, globalStop } from "@lando/engine/operations/global-stop";
+import { taggedErrorRemediation } from "@lando/engine/providers/managed";
+import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
+import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
-import { type Context, Effect, Option, Schema } from "effect";
-
 import type { CacheError, LandoCommandError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
@@ -9,13 +11,9 @@ import {
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
-
-import { type GlobalStopServices, globalStop } from "@lando/engine/operations/global-stop";
-import { taggedErrorRemediation } from "@lando/engine/providers/managed";
-import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
-import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { type Context, Effect, Option, Schema } from "effect";
 import { type AppsListEntry, listServices } from "./list";
 
 export interface RuntimeServiceStopResult {

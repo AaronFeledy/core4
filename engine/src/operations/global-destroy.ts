@@ -3,13 +3,11 @@ import {
   recordGlobalResourceCleanup,
   recordGlobalRouteCleanup,
 } from "@lando/engine/global-app/reconciliation";
-import { Effect, Schema } from "effect";
-
-import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
-
 import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/operations/global-teardown";
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
+import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
 import { type RouteWithdrawal, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";

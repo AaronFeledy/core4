@@ -1,4 +1,5 @@
 import { type SchemaAST as AST, Schema } from "effect";
+import { LandofileShape } from "./landofile.ts";
 import { deriveAuthoringAst } from "./landofile-authoring-ast.ts";
 import {
   type AuthoringExpression,
@@ -12,7 +13,6 @@ import type {
   LandofileReset,
   LandofileResetWire,
 } from "./landofile-directive.ts";
-import { LandofileShape } from "./landofile.ts";
 
 export { type DeriveAuthoringOptions, deriveAuthoringAst } from "./landofile-authoring-ast.ts";
 

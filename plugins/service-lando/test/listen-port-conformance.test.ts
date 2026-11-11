@@ -49,7 +49,7 @@ const mechanisms: Readonly<
   nginx: { command: `listen ${PORT};` },
   php: { command: `Listen ${PORT}` },
   static: { command: String(PORT) },
-  tomcat: { build: `port=\"${PORT}\"` },
+  tomcat: { build: `port="${PORT}"` },
 };
 const exemptions: Readonly<Record<string, string>> = {
   compose: "Raw Compose has no bundled launcher.",

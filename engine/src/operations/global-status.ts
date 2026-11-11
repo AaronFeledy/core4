@@ -1,8 +1,7 @@
-import { Effect, Result, Schema } from "effect";
-
 import { ToolingExecError } from "@lando/sdk/errors";
 import { AppId, ServiceConnection, ServiceState } from "@lando/sdk/schema";
 import { FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import {

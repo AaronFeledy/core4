@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import { CommandResultEnvelope } from "@lando/sdk/schema";
-
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const TinyResultSchema = Schema.Struct({ name: Schema.String });

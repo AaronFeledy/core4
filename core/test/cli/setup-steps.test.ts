@@ -1,14 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { mergeFailure } from "@lando/sdk/command-result";
-import { Cause, Effect, Exit, Layer } from "effect";
-
 import { FileSyncEngine } from "@lando/core/services";
 import { makeRedactionService } from "@lando/redaction/service";
+import { mergeFailure } from "@lando/sdk/command-result";
 import { TestFileSyncEngine } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
   type SetupReadinessRecorder,
@@ -227,6 +225,7 @@ describe("setup readiness recorder", () => {
     }
   });
 });
+
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import { makeLandoPaths } from "@lando/paths";
 import { PathsService } from "@lando/sdk/services";

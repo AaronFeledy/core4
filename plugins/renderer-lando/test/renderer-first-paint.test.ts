@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import {
   CliCommandInitEvent,
   CliCommandRunEvent,
@@ -20,9 +20,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Schema } from "effect";
 
 import { renderPlainLine } from "../src/format.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";

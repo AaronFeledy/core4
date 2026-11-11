@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
-
 import { EventError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
+import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { EventDispatchControl } from "../../src/services/event-service.ts";
 

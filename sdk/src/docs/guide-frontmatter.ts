@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { DeprecationNotice, DeprecationSeverity } from "../schema/deprecation.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../schema/string-forms.ts";

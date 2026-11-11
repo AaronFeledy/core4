@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import * as events from "@lando/sdk/events";
 import { ServiceName } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const start = Schema.decodeUnknownSync(events.PreStartEvent)({
   _tag: "pre-start",

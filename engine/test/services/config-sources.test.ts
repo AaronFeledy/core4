@@ -10,8 +10,7 @@ import {
 } from "@lando/paths/config-sources";
 import type { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
-import { Result } from "effect";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { decodeGlobalConfigSources } from "../../src/config/global-config.ts";
 import { layerWith } from "../../src/services/config.ts";
 

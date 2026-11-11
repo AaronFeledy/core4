@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { AbsolutePath, AppPlan, type ServicePlan } from "@lando/sdk/schema";
 import type { LandoEvent as PublishedEvent } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { makeBuildTaskProgress } from "../../src/services/build-task-progress.ts";
 

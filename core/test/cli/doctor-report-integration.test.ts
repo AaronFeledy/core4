@@ -3,9 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { type Context, Effect, Layer, Schema } from "effect";
-
 import {
   ConfigService,
   PathsService,
@@ -14,15 +11,14 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
+import { type Context, Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
-import { makeLandoRuntime } from "../../src/runtime/layer";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import {
   DoctorReportSchema,
   collectDoctorReport,
@@ -32,6 +28,7 @@ import {
 } from "../../src/cli/commands/doctor-report.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer";
 import { CORE_VERSION } from "../../src/version.ts";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 

@@ -1,8 +1,5 @@
 import { rename, stat } from "node:fs/promises";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Layer, Option } from "effect";
-
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import {
   type LandoRoots,
@@ -12,6 +9,7 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
+import { Effect, Layer, Option } from "effect";
 
 import { writeFileAtomicScoped } from "./atomic.ts";
 import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";

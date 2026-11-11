@@ -7,13 +7,12 @@
  * predicates/finders that resolve a service type or app feature from a bundled
  * or external plugin's imported module.
  */
-import { type Context, Effect } from "effect";
 
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { PluginManifest } from "@lando/sdk/schema";
-import type { Logger } from "@lando/sdk/services";
-import type { AppFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type { AppFeatureDefinition, Logger, ServiceType } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import { type ExternalPluginModule, loadInstalledPlugin } from "./installed-plugin-loader.ts";
 import { readInstalledPluginRegistry } from "./installed-registry.ts";

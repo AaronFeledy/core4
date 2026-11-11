@@ -1,8 +1,7 @@
-import { Duration, Effect } from "effect";
-
 import { SqlCommandFailedError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { Environment } from "@lando/sdk/schema";
+import { Duration, Effect } from "effect";
 
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";

@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { layerWith } from "@lando/http-client";
 import { Effect } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
-import { acquisitionStateFile, defaultIssuerFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile, defaultIssuerFile } from "../src/proxy-paths.ts";
 import { acquisition, app, liveGraph, makeObserveFixture, route } from "./observe-routes-fixture.ts";
 
 test.each(["trusted", "missing-issuer", "untrusted-issuer", "wrong-identity"] as const)(

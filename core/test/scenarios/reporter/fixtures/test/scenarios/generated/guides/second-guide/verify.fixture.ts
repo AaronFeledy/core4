@@ -4,9 +4,8 @@
 // @variant:
 
 import { test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import { withScenarioContext } from "@lando/core/testing";
+import { Cause, Effect, Exit } from "effect";
 
 test("second-guide:verifies", async () => {
   const exit = await Effect.runPromiseExit(

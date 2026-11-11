@@ -1,8 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileLoadFailure } from "@lando/sdk/errors";
-import { isMergeDirective, override } from "@lando/sdk/landofile";
-import { isPlainRecord } from "@lando/sdk/landofile";
+import { isMergeDirective, isPlainRecord, override } from "@lando/sdk/landofile";
 import { Effect, Schema } from "effect";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { hasIncludeConditions } from "./include-condition-shape.ts";

@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { isLandofileOverride, override } from "@lando/sdk/landofile";
 import { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { recipeInitReview, snapshotRecipeInitData } from "../../src/recipes/prepared-init-types.ts";
 import { prepareRecipeInit } from "../../src/recipes/prepared-init.ts";
+import { recipeInitReview, snapshotRecipeInitData } from "../../src/recipes/prepared-init-types.ts";
 import { runRecipeInitPipeline } from "../_support/recipe-pipeline.ts";
 import { pipelineSourceFixture } from "./fixtures/pipeline-source.ts";
 

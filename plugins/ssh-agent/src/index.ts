@@ -5,10 +5,10 @@
  *   - `sshServices: ["sidecar"]` — the sidecar-backed `SshService` id.
  *   - `globalServices: ["ssh-agent"]` — the bundled global SSH agent sidecar service.
  */
-import { type Effect, Schema } from "effect";
 
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
+import { type Effect, Schema } from "effect";
 
 import sshAgentGlobalService from "./global-service.ts";
 import { layer } from "./ssh-service.ts";

@@ -25,9 +25,6 @@ import {
   type ScratchAcquireInput,
   ScratchAppService,
 } from "@lando/core/services";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { DateTime, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
-
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
@@ -46,6 +43,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -55,18 +53,21 @@ import { ServiceExecError } from "@lando/sdk/errors";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
+import { DateTime, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(
   Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
+
 import { FinishCommandProgress } from "../../src/cli/command-progress.ts";
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
+import { scratchList } from "../../src/cli/commands/scratch.ts";
 import {
   type ScratchRunResult,
   defaultScratchRunDeps,
   scratchRun,
   scratchRunOptionsFromInput,
 } from "../../src/cli/commands/scratch-run.ts";
-import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";

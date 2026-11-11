@@ -31,8 +31,8 @@ import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
 import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
-import { ensureGlobalServicesRunning } from "./ensure-global-services.ts";
 import type { EnsureGlobalServicesServices } from "./ensure-global-services.ts";
+import { ensureGlobalServicesRunning } from "./ensure-global-services.ts";
 import { withGlobalConsumerAdmissionCheck, withGlobalConsumerReservation } from "./global-consumer-lease.ts";
 import { readGlobalLandofile } from "./global-plan.ts";
 

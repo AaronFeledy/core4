@@ -1,5 +1,3 @@
-import { Effect, Schema, absurd } from "effect";
-
 import { AppFeatureSelectorMatchedNothingError, type PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import { PortNumber, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
@@ -12,6 +10,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
+import { Effect, Schema, absurd } from "effect";
 
 import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {

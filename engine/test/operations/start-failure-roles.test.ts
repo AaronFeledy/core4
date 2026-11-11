@@ -7,8 +7,8 @@ import { GlobalAppService } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { mergeFailure } from "../../src/lifecycle/failure-compensation.ts";
-import { withIncompleteStartNotice } from "../../src/operations/start-incomplete-notice.ts";
 import { startAppForTarget } from "../../src/operations/start.ts";
+import { withIncompleteStartNotice } from "../../src/operations/start-incomplete-notice.ts";
 import { recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 

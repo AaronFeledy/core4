@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Schema } from "effect";
-
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
@@ -11,6 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Deferred, Effect, Exit, Fiber, Schema } from "effect";
-
 import { ScannerError } from "@lando/sdk/errors";
 import { LandoEvent } from "@lando/sdk/events";
 import { ServiceName } from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
+import { Cause, Deferred, Effect, Exit, Fiber, Schema } from "effect";
 
 import { runPostStartScan } from "../../src/operations/post-start-scan.ts";
 import { plan, web } from "./start-progress-topology-support.ts";

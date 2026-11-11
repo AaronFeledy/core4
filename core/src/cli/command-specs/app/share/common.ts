@@ -1,10 +1,8 @@
+import type { ShareListOptions, ShareOptions, ShareStopOptions } from "@lando/engine/operations/share";
+import { ServiceName } from "@lando/sdk/schema";
 import { yesFlag } from "../../../spec/confirmation-flag";
 import { booleanFlag, formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
-
-import { ServiceName } from "@lando/sdk/schema";
-
-import type { ShareListOptions, ShareOptions, ShareStopOptions } from "@lando/engine/operations/share";
 
 export const shareFormatFlag = Flags.string({
   description: "Output format.",

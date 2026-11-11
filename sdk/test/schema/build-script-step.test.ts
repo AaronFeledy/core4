@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 
 import { BuildBlock, ServiceConfig } from "../../src/schema/landofile.ts";
 

@@ -3,20 +3,6 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
-
-import { Clock, Effect, Schema } from "effect";
-
-import { CacheError, type LandofileFormConflictError, isErrnoCode } from "@lando/sdk/errors";
-import {
-  AppPlan,
-  CurrentExecutableAppPlan,
-  type LandofileShape,
-  type PluginManifest,
-  type ProviderCapabilities,
-} from "@lando/sdk/schema";
-import { CacheService, type FileSystem } from "@lando/sdk/services";
-import type { Context } from "effect";
-
 import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
 import {
@@ -30,6 +16,17 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
+import { CacheError, type LandofileFormConflictError, isErrnoCode } from "@lando/sdk/errors";
+import {
+  AppPlan,
+  CurrentExecutableAppPlan,
+  type LandofileShape,
+  type PluginManifest,
+  type ProviderCapabilities,
+} from "@lando/sdk/schema";
+import { CacheService, type FileSystem } from "@lando/sdk/services";
+import type { Context } from "effect";
+import { Clock, Effect, Schema } from "effect";
 import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
 import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
 import { CORE_VERSION } from "../version.ts";

@@ -251,4 +251,5 @@ for (const operation of ["stop", "destroy"] as const) {
     expect(outcome).toBe("unchanged");
   });
 }
+
 import { literalTestLandofile } from "../compiled-landofile.ts";

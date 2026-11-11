@@ -1,8 +1,7 @@
-import { Result } from "effect";
-
 import type { AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { Result } from "effect";
 
 /**
  * The structurally-validated form of an `AppSelector`, classified by the

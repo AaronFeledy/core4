@@ -6,9 +6,9 @@
  * discovered plugin at load) use this so a colliding flag name always surfaces
  * the same tagged error instead of a silent last-writer-wins overwrite.
  */
-import { Schema } from "effect";
 
 import type { PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 export class SetupFlagCollisionError extends Schema.TaggedError<SetupFlagCollisionError>()(
   "SetupFlagCollisionError",

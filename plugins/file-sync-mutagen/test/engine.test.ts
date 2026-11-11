@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, type Scope, Stream } from "effect";
-
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -10,6 +8,7 @@ import {
   PortablePath,
   ServiceName,
 } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, type Scope, Stream } from "effect";
 
 import {
   ENGINE_DISPLAY_NAME,

@@ -15,8 +15,8 @@ import {
 } from "./init-pipeline/errors.ts";
 import { runBoundPostInit } from "./init-pipeline/post-init.ts";
 import type { PostInitOutcome, RunPostInitOptions } from "./post-init/runtime.ts";
-import { type RecipeInitReview, recipeInitReview } from "./prepared-init-types.ts";
 import type { PreparedRecipeInit } from "./prepared-init.ts";
+import { type RecipeInitReview, recipeInitReview } from "./prepared-init-types.ts";
 
 export {
   RecipeInitBlockedError,

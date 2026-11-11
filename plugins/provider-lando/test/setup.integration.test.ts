@@ -6,8 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { Cause, Effect, Exit } from "effect";
-
 import {
   type ArtifactDownload,
   PodmanMachinePrerequisiteError,
@@ -32,6 +30,7 @@ import {
 } from "@lando/provider-lando";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
 
 const podmanCommand = (version: string) => ({ version: Effect.succeed(version) });

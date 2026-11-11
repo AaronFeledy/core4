@@ -1,3 +1,5 @@
+import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../generated/setup-plugin-flags";
+import { mergeSetupPluginFlags } from "../../setup-plugin-flags-merge";
 import { yesFlag } from "../../spec/confirmation-flag";
 /**
  * `meta:setup` flag definitions and provider-scoped plugin flag selection.
@@ -10,9 +12,6 @@ import { yesFlag } from "../../spec/confirmation-flag";
  * for the active provider off the parsed input.
  */
 import { Flags } from "../../spec/metadata";
-
-import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../generated/setup-plugin-flags";
-import { mergeSetupPluginFlags } from "../../setup-plugin-flags-merge";
 import { contributedSetupInputFlags } from "./setup-inputs";
 
 export const SETUP_BUILTIN_FLAGS = {

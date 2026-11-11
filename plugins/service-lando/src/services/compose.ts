@@ -1,7 +1,6 @@
-import { Effect, Schema } from "effect";
-
 import { splitComposeCommand } from "@lando/sdk/landofile";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import { ServiceConfigIssue, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";

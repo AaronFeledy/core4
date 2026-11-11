@@ -4,8 +4,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { parseLandofile } from "@lando/landofile/parser";
 
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
@@ -23,14 +22,13 @@ import {
   type ConfigTranslatorShape,
 } from "@lando/sdk/services";
 import { runConfigTranslatorContractSuite } from "@lando/sdk/test";
-
-import { parseLandofile } from "@lando/landofile/parser";
-import { renderTranslateDiagnostics } from "../../src/cli/commands/app-config-translate-output.ts";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import {
   type AppConfigTranslateResult,
   AppConfigTranslateResultSchema,
   renderConfigTranslateResult,
 } from "../../src/cli/commands/app-config-translate.ts";
+import { renderTranslateDiagnostics } from "../../src/cli/commands/app-config-translate-output.ts";
 import { appConfigTranslateWithOwnerOnlyFileAccess as appConfigTranslate } from "../_support/private-file-access.ts";
 
 const dirs: Array<string> = [];

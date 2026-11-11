@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { JsonSchema, Schema, SchemaIssue, SchemaRepresentation } from "effect";
-
 import {
   AppMountInput,
   BindMountPlan,
@@ -18,6 +16,7 @@ import {
   plannedFileSyncSessions,
   serviceAppMount,
 } from "@lando/sdk/schema";
+import { JsonSchema, Schema, SchemaIssue, SchemaRepresentation } from "effect";
 
 const appBind = (
   excludes: readonly string[] = [],

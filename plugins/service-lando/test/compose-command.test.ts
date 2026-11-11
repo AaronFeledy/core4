@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { composeService } from "@lando/engine/services/feature";
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ProviderId, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 
 import { serviceTypes } from "../src/index.ts";
 import { composeServiceFeature, composeServiceType } from "../src/services/compose.ts";

@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { override, reset } from "@lando/sdk/landofile";
 import { Effect, Result } from "effect";
-import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import {
   loadTestLandofileFile as loadLandofileFile,
   loadTestLandofileLayers as loadLandofileLayers,
+  makeTestLandofilePorts,
+  makeTestLandofileStateStore,
 } from "./support.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const source = {
   appRoot: "/tmp/authoring-policy",

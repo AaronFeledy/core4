@@ -1,6 +1,4 @@
 import { serviceImagePlatform } from "@lando/container-runtime/image-ensure";
-import { type Context, DateTime, Effect } from "effect";
-
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
@@ -11,6 +9,7 @@ import type {
   ProviderError,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { type Context, DateTime, Effect } from "effect";
 
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 

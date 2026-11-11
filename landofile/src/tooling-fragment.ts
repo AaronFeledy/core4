@@ -1,9 +1,7 @@
-import { Effect, Predicate } from "effect";
-
 import { LandofileIncludeError, LandofileParseError } from "@lando/sdk/errors";
-import { ToolingIncludeShape } from "@lando/sdk/schema";
-
 import type { LandofileLayer } from "@lando/sdk/schema";
+import { ToolingIncludeShape } from "@lando/sdk/schema";
+import { Effect, Predicate } from "effect";
 import { includeError } from "./include-guard.ts";
 import { type LoadFailureRecorder, loadPathBlocked } from "./load-failures.ts";
 

@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-
-import { DateTime, Result, Schema } from "effect";
-
 import {
   LandoEvent,
   PostGlobalRebuildEvent,
@@ -14,6 +10,7 @@ import {
   PreStartEvent,
 } from "@lando/sdk/events";
 import { AppId, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
+import { DateTime, Result, Schema, SchemaIssue } from "effect";
 
 const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-05-11T07:30:00Z");
 const FIXED_RESOLVED_AT = DateTime.makeUnsafe("2026-05-10T18:51:00Z");

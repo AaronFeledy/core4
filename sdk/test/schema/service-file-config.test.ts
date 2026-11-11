@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import * as SDK from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("ServiceFileConfig", () => {
   test("preserves config.server when decoding ServiceConfigInput", () => {

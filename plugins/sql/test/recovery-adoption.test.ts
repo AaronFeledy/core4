@@ -1,7 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
-
 import { AbsolutePath, AppId, type VolumeIdentity, type VolumeInfo } from "@lando/sdk/schema";
+import { Effect, Exit } from "effect";
 
 import { executeDbCommand } from "../src/execute.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";

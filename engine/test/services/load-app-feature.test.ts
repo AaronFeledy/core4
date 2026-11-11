@@ -1,16 +1,13 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
-
 import { PluginLoadError } from "@lando/sdk/errors";
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
-import { PluginRegistry } from "@lando/sdk/services";
-import { ConfigService } from "@lando/sdk/services";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
+import { ConfigService, PluginRegistry } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry";
 
 const runWithPluginRegistry = <A, E>(

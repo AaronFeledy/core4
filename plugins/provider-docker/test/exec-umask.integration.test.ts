@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect } from "effect";
-
 import { containerHelperDelivery } from "@lando/container-runtime/container-helper";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { exec as runtimeExec } from "@lando/container-runtime/podman/exec";
@@ -24,6 +21,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 

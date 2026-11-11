@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import type { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 

@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Queue, Schema, Stream } from "effect";
-
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { EventService, type EventServiceShape, type LandoEvent, Renderer } from "@lando/sdk/services";
+import { Context, Effect, Queue, Schema, Stream } from "effect";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";

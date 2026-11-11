@@ -7,12 +7,12 @@
  * is the `StreamFrameSink` service the retained-runtime execution provides for a
  * single in-flight request.
  */
-import { Effect, Semaphore } from "effect";
+
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 
 import { McpTransportError } from "@lando/sdk/errors";
 import type { Redactor, TieredRedactionValues } from "@lando/sdk/secrets";
-
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { Effect, Semaphore } from "effect";
 import { redactBoundedJsonValue } from "./bounded-json";
 import type { McpNotify } from "./dispatch";
 import { LiveProgress } from "./live-progress";

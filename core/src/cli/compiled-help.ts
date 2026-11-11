@@ -1,20 +1,18 @@
 /** Cold-path help adapters avoid loading OCLIF. */
-import { Effect, Schema } from "effect";
-
-import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
-import { encodeCommandResult } from "@lando/sdk/command-result";
-import { ToolingCommandUnavailableError } from "@lando/sdk/errors";
-import type { ToolingMetadataStatus } from "./tooling-cache-status";
 
 import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
-
+import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
+import { encodeCommandResult } from "@lando/sdk/command-result";
+import { ToolingCommandUnavailableError } from "@lando/sdk/errors";
+import { Effect, Schema } from "effect";
 import {
   CliInvocation,
   type CliInvocationContext,
   processInvocationContext,
 } from "../runtime/invocation-context";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
 import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
 import { activeResultFormat, emitResultLine } from "./compiled-runtime";
@@ -28,8 +26,7 @@ import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
 import { type PluginCommandListing, PluginMetadata } from "./plugin-command-catalog";
 import { moreRows } from "./root-help-topics";
-
-import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
+import type { ToolingMetadataStatus } from "./tooling-cache-status";
 
 export { renderCommandHelp, renderToolingHelp } from "./cli-help";
 

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { decodeServicePlan } from "../../src/services/_schema-helpers.ts";
 

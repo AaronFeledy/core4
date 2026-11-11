@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result } from "effect";
-
 import type { AppSelector } from "@lando/sdk/app";
 import type { AbsolutePath, LandofileShape } from "@lando/sdk/schema";
+import { Result } from "effect";
 
 import { normalizeAppSelector } from "../../src/app/selector.ts";
 

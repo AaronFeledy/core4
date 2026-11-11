@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { JqExpressionError, JsonJqConflictError, JsonProjectionError } from "@lando/sdk/errors";
+import { Result, Schema } from "effect";
 
 const projectionReasons = ["unknown_key", "duplicate_key", "non_object_result", "format_conflict"] as const;
 const jqReasons = ["eval", "timeout", "too_large", "missing_value"] as const;

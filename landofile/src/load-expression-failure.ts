@@ -9,8 +9,8 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { LandofileLoadSource } from "./load-expression-file.ts";
 import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
+import type { LandofileLoadSource } from "./load-expression-file.ts";
 
 export const normalizeLoadExpressionFailure = (
   cause: unknown,

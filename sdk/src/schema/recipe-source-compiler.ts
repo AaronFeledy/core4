@@ -2,17 +2,17 @@ import { Result, Schema } from "effect";
 import { canonicalJson, sha256Hex } from "../digest/index.ts";
 import { validateRecipeSecretPrompts } from "../recipes/secret-disposition.ts";
 import { validateSnapshotTemplate } from "../recipes/snapshot-template.ts";
+import type { RecipeManifest } from "./recipe.ts";
 import { RecipeContentDigest } from "./recipe-identity.ts";
 import type { RecipeSnapshot } from "./recipe-snapshot.ts";
+import { RecipeSource, RecipeSourceCompileContext } from "./recipe-source.ts";
 import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
 import { compileSourceCondition, compileSourceLayers } from "./recipe-source-layers.ts";
 import { compileSourceOptions } from "./recipe-source-options.ts";
-import { RecipeSource, RecipeSourceCompileContext } from "./recipe-source.ts";
-import type { RecipeManifest } from "./recipe.ts";
 
+export type { RecipeSourceCompileContext } from "./recipe-source.ts";
 export { RecipeSourceCompileError } from "./recipe-source-error.ts";
 export { RECIPE_SOURCE_VARIANT_BUDGET } from "./recipe-source-layers.ts";
-export type { RecipeSourceCompileContext } from "./recipe-source.ts";
 export type CompiledRecipeManifest = RecipeManifest & { readonly snapshot: RecipeSnapshot };
 
 /** Pure boundary compiler. Acquisition supplies portable evidence, never roots or runtime answers. */

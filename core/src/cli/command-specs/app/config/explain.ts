@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import {
   type AppConfigExplainResult,
   AppConfigExplainResultSchema,
@@ -7,6 +5,7 @@ import {
   renderAppConfigExplainResult,
 } from "../../../commands/app-config-explain";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 
 export const appConfigExplainSpec: LandoCommandSpec<AppConfigExplainResult> = {
   resultSchema: AppConfigExplainResultSchema,

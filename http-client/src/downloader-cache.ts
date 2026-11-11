@@ -2,12 +2,10 @@
  * Verified on-disk cache short-circuit for the Downloader.
  */
 import { createHash } from "node:crypto";
-import { constants, type BigIntStats } from "node:fs";
+import { type BigIntStats, constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
-
-import { Effect } from "effect";
-
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 const sameFile = (left: BigIntStats, right: BigIntStats): boolean =>
   right.isFile() &&

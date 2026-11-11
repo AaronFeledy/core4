@@ -1,10 +1,9 @@
 import "@lando/core/bundled-plugins";
 import { expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { openLandoRuntime } from "@lando/core";
 import { FileSystem } from "@lando/core/services";
 import { makeTestRuntime } from "@lando/core/testing";
+import { Effect, Layer } from "effect";
 
 test("retained runtime constructs with typed host services and releases its scope", async () => {
   // Given

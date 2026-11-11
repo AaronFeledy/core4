@@ -1,16 +1,13 @@
-import { Effect, Schema } from "effect";
-
 import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { tcpProbe } from "./_tcp-probe.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -19,6 +16,7 @@ import {
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { TOMCAT_CATALOG } from "./generated/tomcat-catalog.ts";
 

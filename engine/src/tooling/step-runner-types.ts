@@ -1,5 +1,3 @@
-import type { Effect } from "effect";
-
 import type {
   ConfigExpressionError,
   LandofileExpressionParseError,
@@ -8,6 +6,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { ExpressionContext, LandofileExpressionEvaluationError } from "@lando/sdk/expressions";
 import type { PortablePath } from "@lando/sdk/schema";
+import type { Effect } from "effect";
 
 import type { ToolingStepLeaf } from "./step-program.ts";
 

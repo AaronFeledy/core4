@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { AppPlan, landoNetworkingPlan } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
-import { Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 
 import { networkOwnershipLabels } from "../src/native-ownership.ts";

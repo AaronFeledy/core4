@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { DatabaseConnection, PortNumber } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { runAppFeatureContract } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 import { phpMyAdminWireFeature } from "../src/services/phpmyadmin.ts";
 

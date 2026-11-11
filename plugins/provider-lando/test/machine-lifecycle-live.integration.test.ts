@@ -1,13 +1,12 @@
 import { expect, test } from "bun:test";
 import { type NativeInitTransport, runNativeInit } from "@lando/container-runtime/testing/native-init";
-import { Effect } from "effect";
-
 import {
   type PodmanMachineRunner,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
   makeSystemPodmanMachineRunner,
 } from "@lando/provider-lando";
+import { Effect } from "effect";
 
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 import { makeLifecycleMachineName } from "./machine-lifecycle-name.ts";

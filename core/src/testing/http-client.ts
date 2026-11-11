@@ -1,15 +1,13 @@
+import { RequestPolicy, type RequestPolicyShape } from "@lando/http-client/live";
+import type { ResolvedNetworkTrust } from "@lando/http-client/network-trust";
+import { fetchInitForNetwork, shouldBypassProxy } from "@lando/http-client/network-trust";
+import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
+import { createRedactor } from "@lando/sdk/secrets";
+import type { LandoEvent } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
-import { createRedactor } from "@lando/sdk/secrets";
-import type { LandoEvent } from "@lando/sdk/services";
-
-import { RequestPolicy, type RequestPolicyShape } from "@lando/http-client/live";
-import type { ResolvedNetworkTrust } from "@lando/http-client/network-trust";
-import { fetchInitForNetwork, shouldBypassProxy } from "@lando/http-client/network-trust";
 
 /** A fetch init the double recorded for the most recent request under trust. */
 export interface TestHttpCapturedInit {

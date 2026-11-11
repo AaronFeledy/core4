@@ -2,12 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { type Context, Effect } from "effect";
-
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import {
   assertUserAppIdNotReserved,

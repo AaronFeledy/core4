@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { isAbsolute, relative, resolve } from "node:path";
-import { Effect } from "effect";
-
 import {
   ContractFailure,
   type PluginSourceContractHarness,
@@ -9,6 +7,7 @@ import {
   makePluginSourceContractSuite,
   runPluginSourceContractSuite,
 } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 // A tagged error modeling the containment failure the registry raises today
 // (a spec that resolves outside the managed store). Future source adapters will

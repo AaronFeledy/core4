@@ -2,14 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Schema } from "effect";
-
-import { makePluginStateStore } from "@lando/state-store/plugin";
-import { makeTestStateStore } from "@lando/state-store/testing";
-
 import type { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type FileSyncSessionSpec, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeStateStore } from "@lando/state-store/service";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import {
   WINDOWS_LANDO_DOCKER_HOST,

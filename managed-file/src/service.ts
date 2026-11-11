@@ -12,10 +12,9 @@ import { mapFailures } from "@lando/sdk/command-result";
 
 import { mkdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { isPathWithin, makeLandoPaths, resolveLandoRoots } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option } from "effect";
-
 import { ManagedFileError, StateStoreError } from "@lando/sdk/errors";
 import {
   ManagedFileConflictDetectedEvent,
@@ -41,13 +40,11 @@ import {
   ManagedFileService,
   PathsService,
 } from "@lando/sdk/services";
-
-import { isPathWithin, makeLandoPaths, resolveLandoRoots } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { findRealpathAncestor } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option } from "effect";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
   LEDGER_VERSION,

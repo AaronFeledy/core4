@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { McpAllowlistConflictError } from "@lando/sdk/errors";
-
 import {
   MCP_ALLOWLIST_FORBIDDEN_IDS,
   assertMcpAllowlistSafe,
@@ -11,6 +8,7 @@ import {
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandSpec } from "@lando/mcp/registry";
+import { McpAllowlistConflictError } from "@lando/sdk/errors";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { BUNDLED_COMMAND_DESCRIPTORS } from "../../src/cli/generated/bundled-command-descriptors.ts";

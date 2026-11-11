@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Predicate, Schema } from "effect";
-
 import {
   encodeCommandResult,
   listSelectableResultKeys,
@@ -9,6 +7,7 @@ import {
 } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
+import { Effect, Predicate, Schema } from "effect";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 

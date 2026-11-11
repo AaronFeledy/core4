@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, ManagedRuntime } from "effect";
-
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { hostDisablesColor } from "@lando/renderer";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -11,6 +9,7 @@ import {
   RENDERER_CAPABILITIES_VERBOSE_TTY,
 } from "@lando/sdk/renderer";
 import { EventService, Renderer } from "@lando/sdk/services";
+import { Effect, Layer, ManagedRuntime } from "effect";
 
 import { sanitizeNotificationText } from "../src/notify-sanitize.ts";
 import { encodeDesktopNotification } from "../src/notify-trigger.ts";

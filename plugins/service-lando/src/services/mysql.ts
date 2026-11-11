@@ -1,8 +1,4 @@
 import { sha256Hex } from "@lando/sdk/digest";
-import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
-
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -11,10 +7,15 @@ import {
   PortablePath,
   type ServiceConfig,
   type ServiceCreds,
+  ServiceName,
 } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { dataNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
+import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
@@ -22,10 +23,6 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
-import { dataNameFor } from "../app-name.ts";
-import { connectionFor } from "./_connection-helpers.ts";
-import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";

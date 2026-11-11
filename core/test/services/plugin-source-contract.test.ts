@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
-import { realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { Effect } from "effect";
-
 import {
   type PluginSourceContractHarness,
   type PluginSourceTaggedError,
   runPluginSourceContractSuite,
 } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 // Mirror of the registry containment guarantee in
 // core/src/plugins/registry.ts `resolvePluginModulePath`: resolve the spec, then

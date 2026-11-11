@@ -14,6 +14,7 @@ import { parseWorkflowLanguage } from "../src/language/parse.ts";
 import { workflowEventTriggers } from "../src/planning/events.ts";
 import { advancePlan, planWorkflow } from "../src/planning/plan.ts";
 import { WorkflowPlanResult, projectPlan } from "../src/planning/project.ts";
+
 const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
 
 const verifiedFixture = async () => {

@@ -1,7 +1,7 @@
+import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
+import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import { type DiscoveryOperation, runDiscoveryOperation } from "@lando/landofile/operation-scope";
 import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
-import { Cause, Effect, Exit, Layer } from "effect";
-
 import {
   JsonJqConflictError,
   JsonProjectionError,
@@ -10,9 +10,7 @@ import {
   RendererSelectionError,
   ToolingInputError,
 } from "@lando/sdk/errors";
-
-import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
-import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
+import { Cause, Effect, Exit, Layer } from "effect";
 import {
   CliInvocation,
   type CliInvocationContext,
@@ -103,9 +101,9 @@ import {
 import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
+export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
 export { compiledCommandInputFromArgv };
-export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 
 export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
   scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));

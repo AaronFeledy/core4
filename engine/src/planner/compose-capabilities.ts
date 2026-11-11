@@ -1,5 +1,3 @@
-import { type Context, Effect } from "effect";
-
 import { CapabilityError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -10,6 +8,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { PluginRegistry } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import { collectComposeKnobs, findUnsupportedComposeKnob } from "../services/compose-knobs.ts";
 import {

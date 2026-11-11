@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import type {
   AppPlacementError,
   ProxyApplyError,
@@ -10,6 +8,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { AppPlan, ProxyApplyResult, RouterConfig } from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";

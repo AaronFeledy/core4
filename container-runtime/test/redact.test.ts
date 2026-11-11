@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { createStandaloneRedactor } from "@lando/redaction/service";
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor, makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
 
 import { redactDetails, redactString, runtimeDiagnosticContext, withApiReason } from "../src/redact.ts";

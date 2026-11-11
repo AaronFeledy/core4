@@ -4,8 +4,6 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
 import { EventError, FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/core/errors";
 import {
@@ -37,7 +35,6 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope, SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
-import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -45,10 +42,12 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as DiskStateStore from "@lando/state-store/service";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
@@ -1636,4 +1635,5 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls).toHaveLength(1);
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

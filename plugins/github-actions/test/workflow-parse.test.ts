@@ -43,6 +43,7 @@ it("parses action metadata using the pinned public action schema", async () => {
 // experimental syntax explicitly outside this pure single-file adapter.
 import { readFileSync, readdirSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
+
 const corpus = new URL("./fixtures/actions-language/workflows/", import.meta.url);
 const unsupported = new Set(
   readFileSync(
@@ -103,6 +104,7 @@ import { MappingToken } from "@actions/workflow-parser/templates/tokens/mapping-
 import { SequenceToken } from "@actions/workflow-parser/templates/tokens/sequence-token";
 import { StringToken } from "@actions/workflow-parser/templates/tokens/string-token";
 import { evaluateTemplate } from "../src/language/template.ts";
+
 it("bounds alias fanout and source names before upstream expansion", async () => {
   const text = `on: push\njobs: &a {one: &b [${"a,".repeat(60)}]}\nextra: [${"*a,".repeat(1000)}]\n`;
   const result = await Effect.runPromise(Effect.flip(parseWorkflowLanguage("bad\u001b", text)));

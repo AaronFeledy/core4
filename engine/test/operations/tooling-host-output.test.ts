@@ -16,11 +16,11 @@ import {
   AppPlanner,
   ConfigService,
   LandofileService,
+  ProcessRunner,
   RuntimeProviderRegistry,
   ShellRunner,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
@@ -364,5 +364,6 @@ test.each([
   const hasHost = JSON.stringify(task).includes(":host");
   expect(joined(h.frames, "stdout")).toBe(hasHost ? "hostprovider" : "provider");
 });
+
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

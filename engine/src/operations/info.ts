@@ -1,5 +1,3 @@
-import { Effect, Result, Schema } from "effect";
-
 import type {
   InfoAppOptions,
   InfoAppResult,
@@ -23,6 +21,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";

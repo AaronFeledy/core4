@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { DateTime, Effect, Stream } from "effect";
-
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -10,6 +6,8 @@ import type {
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makePodmanApiClient } from "@lando/provider-lando";
 import type { ImagePullProgressEvent } from "@lando/sdk/events";
 import {
@@ -21,6 +19,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { type EventService, RuntimeProvider } from "@lando/sdk/services";
+import { DateTime, Effect, Stream } from "effect";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 import { makeProviderLayer } from "./provider-fixture.ts";
 

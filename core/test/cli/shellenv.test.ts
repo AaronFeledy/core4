@@ -1,9 +1,8 @@
+import { beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, win32 } from "node:path";
-
-import { beforeAll, describe, expect, test } from "bun:test";
 import { installRecordOwnsDestination } from "@lando/engine/install/record";
 import { makeLandoPaths } from "@lando/paths";
 

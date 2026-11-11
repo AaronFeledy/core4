@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -10,11 +8,11 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { fixtureHelperMount } from "./support/exec-supervision.ts";
-import { bringUp } from "./support/service-creation.ts";
-import { commonContainerLabels } from "./support/service-creation.ts";
+import { bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;

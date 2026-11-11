@@ -1,10 +1,7 @@
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, spyOn, test } from "bun:test";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
-
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -35,6 +32,7 @@ import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 import { lifecycleFileSyncPlugin } from "./lifecycle-file-sync-plugin.ts";
 
@@ -1391,4 +1389,5 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 });
+
 import { currentTestPlan } from "../_support/value-contracts.ts";

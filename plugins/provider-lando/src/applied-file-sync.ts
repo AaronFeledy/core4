@@ -1,8 +1,6 @@
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { APP_LABEL } from "@lando/container-runtime/labels";
 import { sameRealpath } from "@lando/paths";
-import { Effect } from "effect";
-
-import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
   type AppPlan,
@@ -11,6 +9,7 @@ import {
   hasStructuralFileSyncCoverage,
 } from "@lando/sdk/schema";
 import type { AppliedFileSyncInspection } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { inspectAppliedPlan } from "./applied-state.ts";
 

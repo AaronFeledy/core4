@@ -1,7 +1,6 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { DEFAULT_SOURCE_LINK_BASE } from "../src/lib/frames.ts";
 

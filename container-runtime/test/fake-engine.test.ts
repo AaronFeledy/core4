@@ -3,8 +3,8 @@ import { identityRedactor } from "@lando/sdk/command-result";
 import { AbsolutePath, AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { Effect, Schema, Stream } from "effect";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
-import { FakeEngineContractError } from "./support/fake-engine-state.ts";
 import { FakeEngine } from "./support/fake-engine.ts";
+import { FakeEngineContractError } from "./support/fake-engine-state.ts";
 
 test.each(["/unsupported", "/containers/helper/unsupported", "/volumes/data/unsupported"] as const)(
   "rejects an unimplemented engine route loudly: %s",

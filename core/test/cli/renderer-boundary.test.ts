@@ -1,16 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
+import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
-
-import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
-import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
-import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { DateTime, Effect, Layer, Schema } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
+import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 // Reset to 0, not undefined: under Bun assigning undefined once an exit code is
 // set is a no-op, so an `undefined` reset cannot clear a code another file left

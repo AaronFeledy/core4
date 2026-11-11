@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Schema } from "effect";
-
 import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const ISO_TIMESTAMP = "2026-06-14T00:00:00.000Z";
 

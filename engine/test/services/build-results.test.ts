@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime, Schema } from "effect";
-
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
+import { DateTime, Schema } from "effect";
 import { BuildResultEntry, findCompleteBuildResult } from "../../src/services/build-results.ts";
 
 const completedAt = DateTime.makeUnsafe("2026-07-12T15:00:00.000Z");

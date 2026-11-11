@@ -1,6 +1,19 @@
 import { dirname } from "node:path";
+import {
+  type LintLandofileOptions,
+  attributeEffectiveLintIssue,
+  mergeLintFindings,
+} from "@lando/landofile/lint";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { normalizeHostPlatform } from "@lando/paths";
+import type {
+  AppDataIdentityError,
+  LandofileFormConflictError,
+  LandofileNotFoundError,
+  LandofileValidationError,
+  NotImplementedError,
+} from "@lando/sdk/errors";
+import type { ConfigLintResult, ConfigLintViolation, ProviderId, ValidationIssue } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
@@ -15,21 +28,6 @@ import { planningLintFindings } from "../planner/lint-planning.ts";
 import { toolingDynamicIssues } from "../planner/tooling-dynamic-issues.ts";
 import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
 import { FileSyncPolicy, fileSyncMetadata, makeFileSyncPolicy } from "../plugins/file-sync-policy.ts";
-
-import type {
-  AppDataIdentityError,
-  LandofileFormConflictError,
-  LandofileNotFoundError,
-  LandofileValidationError,
-  NotImplementedError,
-} from "@lando/sdk/errors";
-import type { ConfigLintResult, ConfigLintViolation, ProviderId, ValidationIssue } from "@lando/sdk/schema";
-
-import {
-  type LintLandofileOptions,
-  attributeEffectiveLintIssue,
-  mergeLintFindings,
-} from "@lando/landofile/lint";
 import { lintLandofileSnapshot } from "../services/landofile-live.ts";
 import { lintBunShellScripts } from "./app-config-lint-scripts.ts";
 import { lintEnvFiles, snapshotLintFileSystem } from "./config-lint-env-files.ts";

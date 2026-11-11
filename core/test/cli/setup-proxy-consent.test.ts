@@ -1,12 +1,10 @@
 import { expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import { makeUnavailableRouter } from "@lando/engine/subsystems/proxy/api";
 import { ProxyError, ProxySetupError } from "@lando/sdk/errors";
-
 import type { ProxyConfig } from "@lando/sdk/schema";
 import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
+import { Effect, Result } from "effect";
 import { runProxySetupStep } from "../../src/cli/command-specs/meta/setup-service-steps.ts";
 import { makeSetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";

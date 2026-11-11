@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
-import { ServiceConfig } from "@lando/sdk/schema";
-
 import { join } from "node:path";
-
 import { makeLandoPaths } from "@lando/paths";
+import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import sshAgentGlobalService, { createSshAgentServiceConfig } from "../../src/global-service.ts";
 

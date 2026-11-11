@@ -4,7 +4,7 @@ import { type IncomingMessage, createServer, request as httpRequest } from "node
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Cause, Effect, Exit, Layer, Option, Stream } from "effect";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import {
   HostProxyAuthenticationError,
@@ -16,20 +16,19 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { Cause, Effect, Exit, Layer, Option, Stream } from "effect";
 import { resolveCompiledBinaryVersion } from "../../../../scripts/compiled-binary-version.ts";
 import type { HostProxyRunLandoExecutor } from "../../../src/subsystems/host-proxy/dispatch.ts";
-import { listenHostProxyServer } from "../../../src/subsystems/host-proxy/transport-listener.ts";
-import { requestPathname } from "../../../src/subsystems/host-proxy/transport-response.ts";
-import { sessionPaths } from "../../../src/subsystems/host-proxy/transport-session.ts";
-import type { HostProxyCallDiagnostic } from "../../../src/subsystems/host-proxy/transport-session.ts";
 import {
   createHostProxyRunLandoSession,
   hostProxyRunLandoStateDir,
   scopedHostProxyRunLandoSession,
   sendHostProxyRunLando,
 } from "../../../src/subsystems/host-proxy/transport.ts";
+import { listenHostProxyServer } from "../../../src/subsystems/host-proxy/transport-listener.ts";
+import { requestPathname } from "../../../src/subsystems/host-proxy/transport-response.ts";
+import type { HostProxyCallDiagnostic } from "../../../src/subsystems/host-proxy/transport-session.ts";
+import { sessionPaths } from "../../../src/subsystems/host-proxy/transport-session.ts";
 
 const tempDirs: string[] = [];
 const repoRoot = resolve(import.meta.dirname, "../../../..");

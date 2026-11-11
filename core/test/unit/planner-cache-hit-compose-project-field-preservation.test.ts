@@ -1,18 +1,15 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Layer, Schema } from "effect";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
 test("Given supported project fields, when planning twice, then the cache hit retains the Compose extension", async () => {

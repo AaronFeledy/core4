@@ -1,12 +1,11 @@
-import { Cause, Effect, Exit, Option } from "effect";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 
 import type {
   AmbiguousCertificateAuthoritiesError,
   NoCertificateAuthorityError,
   PluginLoadError,
 } from "@lando/sdk/errors";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { Cause, Effect, Exit, Option } from "effect";
 
 export type CertsDoctorStatus =
   | { readonly _tag: "unresolved" }

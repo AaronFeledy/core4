@@ -1,6 +1,4 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect } from "effect";
-
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
 import { validateConfigTranslateInput, validateConfigTranslateResult } from "@lando/sdk/landofile";
 import type { ConfigTranslateResult } from "@lando/sdk/schema";
@@ -10,6 +8,7 @@ import type {
   ConfigTranslateMatch,
   ConfigTranslatorShape,
 } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export const resolveConfigTranslators = (
   translators: ReadonlyArray<ConfigTranslatorShape>,

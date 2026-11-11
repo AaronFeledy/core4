@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { validateConfigTranslateResult } from "@lando/sdk/landofile";
-import { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type { ConfigTranslateInput, ConfigTranslateResult } from "@lando/sdk/schema";
+import { ConfigTranslateSourceId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { lando4ConfigTranslator } from "../src/translator.ts";
 

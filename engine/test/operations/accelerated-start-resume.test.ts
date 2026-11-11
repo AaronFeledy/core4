@@ -12,8 +12,8 @@ import {
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
-import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { acceleratedPlan, app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
@@ -358,4 +358,5 @@ test("failed provider apply retains sessions and the next start resumes the same
   expect(after.pending).toBeNull();
   expect(harness.calls.filter((call) => /^(create|terminate):/.test(call))).toEqual([]);
 });
+
 import { literalTestLandofile } from "../compiled-landofile.ts";

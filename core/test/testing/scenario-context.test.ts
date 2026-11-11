@@ -3,11 +3,10 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Schema } from "effect";
-
 import { GuideFixtureNotFoundError, GuideFixtureSymlinkError, NotImplementedError } from "@lando/core/errors";
 import { ScenarioContext, ScenarioContextFactory, withScenarioContext } from "@lando/core/testing";
 import { Transcript } from "@lando/sdk/docs/components";
+import { Cause, Effect, Schema } from "effect";
 
 // Scenario commands run the real CLI, including real starts that wait out service readiness.
 setDefaultTimeout(30_000);

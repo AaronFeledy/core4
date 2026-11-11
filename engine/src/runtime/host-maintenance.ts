@@ -1,5 +1,3 @@
-import { Context, Effect, Layer } from "effect";
-
 import type { LandoPaths } from "@lando/paths";
 import type {
   HostMaintenanceContribution,
@@ -10,6 +8,7 @@ import type {
 import { AbsolutePath, type HostPlatform } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Context, Effect, Layer } from "effect";
 import { makePluginStateStore } from "../plugins/context-state.ts";
 
 export interface HostMaintenanceRegistryShape {

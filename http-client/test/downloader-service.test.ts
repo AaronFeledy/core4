@@ -1,17 +1,15 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
+import { HttpTrustError } from "@lando/sdk/errors";
+import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
+import { Downloader } from "@lando/sdk/services";
 import { Effect, Fiber, Layer, Result } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { HttpTrustError } from "@lando/sdk/errors";
-import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
-import { Downloader } from "@lando/sdk/services";
 
 import { layer as DownloaderLayer } from "../src/downloader.ts";
 import { RequestPolicy, type RequestPolicyShape } from "../src/policy.ts";

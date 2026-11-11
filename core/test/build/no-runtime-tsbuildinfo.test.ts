@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Glob } from "bun";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

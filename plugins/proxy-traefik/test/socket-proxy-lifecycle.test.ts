@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect } from "effect";
-
 import type {
   PrivilegeService,
   ProcessResult,
@@ -8,17 +6,17 @@ import type {
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { type Context, Effect } from "effect";
+import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
+import type { SocketProxyDependencies } from "../src/proxy-types.ts";
 import {
   SOCKET_PROXY_POLKIT_PATH,
   SOCKET_PROXY_UNIT_PATHS,
   socketProxyPolkitHeader,
   socketProxyUnitHeader,
 } from "../src/socket-proxy-helper.ts";
-
-import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
-import { acquisitionStateFile } from "../src/proxy-paths.ts";
-import type { SocketProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });

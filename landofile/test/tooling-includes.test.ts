@@ -1,11 +1,9 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import type { LandofileShape } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { getLocalIncludePaths } from "../src/include-provenance.ts";
 import { getInternalToolingTasks } from "../src/tooling-include-provenance.ts";

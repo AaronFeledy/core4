@@ -1,14 +1,13 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
+import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 
 import { AppIncludesUpdateResultSchema, renderIncludesUpdateResult } from "@lando/core/cli/operations";
-import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 import { LandofileFormConflictError } from "@lando/core/errors";
 import type { GitTransport } from "@lando/source-acquisition";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { appIncludesUpdateSpec } from "../../src/cli/command-specs/app/includes/update.ts";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";

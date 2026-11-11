@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { pathsRule } from "../../../scripts/boundary/rules/paths.ts";
 import { checkPathsBoundary } from "../../../scripts/check-paths-boundary.ts";

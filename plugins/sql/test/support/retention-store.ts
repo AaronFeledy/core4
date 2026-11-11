@@ -1,6 +1,4 @@
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { makeDataMoverService } from "@lando/data-mover/service";
 import { makeLandoPaths } from "@lando/paths";
 import {
@@ -15,6 +13,7 @@ import { RuntimeProvider, type RuntimeProviderShape, StateStore } from "@lando/s
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as DiskStateStore from "@lando/state-store/service";
+import { Effect } from "effect";
 
 import { makeSqlTestDeps } from "./fakes.ts";
 

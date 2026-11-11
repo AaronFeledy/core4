@@ -1,14 +1,12 @@
-import { Effect, Option, Result } from "effect";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-
 import { bundledPluginModules } from "@lando/engine/composition";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { pluginDoctorCheckIndex } from "@lando/engine/plugins/doctor-contributions";
 import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect, Option, Result } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
 import {

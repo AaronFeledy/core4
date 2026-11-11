@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
+import { Result, Schema } from "effect";
 
 describe("OpenTargetUnresolvedError", () => {
   test("carries message, known services, and remediation", () => {

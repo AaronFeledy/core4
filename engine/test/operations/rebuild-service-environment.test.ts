@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";

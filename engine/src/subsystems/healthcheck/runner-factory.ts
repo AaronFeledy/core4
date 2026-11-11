@@ -1,7 +1,6 @@
-import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Ref, Result } from "effect";
-
 import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { ProbeResult } from "@lando/sdk/probe";
 import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
@@ -12,14 +11,13 @@ import {
   type ProcessResult,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Effect, Ref, Result } from "effect";
 import {
   type HostProbeRunners,
   interruptOnAbort,
   prepareHealthcheckAttempt,
   validateProbeTarget,
 } from "./attempt.ts";
-
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 type AttemptStatus =
   | { readonly _tag: "ok" }

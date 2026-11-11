@@ -1,5 +1,3 @@
-import { DateTime, Duration, Effect } from "effect";
-
 import {
   AppPlacementError,
   GlobalAppError,
@@ -11,9 +9,9 @@ import {
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { runProbe } from "@lando/sdk/probe";
 import { EventService } from "@lando/sdk/services";
-
-import { readAcquisitionState } from "./port-acquisition-state.ts";
+import { DateTime, Duration, Effect } from "effect";
 import { type AcquisitionDecision, probeForward } from "./port-acquisition.ts";
+import { readAcquisitionState } from "./port-acquisition-state.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { advertisedRouterBindAddress, routerProbeHost } from "./router-bind-address.ts";
 import type { AuthorityPorts } from "./routing.ts";

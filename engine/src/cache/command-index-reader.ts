@@ -14,13 +14,13 @@ import {
 import type { LandoRoots } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { CORE_VERSION } from "../version.ts";
+import { type AppCommandIndexPayload, decodeAppCommandIndex } from "./command-index.ts";
 import {
   type AppCommandCacheSource,
   isMissingFile,
   resolveAppCommandCacheSource,
   sourceContentHash,
 } from "./command-index-source.ts";
-import { type AppCommandIndexPayload, decodeAppCommandIndex } from "./command-index.ts";
 import { commandScriptsFresh } from "./command-script-freshness.ts";
 import { appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
 

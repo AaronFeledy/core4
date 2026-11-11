@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -19,6 +17,7 @@ import { formatSummary } from "@lando/renderer/summary";
 import type { InfoAppResult } from "@lando/sdk/app";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { DateTime, Effect, Layer, Stream } from "effect";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 import { connections } from "./connection-fixtures";
 
@@ -280,4 +279,5 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
     expect(json).not.toContain(SECRET_VALUE);
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

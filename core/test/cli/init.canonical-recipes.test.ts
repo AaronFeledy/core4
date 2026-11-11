@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
+import { Effect } from "effect";
 
 import {
   BUILTIN_RECIPE_DECOMPOSERS,

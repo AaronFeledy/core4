@@ -1,12 +1,14 @@
 import { Effect, Schema } from "effect";
 import type { ProjectedFailure } from "./failure.ts";
+
 export {
-  resolveCommandCompletion,
-  commandCompletionFromExitCode,
   type CompletedCommandResult,
+  commandCompletionFromExitCode,
+  resolveCommandCompletion,
 } from "./completion.ts";
 export {
   FailureRoleAnnotation,
+  type ProjectedFailure,
   annotateFailureRole,
   commandFailureCause,
   failureDefectCause,
@@ -17,14 +19,14 @@ export {
   mapStreamFailures,
   mergeFailure,
   primaryFailureReason,
-  type ProjectedFailure,
 } from "./failure.ts";
 
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
-export { normalizeDefect, internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
+
+export { internalErrorRemediation, normalizeDefect, taggedErrorJson } from "./diagnostic.ts";
 
 import { JsonProjectionError } from "../errors/command.ts";
 import { emitYamlDocument } from "../yaml/document.ts";
@@ -33,12 +35,12 @@ import { applyProjectResultKeys } from "./project-result.ts";
 import { encodeRedactedJson } from "./redacted-json.ts";
 
 export {
-  identityRedactor,
-  encodeStreamEventFrame,
-  encodeStreamStdoutFrame,
-  encodeStreamStderrFrame,
-  type EncodeStreamEventFrameOptions,
   type EncodeStreamChunkFrameOptions,
+  type EncodeStreamEventFrameOptions,
+  encodeStreamEventFrame,
+  encodeStreamStderrFrame,
+  encodeStreamStdoutFrame,
+  identityRedactor,
 } from "./frames.ts";
 
 export { listSelectableResultKeys, projectEncodedResult } from "./project-result.ts";

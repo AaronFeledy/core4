@@ -2,11 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { ConfigError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 import * as LandoConfigService from "../../src/services/config.ts";
 
 const withTempConfigRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {

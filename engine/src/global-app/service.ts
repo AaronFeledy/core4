@@ -1,11 +1,9 @@
 import { isAbsolute, join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { type Context, Effect, Layer } from "effect";
-
 import { GlobalAppError, GlobalLandofilePathConflictError } from "@lando/sdk/errors";
 import { AbsolutePath, type ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, GlobalAppService } from "@lando/sdk/services";
+import { type Context, Effect, Layer } from "effect";
 import { bindMountSources, readManagedGlobalDist, renderGlobalDist } from "./dist-content.ts";
 
 export { GlobalAppService } from "@lando/sdk/services";

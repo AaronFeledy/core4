@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
-import { mapFailures } from "../command-result/failure.ts";
-
 import { Effect, Fiber, Result } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import type { AbsolutePath, DownloadResult } from "../schema/index.ts";
 import type { DownloaderShape, LandoEvent } from "../services/index.ts";

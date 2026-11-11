@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema, SchemaAST } from "effect";
-
 import * as errors from "@lando/sdk/errors";
 import { ValidationIssue } from "@lando/sdk/schema";
+import { Result, Schema, SchemaAST } from "effect";
 
 describe("public diagnostic contracts", () => {
   for (const [name, exported] of Object.entries(errors)) {

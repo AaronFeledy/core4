@@ -1,10 +1,7 @@
 import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
-import { Semaphore } from "effect";
-
-import { Clock, DateTime, Effect, Option, Schema } from "effect";
-
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
+import { Clock, DateTime, Effect, Option, Schema, Semaphore } from "effect";
 import type { PrivateFileAccess } from "./private-file-access.ts";
 
 const LOCK_STALE_MS = 30_000;

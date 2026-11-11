@@ -14,14 +14,12 @@
  * file re-derives that same contract here alongside the file-sync contribution
  * so the plugin wiring has one focused characterization surface.
  */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { type Context, Effect, Layer } from "effect";
-
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { makeLandoPaths } from "@lando/core/paths";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -34,6 +32,7 @@ import {
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { resolveHostKey } from "@lando/sdk/tool-provisioning";
+import { type Context, Effect, Layer } from "effect";
 
 import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
 

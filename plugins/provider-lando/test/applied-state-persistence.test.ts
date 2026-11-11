@@ -2,16 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
+import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { DateTime, Effect, Schema } from "effect";
 import { makeRuntimeProvider } from "../src/index.ts";
-
-import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
+
 const makePluginStateStore = (
   store: Parameters<typeof makePluginStateStoreWithAccess>[0],
   root: Parameters<typeof makePluginStateStoreWithAccess>[1],
 ) => makePluginStateStoreWithAccess(store, root, ownerOnlyFileAccess);
+
 import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import {
   appliedPlanPath,
@@ -31,7 +31,9 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
+
 const makeStateStore = () => makeStateStoreUsing({ privateFileAccess: ownerOnlyFileAccess });
+
 import { inspectAppliedFileSync } from "../src/applied-file-sync.ts";
 import { inspectAppliedPlan } from "../src/applied-state.ts";
 

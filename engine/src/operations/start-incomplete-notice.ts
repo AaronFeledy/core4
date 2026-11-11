@@ -1,7 +1,6 @@
-import { Context, Duration, Effect, Exit, Option, Ref } from "effect";
-
 import type { AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import { Context, Duration, Effect, Exit, Option, Ref } from "effect";
 
 import { CommandWarnings } from "../landofile/command-warnings.ts";
 

@@ -1,7 +1,12 @@
+import {
+  type RunToolingResult,
+  runTooling,
+  runToolingRedactionTokens,
+} from "@lando/engine/operations/tooling";
+import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { isStdioRendererIO } from "@lando/renderer/io";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
-import { Effect, Layer } from "effect";
-
 import {
   type BunShellScriptEmptyError,
   type BunShellScriptFrontMatterError,
@@ -14,15 +19,8 @@ import {
   ToolingCompileError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-
-import {
-  type RunToolingResult,
-  runTooling,
-  runToolingRedactionTokens,
-} from "@lando/engine/operations/tooling";
-import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
-import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
-import { isStdioRendererIO } from "@lando/renderer/io";
+import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
+import { Effect, Layer } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
 import { finishCommandProgress } from "./command-progress";

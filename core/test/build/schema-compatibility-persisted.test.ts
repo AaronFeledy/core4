@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { loadWorkingSchemaArtifacts } from "../../../scripts/schema-compatibility-artifacts.ts";
 import {
   acceptCompatibilityExceptions,
   classifySchemaChange,
@@ -19,6 +18,7 @@ import {
   readPersistedStoreVersions,
 } from "../../../scripts/schema-compatibility/persisted.ts";
 import { loadBasePersistedStoreVersions } from "../../../scripts/schema-compatibility/store-versions.ts";
+import { loadWorkingSchemaArtifacts } from "../../../scripts/schema-compatibility-artifacts.ts";
 
 const storeVersions = { "applied-state": 4, "tunnel-registry": 2 } as const;
 const persistedStoresBySurface = new Map([["schema:HostAliasPlan", new Set(["applied-state"] as const)]]);

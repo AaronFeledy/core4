@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Exit } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -10,11 +8,11 @@ import {
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect, Exit } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { commonContainerLabels } from "./support/service-creation.ts";
-import { bringUp } from "./support/service-creation.ts";
+import { bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-dialect-app");

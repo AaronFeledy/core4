@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
-
 import {
   type MemoryPressureLevel,
   attachMemoryPressureListener,
@@ -10,6 +8,7 @@ import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
 import { testAppGenerations } from "../src/testing.ts";
 import { TestMcpCommandExecutor } from "./executor";
 

@@ -1,7 +1,5 @@
 import { expect, test } from "bun:test";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { DateTime, Effect } from "effect";
-
 import { type PodmanApiClient, type PodmanHttpRequest, makeRuntimeProvider } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -11,6 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { runScoped } from "./scope-helpers.ts";
 
 const providerId = ProviderId.make("lando");

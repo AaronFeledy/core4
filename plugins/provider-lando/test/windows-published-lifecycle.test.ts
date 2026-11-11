@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect } from "effect";
-
 import type { EngineHttpResponse, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -18,9 +16,9 @@ import {
   type ServicePlan,
   landoServiceContainerName,
 } from "@lando/sdk/schema";
-import { makeRuntimeProvider } from "./provider-fixture.ts";
-
+import { DateTime, Effect } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const deferred = () => {
   let resolve!: () => void;

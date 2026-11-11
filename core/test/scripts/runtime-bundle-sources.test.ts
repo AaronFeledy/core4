@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { parseRuntimeBundleSources } from "../../../scripts/runtime-bundle-sources.ts";
 import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";

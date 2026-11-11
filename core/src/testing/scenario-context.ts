@@ -3,6 +3,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import { createStandaloneRedactor } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
+import {
+  FileIoError,
+  FileNotFoundError,
+  GuideFixtureNotFoundError,
+  GuideFixtureSymlinkError,
+  NotImplementedError,
+} from "@lando/sdk/errors";
+import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
 import {
   type Cause,
   Clock,
@@ -15,20 +27,6 @@ import {
   type Scope,
   Stream,
 } from "effect";
-
-import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
-import {
-  FileIoError,
-  FileNotFoundError,
-  GuideFixtureNotFoundError,
-  GuideFixtureSymlinkError,
-  NotImplementedError,
-} from "@lando/sdk/errors";
-import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
-
-import * as BunFileSystem from "@lando/engine/services/file-system";
-import { createStandaloneRedactor } from "@lando/redaction/service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
 import { redactDetails } from "../cli/redact";
 import { type GuideCommandSyntaxError, guideCommandArgv } from "../docs/guide-compiler/command-argv.ts";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
@@ -259,7 +257,7 @@ const errorTagFromStderr = (stderr: string): string | undefined => {
 
 const shellNotImplemented = (command: string): NotImplementedError =>
   new NotImplementedError({
-    message: `<Run shell=\"${command}\"> is not implemented`,
+    message: `<Run shell="${command}"> is not implemented`,
     commandId: "guide.run.shell",
     remediation: 'Use `<Run command="…">` for guide scenarios. Shell runners are not supported.',
   });

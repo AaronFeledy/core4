@@ -15,6 +15,7 @@ import { EventService, GlobalAppService, PathsService, SshService } from "@lando
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Option, type Scope } from "effect";
+import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
 import {
@@ -30,7 +31,6 @@ import {
 } from "../subsystems/ssh-agent/overlay.ts";
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import { type AgentRelaySession, runtimeSshAgentReady } from "../subsystems/ssh-agent/session.ts";
-import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { type PublishSession, withRetainedSession } from "./retained-session.ts";
 import { startSshAgentTreeId } from "./start-progress.ts";
 import { startSshSidecar } from "./start-ssh-sidecar.ts";

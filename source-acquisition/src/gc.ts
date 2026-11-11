@@ -12,8 +12,8 @@ import { io, makeStorage } from "./storage.ts";
 import { containedPath } from "./tree.ts";
 import type { SourceKey, SourceStoreOptions } from "./types.ts";
 
-export type { SourceGcReport, GcOptions } from "./gc-schema.ts";
-export { SourceGcReportSchema, LockKeysResult, LockKey } from "./gc-schema.ts";
+export type { GcOptions, SourceGcReport } from "./gc-schema.ts";
+export { LockKey, LockKeysResult, SourceGcReportSchema } from "./gc-schema.ts";
 
 export const gc = Effect.fn("SourceStore.gc")(function* (
   options: SourceStoreOptions,

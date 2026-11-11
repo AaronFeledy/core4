@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer } from "effect";
-
 import { CommandRegistry, type RegisteredCommand } from "@lando/core/services";
 import { decodeAppCommandIndex, encodeAppCommandIndex } from "@lando/engine/cache/command-index";
 import {
@@ -14,6 +12,7 @@ import {
 } from "@lando/engine/cache/command-index-writer";
 import { appCommandCachePath, appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import * as CommandRegistryLayer from "@lando/engine/services/command-registry";
+import { Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 

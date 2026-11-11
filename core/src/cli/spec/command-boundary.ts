@@ -1,6 +1,5 @@
-import { Effect, Layer, Schema } from "effect";
-
 import type { RendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Schema } from "effect";
 import type { CliInvocationContext } from "../../runtime/invocation-context";
 import { type RendererMode, formatBugReport } from "../bug-report";
 import { validateCommandCliFlags } from "../flag-value-validation";

@@ -1,11 +1,10 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { physicalListenerPorts } from "@lando/container-runtime/physical-publications";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Predicate } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { EndpointPlan, NetworkingPlan, ServiceNetworkAttachment } from "@lando/sdk/schema";
+import { Effect, Predicate } from "effect";
 
 import {
   type PublishedContainerReceipt,

@@ -7,8 +7,9 @@
  * result lines. Behavior is frozen — the emitted bytes are a contract. The
  * orchestrator builds one emitter bundle per command run.
  */
-import { Effect } from "effect";
 
+import { RedactionService } from "@lando/redaction/service";
+import { writeResultLine } from "@lando/renderer/output";
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import {
   encodeCommandResult,
@@ -21,9 +22,7 @@ import { JqExpressionError } from "@lando/sdk/errors";
 import type { CommandTrace } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
-
-import { RedactionService } from "@lando/redaction/service";
-import { writeResultLine } from "@lando/renderer/output";
+import { Effect } from "effect";
 import type { CommandWarningsShape } from "./command-warnings";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import { applyJqToRedactedJsonLine } from "./jq/eval.ts";

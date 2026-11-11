@@ -3,9 +3,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { serialize } from "node:v8";
-import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Context, Effect, Result, Schema } from "effect";
-
 import {
   APP_COMMAND_MAGIC,
   COMMAND_INDEX_HEADER_BYTES,
@@ -14,7 +11,9 @@ import {
 } from "@lando/engine/cache/command-index";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { Context, Effect, Result, Schema } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {

@@ -2,9 +2,8 @@ import { Effect } from "effect";
 import { mapFailures } from "../command-result/failure.ts";
 
 import { AppId, type HealthcheckPlan, ServiceName } from "../schema/index.ts";
-import { ContractFailure } from "./_shared.ts";
-
 import type { SshAgentSocket, SshServiceShape, SshSetupOptions } from "../services/index.ts";
+import { ContractFailure } from "./_shared.ts";
 
 const sshContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `SshService contract failed: ${assertion}`, assertion, details });

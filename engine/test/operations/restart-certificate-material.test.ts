@@ -1,8 +1,7 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
 import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
 import { networkOwnershipLabels } from "@lando/container-runtime/native-ownership";
 import { bringUp } from "@lando/container-runtime/podman/bring-up";

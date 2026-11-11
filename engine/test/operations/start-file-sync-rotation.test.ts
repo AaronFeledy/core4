@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { type AppPlan, PortablePath } from "@lando/sdk/schema";
-import { FileSyncSessionRef } from "@lando/sdk/schema";
+import { type AppPlan, FileSyncSessionRef, PortablePath } from "@lando/sdk/schema";
 import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { Cause, Effect, Exit } from "effect";

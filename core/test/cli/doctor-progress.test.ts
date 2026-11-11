@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Layer, Queue, Stream } from "effect";
-
 import { ConfigService } from "@lando/core/services";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { Effect, Layer, Queue, Stream } from "effect";
 import {
   DOCTOR_TREE_ID,
   appConfigOutcome,

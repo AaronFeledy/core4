@@ -2,8 +2,6 @@ import { expect } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect } from "effect";
-
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
 import { bringDown, bringUp, exec, makePodmanApiClient, pullImage } from "@lando/provider-lando";
 import {
@@ -31,6 +29,7 @@ import {
   appIdentityKey,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 import {
   BACKEND_CONTENT,

@@ -2,9 +2,6 @@ import { lstat, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Result, Schema } from "effect";
-
 import { NotImplementedError, PluginManifestError, causeMessage } from "@lando/sdk/errors";
 import {
   PluginManifest,
@@ -13,6 +10,7 @@ import {
 } from "@lando/sdk/schema";
 import { PluginTrustStore } from "@lando/sdk/services";
 import { writeFileAtomic } from "@lando/state-store/atomic";
+import { Effect, Result, Schema } from "effect";
 
 import { invalidateAppToolingCaches } from "../cache/command-index-writer";
 import {

@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
-
-import { Cause, type Context, DateTime, Effect, Layer, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
+import { makeRuntimeProviderRegistry } from "@lando/engine/providers/registry";
+import { makeLandoPaths } from "@lando/paths";
 import { PluginDescriptorMismatchError, PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
@@ -27,9 +23,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { makeRuntimeProviderRegistry } from "@lando/engine/providers/registry";
-import { makeLandoPaths } from "@lando/paths";
+import { Cause, type Context, DateTime, Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";

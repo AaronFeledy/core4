@@ -45,7 +45,7 @@ const ResolvedCommand = Schema.Struct({
   raw: Schema.Array(Schema.String),
 });
 
-export { resolveToolingTaskShape, type DynamicToolingVarResolver } from "./task-shape.ts";
+export { type DynamicToolingVarResolver, resolveToolingTaskShape } from "./task-shape.ts";
 
 export const conditionAllows = (condition: ToolingStepLeaf["condition"], context: ExpressionContext) => {
   if (condition === undefined || typeof condition === "boolean") return Effect.succeed(condition ?? true);

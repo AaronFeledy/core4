@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Layer } from "effect";
-
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ConfigLintResult, type ConfigLintViolation } from "@lando/sdk/schema";
+import { Effect, Layer } from "effect";
 import { renderConfigLintResult } from "../../src/cli/commands/app-config-lint.ts";
 import { renderConfigLintViolations } from "../../src/cli/commands/config-lint-rendering.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";

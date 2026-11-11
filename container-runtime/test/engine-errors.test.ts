@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
-
-import { Effect } from "effect";
-
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 import {
   apiResponseFailure,

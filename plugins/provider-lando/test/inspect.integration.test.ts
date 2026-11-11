@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { DateTime, Effect } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import { containerHelperTestOptions } from "@lando/container-runtime/testing/exec-supervision";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, inspect, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -20,9 +18,9 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 import { decodeNetworkCreate } from "./network-fixture.ts";
-import { bringUp } from "./provider-fixture.ts";
-import { makeProviderLayer } from "./provider-fixture.ts";
+import { bringUp, makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("inspectapp");

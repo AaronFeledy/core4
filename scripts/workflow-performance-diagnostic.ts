@@ -1,6 +1,5 @@
-import { Result, Schema } from "effect";
-
 import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 import { type FileSyncStatus, SetupResultSchema } from "../core/src/cli/command-specs/meta/setup-inputs.ts";
 import {

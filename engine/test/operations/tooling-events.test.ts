@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { authoredInvocationSites } from "@lando/landofile/compiled-sites";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -24,12 +25,8 @@ import {
   ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { attachInvocationAuthority } from "../../src/planner/invocation-authority.ts";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
-
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
@@ -39,6 +36,7 @@ import {
   compileEffectiveTooling,
   disabledToolingSources,
 } from "../../src/planner/effective-tooling.ts";
+import { attachInvocationAuthority } from "../../src/planner/invocation-authority.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";

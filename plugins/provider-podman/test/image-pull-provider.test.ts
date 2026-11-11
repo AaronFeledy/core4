@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -17,6 +15,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("podman");

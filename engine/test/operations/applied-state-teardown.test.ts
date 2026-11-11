@@ -4,9 +4,6 @@ import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-
-import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { makeRedactionService } from "@lando/redaction/service";
 import type { LandofileEventsOutcome } from "@lando/sdk/app";
@@ -41,8 +38,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { emptySnapshotsLayer } from "./data-mover-support.ts";
-
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import {
   serviceCertificatePaths,
@@ -65,6 +61,7 @@ import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
@@ -291,10 +288,7 @@ const makeLayer = (input: {
       Effect.sync(() => {
         removedVolumes.push({ store: ref.store, generation: expectedGeneration });
       }),
-    removeObservedService: (observed: {
-      readonly service: string;
-      readonly containerId?: string;
-    }) =>
+    removeObservedService: (observed: { readonly service: string; readonly containerId?: string }) =>
       Effect.sync(() => {
         mutationOrder.push(`remove:${observed.service}`);
         removalAttempts.push({ service: String(observed.service), containerId: observed.containerId });
@@ -1298,6 +1292,7 @@ describe("applied-state teardown", () => {
     });
   });
 });
+
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { currentTestPlan } from "../current-plan.ts";
 

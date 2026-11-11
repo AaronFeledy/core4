@@ -1,9 +1,7 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
-
+import { resolve } from "node:path";
+import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+import { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -24,9 +22,7 @@ import {
   Telemetry,
   ToolingEngine,
 } from "@lando/sdk/services";
-
-import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
-import { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
+import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 import { LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

@@ -2,11 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import * as ConfigLayer from "@lando/engine/services/config";
-import { ServiceName } from "@lando/sdk/schema";
-import { Effect, Layer, Schema } from "effect";
-import { literalLandofile } from "../_support/value-contracts.ts";
-
 import {
   type AppConfigResult,
   AppConfigResultSchema,
@@ -14,9 +9,13 @@ import {
   renderAppConfigResult,
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
+import * as ConfigLayer from "@lando/engine/services/config";
 import { rememberLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
+import { ServiceName } from "@lando/sdk/schema";
+import { Effect, Layer, Schema } from "effect";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

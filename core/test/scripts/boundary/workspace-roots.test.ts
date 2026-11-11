@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { BOUNDARY_RULES, BOUNDARY_RULE_IDS } from "../../../../scripts/boundary/registry.ts";
 import {

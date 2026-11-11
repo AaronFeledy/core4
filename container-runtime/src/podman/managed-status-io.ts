@@ -2,8 +2,8 @@ import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ProcessRunner, ProviderStatus } from "@lando/sdk/services";
-import { Effect } from "effect";
 import type { Context } from "effect";
+import { Effect } from "effect";
 import { withoutPodmanRedirectsDefined } from "./managed-invocation.ts";
 import {
   MANAGED_RUNTIME_BUNDLE_MARKER,

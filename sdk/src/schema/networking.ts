@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { AgentSocketProviderCapabilities } from "./agent-forwarding.ts";
 
 import { ComposeKnobCapabilities } from "./compose-knob-capabilities.ts";
@@ -23,12 +22,12 @@ const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-
  */
 export const EndpointPlan = EndpointPlanSchema;
 export type EndpointPlan = typeof EndpointPlan.Type;
+export { ComposeKnobCapabilities, ComposeServiceKnobKey } from "./compose-knob-capabilities.ts";
 export {
   BindAddress,
   InternalEndpoint,
   PublishedEndpoint,
 } from "./endpoint.ts";
-export { ComposeKnobCapabilities, ComposeServiceKnobKey } from "./compose-knob-capabilities.ts";
 
 /**
  * Route reference attached to a service — points at AppPlan.routes by index.

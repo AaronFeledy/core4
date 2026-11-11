@@ -67,9 +67,9 @@ export const defaultChoicesCommandSpawner: ChoicesCommandSpawner = {
  * `undefined` when the property is missing so callers can fall back to
  * `$bunfs` / `argv[1]` matching.
  */
-export const readStandaloneExecutable = (bun?: { readonly isStandaloneExecutable?: unknown }):
-  | boolean
-  | undefined => {
+export const readStandaloneExecutable = (bun?: {
+  readonly isStandaloneExecutable?: unknown;
+}): boolean | undefined => {
   const candidate = bun ?? Bun;
   if (candidate === null || typeof candidate !== "object") return undefined;
   if (!("isStandaloneExecutable" in candidate)) return undefined;
