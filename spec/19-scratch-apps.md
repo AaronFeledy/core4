@@ -38,9 +38,9 @@ Scratch ids MAY appear in user-facing output and are not secrets.
 
 ### 21.3 The scratch app root
 
-Scratch state lives under `<userDataRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan` record, from which `scratch:info` derives its output; build outcomes use the cache-root `scratch-build-results` index (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
+Scratch state lives under `<userDataRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan` record, from which `scratch:info` derives its output; artifact-step outcomes use the shared cache-root `scratch-build-results` index and app-step outcomes the per-app `build-results` index (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
 
-The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
+The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the scratch app's app-step results before resource destruction (§6.13.5) and its root, caches, and transcripts after it; the shared artifact index is kept. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
 
 ### 21.4 Scratch sources
 
