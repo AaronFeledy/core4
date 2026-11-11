@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import {
   CodegenOutputFormatError,
@@ -20,12 +20,32 @@ afterEach(async () => {
 });
 
 describe("writeFormattedOutput", () => {
-  test("writes content and runs biome check --write on the output", async () => {
+  test("writes formatted output when Node is absent from PATH", async () => {
     tempRoot = await mkdtemp(join(repoRoot, "codegen-output-test-"));
     const output = join(tempRoot, "generated.ts");
+    const moduleUrl = new URL("../../../scripts/_codegen-output.ts", import.meta.url).href;
 
-    await writeFormattedOutput(output, "export const value={name:'demo'}\n");
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "--eval",
+        `import { writeFormattedOutput } from ${JSON.stringify(moduleUrl)};
+await writeFormattedOutput(${JSON.stringify(output)}, "export const value={name:'demo'}\\n");`,
+      ],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, PATH: tempRoot },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
 
+    expect({ exitCode, stdout, stderr }).toEqual({ exitCode: 0, stdout: "", stderr: "" });
     expect(await readFile(output, "utf8")).toBe('export const value = { name: "demo" };\n');
   }, 30_000);
 
@@ -110,14 +130,17 @@ describe("biomeCheckArgv", () => {
     const argv = biomeCheckArgv([output]);
 
     // Then
-    expect(argv.slice(1)).toEqual([
+    expect(argv).toEqual([
+      process.execPath,
+      "x",
+      "--bun",
+      "biome",
       "check",
       "--write",
       "--vcs-use-ignore-file=false",
       "--",
       join("core", "generated", "example.ts"),
     ]);
-    expect(basename(argv[0] ?? "")).toMatch(/^biome(\.exe)?$/);
   });
 
   test("rejects an empty generated path list", () => {

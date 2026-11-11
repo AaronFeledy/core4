@@ -1,7 +1,6 @@
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const BIOME_BIN_DIR = join(REPO_ROOT, "node_modules", ".bin");
 
 type CodegenOutputPathErrorReason = "empty" | "outside-repository" | "repository-root";
 
@@ -38,20 +37,6 @@ export class CodegenOutputFormatError extends Error {
   }
 }
 
-export class CodegenOutputToolError extends Error {
-  override readonly name = "CodegenOutputToolError";
-
-  constructor() {
-    super(`No biome binary in ${BIOME_BIN_DIR}; run bun install before codegen.`);
-  }
-}
-
-const biomeBinary = (): string => {
-  const binary = Bun.which("biome", { PATH: BIOME_BIN_DIR });
-  if (binary === null) throw new CodegenOutputToolError();
-  return binary;
-};
-
 export const biomeCheckArgv = (paths: readonly string[]): string[] => {
   if (paths.length === 0) throw new CodegenOutputPathError("empty", undefined);
   const relativePaths = paths.map((path) => {
@@ -63,7 +48,17 @@ export const biomeCheckArgv = (paths: readonly string[]): string[] => {
     }
     return normalized;
   });
-  return [biomeBinary(), "check", "--write", "--vcs-use-ignore-file=false", "--", ...relativePaths];
+  return [
+    process.execPath,
+    "x",
+    "--bun",
+    "biome",
+    "check",
+    "--write",
+    "--vcs-use-ignore-file=false",
+    "--",
+    ...relativePaths,
+  ];
 };
 
 export const formatGeneratedPaths = async (paths: readonly string[]): Promise<void> => {

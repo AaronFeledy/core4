@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const biomeBin = Bun.which("biome", { PATH: resolve(repoRoot, "node_modules/.bin") });
 
 /**
  * Biome 2's `recommended` preset stopped reporting rules that Biome 1 raised as
@@ -63,12 +62,23 @@ async function mkdirPreset(dir: string): Promise<void> {
 }
 
 const lint = async (configPath: string, file: string): Promise<{ exitCode: number; output: string }> => {
-  if (biomeBin === null) throw new Error("node_modules/.bin has no biome; run bun install.");
-  const child = Bun.spawn([biomeBin, "lint", `--config-path=${configPath}`, "--reporter=summary", file], {
-    cwd: workDir,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "x",
+      "--bun",
+      "biome",
+      "lint",
+      `--config-path=${configPath}`,
+      "--reporter=summary",
+      file,
+    ],
+    {
+      cwd: workDir,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
