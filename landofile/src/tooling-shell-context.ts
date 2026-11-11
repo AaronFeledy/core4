@@ -48,8 +48,6 @@ export const shellContext = (text: string) => {
   let comment = false;
   let escaped = false;
   let dollar = false;
-  let caseRefusal = false;
-  let dollarQuoteRefusal = false;
   const insertion = (): ShellInsertion => {
     if (heredocs.length > 0) return "heredoc";
     if (comment) return "comment";
@@ -57,8 +55,6 @@ export const shellContext = (text: string) => {
     if (kinds.includes("backtick")) return "backtick";
     if (kinds.includes("arithmetic")) return "arithmetic";
     if (kinds.includes("parameter")) return "parameter";
-    if (caseRefusal) return "case";
-    if (dollarQuoteRefusal) return "dollar-quote";
     if (escaped) return "escaped";
     switch (frames.at(-1)?.quote) {
       case "single":
@@ -116,8 +112,6 @@ export const shellContext = (text: string) => {
           /^case(?:\s|$)/u.test(text.slice(i))))
     ) {
       const dollarQuote = char === "$";
-      caseRefusal = !dollarQuote;
-      dollarQuoteRefusal = dollarQuote;
       return {
         refused: true,
         quote: frame.quote,

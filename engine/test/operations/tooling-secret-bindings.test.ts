@@ -190,6 +190,7 @@ test.each([
   const compiled = await compileResolved(loaded);
   // Then
   const envs = compiled.invocations.map((invocation) => invocation.env ?? {});
+  expect(envs).toHaveLength(_label === "cmds" ? 2 : 1);
   expect(Object.values(envs[0] ?? {})[0]).toMatchObject({ _tag: "SecretRef", reference: "A" });
   expect(Object.keys(envs[0] ?? {})).toHaveLength(1);
   if (envs.length > 1) expect(envs[1]).toEqual({});
@@ -275,7 +276,7 @@ test("a var sh with its own env reaches a host command with both bindings", asyn
   expect(prepared.success.normalized.steps[0]?.cmd).toContain(`${SECRET_A}-${SECRET_B}`);
 });
 
-test("a container var command receives its authored and generated env", async () => {
+test("a container var command receives its authored secret env", async () => {
   // Given
   const seen: Array<ToolingInvocation> = [];
   const loaded = await load({
@@ -308,11 +309,14 @@ test("a var sh without env has no generated binding on the var command", async (
     },
   });
   // When
-  await prepare(loaded, "deploy", containerEngine(seen));
+  const prepared = await prepare(loaded, "deploy", containerEngine(seen));
   // Then
   const varInvocation = seen.find((invocation) =>
     invocation.commands.some((argv) => argv.some((part) => part.includes('printf "%s"'))),
   );
+  expect(prepared).toMatchObject({ _tag: "Success" });
+  expect(seen).toHaveLength(1);
+  expect(varInvocation).toBeDefined();
   expect(varInvocation?.env).toBeUndefined();
 });
 
@@ -350,7 +354,10 @@ test("a reserved LANDO key in a var env is refused", async () => {
   // When
   const prepared = await prepare(loaded, "deploy", hostEngine);
   // Then
-  expect(prepared).toMatchObject({ _tag: "Failure" });
+  expect(prepared).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ToolingCompileError", message: expect.stringContaining("LANDO_TOKEN") },
+  });
 });
 
 test("a higher layer that replaces the command leaves no binding behind", async () => {

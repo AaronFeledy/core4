@@ -120,11 +120,11 @@ export const resolveToolingTaskShape = Effect.fnUntraced(function* <E = never, R
     if (Object.keys(env).length === 0) return;
     const key = commandKey(path);
     if (key !== undefined) {
-      commandBindings.set(key, { ...(commandBindings.get(key) ?? {}), ...env });
+      commandBindings.set(key, { ...commandBindings.get(key), ...env });
       return;
     }
     if (path[0] === "vars" && typeof path[1] === "string") {
-      varBindings[path[1]] = { ...(varBindings[path[1]] ?? {}), ...env };
+      varBindings[path[1]] = { ...varBindings[path[1]], ...env };
     }
   };
   const evaluateShell = (site: InvocationProgram[number], values = vars) =>

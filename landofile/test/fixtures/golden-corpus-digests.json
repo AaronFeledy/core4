@@ -1135,19 +1135,23 @@
       }
     },
     {
-      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-command-misuse",
-      "invalid": {
-        "status": "invalid",
-        "tag": "LandofileValidationError"
-      }
-    },
-    {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-commands",
       "digest": "c9273ee4bc5f75c4b17c5297ec9294d46652e0085854700626e975c73c1ed55e"
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-demo",
       "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25"
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-direct-commands",
+      "digest": "7d68ce159f45865adeb8798e243f3f50f8cda881ac8c5c98826d139be42c8011"
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-refused-position",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-whole-token",
@@ -1727,18 +1731,6 @@
         "digest": "d2b87f8d1c2dfa909616ec98dc42f2a97d9541b5e201b41c354d04bca8e3f938"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false and adds read-only nginx and PHP ini mounts for the large-profile troubleshooting configuration."
-    },
-    "docs/guides/secret-stores/fixtures/secret-stores-command-misuse": {
-      "before": {
-        "invalid": {
-          "status": "invalid",
-          "tag": "LandofileValidationError"
-        }
-      },
-      "after": {
-        "digest": "4ee31371e5084ec23693bff97fc36e6cf3d8f224412b63b0b98f3e04ad60022a"
-      },
-      "reason": "Lando now lowers a ${secret:...} reference in a tooling command at invocation instead of rejecting the Landofile, so this fixture loads. The guide that documents the old rejection is reader-facing and is updated separately."
     }
   }
 }

@@ -94,7 +94,9 @@ const secretDescriptor = (site: InvocationSite, reference: string): SecretRef =>
 const loweredSecretText = (insertion: SafeShellInsertion, name: string): string => {
   switch (insertion) {
     case "unquoted":
-      return `"$${name}"`;
+      // Bun Shell drops a word that is only an empty quoted expansion; the trailing
+      // empty string keeps an empty secret as one argument, as sh -c already does.
+      return `"$${name}"""`;
     case "single":
       return `'"$${name}"'`;
     case "double":
@@ -239,18 +241,10 @@ export const bindToolingShellSite = (
     }
     authored += value;
   }
-  if (bindings.size === 0) return { text, env: {} };
   for (const [name, descriptor] of bindings) {
     if (authored.includes(name)) throw secretCollisionError(site, name);
     if (env === undefined || !Object.hasOwn(env, name)) continue;
-    const existing = env[name];
-    const same =
-      typeof existing === "object" &&
-      existing !== null &&
-      "_tag" in existing &&
-      existing._tag === "SecretRef" &&
-      existing.reference === descriptor.reference;
-    if (!same) throw secretCollisionError(site, name);
+    if (secretReferenceOf(env[name]) !== descriptor.reference) throw secretCollisionError(site, name);
   }
   return { text, env: Object.fromEntries(bindings) };
 };

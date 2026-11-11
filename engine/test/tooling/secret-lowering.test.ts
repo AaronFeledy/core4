@@ -34,8 +34,11 @@ const resolveCmd = (cmd: string, context: ExpressionContext = {}, vars?: Tooling
   );
 };
 
+const OTHER = "other value";
 const boundEnv = (bindings: Readonly<Record<string, SecretRef>>, value: string) =>
-  Object.fromEntries(Object.entries(bindings).map(([name]) => [name, value]));
+  Object.fromEntries(
+    Object.entries(bindings).map(([name, ref]) => [name, ref.reference === "B" ? OTHER : value]),
+  );
 
 const commandText = (task: ToolingTaskShape): string => {
   if (typeof task.cmd !== "string") throw new Error("expected shell text");
@@ -83,18 +86,18 @@ const templates: ReadonlyArray<{
 }> = [
   {
     name: "unquoted",
-    command: () => "printf '[%s]\\n' ${secret:A}",
-    expected: (value) => `[${value}]\n`,
+    command: () => "printf '[%s]' ${secret:A} end",
+    expected: (value) => `[${value}][end]`,
   },
   {
     name: "single-quoted",
-    command: () => "printf '[%s]\\n' '${secret:A}'",
-    expected: (value) => `[${value}]\n`,
+    command: () => "printf '[%s]' '${secret:A}' end",
+    expected: (value) => `[${value}][end]`,
   },
   {
     name: "double-quoted",
-    command: () => 'printf "[%s]\\n" "${secret:A}"',
-    expected: (value) => `[${value}]\n`,
+    command: () => 'printf "[%s]" "${secret:A}" end',
+    expected: (value) => `[${value}][end]`,
   },
   {
     name: "glued unquoted",
@@ -122,15 +125,15 @@ const templates: ReadonlyArray<{
     expected: (value) => `[${value}]\n`,
   },
   {
-    name: "redirect target",
+    name: "output redirection",
     command: (file) => `printf '%s' \${secret:A} > ${file}`,
     expected: (value) => value,
     renderedAsFile: true,
   },
   {
     name: "two references",
-    command: () => "printf '[%s][%s]\\n' ${secret:A} ${secret:B}",
-    expected: (value) => `[${value}][${value}]\n`,
+    command: () => "printf '[%s]' ${secret:A} ${secret:B} end",
+    expected: (value) => `[${value}][${OTHER}][end]`,
   },
   {
     name: "same reference twice",
@@ -313,7 +316,7 @@ test("only the step that uses a reference receives its binding", async () => {
   expect([...resolved.bindings.commands.keys()]).toEqual(["cmds.0"]);
 });
 
-test("bindings typed by path are also produced for cmd and event command leaves", async () => {
+test("a cmd receives its typed secret binding", async () => {
   // Given
   const cmd = await resolveCmd("printf '%s' ${secret:A}");
   const env = cmd.bindings.commands.get("cmd") ?? {};

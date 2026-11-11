@@ -75,8 +75,7 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
   });
   const compiled = yield* compileToolingInvocations({
     ...input.options,
-    task: resolved.task,
-    bindings: resolved.bindings,
+    ...resolved,
     admitted: preparedInput,
   });
   return { ...compiled, admitted: preparedInput };

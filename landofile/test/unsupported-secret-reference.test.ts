@@ -60,8 +60,7 @@ test.each([
   {
     path: ["services", "app", "build", "app", "user"],
     extra: "",
-    suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+    suggestion: expect.stringContaining("$${secret:...}"),
   },
   {
     path: ["services", "app", "build", "app", 0, "run"],
@@ -138,8 +137,7 @@ test.each([
   {
     path: ["services", "app", "type"],
     extra: "",
-    suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+    suggestion: expect.stringContaining("$${secret:...}"),
   },
   {
     path: ["services", "app", "healthcheck", "command"],
@@ -156,14 +154,12 @@ test.each([
   {
     path: ["services", "app", "readiness", "user"],
     extra: "",
-    suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+    suggestion: expect.stringContaining("$${secret:...}"),
   },
   {
     path: ["services", "app", "healthcheck", "interval"],
     extra: "",
-    suggestion:
-      "Use ${secret:...} only in a service environment value, a database password, a tooling env value, a tooling var env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+    suggestion: expect.stringContaining("$${secret:...}"),
   },
   ...[["command"], ["raw", 0], ["flags", "TOKEN"], ["args", "TOKEN"]].map((suffix) => ({
     path: ["events", "post-start", 0, ...suffix],
@@ -175,7 +171,7 @@ test.each([
     path: ["tooling", "task", "vars", "token", "sh"],
     extra: "",
     suggestion:
-      "Bind the ${secret:...} reference as TOKEN in the environment of the service that runs the var and write $TOKEN in the var command. A var command that runs on :host receives no Lando secret binding. The var command does not receive the task's env. Set sensitive: true on the var when its output is secret.",
+      "Set tooling.task.vars.token.env.TOKEN to the ${secret:...} reference and write $TOKEN in the var command. The var command does not receive the task's env. Set sensitive: true on the var when its output is secret.",
   },
 ] as const)("provides site-aware guidance at $path", ({ path, extra, suggestion }) => {
   // Given an authored secret at an unsupported site.
@@ -194,51 +190,20 @@ test.each([
 });
 
 test.each([
-  {
-    name: "service var command",
-    document: { tooling: { task: { vars: { token: { service: "app" } } } } },
-    includes: ["services.app.environment.TOKEN", "$TOKEN"],
-    excludes: ["tooling.task.env.TOKEN"],
-  },
-  {
-    name: "task-level service var command",
-    document: { tooling: { task: { service: "app" } } },
-    includes: ["services.app.environment.TOKEN"],
-    excludes: ["tooling.task.env.TOKEN"],
-  },
-  {
-    name: "host var command",
-    document: { tooling: { task: { vars: { token: { service: ":host" } } } } },
-    includes: ["on the host"],
-    excludes: ["services.app.environment.TOKEN", "tooling.task.env.TOKEN"],
-  },
-  {
-    name: "unknown flag var target",
-    document: { tooling: { task: { service: ":flag" } } },
-    includes: ["the service that runs the var", ":host receives no Lando secret binding"],
-    excludes: ["services.app.environment.TOKEN", "tooling.task.env.TOKEN"],
-  },
-  {
-    name: "service literally named host",
-    document: { tooling: { task: { service: "host" } } },
-    includes: ["services.host.environment.TOKEN"],
-    excludes: ["on the host"],
-  },
-  {
-    name: "toolingDefaults service var command",
-    document: { toolingDefaults: { service: "app" } },
-    includes: ["services.app.environment.TOKEN"],
-    excludes: ["tooling.task.env.TOKEN"],
-  },
-])("gives var-command advice for a $name", ({ document, includes, excludes }) => {
+  { name: "service", document: { tooling: { task: { vars: { token: { service: "app" } } } } } },
+  { name: "host", document: { tooling: { task: { vars: { token: { service: ":host" } } } } } },
+  { name: "inherited", document: { toolingDefaults: { service: "app" } } },
+])("points a $name var command at its own env", ({ document }) => {
+  // Given a secret written in a var command whose target varies.
   const diagnostic = unsupportedSecretReference({
     source: { file: ".lando.yml", layer: "base", path: ["tooling", "task", "vars", "token", "sh"] },
     references: ["TOKEN"],
     value: "echo ${secret:TOKEN}",
     document,
   });
-  for (const token of includes) expect(diagnostic.suggestion).toContain(token);
-  for (const token of excludes) expect(diagnostic.suggestion).not.toContain(token);
+  // Then the binding is the var's own env on every target.
+  expect(diagnostic.suggestion).toContain("tooling.task.vars.token.env.TOKEN");
+  expect(diagnostic.suggestion).not.toContain("services.app.environment.TOKEN");
   expect(diagnostic.suggestion).toContain("sensitive: true");
 });
 

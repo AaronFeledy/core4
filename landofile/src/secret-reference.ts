@@ -65,10 +65,9 @@ export const isLoweredSecretReferenceSite = (
       return match.relativePath.length === 0;
     case "tooling-cmds":
       return (
-        (match.relativePath.length === 1 && typeof match.relativePath[0] === "number") ||
-        (match.relativePath.length === 2 &&
-          typeof match.relativePath[0] === "number" &&
-          match.relativePath[1] === "cmd")
+        typeof match.relativePath[0] === "number" &&
+        (match.relativePath.length === 1 ||
+          (match.relativePath.length === 2 && match.relativePath[1] === "cmd"))
       );
     case "event-step": {
       const leaf = path.at(-1);

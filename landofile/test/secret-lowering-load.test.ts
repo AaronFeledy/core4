@@ -56,10 +56,7 @@ test.each([
   // When
   const compiled = await Effect.runPromise(load({ name: "probe", ...document }));
   // Then
-  expect(
-    compiled.pendingSites.map((site) => (site.path as readonly (string | number)[]).slice(-path.length)),
-  ).toContainEqual([...path]);
-  expect(compiled.pendingSites.some((site) => JSON.stringify(site.path) === JSON.stringify(path))).toBe(true);
+  expect(compiled.pendingSites.map((site) => site.path)).toEqual([[...path]]);
   expect(JSON.stringify(compiled.document)).toContain("${secret:A}");
 });
 
@@ -153,8 +150,13 @@ test("include fragments, conditional bodies, and tooling fragments admit D1 site
     );
     // Then
     const paths = compiled.pendingSites.map((site) => site.path);
-    expect(paths).toContainEqual(["tooling", "deploy", "cmd"]);
-    expect(paths.some((path) => path.at(-1) === "cmd" && path.length === 3)).toBe(true);
+    expect(paths).toHaveLength(2);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        ["tooling", "deploy", "cmd"],
+        ["tooling", "extra:hello", "cmd"],
+      ]),
+    );
     expect(JSON.stringify(compiled.document)).toContain("${secret:A}");
     expect(JSON.stringify(compiled.document)).toContain("${secret:B}");
   } finally {

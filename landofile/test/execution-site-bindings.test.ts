@@ -30,6 +30,7 @@ test.each([
   [["services", "web", "creds", "rootPassword"]],
   [["services", "web", "password"]],
   [["tooling", "deploy", "env", "TOKEN"]],
+  [["tooling", "deploy", "cmds", 0, "env", "TOKEN"]],
   [["tooling", "deploy", "vars", "token", "env", "TOKEN"]],
   [["toolingDefaults", "env", "TOKEN"]],
   [["events", "post-start", 0, "env", "TOKEN"]],

@@ -35,9 +35,8 @@ const secretVariableNames = (
 ): ReadonlyMap<string, string> => {
   const names = new Map<string, string>();
   const used = new Set<string>();
+  const key = typeof path.at(-1) === "number" ? input.value.slice(0, input.value.indexOf("=")) : path.at(-1);
   for (const reference of new Set(input.references)) {
-    const key =
-      typeof path.at(-1) === "number" ? input.value.slice(0, input.value.indexOf("=")) : path.at(-1);
     const candidates = site === "build-arg" ? [key, reference] : [reference];
     let name = candidates.find(
       (candidate): candidate is string => usableName(candidate) && !used.has(candidate),
@@ -90,33 +89,10 @@ export const unsupportedSecretReference = (
     switch (site) {
       case undefined:
         return { suggestion: genericSuggestion() };
-      case "tooling-var": {
-        const authoredTarget = valueAtPath(input.document, [
-          "tooling",
-          String(path[1]),
-          "vars",
-          String(path[3]),
-          "service",
-        ]);
-        const candidate =
-          authoredTarget === undefined
-            ? (valueAtPath(input.document, ["tooling", String(path[1]), "service"]) ??
-              valueAtPath(input.document, ["toolingDefaults", "service"]))
-            : authoredTarget;
-        const literal = typeof candidate === "string" && !candidate.includes("{{") ? candidate : undefined;
-        const sensitive = "Set sensitive: true on the var when its output is secret.";
-        if (literal === ":host")
-          return {
-            suggestion: `A var command that runs on the host receives no Lando secret binding and not the task's env. To use ${name}, run the var in a service by setting service on the var, with the ${binding} in that service's environment and ${shell} in the var command. ${sensitive}`,
-          };
-        if (literal === undefined || literal.startsWith(":"))
-          return {
-            suggestion: `Bind the ${binding} as ${name} in the environment of the service that runs the var and write ${shell} in the var command. A var command that runs on :host receives no Lando secret binding. The var command does not receive the task's env. ${sensitive}`,
-          };
+      case "tooling-var":
         return {
-          suggestion: `Set ${bindings(`services.${literal}.environment`)} to the ${binding} and write ${shell} in the var command. The var command does not receive the task's env. ${sensitive}`,
+          suggestion: `Set ${bindings(`tooling.${String(path[1])}.vars.${String(path[3])}.env`)} to the ${binding} and write ${shell} in the var command. The var command does not receive the task's env. Set sensitive: true on the var when its output is secret.`,
         };
-      }
       case "build-arg":
         return { suggestion: afterStart, extra: " Build arguments can be recorded in image history." };
       case "build-dockerfile":

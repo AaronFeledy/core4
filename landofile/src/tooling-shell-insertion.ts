@@ -34,9 +34,7 @@ const INSERTION_REFUSALS: Readonly<
 
 /** Plain-word refusal for an unsafe insertion point, or undefined when it is safe. */
 export const shellInsertionRefusal = (insertion: ShellInsertion): string | undefined =>
-  insertion === "unquoted" || insertion === "single" || insertion === "double"
-    ? undefined
-    : INSERTION_REFUSALS[insertion];
+  isSafeShellInsertion(insertion) ? undefined : INSERTION_REFUSALS[insertion];
 
 export const isSafeShellInsertion = (insertion: ShellInsertion): insertion is SafeShellInsertion =>
   insertion === "unquoted" || insertion === "single" || insertion === "double";
