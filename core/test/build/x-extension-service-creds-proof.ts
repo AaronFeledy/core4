@@ -48,19 +48,17 @@ const narrowFieldOverrideRequired = (field: JsonValue): JsonValue => {
   };
 };
 
-const isCredsObject = (value: JsonValue): value is JsonSchema =>
-  isJsonObject(value) &&
-  value.type === "object" &&
-  isJsonObject(value.properties) &&
-  isJsonObject(value.properties.database) &&
-  isJsonObject(value.properties.password) &&
-  isJsonObject(value.properties.user);
-
 const narrowCredsMemberOverrides = (value: JsonValue): JsonValue => {
   if (Array.isArray(value)) return value.map(narrowCredsMemberOverrides);
   if (!isJsonObject(value)) return value;
-  if (isCredsObject(value)) {
-    const properties = value.properties;
+  const properties = value.properties;
+  if (
+    value.type === "object" &&
+    isJsonObject(properties) &&
+    isJsonObject(properties.database) &&
+    isJsonObject(properties.password) &&
+    isJsonObject(properties.user)
+  ) {
     return {
       ...value,
       properties: {
@@ -97,13 +95,16 @@ export const evolveHistoricalServiceCreds = (historical: JsonSchema): JsonSchema
     for (const [key, child] of Object.entries(value)) next[key] = visit(child);
     const properties = next.properties;
     if (value.type !== "object" || !isJsonObject(properties) || !isHistoricalService(properties)) return next;
+    const framework = properties.framework;
+    const creds = properties.creds;
+    if (!isJsonObject(framework) || !isJsonObject(creds)) return next;
     const { database: _database, password: _password, ...rest } = properties;
     return {
       ...next,
       properties: {
         ...rest,
-        bucket: structuredClone(properties.framework),
-        creds: evolveCreds(wireObject(properties.creds)),
+        bucket: structuredClone(framework),
+        creds: evolveCreds(creds),
       },
     };
   };

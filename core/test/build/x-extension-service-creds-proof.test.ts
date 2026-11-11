@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { JsonSchema } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 
@@ -105,13 +106,13 @@ test("drops the historical creds required array from an authoring union branch",
 });
 
 test("moves directive service login fields without narrowing nested override requirements", () => {
-  const override = (value: { readonly [key: string]: unknown }, required: readonly string[]) => ({
+  const override = (value: JsonSchema, required: readonly string[]): JsonSchema => ({
     additionalProperties: false,
     properties: {
       _tag: { enum: ["LandofileOverride"], type: "string" },
       value,
     },
-    required,
+    required: [...required],
     type: "object",
   });
   const reset = {
