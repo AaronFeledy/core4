@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import {
   CodegenOutputFormatError,
@@ -110,16 +110,14 @@ describe("biomeCheckArgv", () => {
     const argv = biomeCheckArgv([output]);
 
     // Then
-    expect(argv).toEqual([
-      process.execPath,
-      "x",
-      "biome",
+    expect(argv.slice(1)).toEqual([
       "check",
       "--write",
       "--vcs-use-ignore-file=false",
       "--",
       join("core", "generated", "example.ts"),
     ]);
+    expect(basename(argv[0] ?? "")).toMatch(/^biome(\.exe)?$/);
   });
 
   test("rejects an empty generated path list", () => {
