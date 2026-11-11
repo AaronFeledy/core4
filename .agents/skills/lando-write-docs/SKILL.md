@@ -37,7 +37,7 @@ Any of these fails the page. Rewrite that item. Do not ship.
 - Throat-clearing: "In this guide we will", "In this document we will", "It's important to note", "Let's explore"
 - Marketing adjectives: robust, seamless, leverage, comprehensive, utilize, empower, unlock, cutting-edge, "Simply just easily"
 - Machine-voice filler: delve, journey, landscape, tapestry, "not just X but Y", "Whether you're"
-- A link to another guide that is not a relative `.mdx` path, such as `./php.mdx` or `../config/offline-dev.mdx`
+- A link to another guide that is not a relative `.mdx` path. Write `./php.mdx` or `../config/offline-dev.mdx`.
 - First-person-plural lecture ("we will now")
 - Invented CLI output, `...`, "output omitted", or empty `<Inspect output />` sold as a transcript
 - Harness placeholders shown as captured output: `expected exit 0`, `event "…" observed`, `command output`

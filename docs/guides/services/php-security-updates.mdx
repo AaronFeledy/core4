@@ -2,12 +2,14 @@
 id: php-security-updates
 provider: test
 timeout: 90000
-tags: [beta, docs, php, service, runtime, security]
+tags: [docs, php, service, runtime, security]
 ---
 
 # Pick up a PHP security release
 
-When PHP ships a security release, the official images publish the fix under the same tag your service already uses, such as `php:8.4-apache-bookworm`. `lando start` and `lando restart` reuse the copy already on your machine, so your app keeps serving the old build. `lando rebuild` pulls the tag again and rebuilds the service on top of it.
+Run `lando rebuild` when PHP publishes a security release. `lando start` and `lando restart` keep the image already on your machine, so the app keeps serving the old build.
+
+Official images publish the fix under the same tag the service already uses. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. Other minors use the tags in [Pin a PHP version](./php-version-matrix.mdx), including the PHP 8.6 release-candidate tag until GA.
 
 The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host:
 
@@ -19,22 +21,37 @@ services:
     primary: true
 ```
 
-## Check what the web server runs
+## Check the CLI build
 
-`php -v` reports the CLI binary. Apache serves requests from its own long-running processes, so ask it too. Save `version.php` in your webroot, which is the app root unless you set `webroot:`:
+```sh
+lando exec appserver -- php -v
+```
+
+`lando exec` runs inside the container. The first line of `php -v` shows the version and a `built:` date. That is the CLI binary. Note both. These images are also republished for operating system fixes, so the `built:` date can change while the version stays the same.
+
+## Check what serves HTTP
+
+Save `version.php` in the webroot. That directory is the app root unless you set `webroot:`:
 
 ```php
 <?php echo PHP_VERSION, PHP_EOL;
 ```
 
-Then run both checks:
+Default `type: php:8.4` serves HTTP with Apache inside `appserver`. Ask Apache from inside the container, so you do not need the app hostname or a certificate:
 
 ```sh
-lando exec appserver -- php -v
 lando exec appserver -- curl -fsS localhost/version.php
 ```
 
-The first line of `php -v` shows the version and a `built:` date. The second command asks Apache inside the container, so it needs no hostname or certificate, and prints the version Apache is serving. With `via: fpm`, run the curl check in your nginx service instead, for example `lando exec web -- curl -fsS localhost/version.php` when the service is named `web` as in the LEMP recipe. Note both values. The images are also republished for operating system fixes, so the `built:` date can change while the version stays the same.
+A working check prints the same version number as `php -v`. An empty webroot returns 403 at `/` because Apache has no directory index. That is not a PHP failure. `version.php` is the check.
+
+With `via: fpm`, the PHP service does not serve HTTP. Run the curl check in the nginx service instead. The LEMP recipe names that service `web`:
+
+```sh
+lando exec web -- curl -fsS localhost/version.php
+```
+
+With `via: cli` there is no web server. `php -v` is the only check.
 
 ## Check the Landofile
 
@@ -61,19 +78,21 @@ lando app:config --format=json
   </Scenario>
 </Guide>
 
-## Rebuild
+## Rebuild the app
+
+Rebuild stops the selected containers, pulls the images they reference, and creates the containers again. When that pull resolves a new digest, Lando rebuilds the service image on that base. Compiling the stock PHP extensions on that new base can take minutes. Named volumes, including database data, stay. `-y` skips the confirmation prompt. Without it, Lando asks before recreating containers.
 
 ```sh
 lando rebuild -y
 ```
 
-Rebuild pulls every image the app references, reruns the image builds, and recreates the containers. Named volumes, such as database data, stay. `-y` skips the confirmation prompt.
-
-To refresh only PHP, name the service. Lando also rebuilds any service it depends on:
+To refresh one service and the services it depends on, name it:
 
 ```sh
 lando rebuild -s appserver -y
 ```
+
+On a recipe app, `appserver` usually depends on `database`, so that command recreates the database container too. Its named volume stays. See [Stop, restart, rebuild](../cli/everyday-commands.mdx#stop-restart-rebuild).
 
 ## Check again
 
@@ -82,9 +101,11 @@ lando exec appserver -- php -v
 lando exec appserver -- curl -fsS localhost/version.php
 ```
 
-The `php -v` version or `built:` date changes when the registry had a newer image. The HTTP check should print the same version as `php -v`. Rebuild replaces the container, so no Apache process from the old image keeps serving.
+With `via: fpm`, repeat the curl check in the nginx service instead of the second command. With `via: cli`, repeat only `php -v`.
 
-Remove the check file when you're done:
+The version or `built:` date changes when the registry had a newer image. The HTTP check should print that same version. Rebuild replaced the container, so the old server process is gone.
+
+Remove the check file from the app directory on your host:
 
 ```sh
 rm version.php
@@ -92,14 +113,14 @@ rm version.php
 
 ## If the version didn't change
 
-- If rebuild warned that it couldn't refresh an image and used the local copy, the registry wasn't reachable. Fix the network, then run `lando rebuild -y` again. With `--format=json` the warning has code `LANDO_ARTIFACT_REFRESH_FAILED`. See [Work offline](../config/offline-dev.mdx).
-- If there was no warning, the registry doesn't have the new build under that tag yet. Lando can only pull what is published. Check the image's tag page on Docker Hub for a newer push, then rebuild.
-- A patch-level tag in `image:` never moves to a newer PHP release. Change the tag, or remove `image:` to go back to the stock tag.
-- A new minor version, such as 8.4 to 8.5, is a `type:` change, not a rebuild. See [Pin a PHP version](./php-version-matrix.mdx).
+- Rebuild warned that it could not refresh an image and used the local copy. The registry was not reachable. Fix the network, then run `lando rebuild -y` again. `lando rebuild -y --format=json` puts that warning on the envelope's top-level `warnings` array, next to `result`, with code `LANDO_ARTIFACT_REFRESH_FAILED`. See [Work offline](../config/offline-dev.mdx).
+- There was no warning. The registry does not have the new build under that tag yet. Lando can only pull what is published. Check the tag on Docker Hub, then rebuild.
+- `image:` is pinned to a patch tag, such as `php:8.4.12-apache-bookworm`. That tag does not move to a newer patch. A floating tag such as `php:8.4-apache-bookworm` does. Remove `image:` to return to the stock tag for the service `type:`.
+- You need a new minor, such as 8.4 to 8.5. Change `type:`. Rebuild does not do that. See [Pin a PHP version](./php-version-matrix.mdx).
 
 ## Next
 
 - [Pin a PHP version](./php-version-matrix.mdx)
 - [Customize PHP](./php-customization.mdx)
+- [Stop, restart, rebuild](../cli/everyday-commands.mdx#stop-restart-rebuild)
 - [Work offline](../config/offline-dev.mdx)
-- [Start, inspect, and tear down an app](../tutorial/app-lifecycle.mdx)
