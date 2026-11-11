@@ -12,6 +12,7 @@ import type {
 } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
 
+import { PHPMYADMIN_UNUSED_CREDS, assertCredsMembersUsed, claimsCreds } from "./_creds-helpers.ts";
 import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
@@ -56,6 +57,7 @@ export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
   id: PHPMYADMIN_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(PHPMYADMIN_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
@@ -80,6 +82,7 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   schema: PhpMyAdminServiceConfig,
   resolve: (input) => {
     return serviceTypeResolve(id, "phpmyadmin service type failed to resolve", () => {
+      assertCredsMembersUsed(input.service.creds, PHPMYADMIN_UNUSED_CREDS);
       assertListenerConfig(input.service, PHPMYADMIN_LISTENER);
       return {
         base: "lando",

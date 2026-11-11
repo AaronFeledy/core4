@@ -164,7 +164,7 @@ describe("mongodb ServiceType", () => {
       image: "mongo:8",
       port: 37017,
       user: "myuser",
-      database: "mydb",
+      creds: { database: "mydb" },
       command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"],
       entrypoint: ["docker-entrypoint.sh"],
       workingDirectory: PortablePath.make("/data/db"),
@@ -337,5 +337,24 @@ describe("mongodb ServiceType", () => {
       realization: "passthrough",
     });
     expect(plan.command).toEqual(["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"]);
+  });
+
+  test("a password-only creds block keeps the default user and database", async () => {
+    const plan = await planMongodb({ type: "mongodb", creds: { password: "hunter2" } });
+
+    expect(plan.environment).toMatchObject({
+      MONGO_INITDB_ROOT_USERNAME: "lando",
+      MONGO_INITDB_ROOT_PASSWORD: "hunter2",
+      MONGO_INITDB_DATABASE: "myapp",
+    });
+  });
+
+  test("rejects creds.rootPassword because user and password are the root account", async () => {
+    await expect(
+      resolveMongodb({ type: "mongodb", creds: { rootPassword: "root-secret" } }),
+    ).rejects.toMatchObject({
+      _tag: "ServiceTypeError",
+      issues: [expect.objectContaining({ path: ["creds", "rootPassword"] })],
+    });
   });
 });

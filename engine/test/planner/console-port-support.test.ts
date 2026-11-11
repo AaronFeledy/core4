@@ -43,6 +43,33 @@ test.each(["mailpit", "compose"])("planner rejects unsupported %s consolePort", 
   });
 });
 
+test.each(["mailpit", "compose"])("planner rejects unsupported %s creds", async (type) => {
+  const service = { type, image: "busybox", creds: { password: "unconsumed-secret" } };
+  await expect(
+    Effect.runPromise(plan(service).pipe(Effect.provide(PluginRegistryLayer.layer))),
+  ).rejects.toMatchObject({
+    _tag: "LandofileValidationError",
+    issues: [expect.objectContaining({ path: ["services", "web", "creds"] })],
+  });
+});
+
+test.each(["mailpit", "compose"])("planner rejects unsupported %s bucket", async (type) => {
+  // Given a bucket name on a service without an object-storage feature.
+  const service = { type, image: "busybox", bucket: "uploads" };
+  // When / Then the real planner rejects the unclaimed field with the ownership message.
+  await expect(
+    Effect.runPromise(plan(service).pipe(Effect.provide(PluginRegistryLayer.layer))),
+  ).rejects.toMatchObject({
+    _tag: "LandofileValidationError",
+    issues: [
+      expect.objectContaining({
+        path: ["services", "web", "bucket"],
+        suggestion: expect.any(String),
+      }),
+    ],
+  });
+});
+
 test.each(["mailpit", "compose"])("lint rejects unsupported %s consolePort", async (type) => {
   // Given a real Landofile, not a direct catalog-schema decode.
   const root = await mkdtemp(join(tmpdir(), "lando-console-lint-"));

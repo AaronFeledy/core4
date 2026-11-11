@@ -135,3 +135,49 @@ describe("Landofile validation issues", () => {
     }
   });
 });
+
+describe("service-level database and password point at the key their service type reads", () => {
+  const issuesFor = async (value: unknown) => {
+    const error = await Effect.runPromise(validateLandofile("/app/.lando.yml", value).pipe(Effect.flip));
+    if (error._tag !== "LandofileValidationError") throw new Error("expected LandofileValidationError");
+    return error.issues;
+  };
+
+  test("services.<name>.database suggests creds.database", async () => {
+    const issues = await issuesFor({ services: { db: { type: "postgres:16", database: "appdata" } } });
+    const issue = issues.find((candidate) => candidate.path.at(-1) === "database");
+    expect(issue?.path).toEqual(["services", "db", "database"]);
+    expect(issue?.suggestion).toContain("creds.database");
+  });
+
+  test("a service type that reads neither key gets no pointer to creds", async () => {
+    const issues = await issuesFor({
+      services: { mq: { type: "rabbitmq:4", database: "orders", password: "hunter2" } },
+    });
+    const suggestions = issues
+      .filter((candidate) => candidate.path[1] === "mq")
+      .map((candidate) => candidate.suggestion ?? "");
+    expect(suggestions).toHaveLength(2);
+    for (const suggestion of suggestions) {
+      expect(suggestion).not.toContain("creds.");
+      expect(suggestion).not.toContain("bucket");
+      expect(suggestion).not.toContain("hunter2");
+    }
+  });
+
+  test("services.<name>.database suggests bucket on a MinIO service", async () => {
+    const issues = await issuesFor({ services: { store: { type: "minio", database: "uploads" } } });
+    const issue = issues.find((candidate) => candidate.path.at(-1) === "database");
+    expect(issue?.path).toEqual(["services", "store", "database"]);
+    expect(issue?.suggestion).toContain("bucket");
+    expect(issue?.suggestion).not.toContain("creds.database");
+  });
+
+  test("services.<name>.password suggests creds.password without echoing the value", async () => {
+    const issues = await issuesFor({ services: { cache: { type: "redis", password: "hunter2" } } });
+    const issue = issues.find((candidate) => candidate.path.at(-1) === "password");
+    expect(issue?.path).toEqual(["services", "cache", "password"]);
+    expect(issue?.suggestion).toContain("creds.password");
+    expect(JSON.stringify(issue)).not.toContain("hunter2");
+  });
+});

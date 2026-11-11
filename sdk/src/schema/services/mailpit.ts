@@ -12,7 +12,6 @@ export const MailpitServiceConfig = catalogServiceConfig({
     "mailFrom",
     "port",
     "user",
-    "database",
     "environment",
     "routes",
     "ports",

@@ -377,4 +377,26 @@ describe("mssql ServiceType", () => {
       },
     ]);
   });
+
+  test("a password-only creds block keeps the default database and mirrors the admin password", async () => {
+    const plan = await planMssqlService(mssqlServiceType, {
+      type: "mssql",
+      creds: { password: "Hunter22!" },
+    });
+
+    expect(plan.environment).toMatchObject({
+      MSSQL_SA_PASSWORD: "Hunter22!",
+      SA_PASSWORD: "Hunter22!",
+    });
+    const resolution = await resolveMssqlService(mssqlServiceType, {
+      type: "mssql",
+      creds: { password: "Hunter22!" },
+    });
+    expect(resolution.connection?.creds).toMatchObject({
+      user: "sa",
+      password: "Hunter22!",
+      rootPassword: "Hunter22!",
+      database: "myapp",
+    });
+  });
 });

@@ -210,4 +210,14 @@ describe("mysql ServiceType", () => {
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
   });
+
+  test("a password-only creds block keeps the default user and database", async () => {
+    const plan = await planMysqlService({ type: "mysql", creds: { password: "hunter2" } });
+
+    expect(plan.environment).toMatchObject({
+      MYSQL_USER: "lando",
+      MYSQL_PASSWORD: "hunter2",
+      MYSQL_DATABASE: "myapp",
+    });
+  });
 });

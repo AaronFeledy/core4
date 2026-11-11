@@ -1760,6 +1760,7 @@
       "ServiceCopyInSpec",
       "ServiceCopyOutSpec",
       "ServiceCreds",
+      "ServiceCredsConfig",
       "ServiceCredsDisplay",
       "ServiceDependency",
       "ServiceDependencyCondition",

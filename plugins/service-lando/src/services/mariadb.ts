@@ -6,6 +6,7 @@ import {
   LogSourceId,
   PortablePath,
   type ServiceCreds,
+  type ServiceCredsConfig,
   ServiceName,
 } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
@@ -13,7 +14,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
-import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
@@ -70,25 +71,15 @@ const mariadbCreds = (
   },
   serviceName: string,
   service: {
-    readonly creds?: ServiceCreds | undefined;
+    readonly creds?: ServiceCredsConfig | undefined;
     readonly environment?: Environment | undefined;
-    readonly database?: string | undefined;
   },
 ): ServiceCreds => {
   const appName = dataNameFor(input);
   const creds = service.creds;
   return resolveServiceCreds({
     family: "mariadb",
-    ...(creds === undefined
-      ? {}
-      : {
-          authored: {
-            user: creds.user,
-            password: creds.password,
-            database: creds.database,
-            ...(creds.rootPassword === undefined ? {} : { rootPassword: creds.rootPassword }),
-          },
-        }),
+    ...(creds === undefined ? {} : { authored: creds }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
     defaults: {
       user: "lando",
@@ -96,7 +87,6 @@ const mariadbCreds = (
       database: appName,
       rootPassword: defaultRootPassword(appName, serviceName),
     },
-    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
 
@@ -143,6 +133,7 @@ export const mariadbServiceFeature: ServiceFeatureDefinition = {
   id: MARIADB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(MARIADB_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(

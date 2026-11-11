@@ -71,7 +71,7 @@ services:
 
 ## Set credentials
 
-Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. Lando sets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer` on the image. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
+Set a member under `creds:` when you need an explicit value. A member you leave out keeps its default. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. Lando sets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer` on the image. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
 
 Use `sa`; another `creds.user` fails planning rather than creating a separate login.
 `creds.password`, `creds.rootPassword`, and any authored native password aliases
@@ -86,7 +86,6 @@ services:
   database:
     type: mssql
     creds:
-      user: sa
       rootPassword: "ReplaceMe!2026"
       database: LANDO_DB
 ```

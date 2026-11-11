@@ -34,7 +34,7 @@ test("keyed collection removal becomes a native override", () => {
 });
 
 test("decoded replay rejects an invalid desired prefix rather than proving raw replay", () => {
-  const desired = { services: { db: { creds: { user: "only-user" } } } };
+  const desired = { services: { db: { creds: { user: 7 } } } };
   expect(() =>
     Effect.runSync(
       replayDecodedDeltas(
@@ -45,7 +45,7 @@ test("decoded replay rejects an invalid desired prefix rather than proving raw r
   ).toThrow();
 });
 
-test("decoded replay widens a partial credential delta to its nearest valid containing override", () => {
+test("decoded replay keeps a valid partial credential delta narrow", () => {
   const first = { services: { db: { creds: { user: "app", password: "old", database: "app" } } } };
   const second = { services: { db: { creds: { user: "app", password: "new", database: "app" } } } };
   const prefixes = [
@@ -53,7 +53,7 @@ test("decoded replay widens a partial credential delta to its nearest valid cont
     { layer: "canonical" as const, sourceIds: [], desired: second },
   ];
   const layers = Effect.runSync(replayDecodedDeltas(prefixes, planLayerDeltas(prefixes).emitted));
-  expect(layers[1]?.fragment).toEqual({ services: { db: { creds: override(second.services.db.creds) } } });
+  expect(layers[1]?.fragment).toEqual({ services: { db: { creds: { password: "new" } } } });
   let effective = {};
   for (const [index, layer] of layers.entries()) {
     effective = mergeLandofiles([

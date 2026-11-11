@@ -16,17 +16,17 @@ services:
     type: postgres
 ```
 
-Without a `creds:` block, Lando generates the password. Do not assume it is `lando`. To choose explicit credentials, provide `user`, `database`, and `password` together:
+Without a `creds:` block, Lando generates the password. Do not assume it is `lando`. To choose your own, set it under `creds:`. One member is enough. `user` and `database` keep their defaults when you leave them out:
 
 ```yaml
 services:
   db:
     type: postgres
     creds:
-      user: lando
-      database: postgres-demo
       password: local-development-only
 ```
+
+`creds.password` is the superuser password, so Postgres takes no `creds.rootPassword`.
 
 For a private password, use `password: '${secret:DB_PASSWORD}'` and set its [secret store](../config/secret-stores.mdx) value before starting the app. The server, the `psql` task, and `lando db:*` all receive that same resolved value.
 
@@ -52,7 +52,7 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Setting | Value |
 | --- | --- |
 | Host | `db` |
-| Database | the folder's data name (here `postgres-demo`, the name this folder's data was first created under); override with `database:` under `services.db` |
+| Database | the folder's data name (here `postgres-demo`, the name this folder's data was first created under); override with `creds.database` under `services.db` |
 | User | `lando` |
 | Password | generated when omitted; read it with `{{ services.db.creds.password }}` |
 

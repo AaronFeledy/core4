@@ -29,7 +29,7 @@ const serviceType: ServiceType = {
       base: "l337" as const,
       normalizedConfig: {
         ...input.service,
-        environment: { ...input.service.environment, DATABASE: String(input.service.database) },
+        environment: { ...input.service.environment, FRAMEWORK: String(input.service.framework) },
       },
       features: [],
     }),
@@ -44,7 +44,7 @@ const plan = Effect.fnUntraced(function* (landofile: LoadScopedLandofile) {
 }, Effect.provide(PluginRegistryLayer.layer));
 
 test.each([
-  { field: 'database: "{{ env.QA }}"', environmentKey: "DATABASE" },
+  { field: 'framework: "{{ env.QA }}"', environmentKey: "FRAMEWORK" },
   { field: 'environment: "{{ { FOO: env.QA } }}"', environmentKey: "FOO" },
 ])("keeps load-produced expression text literal at $field", async ({ field, environmentKey }) => {
   // Given
@@ -74,7 +74,7 @@ test.each([
 });
 
 test.each([
-  { expression: "load('./payload.txt')", field: "database", key: "DATABASE" },
+  { expression: "load('./payload.txt')", field: "framework", key: "FRAMEWORK" },
   { expression: "load('./payload.json')", field: "environment", key: "FOO" },
   { expression: "load('./payload.yml')", field: "environment", key: "FOO" },
   { expression: "import('./payload.json').value", field: "environment", key: "FOO" },
@@ -109,7 +109,7 @@ test("rejects a non-string result at a plan-time text site", async () => {
       [ServiceName.make("database")]: {
         type: serviceType.id,
         image: "alpine:3.22",
-        database: "{{ eq(app.name, 'x') }}",
+        framework: "{{ eq(app.name, 'x') }}",
       },
     },
   };
@@ -118,7 +118,7 @@ test("rejects a non-string result at a plan-time text site", async () => {
     compileTestLandofile(landofile).pipe(Effect.flatMap(plan), Effect.flip),
   );
   // Then
-  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "database", "database"] });
+  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "database", "framework"] });
   expect(error.message).toContain("Expected string");
 });
 
@@ -134,7 +134,7 @@ test("materializes app and proxy expressions before service resolution and tooli
               type: serviceType.id,
               image: "alpine:3.22",
               home: false as const,
-              database: "{{ app.name }}",
+              framework: "{{ app.name }}",
             },
           },
           tooling: {
@@ -150,13 +150,13 @@ test("materializes app and proxy expressions before service resolution and tooli
     rememberInternalToolingTasks(compiled.document, getInternalToolingTasks(landofile));
     const app = await Effect.runPromise(plan(compiled));
     expect(app.slug).toBe("dcms-demo");
-    expect(app.services[ServiceName.make("database")]?.environment.DATABASE).toBe("dcms-demo");
+    expect(app.services[ServiceName.make("database")]?.environment.FRAMEWORK).toBe("dcms-demo");
     const tooling = effectiveToolingForPlan(app);
     expect(tooling?.install?.cmd).toBe("install dcms-demo.lndo.site");
     if (tooling === undefined) throw new Error("Expected attached tooling");
     expect(getInternalToolingTasks(tooling)).toEqual(["install"]);
     expect(app.extensions.compose).toMatchObject({ "x-expression": "dcms-demo.lndo.site" });
-    expect(landofile.services[ServiceName.make("database")]?.database).toBe("{{ app.name }}");
+    expect(landofile.services[ServiceName.make("database")]?.framework).toBe("{{ app.name }}");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -216,7 +216,7 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
             type: serviceType.id,
             image: "alpine:3.22",
             home: false as const,
-            database: "{{ app.nope }}",
+            framework: "{{ app.nope }}",
           },
         },
       },
@@ -231,7 +231,7 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
     expect(result.failure).toMatchObject({
       _tag: "ConfigExpressionError",
       expression: "{{ app.nope }}",
-      path: ["services", "database", "database"],
+      path: ["services", "database", "framework"],
       filePath: `${root}/.lando.yml`,
     });
   } finally {

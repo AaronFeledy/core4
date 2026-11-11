@@ -208,10 +208,10 @@ describe("minio ServiceType", () => {
     expect(plan.environment?.MINIO_DEFAULT_BUCKETS).toBeUndefined();
   });
 
-  test("uses database for the created bucket and preserves authored credentials", async () => {
+  test("uses the authored bucket and preserves authored credentials", async () => {
     const plan = await planMinioService({
       type: "minio",
-      database: "assets",
+      bucket: "assets",
       environment: {
         MINIO_ROOT_USER: "author",
         MINIO_ROOT_PASSWORD: "secret",
@@ -267,5 +267,47 @@ describe("minio ServiceType", () => {
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(String(plan.workingDirectory)).toBe("/data");
     expect(plan.user).toBe("1000:1000");
+  });
+
+  test.each(["my uploads", "ab", "-uploads", "uploads.", "a..b", "team/uploads", "u".repeat(64)])(
+    "rejects the authored bucket %j, which MinIO would not accept",
+    async (bucket) => {
+      await expect(planMinioService({ type: "minio", bucket })).rejects.toMatchObject({
+        _tag: "ServiceFeatureError",
+        feature: MINIO_FEATURE_ID,
+        cause: { path: ["bucket"], suggestion: expect.any(String) },
+        remediation: expect.any(String),
+      });
+    },
+  );
+
+  test.each(["assets.example.com", "Team_Uploads", "abc", "u".repeat(63)])(
+    "uses the authored bucket %j verbatim",
+    async (bucket) => {
+      const plan = await planMinioService({ type: "minio", bucket });
+
+      expect(plan.environment?.MINIO_BUCKET).toBe(bucket);
+    },
+  );
+
+  test.each([
+    ["My App", "My-App"],
+    ["a", "a-bucket"],
+    ["_app_", "app"],
+    ["u".repeat(64), "u".repeat(63)],
+    ["...", "app"],
+  ])("derives a MinIO-valid default bucket from data name %j", async (dataName, bucket) => {
+    const plan = await composeServicePlan({
+      serviceType: minioServiceType,
+      service: minioService({ type: "minio" }),
+      appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      dataName,
+      serviceName: "storage",
+      metadata,
+      featureOverrides,
+    });
+
+    expect(plan.environment?.MINIO_BUCKET).toBe(bucket);
   });
 });
