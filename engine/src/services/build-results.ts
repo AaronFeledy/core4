@@ -9,6 +9,7 @@ import { DateTime, Effect, Schema } from "effect";
 const BUILD_RESULTS_VERSION = 3;
 const KEEP_COMPLETE = 10;
 const KEEP_FAIL = 5;
+const KEEP_ENTRIES = 500;
 
 export const BuildResultEntry = Schema.Struct({
   buildKey: Schema.String,
@@ -70,12 +71,12 @@ export const findCompleteBuildResult = (
     const entry = entries[index];
     if (
       entry !== undefined &&
-      entry.outcome === "complete" &&
       entry.buildKey === input.buildKey &&
       entry.phase === input.phase &&
       entry.service === input.service
     ) {
-      return entry;
+      // Only the latest recorded attempt counts: a newer failure hides an older success.
+      return entry.outcome === "complete" ? entry : undefined;
     }
   }
   return undefined;
@@ -90,11 +91,13 @@ const matchingOutcome = (left: BuildResultEntry, right: BuildResultEntry): boole
 const limitFor = (outcome: BuildResultEntry["outcome"]): number =>
   outcome === "complete" ? KEEP_COMPLETE : KEEP_FAIL;
 
-const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArray<BuildResultEntry> =>
-  entries.filter((entry, index) => {
+const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArray<BuildResultEntry> => {
+  const rotated = entries.filter((entry, index) => {
     const newerOrSame = entries.slice(index).filter((candidate) => matchingOutcome(candidate, entry));
     return newerOrSame.length <= limitFor(entry.outcome);
   });
+  return rotated.slice(-KEEP_ENTRIES);
+};
 
 export const recordBuildResult = Effect.fnUntraced(function* (
   bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,

@@ -21,7 +21,12 @@ import {
 import { runProviderBuild, serviceWithArtifact } from "./build-artifact-runner.ts";
 import { artifactBuildStepsFor, buildKeyForService } from "./build-key.ts";
 import { type BuildRedaction, registerBuildRedaction } from "./build-redaction.ts";
-import { findCompleteBuildResult, openScratchBuildResults, recordBuildResult } from "./build-results.ts";
+import {
+  findCompleteBuildResult,
+  openAppBuildResults,
+  openScratchBuildResults,
+  recordBuildResult,
+} from "./build-results.ts";
 import { openBuildStepOutput } from "./build-step-output.ts";
 import { type BuildTaskProgress, makeBuildTaskProgress } from "./build-task-progress.ts";
 import { makeBuildTranscriptPath } from "./build-transcript.ts";
@@ -149,17 +154,13 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
           : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
       const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
       const started = performance.now();
-      const bucket = isScratchPlan(plan)
-        ? yield* openScratchBuildResults(stateStore).pipe(
-            mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
-          )
-        : undefined;
-      const cached =
-        bucket === undefined
-          ? undefined
-          : yield* bucket.get.pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
-      // pull_policy: build runs the build every time, so a recorded scratch result is never reused.
-      if (bucket !== undefined && service.pullPolicy !== "build") {
+      const bucket = yield* (
+        isScratchPlan(plan)
+          ? openScratchBuildResults(stateStore)
+          : openAppBuildResults(stateStore, String(plan.id))
+      ).pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
+      const cached = yield* bucket.get.pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
+      if (!input.refresh && service.pullPolicy !== "build") {
         const complete = findCompleteBuildResult(cached ?? [], {
           buildKey: step.buildKey,
           phase: step.phase,
@@ -257,21 +258,19 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
           );
         }),
         Effect.tapError(() =>
-          bucket === undefined
-            ? Effect.void
-            : recordBuildResult(bucket, {
-                buildKey: step.buildKey,
-                service: service.name,
-                phase: step.phase,
-                outcome: "fail",
-                exitCode: 1,
-                durationMs: performance.now() - started,
-                transcriptPath,
-              }).pipe(
-                mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
-                Effect.exit,
-                Effect.asVoid,
-              ),
+          recordBuildResult(bucket, {
+            buildKey: step.buildKey,
+            service: service.name,
+            phase: step.phase,
+            outcome: "fail",
+            exitCode: 1,
+            durationMs: performance.now() - started,
+            transcriptPath,
+          }).pipe(
+            mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
+            Effect.exit,
+            Effect.asVoid,
+          ),
         ),
       );
       if (resolvedService.artifact?.kind === "ref" && artifactBuildStepsFor(resolvedService).length === 0) {
@@ -280,30 +279,28 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
         );
       }
       yield* output.end;
-      if (bucket !== undefined) {
-        yield* recordBuildResult(bucket, {
-          buildKey: step.buildKey,
-          service: service.name,
-          phase: step.phase,
-          outcome: "complete",
-          exitCode: 0,
-          durationMs: performance.now() - started,
-          artifactRef: artifact.ref,
-          ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
-          ...(artifact.origin === undefined ? {} : { artifactOrigin: artifact.origin }),
-          ...(service.artifact?.kind !== "ref"
-            ? {}
-            : {
-                sourceArtifactRef: service.artifact.ref,
-                ...(sourceArtifact?.digest === undefined
-                  ? service.artifact.digest === undefined
-                    ? {}
-                    : { sourceArtifactDigest: service.artifact.digest }
-                  : { sourceArtifactDigest: sourceArtifact.digest }),
-              }),
-          transcriptPath,
-        }).pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
-      }
+      yield* recordBuildResult(bucket, {
+        buildKey: step.buildKey,
+        service: service.name,
+        phase: step.phase,
+        outcome: "complete",
+        exitCode: 0,
+        durationMs: performance.now() - started,
+        artifactRef: artifact.ref,
+        ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
+        ...(artifact.origin === undefined ? {} : { artifactOrigin: artifact.origin }),
+        ...(service.artifact?.kind !== "ref"
+          ? {}
+          : {
+              sourceArtifactRef: service.artifact.ref,
+              ...(sourceArtifact?.digest === undefined
+                ? service.artifact.digest === undefined
+                  ? {}
+                  : { sourceArtifactDigest: service.artifact.digest }
+                : { sourceArtifactDigest: sourceArtifact.digest }),
+            }),
+        transcriptPath,
+      }).pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
 
       yield* events.publish({
         _tag: "post-build",

@@ -771,7 +771,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     });
   });
 
-  test("rebuild keeps the local derived image when refresh fails", async () => {
+  test("rebuild builds under the start build key when refresh falls back to the local base", async () => {
     await withTempUserRoots(async () => {
       const derived: ServicePlan = {
         ...web,
@@ -829,8 +829,21 @@ describe("BuildOrchestratorLayer.layer", () => {
         ).pipe(Effect.provideService(CommandWarnings, commandWarnings), Effect.provide(layer(provider))),
       );
 
-      expect(builds).toHaveLength(1);
-      expect(result.rebuilt.services[web.name]?.artifact).toEqual(result.first.services[web.name]?.artifact);
+      // A rebuild always dispatches; the local fallback resolves the same base, so the key is unchanged.
+      expect(builds).toHaveLength(2);
+      expect(builds[1]).toBe(builds[0]);
+      expect(result.first.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:1",
+        digest: "sha256:derived-1",
+        origin: "build",
+      });
+      expect(result.rebuilt.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-1",
+        origin: "build",
+      });
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]?.code).toBe("LANDO_ARTIFACT_REFRESH_FAILED");
     });
@@ -1796,6 +1809,56 @@ describe("BuildOrchestratorLayer.layer", () => {
     });
   });
 
+  const derivedService = (
+    overrides: Partial<Pick<ServicePlan, "environment" | "pullPolicy">> = {},
+  ): ServicePlan => ({
+    ...web,
+    artifact: { kind: "ref", ref: "php:8.4-apache-bookworm" },
+    extensions: {
+      "@lando/core/service-features": {
+        buildSteps: [{ id: "php-extension", phase: "build", command: ["echo", "build"] }],
+      },
+    },
+    ...overrides,
+  });
+
+  const derivedProvider = () => {
+    const calls = { builds: 0 };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: ArtifactPullSpec) =>
+        spec.policy === "never"
+          ? Effect.succeed({ providerId, ref: spec.ref })
+          : Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:base" }),
+      buildArtifact: () =>
+        Effect.sync(() => {
+          calls.builds += 1;
+          return {
+            providerId,
+            ref: `php-derived:${calls.builds}`,
+            digest: `sha256:derived-${calls.builds}`,
+          };
+        }),
+    };
+    return { provider, calls };
+  };
+
+  const buildTwice = (provider: RuntimeProviderShape, buildPlan: AppPlan, options?: BuildOptions) =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const first = yield* orchestrator.build(buildPlan);
+          const firstEvents = [...(yield* Queue.clear(queue))];
+          const second = yield* orchestrator.build(buildPlan, options);
+          return { first, second, firstEvents, secondEvents: [...(yield* Queue.clear(queue))] };
+        }),
+      ).pipe(Effect.provide(layer(provider))),
+    );
+
   test("writes redacted build output to the transcript and publishes task detail", async () => {
     await withTempUserRoots(async () => {
       // Given a build step whose output prints a plan secret.
@@ -2001,6 +2064,249 @@ describe("BuildOrchestratorLayer.layer", () => {
     });
   });
 
+  test("reuses a recorded user artifact build without dispatching provider work", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact build succeeded once.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider, calls } = derivedProvider();
+
+      // When the same plan builds against one state store twice.
+      const run = await buildTwice(provider, buildPlan);
+
+      // Then the second build returns the recorded result and advertises its transcript.
+      expect(calls.builds).toBe(1);
+      expect(run.second).toEqual(run.first);
+      expect(run.second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:1",
+        digest: "sha256:derived-1",
+        origin: "build",
+      });
+      expect(run.secondEvents.filter((event) => event._tag === "task.detail")).toEqual([]);
+      expect(run.secondEvents.find((event) => event._tag === "build-step-skip")).toMatchObject({
+        cached: true,
+        reason: "up-to-date",
+        phase: "artifact",
+        serviceName: ServiceName.make("web"),
+      });
+      expect(
+        run.secondEvents.filter((event) => event._tag === "pre-build" || event._tag === "post-build"),
+      ).toEqual([]);
+      const firstStart = run.firstEvents.find((event) => event._tag === "task.start");
+      const secondStart = run.secondEvents.find((event) => event._tag === "task.start");
+      if (firstStart?._tag !== "task.start" || secondStart?._tag !== "task.start")
+        throw new TypeError("task start event is missing");
+      expect(secondStart.transcriptPath).toBe(firstStart.transcriptPath);
+    });
+  });
+
+  test("dispatches a recorded user artifact build again when refresh is requested", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact build succeeded once.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider, calls } = derivedProvider();
+
+      // When the second build requests a refresh.
+      const { second } = await buildTwice(provider, buildPlan, { refresh: true });
+
+      // Then the provider builds again.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("dispatches a recorded user artifact build again for pull policy build", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact declares pull_policy: build.
+      const derived = derivedService({ pullPolicy: "build" });
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider, calls } = derivedProvider();
+
+      // When the same plan builds twice.
+      const { second } = await buildTwice(provider, buildPlan);
+
+      // Then pull_policy: build dispatches the build again.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("dispatches a recorded user artifact build again when its produced image is gone", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose produced image is removed after the first build.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider: availableProvider, calls } = derivedProvider();
+      let producedPresent = true;
+      const provider = {
+        ...availableProvider,
+        pullArtifact: (spec: ArtifactPullSpec) => {
+          if (spec.policy === "never" && spec.ref.startsWith("php-derived:") && !producedPresent) {
+            return Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "test",
+                operation: "pullArtifact",
+                message: `Container image ${spec.ref} is not present locally.`,
+                remediation: "Rebuild it.",
+              }),
+            );
+          }
+          return availableProvider.pullArtifact(spec);
+        },
+      };
+
+      // When the produced image is gone before the second build.
+      const second = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(buildPlan);
+            producedPresent = false;
+            return yield* orchestrator.build(buildPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the missing image turns the recorded result into a miss.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("a failed user artifact build does not suppress the next build", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose first build fails.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const failure = new ProviderInternalError({
+        providerId: "test",
+        operation: "buildArtifact",
+        message: "first build failed",
+        remediation: "Fix the failing build step.",
+      });
+      let builds = 0;
+      const provider = {
+        ...derivedProvider().provider,
+        buildArtifact: () => {
+          builds += 1;
+          const attempt = builds;
+          return attempt === 1
+            ? Effect.fail(failure)
+            : Effect.succeed({
+                providerId,
+                ref: `php-derived:${attempt}`,
+                digest: `sha256:derived-${attempt}`,
+              });
+        },
+      };
+
+      // When the same plan builds again after the failure.
+      const run = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            const first = yield* Effect.result(orchestrator.build(buildPlan));
+            const second = yield* orchestrator.build(buildPlan);
+            return { first, second };
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the failed attempt is not reused.
+      expect(run.first._tag).toBe("Failure");
+      expect(builds).toBe(2);
+      expect(run.second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("reuses a recorded user acquisition-only result without re-running the provider build", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose acquisition-only step resolved an image digest.
+      const acquired: ServicePlan = { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } };
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: acquired } };
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: (spec: ArtifactPullSpec) =>
+          Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:acquired" }),
+        buildArtifact: () => Effect.die("an acquisition-only step must not build"),
+      };
+
+      // When the same plan builds twice against one state store.
+      const run = await buildTwice(provider, buildPlan);
+
+      // Then the recorded digest is reused.
+      expect(run.second).toEqual(run.first);
+      expect(run.second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "debian:12.11-slim",
+        digest: "sha256:acquired",
+      });
+      expect(run.secondEvents.find((event) => event._tag === "build-step-skip")).toMatchObject({
+        cached: true,
+        reason: "up-to-date",
+        phase: "artifact",
+      });
+      expect(
+        run.secondEvents.filter((event) => event._tag === "pre-build" || event._tag === "post-build"),
+      ).toEqual([]);
+    });
+  });
+
+  test("dispatches a user artifact build again when its build key changes", async () => {
+    await withTempUserRoots(async () => {
+      // Given the same user app described with different build inputs.
+      const firstPlan: AppPlan = {
+        ...plan,
+        services: { [web.name]: derivedService({ environment: { BUILD_INPUT: "one" } }) },
+      };
+      const secondPlan: AppPlan = {
+        ...plan,
+        services: { [web.name]: derivedService({ environment: { BUILD_INPUT: "two" } }) },
+      };
+      const { provider, calls } = derivedProvider();
+
+      // When the changed plan builds against the same state store.
+      const second = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(firstPlan);
+            return yield* orchestrator.build(secondPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the changed build key is a miss.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
   test("redacts proxy credentials carried in artifact build args", async () => {
     await withTempUserRoots(async () => {
       // Given a build arg pair that carries proxy userinfo, not a secret-named value.
@@ -2091,6 +2397,62 @@ describe("BuildOrchestratorLayer.layer", () => {
         if (previousProxy === undefined) Reflect.deleteProperty(process.env, "HTTPS_PROXY");
         else process.env.HTTPS_PROXY = previousProxy;
       }
+    });
+  });
+
+  test("a newer failed refresh hides an earlier recorded success", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact build succeeded once.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const failure = new ProviderInternalError({
+        providerId: "test",
+        operation: "buildArtifact",
+        message: "refresh build failed",
+        remediation: "Fix the failing build step.",
+      });
+      let builds = 0;
+      const provider = {
+        ...derivedProvider().provider,
+        buildArtifact: () => {
+          builds += 1;
+          if (builds === 2) return Effect.fail(failure);
+          return Effect.succeed({
+            providerId,
+            ref: `php-derived:${builds}`,
+            digest: `sha256:derived-${builds}`,
+          });
+        },
+      };
+
+      // When the plan succeeds, rebuilds with refresh and fails, then builds plainly again.
+      const { refresh, third } = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(buildPlan);
+            const refresh = yield* Effect.result(orchestrator.build(buildPlan, { refresh: true }));
+            const third = yield* orchestrator.build(buildPlan);
+            return { refresh, third };
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the newer failure hides the older success and the provider builds again.
+      expect(refresh).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "ProviderInternalError",
+          operation: "buildArtifact",
+          message: "refresh build failed",
+        },
+      });
+      expect(builds).toBe(3);
+      expect(third.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:3",
+        digest: "sha256:derived-3",
+        origin: "build",
+      });
     });
   });
 });
