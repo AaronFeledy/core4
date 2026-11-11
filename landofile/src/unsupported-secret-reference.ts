@@ -76,27 +76,21 @@ export const unsupportedSecretReference = (
         ]);
         const candidate =
           authoredTarget === undefined
-            ? valueAtPath(input.document, ["tooling", String(path[1]), "service"])
+            ? (valueAtPath(input.document, ["tooling", String(path[1]), "service"]) ??
+              valueAtPath(input.document, ["toolingDefaults", "service"]))
             : authoredTarget;
-        const target =
-          typeof candidate === "string" && !candidate.includes("{{")
-            ? candidate === ":host"
-              ? "host"
-              : candidate.startsWith(":")
-                ? undefined
-                : candidate
-            : undefined;
+        const literal = typeof candidate === "string" && !candidate.includes("{{") ? candidate : undefined;
         const sensitive = "Set sensitive: true on the var when its output is secret.";
-        if (target === "host")
+        if (literal === ":host")
           return {
             suggestion: `A var command that runs on the host receives no Lando secret binding and not the task's env. To use ${name}, run the var in a service by setting service on the var, with the ${binding} in that service's environment and ${shell} in the var command. ${sensitive}`,
           };
-        if (target === undefined)
+        if (literal === undefined || literal.startsWith(":"))
           return {
-            suggestion: `Bind the ${binding} as ${name} in the environment of the service that runs the var and write ${shell} in the var command. The var command does not receive the task's env. ${sensitive}`,
+            suggestion: `Bind the ${binding} as ${name} in the environment of the service that runs the var and write ${shell} in the var command. A var command that runs on :host receives no Lando secret binding. The var command does not receive the task's env. ${sensitive}`,
           };
         return {
-          suggestion: `Set ${bindings(`services.${target}.environment`)} to the ${binding} and write ${shell} in the var command. The var command does not receive the task's env. ${sensitive}`,
+          suggestion: `Set ${bindings(`services.${literal}.environment`)} to the ${binding} and write ${shell} in the var command. The var command does not receive the task's env. ${sensitive}`,
         };
       }
       case "build-arg":
@@ -163,6 +157,14 @@ export const unsupportedSecretReference = (
             "Lando command inputs cannot carry secrets. Move the work into a cmd step with the secret in that step's env.",
         };
       case "healthcheck": {
+        const command =
+          relative.length === 0 ||
+          (relative.length === 1 &&
+            (typeof relative[0] === "number" || relative[0] === "command" || relative[0] === "test")) ||
+          (relative.length === 2 &&
+            (relative[0] === "command" || relative[0] === "test") &&
+            typeof relative[1] === "number");
+        if (!command) return { suggestion: genericSuggestion() };
         const role = path[2] === "readiness" ? "readiness" : "healthcheck";
         const hostReadiness =
           role === "readiness" &&
@@ -171,8 +173,12 @@ export const unsupportedSecretReference = (
           return {
             suggestion: `A host readiness probe runs on the host and receives no Lando secret binding. To use ${name}, keep target: service (the default) and set ${bindings(`${service}.environment`)} to the ${binding}, then write ${shell} in the readiness command. A list command runs without a shell, so the program must read ${name} from its environment.`,
           };
+        const hostCaveat =
+          role === "readiness"
+            ? " A readiness probe with target: host runs on the host and receives no secret binding."
+            : "";
         return {
-          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string ${role} command. A list command runs without a shell, so the program must read ${name} from its environment.`,
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string ${role} command. A list command runs without a shell, so the program must read ${name} from its environment.${hostCaveat}`,
         };
       }
       case "service-command": {

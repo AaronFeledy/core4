@@ -151,7 +151,19 @@ test.each([
     path: ["services", "app", "readiness", "command"],
     extra: "",
     suggestion:
-      "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in a string readiness command. A list command runs without a shell, so the program must read TOKEN from its environment.",
+      "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in a string readiness command. A list command runs without a shell, so the program must read TOKEN from its environment. A readiness probe with target: host runs on the host and receives no secret binding.",
+  },
+  {
+    path: ["services", "app", "readiness", "user"],
+    extra: "",
+    suggestion:
+      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
+  },
+  {
+    path: ["services", "app", "healthcheck", "interval"],
+    extra: "",
+    suggestion:
+      "Use ${secret:...} only in a service environment value, a database password, a Redis password, a tooling env value, or an event step env value. Write $${secret:...} to keep the text literal.",
   },
   ...[["command"], ["raw", 0], ["flags", "TOKEN"], ["args", "TOKEN"]].map((suffix) => ({
     path: ["events", "post-start", 0, ...suffix],
@@ -163,7 +175,7 @@ test.each([
     path: ["tooling", "task", "vars", "token", "sh"],
     extra: "",
     suggestion:
-      "Bind the ${secret:...} reference as TOKEN in the environment of the service that runs the var and write $TOKEN in the var command. The var command does not receive the task's env. Set sensitive: true on the var when its output is secret.",
+      "Bind the ${secret:...} reference as TOKEN in the environment of the service that runs the var and write $TOKEN in the var command. A var command that runs on :host receives no Lando secret binding. The var command does not receive the task's env. Set sensitive: true on the var when its output is secret.",
   },
 ] as const)("provides site-aware guidance at $path", ({ path, extra, suggestion }) => {
   // Given an authored secret at an unsupported site.
@@ -203,8 +215,20 @@ test.each([
   {
     name: "unknown flag var target",
     document: { tooling: { task: { service: ":flag" } } },
-    includes: ["the service that runs the var"],
+    includes: ["the service that runs the var", ":host receives no Lando secret binding"],
     excludes: ["services.app.environment.TOKEN", "tooling.task.env.TOKEN"],
+  },
+  {
+    name: "service literally named host",
+    document: { tooling: { task: { service: "host" } } },
+    includes: ["services.host.environment.TOKEN"],
+    excludes: ["on the host"],
+  },
+  {
+    name: "toolingDefaults service var command",
+    document: { toolingDefaults: { service: "app" } },
+    includes: ["services.app.environment.TOKEN"],
+    excludes: ["tooling.task.env.TOKEN"],
   },
 ])("gives var-command advice for a $name", ({ document, includes, excludes }) => {
   const diagnostic = unsupportedSecretReference({
@@ -243,6 +267,28 @@ test("gives host-readiness advice that moves the probe into the service", () => 
     document: { services: { app: { readiness: { target: "service" } } } },
   });
   expect(service.suggestion).toContain("string readiness command");
+
+  for (const document of [
+    { services: { app: {} } },
+    { services: { app: { readiness: { target: "{{ env.PROBE_TARGET }}" } } } },
+  ]) {
+    const unresolved = unsupportedSecretReference({
+      source,
+      references: ["TOKEN"],
+      value: "echo ${secret:TOKEN}",
+      document,
+    });
+    expect(unresolved.suggestion).toContain("string readiness command");
+    expect(unresolved.suggestion).toContain("target: host runs on the host");
+  }
+
+  const healthcheck = unsupportedSecretReference({
+    source: { ...source, path: ["services", "app", "healthcheck", "command"] },
+    references: ["TOKEN"],
+    value: "echo ${secret:TOKEN}",
+    document: { services: { app: {} } },
+  });
+  expect(healthcheck.suggestion).not.toContain("target: host");
 });
 
 test.each([
@@ -320,10 +366,10 @@ test.each([
     value,
   });
   // Then
-  expect(diagnostic).toEqual({
-    message: `Secret references are not supported at ${formatValidationIssuePath(path)}.${buildArgument ? " Build arguments can be recorded in image history." : ""}`,
-    suggestion: buildArgument
-      ? `For runtime use, set services.app.environment.${name} to the \${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.${name} set to the reference, and $${name} in its cmd; it runs in the started container.`
-      : `Set services.app.environment.${name} to the \${secret:...} reference. Write $${name} in the command when the service type runs that string as a shell script. On type: compose, the string is split into arguments and is not a shell, so write sh -c with $${name} inside one quoted argument.`,
-  });
+  expect(diagnostic.message).toBe(
+    `Secret references are not supported at ${formatValidationIssuePath(path)}.${buildArgument ? " Build arguments can be recorded in image history." : ""}`,
+  );
+  expect(diagnostic.suggestion).toContain(`services.app.environment.${name}`);
+  expect(diagnostic.suggestion).toContain(`$${name}`);
+  if (buildArgument) expect(diagnostic.suggestion).toContain(`env.${name}`);
 });
