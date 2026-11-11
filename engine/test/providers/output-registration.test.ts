@@ -5,6 +5,7 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { PluginLoadError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
+  AppId,
   AppPlan,
   GlobalConfig,
   PluginManifest,
@@ -66,7 +67,11 @@ const target = { app: plan.id, service: ServiceName.make("web") };
 const command = { command: ["printenv"] };
 const spec = { owner: target, image: "test", command: ["printenv"] };
 const canary = "registry-environment-private";
-const registryLayer = (provider: RuntimeProviderShape, redaction = makeRedactionService()) => {
+const registryLayer = (
+  provider: RuntimeProviderShape,
+  redaction = makeRedactionService(),
+  appliedPlans: ReadonlyArray<AppPlan> = [plan],
+) => {
   const id = ProviderId.make(provider.id);
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
     name: "@test/output",
@@ -83,7 +88,7 @@ const registryLayer = (provider: RuntimeProviderShape, redaction = makeRedaction
           id,
           {
             id,
-            appliedPlans: () => Effect.succeed([plan]),
+            appliedPlans: () => Effect.succeed(appliedPlans),
             make: () => Effect.succeed(provider),
           },
         ],
@@ -224,6 +229,64 @@ test.each(Object.entries(calls))(
     expect(outputs).toBe(0);
   },
 );
+
+test("buildArtifact registers the spec's app and plan before building", async () => {
+  // Given a plan only the dispatched build spec carries.
+  const canary = "build-registration-canary";
+  const baseService = Object.values(plan.services)[0];
+  if (baseService === undefined) throw new TypeError("the test plan has no service");
+  const specPlan: AppPlan = {
+    ...plan,
+    id: AppId.make("output-boundary-spec"),
+    slug: "output-boundary-spec",
+    services: {
+      [baseService.name]: { ...baseService, environment: { DB_PASSWORD: canary } },
+    },
+  };
+  const redaction = makeRedactionService();
+  const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
+  const order: string[] = [];
+  const apps: string[] = [];
+  const observations: string[] = [];
+  const buildProvider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
+    readAppEnvironment: (selector) =>
+      Effect.sync(() => {
+        order.push("register");
+        apps.push(String(selector.app));
+        return [];
+      }),
+    buildArtifact: () =>
+      Effect.sync(() => {
+        order.push("buildArtifact");
+        observations.push(redactor.redactString(canary));
+        return { providerId: ProviderId.make("test"), ref: "built" };
+      }),
+  };
+
+  // When
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.flatMap(RuntimeProviderRegistry, (registry) =>
+        registry.select(plan).pipe(
+          Effect.flatMap((selected) =>
+            selected.buildArtifact({
+              app: specPlan.id,
+              service: baseService.name,
+              plan: specPlan,
+              buildKey: "registration",
+            }),
+          ),
+        ),
+      ),
+    ).pipe(Effect.provide(registryLayer(buildProvider, redaction, []))),
+  );
+
+  // Then
+  expect(order).toEqual(["register", "buildArtifact"]);
+  expect(apps).toEqual([String(specPlan.id)]);
+  expect(observations).toEqual(["[redacted]"]);
+});
 
 test("metadata and lifecycle members never read app environment", async () => {
   let reads = 0;
