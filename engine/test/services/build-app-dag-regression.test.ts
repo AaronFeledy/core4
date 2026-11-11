@@ -4,6 +4,7 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Queue, Stream } from "effect";
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";
 
 test("fails a cyclic app build through the tagged provider error boundary", async () => {
@@ -129,6 +130,7 @@ test("writes scratch app transcripts under the scratch build namespace", async (
         web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
       }),
       id: AppId.make("scratch-app-build"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-app-build" } },
     };
 
     // When
@@ -163,6 +165,7 @@ test("labels scratch app build-step-skip events with the scratch identity namesp
         web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
       }),
       id: AppId.make("scratch-app-build"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-app-build" } },
     };
 
     // When: build twice so the second run short-circuits from the cache and emits a skip.

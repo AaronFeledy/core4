@@ -102,6 +102,7 @@ export const makeHarness = (
   } = {},
 ) => {
   const events: LandoEvent[] = [];
+  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-destroy-harness-"));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -140,7 +141,7 @@ export const makeHarness = (
       makeLandoPaths({
         env: {},
         platform: "linux",
-        userDataRoot: mkdtempSync(join(tmpdir(), "lando-destroy-harness-")),
+        userDataRoot,
         userCacheRoot: join(testAppRoot, "cache"),
         userConfRoot: join(testAppRoot, "conf"),
         systemPluginRoot: join(testAppRoot, "sys"),
@@ -179,7 +180,7 @@ export const makeHarness = (
       : [Layer.succeed(RouterService, options.router ?? TestRouterService)]),
     ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
   );
-  return { layer, events };
+  return { layer, events, userDataRoot };
 };
 
 export const runDestroyTarget = (

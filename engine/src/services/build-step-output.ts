@@ -1,6 +1,6 @@
 import type { EventError, ProviderInternalError } from "@lando/sdk/errors";
 import { TaskDetailEvent } from "@lando/sdk/events";
-import { makeLineFramer } from "@lando/sdk/log-follow";
+import { LOG_LINE_TRUNCATED_MARKER, makeLineFramer } from "@lando/sdk/log-follow";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import { type PayloadRedactor, createPayloadRedactor } from "@lando/sdk/secrets";
 import type { EventService } from "@lando/sdk/services";
@@ -11,7 +11,18 @@ import { openBuildTranscript } from "./build-transcript.ts";
 
 const TAIL_LINES = 20;
 const TAIL_CHARS = 4096;
+const DISPLAY_LINE_CHARS = 512;
 const encoder = new TextEncoder();
+
+/** Bound one line for display; the transcript keeps the full, redacted line. */
+const truncateForDisplay = (line: string): string => {
+  if (line.length <= DISPLAY_LINE_CHARS) return line;
+  let end = DISPLAY_LINE_CHARS;
+  const last = line.charCodeAt(end - 1);
+  // Never split a surrogate pair: the published line stays valid text.
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${line.slice(0, end)}${LOG_LINE_TRUNCATED_MARKER}`;
+};
 
 export type BuildStepOutputStream = "stdout" | "stderr";
 
@@ -68,14 +79,15 @@ export const openBuildStepOutput = Effect.fnUntraced(function* (
 
   const emit = Effect.fnUntraced(function* (stream: BuildStepOutputStream, line: string) {
     const safe = input.redaction.redactor.redactString(line);
-    tail.push(safe);
+    const displayed = truncateForDisplay(safe);
+    tail.push(displayed);
     if (tail.length > TAIL_LINES) tail.shift();
     yield* transcript.append(encoder.encode(`${safe}\n`));
     yield* input.events.publish(
       TaskDetailEvent.make({
         taskId: input.taskId,
         stream,
-        line: safe,
+        line: displayed,
         timestamp: yield* DateTime.now,
       }),
     );

@@ -3,6 +3,7 @@ import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeRedactionService } from "@lando/redaction/service";
+import { LOG_LINE_TRUNCATED_MARKER } from "@lando/sdk/log-follow";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber } from "effect";
@@ -486,6 +487,53 @@ describe("openBuildStepOutput", () => {
       // Then
       expect(await readFile(transcriptPath, "utf8")).toBe("one\ntwo\nthree\n");
       expect(published).toEqual(["one", "two", "three"]);
+    });
+  });
+
+  test("caps published detail and tail lines while the transcript keeps the full line", async () => {
+    await withTempRoots(async (root) => {
+      // Given a 5,000-character line, like the base64 run instruction an image build echoes.
+      const publisher = makePublisher();
+      const redaction = await Effect.runPromise(makeRedaction());
+      const transcriptPath = transcriptFor(root, "display-bound");
+      const long = "x".repeat(5000);
+      let tail: string | undefined;
+
+      // When
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const recorder = yield* openBuildStepOutput({
+              events: publisher.events,
+              taskId: "web:app:install",
+              transcriptPath,
+              providerId: "test",
+              userDataRoot: root,
+              redaction,
+            });
+            yield* recorder.write("stdout", encoder.encode(`${long}\n${long}${long}\n`));
+            yield* recorder.end;
+            tail = recorder.tail();
+          }),
+        ),
+      );
+
+      // Then
+      const detailLines: string[] = [];
+      for (const event of publisher.published) {
+        if (event._tag === "task.detail" && "line" in event && typeof event.line === "string") {
+          detailLines.push(event.line);
+        }
+      }
+      expect(detailLines).toHaveLength(2);
+      const bounded = 512 + LOG_LINE_TRUNCATED_MARKER.length;
+      for (const line of detailLines) {
+        expect(line.length).toBe(bounded);
+        expect(line.endsWith(LOG_LINE_TRUNCATED_MARKER)).toBe(true);
+        expect(line.startsWith("x".repeat(512))).toBe(true);
+      }
+      expect(tail?.split("\n")).toEqual(detailLines);
+      expect(await readFile(transcriptPath, "utf8")).toBe(`${long}\n${long}${long}\n`);
     });
   });
 });

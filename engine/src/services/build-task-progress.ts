@@ -5,7 +5,7 @@ import { Effect } from "effect";
 export interface BuildTaskProgress {
   readonly parentId: string;
   readonly startTree: Effect.Effect<void>;
-  readonly startTask: (service: ServicePlan, transcriptPath: AbsolutePath) => Effect.Effect<void>;
+  readonly startTask: (service: ServicePlan, transcriptPath?: AbsolutePath) => Effect.Effect<void>;
   readonly completeTask: (service: ServicePlan, summary: string) => Effect.Effect<void>;
   readonly failTask: (service: ServicePlan) => Effect.Effect<void>;
   /** Settle a step that never dispatched: it has no transcript to advertise. */
@@ -35,7 +35,8 @@ export const makeBuildTaskProgress = (events: ProgressEmitter, plan: AppPlan): B
   return {
     parentId,
     startTree: tree.start,
-    startTask: (service, transcriptPath) => tree.startTask(String(service.name), { transcriptPath }),
+    startTask: (service, transcriptPath) =>
+      tree.startTask(String(service.name), transcriptPath === undefined ? {} : { transcriptPath }),
     completeTask: (service, summary) =>
       tree.completeTask(String(service.name), summary).pipe(Effect.andThen(markSettled(service))),
     failTask: (service) =>

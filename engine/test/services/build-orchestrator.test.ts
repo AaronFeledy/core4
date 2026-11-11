@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
@@ -52,9 +52,14 @@ import {
 const stateStoreLayer = Layer.suspend(() => Layer.succeed(StateStore, makeTestStateStore().service));
 
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
-import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
+import {
+  openAppBuildResults,
+  openScratchBuildResults,
+  recordBuildResult,
+} from "../../src/services/build-results.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -247,12 +252,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       const firstPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-ca-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-ca-first" } },
         slug: "scratch-ca-first",
         services: { [web.name]: trustService },
       };
       const repeatPlan: AppPlan = {
         ...firstPlan,
         id: AppId.make("scratch-ca-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-ca-second" } },
         slug: "scratch-ca-second",
       };
       let builds = 0;
@@ -438,6 +445,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-failure"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-cache-failure" } },
       slug: "scratch-cache-failure",
       services: { [web.name]: web, [db.name]: db },
     };
@@ -516,6 +524,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-write-failure"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-cache-write-failure" } },
       slug: "scratch-cache-write-failure",
       services: { [web.name]: web },
     };
@@ -719,6 +728,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const scratchPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-rebuild-then-start"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-rebuild-then-start" } },
         slug: "scratch-rebuild-then-start",
         services: { [web.name]: derived },
       };
@@ -792,6 +802,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const scratchPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-refresh-offline"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-refresh-offline" } },
         slug: "scratch-refresh-offline",
         services: { [web.name]: derived },
       };
@@ -1280,6 +1291,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-toolbox-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-first" } },
         slug: "scratch-toolbox-first",
         root: AbsolutePath.make("/tmp/topsecret/scratch-toolbox-first/root"),
         services: {
@@ -1293,6 +1305,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const repeatPlan: AppPlan = {
         ...artifactPlan,
         id: AppId.make("scratch-toolbox-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-second" } },
         slug: "scratch-toolbox-second",
         root: AbsolutePath.make("/tmp/topsecret/scratch-toolbox-second/root"),
       };
@@ -1345,6 +1358,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-digest-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-digest-first" } },
         slug: "scratch-digest-first",
         root: AbsolutePath.make("/tmp/scratch-digest-first/root"),
         services: {
@@ -1357,6 +1371,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const repeatPlan: AppPlan = {
         ...artifactPlan,
         id: AppId.make("scratch-digest-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-digest-second" } },
         slug: "scratch-digest-second",
         root: AbsolutePath.make("/tmp/scratch-digest-second/root"),
       };
@@ -1404,12 +1419,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       const firstPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-base-digest-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-base-digest-first" } },
         slug: "scratch-base-digest-first",
         services: { [web.name]: derivedService },
       };
       const repeatPlan: AppPlan = {
         ...firstPlan,
         id: AppId.make("scratch-base-digest-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-base-digest-second" } },
         slug: "scratch-base-digest-second",
       };
       let baseDigest = "sha256:first";
@@ -1506,12 +1523,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       const firstPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-produced-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-produced-first" } },
         slug: "scratch-produced-first",
         services: { [web.name]: derived },
       };
       const repeatPlan: AppPlan = {
         ...firstPlan,
         id: AppId.make("scratch-produced-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-produced-second" } },
         slug: "scratch-produced-second",
       };
       const localImages = new Set<string>();
@@ -1571,6 +1590,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-legacy-digest"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-legacy-digest" } },
         slug: "scratch-legacy-digest",
         root: AbsolutePath.make("/tmp/scratch-legacy-digest/root"),
         services: {
@@ -1618,6 +1638,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-legacy-different-ref"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-legacy-different-ref" } },
         slug: "scratch-legacy-different-ref",
         root: AbsolutePath.make("/tmp/scratch-legacy-different-ref/root"),
         services: {
@@ -1668,6 +1689,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const planWithRedirect: AppPlan = {
         ...plan,
         id: AppId.make("scratch-toolbox-redirect-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-redirect-first" } },
         slug: "scratch-toolbox-redirect-first",
         root: AbsolutePath.make("/tmp/scratch-toolbox-redirect-first/root"),
         services: {
@@ -1695,6 +1717,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const repeatPlan: AppPlan = {
         ...planWithRedirect,
         id: AppId.make("scratch-toolbox-redirect-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-redirect-second" } },
         slug: "scratch-toolbox-redirect-second",
         root: AbsolutePath.make("/tmp/scratch-toolbox-redirect-second/root"),
       };
@@ -1966,6 +1989,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       expect(error.transcriptPath).toBeDefined();
       expect(error.remediation).toContain("Fix the failing build step.");
       expect(error.remediation).toContain(String(error.transcriptPath));
+      expect(error.remediation).toEndWith('Run "lando logs --build --service web" to print it.');
       const transcript = await readFile(String(error.transcriptPath), "utf8");
       expect(transcript).toContain("first line\nsecond line\n");
       expect(transcript).toContain("Error: step failed");
@@ -2008,13 +2032,14 @@ describe("BuildOrchestratorLayer.layer", () => {
     });
   });
 
-  test("a cached step advertises its recorded transcript and dispatches nothing", async () => {
+  const expectCachedStepTranscript = async (appId: string, transcriptExists: boolean) => {
     await withTempUserRoots(async () => {
-      // Given a warm scratch result whose transcript was recorded by the producing run.
+      // Given a warm scratch result whose recorded transcript may or may not still exist.
       const scratchPlan: AppPlan = {
         ...plan,
-        id: AppId.make("scratch-recorded-transcript"),
-        slug: "scratch-recorded-transcript",
+        id: AppId.make(appId),
+        slug: appId,
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: appId } },
         services: {
           [web.name]: {
             ...web,
@@ -2022,7 +2047,12 @@ describe("BuildOrchestratorLayer.layer", () => {
           },
         },
       };
-      const recorded = AbsolutePath.make("/tmp/recorded-build-transcript.log");
+      const buildsDir = join(makeLandoPaths().roots.userDataRoot, "builds", appId);
+      const recorded = AbsolutePath.make(join(buildsDir, "image.log"));
+      if (transcriptExists) {
+        await mkdir(buildsDir, { recursive: true });
+        await writeFile(recorded, "recorded output\n");
+      }
       const provider = {
         ...TestRuntimeProvider,
         buildArtifact: () => Effect.die("a cached step must not build"),
@@ -2059,8 +2089,163 @@ describe("BuildOrchestratorLayer.layer", () => {
       // Then
       const start = result.find((event) => event._tag === "task.start");
       if (start?._tag !== "task.start") throw new TypeError("task start event is missing");
-      expect(start.transcriptPath).toBe(recorded);
+      expect(start.transcriptPath).toBe(transcriptExists ? recorded : undefined);
       expect(result.find((event) => event._tag === "build-step-skip")).toMatchObject({ cached: true });
+    });
+  };
+
+  test("a cached step advertises its recorded transcript and dispatches nothing", async () => {
+    await expectCachedStepTranscript("scratch-recorded-transcript", true);
+  });
+
+  test("a cached step whose transcript is gone advertises none and still reuses the result", async () => {
+    await expectCachedStepTranscript("scratch-missing-transcript", false);
+  });
+
+  test("sweeps unreferenced artifact transcripts after a successful phase", async () => {
+    await withTempUserRoots(async () => {
+      // Given a phase directory left with a stale file and an orphaned service directory.
+      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      await mkdir(join(phase, "web"), { recursive: true });
+      await mkdir(join(phase, "ghost"), { recursive: true });
+      await writeFile(join(phase, "web", "stale.log"), "stale\n");
+      await writeFile(join(phase, "ghost", "stale.log"), "stale\n");
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+
+      // When
+      await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(plan)).pipe(
+          Effect.provide(layer(provider)),
+        ),
+      );
+
+      // Then the transcript the build just recorded stays and everything else goes.
+      expect(await Bun.file(join(phase, "web", "stale.log")).exists()).toBe(false);
+      const webFiles = await readdir(join(phase, "web"));
+      expect(webFiles).toHaveLength(1);
+      expect(webFiles[0]).toEndWith(".log");
+      await expect(access(join(phase, "ghost"))).rejects.toThrow();
+    });
+  });
+
+  test("keeps unreferenced artifact transcripts when the phase fails", async () => {
+    await withTempUserRoots(async () => {
+      // Given a stale transcript and a build that fails.
+      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      await mkdir(join(phase, "web"), { recursive: true });
+      const stale = join(phase, "web", "stale.log");
+      await writeFile(stale, "stale\n");
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: () =>
+          Effect.fail(
+            new ArtifactBuildError({
+              providerId: "test",
+              operation: "buildArtifact",
+              message: "step failed",
+              remediation: "Fix the failing build step.",
+            }),
+          ),
+      };
+
+      // When
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(plan)).pipe(
+          Effect.provide(layer(provider)),
+        ),
+      );
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(await Bun.file(stale).exists()).toBe(true);
+    });
+  });
+
+  test("keeps unreferenced artifact transcripts when every step is reused", async () => {
+    await withTempUserRoots(async () => {
+      // Given a phase that first succeeds and then runs fully from its recorded results.
+      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const stale = join(phase, "web", "stale.log");
+      let builds = 0;
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.sync(() => {
+            builds += 1;
+            return { providerId, ref: `${spec.service}:test` };
+          }),
+      };
+
+      // When
+      await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(plan);
+            yield* Effect.promise(() => mkdir(join(phase, "web"), { recursive: true }));
+            yield* Effect.promise(() => writeFile(stale, "stale\n"));
+            yield* orchestrator.build(plan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      expect(builds).toBe(2);
+      expect(await Bun.file(stale).exists()).toBe(true);
+    });
+  });
+
+  test("keeps the path-only build failure remediation for the global app", async () => {
+    await withTempUserRoots(async () => {
+      // Given a failing build of the global app.
+      const context = await mkdtemp(join(makeLandoPaths().roots.userDataRoot, "global-failure-context-"));
+      await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+      const globalPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("global"),
+        slug: "global",
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make(context),
+              contentHash: "sha256:context",
+            },
+          },
+        },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: () =>
+          Effect.fail(
+            new ArtifactBuildError({
+              providerId: "test",
+              operation: "buildArtifact",
+              message: "step failed",
+              remediation: "Fix the failing build step.",
+            }),
+          ),
+      };
+
+      // When
+      const error = await Effect.runPromise(
+        Effect.flip(Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(globalPlan))).pipe(
+          Effect.provide(layer(provider)),
+        ),
+      );
+
+      // Then
+      expect(error._tag).toBe("ArtifactBuildError");
+      if (error._tag !== "ArtifactBuildError") throw error;
+      expect(error.remediation).toEndWith(
+        `The full build output for service web is in ${String(error.transcriptPath)}.`,
+      );
+      expect(error.remediation).not.toContain("lando logs --build");
+      expect(error.remediation).toBe(error.remediation.trimEnd());
     });
   });
 
@@ -2453,6 +2638,97 @@ describe("BuildOrchestratorLayer.layer", () => {
         digest: "sha256:derived-3",
         origin: "build",
       });
+    });
+  });
+
+  test("reusing an older artifact key moves it to the newest position", async () => {
+    await withTempUserRoots(async () => {
+      // Given a recorded key for this plan that precedes a newer recorded key of the same identity.
+      const store = makeTestStateStore();
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          spec.service === web.name
+            ? Effect.die("a reused step must not build")
+            : Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+      const buildKey = await Effect.runPromise(buildKeyForService(provider, web));
+      const root = makeLandoPaths().roots.userDataRoot;
+      const directory = join(root, "builds", String(plan.id), "artifact", "web");
+      const olderPath = join(directory, `${buildKey}.log`);
+      const newerPath = join(directory, "newer.log");
+      await mkdir(directory, { recursive: true });
+      await writeFile(olderPath, "version 6\n");
+      await writeFile(newerPath, "version 7\n");
+      const injected = Layer.succeed(StateStore, store.service);
+
+      // When the plan reuses the older key.
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const stateStore = yield* StateStore;
+          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+          yield* recordBuildResult(bucket, {
+            buildKey,
+            service: web.name,
+            phase: "artifact",
+            outcome: "complete",
+            exitCode: 0,
+            durationMs: 1,
+            artifactRef: "web:test",
+            transcriptPath: AbsolutePath.make(olderPath),
+          });
+          yield* recordBuildResult(bucket, {
+            buildKey: "newer-key",
+            service: web.name,
+            phase: "artifact",
+            outcome: "complete",
+            exitCode: 0,
+            durationMs: 1,
+            artifactRef: "web:newer",
+            transcriptPath: AbsolutePath.make(newerPath),
+          });
+          const built = yield* (yield* BuildOrchestrator).build(plan);
+          const entries = (yield* bucket.get) ?? [];
+          return { artifact: built.services[web.name]?.artifact, entries };
+        }).pipe(Effect.provide(layer(provider, injected))),
+      );
+
+      // Then the reused key is last, so the next rotation and `logs --build` see it as current.
+      expect(result.artifact).toMatchObject({ ref: "web:test" });
+      expect(
+        result.entries.filter((entry) => entry.service === web.name).map((entry) => entry.buildKey),
+      ).toEqual(["newer-key", buildKey]);
+    });
+  });
+
+  test("a warm artifact start writes no build-results bytes", async () => {
+    await withTempUserRoots(async () => {
+      // Given a plan whose artifact results are already recorded.
+      const store = makeTestStateStore();
+      const injected = Layer.succeed(StateStore, store.service);
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+
+      // When a second, fully reused build runs.
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const stateStore = yield* StateStore;
+          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+          const orchestrator = yield* BuildOrchestrator;
+          yield* orchestrator.build(plan);
+          const before = yield* store.readRaw(bucket.path);
+          yield* orchestrator.build(plan);
+          const after = yield* store.readRaw(bucket.path);
+          return { before, after };
+        }).pipe(Effect.provide(layer(provider, injected))),
+      );
+
+      // Then the index was read but not rewritten.
+      expect(result.before).not.toBeNull();
+      expect(result.after).toEqual(result.before);
     });
   });
 });

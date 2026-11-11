@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer } from "effect";
 import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
+import { buildAppKind, isScratchPlan } from "./build-app-kind.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
   type ArtifactBuildStep,
@@ -21,23 +22,24 @@ import {
 import { runProviderBuild, serviceWithArtifact } from "./build-artifact-runner.ts";
 import { artifactBuildStepsFor, buildKeyForService } from "./build-key.ts";
 import { type BuildRedaction, registerBuildRedaction } from "./build-redaction.ts";
+import { buildFailureRemediation, buildRemediationSuffix } from "./build-remediation.ts";
 import {
   findCompleteBuildResult,
+  markBuildResultUsed,
   openAppBuildResults,
   openScratchBuildResults,
   recordBuildResult,
 } from "./build-results.ts";
 import { openBuildStepOutput } from "./build-step-output.ts";
 import { type BuildTaskProgress, makeBuildTaskProgress } from "./build-task-progress.ts";
-import { makeBuildTranscriptPath } from "./build-transcript.ts";
+import { buildTranscriptExists, makeBuildTranscriptPath } from "./build-transcript.ts";
+import { sweepAppBuildTranscripts } from "./build-transcript-cleanup.ts";
 import { resolveSourceArtifact } from "./source-artifact.ts";
 
 export { BuildOrchestrator } from "@lando/sdk/services";
 
 const timestamp = DateTime.now;
 const encoder = new TextEncoder();
-
-const isScratchPlan = (plan: AppPlan): boolean => String(plan.id).startsWith("scratch-");
 
 const SelectedProvider = Context.Reference<RuntimeProviderShape | undefined>(
   "@lando/engine/SelectedBuildProvider",
@@ -171,8 +173,15 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
           sourceIdentityMatches(complete, service, sourceArtifact) &&
           (yield* producedImagePresent(provider, complete))
         ) {
+          // The output that is in use must be the newest entry: never age out a key the app runs.
+          yield* markBuildResultUsed(bucket, complete).pipe(
+            mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
+          );
           // A cache hit advertises the transcript recorded by the run that produced it and opens nothing.
-          yield* progress.startTask(service, complete.transcriptPath);
+          const recordedTranscript = (yield* buildTranscriptExists(complete.transcriptPath))
+            ? complete.transcriptPath
+            : undefined;
+          yield* progress.startTask(service, recordedTranscript);
           yield* publishArtifactBuildStepSkip(events, context, step);
           const digest =
             complete.artifactDigest ??
@@ -186,7 +195,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
             ...(complete.artifactOrigin === undefined ? {} : { origin: complete.artifactOrigin }),
           });
           yield* progress.completeTask(service, `${String(service.name)} cached`);
-          return cachedService;
+          return { service: cachedService, dispatched: false };
         }
       }
 
@@ -252,7 +261,10 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
               service: String(service.name),
               transcriptPath,
               ...(outputTail === undefined ? {} : { outputTail }),
-              remediation: `${failure.remediation} The full build output for service ${service.name} is in ${transcriptPath}.`,
+              remediation: buildFailureRemediation(
+                failure.remediation,
+                buildRemediationSuffix(buildAppKind(plan), String(service.name), transcriptPath),
+              ),
             }),
             redaction.redactor,
           );
@@ -311,7 +323,7 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
         timestamp: yield* timestamp,
       });
       yield* progress.completeTask(service, `Built ${String(service.name)}`);
-      return serviceWithArtifact(service, artifact);
+      return { service: serviceWithArtifact(service, artifact), dispatched: true };
     }),
   ).pipe(Effect.tapError(() => progress.failTask(service)));
 });
@@ -334,7 +346,7 @@ export const layer = Layer.effect(
         const redaction = yield* registerBuildRedaction(plan);
         const progress = makeBuildTaskProgress(events, plan);
         yield* progress.startTree;
-        const services = yield* Effect.forEach(
+        const built = yield* Effect.forEach(
           servicePlans,
           (service) =>
             buildService({
@@ -366,10 +378,21 @@ export const layer = Layer.effect(
             }),
           ),
         );
+        if (built.some((entry) => entry.dispatched)) {
+          yield* sweepAppBuildTranscripts({
+            providerId: provider.id,
+            userDataRoot: paths.roots.userDataRoot,
+            appId: String(plan.id),
+            scratch: isScratchPlan(plan),
+            phase: "artifact",
+            stateStore,
+            redact: (text) => redaction.redactor.redactString(text),
+          });
+        }
         yield* progress.completeTree;
         return {
           ...plan,
-          services: Object.fromEntries(services.map((service) => [service.name, service])),
+          services: Object.fromEntries(built.map(({ service }) => [service.name, service])),
         };
       }),
       buildApp: Effect.fn("BuildOrchestrator.buildApp")(function* (plan, options) {
