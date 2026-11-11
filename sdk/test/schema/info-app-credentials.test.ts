@@ -17,6 +17,7 @@ const decode = Schema.decodeUnknownSync(InfoAppResult);
 
 test.each([
   { user: "app", password: "[REDACTED]", database: "app" },
+  { user: "lando", password: "lando", database: "app" },
   { user: "app", password: "[REDACTED]", database: "app", rootPassword: "[REDACTED]" },
   { engine: "sqlite", path: "data/site.sqlite" },
 ])("public app info preserves display credentials %j", (creds) => {

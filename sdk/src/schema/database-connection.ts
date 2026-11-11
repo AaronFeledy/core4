@@ -53,10 +53,14 @@ export type DatabaseConnection = typeof DatabaseConnection.Type;
 export const ServiceCredsDisplay = Schema.Union([
   Schema.Struct({
     user: Schema.String.annotate({ description: "Displayed username." }),
-    password: Schema.String.annotate({ description: "Redacted password display, never resolved for info." }),
+    password: Schema.String.annotate({
+      description:
+        "Password display: a published development default literal, otherwise the redacted marker. A deferred reference is never resolved for info.",
+    }),
     database: Schema.String.annotate({ description: "Displayed database name." }),
     rootPassword: Schema.optionalKey(Schema.String).annotate({
-      description: "Optional redacted administrative password display.",
+      description:
+        "Optional administrative password display under the same published-default-literal-or-redacted rule.",
     }),
   }),
   Schema.Struct({

@@ -1,4 +1,3 @@
-import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
   type Environment,
@@ -60,16 +59,12 @@ const MARIADB_LOG_SOURCES: ReadonlyArray<LogSource> = [
   },
 ];
 
-const defaultRootPassword = (appName: string, serviceName: string): string =>
-  `lando-${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
-
 const mariadbCreds = (
   input: {
     readonly appName?: string | undefined;
     readonly dataName?: string | undefined;
     readonly appRoot: string;
   },
-  serviceName: string,
   service: {
     readonly creds?: ServiceCredsConfig | undefined;
     readonly environment?: Environment | undefined;
@@ -85,7 +80,7 @@ const mariadbCreds = (
       user: "lando",
       password: DEFAULT_PASSWORD,
       database: appName,
-      rootPassword: defaultRootPassword(appName, serviceName),
+      rootPassword: DEFAULT_PASSWORD,
     },
   });
 };
@@ -177,7 +172,7 @@ export const mariadbServiceType: ServiceType = {
   toolingForConnection: mariadbToolingForConnection,
   resolve: (input) => {
     return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
-      const creds = mariadbCreds(input, input.name, input.service);
+      const creds = mariadbCreds(input, input.service);
       const port = plannedPort(input.service, MARIADB_LISTENER);
       assertListenerConfig(input.service, MARIADB_LISTENER);
       return {

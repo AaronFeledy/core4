@@ -1,5 +1,5 @@
-import { sha256Hex } from "@lando/sdk/digest";
 import { PortablePath, type ServiceConfig, type ServiceCreds, ServiceName } from "@lando/sdk/schema";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
@@ -34,8 +34,6 @@ const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
 export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.conf");
 
-const defaultPassword = (appId: string): string => `lando-${sha256Hex(appId).slice(0, 16)}`;
-
 const credsFor = (input: {
   readonly appName?: string | undefined;
   readonly dataName?: string | undefined;
@@ -48,7 +46,7 @@ const credsFor = (input: {
     family: "postgres",
     defaults: {
       user: "lando",
-      password: defaultPassword(appName),
+      password: DEFAULT_PASSWORD,
       database: appName,
     },
     ...(authored === undefined ? {} : { authored }),

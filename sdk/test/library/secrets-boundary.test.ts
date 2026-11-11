@@ -16,6 +16,7 @@ describe("@lando/sdk/secrets import boundary", () => {
       "./bounded-redaction.ts",
       "./env-placeholder.ts",
       "./inspection.ts",
+      "./public-default-credentials.ts",
       "./redactor.ts",
       "./secret-names.ts",
       "./transcript-redaction.ts",

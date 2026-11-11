@@ -70,7 +70,7 @@ describe("mysql ServiceType", () => {
       MYSQL_PASSWORD: "lando",
       MYSQL_DATABASE: "myapp",
     });
-    expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
+    expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe("lando");
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
     expect(volumes[0]?.store).toBe("lando-myapp--db--mysql-data");
@@ -143,7 +143,7 @@ describe("mysql ServiceType", () => {
     expect(plan.environment.MYSQL_USER).toBe("lando");
     expect(plan.environment.MYSQL_PASSWORD).toBe("lando");
     expect(plan.environment.MYSQL_DATABASE).toBe("myapp");
-    expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
+    expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe("lando");
   });
 
   test("S5 resolve tooling.mysql uses MYSQL_PWD and keeps the password off argv", async () => {

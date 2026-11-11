@@ -26,6 +26,7 @@ import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
+import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
@@ -189,9 +190,11 @@ test.each([
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(
     jsonEquals(
-      evolveHistoricalComposeKnobValues(
-        evolveHistoricalSwarmReservations(
-          evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+      evolveHistoricalServiceCreds(
+        evolveHistoricalComposeKnobValues(
+          evolveHistoricalSwarmReservations(
+            evolveHistoricalToolingVars(evolveHistoricalToolingWrapper(evolveHistoricalUploadDirs(expected))),
+          ),
         ),
       ),
       current,
