@@ -121,6 +121,25 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
     expectedTooling: ["drush", "composer", "drupal-cms-scaffold", "drupal-cms-install"],
   },
   {
+    recipe: "drupal-contrib",
+    answers: { name: "drupal-contrib-app", php: "8.3", database: "mariadb:11.4", project: "example" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb:11.4" },
+      { name: "chrome", type: "compose" },
+    ],
+    expectedTooling: [
+      "drush",
+      "composer",
+      "drupal-contrib-scaffold",
+      "core-version",
+      "phpunit",
+      "phpcs",
+      "phpcbf",
+      "phpstan",
+    ],
+  },
+  {
     recipe: "node-api",
     answers: { name: "node-api-app", node: "lts", framework: "fastify", database: "postgres" },
     expectedServices: [
@@ -259,6 +278,7 @@ describe("BUILTIN_RECIPE_DECOMPOSERS — bundled set", () => {
       "django",
       "drupal",
       "drupal-cms",
+      "drupal-contrib",
       "fastapi",
       "rails",
       "jekyll",

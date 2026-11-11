@@ -183,6 +183,7 @@ outside `docs/guides/` so they are not gate-validated here.
 | `wordpress` | WordPress (PHP + MariaDB, WP-CLI) | `recipes/wordpress/README.mdx` | Shipped |
 | `drupal` | Drupal 11 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal/README.mdx` | Shipped |
 | `drupal-cms` | Drupal CMS 2 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
+| `drupal-contrib` | Drupal contrib extension (nested mount, volume Drupal site, PHPUnit) | `recipes/drupal-contrib/README.mdx` | Shipped |
 | `backdrop` | Backdrop CMS (Apache PHP + MariaDB, Bee) | `recipes/backdrop/README.mdx` | Shipped |
 | `joomla` | Joomla (Apache PHP + MariaDB) | `recipes/joomla/README.mdx` | Shipped |
 | `django` | Django (Python + PostgreSQL + Redis; optional Celery worker) | `recipes/django/README.mdx` | Shipped |
@@ -289,6 +290,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | WordPress multisite network on subdomains | `docs/guides/recipes/wordpress-multisite.mdx` | Shipped |
 | - | - | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | - | - | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
+| - | - | Drupal contrib recipe for module, theme, and profile repos | `docs/guides/recipes/drupal-contrib-workflow.mdx` | Shipped |
 | - | - | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | MinIO BYO image/build, API and console listeners | `docs/guides/services/minio.mdx` | Shipped |

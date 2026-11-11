@@ -4,6 +4,7 @@ import { source as backdrop } from "./backdrop/source.ts";
 import { source as django } from "./django/source.ts";
 import { source as drupal } from "./drupal/source.ts";
 import { source as drupalCms } from "./drupal-cms/source.ts";
+import { source as drupalContrib } from "./drupal-contrib/source.ts";
 import { source as eleventy } from "./eleventy/source.ts";
 import { source as empty } from "./empty/source.ts";
 import { source as fastapi } from "./fastapi/source.ts";
@@ -41,6 +42,7 @@ export const BUNDLED_RECIPE_SOURCES: ReadonlyMap<string, RecipeSource> = new Map
   ["django", django],
   ["drupal", drupal],
   ["drupal-cms", drupalCms],
+  ["drupal-contrib", drupalContrib],
   ["fastapi", fastapi],
   ["rails", rails],
   ["jekyll", jekyll],

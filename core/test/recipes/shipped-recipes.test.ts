@@ -11,6 +11,7 @@ const SHIPPED_RECIPE_IDS = [
   "django",
   "drupal",
   "drupal-cms",
+  "drupal-contrib",
   "eleventy",
   "empty",
   "fastapi",
