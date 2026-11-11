@@ -112,10 +112,16 @@ With `via: fpm`, repeat the curl check in the nginx service instead of the secon
 
 The version or `built:` date changes when the registry had a newer image. The HTTP check should print that same version. Rebuild replaced the container, so the old server process is gone.
 
-Remove the check file from the directory where you saved it. When `webroot:` is set, that is inside the webroot, such as `public/version.php`:
+Remove the check file from the webroot. With no `webroot:` set, that is the app directory:
 
 ```sh
 rm version.php
+```
+
+When `webroot:` is `public`, remove it there instead:
+
+```sh
+rm public/version.php
 ```
 
 ## If the version didn't change
