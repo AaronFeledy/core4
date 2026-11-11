@@ -25,8 +25,8 @@ const contribAppserver = {
   webroot: "{{ recipe.webroot }}",
   workingDirectory: contribDir,
   dependsOn: ["database", "chrome"],
-  appMount: { target: contribAppMount },
-  storage: [{ store: "app", target: contribDir, scope: "app", kind: "data" }],
+  appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+  storage: ["/app"],
   environment: {
     SIMPLETEST_BASE_URL: "http://appserver",
     SIMPLETEST_DB: mysqlSimpletestDb,

@@ -101,8 +101,8 @@ describe("drupal-contrib decomposition", () => {
           composer: "{{ recipe.composer }}",
           workingDirectory: contribDir,
           dependsOn: ["database", "chrome"],
-          appMount: { target: contribAppMount },
-          storage: [{ store: "app", target: contribDir, scope: "app", kind: "data" }],
+          appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+          storage: ["/app"],
           environment: {
             SIMPLETEST_BASE_URL: "http://appserver",
             SIMPLETEST_DB: mysqlSimpletestDb,
@@ -185,7 +185,7 @@ describe("drupal-contrib decomposition", () => {
     expect(authoring.services.appserver).toMatchObject({
       type: "php:{{ recipe.php }}",
       via: "fpm",
-      appMount: { target: contribAppMount },
+      appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
       environment: {
         SIMPLETEST_BASE_URL: "http://edge",
         SIMPLETEST_DB: pgsqlSimpletestDb,
