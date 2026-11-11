@@ -550,6 +550,7 @@ const engineLaneRuns = laneRuns([
   ["providers-listener-observation", "listener-observation"],
   ["providers-sqlite-integrity", "sqlite-integrity"],
   ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
+  ["providers-schedule", "schedule"],
 ]);
 
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests

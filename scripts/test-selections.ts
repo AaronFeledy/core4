@@ -190,6 +190,12 @@ export const TEST_SELECTIONS = [
     needs: "LANDO_TEST_DOCKER_SOCKET",
   },
   {
+    id: "providers-schedule",
+    paths: ["plugins/schedule/test/schedule.integration.test.ts"],
+    jobs: live,
+    needs: "LANDO_TEST_DOCKER_SOCKET",
+  },
+  {
     id: "library",
     paths: ["core/test/library/", "sdk/test/library/"],
     unit: "exclude",

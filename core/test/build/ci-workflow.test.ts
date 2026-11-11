@@ -1394,6 +1394,7 @@ describe("ci workflow", () => {
           "run test:selection providers-listener-observation",
           "run test:selection providers-sqlite-integrity",
           "run test:selection providers-sqlite-borrowed-mounts",
+          "run test:selection providers-schedule",
         ]);
         const services = await runSuite("services");
         expect(services.status).toBe(0);
