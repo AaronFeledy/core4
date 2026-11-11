@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
-import { AcquisitionState } from "../src/port-acquisition-state.ts";
+import { Effect, Schema } from "effect";
 import {
   type BindOutcome,
   type ClassifyAcquisitionInput,
@@ -14,9 +11,10 @@ import {
   classifyAcquisition,
   probeBind,
 } from "../src/port-acquisition.ts";
+import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
-import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;

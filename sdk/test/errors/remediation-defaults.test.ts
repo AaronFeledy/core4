@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import {
   AppIdReservedError,
   GlobalAutoStartError,
@@ -10,6 +8,7 @@ import {
   RecipeManifestNotFoundError,
   RecipeManifestValidationError,
 } from "@lando/sdk/errors";
+import { Schema } from "effect";
 
 function override(remediation: string | undefined) {
   return remediation === undefined ? {} : { remediation };

@@ -124,6 +124,23 @@ const exactRejectedAdvice: ReadonlyArray<readonly [paths: ReadonlyArray<string>,
         "Remove pre_start. Run the setup as its own service that exits when it finishes, and make this service wait for it with depends_on and condition: service_completed_successfully.",
     },
   ],
+  ...(
+    [
+      ["mem_limit", "deploy.resources.limits.memory"],
+      ["cpus", "deploy.resources.limits.cpus"],
+      ["pids_limit", "deploy.resources.limits.pids"],
+      ["mem_reservation", "deploy.resources.reservations.memory"],
+    ] as const
+  ).map(
+    ([path, counterpart]) =>
+      [
+        [path],
+        {
+          rationale: `Lando reads this setting only from its Compose deploy spelling, ${counterpart}.`,
+          remediation: () => `Remove ${path} and set ${counterpart} instead.`,
+        },
+      ] as const,
+  ),
   [
     [
       "cpu_count",
@@ -133,20 +150,32 @@ const exactRejectedAdvice: ReadonlyArray<readonly [paths: ReadonlyArray<string>,
       "cpu_rt_period",
       "cpu_rt_runtime",
       "cpu_shares",
-      "cpus",
       "cpuset",
-      "mem_limit",
-      "mem_reservation",
       "mem_swappiness",
       "memswap_limit",
-      "pids_limit",
       "oom_kill_disable",
       "oom_score_adj",
       "blkio_config",
     ],
     {
-      rationale: "Lando does not limit service memory, CPU, processes, or block I/O.",
+      rationale:
+        "Lando limits memory, CPUs, and processes through deploy.resources and has no equivalent for this tuning option.",
       remediation: removePath,
+    },
+  ],
+  [
+    ["deploy.resources.reservations.cpus"],
+    {
+      rationale: "Compose applies CPU reservations only under Swarm; a single container has no equivalent.",
+      remediation: (path) => `Remove ${path}. To cap CPU use, set deploy.resources.limits.cpus.`,
+    },
+  ],
+  [
+    ["deploy.resources.reservations.generic_resources"],
+    {
+      rationale: "Compose applies generic resource reservations only under Swarm.",
+      remediation: (path) =>
+        `Remove ${path}. To reserve a device such as a GPU, list it under deploy.resources.reservations.devices.`,
     },
   ],
   [
@@ -298,6 +327,7 @@ const normalizedServicePaths = [
   ["build.dockerfile_inline"],
   ["build.target"],
   ["command", ["command"]],
+  ["pull_policy", ["pullPolicy"]],
   ["depends_on", ["dependsOn"]],
   ["depends_on.*"],
   ["depends_on.*.condition"],
@@ -359,7 +389,6 @@ const preservedServicePaths = [
   "deploy.resources.limits.pids",
   "deploy.resources.limits.x-*",
   "deploy.resources.reservations",
-  "deploy.resources.reservations.cpus",
   "deploy.resources.reservations.devices",
   "deploy.resources.reservations.devices.capabilities",
   "deploy.resources.reservations.devices.count",
@@ -368,12 +397,6 @@ const preservedServicePaths = [
   "deploy.resources.reservations.devices.options",
   "deploy.resources.reservations.devices.options.*",
   "deploy.resources.reservations.devices.x-*",
-  "deploy.resources.reservations.generic_resources",
-  "deploy.resources.reservations.generic_resources.discrete_resource_spec",
-  "deploy.resources.reservations.generic_resources.discrete_resource_spec.kind",
-  "deploy.resources.reservations.generic_resources.discrete_resource_spec.value",
-  "deploy.resources.reservations.generic_resources.discrete_resource_spec.x-*",
-  "deploy.resources.reservations.generic_resources.x-*",
   "deploy.resources.reservations.memory",
   "deploy.resources.reservations.x-*",
   "deploy.resources.x-*",
@@ -408,7 +431,6 @@ const preservedServicePaths = [
   "platform",
   "privileged",
   "profiles",
-  "pull_policy",
   "read_only",
   "restart",
   "secrets",
@@ -487,6 +509,8 @@ const rejectedServicePaths = [
   "deploy.mode",
   "deploy.placement",
   "deploy.replicas",
+  "deploy.resources.reservations.cpus",
+  "deploy.resources.reservations.generic_resources",
   "deploy.restart_policy",
   "deploy.rollback_config",
   "deploy.update_config",

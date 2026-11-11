@@ -1,6 +1,9 @@
+import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
+import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import { destructiveCommandVerbs } from "@lando/mcp/allowlist";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { Context, Effect, Option, Schema } from "effect";
-
 import {
   PluginDescriptorMismatchError,
   PluginLoadError,
@@ -18,15 +21,11 @@ import {
   type CommandContribution,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
-
-import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
-import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
-import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
-import { destructiveCommandVerbs } from "@lando/mcp/allowlist";
+import { Context, Effect, Option, Schema } from "effect";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { resolveEventScriptTarget } from "./event-script-target";
 import type { LandoCommandSpec } from "./spec/command-spec";
+
 export { destructiveCommandVerbs } from "@lando/mcp/allowlist";
 
 const loaderCache = new WeakMap<ExecutableCommandLoader, Promise<ExecutableCommandSpec>>();

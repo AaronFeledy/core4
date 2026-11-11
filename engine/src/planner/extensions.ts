@@ -145,6 +145,10 @@ export const toAppFeatureDraft = (
           return [mount];
         case "volume":
           return [];
+        default: {
+          const exhaustive: never = mount;
+          return exhaustive;
+        }
       }
     }),
     buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),

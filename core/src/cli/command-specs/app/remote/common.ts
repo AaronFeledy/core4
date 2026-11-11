@@ -1,3 +1,12 @@
+import type {
+  RemoteAddOptions,
+  RemoteEnvListOptions,
+  RemoteListOptions,
+  RemoteRemoveOptions,
+  RemoteSetupOptions,
+  RemoteSyncOptions,
+  RemoteTestOptions,
+} from "@lando/engine/operations/remote";
 import { yesFlag } from "../../../spec/confirmation-flag";
 import {
   booleanFlag,
@@ -8,16 +17,6 @@ import {
   stringFlag,
 } from "../../../spec/input-coercion";
 import { Args, Flags } from "../../../spec/metadata";
-
-import type {
-  RemoteAddOptions,
-  RemoteEnvListOptions,
-  RemoteListOptions,
-  RemoteRemoveOptions,
-  RemoteSetupOptions,
-  RemoteSyncOptions,
-  RemoteTestOptions,
-} from "@lando/engine/operations/remote";
 
 export const remoteFormatFlag = Flags.string({
   description: "Output format.",

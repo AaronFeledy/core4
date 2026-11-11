@@ -2,13 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { Effect, Layer, Schema } from "effect";
+import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 
 import { PluginTrustState } from "@lando/sdk/schema";
 import { PluginTrustStore } from "@lando/sdk/services";
-
-import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import { Effect, Layer, Schema } from "effect";
 import {
   pluginTrust,
   pluginTrustAuthoringRoot,

@@ -1,7 +1,6 @@
-import { Schema } from "effect";
-
 import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { serviceFeatureApply } from "../services/_feature-helpers.ts";
 import { canonicalTarget } from "../services/_volume-helpers.ts";

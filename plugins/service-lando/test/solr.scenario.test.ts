@@ -1,11 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Result, Schema, Stream } from "effect";
-import {
-  compileTestLandofile,
-  toolingExecutionLayer,
-  toolingValueResolverLayer,
-} from "./support/compiled-landofile.ts";
-
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -18,6 +11,7 @@ import {
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
+  formatValidationIssuePath,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -26,10 +20,14 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { Effect, Layer, Result, Schema, Stream } from "effect";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");

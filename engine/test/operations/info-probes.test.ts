@@ -10,8 +10,8 @@ import {
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
-import { projectServiceObservation } from "../../src/operations/info-probes.ts";
 import { infoForPlan } from "../../src/operations/info.ts";
+import { projectServiceObservation } from "../../src/operations/info-probes.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
 const probe: HealthcheckPlan = {

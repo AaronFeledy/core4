@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { AppId, VolumeIdentity, VolumeInfo, VolumeLocator } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 test("preserves legacy volume consumers without inventing identity", () => {
   const result = Schema.decodeUnknownSync(VolumeInfo)({ ref: { app: AppId.make("app"), store: "data" } });

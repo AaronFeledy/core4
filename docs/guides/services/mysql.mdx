@@ -16,16 +16,14 @@ services:
     type: mysql
 ```
 
-Set `creds:` when you want explicit values. By default, the username and password are both `lando`, the database is named after the app, and the root password is generated. `creds.user` is the database username. Container `user:` is not.
+Set a member under `creds:` when you want an explicit value. A member you leave out keeps its default. By default, the username, password, and root password are `lando`, and the database is named after the app. `lando info` prints those published defaults. `creds.user` is the database username. Container `user:` is not.
 
 ```yaml
 services:
   db:
     type: mysql
     creds:
-      user: lando
-      password: lando
-      database: mysql-demo
+      database: shop
       rootPassword: secret
 ```
 
@@ -51,10 +49,10 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Setting | Value |
 | --- | --- |
 | Host | `db` |
-| Database | the folder's data name (here `mysql-demo`, the name this folder's data was first created under); override with `database:` under `services.db` |
+| Database | the folder's data name (here `mysql-demo`, the name this folder's data was first created under); override with `creds.database` under `services.db` |
 | User | `lando` |
 | Password | `lando` |
-| Root password | derived per app; `LANDO_DB_ROOT_PASSWORD` inside the service |
+| Root password | `lando`; `LANDO_DB_ROOT_PASSWORD` inside the service, and `lando info` prints it |
 
 From inside the app network the connection URL is:
 

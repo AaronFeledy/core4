@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import { type InteractionError, InteractionService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export const confirmRemoteSyncWithInteraction = (
   message: string,

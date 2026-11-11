@@ -1,9 +1,6 @@
 import { Context, type Effect, type Scope } from "effect";
-import type { AppId } from "../schema/primitives.ts";
-
 import type {
   AppPlacementError,
-  CaError,
   HealthcheckError,
   HealthcheckTargetUnsupportedError,
   HealthcheckTimeoutError,
@@ -23,7 +20,6 @@ import type { ProbeOutcome } from "../probe/index.ts";
 import type {
   AppPlan,
   AppRouteOwner,
-  CertificateSpec,
   EndpointRef,
   HealthcheckPlan,
   ProxyApplyResult,
@@ -35,32 +31,7 @@ import type {
   ScanVerdict,
   ServiceName,
 } from "../schema/index.ts";
-import type { PrivilegeService } from "./process.ts";
-
-export interface CaSetupOptions {
-  readonly force: boolean;
-  readonly skipTrustInstall?: boolean;
-  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
-}
-
-export type { CertificateSpec } from "../schema/index.ts";
-
-export interface CertificateResult {
-  readonly certPath: string;
-  readonly keyPath: string;
-  readonly caPath: string;
-}
-
-export class CertificateAuthority extends Context.Service<
-  CertificateAuthority,
-  {
-    readonly id: string;
-    readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
-    readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
-  }
->()("@lando/core/CertificateAuthority") {}
-
-export type CertificateAuthorityShape = CertificateAuthority["Service"];
+import type { AppId } from "../schema/primitives.ts";
 
 export class RouterService extends Context.Service<
   RouterService,

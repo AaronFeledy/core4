@@ -6,9 +6,9 @@ import { makeLandoPaths } from "@lando/paths";
 import { PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
+import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import { HostProxyDoctorFileSystem } from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
 import { diagnoseHostProxyWorker } from "../../src/cli/commands/doctor-host-proxy-worker.ts";
-import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 
 test.each([
   { idle: true, privateDirectory: true, status: "pass" },

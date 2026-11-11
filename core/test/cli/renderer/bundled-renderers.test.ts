@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
-import { TaskStartEvent } from "@lando/sdk/events";
-import { EventService, Renderer } from "@lando/sdk/services";
-
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { TaskStartEvent } from "@lando/sdk/events";
+import { EventService, Renderer } from "@lando/sdk/services";
+import { DateTime, Effect, Layer, Schema } from "effect";
 import {
   bundledRendererRegistry,
   landoRenderer,

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import { redisServiceType } from "../src/services/redis.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -21,7 +20,7 @@ describe("Redis authentication and persistence", () => {
     // Given
     const password = "redis-secret ' spaces $() \\\n";
     // When
-    const result = await plan({ type: "redis", password });
+    const result = await plan({ type: "redis", creds: { password } });
     // Then
     expect(result.environment.REDISCLI_AUTH).toBe(password);
     expect(JSON.stringify(result.command)).not.toContain(password);
@@ -36,7 +35,7 @@ describe("Redis authentication and persistence", () => {
   test("publishes credentials and env-backed tooling when password is authored", async () => {
     // Given
     const password = "redis-tooling-secret";
-    const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "redis", password });
+    const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "redis", creds: { password } });
     // When
     const result = await Effect.runPromise(
       redisServiceType.resolve({ name: "cache", service, appRoot: "/srv/demo", metadata }),

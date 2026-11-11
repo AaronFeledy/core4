@@ -1,6 +1,4 @@
 import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
-import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
-
 import type {
   AppResolveError,
   ArtifactBuildError,
@@ -66,17 +64,20 @@ import type {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
+import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
 import type {
   DestroyOutcome,
   FileSyncQuiesceResult,
   ObservedServiceRemoval,
 } from "../schema/service-shutdown.ts";
+
 export type {
   DestroyOutcome,
   FileSyncQuiesceResult,
   ObservedServiceRemoval,
 } from "../schema/service-shutdown.ts";
+
 import type { PrivilegeService, ProcessResult } from "./process.ts";
 
 export type ProviderError =
@@ -154,6 +155,8 @@ export interface ArtifactPullSpec {
    * `never` reuses a provider-local copy and fails without contacting the source when absent.
    */
   readonly policy?: ArtifactPullPolicy;
+  /** Platform to acquire, in os/arch or os/arch/variant form; omitted lets the engine choose its default. */
+  readonly platform?: string;
 }
 
 export interface ApplyOptions {
@@ -420,6 +423,8 @@ export class RuntimeProvider extends Context.Service<
     readonly displayName: string;
     readonly version: string;
     readonly platform: HostPlatform;
+    /** Engine endpoint this provider talks to. Pull checks are keyed by it, not by provider id alone. */
+    readonly runtimeIdentity?: string;
     readonly capabilities: ProviderCapabilities;
 
     readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;

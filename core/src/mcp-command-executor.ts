@@ -1,9 +1,8 @@
-import type { CompletedCommandResult } from "@lando/sdk/command-result";
-import { type Context, Effect, type Exit, Layer } from "effect";
-
 import { type McpCommandExecution, McpCommandExecutor, type McpCommandExecutorShape } from "@lando/mcp/port";
 import { McpService } from "@lando/mcp/service";
 import { RedactionService } from "@lando/redaction/service";
+import type { CompletedCommandResult } from "@lando/sdk/command-result";
+import { type Context, Effect, type Exit, Layer } from "effect";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "./cli/command-lifecycle";
 
 const executeNestedCommand = <A, E, R>(

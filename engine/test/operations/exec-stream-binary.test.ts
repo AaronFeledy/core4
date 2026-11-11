@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer, Option, Stream } from "effect";
-
 import { RedactionService, createStandaloneRedactor, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
+import { Effect, Exit, Layer, Option, Stream } from "effect";
 
 import { collectExecStream } from "../../src/operations/exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";

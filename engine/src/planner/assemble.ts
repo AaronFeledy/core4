@@ -4,6 +4,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
+import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
@@ -12,15 +13,15 @@ import {
   type AppIdentity,
   type AppRef,
   type CurrentExecutableAppPlan,
+  LANDO_HOST_EVENT_ENV,
   type LoadScopedLandofile,
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
   landoNetworkingPlan,
   normalizeAppSlug,
+  validationIssue,
 } from "@lando/sdk/schema";
-import { validationIssue } from "@lando/sdk/schema";
-import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import {
   type AppPlannerError,
   CacheService,
@@ -38,14 +39,18 @@ import {
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
-import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import {
+  type CertificateAuthorityCandidateDefinition,
+  manifestCertificateAuthorityCandidates,
+  selectContributedCertificateAuthority,
+} from "../plugins/certificate-authority-resolver.ts";
 import { PluginContributionGraph, loadedPluginImplementations } from "../plugins/contribution-graph.ts";
 import { FileSyncPolicy, fileSyncOrdinaryReason } from "../plugins/file-sync-policy.ts";
 import { applyPreparedAppFeatures } from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import type { ApplicationConfig } from "../services/feature-preparation.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
-import { resolveCertsFeature } from "../services/service-certs.ts";
+import { certificateLeafLocation, resolveCertsFeature } from "../services/service-certs.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
@@ -60,15 +65,14 @@ import {
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
 import { appFeatureError } from "./app-feature-error.ts";
-import { withCommittedLiteralDigests } from "./authored-literals.ts";
 import { planServiceDrafts } from "./authored.ts";
+import { withCommittedLiteralDigests } from "./authored-literals.ts";
 import {
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,
+  assertComposeFieldsSupported,
   assertComposeKnobsSupported,
-  assertComposePreservedPathsSupported,
-  assertComposeProjectFieldsSupported,
-  assertComposeServiceFieldsSupported,
+  providerAlternatives,
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
@@ -113,17 +117,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
   const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot } = input;
   const pluginRegistry = yield* PluginRegistry;
-  const plugins = loadedPluginImplementations(
-    Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph)),
-  );
+  const contributionGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
+  const plugins = loadedPluginImplementations(contributionGraph);
   const policyOwner = yield* FileSyncPolicy;
   const cacheService = Option.getOrUndefined(yield* Effect.serviceOption(CacheService));
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-  const certificateAuthorityResolver = Option.getOrUndefined(
-    yield* Effect.serviceOption(CertificateAuthorityResolver),
-  );
   const {
     landofile,
     appSlug,
@@ -158,6 +158,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     },
     input.resolution,
   );
+  const capabilityContext = {
+    provider,
+    capabilities: providerCapabilities,
+    alternatives: providerAlternatives(pluginRegistry, manifests, policyOwner.platform),
+  };
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
@@ -216,6 +221,18 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       : yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
         );
+  const certificateAuthority = selectContributedCertificateAuthority<CertificateAuthorityCandidateDefinition>(
+    contributionGraph,
+    policyOwner.platform,
+    () => manifestCertificateAuthorityCandidates(manifests),
+  );
+  const leafLocation = certificateLeafLocation({
+    certsDir: (pathsService ?? makeLandoPaths()).certsDir,
+    kind: input.kind,
+    id: appId,
+    root: appRoot,
+    identity: input.identity,
+  });
   const preparedApp = endpointProjection.preparedApp;
   const appFeatures = preparedApp.features;
 
@@ -276,21 +293,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             hostnames: pinnedService.hostnames ?? [],
             routes: routes ?? [],
             defaultRouteHostname: routes === undefined ? `${name}.${appSlug}.${defaultDomain}` : undefined,
-            resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
-            ...(input.mode === "validate"
-              ? {
-                  validation: {
-                    authorities: manifests.flatMap((manifest) =>
-                      (manifest.contributes?.certificateAuthorities ?? []).map((authority) => ({
-                        ...authority,
-                        pluginName: String(manifest.name),
-                        source: "manifest",
-                      })),
-                    ),
-                    platform: policyOwner.platform,
-                  },
-                }
-              : {}),
+            certificateAuthority,
+            leafLocation,
             fileSystem,
           })
         : undefined;
@@ -433,11 +437,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       if (cached.fileSync.length > 0) yield* selectFileSyncEngine;
       yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);
       yield* validateServiceDependencies(appRoot, cached.services);
-      yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
+      yield* assertComposeKnobsSupported(capabilityContext, cached.services);
       yield* assertServiceInitSupported(provider, providerCapabilities, cached.services);
-      yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
-      yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
-      yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
+      yield* assertComposeFieldsSupported(capabilityContext, cached);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
         attachEffectiveTooling(proven, effectiveTooling, connectionClients, disabledToolingSources),
@@ -572,13 +574,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     executableSites,
     effectiveEventsFor(planServices(finalized.services)),
   );
-  yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
+  yield* assertComposeKnobsSupported(capabilityContext, plan.services);
   yield* assertServiceInitSupported(provider, providerCapabilities, plan.services);
   yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);
-  yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
-  yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
-  yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);
+  yield* assertComposeFieldsSupported(capabilityContext, plan);
   if (planCache !== undefined && !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) {
     yield* writeCachedAppPlan({
       cacheRoot,

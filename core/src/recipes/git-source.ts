@@ -4,10 +4,10 @@
  * Acquires a git tree through SourceSession (pinned commit under the shared
  * source cache), then resolves recipe.yml at the tree root or a monorepo --path.
  */
-import { isLiteralGitRef } from "@lando/source-acquisition/locator";
 
 import { RecipeSourceError } from "@lando/sdk/errors";
 import { type SourceSession, displaySource } from "@lando/source-acquisition";
+import { isLiteralGitRef } from "@lando/source-acquisition/locator";
 
 import type { ResolvedRecipe } from "./source";
 import { runSourceSession } from "./source-session";

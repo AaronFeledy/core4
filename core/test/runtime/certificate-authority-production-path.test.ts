@@ -1,21 +1,19 @@
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { expect, test } from "bun:test";
-import { Context, Effect, Layer, Schema, Stream } from "effect";
-
+import { createHash } from "node:crypto";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { MKCERT_TOOL_VERSION, mkcertInstallPath, mkcertInstalledVersionPath } from "@lando/ca-mkcert";
+import { prepareServiceCertificates } from "@lando/engine/lifecycle/service-certificates";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { AbsolutePath, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ProcessRunner } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { TEST_CERTIFICATES, TestRuntimeProvider } from "@lando/sdk/test";
+import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
-test("bundled mkcert setup issues certs through the production app planner", async () => {
+test("bundled mkcert issues certs when the production runtime prepares a plan, never while planning", async () => {
   // Given: isolated roots containing a fingerprinted, preinstalled fake mkcert.
   const root = await mkdtemp(join(tmpdir(), "lando-ca-production-path-"));
   const appRoot = join(root, "app");
@@ -27,8 +25,12 @@ test("bundled mkcert setup issues certs through the production app planner", asy
   const certsDir = join(userDataRoot, "certs");
   const caRoot = join(userDataRoot, "ca");
   const binaryPath = mkcertInstallPath(binDir);
-  const certPath = join(certsDir, "web.production-certs.internal.pem");
-  const keyPath = join(certsDir, "web.production-certs.internal-key.pem");
+  const issuances: string[] = [];
+  const exists = (path: string) =>
+    access(path).then(
+      () => true,
+      () => false,
+    );
   const caPath = join(caRoot, "rootCA.pem");
   const setupMarker = join(root, "mkcert-trust-installed");
   const fakeMkcert = "cross-platform fake mkcert binary";
@@ -38,11 +40,8 @@ test("bundled mkcert setup issues certs through the production app planner", asy
         if (input.cmd !== binaryPath) {
           return { exitCode: 2, stdout: "", stderr: `unexpected command: ${input.cmd}` };
         }
-        if (input.args[0] === "-CAROOT") {
-          await mkdir(caRoot, { recursive: true });
-          await writeFile(caPath, "fake root certificate\n");
-          return { exitCode: 0, stdout: `${caRoot}\n`, stderr: "" };
-        }
+        // Like mkcert, -CAROOT only reports the directory and an issuing run creates a missing root.
+        if (input.args[0] === "-CAROOT") return { exitCode: 0, stdout: `${caRoot}\n`, stderr: "" };
         if (input.args[0] === "-install") {
           if (input.env?.CAROOT !== caRoot) {
             return { exitCode: 2, stdout: "", stderr: "mkcert install requires the resolved CAROOT" };
@@ -57,8 +56,16 @@ test("bundled mkcert setup issues certs through the production app planner", asy
         if (issuedCertPath === undefined || issuedKeyPath === undefined) {
           return { exitCode: 2, stdout: "", stderr: `unexpected arguments: ${input.args.join(" ")}` };
         }
-        await writeFile(issuedCertPath, "fake leaf certificate\n");
-        await writeFile(issuedKeyPath, "fake leaf private key\n");
+        issuances.push(issuedCertPath);
+        if (input.env?.CAROOT !== caRoot) {
+          return { exitCode: 2, stdout: "", stderr: "mkcert issuance requires the resolved CAROOT" };
+        }
+        if (!(await exists(caPath))) {
+          await mkdir(caRoot, { recursive: true });
+          await writeFile(caPath, TEST_CERTIFICATES.rootA);
+        }
+        await writeFile(issuedCertPath, TEST_CERTIFICATES.serviceExtraName.certificate);
+        await writeFile(issuedKeyPath, TEST_CERTIFICATES.serviceExtraName.privateKey);
         return { exitCode: 0, stdout: "", stderr: "" };
       }),
     stream: () => Stream.empty,
@@ -73,12 +80,12 @@ test("bundled mkcert setup issues certs through the production app planner", asy
     await writeFile(`${binaryPath}.sha256`, `${createHash("sha256").update(fakeMkcert).digest("hex")}\n`);
 
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "production-certs",
+      name: "app",
       runtime: 4,
       services: { web: { type: "node:22", certs: true } },
     });
 
-    // When: the real app runtime resolves and sets up bundled mkcert, then plans certs: true.
+    // When: the real app runtime sets up bundled mkcert, plans certs: true, then prepares the plan.
     const result = await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
@@ -100,11 +107,14 @@ test("bundled mkcert setup issues certs through the production app planner", asy
           );
           const authority = yield* Context.get(context, CertificateAuthorityResolver).resolve;
           yield* authority.setup({ force: false });
+          const issuedBySetup = issuances.length;
           const plan = yield* Context.get(context, AppPlanner).plan(
             literalLandofile(landofile, appRoot),
             TestRuntimeProvider.capabilities,
           );
-          return { authorityId: authority.id, plan };
+          const issuedWhilePlanning = issuances.length - issuedBySetup;
+          const prepared = yield* prepareServiceCertificates(plan).pipe(Effect.provide(context));
+          return { authorityId: authority.id, plan, prepared, issuedWhilePlanning };
         }),
       ),
     );
@@ -112,34 +122,48 @@ test("bundled mkcert setup issues certs through the production app planner", asy
     // Then: selection, issued files, CA material, and service plan metadata are production-shaped.
     expect(result.authorityId).toBe("mkcert");
     expect(await readFile(setupMarker, "utf8")).toBe("trust installed\n");
-    expect(await readFile(certPath, "utf8")).toBe("fake leaf certificate\n");
-    expect(await readFile(keyPath, "utf8")).toBe("fake leaf private key\n");
-    expect(await readFile(caPath, "utf8")).toBe("fake root certificate\n");
+    expect(result.issuedWhilePlanning).toBe(0);
+    // Setup needs one throwaway issuance to create the root; preparation needs the service leaf.
+    expect(issuances).toHaveLength(2);
+    for (const issued of issuances) {
+      expect(issued.startsWith(userDataRoot)).toBe(false);
+      expect(await exists(dirname(issued))).toBe(false);
+    }
+    expect(await exists(join(certsDir, "issued"))).toBe(false);
+    expect(await readFile(caPath, "utf8")).toBe(TEST_CERTIFICATES.rootA);
 
     const web = result.plan.services[ServiceName.make("web")];
     expect(web?.certs).toEqual({
-      cn: "web.production-certs.internal",
-      sans: [
-        "web",
-        "web.production-certs.internal",
-        "web.production-certs.lndo.site",
-        "localhost",
-        "127.0.0.1",
-      ],
+      cn: "web.app.internal",
+      sans: ["web", "web.app.internal", "web.app.lndo.site", "localhost", "127.0.0.1"],
       caId: "mkcert",
     });
     expect(web?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/web.crt");
     expect(web?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/web.key");
-    expect(web?.mounts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          source: certPath,
-          target: "/etc/lando/certs/leaf/web.crt",
-          readOnly: true,
-        }),
-        expect.objectContaining({ source: keyPath, target: "/etc/lando/certs/leaf/web.key", readOnly: true }),
-      ]),
+    const leafMounts = (result.prepared.services[ServiceName.make("web")]?.mounts ?? []).flatMap((mount) =>
+      mount.type === "bind" && mount.target.startsWith("/etc/lando/certs/leaf/") ? [mount] : [],
     );
+    expect(leafMounts.map((mount) => String(mount.target))).toEqual([
+      "/etc/lando/certs/leaf/web.crt",
+      "/etc/lando/certs/leaf/web.key",
+    ]);
+    const [certMount, keyMount] = leafMounts;
+    if (certMount === undefined || keyMount === undefined) throw new Error("expected both leaf binds");
+    expect(certMount.source.startsWith(join(certsDir, "services"))).toBe(true);
+    expect(await readFile(certMount.source, "utf8")).toBe(TEST_CERTIFICATES.serviceExtraName.certificate);
+    expect(await readFile(keyMount.source, "utf8")).toBe(TEST_CERTIFICATES.serviceExtraName.privateKey);
+    const identity = createHash("sha256")
+      .update(TEST_CERTIFICATES.serviceExtraName.certificate)
+      .digest("hex");
+    expect(
+      leafMounts.map((mount) => ({
+        createHostPath: mount.createHostPath,
+        sourceIdentity: mount.sourceIdentity,
+      })),
+    ).toEqual([
+      { createHostPath: false, sourceIdentity: identity },
+      { createHostPath: false, sourceIdentity: identity },
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

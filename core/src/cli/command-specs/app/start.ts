@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { startApp } from "@lando/engine/operations/start";
 import { withIncompleteStartNotice } from "@lando/engine/operations/start-incomplete-notice";
 import { StartAppResult, StreamFrame } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderStartAppResult } from "../../commands/start-result";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
@@ -26,6 +25,7 @@ export const startSpec = {
     const signal = extractSpecAbortSignal(input);
     return withIncompleteStartNotice(
       Effect.andThen(refreshAppCache(), startApp(signal === undefined ? {} : { signal })),
+      { verb: "start" },
     );
   },
   render: (result, _input, ctx) => renderStartAppResult(result, ctx),

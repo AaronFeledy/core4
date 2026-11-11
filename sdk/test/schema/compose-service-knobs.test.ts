@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
-import { JsonSchema, Result, Schema, SchemaRepresentation } from "effect";
-
 import { ServiceConfig, getJsonSchema } from "@lando/sdk/schema";
+import { JsonSchema, Result, Schema, SchemaIssue, SchemaRepresentation } from "effect";
 import { importableNode } from "./landofile-parity-json-schema-fixup.ts";
 
 describe("Compose map input contracts", () => {
@@ -221,6 +219,45 @@ describe("Compose service runtime knobs", () => {
     // Given
     const input = { init };
     // When
+    const wire = Schema.decodeUnknownResult(published)(input, { onExcessProperty: "error" });
+    const runtime = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
+    // Then
+    expect(Result.isSuccess(wire)).toBe(accepted);
+    expect(Result.isSuccess(runtime)).toBe(accepted);
+  });
+
+  const resources = (limits: Record<string, unknown>) => ({ deploy: { resources: { limits } } });
+  test.each([
+    [{ privileged: "YES" }, true],
+    [{ read_only: "off" }, true],
+    [{ privileged: "maybe" }, false],
+    [{ read_only: "true " }, false],
+    [{ ulimits: { nofile: "1024" } }, true],
+    [{ ulimits: { nofile: { soft: "-1", hard: 2048 } } }, true],
+    [{ ulimits: { nofile: "abc" } }, false],
+    [{ ulimits: { nofile: { soft: 1.5, hard: 2 } } }, false],
+    [{ shm_size: "64m" }, true],
+    [{ shm_size: 1 }, true],
+    [{ shm_size: 0 }, false],
+    [{ shm_size: -1 }, false],
+    [{ stop_grace_period: 0.5 }, true],
+    [{ stop_grace_period: -1 }, false],
+    [{ gpus: [{ count: "All" }] }, true],
+    [{ gpus: [{ count: "2" }] }, true],
+    [{ gpus: [{ count: 1 }] }, true],
+    [{ gpus: [{ count: "some" }] }, false],
+    [{ deploy: { resources: { reservations: { devices: [{ capabilities: [], count: "x" }] } } } }, false],
+    [resources({ cpus: "0.5", memory: "512m", pids: "64" }), true],
+    [resources({ cpus: 0, memory: 0, pids: -1 }), true],
+    [resources({ cpus: -1 }), false],
+    [resources({ cpus: "-1" }), false],
+    [resources({ cpus: "half" }), false],
+    [resources({ cpus: 1e308 }), false],
+    [resources({ memory: -1 }), false],
+    [resources({ pids: "many" }), false],
+    [resources({ pids: 1.5 }), false],
+  ] as const)("published and runtime acceptance agree for %j", (input, accepted) => {
+    // Given / When
     const wire = Schema.decodeUnknownResult(published)(input, { onExcessProperty: "error" });
     const runtime = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
     // Then

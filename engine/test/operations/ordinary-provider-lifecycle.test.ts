@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { Effect } from "effect";
-
 import { type AppPlan, PortablePath, serviceAppMount } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";

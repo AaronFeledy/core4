@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-import { provideFileSyncEngine } from "../file-sync-engine.ts";
-
 import { FileSyncStopError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -13,8 +10,9 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
-
+import { DateTime, Effect } from "effect";
 import { terminateFileSyncSessions } from "../../src/operations/file-sync.ts";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
 
 const app: AppRef = {
   kind: "user",

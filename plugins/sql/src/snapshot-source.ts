@@ -1,8 +1,5 @@
 import { resolve } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect } from "effect";
-
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
@@ -12,6 +9,7 @@ import {
   appIdentityKey,
   planDataId,
 } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import type { SqlCommandDeps } from "./command-types.ts";
 import { type SqlPlan, sqlPlanDataId } from "./views.ts";
 

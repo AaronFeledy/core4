@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const docsPath = resolve(repoRoot, "docs/alpha-install-and-bug-reports.md");

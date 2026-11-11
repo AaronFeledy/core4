@@ -1,19 +1,16 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Queue, Stream } from "effect";
-
 import { EventService, type LandoEvent } from "@lando/sdk/services";
-import { withProcess } from "../_support/process-runner.ts";
-
+import { Effect, Layer, Queue, Stream } from "effect";
 import {
   type PluginPublishOptions,
   pluginPublish as publish,
   renderPluginPublishResult,
 } from "../../src/cli/commands/plugin-publish.ts";
 import { parseNpmRegistryConfig } from "../../src/recipes/npm-registry-config";
+import { withProcess } from "../_support/process-runner.ts";
 import { withEnvVar } from "../_support/temp-cwd";
 import { listTree } from "./_util/fs-tree.ts";
 

@@ -2,9 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Schema, Stream } from "effect";
-import { DateTime } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
@@ -28,6 +25,7 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
 import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("podman");

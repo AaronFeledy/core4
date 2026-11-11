@@ -1,8 +1,7 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-
-import { expect, test } from "bun:test";
 
 import { SHARD_RUNTIME_FLAGS } from "../../../scripts/test-shards.ts";
 import { refreshTestTimings } from "../../../scripts/update-test-timings.ts";

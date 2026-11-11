@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { statSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 import {
   CGROUPS_DELEGATE_CONF_CONTENT,
   LANDO_SHELLENV_BEGIN,

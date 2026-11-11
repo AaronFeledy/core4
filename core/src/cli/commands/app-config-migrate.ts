@@ -36,14 +36,14 @@ import {
   provenanceWithoutServiceMap,
 } from "./app-config-recipe-analysis.ts";
 
+export type { AppConfigMigrateResult } from "./app-config-migrate-output.ts";
 export {
   AppConfigMigrateResultSchema,
   MigrateBlockedReason,
   MigrateHunkBlockReason,
   renderAppConfigMigrateResult,
 } from "./app-config-migrate-output.ts";
-export type { AppConfigMigrateResult } from "./app-config-migrate-output.ts";
-export { AppConfigMigrateError, AppConfigMigrateCommitError } from "./app-config-migrate-write.ts";
+export { AppConfigMigrateCommitError, AppConfigMigrateError } from "./app-config-migrate-write.ts";
 
 export interface AppConfigMigrateOptions {
   readonly cwd?: string;
@@ -171,8 +171,8 @@ export const appConfigMigrate = Effect.fn("AppConfigMigrate.migrate")(
           source.migrations.flatMap((edge) =>
             edge.hunks.flatMap((hunk) =>
               hunk.kind === "rename" &&
-              /^services\.[^.\[]+$/.test(hunk.old) &&
-              /^services\.[^.\[]+$/.test(hunk.new)
+              /^services\.[^.[]+$/.test(hunk.old) &&
+              /^services\.[^.[]+$/.test(hunk.new)
                 ? [[hunk.old.slice(9), hunk.new.slice(9)] as const]
                 : [],
             ),

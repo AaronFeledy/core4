@@ -1,6 +1,4 @@
 import type { LandofileIncludeError } from "@lando/sdk/errors";
-import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
-
 import {
   type ValueOrigins,
   isMergeDirective,
@@ -8,6 +6,7 @@ import {
   mergeValuesWithOrigins,
   valueOriginAt,
 } from "@lando/sdk/landofile";
+import { IncludeEntry, type LandofileShape, type ToolingVarLiteral } from "@lando/sdk/schema";
 import { includeError } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
 import { getOrigins } from "./pipeline/origins.ts";

@@ -6,9 +6,6 @@
  * native merge directives; the non-native Fragment codec expects wire tags).
  */
 import { dirname, resolve } from "node:path";
-
-import { Effect, Predicate, Result, Schema } from "effect";
-
 import { type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { decodeLandofileAuthoringLayer, parseLandofile } from "@lando/sdk/landofile";
 import {
@@ -19,6 +16,7 @@ import {
   formatValidationIssueLine,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
+import { Effect, Predicate, Result, Schema } from "effect";
 
 import type { MdxNode } from "./guides/mdx.ts";
 import type { GuideLintDiagnostic } from "./lint-guides.ts";

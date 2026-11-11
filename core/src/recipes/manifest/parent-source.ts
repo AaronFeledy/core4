@@ -1,7 +1,4 @@
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
-import { gitCloneUrl, splitSourceRef } from "@lando/source-acquisition/locator";
-import { Effect } from "effect";
-
 import {
   RecipeExtendsError,
   RecipeManifestNotFoundError,
@@ -9,8 +6,9 @@ import {
   RecipeSourceError,
   causeMessage,
 } from "@lando/sdk/errors";
-
 import type { SourceSession } from "@lando/source-acquisition";
+import { gitCloneUrl, splitSourceRef } from "@lando/source-acquisition/locator";
+import { Effect } from "effect";
 import { resolveGitRecipeSource } from "../git-source";
 import { resolveNpmRecipeSource } from "../npm-source";
 import { resolveRegistryRecipeSource } from "../registry-source";

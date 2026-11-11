@@ -2,13 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Context, Effect, Layer, Stream } from "effect";
-
 import { FilePermissionError } from "@lando/sdk/errors";
-import { PluginName } from "@lando/sdk/schema";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, PluginName } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
+import { Context, Effect, Layer, Stream } from "effect";
 
 import {
   DefaultGlobalAppDoctorLayer,

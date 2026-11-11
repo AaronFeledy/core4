@@ -8,11 +8,11 @@
  * carrying the warning count; sections with a failing check, or that doctor itself could not run,
  * settle as ✗ with the first remediation command.
  */
-import { Effect, Option } from "effect";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { type TaskSpec, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
+import { Effect, Option } from "effect";
 
 import type { DoctorOptions } from "./doctor-options";
 import type { DoctorDeprecationReport } from "./doctor-report-contract";
@@ -173,10 +173,7 @@ export const settleDoctorSection = (
       ? tree.warnTask(id, outcome.summary)
       : tree.completeTask(id, outcome.summary);
 
-export const doctorTreeSummary = (counts: {
-  readonly failed: number;
-  readonly warned: number;
-}): string => {
+export const doctorTreeSummary = (counts: { readonly failed: number; readonly warned: number }): string => {
   if (counts.failed > 0) return `doctor · ${plural(counts.failed, "problem")} found`;
   if (counts.warned > 0) return `doctor · ${plural(counts.warned, "warning")}`;
   return "doctor · healthy";

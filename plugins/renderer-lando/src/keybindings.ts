@@ -1,6 +1,5 @@
-import { DateTime, Schema } from "effect";
-
 import { type LandoEvent, TaskDetailCollapseEvent, TaskDetailExpandEvent } from "@lando/sdk/events";
+import { DateTime, Schema } from "effect";
 
 import type { TaskTreeInteractionModel } from "./task-tree-tail.ts";
 

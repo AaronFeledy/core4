@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import { renderDbSnapshots } from "../src/commands/snapshots.ts";
 

@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
@@ -12,8 +11,9 @@ import { claimAppDataIdentity, claimDataIdentityBeforeRetirement } from "./data-
 import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
-import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
+import { requireSelectableRouter } from "./global-consumer-admission.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
+import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import {
   ensureStartTransactionConsistent,
   preflightStartAppDrain,
@@ -26,9 +26,9 @@ import {
   withVolumeTransitionNotices,
 } from "./volume-transition-notice.ts";
 
-export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
 export type { StartManagedScope } from "./start-file-sync.ts";
+export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 
 export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(function* (
   options: StartAppOptions | undefined,
@@ -51,6 +51,8 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         // preflight, or any mutation.
         const reconciled = yield* reconcileAppDataIdentity(target);
         yield* validateDesiredFileSyncEngine(reconciled.plan);
+        // A routed start without a selectable router refuses before overlays, hooks, or builds.
+        yield* requireSelectableRouter(reconciled.plan);
         const providerRegistry = yield* RuntimeProviderRegistry;
         const preparedOverlays =
           (reconciled === target ? execution.preparedOverlays : undefined) ??

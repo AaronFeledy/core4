@@ -19,8 +19,6 @@
  * All context values are routed through the `RedactionService` redactor, and no
  * raw tool payload (including the canary secret) is ever placed in the check.
  */
-import { Context, Effect, Fiber, type Layer, Predicate, Schema } from "effect";
-import { CliInvocation } from "../../runtime/invocation-context";
 
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
 import { singleAppGenerations } from "@lando/mcp/apps";
@@ -30,7 +28,9 @@ import type { McpCommandEntry } from "@lando/mcp/registry";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
+import { Context, Effect, Fiber, type Layer, Predicate, Schema } from "effect";
 import { serviceLayer } from "../../mcp-command-executor";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { LandoCommandSpec } from "../spec/command-base";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { renderDoctorChecksAsNdjson, sectionCheckEventPayload } from "./doctor-ndjson";

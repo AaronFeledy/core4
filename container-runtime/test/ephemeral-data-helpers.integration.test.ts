@@ -5,8 +5,8 @@ import { buildContainerRemoveRequest } from "../src/engine-api.ts";
 import { ephemeralDataHelperLabels } from "../src/ephemeral-data-helpers.ts";
 import { standaloneSecretsRedactor } from "../src/redact.ts";
 import { volumeCreationLabels } from "../src/volume-creation.ts";
-import { decodeStorageContainer, storageLifecycleFixture } from "./support/storage-lifecycle-fixture.ts";
 import { storageLifecycleClient } from "./support/storage-lifecycle.ts";
+import { decodeStorageContainer, storageLifecycleFixture } from "./support/storage-lifecycle-fixture.ts";
 
 const socket = process.env.LANDO_TEST_DOCKER_SOCKET;
 

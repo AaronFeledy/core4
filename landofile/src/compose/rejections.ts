@@ -1,17 +1,21 @@
-import { Effect, Predicate } from "effect";
-
 import { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import {
   type ComposeDisposition,
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTopLevelDispositions,
+  isLandofileOverride,
 } from "@lando/sdk/landofile";
+import { Effect, Predicate } from "effect";
 import { type DispositionTrieNode, compileDispositionTrie, matchDispositionChild } from "./rejection-trie.ts";
+
+/** Object keys and array indexes from the document root; service names may contain any character. */
+export type ComposeDocumentPath = ReadonlyArray<string | number>;
 
 export interface ComposeRejectionMatch {
   readonly matrixPath: string;
   readonly documentPath: string;
+  readonly path: ComposeDocumentPath;
   readonly service?: string;
   readonly rationale: string;
   readonly remediation: string;
@@ -20,6 +24,7 @@ export interface ComposeRejectionMatch {
 export interface ComposeDispositionMatch {
   readonly matrixPath: string;
   readonly documentPath: string;
+  readonly path: ComposeDocumentPath;
   readonly service?: string;
   readonly disposition: ComposeDisposition;
   readonly rationale: string;
@@ -39,6 +44,7 @@ let serviceDispositionTrie: DispositionTrieNode | undefined;
 interface MatchLocation {
   readonly matrixPath: string;
   readonly documentPath: string;
+  readonly path: ComposeDocumentPath;
   readonly service?: string;
 }
 
@@ -49,6 +55,7 @@ const dispositionMatch = (
   const match = {
     matrixPath: location.matrixPath,
     documentPath: location.documentPath,
+    path: location.path,
     disposition: entry.disposition,
     rationale: entry.rationale,
   };
@@ -80,14 +87,24 @@ const matchForNode = (
 
 interface WalkContext {
   readonly documentPath: string;
+  readonly path: ComposeDocumentPath;
   readonly service?: string;
   readonly matches: ComposeDispositionMatch[];
 }
 
 const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkContext): void => {
+  // An `!override` replaces the authored value at this same path.
+  if (isLandofileOverride(value)) {
+    walkValue(value.value, node, context);
+    return;
+  }
   if (Array.isArray(value)) {
     for (const [index, item] of value.entries()) {
-      walkValue(item, node, { ...context, documentPath: `${context.documentPath}[${index}]` });
+      walkValue(item, node, {
+        ...context,
+        documentPath: `${context.documentPath}[${index}]`,
+        path: [...context.path, index],
+      });
     }
     return;
   }
@@ -98,8 +115,10 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
     const child = matchDispositionChild(node, key);
     if (child === undefined) continue;
     const documentPath = `${context.documentPath}.${key}`;
+    const path = [...context.path, key];
     const match = matchForNode(child, {
       documentPath,
+      path,
       ...(context.service === undefined ? {} : { service: context.service }),
     });
     if (match !== undefined) {
@@ -116,16 +135,21 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
         }
       }
     }
-    walkValue(value[key], child, { ...context, documentPath });
+    walkValue(value[key], child, { ...context, documentPath, path });
   }
 };
 
 const walkServices = (value: unknown, matches: ComposeDispositionMatch[]): void => {
+  if (isLandofileOverride(value)) {
+    walkServices(value.value, matches);
+    return;
+  }
   if (!Predicate.isObject(value)) return;
   serviceDispositionTrie ??= compileDispositionTrie(composeServiceDispositions);
   for (const service of Object.keys(value)) {
     walkValue(value[service], serviceDispositionTrie, {
       documentPath: `services.${service}`,
+      path: ["services", service],
       service,
       matches,
     });
@@ -142,6 +166,7 @@ export const analyzeComposeDispositions = (parsed: unknown): ReadonlyArray<Compo
     const match = dispositionMatch(entry, {
       matrixPath,
       documentPath: key,
+      path: [key],
     });
     matches.push(match);
     switch (match.disposition) {
@@ -174,6 +199,7 @@ export const analyzeComposeRejections = (parsed: unknown): ReadonlyArray<Compose
         const rejection = {
           matrixPath: match.matrixPath,
           documentPath: match.documentPath,
+          path: match.path,
           rationale: match.rationale,
           remediation: match.remediation,
         };

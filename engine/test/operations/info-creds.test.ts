@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -20,6 +18,7 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Schema } from "effect";
 
 import { infoForPlan } from "../../src/operations/info.ts";
 
@@ -274,6 +273,82 @@ describe("infoForPlan creds from connection facts", () => {
 
     expect(result.services[0]?.creds).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain(SECRET_VALUE);
+  });
+
+  test("shows a published default password and root password literal", async () => {
+    const result = await infoForEnvironment(
+      {},
+      {
+        ...connection,
+        creds: { user: "lando", database: "appdb", password: "lando", rootPassword: "landolando" },
+      },
+    );
+
+    expect(result.services[0]?.creds).toEqual({
+      user: "lando",
+      password: "lando",
+      database: "appdb",
+      rootPassword: "landolando",
+    });
+    const encoded = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(result.services[0]));
+    expect(encoded.creds).toEqual(result.services[0]?.creds);
+  });
+
+  test("masks a non-default literal and every deferred password descriptor", async () => {
+    const result = await infoForEnvironment(
+      {},
+      {
+        ...connection,
+        creds: {
+          user: "app",
+          database: "appdb",
+          password: "hunter2-not-default",
+          rootPassword: { _tag: "BoundText", parts: ["https://", { reference: "ROOT", encoding: "raw" }] },
+        },
+      },
+    );
+
+    expect(result.services[0]?.creds).toEqual({
+      user: "app",
+      password: REDACTED,
+      database: "appdb",
+      rootPassword: REDACTED,
+    });
+    expect(JSON.stringify(result)).not.toContain("hunter2-not-default");
+    expect(JSON.stringify(result)).not.toContain("ROOT");
+  });
+
+  test.each([
+    ["lando", "lando"],
+    ["sekret-not-default", REDACTED],
+  ] as const)("projects Redis nonSqlCreds password %s as %s", async (password, expected) => {
+    const service: ServicePlan = {
+      name: ServiceName.make("redis"),
+      type: "redis",
+      provider: providerId,
+      primary: true,
+      artifact: { kind: "ref", ref: "redis:7" },
+      command: ["redis-server"],
+      environment: {},
+      nonSqlCreds: { user: "default", password, database: "0" },
+      mounts: [],
+      endpoints: [],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata,
+      extensions: {},
+    };
+    const plan = { ...makePlan({}), services: { redis: service } };
+    const result = await Effect.runPromise(infoForPlan(plan).pipe(Effect.provide(provide(plan))));
+
+    expect(result.services[0]?.creds).toEqual({
+      user: "default",
+      password: expected,
+      database: "0",
+    });
+    const encoded = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(result.services[0]));
+    expect(encoded.creds).toEqual(result.services[0]?.creds);
   });
 
   test("shows sqlite engine and path instead of empty server credentials", async () => {

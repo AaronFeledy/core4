@@ -77,7 +77,7 @@ An env var, a recipe option, or data read with `load()` or `import()` whose valu
 
 Lando parses expression sites once, when it reads your files, and keeps a record of where they were. A string an expression produced is not on that list, so later passes never scan it for `{{` or `${`. The bytes stay as produced: a loaded `{{ app.name }}` is the text `{{ app.name }}`, a loaded `$${HOME}` is the text `$${HOME}`, and `lando app:config --format=json` shows them that way. Config output can still redact sensitive values.
 
-Plan-time scopes (`app.*`, `proxy.*`, `services.<name>.creds.*`) fill text only. Put `{{ app.name }}` at a boolean, number, list, or object field and validation fails at that path, with a suggestion to use a literal or a recipe/env expression. A plan-time expression at a text field whose result is not text, like `{{ eq(app.name, 'x') }}` in `database:`, fails when the plan is built.
+Plan-time scopes (`app.*`, `proxy.*`, `services.<name>.creds.*`) fill text only. Put `{{ app.name }}` at a boolean, number, list, or object field and validation fails at that path, with a suggestion to use a literal or a recipe/env expression. A plan-time expression at a text field whose result is not text, like `{{ eq(app.name, 'x') }}` in `creds.database`, fails when the plan is built.
 
 ```sh
 lando app:config --format=json
@@ -87,9 +87,9 @@ That prints the Landofile after load-time resolution: recipe and env sites show 
 
 ## Plan-time app and proxy
 
-`app.name` and `app.slug` both resolve to the **current** app slug: lowercase, with every run of non-alphanumerics turned into `-`, so `My App` becomes `my-app`. Route hostnames and other runtime identity follow that current slug. Catalog default database names, generated passwords, and named data stores follow the folder's **data name** (the name this folder's data was first created under), which matches the current name until you rename the app. When you author `database: "{{ app.slug }}"` yourself, the expression tracks the current name on rename; prefer `{{ services.<db>.creds.database }}` when you need the stable database the volume was initialized with. `proxy.defaultDomain` comes from global config and defaults to `lndo.site`.
+`app.name` and `app.slug` both resolve to the **current** app slug: lowercase, with every run of non-alphanumerics turned into `-`, so `My App` becomes `my-app`. Route hostnames and other runtime identity follow that current slug. Catalog default database names, generated passwords, and named data stores follow the folder's **data name** (the name this folder's data was first created under), which matches the current name until you rename the app. When you author `creds.database: "{{ app.slug }}"` yourself, the expression tracks the current name on rename; prefer `{{ services.<db>.creds.database }}` when you need the stable database the volume was initialized with. `proxy.defaultDomain` comes from global config and defaults to `lndo.site`.
 
-Route hostnames, `environment:` values, service config such as `database:`, tooling `cmd` / `cmds`, and `x-` extension values all resolve at plan time:
+Route hostnames, `environment:` values, service config such as `creds.database`, tooling `cmd` / `cmds`, and `x-` extension values all resolve at plan time:
 
 ```yaml
 name: Expressions Demo
@@ -102,7 +102,8 @@ services:
       APP_LABEL: "{{ default(env.LANDO_EXPRESSIONS_UNSET, 'dflt') }}-{{ app.name }}"
   database:
     type: "mariadb:11.4"
-    database: "{{ app.slug }}"
+    creds:
+      database: "{{ app.slug }}"
 tooling:
   whoami:
     service: app
@@ -122,7 +123,7 @@ Change `proxy.defaultDomain` once and every recipe URL that uses the expression 
 
 A site that mixes scopes, like `APP_LABEL` above, is left alone by the loader and resolves at plan time.
 
-`lando app:config` leaves plan-time sites as you wrote them, so it never shows these values. `lando app:cache:refresh` builds the plan and fails when an expression can't resolve. `lando info` shows the resolved `database:` value in the database credentials:
+`lando app:config` leaves plan-time sites as you wrote them, so it never shows these values. `lando app:cache:refresh` builds the plan and fails when an expression can't resolve. `lando info` shows the resolved `creds.database` value in the database credentials:
 
 ```sh
 lando app:cache:refresh
@@ -148,13 +149,13 @@ services:
     port: 5433
 ```
 
-`web` starts with a working `DATABASE_URL` pointing at `database:5433`. No copying the generated password out of `lando info`, no second place for it to go stale, and the URL follows `port:` when you change it.
+`web` starts with a working `DATABASE_URL` pointing at `database:5433`. `lando info` prints a published default password, so you can copy `lando` from there. An authored password that is not a published default stays `[redacted]` in `lando info` and still reaches `web` through this expression. The URL follows `port:` when you change it.
 
 `url.encodeComponent()` percent-encodes its argument the way a URL userinfo or path segment needs (RFC 3986, UTF-8). Use it around a password in a URL; a generated password is URL-safe, but an authored one may contain `@`, `/`, or `%`. Lando never encodes for you based on where the value sits.
 
-Lando resolves `database` first and `web` after it, whatever order the Landofile lists them in, so the values are the ones the database actually uses, including an authored `creds:` block on `database`. That ordering is what lets a service's own `creds:` read another service: a replica can set `password: "{{ services.primary.creds.password }}"`. Mixed sites like `"{{ app.name }}:{{ services.database.creds.user }}"` are fine.
+Lando resolves `database` first and `web` after it, whatever order the Landofile lists them in, so the values are the ones the database actually uses, including an authored `creds:` block on `database`. That ordering is what lets a service's own `creds:` read another service: a replica can set `creds.password` to `"{{ services.primary.creds.password }}"`. Mixed sites like `"{{ app.name }}:{{ services.database.creds.user }}"` are fine.
 
-Only services whose type publishes credentials have `creds`: `postgres`, `mariadb`, `mysql`, `mongodb`, `mssql`, and `redis` when it sets a `password:`. On `mssql`, `creds.rootPassword` is the `sa` password, generated per app and service unless you author one. Reading `creds` from a service with none, or from a service name that is not in the Landofile, fails the plan with `ConfigExpressionError` and `Expression resolved to a missing value.` Lint names the site, for example `["services", "web", "environment", "DATABASE_URL"]`:
+Only services whose type publishes credentials have `creds`: `postgres`, `mariadb`, `mysql`, `mongodb`, `mssql`, and `redis` when it sets `creds.password`. On `mssql`, `creds.rootPassword` is the `sa` password. The published default is `Landolando1` unless you author one. Reading `creds` from a service with none, or from a service name that is not in the Landofile, fails the plan with `ConfigExpressionError` and `Expression resolved to a missing value.` Lint names the site, for example `["services", "web", "environment", "DATABASE_URL"]`:
 
 ```sh
 lando app:config:lint --format=json
@@ -167,7 +168,7 @@ Values from `env_file:` are never interpolated. `${NAME}` stays literal, and lin
 
 A plugin's derived service type inherits its parent's published credentials unless it publishes a replacement. Those values remain available to the same credential expressions after Lando saves and reloads the plan.
 
-Lando recognizes the password through the database service's `POSTGRES_PASSWORD` or `LANDO_DB_PASSWORD` value and masks it in command output. A generated password is masked wherever it appears. A password you wrote as a literal in a committed YAML layer is masked only where it stands alone as a whole token, wherever the same value appears: the database service's own variables, generated clients, `{{ services.<name>.creds.password }}` copies, and tooling environments all follow that rule. The password stays masked inside a connection string such as the `DATABASE_URL` above, because `:` and `@` end a token. Automatic collection excludes public defaults and passwords that exactly match their own database user or database name, so those names remain readable in other text. Password fields in `lando info` and `PASSWORD=` assignments in `lando logs` are still masked. Values explicitly registered as secrets or resolved from a secret store remain masked everywhere, even when they match one of these exceptions. See [What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where).
+Lando recognizes the password through the database service's `POSTGRES_PASSWORD` or `LANDO_DB_PASSWORD` value and masks it in command output. A published default password (`lando` or `Landolando1`) stays readable. A password you wrote as a literal in a committed YAML layer is masked only where it stands alone as a whole token, wherever the same value appears: the database service's own variables, generated clients, `{{ services.<name>.creds.password }}` copies, and tooling environments all follow that rule. The password stays masked inside a connection string such as the `DATABASE_URL` above, because `:` and `@` end a token. Automatic collection excludes public defaults and passwords that exactly match their own database user or database name, so those names remain readable in other text. `lando info` prints a published default password and masks every other password. `PASSWORD=` assignments in `lando logs` stay masked unless the value is exactly a published default. Values explicitly registered as secrets or resolved from a secret store remain masked everywhere, even when they match one of these exceptions. See [What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where).
 
 ### A password from a secret store stays a reference
 

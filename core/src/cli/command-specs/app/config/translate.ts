@@ -3,18 +3,16 @@ import { Renderer } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { CliInvocation } from "../../../../runtime/invocation-context";
-
-import { renderTranslateDiagnostics } from "../../../commands/app-config-translate-output.ts";
-import { Flags } from "../../../spec/metadata";
-
 import {
   type AppConfigTranslateResult,
   AppConfigTranslateResultSchema,
   appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../../commands/app-config-translate";
+import { renderTranslateDiagnostics } from "../../../commands/app-config-translate-output.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { extractSpecFlags } from "../../../spec/command-boundary";
+import { Flags } from "../../../spec/metadata";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   resultSchema: AppConfigTranslateResultSchema,

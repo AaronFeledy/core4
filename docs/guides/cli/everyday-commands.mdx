@@ -71,7 +71,9 @@ lando restart
 lando rebuild
 ```
 
-Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
+Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. A service's `pull_policy` takes precedence: `never` is never pulled, and a failed pull of an `always` service fails the command; see [Control when the image is pulled](../services/compose-passthrough.mdx#control-when-the-image-is-pulled). Stock PHP tags, which have no explicit pull policy, are also checked about weekly on start. A PHP security release on a floating tag is one of those pulls, and `lando rebuild` checks it immediately. See [Pick up a PHP security release](../services/php-security-updates.mdx). Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
+
+`lando stop` also withdraws the app's published hostnames, so the proxy stops sending requests to containers that no longer exist. `lando start` publishes them again. `lando restart` and `lando rebuild` keep the hostnames published while they stop and start the app, and they stay published if the start that follows fails. If no router is selected, `lando stop` warns that the routes were left in place and still stops the app.
 
 All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
@@ -85,7 +87,7 @@ lando logs -s <service>
 lando start
 ```
 
-A failed or interrupted `lando start` keeps what it built: created containers (started or not), networks, volumes, published routes, agent relays, and file-sync sessions. Creating a container is not the same as it being ready. After the error, the human report prints one warning that starts with `Start did not complete. Resources were left in place.` It lists `Running`, `created/stopped`, and `unverified` services, and says agent forwarding and file sync remain active where established. It tells you to inspect `lando info` and `lando logs`, fix the reported error, then run `lando start`. A service Lando could not observe within one second is unverified, never stopped. A failure before any app resource changed says `Start did not complete. No app resources changed.` instead of that inventory. JSON and YAML output don't carry the warning; use `lando info --format=json`.
+A failed or interrupted `lando start` keeps what it built: created containers (started or not), networks, volumes, published routes, agent relays, and file-sync sessions. Creating a container is not the same as it being ready. After the error, the human report prints one warning that starts with `Start did not complete. Resources were left in place.` It lists `Running`, `created/stopped`, and `unverified` services, and says agent forwarding and file sync remain active where established. It tells you to inspect `lando info` and `lando logs`, fix the reported error, then run `lando start`. A service Lando could not observe within one second is unverified, never stopped. A failure before any app resource changed says `Start did not complete. No app resources changed.` instead of that inventory. `lando restart` and `lando rebuild` use the same warning with `Restart` or `Rebuild` in place of `Start`, and they tell you to rerun that command. `lando rebuild -s web` says to run `lando rebuild -s web`, not a whole-app rebuild and not `lando start`. JSON and YAML output don't carry the warning; use `lando info --format=json`.
 
 Fix the reported error, then run `lando start`. It converges rather than starting over: containers that match the plan are started as they are, only a container whose create config changed is recreated, an unfinished accelerated file-sync attempt resumes with its sessions, and healthy agent relays and host-proxy workers are reused. SSH and GPG forwarding stay enabled from the failed attempt until `lando stop` or `lando destroy`. Init steps and lifecycle hooks run again on every invocation, so write them to tolerate a rerun. `lando restart` and `lando rebuild` still stop first. If the start that follows fails, that failure does not remove routes.
 
@@ -121,6 +123,19 @@ then authenticate again if the registry requires it.
 Use `lando start --format=json` to inspect the tagged error and remediation.
 Already-pulled images can still work without registry access; see
 [Work offline](../config/offline-dev.mdx).
+
+## Rebuild a missing Lando-built image
+
+Lando never pulls an image it built for a service, because no registry has it.
+If that image is gone, for example after you prune images, `lando start` fails
+before creating the container, names the service and the image, and suggests
+the fix. Run it from the app directory:
+
+```bash
+lando rebuild -s web
+```
+
+Replace `web` with the service the error names.
 
 ## Wait for another command to finish
 

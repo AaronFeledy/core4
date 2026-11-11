@@ -1,20 +1,18 @@
 import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
-import { Effect, Schema } from "effect";
-
 import {
   type EnvironmentValue,
   PortablePath,
   type ServiceConfig,
   type ServiceCreds,
+  ServiceName,
 } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
-
+import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
-import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   assertListenerConfig,
   launcherAuthority,
@@ -51,19 +49,9 @@ const credsFor = (
   const creds = service.creds;
   return resolveServiceCreds({
     family: FAMILY,
-    ...(creds === undefined
-      ? {}
-      : {
-          authored: {
-            user: creds.user,
-            password: creds.password,
-            database: creds.database,
-            ...(creds.rootPassword === undefined ? {} : { rootPassword: creds.rootPassword }),
-          },
-        }),
+    ...(creds === undefined ? {} : { authored: creds }),
     ...(service.environment === undefined ? {} : { environment: service.environment }),
     defaults: { user: "lando", password: DEFAULT_PASSWORD, database: dataNameFor(input) },
-    ...(service.database === undefined ? {} : { topLevelDatabase: service.database }),
   });
 };
 
@@ -126,6 +114,7 @@ export const mongodbServiceFeature: ServiceFeatureDefinition = {
   id: MONGODB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(MONGODB_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(

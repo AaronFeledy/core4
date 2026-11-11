@@ -1,11 +1,9 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { ConfigService } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import { pluginLink } from "../../src/cli/commands/plugin-link.ts";
 import {
   type PluginUnlinkOptions,

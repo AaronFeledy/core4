@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
@@ -32,6 +31,7 @@ import {
   schemaAt,
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
+import { evolveHistoricalComposeKnobValues } from "./x-extension-compose-knob-values-proof.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
@@ -43,8 +43,10 @@ import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
+import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
+import { evolveHistoricalSwarmReservations } from "./x-extension-swarm-reservations-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
 import {
   evolveHistoricalToolingSensitivity,
@@ -69,36 +71,42 @@ const repairedLandofile = (): JsonSchema =>
   );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalToolingVars(
-    evolveHistoricalToolingWrapper(
-      evolveHistoricalUploadDirs(
-        evolveHistoricalConsolePort(
-          evolveHistoricalToolingSensitivity(
-            evolveHistoricalAppMountAcceleration(
-              evolveHistoricalToolingShorthand(
-                evolveHistoricalEnvironment(
-                  evolveHistoricalEndpointMetadata(
-                    evolveHistoricalServicePort(
-                      evolveHistoricalTimestamps(
-                        evolveHistoricalContainerUser(
-                          evolveHistoricalReadiness(
-                            evolveHistoricalShorthand(
-                              evolveHistoricalNetworks(
-                                evolveHistoricalNativeInit(repairedLandofile()),
-                                "bare",
+  evolveHistoricalServiceCreds(
+    evolveHistoricalComposeKnobValues(
+      evolveHistoricalSwarmReservations(
+        evolveHistoricalToolingVars(
+          evolveHistoricalToolingWrapper(
+            evolveHistoricalUploadDirs(
+              evolveHistoricalConsolePort(
+                evolveHistoricalToolingSensitivity(
+                  evolveHistoricalAppMountAcceleration(
+                    evolveHistoricalToolingShorthand(
+                      evolveHistoricalEnvironment(
+                        evolveHistoricalEndpointMetadata(
+                          evolveHistoricalServicePort(
+                            evolveHistoricalTimestamps(
+                              evolveHistoricalContainerUser(
+                                evolveHistoricalReadiness(
+                                  evolveHistoricalShorthand(
+                                    evolveHistoricalNetworks(
+                                      evolveHistoricalNativeInit(repairedLandofile()),
+                                      "bare",
+                                    ),
+                                  ),
+                                ),
                               ),
+                              "bare",
                             ),
                           ),
                         ),
-                        "bare",
                       ),
+                      "bare",
                     ),
                   ),
+                  "bare",
                 ),
-                "bare",
               ),
             ),
-            "bare",
           ),
         ),
       ),

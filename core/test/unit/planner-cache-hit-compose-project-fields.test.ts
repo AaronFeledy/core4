@@ -1,22 +1,19 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
-
-import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
-
 import { CapabilityError } from "@lando/core/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {

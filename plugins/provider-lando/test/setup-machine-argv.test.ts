@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-
 import type { HostPlatform } from "@lando/sdk/schema";
+import { Cause, Effect, Exit } from "effect";
 
 import { classifyWindowsManagedSetupResult } from "../../../scripts/windows-managed-setup-acceptance.ts";
 import {

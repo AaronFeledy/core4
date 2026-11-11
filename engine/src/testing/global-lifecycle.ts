@@ -14,6 +14,7 @@ import {
 import {
   AppPlanner,
   ConfigService,
+  FileSystem,
   GlobalAppService,
   PathsService,
   PluginRegistry,
@@ -22,7 +23,6 @@ import {
   type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { FileSystem } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Schema } from "effect";

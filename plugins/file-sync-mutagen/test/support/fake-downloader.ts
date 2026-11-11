@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { Effect, Layer, Stream } from "effect";
-
 import { DownloadFetchError } from "@lando/sdk/errors";
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader, type DownloaderShape } from "@lando/sdk/services";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { Effect, Layer, Stream } from "effect";
 
 export const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

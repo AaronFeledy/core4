@@ -1,9 +1,8 @@
-import { Effect, Schema } from "effect";
-
 import { StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { type AbsolutePath, PluginStateLockOptions } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";

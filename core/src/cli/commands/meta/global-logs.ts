@@ -1,9 +1,3 @@
-import { Effect } from "effect";
-
-import type { LogsAppError } from "@lando/sdk/app";
-import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import type { RuntimeProviderRegistry } from "@lando/sdk/services";
-
 import {
   type LoadGlobalPlanServices,
   type LoadObservedGlobalPlanError,
@@ -18,9 +12,13 @@ import {
   validateSince,
 } from "@lando/engine/operations/logs";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import type { LogsAppError } from "@lando/sdk/app";
+import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
+import type { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export { renderLogsAppResult as renderGlobalLogsResult } from "../logs";
-export type { LogsAppOptions as GlobalLogsOptions, FollowLogsAppOptions as FollowGlobalLogsOptions };
+export type { FollowLogsAppOptions as FollowGlobalLogsOptions, LogsAppOptions as GlobalLogsOptions };
 
 export type GlobalLogsResult = LogsAppResult;
 export type GlobalLogsError =

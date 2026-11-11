@@ -1,9 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   MARIADB_CONFIG_TARGET,
@@ -35,9 +32,6 @@ const authoredCreds = {
   database: "appdb",
   rootPassword: "root-secret",
 } as const;
-
-const defaultRootPassword = (appName: string, serviceName: string): string =>
-  `lando-${createHash("sha256").update(`${appName}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
 
 const serviceConfig = (serviceDefinition: Record<string, unknown>) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -80,7 +74,7 @@ describe("mariadb ServiceType", () => {
     expect(plan.environment.MARIADB_USER).toBe("lando");
     expect(plan.environment.MARIADB_PASSWORD).toBe("lando");
     expect(plan.environment.MARIADB_DATABASE).toBe("myapp");
-    expect(plan.environment.MARIADB_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
+    expect(plan.environment.MARIADB_ROOT_PASSWORD).toBe("lando");
     expect(plan.environment.MYSQL_USER).toBe(plan.environment.MARIADB_USER);
     expect(plan.environment.MYSQL_PASSWORD).toBe(plan.environment.MARIADB_PASSWORD);
     expect(plan.environment.MYSQL_DATABASE).toBe(plan.environment.MARIADB_DATABASE);
@@ -154,8 +148,6 @@ describe("mariadb ServiceType", () => {
   test("omitted creds stay lando/lando/appName plus generated root", async () => {
     // Given
     const definition = { type: "mariadb" };
-    const rootPassword = defaultRootPassword("myapp", "db");
-
     // When
     const resolution = await resolveMariadb(definition);
 
@@ -164,7 +156,7 @@ describe("mariadb ServiceType", () => {
       user: "lando",
       password: "lando",
       database: "myapp",
-      rootPassword,
+      rootPassword: "lando",
     });
   });
 
@@ -279,5 +271,14 @@ describe("mariadb ServiceType", () => {
       realization: "passthrough",
       ...(relativeTo === undefined ? {} : { relativeTo }),
     });
+  });
+
+  test("a password-only creds block keeps the default user and database", async () => {
+    const plan = await planMariadb({ type: "mariadb", creds: { password: "hunter2" } });
+    const environment = plan.environment ?? {};
+
+    expect(environment.MARIADB_USER).toBe("lando");
+    expect(environment.MARIADB_PASSWORD).toBe("hunter2");
+    expect(environment.MARIADB_DATABASE).toBe("myapp");
   });
 });

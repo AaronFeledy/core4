@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Context, Effect, Layer } from "effect";
-
 import { InteractionService } from "@lando/sdk/services";
+import { Context, Effect, Layer } from "effect";
 
 import * as InteractionServiceLayer from "../../src/interaction/service.ts";
 import {

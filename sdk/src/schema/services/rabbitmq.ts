@@ -7,7 +7,6 @@ import { catalogServiceConfig, catalogServiceType } from "./_catalog.ts";
 // ============================================================================
 
 export const RabbitMQServiceConfig = catalogServiceConfig({
-  extraKeys: ["database"],
   type: catalogServiceType(
     Schema.Literals(["rabbitmq", "rabbitmq:3", "rabbitmq:4"]),
     "RabbitMQ catalog service type and supported major-version aliases.",

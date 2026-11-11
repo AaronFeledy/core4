@@ -6,9 +6,14 @@
  * matching `--skip-*` flag. They are pulled out of the command orchestration so
  * each service concern reads as one unit.
  */
-import { type Context, DateTime, Duration, Effect, Result } from "effect";
-import { CliInvocation } from "../../../runtime/invocation-context";
 
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import {
+  SSH_SIDECAR_READINESS_POLICY,
+  awaitRuntimeSshAgent,
+} from "@lando/engine/subsystems/ssh-agent/session";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
@@ -18,15 +23,8 @@ import {
   RouterService,
   SshService,
 } from "@lando/sdk/services";
-
-import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import {
-  SSH_SIDECAR_READINESS_POLICY,
-  awaitRuntimeSshAgent,
-} from "@lando/engine/subsystems/ssh-agent/session";
+import { type Context, DateTime, Duration, Effect, Result } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";

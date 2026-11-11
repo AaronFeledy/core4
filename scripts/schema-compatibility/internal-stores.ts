@@ -25,6 +25,7 @@ import {
   ScratchRegistryEntriesSchema,
   scratchRegistryTransitions,
 } from "../../engine/src/scratch-app/registry.ts";
+import { PULL_CHECK_VERSION, PullChecks } from "../../engine/src/services/artifact-refresh.ts";
 import { TUNNEL_REGISTRY_VERSION, TunnelRegistryEntries } from "../../engine/src/tunnel/registry-migrate.ts";
 import {
   UPDATE_HANDOFF_RECEIPT_VERSION,
@@ -186,6 +187,13 @@ export const INTERNAL_PERSISTED_STORES = [
         "result.pluginResults[].status": "none",
       },
     },
+  },
+  {
+    id: "artifact-pull-checks",
+    schema: PullChecks,
+    version: PULL_CHECK_VERSION,
+    source: { file: "engine/src/services/artifact-refresh.ts", schema: "PullChecks" },
+    lifecycle: "none",
   },
   {
     id: "accelerated-start",

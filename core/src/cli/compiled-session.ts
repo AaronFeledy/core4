@@ -1,14 +1,13 @@
-import { Effect } from "effect";
-
 import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { listSelectableResultKeys } from "@lando/sdk/command-result";
+import { Effect } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report";
 import { type CliInvocationSnapshot, newInvocationId } from "./command-lifecycle";
 import { DEFAULT_RESULT_FORMAT, JSON_CONTROL_OFF, type JsonControl, type ResultFormat } from "./format-flags";
-import { activeRendererMode } from "./renderer-mode-state";
 import { landoRenderer } from "./renderer/bundled-renderers";
+import { activeRendererMode } from "./renderer-mode-state";
 
 export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state";
 export type { JsonControl };

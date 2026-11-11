@@ -1,16 +1,15 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, Schema } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
+import { Effect, Schema } from "effect";
 
 import manifestData from "../nft-versions.json" with { type: "json" };
 import { type TarEntry, parseArMembers, parseTarEntries } from "./debian-archive.ts";
 import { type NftDecompressionOptions, decompressDebDataTar } from "./debian-decompress.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
+
 export { type ArMember, type TarEntry, parseArMembers, parseTarEntries } from "./debian-archive.ts";
 export { type NftDecompressionOptions, decompressDebDataTar, decompressXz } from "./debian-decompress.ts";
 
@@ -70,7 +69,7 @@ export const resolveNftHostKey = (platform: string, arch: string): string | unde
 
 export const NFT_WRAPPER_SCRIPT = `#!/bin/sh
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-export LD_LIBRARY_PATH="$HERE/../lib/${NFT_LIB_DIRNAME}\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$HERE/../lib/${NFT_LIB_DIRNAME}\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$HERE/../lib/${NFT_LIB_DIRNAME}/nft" "$@"
 `;
 

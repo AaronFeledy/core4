@@ -2,13 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream, Struct } from "effect";
-
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
-import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
-import { StreamFrame } from "@lando/sdk/schema";
-
 import {
   AbsolutePath,
   AppId,
@@ -21,9 +16,12 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream, Struct } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -852,4 +850,5 @@ describe("lando logs", () => {
     });
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

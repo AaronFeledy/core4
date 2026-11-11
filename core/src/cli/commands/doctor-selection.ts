@@ -1,17 +1,14 @@
-import { Effect, Option } from "effect";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { GlobalConfigSources } from "@lando/engine/services/config";
-
-import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
-
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   type ProviderSelectionInputs,
   type ProviderSelectionResolution,
   readProviderEnvVar,
 } from "@lando/engine/providers/precedence";
+import { GlobalConfigSources } from "@lando/engine/services/config";
+import { ProviderId } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import type { DoctorSelectionRecord } from "./doctor-contract";
 
 export interface DoctorSelectionOptions {

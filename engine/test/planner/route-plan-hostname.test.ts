@@ -35,6 +35,7 @@ test("rejects an invalid generated route at the final AppPlan boundary", async (
       ]);
   }
 });
+
 import { planTestLandofile } from "../compiled-landofile.ts";
 
 test("final plan validation rejects an HTTPS route no certificate can cover, from any producer", async () => {

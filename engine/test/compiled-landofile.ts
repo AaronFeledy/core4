@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { AbsolutePath, type LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { ProviderCapabilities } from "@lando/sdk/schema";
+import { AbsolutePath, type LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { AppPlanner } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 

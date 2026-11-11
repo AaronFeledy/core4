@@ -1,18 +1,19 @@
 import { rm, rmdir } from "node:fs/promises";
 import type { Server } from "node:http";
 import { join } from "node:path";
-
-import { Effect, Fiber } from "effect";
-
 import type { RootOverrides } from "@lando/paths";
 import { errnoCode } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Fiber } from "effect";
 import type { HostProxyInFlightRequest } from "./transport-handler.ts";
 import type { HostProxySessionPaths } from "./transport-session.ts";
 
 export const cleanupHostProxyRunLandoState = Effect.fnUntraced(
-  function* (app: AppRef, paths?: RootOverrides): Effect.fn.Return<void, never, PrivateFileAccessService> {
+  function* (
+    app: Pick<AppRef, "id" | "root">,
+    paths?: RootOverrides,
+  ): Effect.fn.Return<void, never, PrivateFileAccessService> {
     const privateFileAccess = yield* PrivateFileAccessService;
     const { removeOwnedHostProxyWorkerState } = yield* Effect.promise(() => import("./worker-ownership.ts"));
     yield* removeOwnedHostProxyWorkerState(app, paths, {

@@ -1,7 +1,6 @@
 /**
  * Redacted lifecycle-event payloads for one verified download.
  */
-import type { DateTime } from "effect";
 
 import {
   DownloadProgressEvent,
@@ -10,6 +9,7 @@ import {
   PreDownloadEvent,
 } from "@lando/sdk/events";
 import type { LandoEvent } from "@lando/sdk/services";
+import type { DateTime } from "effect";
 
 interface DownloadEventContext {
   readonly origin: string;

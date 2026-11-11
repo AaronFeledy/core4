@@ -12,7 +12,9 @@ import {
   appConfigTranslate,
 } from "../../src/cli/commands/app-config-translate.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const { decomposer: lampDecomposer } = bundledRecipe("lamp");
+
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -73,4 +75,5 @@ export const withFixture = async (
   }
 };
 export const failure = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(Effect.result(effect));
+
 import { serviceTypeFacts } from "@lando/service-lando";

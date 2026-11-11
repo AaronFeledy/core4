@@ -1,14 +1,13 @@
 import { importAuthorModule } from "@lando/landofile/author-modules";
-import { Context, Effect, Layer, Result, Scope } from "effect";
-
 import {
   AmbiguousCertificateAuthoritiesError,
   NoCertificateAuthorityError,
   PluginLoadError,
 } from "@lando/sdk/errors";
 import type { CertificateAuthorityContributionLayer } from "@lando/sdk/plugins";
-import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { type HostPlatform, type PluginManifest, hostPlatformFamily } from "@lando/sdk/schema";
 import { CertificateAuthority, Downloader, PathsService, ProcessRunner } from "@lando/sdk/services";
+import { Context, Effect, Layer, Result, Scope } from "effect";
 
 import { type GraphCertificateAuthorityCandidate, PluginContributionGraph } from "./contribution-graph.ts";
 
@@ -68,6 +67,33 @@ export const selectCertificateAuthorityCandidate = <
   );
 };
 
+/** Manifest-declared authorities, the candidate set used only where no contribution graph exists. */
+export const manifestCertificateAuthorityCandidates = (
+  manifests: ReadonlyArray<PluginManifest>,
+): ReadonlyArray<CertificateAuthorityCandidateDefinition> =>
+  manifests.flatMap((manifest) =>
+    (manifest.contributes?.certificateAuthorities ?? []).map((authority) => ({
+      id: authority.id,
+      pluginName: String(manifest.name),
+      source: "manifest",
+      ...(authority.defaultFor === undefined ? {} : { defaultFor: authority.defaultFor }),
+    })),
+  );
+
+/**
+ * The one selection the planner and the runtime resolver share: the contribution
+ * graph's candidates (including host-injected authorities), or the fallback set
+ * only where no graph was built. Selection never loads or contacts an authority.
+ */
+export const selectContributedCertificateAuthority = <
+  Candidate extends CertificateAuthorityCandidateDefinition,
+>(
+  graph: { readonly certificateAuthorities: ReadonlyArray<Candidate> } | undefined,
+  platform: HostPlatform,
+  fallback: () => ReadonlyArray<Candidate>,
+): Result.Result<Candidate, SelectionError> =>
+  selectCertificateAuthorityCandidate(graph?.certificateAuthorities ?? fallback(), platform);
+
 export interface CertificateAuthorityResolverShape {
   readonly resolve: Effect.Effect<
     Context.Service.Shape<typeof CertificateAuthority>,
@@ -87,7 +113,7 @@ export class CertificateAuthorityResolver extends Context.Service<
       const downloader = yield* Downloader;
       const processRunner = yield* ProcessRunner;
       const scope = yield* Scope.Scope;
-      const selected = selectCertificateAuthorityCandidate(graph.certificateAuthorities, paths.platform);
+      const selected = selectContributedCertificateAuthority(graph, paths.platform, () => []);
       const acquire: Effect.Effect<
         Context.Service.Shape<typeof CertificateAuthority>,
         SelectionError | PluginLoadError

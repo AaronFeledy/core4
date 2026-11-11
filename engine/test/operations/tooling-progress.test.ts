@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { LandoEvent as PublishedEvent } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
+import { Effect, Schema } from "effect";
 import { beginLiveToolingTree } from "../../src/operations/tooling-progress.ts";
 
 const collectPublisher = () => {

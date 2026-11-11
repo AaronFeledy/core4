@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
-
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
@@ -19,6 +17,7 @@ import {
 } from "@lando/sdk/schema";
 import { BuildOrchestrator, PathsService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer } from "effect";
 
 import {
   PHP_PREREQUISITES_STEP_ID,

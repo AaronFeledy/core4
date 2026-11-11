@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { scopedLandofileRuntimeInputs } from "@lando/engine/services/landofile-live";
 import { Downloader, OnlineAcquisition } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { retainedSourceTransports } from "../../src/recipes/runtime-sources.ts";
 import { baseEngineCompositionInputs } from "../../src/runtime/engine-composition.ts";
 

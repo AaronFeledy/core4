@@ -1,20 +1,18 @@
-import { Effect, Result } from "effect";
-
 import type { ValidationIssue } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 import { collectDocumentDiagnostics } from "./diagnostics.ts";
 import { type ConfigDocument, persistMutation, resolveDocumentEffect as resolve } from "./document.ts";
 import { parsePathSegments, setAtPath } from "./dot-path";
 import { type ConfigSchemaName, configKeySummary } from "./key-schema.ts";
 import { prepareConfigEdit } from "./prepare-edit";
 import { parseTypedValue } from "./value-parse";
-import { authoredTreesEqual } from "./yaml-verify.ts";
-
 import {
   type ValueType,
   applySetMutation,
   applyUnsetMutation,
   writeValidationErrorFromIssues,
 } from "./write-core";
+import { authoredTreesEqual } from "./yaml-verify.ts";
 
 export {
   type ConfigDocument,

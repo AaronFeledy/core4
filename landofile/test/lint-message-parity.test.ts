@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ConfigLintViolation, LandofileShape } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
-import { violationsFromSchema } from "../src/lint-violations.ts";
 import { lintLandofile, mergeLintFindings } from "../src/lint.ts";
+import { violationsFromSchema } from "../src/lint-violations.ts";
 import { validationErrorFromCause } from "../src/validation.ts";
 
 const TOOLING_TASK_EXPECTATION = "Expected false, a non-empty command string, or a tooling task object";

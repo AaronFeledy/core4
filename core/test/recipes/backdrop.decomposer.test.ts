@@ -6,6 +6,7 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { backdropSettings } from "../../src/recipes/builtin/backdrop/settings.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: backdropDecomposer,
   defaults: backdropDefaults,

@@ -2,12 +2,12 @@ import { LandofileValidationError, NotImplementedError } from "@lando/sdk/errors
 import {
   type PortablePath,
   type ServiceConfig,
+  type ValidationIssuePath,
   containerDestinationRefusalMessage,
   landoCacheStoreName,
   parseContainerDestination,
+  validationIssue,
 } from "@lando/sdk/schema";
-
-import { type ValidationIssuePath, validationIssue } from "@lando/sdk/schema";
 import { kebab } from "./naming.ts";
 import type { AuthoredStorageInfo } from "./service-types.ts";
 

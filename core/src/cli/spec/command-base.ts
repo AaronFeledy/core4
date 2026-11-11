@@ -1,4 +1,6 @@
 export {
+  CommandRegistrationError,
+  EmptyResultSchema,
   type ExecutableCommandInput,
   type ExecutableCommandNamespace,
   type ExecutableCommandRenderContext,
@@ -8,8 +10,6 @@ export {
   type LandoCommandNamespace,
   type LandoCommandSpec,
   type LandoTopLevelAlias,
-  CommandRegistrationError,
-  EmptyResultSchema,
   extractSpecAbortSignal,
   formatCommandError,
   isCanonicalLandoCommandId,

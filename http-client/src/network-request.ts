@@ -24,6 +24,11 @@ interface RequestNetwork {
   readonly transports: HttpTransports;
   readonly trust: ResolvedNetworkTrust | undefined;
   readonly systemCaPems: ReadonlyArray<string>;
+  /** Development CA merged only into local HTTPS hops. Does not change proxy policy. */
+  readonly localCa?: {
+    readonly pem: string;
+    readonly isLocalHost: (hostname: string) => boolean;
+  };
 }
 
 export interface NetworkRequest {
@@ -61,34 +66,48 @@ export const requestWithNetworkTrust = async (
     headers.set("host", url.host);
   }
   let body = request.body;
-  const { trust, transports, systemCaPems } = network;
+  const { trust, transports, systemCaPems, localCa } = network;
   const startsLoopback = shouldBypassProxy(url.href, []);
   const defaultCa = process.platform === "win32" && systemCaPems.length > 0 ? systemCaPems : undefined;
-  const ca =
-    trust === undefined
-      ? defaultCa
-      : trust.trustHost && trust.caPems.length === 0
-        ? undefined
-        : trust.trustHost
-          ? [...systemCaPems, ...trust.caPems]
-          : trust.caPems;
+  const extraPem = (hop: URL): readonly string[] =>
+    hop.protocol === "https:" && localCa !== undefined && localCa.isLocalHost(hop.hostname)
+      ? [localCa.pem]
+      : [];
+  const bareCaFor = (hop: URL): readonly string[] | undefined => {
+    const extra = extraPem(hop);
+    if (extra.length === 0) return defaultCa;
+    return [...systemCaPems, ...extra];
+  };
+  const trustFor = (hop: URL): ResolvedNetworkTrust | undefined => {
+    if (trust === undefined) return undefined;
+    const extra = extraPem(hop);
+    return extra.length === 0 ? trust : { ...trust, caPems: [...trust.caPems, ...extra] };
+  };
+  const caFor = (hop: URL): readonly string[] | undefined => {
+    const hopTrust = trustFor(hop);
+    if (hopTrust === undefined) return bareCaFor(hop);
+    if (hopTrust.trustHost && hopTrust.caPems.length === 0) return undefined;
+    return hopTrust.trustHost ? [...systemCaPems, ...hopTrust.caPems] : hopTrust.caPems;
+  };
 
   for (let redirects = 0; ; redirects += 1) {
     signal.throwIfAborted();
+    const hopTrust = trustFor(url);
+    const bareCa = bareCaFor(url);
     const init: BunFetchRequestInit =
-      trust === undefined
+      hopTrust === undefined
         ? {
             ...(shouldBypassProxy(url.href, []) ? { proxy: false as const } : {}),
-            ...(defaultCa === undefined ? {} : { tls: { ca: [...defaultCa] } }),
+            ...(bareCa === undefined ? {} : { tls: { ca: [...bareCa] } }),
           }
-        : fetchInitForNetwork(url.href, trust, systemCaPems);
+        : fetchInitForNetwork(url.href, hopTrust, systemCaPems);
     const response =
       target !== undefined
         ? await transports.direct(url, {
             method,
             headers,
             signal,
-            ca,
+            ca: caFor(url),
             body,
             connectionAddress: target.address,
           })

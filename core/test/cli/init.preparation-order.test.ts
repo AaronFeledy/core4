@@ -6,8 +6,7 @@ import { Effect } from "effect";
 import { loadRecipeEncoder, prepareInitApp } from "../../src/cli/commands/init-preparation.ts";
 import * as decomposer from "../../src/recipes/compiled-decomposer.ts";
 import * as assets from "../../src/recipes/init-pipeline/files.ts";
-import { initAppWithProcessRunner as initApp } from "../_support/private-file-access.ts";
-import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { initAppWithProcessRunner as initApp, ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];
 afterEach(async () => {

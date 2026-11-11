@@ -1,6 +1,3 @@
-import { Effect, Schema } from "effect";
-import { satisfies, subset, valid, validRange } from "semver";
-
 import { causeMessage } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type {
@@ -9,6 +6,8 @@ import type {
   ServiceType,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { satisfies, subset, valid, validRange } from "semver";
 import {
   ServiceConfigIssue,
   rootIdentity,

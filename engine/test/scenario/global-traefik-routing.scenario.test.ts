@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { containerHostConfigFragment } from "@lando/container-runtime/plan";
 
 import { dockerCapabilitiesForPlatform } from "@lando/provider-docker";
 import { providerLandoCapabilitiesForPlatform } from "@lando/provider-lando";
 import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
+import { globalServices } from "@lando/proxy-traefik";
 import { GlobalServiceCapabilityError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -16,9 +17,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService } from "@lando/sdk/services";
-
-import { containerHostConfigFragment } from "@lando/container-runtime/plan";
-import { globalServices } from "@lando/proxy-traefik";
+import { Effect, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { validateGlobalServiceContributions } from "../../src/services/global-services.ts";
@@ -309,6 +308,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
     });
   });
 });
+
 import { planTestLandofile } from "../compiled-landofile.ts";
 
 test.each(["127.0.0.1", "192.0.2.24", "0.0.0.0", "::"])(

@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit, Result, Schema } from "effect";
-
 import {
   AmbiguousCertificateAuthoritiesError,
   AppResolveError,
@@ -16,6 +13,7 @@ import {
   PluginLoadError,
   ProviderCapabilityError,
 } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Result, Schema } from "effect";
 
 const deprecationNoticeFixture = {
   since: "4.1.0",

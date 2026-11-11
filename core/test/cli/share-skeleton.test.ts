@@ -1,15 +1,13 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, type Scope } from "effect";
-
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/core/services";
 import { TestRuntimeProvider, TestTunnelService } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { AppId, ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
+import { Effect, Layer, type Scope } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const serviceTarget: TunnelTarget = {

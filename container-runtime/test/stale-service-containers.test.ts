@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -9,6 +7,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { DATA_HELPER_ROLE, ROLE_LABEL } from "../src/labels.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
@@ -17,8 +16,7 @@ import {
   listLabeledServiceContainers,
   selectStaleServiceContainers,
 } from "../src/podman/stale-service-containers.ts";
-import { commonContainerLabels, serviceContainerName } from "./support/service-creation.ts";
-import { bringUp } from "./support/service-creation.ts";
+import { bringUp, commonContainerLabels, serviceContainerName } from "./support/service-creation.ts";
 
 const providerId = ProviderId.make("docker");
 const ctx = { providerId: "docker", remediation: "retry", env: {} } as const;

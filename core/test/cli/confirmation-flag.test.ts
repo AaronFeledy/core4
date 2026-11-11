@@ -5,13 +5,13 @@ import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.t
 import { appsScratchDestroySpec } from "../../src/cli/command-specs/apps/scratch/destroy.ts";
 import { flagDefinitionsForCommand } from "../../src/cli/compiled-argv.ts";
 import { validateCommandCliFlags } from "../../src/cli/flag-value-validation.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import {
   pluginFlagDefinitions,
   pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "../../src/cli/run-plugin-owned-command.ts";
-import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const DESTRUCTIVE_VERBS = new Set([

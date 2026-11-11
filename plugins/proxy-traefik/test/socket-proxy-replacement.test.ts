@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect } from "effect";
-
 import { InteractionCancelledError } from "@lando/sdk/errors";
 import type {
   PrivilegeService,
@@ -8,6 +6,7 @@ import type {
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
 import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";

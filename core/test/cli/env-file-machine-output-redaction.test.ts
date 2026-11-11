@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
+import { Effect, Layer, Schema } from "effect";
 
 import { appConfigMcpSpecs, appConfigSpec } from "../../src/cli/command-specs/app/config/index.ts";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";

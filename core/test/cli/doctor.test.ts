@@ -3,15 +3,13 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { type Context, Effect, Layer, Schema } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { plugin as mutagenPlugin } from "@lando/file-sync-mutagen";
 import { makeLandoPaths } from "@lando/paths";
 import { plugin as podmanPlugin } from "@lando/provider-podman";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
@@ -21,6 +19,7 @@ import {
   ProviderId,
   StreamFrame,
 } from "@lando/sdk/schema";
+import { type Context, Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import {
   type DoctorCheck,

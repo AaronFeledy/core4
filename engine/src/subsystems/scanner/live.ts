@@ -1,7 +1,5 @@
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Layer } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import {
   type AppId,
@@ -19,8 +17,8 @@ import {
   UrlScanner,
   type UrlScannerShape,
 } from "@lando/sdk/services";
-
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
 import { observedPublicationConnection, serviceStateOf } from "../../operations/service-connections.ts";
 import { endpointScanPolicy } from "../../services/endpoint-scan.ts";
@@ -38,10 +36,10 @@ import {
 
 export {
   SCANNER_ID,
-  defaultUrlScanConfig,
   type ScanSourceEndpoint,
   type UrlScanConfig,
   type UrlScannerDeps,
+  defaultUrlScanConfig,
 } from "./scan-target.ts";
 
 const resolveRedactor = Effect.gen(function* () {
@@ -98,15 +96,14 @@ export const makeUrlScanner = (
           candidates.map((entry) => [`${entry.target.service}/${entry.target.url}`, entry]),
         ).values(),
       ];
+      const scanDeps = {
+        ...deps,
+        ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }),
+      };
       const scanned = yield* Effect.forEach(
         targets,
         ({ target, config }) =>
-          scanTarget(
-            { ...deps, ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }) },
-            config,
-            redactor,
-            { service: target.service, url: target.url },
-          ),
+          scanTarget(scanDeps, config, redactor, { service: target.service, url: target.url }),
         { concurrency: 4 },
       );
       return { appId, endpoints: scanned };

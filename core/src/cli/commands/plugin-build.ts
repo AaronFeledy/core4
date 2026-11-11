@@ -1,7 +1,6 @@
 import { mkdir, open, rm } from "node:fs/promises";
 import { join } from "node:path";
-
-import { Cause, DateTime, Effect, Exit, Schema } from "effect";
+import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 
 import {
   annotateFailureRole,
@@ -11,8 +10,7 @@ import {
   resolveCommandCompletion,
 } from "@lando/sdk/command-result";
 import { FileIoError, PluginManifestError } from "@lando/sdk/errors";
-
-import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
+import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 import { bunSelfRun } from "./bun-self-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import {

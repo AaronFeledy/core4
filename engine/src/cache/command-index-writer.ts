@@ -12,13 +12,6 @@ import { DateTime, Effect } from "effect";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";
 import {
-  type AppCommandCacheSource,
-  isMissingFile,
-  localIncludePathsForLandofile,
-  resolveAppCommandCacheSource,
-  sourceContentHash,
-} from "./command-index-source.ts";
-import {
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
   type CommandIndexEntry,
@@ -28,9 +21,15 @@ import {
   encodeAppCommandIndex,
   normalizeAppCommandAliasPolicy,
 } from "./command-index.ts";
+import {
+  type AppCommandCacheSource,
+  isMissingFile,
+  localIncludePathsForLandofile,
+  resolveAppCommandCacheSource,
+  sourceContentHash,
+} from "./command-index-source.ts";
 import { type CommandScriptFingerprint, commandScriptFingerprints } from "./command-script-freshness.ts";
 import { appCommandCachePath, appToolingCompilationCachePath, resolveUserCacheRoot } from "./paths.ts";
-export { readDataIdentityFingerprint } from "./command-index-source.ts";
 
 export {
   type AppCommandCacheReadResult,
@@ -38,6 +37,7 @@ export {
   readAppCommandCacheForCwdDetailed,
   readFreshAppCommandCacheForCwd,
 } from "./command-index-reader.ts";
+export { readDataIdentityFingerprint } from "./command-index-source.ts";
 /**
  * Drop app tooling-compilation caches under `<userCacheRoot>/apps/tooling-*`.
  * Plugin-set changes (install/link/unlink/remove/trust) call this so the next

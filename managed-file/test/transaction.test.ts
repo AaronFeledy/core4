@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmod, lstat, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option, type Scope } from "effect";
 
 import { ManagedFileTransactionError } from "../src/transaction.ts";

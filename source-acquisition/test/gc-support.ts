@@ -263,4 +263,4 @@ export const ageEntryRelativeToClock = async (
   await setEntryMtimeMs(root, kind, id, clockNowMs - ageMs);
 };
 
-export type { SourceAcquisitionError, SourceGcReport, GcOptions, LockKeysResult, SourceStore };
+export type { GcOptions, LockKeysResult, SourceAcquisitionError, SourceGcReport, SourceStore };

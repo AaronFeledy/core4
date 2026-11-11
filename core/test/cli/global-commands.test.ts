@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
-
 import { publicationObservationFromInspect } from "@lando/container-runtime/podman/inspect";
 import { invokeOperation } from "@lando/core/cli/operations";
 import {
@@ -54,15 +52,6 @@ import {
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
-import { RedactionService } from "@lando/redaction/service";
-import { PreAppStartEvent } from "@lando/sdk/events";
-import { makeTestRouterService } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import { testStateStoreLayer } from "../_support/landofile-layer.ts";
-import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-
 import * as AppCacheService from "@lando/engine/cache/service";
 import { readGlobalPolicy } from "@lando/engine/global-app/enablement";
 import { withGlobalMutation } from "@lando/engine/global-app/mutation";
@@ -80,10 +69,16 @@ import { globalStop } from "@lando/engine/operations/global-stop";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
+import { RedactionService } from "@lando/redaction/service";
+import { PreAppStartEvent } from "@lando/sdk/events";
+import { makeTestRouterService } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
 import { renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
@@ -91,6 +86,8 @@ import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 interface ApplyCall {
   readonly environments: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -197,10 +194,8 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
     process.env.LANDO_USER_CONF_ROOT = confRoot;
     return await run(dataRoot);
   } finally {
-    // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
     if (previousData === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousData;
-    // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
     if (previousConf === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConf;
     await rm(dataRoot, { recursive: true, force: true });

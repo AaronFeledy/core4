@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import {
   type GlobalListResult,
   GlobalListResultSchema,
@@ -7,6 +5,7 @@ import {
 } from "@lando/engine/operations/global-list";
 import { renderGlobalListResult } from "../../../commands/meta/global-list";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 
 export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
   resultSchema: GlobalListResultSchema,

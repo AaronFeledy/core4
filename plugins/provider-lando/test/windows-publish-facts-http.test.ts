@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result } from "effect";
-
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { AbsolutePath } from "@lando/sdk/schema";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
-
+import { Effect, Result } from "effect";
 import type { PodmanMachineRunner } from "../src/setup.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const networkId = "3aedd499152655a20462dcc5c661a54070e0677a5a1b40ab1a323300bf0dd0a1";
 const networkName = "lando-vm-generation";
@@ -47,11 +45,7 @@ const machine = {
 } as PodmanMachineRunner;
 
 const makeHarness = async (
-  bodies: {
-    readonly container?: string;
-    readonly network?: string;
-    readonly networkList?: string;
-  } = {},
+  bodies: { readonly container?: string; readonly network?: string; readonly networkList?: string } = {},
 ) => {
   const calls: string[] = [];
   const api = {

@@ -1,9 +1,8 @@
-import { Schema } from "effect";
-
 import { isMcpDestructiveCommand } from "@lando/mcp/allowlist";
 import { computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
+import { Schema } from "effect";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
 export const McpListToolSchema = Schema.Struct({

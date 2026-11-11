@@ -1,11 +1,8 @@
+import { expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, statSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Layer, Option } from "effect";
-
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { makeLandoPaths } from "@lando/paths";
 import {
@@ -18,6 +15,7 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, planAppIdentity } from "
 import type { EphemeralRunSpec, ExecResult, StateStoreShape } from "@lando/sdk/services";
 import { PathsService, StateStore } from "@lando/sdk/services";
 import * as DiskStateStore from "@lando/state-store/service";
+import { Cause, DateTime, Effect, Exit, Layer, Option } from "effect";
 
 import type { SqlCommandDeps } from "../src/command-types.ts";
 import { packSqliteTar, unpackSqliteTar } from "../src/sqlite-archive.ts";

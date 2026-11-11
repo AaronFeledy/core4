@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import type { CreateRedactorOptions, RedactionProfile } from "@lando/sdk/secrets";
 
 import { createRedactor } from "@lando/sdk/secrets";
-import type { CreateRedactorOptions, RedactionProfile } from "@lando/sdk/secrets";
 import { type RedactionContractHarness, SECRET_SOUP_FIXTURE, runRedactionContract } from "@lando/sdk/test";
+import { Effect, Exit } from "effect";
 
 const makeRedactor = (profile: RedactionProfile, options?: CreateRedactorOptions) =>
   createRedactor(profile, options);

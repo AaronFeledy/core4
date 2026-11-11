@@ -1,5 +1,3 @@
-import { Context, Effect, Inspectable, Layer, Redactable } from "effect";
-
 import {
   type CreateRedactorOptions,
   REDACTED,
@@ -10,6 +8,7 @@ import {
   type TranscriptRedactionEnv,
   createRedactor,
 } from "@lando/sdk/secrets";
+import { Context, Effect, Inspectable, Layer, Redactable } from "effect";
 
 import { expandRedactionValues } from "./exact-values.ts";
 import { collectSecretEnvValues } from "./heuristic-values.ts";

@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect } from "effect";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 
 import type { LandofileShape } from "@lando/sdk/schema";
-
-import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { Effect } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const sourceCli = resolve(repoRoot, "core/bin/lando.ts");

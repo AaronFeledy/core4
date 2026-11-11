@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Queue, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Queue, Schema } from "effect";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 

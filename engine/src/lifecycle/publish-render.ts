@@ -1,12 +1,11 @@
+import type { RedactionServiceShape } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
-import { type Context, Effect, Schema } from "effect";
 
 import { EventError } from "@lando/sdk/errors";
 import { RenderEvent } from "@lando/sdk/events";
 import type { PublishRender } from "@lando/sdk/plugins";
 import type { EventService } from "@lando/sdk/services";
-
-import type { RedactionServiceShape } from "@lando/redaction/service";
+import { type Context, Effect, Schema } from "effect";
 
 export const makePublishRender = (
   events: Context.Service.Shape<typeof EventService>,

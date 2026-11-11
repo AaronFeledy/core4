@@ -1,6 +1,36 @@
-import { type Context, Effect, Layer, Result, Schema } from "effect";
-import type * as HttpClient from "effect/http/HttpClient";
-
+import { bundledPluginModules } from "@lando/engine/composition";
+import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import type { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
+import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";
+import {
+  type BootstrapLifecycleTracker,
+  makeBootstrapLifecycleTracker,
+} from "@lando/engine/runtime/bootstrap-lifecycle";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import type { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
+import type {
+  RuntimeLayer as EngineRuntimeLayer,
+  RuntimeLayerFactory,
+} from "@lando/engine/runtime/runtime-layer-factory";
+import {
+  LandoRuntimeOptions,
+  type NormalizedPluginPolicy,
+  bootstrapError,
+  collectEmbeddingPluginLayers,
+  normalizeLibraryRendererMode,
+  normalizePluginPolicy,
+  resolveRuntimeLogging,
+  rootOverridesFromConfig,
+} from "@lando/engine/runtime/runtime-options";
+import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
+import type { GlobalConfigSnapshot, GlobalConfigSources } from "@lando/engine/services/config";
+import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
+import type { EventDeliveryMetrics, EventDispatchControl } from "@lando/engine/services/event-service";
+import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
+import type { RedactionService } from "@lando/redaction/service";
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
   AppPlanSanitizer,
@@ -39,43 +69,10 @@ import type {
   Telemetry,
   ToolingEngine,
 } from "@lando/sdk/services";
-
-import { bundledPluginModules } from "@lando/engine/composition";
-import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import type { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
-import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
-import type { BootstrapLayerInputs } from "@lando/engine/runtime/bootstrap-layer-support";
-import {
-  type BootstrapLifecycleTracker,
-  makeBootstrapLifecycleTracker,
-} from "@lando/engine/runtime/bootstrap-lifecycle";
-import { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import type { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
-import { installSignalHandlers } from "@lando/engine/runtime/interrupt";
-import type {
-  RuntimeLayer as EngineRuntimeLayer,
-  RuntimeLayerFactory,
-} from "@lando/engine/runtime/runtime-layer-factory";
-import {
-  LandoRuntimeOptions,
-  type NormalizedPluginPolicy,
-  bootstrapError,
-  collectEmbeddingPluginLayers,
-  normalizeLibraryRendererMode,
-  normalizePluginPolicy,
-  resolveRuntimeLogging,
-  rootOverridesFromConfig,
-} from "@lando/engine/runtime/runtime-options";
-import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import type { GlobalConfigSnapshot, GlobalConfigSources } from "@lando/engine/services/config";
-import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
-import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
-import type { EventDispatchControl } from "@lando/engine/services/event-service";
-import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
-import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { type Context, Effect, Layer, Result, Schema } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-service";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";

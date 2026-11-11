@@ -1,6 +1,3 @@
-import type { LandofileShape } from "@lando/sdk/schema";
-import { Result } from "effect";
-
 import type {
   BunShellScriptInspection,
   BunShellScriptProblem,
@@ -9,6 +6,8 @@ import type {
 import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import type { LandofileShape } from "@lando/sdk/schema";
+import { Result } from "effect";
 import type { EffectiveTooling } from "../planner/effective-tooling.ts";
 import type { CommandIndexEntry } from "./command-index.ts";
 import { toolingRunSummary } from "./tooling-run-summary.ts";

@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { resolveGeneratedGuideTestRoot } from "../../../scripts/build-guide-scenarios.ts";
 

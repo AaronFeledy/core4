@@ -73,6 +73,7 @@ test("excludes only exact published defaults when collecting secret environment 
   const sourceEnv = {
     DB_PASSWORD: "lando",
     MINIO_SECRET: "landolando",
+    MSSQL_SA_PASSWORD: "Landolando1",
     UPPER_PASSWORD: "LANDO",
     PADDED_PASSWORD: " lando ",
     SUFFIX_PASSWORD: "lando-custom",
@@ -128,11 +129,29 @@ test("masks explicitly resolved published defaults", async () => {
   expect(redactor.redactString("hello lando world")).toBe("hello [redacted] world");
 });
 
-test("preserves pattern and deep-key masking for published defaults", () => {
+test("shows an authored published default while other pattern classes still mask", () => {
   // Given
   const redactor = createStandaloneRedactor("secrets", { sourceEnv: { DB_PASSWORD: "lando" } });
   // When
   const output = redactor.redactValue({ password: "lando", output: "password=lando http://user:lando@host" });
   // Then
-  expect(output).toEqual({ password: "[redacted]", output: "password=[redacted] http://[redacted]@host" });
+  expect(output).toEqual({ password: "lando", output: "password=lando http://[redacted]@host" });
 });
+
+test.each(["secrets", "telemetry", "transcript"] as const)(
+  "shows a published default under a secret-named key for the %s profile unless registered",
+  async (profile) => {
+    // Given
+    const service = makeRedactionService();
+    const redactor = await Effect.runPromise(service.forProfile(profile));
+    // When
+    const shown = redactor.redactValue({ password: "lando", rootPassword: "landolando" });
+    // Then
+    expect(shown).toEqual({ password: "lando", rootPassword: "landolando" });
+    // When the same bytes are registered as an explicit secret value.
+    await Effect.runPromise(service.registerValues(["lando", "landolando"]));
+    const masked = redactor.redactValue({ password: "lando", rootPassword: "landolando" });
+    // Then
+    expect(masked).toEqual({ password: "[redacted]", rootPassword: "[redacted]" });
+  },
+);

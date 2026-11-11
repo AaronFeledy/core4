@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema, Stream } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
 import { CliCommandRunEvent, type LandoEvent } from "@lando/sdk/events";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -17,9 +14,10 @@ import {
   PluginRegistry,
   StateStore,
 } from "@lando/sdk/services";
-
-import { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Schema, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { layer as subscriberLayer } from "../../src/lifecycle/subscribers.ts";
 import { EventDispatchControl, type EventDispatchRegistration } from "../../src/services/event-service.ts";

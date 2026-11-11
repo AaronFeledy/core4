@@ -3,13 +3,14 @@ import {
   type SocketHttpErrorKind,
   type SocketReadSystemCode,
 } from "./transport-error.ts";
+
+export { socketHttpConnection } from "./socket-http-connection.ts";
 export {
   ContainerTransportError,
   type SocketHttpErrorKind,
   type SocketReadSystemCode,
   runtimeRemediation,
 } from "./transport-error.ts";
-export { socketHttpConnection } from "./socket-http-connection.ts";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();

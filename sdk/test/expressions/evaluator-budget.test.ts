@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import {
   ExpressionContext,
   type ExpressionNode,
@@ -10,6 +8,7 @@ import {
   evaluateTemplateEither,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
+import { Effect, Result, Schema } from "effect";
 
 const budget = { maxSteps: 100000, maxDepth: 100, maxOutputBytes: 1000000, maxCollectionSize: 10000 };
 const parseTemplate = (source: string) => {

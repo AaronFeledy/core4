@@ -64,4 +64,5 @@ test("planApp resolves each service exactly once", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
 import { compileTestLandofile } from "../compiled-landofile.ts";

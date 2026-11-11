@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { layer as makeProviderLayer } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { withPing } from "./podman-api-fixtures.ts";
 
 describe("provider-podman isAvailable", () => {

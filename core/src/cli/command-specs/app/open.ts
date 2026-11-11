@@ -1,5 +1,3 @@
-import { Flags } from "../../spec/metadata";
-
 import {
   type OpenAppResult,
   OpenAppResultSchema,
@@ -8,6 +6,7 @@ import {
   renderOpenAppResult,
 } from "../../commands/open";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { Flags } from "../../spec/metadata";
 
 export const openSpec: LandoCommandSpec<OpenAppResult> = {
   resultSchema: OpenAppResultSchema,

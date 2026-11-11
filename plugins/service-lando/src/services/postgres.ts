@@ -1,9 +1,10 @@
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { Effect, Schema } from "effect";
-
 import { PortablePath, type ServiceConfig, type ServiceCreds, ServiceName } from "@lando/sdk/schema";
+import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { dataNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
+import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
@@ -11,10 +12,6 @@ import {
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
-import { dataNameFor } from "../app-name.ts";
-import { connectionFor } from "./_connection-helpers.ts";
-import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
@@ -37,8 +34,6 @@ const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
 export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.conf");
 
-const defaultPassword = (appId: string): string => `lando-${sha256Hex(appId).slice(0, 16)}`;
-
 const credsFor = (input: {
   readonly appName?: string | undefined;
   readonly dataName?: string | undefined;
@@ -51,21 +46,11 @@ const credsFor = (input: {
     family: "postgres",
     defaults: {
       user: "lando",
-      password: defaultPassword(appName),
+      password: DEFAULT_PASSWORD,
       database: appName,
     },
-    ...(authored === undefined
-      ? {}
-      : {
-          authored: {
-            user: authored.user,
-            password: authored.password,
-            database: authored.database,
-            ...(authored.rootPassword === undefined ? {} : { rootPassword: authored.rootPassword }),
-          },
-        }),
+    ...(authored === undefined ? {} : { authored }),
     ...(input.service.environment === undefined ? {} : { environment: input.service.environment }),
-    ...(input.service.database === undefined ? {} : { topLevelDatabase: input.service.database }),
   });
 };
 
@@ -107,6 +92,7 @@ export const postgresServiceFeature: ServiceFeatureDefinition = {
   id: POSTGRES_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: claimsCreds(POSTGRES_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(

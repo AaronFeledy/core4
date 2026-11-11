@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { Schema } from "effect";
-
 import type { RecipeProducer } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import {
   type AppConfigMigrateResult,
   AppConfigMigrateResultSchema,

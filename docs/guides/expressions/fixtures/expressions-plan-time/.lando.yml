@@ -8,7 +8,8 @@ services:
       APP_LABEL: "{{ default(env.LANDO_EXPRESSIONS_UNSET, 'dflt') }}-{{ app.name }}"
   database:
     type: "mariadb:11.4"
-    database: "{{ app.slug }}"
+    creds:
+      database: "{{ app.slug }}"
 tooling:
   whoami:
     service: app

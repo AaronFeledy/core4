@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import {
   AppId,
   AppRouteOwner,
@@ -17,6 +15,7 @@ import {
   makeTestRouterService,
   runRouterServiceContractSuite,
 } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 const OWNER_KEY = "a".repeat(64);
 const otherOwnerKey = "b".repeat(64);

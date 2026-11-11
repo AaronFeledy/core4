@@ -15,8 +15,6 @@
  * service and renderer resolve from the same environment the command runs in.
  */
 
-import { Cause, Effect, Exit, Layer, Option, type Scope } from "effect";
-
 import { InteractionCancelledError } from "@lando/sdk/errors";
 import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
 import {
@@ -28,6 +26,7 @@ import {
   Renderer,
   type SelectSpec,
 } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Layer, Option, type Scope } from "effect";
 
 /** Promise-shaped prompting surface for plain-async call sites. */
 export interface InteractionPrompter {

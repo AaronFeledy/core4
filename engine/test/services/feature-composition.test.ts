@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Option } from "effect";
-
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Cause, Effect, Option } from "effect";
 import { type BaseSeed, type ComposeServiceInput, composeService } from "../../src/services/feature.ts";
 
 const base: BaseSeed = {

@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import type { AbsolutePath, AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
+import { Effect } from "effect";
 
 export interface BuildTaskProgress {
   readonly parentId: string;

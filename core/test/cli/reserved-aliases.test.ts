@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { CommandAliasConflictError } from "@lando/sdk/errors";
-
 import { reservedTopLevelAliasOwner } from "@lando/engine/operations/reserved-aliases";
+import { CommandAliasConflictError } from "@lando/sdk/errors";
 import { EmptyResultSchema, validateCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 describe("reservedTopLevelAliasOwner", () => {

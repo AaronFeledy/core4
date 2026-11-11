@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
-import { override, reset, withValueOrigins } from "@lando/sdk/landofile";
+import { override, withValueOrigins } from "@lando/sdk/landofile";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import {
@@ -117,7 +117,6 @@ test("committed proof walks authored directives and list env without proving unr
     services: {
       db: {
         creds: override({ password: "wordpress" }),
-        password: reset(),
         environment: override(["API_TOKEN=list-private", "PUBLIC=visible"]),
         labels: { "api.secret": "label-private" },
         extensions: { compose: { labels: { "api.token": "compose-private" } } },

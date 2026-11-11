@@ -1,5 +1,11 @@
+import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
+import type { LandofileShape } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
+import { CommandRegistry, LandofileService, PathsService, type RegisteredCommand } from "@lando/sdk/services";
 /**
  * `CommandRegistry` Live Layer.
  *
@@ -24,17 +30,9 @@ import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/
  * `RegisteredCommand[]`.
  */
 import { Effect, Layer } from "effect";
-
-import type { LandofileShape } from "@lando/sdk/schema";
-import { CommandRegistry, LandofileService, PathsService, type RegisteredCommand } from "@lando/sdk/services";
-
-import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
-import { findAppRoot } from "@lando/landofile/discovery";
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
-import { createRedactor } from "@lando/sdk/secrets";
 import { compileInspectedAppCommands } from "../cache/command-compiler.ts";
-import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
+import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
 import { fingerprintsFromInspection } from "../cache/command-script-freshness.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
 import { PluginContributionGraph } from "../plugins/contribution-graph.ts";

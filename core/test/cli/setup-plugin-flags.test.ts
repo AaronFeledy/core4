@@ -1,11 +1,10 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
-
 import { builtInCommandCatalog } from "../../src/cli/built-in-command-registry.ts";
-import { SETUP_COMMAND_FLAGS } from "../../src/cli/command-specs/meta/setup-command-flags.ts";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
+import { SETUP_COMMAND_FLAGS } from "../../src/cli/command-specs/meta/setup-command-flags.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/generated/setup-plugin-flags.ts";
 

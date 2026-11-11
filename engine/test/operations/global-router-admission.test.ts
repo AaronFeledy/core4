@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer, Ref, Schema } from "effect";
-
 import { ServiceName, ServicePlan } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
+import { Effect, Layer, Ref, Schema } from "effect";
 
 import {
   type GlobalRouterStartupPlan,

@@ -1,4 +1,4 @@
-import { constants, chmod, copyFile, link, rename, rm, stat } from "node:fs/promises";
+import { chmod, constants, copyFile, link, rename, rm, stat } from "node:fs/promises";
 import { Effect } from "effect";
 import type { UpdateError, UpdatePermissionError } from "./errors.ts";
 

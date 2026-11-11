@@ -7,10 +7,10 @@ import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { type PendingStart, matchesRecordedTargets } from "./accelerated-start-record.ts";
+import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { acquireFileSyncEngine, requireFileSyncProvider } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
-import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 

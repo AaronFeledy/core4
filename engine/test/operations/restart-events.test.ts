@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
-
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { RouterService, ToolingEngine, physicalVolumeLockKey } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
@@ -60,11 +59,17 @@ const eventPlan = () =>
     },
   );
 
-const restartHarness = (failure?: string) => {
+const restartHarness = (
+  failure?: string,
+  providerOverrides?: NonNullable<Parameters<typeof makeHarness>[0]>["providerOverrides"],
+) => {
   const executed: string[] = [];
   const routeRemovals: string[] = [];
   const plannedApp = eventPlan();
-  const harness = makeHarness({ plannedApp });
+  const harness = makeHarness({
+    plannedApp,
+    ...(providerOverrides === undefined ? {} : { providerOverrides }),
+  });
   const operation = restartApp().pipe(
     Effect.provideService(ToolingEngine, recordingEngine(executed, failure)),
     Effect.provideService(RouterService, {
@@ -197,6 +202,17 @@ describe("restart lifecycle brackets", () => {
     expect(harness.executed).toEqual(
       ["pre-init", "post-init", "pre-restart", "pre-stop", "post-stop", "pre-start"].map(step),
     );
+    expect(harness.routeRemovals).toEqual([]);
+  });
+
+  test("restart of an idle runtime retains published routes", async () => {
+    // Given an idle runtime
+    const harness = restartHarness(undefined, { getStatus: Effect.succeed({ state: "idle" }) });
+    // When the app restarts
+    await Effect.runPromise(harness.operation);
+    // Then its internal stop withdrew no routes
+    expect(byTag(harness.events, "post-restart")).toHaveLength(1);
+    expect(harness.routeRemovals).toEqual([]);
   });
 
   test("post-restart failure propagates without removing started app routes", async () => {

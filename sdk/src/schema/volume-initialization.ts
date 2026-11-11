@@ -1,5 +1,4 @@
-import { Struct } from "effect";
-import { Schema } from "effect";
+import { Schema, Struct } from "effect";
 
 import { VolumeIdentity } from "./volume-identity.ts";
 

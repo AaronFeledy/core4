@@ -273,6 +273,121 @@ describe("retained lint snapshot", () => {
     ]);
   });
 
+  const composeWeb = "name: snapshot\nservices:\n  web:\n    type: compose\n    image: nginx:1.27\n";
+  const findings = async () =>
+    (await lint()).result.violations.map(({ rule, path, source }) => ({
+      rule,
+      path,
+      file: source !== undefined && "file" in source ? source.file : undefined,
+    }));
+
+  test.each([
+    {
+      name: "long-form env_file entry",
+      body: "    env_file:\n      - path: ./a.env\n        required: false\n",
+      paths: [
+        ["services", "web", "env_file", 0, "path"],
+        ["services", "web", "env_file", 0, "required"],
+      ],
+    },
+    {
+      name: "build cache_from",
+      body: "    build:\n      context: .\n      cache_from:\n        - x\n",
+      paths: [["services", "web", "build", "cache_from"]],
+    },
+  ])("reports a rejected $name once, not again as a schema error (#2248)", async ({ body, paths }) => {
+    // Given
+    await write(".lando.yml", `${composeWeb}${body}`);
+
+    // When
+    const violations = (await lint()).result.violations;
+
+    // Then
+    expect(violations.map(({ rule, path }) => [rule, path])).toEqual(
+      paths.map((path) => ["landofile.compose-rejection", path]),
+    );
+  });
+
+  test("keeps an independent finding beside a pruned list entry, including an authored empty object", async () => {
+    // Given
+    await write(".lando.yml", `${composeWeb}    env_file:\n      - path: ./a.env\n      - {}\n`);
+
+    // When
+    const violations = (await lint()).result.violations;
+
+    // Then
+    expect(violations.map(({ rule, path }) => [rule, path])).toEqual([
+      ["landofile.compose-rejection", ["services", "web", "env_file", 0, "path"]],
+      ["landofile.validation", ["services", "web", "env_file", 1]],
+    ]);
+  });
+
+  test("reports an independent build conflict beside a rejected build key", async () => {
+    // Given
+    await write(
+      ".lando.yml",
+      `${composeWeb}    build:\n      context: .\n      dockerfile: Dockerfile\n      dockerfile_inline: FROM alpine\n      cache_from: [x]\n`,
+    );
+
+    // When
+    const violations = (await lint()).result.violations;
+
+    // Then
+    expect(violations.map(({ rule, path }) => [rule, path])).toEqual([
+      ["landofile.compose-rejection", ["services", "web", "build", "cache_from"]],
+      ["landofile.validation", ["services", "web", "build"]],
+    ]);
+    expect(violations[1]?.message).toContain("dockerfile_inline");
+  });
+
+  test("reports a rejection under an accepted parent once in an override layer and an included Compose file", async () => {
+    // Given
+    await write(".lando.yml", `${composeWeb}include:\n  - compose.yaml\n`);
+    await write(".lando.local.yml", "services:\n  web:\n    env_file:\n      - path: ./a.env\n");
+    await write(
+      "compose.yaml",
+      "services:\n  api:\n    image: alpine:3.20\n    build:\n      context: .\n      cache_from: [x]\n",
+    );
+
+    // When
+    const violations = await findings();
+
+    // Then
+    expect(violations).toEqual([
+      {
+        rule: "landofile.compose-rejection",
+        path: ["services", "web", "env_file", 0, "path"],
+        file: join(root, ".lando.local.yml"),
+      },
+      {
+        rule: "landofile.compose-rejection",
+        path: ["services", "api", "build", "cache_from"],
+        file: join(root, "compose.yaml"),
+      },
+    ]);
+  });
+
+  test("reports a rejection under an accepted parent once inside an !override value", async () => {
+    // Given
+    await write(".lando.yml", `${composeWeb}    build:\n      context: .\n`);
+    await write(
+      ".lando.local.yml",
+      "services:\n  web:\n    build: !override\n      context: .\n      cache_from: [x]\n",
+    );
+
+    // When
+    const violations = await findings();
+
+    // Then
+    expect(violations).toEqual([
+      {
+        rule: "landofile.compose-rejection",
+        path: ["services", "web", "build", "cache_from"],
+        file: join(root, ".lando.local.yml"),
+      },
+    ]);
+  });
+
   test("retains a successful resolved object alongside masked fragment findings from includes", async () => {
     await write(
       ".lando.yml",

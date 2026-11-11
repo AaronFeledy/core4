@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
 
@@ -127,6 +126,7 @@ describe("ci workflow", () => {
       "provider-matrix.yml",
       "rails-journey.yml",
       "release.yml",
+      "retarget-action-bump.yml",
       "runtime-bundle.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",

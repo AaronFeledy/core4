@@ -2,20 +2,16 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit, Fiber, Layer, Schema } from "effect";
-
-import { ConfigError } from "@lando/sdk/errors";
-import { CliCommandRunEvent } from "@lando/sdk/events";
-import { AbsolutePath } from "@lando/sdk/schema";
-import { EventService, PluginRegistry } from "@lando/sdk/services";
-
 import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { makeStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { Stdio } from "effect";
+import { ConfigError } from "@lando/sdk/errors";
+import { CliCommandRunEvent } from "@lando/sdk/events";
+import { AbsolutePath } from "@lando/sdk/schema";
+import { EventService, PluginRegistry } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Fiber, Layer, Schema, Stdio } from "effect";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";

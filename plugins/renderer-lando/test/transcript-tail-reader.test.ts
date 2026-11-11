@@ -1,3 +1,4 @@
+import { expect, mock, test } from "bun:test";
 import {
   mkdir,
   mkdtemp,
@@ -11,14 +12,11 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, mock, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { makeLandoPaths } from "@lando/paths";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
-
-import { makeLandoPaths } from "@lando/paths";
+import { Effect, Layer, Schema } from "effect";
 import * as boundary from "../src/transcript-path-boundary.ts";
 import { TranscriptTailReadError, TranscriptTailReader } from "../src/transcript-tail-reader.ts";
 

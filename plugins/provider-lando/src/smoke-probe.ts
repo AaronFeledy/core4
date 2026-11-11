@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mapFailures } from "@lando/sdk/command-result";
-
-import { Effect, type Schema, type Scope } from "effect";
-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
 import { type ProbeResult, runProbe } from "@lando/sdk/probe";
+import { Effect, type Schema, type Scope } from "effect";
 import {
   DEFAULT_BASE_IMAGE,
   ProviderLandoSmokeError,
@@ -22,6 +20,7 @@ import {
   smokeRemediation,
   startSmokeContainer,
 } from "./smoke-probe-support.ts";
+import { runResourceLimitSmokeProbe } from "./smoke-resource-limits.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
@@ -207,7 +206,8 @@ export const runSmokeReadinessProbe = Effect.fn("ProviderLando.runSmokeReadiness
   yield* runContainerSmokeProbe(deps, baseImage);
   yield* runBuildSmokeProbe(deps, baseImage);
   yield* runHealthSmokeProbe(deps, baseImage);
+  if (deps.resourceLimits === true) yield* runResourceLimitSmokeProbe(deps, baseImage);
 });
 
-export { DEFAULT_BASE_IMAGE, ProviderLandoSmokeError } from "./smoke-probe-support.ts";
 export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe-support.ts";
+export { DEFAULT_BASE_IMAGE, ProviderLandoSmokeError } from "./smoke-probe-support.ts";

@@ -52,6 +52,10 @@ export const providerStatus = (options: {
               return Effect.fail(unavailable);
             case "running":
               return Effect.fail(error);
+            default: {
+              const exhaustive: never = state;
+              return exhaustive;
+            }
           }
         }),
       );

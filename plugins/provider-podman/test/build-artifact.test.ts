@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
-
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -11,6 +9,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect, Stream } from "effect";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("podman-build-app");

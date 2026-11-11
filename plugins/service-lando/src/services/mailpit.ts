@@ -1,10 +1,9 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   commandHealthcheck,
   rootIdentity,
@@ -14,6 +13,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 import { resolveMailListeners } from "./_mail-listeners.ts";
+
 export { MAILPIT_LISTENER } from "./_mail-listeners.ts";
 
 import { MAILPIT_IMAGE } from "../mailpit-constants.ts";

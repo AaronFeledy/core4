@@ -9,9 +9,8 @@ import {
   planServicePrimary,
   stampPlanServices,
 } from "@lando/engine/planner/effective-events";
-import { makeLandoPaths } from "@lando/paths";
-
 import * as ConfigLayer from "@lando/engine/services/config";
+import { makeLandoPaths } from "@lando/paths";
 import { Effect } from "effect";
 import { hostEventStatusesForPlan as statusesEffect } from "../../src/cli/commands/host-event-status.ts";
 

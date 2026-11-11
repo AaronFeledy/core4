@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
-import { OOM_CHECK_NAME } from "../../src/cli/commands/doctor-oom.ts";
+import { type Context, Effect, Layer } from "effect";
 import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import { OOM_CHECK_NAME } from "../../src/cli/commands/doctor-oom.ts";
 
 const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   Type: "container",

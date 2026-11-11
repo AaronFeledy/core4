@@ -1,17 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { composeService } from "@lando/engine/services/feature";
 import { LandofileShape, ProviderId, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   TOMCAT_FEATURE_ID,
-  tomcat9ServiceType,
   tomcat10ServiceType,
   tomcat11ServiceType,
+  tomcat9ServiceType,
   tomcatServiceFeature,
   tomcatServiceType,
 } from "../src/services/tomcat.ts";
@@ -279,4 +278,5 @@ describe("tomcat ServiceType", () => {
     });
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

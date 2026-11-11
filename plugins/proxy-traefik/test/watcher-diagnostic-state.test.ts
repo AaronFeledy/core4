@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { FileNotFoundError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 import { watcherDiagnosticFile } from "../src/proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths } from "../src/proxy-types.ts";

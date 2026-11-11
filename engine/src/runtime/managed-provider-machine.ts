@@ -1,9 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-
-import type { HostPlatform } from "@lando/sdk/schema";
-
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import type { HostPlatform } from "@lando/sdk/schema";
 
 // Ownership of the managed provider machine (the macOS/Windows Podman VM), derived
 // solely from the provider's recorded setup-state. This module deliberately does NOT

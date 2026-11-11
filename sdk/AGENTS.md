@@ -9,6 +9,7 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 - `src/errors/` contains Effect `TaggedError` classes.
 - `src/services/` contains `Context.Service` contracts and fiber references that are part of a service contract; implementation layers belong in their owning runtime packages, never the SDK.
 - `src/test/` is re-exported as `@lando/sdk/test` for contract helpers.
+- `src/certificates/` is `@lando/sdk/certificates`: `certificatePairIsCurrent`, the one check for whether a stored leaf pair can keep serving its names. The engine and router plugins both call it.
 
 ## Effect service and operation idioms
 

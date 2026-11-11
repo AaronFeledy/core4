@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
-
-import { type Context, Effect } from "effect";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 
 import { NoCertificateAuthorityError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { type Context, Effect } from "effect";
 import { runCaSetupStep } from "../../src/cli/command-specs/meta/setup-service-steps.ts";
 import type { SetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import type { SetupReadinessStep } from "../../src/cli/commands/setup-readiness.ts";

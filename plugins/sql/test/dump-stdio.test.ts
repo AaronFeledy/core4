@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
-
 import { CommandStdioError, SqlConfirmRequiredError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 import { dbInputFromCommand } from "../src/command-input.ts";
 import { spec as exportSpec } from "../src/commands/export.ts";
 import { spec as importSpec } from "../src/commands/import.ts";

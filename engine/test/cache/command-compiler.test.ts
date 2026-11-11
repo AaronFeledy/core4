@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
+import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 import { Schema } from "effect";
-
-import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import {
   compileAppCommands,
   compileBunShellScriptCommands,

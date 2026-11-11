@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
 import { makeTestDownloader } from "@lando/engine/testing/downloader";
 import { OnlineAcquisition } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import nftVersions from "../nft-versions.json";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import { makePluginArtifactDownload } from "../src/plugin-runtime.ts";

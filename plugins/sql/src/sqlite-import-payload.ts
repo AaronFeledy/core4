@@ -9,8 +9,8 @@ import {
   sqliteScratchFile,
 } from "./sqlite-helper.ts";
 import { requireSqliteIntegrity, sqliteScratchOnlyHelper } from "./sqlite-integrity.ts";
-import { stageVerifiedSqliteImport } from "./sqlite-snapshot-transfer.ts";
 import type { SqliteSnapshotDeps } from "./sqlite-snapshot.ts";
+import { stageVerifiedSqliteImport } from "./sqlite-snapshot-transfer.ts";
 import type { SqlFileTarget } from "./target.ts";
 
 export const prepareSqliteImportPayload = Effect.fn("Sql.prepareSqliteImportPayload")(function* (

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
-
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect, Exit } from "effect";
 
 import type { EngineHttpApi, PodmanApiClient } from "../src/engine-api.ts";
 import {
@@ -23,7 +22,10 @@ const decodeFilters = (path: string): Record<string, ReadonlyArray<string>> => {
   return JSON.parse(decodeURIComponent(encoded)) as Record<string, ReadonlyArray<string>>;
 };
 
-const requestClient = (response: { status: number; body: string }): PodmanApiClient & {
+const requestClient = (response: {
+  status: number;
+  body: string;
+}): PodmanApiClient & {
   readonly captured: { path?: string; method?: string };
 } => {
   const captured: { path?: string; method?: string } = {};

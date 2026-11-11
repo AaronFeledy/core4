@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { LandofileParseError } from "@lando/sdk/errors";
 import { parseLegacyLandofile } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 const parse = (content: string) =>
   Effect.runSync(parseLegacyLandofile({ mode: "legacy", file: "indentationless.yml", content }));

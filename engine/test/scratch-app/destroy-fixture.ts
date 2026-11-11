@@ -225,6 +225,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                 : planScratchRegistryWrite(entries.get(write[1].id), ...write).pipe(
                     Effect.map((plan) => {
                       if (plan._tag === "Set") entries.set(plan.value.id, plan.value);
+                      return undefined;
                     }),
                   ),
             ),
@@ -345,5 +346,6 @@ export const runDestroy = (fixture: Awaited<ReturnType<typeof makeFixture>>, kee
       Effect.provide(fixture.layer),
     ),
   );
+
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

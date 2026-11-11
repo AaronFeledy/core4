@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { Cause, Effect, Exit, Option, Schema, Stream } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
@@ -10,6 +7,7 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import { installSupervisedExecFixture } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
@@ -20,6 +18,7 @@ import {
   runProviderStartRetentionContract,
   runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Option, Schema, Stream } from "effect";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
 import { decodeNetworkCreate } from "./network-fixture.ts";
 import { makeProviderLayer } from "./support/contract-provider-layer.ts";

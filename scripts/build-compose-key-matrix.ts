@@ -223,4 +223,4 @@ const main = async (): Promise<void> => {
 
 if (import.meta.main) await main();
 
-export { ComposeKeyMatrixError, renderComposeKeyMatrixPage, assertMatrixInvariants };
+export { ComposeKeyMatrixError, assertMatrixInvariants, renderComposeKeyMatrixPage };

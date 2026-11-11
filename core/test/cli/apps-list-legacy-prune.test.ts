@@ -2,8 +2,6 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Result, Schema } from "effect";
-
 import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
@@ -12,10 +10,10 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-
+import { Effect, Layer, Result, Schema } from "effect";
+import { listServicesWithPrune } from "../../src/cli/commands/list.ts";
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
 import { pruneAppliedPlanState } from "../../src/cli/commands/list-prune-state.ts";
-import { listServicesWithPrune } from "../../src/cli/commands/list.ts";
 
 const roots: string[] = [];
 afterEach(async () => {

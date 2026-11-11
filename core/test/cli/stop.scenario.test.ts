@@ -5,10 +5,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import { renderStopAppResult, stopApp } from "@lando/core/cli/operations";
 import { FileSyncStopError, ProviderUnavailableError } from "@lando/core/errors";
+import type { FileSyncSessionInfo } from "@lando/core/schema";
 import {
   AbsolutePath,
   AppId,
@@ -20,25 +19,27 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import type { FileSyncSessionInfo } from "@lando/core/schema";
 import {
   AppPlanner,
   EventService,
   FileSyncEngine,
   LandofileService,
   PathsService,
+  RouterService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { makeLandoPaths } from "@lando/paths";
+import { DateTime, Effect, Layer, Stream } from "effect";
 import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 
-import { makeLandoPaths } from "@lando/paths";
 const testStateStoreLayer = Layer.merge(
   layerTransactionGuard,
   Layer.succeed(StateStore, makeTestStateStore().service),
 );
+
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -46,7 +47,7 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -275,6 +276,13 @@ const makeStopLayer = (
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentPlan) })),
     Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...TestRouterService,
+        removeRoutes: () => Effect.sync(() => void events.push("routes:withdraw")),
+      }),
+    ),
+    Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
         resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -344,6 +352,7 @@ describe("lando stop", () => {
       "post-service-stop",
       "post-app-stop",
       "post-stop",
+      "routes:withdraw",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan: harness.currentPlan });
@@ -870,4 +879,5 @@ describe("lando stop", () => {
     expect(callLog.lastIndexOf("listSessions")).toBeLessThan(flushIndex);
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

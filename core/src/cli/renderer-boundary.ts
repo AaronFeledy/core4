@@ -1,3 +1,32 @@
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { GlobalConfigSnapshot } from "@lando/engine/services/config";
+import { EventPublicationObserver } from "@lando/engine/services/event-service";
+import { HostExecutionDefaults } from "@lando/engine/services/host-execution-context";
+import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
+import {
+  RendererHost,
+  type RendererIO,
+  createStdioRendererIO,
+  isStdioRendererIO,
+  onStdioBrokenPipe,
+  withStdioTerminalNewlines,
+} from "@lando/renderer/io";
+import * as RendererOutput from "@lando/renderer/output";
+import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
+import { makePlainRenderer } from "@lando/renderer/runtime";
+import type { FormatSummaryOptions } from "@lando/renderer/summary";
+import {
+  type CompletedCommandResult,
+  failureOutcomeFromCause,
+  normalizeDefect,
+  primaryFailureReason,
+  resolveCommandCompletion,
+} from "@lando/sdk/command-result";
+import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
+import { EventService, Renderer } from "@lando/sdk/services";
 import {
   Cause,
   Clock,
@@ -12,40 +41,9 @@ import {
   Scope,
   Tracer,
 } from "effect";
-
-import { GlobalConfigSnapshot } from "@lando/engine/services/config";
-import { HostExecutionDefaults } from "@lando/engine/services/host-execution-context";
-import {
-  type CompletedCommandResult,
-  failureOutcomeFromCause,
-  normalizeDefect,
-  primaryFailureReason,
-  resolveCommandCompletion,
-} from "@lando/sdk/command-result";
-import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
-import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
-import { EventService, Renderer } from "@lando/sdk/services";
-import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
-
-import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { EventPublicationObserver } from "@lando/engine/services/event-service";
-import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
-import {
-  RendererHost,
-  type RendererIO,
-  createStdioRendererIO,
-  isStdioRendererIO,
-  onStdioBrokenPipe,
-  withStdioTerminalNewlines,
-} from "@lando/renderer/io";
-import * as RendererOutput from "@lando/renderer/output";
-import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
-import { makePlainRenderer } from "@lando/renderer/runtime";
-import type { FormatSummaryOptions } from "@lando/renderer/summary";
 import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 import { ChildOutput, makeChildOutputPolicy } from "./child-output.ts";
+import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
 import {
   type CliInvocationSnapshot,
   newInvocationId,

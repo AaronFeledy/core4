@@ -1,18 +1,19 @@
 import { readFile } from "node:fs/promises";
 import { delimiter } from "node:path";
-
-import { Effect, Predicate } from "effect";
-
 import { managedLaunchStatePath } from "@lando/container-runtime/podman/managed-invocation";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
+import { Effect, Predicate } from "effect";
 
+import type { ContainerCgroups } from "./delegated-scope.ts";
 import type { PodmanServiceSpec } from "./podman-service-runner.ts";
 
 interface RuntimeLaunchState {
   readonly pid: number;
   readonly env: Readonly<Record<string, string>>;
   readonly runtimeBundleVersion?: string;
+  /** Observed after the service is ready; absent for a launch that predates the observation. */
+  readonly containerCgroups?: ContainerCgroups;
 }
 
 export const launchStatePath = managedLaunchStatePath;
@@ -36,7 +37,15 @@ const parseRuntimeLaunchState = (raw: string): RuntimeLaunchState | undefined =>
 
   const runtimeBundleVersion = parsed.runtimeBundleVersion;
   if (runtimeBundleVersion !== undefined && typeof runtimeBundleVersion !== "string") return undefined;
-  return { pid: parsed.pid, env, ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }) };
+  const containerCgroups = parsed.containerCgroups;
+  if (containerCgroups !== undefined && containerCgroups !== "delegated" && containerCgroups !== "shared")
+    return undefined;
+  return {
+    pid: parsed.pid,
+    env,
+    ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
+    ...(containerCgroups === undefined ? {} : { containerCgroups }),
+  };
 };
 
 export const readLaunchState = (pidPath: string): Effect.Effect<RuntimeLaunchState | undefined> =>
@@ -110,3 +119,41 @@ export const writeLaunchState = (
         cause,
       }),
   });
+
+/** Container cgroup placement recorded for the service launched as `pid`, if it was observed. */
+export const recordedContainerCgroups = (
+  pidPath: string,
+  pid: number,
+): Effect.Effect<ContainerCgroups | undefined> =>
+  readLaunchState(pidPath).pipe(
+    Effect.map((state) => (state?.pid === pid ? state.containerCgroups : undefined)),
+  );
+
+/** Adds the observed placement to the launch record of the service launched as `pid`. */
+export const recordServicePlacement = (
+  pidPath: string,
+  pid: number,
+  containerCgroups: ContainerCgroups,
+): Effect.Effect<void, ProviderUnavailableError> =>
+  readLaunchState(pidPath).pipe(
+    Effect.flatMap((state) =>
+      Effect.tryPromise({
+        try: async () => {
+          if (state?.pid !== pid) throw new Error(`No launch record for runtime service PID ${pid}.`);
+          await writeFileAtomic(launchStatePath(pidPath), JSON.stringify({ ...state, containerCgroups }), {
+            mode: 0o600,
+            ownerOnly: "best-effort",
+          });
+        },
+        catch: (cause) =>
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "setup",
+            message: "Failed to record the Lando runtime service placement.",
+            remediation: "Verify the Lando runtime directory is writable, then rerun the command.",
+            details: { statePath: launchStatePath(pidPath) },
+            cause,
+          }),
+      }),
+    ),
+  );

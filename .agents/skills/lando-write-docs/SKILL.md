@@ -33,9 +33,11 @@ Voice: concrete, command-first, little ceremony. Sound like someone who ships La
 
 Any of these fails the page. Rewrite that item. Do not ship.
 
-- Em dash (`—`) anywhere in user-facing prose. The Bad specimen in [examples.md](examples.md#bad) illustrates the ban
+- Em dash (`—`) or en dash (`–`) in user-facing prose, including ranges written in words (literal glyphs in code spans are fine). Use a comma, period, parentheses, or "to". An en dash that only joins two identifiers in a table, such as `US-483–US-489`, stays. The Bad specimen in [examples.md](examples.md#bad) illustrates the ban
 - Throat-clearing: "In this guide we will", "In this document we will", "It's important to note", "Let's explore"
 - Marketing adjectives: robust, seamless, leverage, comprehensive, utilize, empower, unlock, cutting-edge, "Simply just easily"
+- Machine-voice filler: delve, journey, landscape, tapestry, "not just X but Y", "Whether you're"
+- A link to another guide that is not a relative `.mdx` path. Write `./php-security-updates.mdx` or `../config/offline-dev.mdx`, which the docs build rewrites to the real route. A directory-style link such as `../laravel-workflow/` is not rewritten and only resolves when it happens to match the page URL
 - First-person-plural lecture ("we will now")
 - Invented CLI output, `...`, "output omitted", or empty `<Inspect output />` sold as a transcript
 - Harness placeholders shown as captured output: `expected exit 0`, `event "…" observed`, `command output`
@@ -69,7 +71,7 @@ You, not we. Imperative steps. Contractions in guides.
 
 H1 is the goal or question. First body sentence is the outcome or direct answer, then the minimum context needed to use it. Do not open with implementation machinery unless this is an implementation explanation.
 
-Humor, if already appropriate, is at most one line next to a real command. Do not add decorative analogies, forced friendliness, jokes, or arbitrary banned-word lists. The goal is clarity, not a stylized voice.
+Humor, if already appropriate, is at most one line next to a real command. Do not add decorative analogies, forced friendliness, or jokes. The fail-if list above is this contract's own word list. The goal is clarity, not a stylized voice.
 
 Brand shows up in the writing, not as slogans: easy path, full stack when you need it, plugins without starting over, app-level DX.
 
@@ -89,6 +91,17 @@ Brand shows up in the writing, not as slogans: easy path, full stack when you ne
 - Use prose for explanation, numbered steps for order, bullets for a genuine set, and tables for comparable fields. Do not turn all prose into bullet fragments.
 - Remove empty introductions, repeated summaries, and sentences that only restate the heading.
 - Avoid promotional adjectives and unsupported absolutes. Do not call a task "easy", "obvious", "just", or "simple". Explain it.
+
+### Sound like a person
+
+Machine-sounding prose costs reader trust even when every fact is right. Before shipping, read the page aloud and fix what drones.
+
+- Vary sentence length and openings. Three sentences in a row with the same shape read as generated.
+- Say the thing once. Cut sentences that restate the previous one, recap the section, or announce what comes next.
+- Do not pad with lists of three when you have one or two real items.
+- Hedge once, where the evidence is uncertain, not on every claim.
+- Use specific nouns from the page (`appserver`, `version.php`) instead of abstractions ("the component", "your environment").
+- Prefer a period to a semicolon chain or a dash. Short declarative sentences are fine.
 
 Preserve important distinctions such as host versus container, application user versus contributor, configured versus running, and successful command completion versus verified working behavior. Explain a distinction with a small controlled example when prose alone is unclear.
 
@@ -113,7 +126,9 @@ For a procedure, use this pattern when relevant: Goal → prerequisites → acti
 
 For every meaningful action:
 
-- State where it happens: host/container/VM, shell, directory, file, or UI.
+- State where it happens: host/container/VM, shell, directory, file, or UI. Near the top of a how-to, say once where commands run ("Run the commands from the app directory on your host"), then flag each step that runs elsewhere, such as `lando exec <service> -- ...` inside a container.
+- Keep a permission change the app genuinely needs as an ordinary step, such as making Laravel's `storage` writable. Behind a symptom, keep a fix that only works around a Lando-owned path, so readers do not apply it blindly.
+- When the page depends on recipe options, say the `recipe:` block stays in the Landofile while the reader adds or replaces services.
 - Tell the reader what to create, save, replace, or run. A code block alone is not an instruction.
 - Define placeholders and distinguish example values from literal required values.
 - Put branch conditions before the branch. Readers should not run a generic instruction before discovering that their platform is an exception.
@@ -186,7 +201,7 @@ Prose carries meaning. Components only execute: `<Run>`, `<Verify>`, `<Cleanup>`
 - Litmus: strip every JSX tag. What remains is still a guide.
 
 Fixtures: `docs/guides/<guide-id>/fixtures/<name>/`. Every dir must be referenced by `<UseFixture>`.
-New fixture dir: also register it in the fixture corpora (golden digests, invalid-fixture lists). Guide gates do not check them. Steps: `docs/contributing/guide-authoring.md#register-a-new-fixture`.
+New fixture dir: record it in the golden corpus with `UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts` and commit the digest change; guide gates do not run that test. A deliberately invalid fixture also carries `# lando-lint: expect-invalid <reason>` on line 1; no test keeps a hand-edited list. Steps: `docs/contributing/guide-authoring.md#register-a-new-fixture`.
 
 Test provider does not boot real containers. Prefer `app:config`, lint, init, modeled events. `exec` needs stubbed exec or e2e. Zero-scenario guides are valid for host-bound topics.
 

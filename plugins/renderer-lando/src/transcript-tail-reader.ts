@@ -2,11 +2,9 @@ import { type FSWatcher, watch } from "node:fs";
 import { type FileHandle, lstat, open } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-
-import { Context, Effect, Layer, Option, Queue, Schema, type Scope } from "effect";
-
 import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
+import { Context, Effect, Layer, Option, Queue, Schema, type Scope } from "effect";
 
 import { TranscriptPathOutsideRootError, assertTranscriptPathContained } from "./transcript-path-boundary.ts";
 import { decodeRanges, lineRanges, safeUtf8End, safeUtf8Start } from "./transcript-tail-lines.ts";

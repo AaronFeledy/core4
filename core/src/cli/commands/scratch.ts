@@ -1,6 +1,5 @@
-import { Effect, Schema } from "effect";
-
-import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
+import { emitOptionalStdout } from "@lando/renderer/output";
+import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
 import type {
   AppPlacementError,
   DebuggerHostUnavailableError,
@@ -8,6 +7,7 @@ import type {
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
 } from "@lando/sdk/errors";
+import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import { AbsolutePath, type IsolateMode } from "@lando/sdk/schema";
 import type {
   ScratchGcOptions,
@@ -18,9 +18,7 @@ import type {
   ScratchSummary,
 } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
-
-import { emitOptionalStdout } from "@lando/renderer/output";
-import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
+import { Effect, Schema } from "effect";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { extractSpecAbortSignal } from "../spec/command-base";

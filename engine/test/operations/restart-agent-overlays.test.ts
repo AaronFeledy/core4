@@ -19,8 +19,7 @@ import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services"
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Result } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
-import { withGpgAgentOverlay } from "../../src/subsystems/gpg-agent/overlay.ts";
-import { stripGpgAgentOverlay } from "../../src/subsystems/gpg-agent/overlay.ts";
+import { stripGpgAgentOverlay, withGpgAgentOverlay } from "../../src/subsystems/gpg-agent/overlay.ts";
 import { hostKnownHostsFile } from "../../src/subsystems/ssh-agent/host-known-hosts.ts";
 import { stripSshAgentOverlay, withSshAgentOverlay } from "../../src/subsystems/ssh-agent/overlay.ts";
 import {

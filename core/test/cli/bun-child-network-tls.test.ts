@@ -5,13 +5,12 @@ import { join } from "node:path";
 import { rootCertificates } from "node:tls";
 
 import { Effect } from "effect";
-
+import { projectBunChildNetwork } from "../../src/cli/commands/bun-child-network.ts";
 import {
   BUN_CAFILE_FLAG,
   BUN_NO_INSTALL_FLAG,
   NODE_EXTRA_CA_CERTS_ENV,
 } from "../../src/cli/commands/bun-child-network-policy.ts";
-import { projectBunChildNetwork } from "../../src/cli/commands/bun-child-network.ts";
 
 const bunVersion = Bun.version;
 

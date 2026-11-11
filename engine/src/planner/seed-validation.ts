@@ -6,9 +6,10 @@ import { mergeLogSources } from "../services/log-sources.ts";
 import { SECURITY_FEATURE_ID } from "../services/network-inject.ts";
 import { CERTS_FEATURE_ID } from "../services/service-certs.ts";
 import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
+import { validateAuthoredAppMount } from "./authored.ts";
 import type { MountAuthoringContext } from "./authored-mount-entry.ts";
 import { validateAuthoredMounts } from "./authored-mounts.ts";
-import { validateAuthoredAppMount } from "./authored.ts";
+import { validateServicePullPolicy } from "./pull-policy.ts";
 import type { ResolvedServiceSeed } from "./service-seeds.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
@@ -65,6 +66,8 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   if (Result.isFailure(logs)) errors.push(logs.failure);
   const mount = validateAuthoredAppMount(seed.service, appRoot, seed.name);
   if (mount !== undefined) errors.push(mount);
+  const pullPolicy = validateServicePullPolicy(seed.service, seed.name, landofilePath);
+  if (pullPolicy !== undefined) errors.push(pullPolicy);
   const mounts = validateAuthoredMounts(
     context,
     seed.resolution.normalizedConfig,

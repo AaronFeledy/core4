@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import {
@@ -359,4 +358,5 @@ describe("apache ServiceType", () => {
     expect(directives.join("\n")).not.toContain("Include");
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

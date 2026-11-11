@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { chmod, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import { syncDirectory } from "@lando/state-store/atomic";
-
 import { END_OF_ARCHIVE, TAR_BLOCK_SIZE, encodeUstarHeader, padToBlock } from "@lando/container-runtime/tar";
+import { syncDirectory } from "@lando/state-store/atomic";
 
 import { isSqliteDatabaseHeader } from "./sqlite-header.ts";
 

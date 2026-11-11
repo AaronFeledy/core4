@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Effect, Exit, Option, Queue, Schema, Scope } from "effect";
-
 import { EventError } from "@lando/sdk/errors";
 import { PreAppStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit, Option, Queue, Schema, Scope } from "effect";
 
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { EventDispatchControl } from "../../src/services/event-service.ts";

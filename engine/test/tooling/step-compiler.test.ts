@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Ref } from "effect";
-
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Ref } from "effect";
 import { compileAuthoredEventStepProgram as compileEventStepProgram } from "../../src/tooling/authored-step-compiler.ts";
 
 import { EventStepCompileError, compileSimpleToolingTaskProgram } from "../../src/tooling/step-compiler.ts";

@@ -1,13 +1,12 @@
 import type { CliRenderer } from "@opentui/core";
 import * as openTuiModule from "@opentui/core";
 import { ManualClock, createTestRenderer } from "@opentui/core/testing";
-
-import type { EventListenerLike, SelectOptionLike } from "../src/opentui/prompt-driver-types.ts";
 import {
   type OpenTuiModuleLike,
   type RendererLike,
   createOpenTuiPromptDriver,
 } from "../src/opentui/prompt-driver.ts";
+import type { EventListenerLike, SelectOptionLike } from "../src/opentui/prompt-driver-types.ts";
 
 type TestSetup = Awaited<ReturnType<typeof createTestRenderer>> & { clock: ManualClock };
 

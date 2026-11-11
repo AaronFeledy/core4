@@ -29,7 +29,7 @@ Choose the dominant form. A landing page or README may route to several forms. D
 
 ## Install wording
 
-Illustrative before/after prose, not captured execution. Source reviewed at `dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0`: [alpha install, lines 127–141](https://github.com/AaronFeledy/core4/blob/dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0/docs/alpha-install-and-bug-reports.md#L127-L141). The example still matches that revision. Provider persistence is also described in [provider selection](../../../docs/guides/setup/provider-selection.mdx#what-persists).
+Illustrative before/after prose, not captured execution. Source reviewed at `dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0`: [alpha install, lines 127 to 141](https://github.com/AaronFeledy/core4/blob/dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0/docs/alpha-install-and-bug-reports.md#L127-L141). The example still matches that revision. Provider persistence is also described in [provider selection](../../../docs/guides/setup/provider-selection.mdx#what-persists).
 
 ### Before
 
@@ -47,7 +47,7 @@ This command saves Docker as your provider. Setup does not install Docker for yo
 
 ## Runtime configuration wording
 
-Illustrative before/after prose, not captured execution. Source reviewed at `dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0`: [embedding, lines 49–59](https://github.com/AaronFeledy/core4/blob/dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0/docs/embedding.md#L49-L59). The example still matches that revision; [the configuration service](../../../engine/src/services/config.ts) returns the captured snapshot and [the runtime layer](../../../core/src/runtime/layer.ts) supplies its configuration sources.
+Illustrative before/after prose, not captured execution. Source reviewed at `dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0`: [embedding, lines 49 to 59](https://github.com/AaronFeledy/core4/blob/dde7571c1cc6da30dd496d18f9addcbc4d7f2ef0/docs/embedding.md#L49-L59). The example still matches that revision; [the configuration service](../../../engine/src/services/config.ts) returns the captured snapshot and [the runtime layer](../../../core/src/runtime/layer.ts) supplies its configuration sources.
 
 ### Before
 

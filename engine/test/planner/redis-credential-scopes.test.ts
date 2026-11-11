@@ -40,7 +40,7 @@ const planRedis = (password: string | undefined, withConsumer = false) =>
                 },
               }
             : {}),
-          cache: { type: "redis", ...(password === undefined ? {} : { password }) },
+          cache: { type: "redis", ...(password === undefined ? {} : { creds: { password } }) },
         },
       },
       root,

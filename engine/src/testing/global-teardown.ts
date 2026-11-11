@@ -1,19 +1,21 @@
-import { mapFailures } from "@lando/sdk/command-result";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { join } from "node:path";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 
 import { makeLandoPaths } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ProxyError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   AppRef,
+  type AppRouteOwner,
   ProviderId,
   ServiceName,
   type VolumeInfo,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import type { LandoEvent } from "@lando/sdk/services";
+import type { LandoEvent, RuntimeProviderShape } from "@lando/sdk/services";
 import {
   type DestroyOptions,
   type DestroyOutcome,
@@ -27,13 +29,10 @@ import {
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import { join } from "node:path";
-import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeStateStore } from "@lando/state-store/service";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import { RouterServiceRegistry } from "../subsystems/proxy/registry.ts";
 
@@ -87,6 +86,7 @@ export const globalTeardownHarness = async (
     readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
     readonly stopFailure?: boolean;
     readonly routeFailure?: boolean;
+    readonly routers?: "selectable" | "unselectable" | "uninstalled";
   } = {},
 ) => {
   const paths = makeLandoPaths({
@@ -106,6 +106,8 @@ export const globalTeardownHarness = async (
   const eventRoots: string[] = [];
   const selectedRoots: string[] = [];
   const routeRoots: string[] = [];
+  const builtRoots: string[] = [];
+  const routeOwners: AppRouteOwner[] = [];
   let prepared = false;
   const provider = {
     ...TestRuntimeProvider,
@@ -188,8 +190,9 @@ export const globalTeardownHarness = async (
   const router = RouterService.of({
     ...makeTestRouterService(),
     stop: Effect.die("Global lifecycle must not stop the shared router"),
-    removeRoutes: Effect.fnUntraced(function* (_owner) {
+    removeRoutes: Effect.fnUntraced(function* (owner) {
       calls.push("removeRoutes");
+      routeOwners.push(owner);
       if (input.routeFailure)
         return yield* Effect.fail(
           new ProxyError({
@@ -214,6 +217,7 @@ export const globalTeardownHarness = async (
             }),
         ),
       )).root;
+      builtRoots.push(capturedRoot);
       return RouterService.of({
         ...router,
         removeRoutes: (owner) => {
@@ -228,8 +232,18 @@ export const globalTeardownHarness = async (
       resolve: Effect.die("No certificate issuance during teardown"),
     }),
     Layer.succeed(RouterServiceRegistry, {
-      list: Effect.succeed([router.id]),
-      select: () => Effect.succeed({ id: router.id, layer: routerLayer }),
+      list: Effect.succeed(input.routers === "uninstalled" ? [] : [router.id]),
+      select: (selection) =>
+        input.routers === "uninstalled" ||
+        (input.routers === "unselectable" && selection?.explicit !== router.id)
+          ? Effect.fail(
+              new ProxyError({
+                proxyId: "missing",
+                message: "Router service missing is not installed.",
+                remediation: "Configure `defaultRouterService` to an installed id.",
+              }),
+            )
+          : Effect.succeed({ id: router.id, layer: routerLayer }),
     }),
     Layer.succeed(
       StateStore,
@@ -307,5 +321,17 @@ export const globalTeardownHarness = async (
       }),
     ),
   );
-  return { layer, calls, events, destroyOptions, destroyed, removed, eventRoots, selectedRoots, routeRoots };
+  return {
+    layer,
+    calls,
+    events,
+    destroyOptions,
+    destroyed,
+    removed,
+    eventRoots,
+    selectedRoots,
+    routeRoots,
+    builtRoots,
+    routeOwners,
+  };
 };

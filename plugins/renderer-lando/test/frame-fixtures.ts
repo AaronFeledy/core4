@@ -1,5 +1,3 @@
-import { Schema } from "effect";
-
 import {
   type LandoEvent,
   TaskCompleteEvent,
@@ -9,6 +7,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import { Schema } from "effect";
 
 const ts = "2026-06-18T12:00:00.000Z";
 

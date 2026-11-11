@@ -96,8 +96,34 @@
       "digest": "37a441e3a9e7a061e9fc859c5b3c6d012eab5ef87378b7b0768e7b9c7db2d64b"
     },
     {
+      "fixture": "docs/guides/compose-passthrough/fixtures/compose-pull-policy-always-build",
+      "digest": "a3ae637774e2f5d24a9e3346a3b72fafcee4b1a5116c5275294cd4e603667fee"
+    },
+    {
+      "fixture": "docs/guides/compose-passthrough/fixtures/compose-pull-policy-daily",
+      "digest": "9668f95efcd2ac07989f6217e40b12284cb0e527e75d2dc8a243252ae9a49ab8"
+    },
+    {
       "fixture": "docs/guides/compose-service-block/fixtures/compose-configs-phpini",
       "digest": "31d47121fc6cd3b48dd655d7fb64f7f87228dcf731f426277748e68ab1579589"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-invalid-cpus",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-limits",
+      "digest": "526984df03aedfa79838f6a0cc228c647d616672e62b2475dbe6b324f1898285"
+    },
+    {
+      "fixture": "docs/guides/compose-service-block/fixtures/compose-resource-mem-limit",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
     },
     {
       "fixture": "docs/guides/compose-service-block/fixtures/compose-service-block-demo",
@@ -346,7 +372,7 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-bound-password-helper",
-      "digest": "9f18bbe623991927e5c0172d07e1320aa9d21bef958c3e8455bad28e49295533"
+      "digest": "bca7e336a239f70aacbf01dbd4c781d39f1b9dcf9e21e8385019ac8cd8b066da"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-escaped-literals",
@@ -369,7 +395,7 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-plan-time",
-      "digest": "09d1a74db14a5428d62b434724eaf9c77030210ad3f1bd2260168253c28a3b9f"
+      "digest": "356b7260d10d8f13ac2a85aceb7f4ee600cba7be8b55efcac7c0713088ed6fde"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
@@ -669,7 +695,7 @@
     },
     {
       "fixture": "docs/guides/minio/fixtures/minio-demo",
-      "digest": "0446342a288090ae211c4171c9aa4a0fd0eb63974775e1d3534b83d653e92010"
+      "digest": "9e618eaa29725f5f3d967bc45d229f9b61fcd73de198a0031af2ac704f0e90e5"
     },
     {
       "fixture": "docs/guides/minio/fixtures/missing-artifact",
@@ -932,6 +958,10 @@
       "digest": "17a41f4e0275bd952c91b884adc108734ab2da08868d164e1e825c975fd3319f"
     },
     {
+      "fixture": "docs/guides/php-security-updates/fixtures/php-patch-demo",
+      "digest": "43a0da45c65ed6015ebef28a09db0e7ef2bd6fcf11d952bd22bfc79050d823a3"
+    },
+    {
       "fixture": "docs/guides/php-version-matrix/fixtures/php-81",
       "digest": "3b6fffcafc0bb668041f8a77101c654b7ad66878f9cdb136484771db02dc70a5"
     },
@@ -1103,7 +1133,7 @@
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-bound-creds",
-      "digest": "4ca83b9cfe7169e2ff669a2c9ba702f47b64f5566abcf688531369c6b86bb1af"
+      "digest": "aa89d95cadfd6034a8dc266dbc00ce4494744acaca9cd2931186dd2b0e5020f6"
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-build-args",
@@ -1622,6 +1652,15 @@
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
+    "docs/guides/phpmyadmin/fixtures/phpmyadmin-demo": {
+      "before": {
+        "digest": "ac8ba6c81a9d56b47f54cf5c3d4c87f24e252ea4d71f516629f772f1c47fe7ca"
+      },
+      "after": {
+        "digest": "8cefe741b67af3abf128502c5e69fbf2af9514ad524f8dd24700656c7b1ed03d"
+      },
+      "reason": "Planning no longer contacts a certificate authority, so a guide app plans without one. The guide fixture dropped its workaround-only certs: false."
+    },
     "docs/guides/postgres-pgvector/fixtures/pgvector-demo": {
       "before": {
         "digest": "0ebf4df0f481601fa8e74c0f68e66c0a352e0e6d39f9e6cf9caf8af89416e25e"
@@ -1678,6 +1717,15 @@
         "digest": "40a6b4a9e3e779d555c8be3bf18d0cd22543242a2d7499acb425372beb37e48e"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/varnish/fixtures/varnish-unknown-backend": {
+      "before": {
+        "digest": "8827f31b0a039e240264992e1edba873a77eee6806d3c8ea86a36d6de45166f7"
+      },
+      "after": {
+        "digest": "1c0bcc63ed7647955c92328584a52ba3f8ec0536295b5fa8271b6a8460a4c8da"
+      },
+      "reason": "Planning no longer contacts a certificate authority, so a guide app plans without one. The guide fixture dropped its workaround-only certs: false."
     },
     "docs/guides/xhprof-xhgui/fixtures/xhprof-demo": {
       "before": {

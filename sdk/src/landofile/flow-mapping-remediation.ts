@@ -34,7 +34,7 @@ const trySimpleFlowPairs = (
   const inner = trimmed.slice(1, -1).trim();
   if (inner === "") return undefined;
 
-  if (/[{}\[\]]/.test(inner)) return undefined;
+  if (/[{}[\]]/.test(inner)) return undefined;
 
   const pairs: { key: string; value: string }[] = [];
   for (const part of inner.split(",")) {

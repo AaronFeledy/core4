@@ -6,9 +6,6 @@
 // internals — so it doubles as the surface-stability gate for plugin authors.
 
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Schema } from "effect";
-
 import {
   LandofileEmitError,
   emitLandofileYaml,
@@ -19,6 +16,7 @@ import {
 } from "@lando/sdk/landofile";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 const roundTrip = async (value: Record<string, unknown>): Promise<unknown> => {
   const yaml = emitLandofileYaml(value);

@@ -1,8 +1,7 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
 import { FileIoError, FilePermissionError } from "@lando/sdk/errors";
 import { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";

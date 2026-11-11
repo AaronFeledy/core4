@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { withHostProxyRunLando } from "../../src/operations/start-host-proxy.ts";
-import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport-feature.ts";
 import type { HostProxyRunLandoSession } from "../../src/subsystems/host-proxy/transport.ts";
+import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport-feature.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
 const session: HostProxyRunLandoSession = {

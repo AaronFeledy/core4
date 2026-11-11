@@ -1,11 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { mapFailures } from "@lando/sdk/command-result";
-
-import { Duration, Effect } from "effect";
-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
+import { Duration, Effect } from "effect";
 
 import {
   type LinuxRuntimeGenerationDeps,

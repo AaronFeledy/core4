@@ -10,6 +10,8 @@ import {
   type LandoEvent,
   LandofileService,
   PathsService,
+  RouterService,
+  type RouterServiceShape,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   StateStore,
@@ -31,10 +33,17 @@ import { emptySnapshotsLayer } from "../operations/data-mover-support.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
+interface StartupFixtureOptions {
+  /** Runs before the registry records the scratch app as running. */
+  readonly registration?: Effect.Effect<void, ScratchAppError>;
+  /** Publishes a route for `web` and starts through this router. */
+  readonly router?: RouterServiceShape;
+}
+
 export const withStartupFixture = async (
   overrides: Partial<Pick<RuntimeProviderShape, "inspect" | "exec" | "apply" | "ensureReady">>,
   use: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>,
-  registration: Effect.Effect<void, ScratchAppError> = Effect.void,
+  options: StartupFixtureOptions = {},
 ) => {
   const base = await mkdtemp(join(tmpdir(), "scratch-startup-"));
   const root = join(base, "data");
@@ -46,7 +55,7 @@ export const withStartupFixture = async (
   process.env.LANDO_USER_DATA_ROOT = root;
   process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   try {
-    await use(await makeFixture(root, overrides, registration));
+    await use(await makeFixture(root, overrides, options));
   } finally {
     if (process.env.LANDO_USER_DATA_ROOT === root) {
       if (previousData === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -63,7 +72,7 @@ export const withStartupFixture = async (
 const makeFixture = async (
   root: string,
   overrides: Partial<RuntimeProviderShape>,
-  registration: Effect.Effect<void, ScratchAppError>,
+  { registration = Effect.void, router }: StartupFixtureOptions,
 ) => {
   const sourceRoot = AbsolutePath.make(join(root, "source"));
   await mkdir(sourceRoot);
@@ -75,8 +84,20 @@ const makeFixture = async (
   const source: AppPlan = {
     ...plan,
     root: sourceRoot,
-    routes: [],
-    router: { enabled: false },
+    routes:
+      router === undefined
+        ? []
+        : [
+            {
+              hostname: "web.source.lndo.site",
+              priority: 2,
+              scheme: "http",
+              service: web.name,
+              endpoint: 3000,
+              backend: { service: web.name, protocol: "http", port: 3000 },
+            },
+          ],
+    router: { enabled: router !== undefined },
     services: {
       [web.name]: {
         ...web,
@@ -125,6 +146,7 @@ const makeFixture = async (
         Effect.andThen(planScratchRegistryWrite(entries.get(write[1].id), ...write)),
         Effect.map((plan) => {
           if (plan._tag === "Set") entries.set(plan.value.id, plan.value);
+          return undefined;
         }),
       ),
     remove: (id) =>
@@ -133,6 +155,7 @@ const makeFixture = async (
       }),
   });
   const dependencies = Layer.mergeAll(
+    router === undefined ? Layer.empty : Layer.succeed(RouterService, router),
     FileSystem.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(StateStore, makeStateStore({ privateFileAccess: ownerOnlyFileAccess })),

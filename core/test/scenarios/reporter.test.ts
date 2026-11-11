@@ -1,9 +1,9 @@
 // allow: SIZE_OK — Keep reporter contract fixtures and wrapper regressions together in one sharded suite; do not split.
+
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import {
   LIVE_OUTPUT_BANNER,

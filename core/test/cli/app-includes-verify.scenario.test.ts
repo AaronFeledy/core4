@@ -1,13 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Schema } from "effect";
+import type { IncludeVerifyReport } from "@lando/core/cli/operations";
 
 import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@lando/core/cli/operations";
-import type { IncludeVerifyReport } from "@lando/core/cli/operations";
 import type { GitTransport } from "@lando/source-acquisition";
+import { Cause, Effect, Exit, Schema } from "effect";
 import { appIncludesVerifySpec } from "../../src/cli/command-specs/app/includes/verify.ts";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";

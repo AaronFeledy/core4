@@ -1,9 +1,7 @@
-import { X509Certificate, createPublicKey } from "node:crypto";
-
-import { Effect, Schema } from "effect";
-
+import { certificatePairIsCurrent as isCurrent } from "@lando/sdk/certificates";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { type AppRouteOwner, certificateNameForHostname } from "@lando/sdk/schema";
+import { type AppRouteOwner, type CertificateName, certificateNameForHostname } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 const AckSchema = Schema.Struct({ digest: Schema.String });
 type Ack = typeof AckSchema.Type;
@@ -36,41 +34,20 @@ export const routeReloadDigest = (values: ReadonlyArray<string | undefined>): st
   return hash.digest("hex");
 };
 
+/**
+ * Whether the router's copy of a pair still serves `hostnames` at `now`. Route hostnames map
+ * through `certificateNameForHostname` (a leftmost partial wildcard becomes `*.<rest>`); a hostname
+ * no certificate can cover is never current. No renewal margin and no root check.
+ */
 export const certificatePairIsCurrent = (
   certificatePem: string,
   privateKeyPem: string,
   hostnames: ReadonlyArray<string>,
   now: number,
 ): boolean => {
-  try {
-    const certificate = new X509Certificate(certificatePem);
-    const validFrom = Date.parse(certificate.validFrom);
-    const validTo = Date.parse(certificate.validTo);
-    if (!Number.isFinite(validFrom) || !Number.isFinite(validTo) || now < validFrom || now >= validTo)
-      return false;
-    // Route hostnames map through certificateNameForHostname first. A leftmost
-    // partial wildcard becomes *.<rest>; checkHost never matches a literal "*"
-    // label, so wildcard SANs require an exact DNS entry on the certificate.
-    const dnsNames = new Set(
-      (certificate.subjectAltName ?? "")
-        .split(", ")
-        .filter((entry) => entry.startsWith("DNS:"))
-        .map((entry) => entry.slice("DNS:".length).toLowerCase()),
-    );
-    const covers = (hostname: string) => {
-      const name = certificateNameForHostname(hostname);
-      if (name === undefined) return false;
-      return name.startsWith("*.")
-        ? dnsNames.has(name.toLowerCase())
-        : certificate.checkHost(name) !== undefined;
-    };
-    if (!hostnames.every(covers)) return false;
-    const certificateKey = certificate.publicKey.export({ type: "spki", format: "der" });
-    const privateKey = createPublicKey(privateKeyPem).export({ type: "spki", format: "der" });
-    return Buffer.from(certificateKey).equals(Buffer.from(privateKey));
-  } catch {
-    return false;
-  }
+  const names = hostnames.map(certificateNameForHostname);
+  if (!names.every((name): name is CertificateName => name !== undefined)) return false;
+  return isCurrent({ certificate: certificatePem, privateKey: privateKeyPem }, { names, now });
 };
 
 export const isAcknowledged = (

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { KeymapConflictError } from "@lando/sdk/errors";
 import { CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent, RenderEvent } from "@lando/sdk/events";
 import {
@@ -19,6 +17,7 @@ import {
   decodeKeymapConfig,
   validateKeymapConfigConflicts,
 } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("renderer surface schemas", () => {
   test("panel slot vocabulary and manifest entry decode", () => {

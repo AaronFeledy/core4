@@ -1,6 +1,5 @@
-import { Effect, absurd } from "effect";
-
 import type { LandoEvent } from "@lando/sdk/services";
+import { Effect, absurd } from "effect";
 
 import { isProvisionalStartupCommand, provisionalTitleFrame } from "./task-tree-provisional.ts";
 import {

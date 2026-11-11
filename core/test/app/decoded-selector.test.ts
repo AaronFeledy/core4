@@ -1,16 +1,14 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, LandofileShape, LogSourceId, ProviderId, ServiceName } from "@lando/core/schema";
 import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { rememberVersionConstraintEntries } from "@lando/landofile/version-constraint";
+import { Effect, Layer, Schema } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const decode = Schema.decodeUnknownSync(LandofileShape);

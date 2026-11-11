@@ -1,5 +1,3 @@
-import { Context, type Layer } from "effect";
-
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
   ConfigService,
@@ -7,6 +5,7 @@ import type {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { Context, type Layer } from "effect";
 import type { GlobalConfigSnapshot } from "../services/config.ts";
 import type { LandoRuntimeOptions } from "./runtime-options.ts";
 

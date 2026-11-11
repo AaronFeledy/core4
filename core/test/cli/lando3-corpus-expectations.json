@@ -254,7 +254,7 @@
       "valid": false,
       "violations": [
         {
-          "message": "path /certs/cert.crt must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.",
+          "message": "path /certs/cert.crt must stay inside the app root.",
           "path": ["services", "web3", "certs"],
           "rule": "landofile.validation"
         }
@@ -671,7 +671,7 @@
       "valid": false,
       "violations": [
         {
-          "message": "path /certs/cert.crt must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.",
+          "message": "path /certs/cert.crt must stay inside the app root.",
           "path": ["services", "web4", "certs"],
           "rule": "landofile.validation"
         }
@@ -1656,8 +1656,8 @@
         {
           "sourceId": "mariadb/examples/custom/.lando.yml",
           "kind": "unsupported",
-          "keyPath": ["services", "customnopwd", "creds"],
-          "message": "Partial legacy credentials cannot form an independently valid native layer."
+          "keyPath": ["services", "customnopwd", "creds", "password"],
+          "message": "Credential member password must be literal text and cannot be converted."
         },
         {
           "sourceId": "mariadb/examples/custom/.lando.yml",
@@ -1916,8 +1916,8 @@
         {
           "sourceId": "mysql/examples/custom/.lando.yml",
           "kind": "unsupported",
-          "keyPath": ["services", "custom_no_password", "creds"],
-          "message": "Partial legacy credentials cannot form an independently valid native layer."
+          "keyPath": ["services", "custom_no_password", "creds", "password"],
+          "message": "Credential member password must be literal text and cannot be converted."
         }
       ]
     },
@@ -3310,26 +3310,14 @@
         {
           "sourceId": "postgres/examples/custom/.lando.yml",
           "kind": "unsupported",
-          "keyPath": ["services", "custom", "creds"],
-          "message": "Partial legacy credentials cannot form an independently valid native layer."
-        },
-        {
-          "sourceId": "postgres/examples/custom/.lando.yml",
-          "kind": "unsupported",
-          "keyPath": ["services", "mimicarecipe", "creds"],
-          "message": "Partial legacy credentials cannot form an independently valid native layer."
-        },
-        {
-          "sourceId": "postgres/examples/custom/.lando.yml",
-          "kind": "unsupported",
           "keyPath": ["services", "cross", "type"],
           "message": "postgres version 14 is not available in Lando 4."
         },
         {
           "sourceId": "postgres/examples/custom/.lando.yml",
           "kind": "unsupported",
-          "keyPath": ["services", "blank_user", "creds"],
-          "message": "Partial legacy credentials cannot form an independently valid native layer."
+          "keyPath": ["services", "blank_user", "creds", "user"],
+          "message": "Credential member user must be literal text and cannot be converted."
         }
       ]
     },

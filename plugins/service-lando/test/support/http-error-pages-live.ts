@@ -2,8 +2,6 @@ import { expect } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Clock, Effect, Schema } from "effect";
-
 import { buildKeyForService } from "@lando/engine/services/build-key";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import {
@@ -25,6 +23,7 @@ import {
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider, type ServiceType } from "@lando/sdk/services";
+import { Clock, Effect, Schema } from "effect";
 
 import { apacheServiceType } from "../../src/services/apache.ts";
 import { landoErrorPageBytes } from "../../src/services/http-errors.ts";

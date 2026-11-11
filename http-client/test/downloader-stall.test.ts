@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test";
+import type { LandoEvent } from "@lando/sdk/services";
+import { OnlineAcquisition } from "@lando/sdk/services";
+import { CurrentTaskDetail, makeTaskTree, withCurrentTaskDetail } from "@lando/sdk/task-progress";
 import { Cause, Effect, Exit, Fiber, Option, Queue, Scope, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
-
-import { OnlineAcquisition } from "@lando/sdk/services";
-import type { LandoEvent } from "@lando/sdk/services";
-import { CurrentTaskDetail, makeTaskTree, withCurrentTaskDetail } from "@lando/sdk/task-progress";
 import { makeDownloaderService } from "../src/downloader-service.ts";
 
 const payload = new TextEncoder().encode("chunk");

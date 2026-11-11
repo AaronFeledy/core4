@@ -3,8 +3,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
-
 import { CONTAINER_HELPER_ARCHES, CONTAINER_HELPER_FILE } from "@lando/container-runtime/container-helper";
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
 import {
@@ -47,17 +45,7 @@ import {
   StateStore,
   ToolingEngine,
 } from "@lando/core/services";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
-import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
-
-import * as TestLandofileLayers from "../_support/landofile-layer.ts";
-import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-
-import { makeTestStateStore } from "@lando/core/testing";
+import { makeTestStateStore, resolveLiveProviderSocket } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { readJournal } from "@lando/engine/operations/accelerated-start-journal";
 import { effectiveEventsForPlan, withProjectEvents } from "@lando/engine/planner/effective-events";
@@ -72,6 +60,14 @@ import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/h
 import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
+import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import * as BunShellRunner from "../_support/shell-runner.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -3667,4 +3663,5 @@ describe("lando start", () => {
     ]);
   });
 });
+
 import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";

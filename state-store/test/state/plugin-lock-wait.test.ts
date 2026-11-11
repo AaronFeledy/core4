@@ -2,10 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { makePluginStateStore } from "../../src/plugin.ts";
 import { makeTestStateStore } from "../../src/testing.ts";

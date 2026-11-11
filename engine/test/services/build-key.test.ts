@@ -2,12 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect } from "effect";
-
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect } from "effect";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 
 const providerId = ProviderId.make("test");

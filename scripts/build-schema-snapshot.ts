@@ -15,12 +15,11 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { Schema } from "effect";
-import { assertLayerMergeCompleteness } from "../sdk/src/landofile/layer-merge-trie.ts";
-
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { HelpCatalogResult } from "../core/src/cli/compiled-help.ts";
 import { HelpTargetResult } from "../core/src/cli/help-target.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
+import { assertLayerMergeCompleteness } from "../sdk/src/landofile/layer-merge-trie.ts";
 import {
   IncludeEntry,
   JSON_SCHEMA_NAMES,

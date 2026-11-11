@@ -1,6 +1,4 @@
-import { SchemaIssue } from "effect";
-import { Effect, SchemaTransformation } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import validRange from "semver/ranges/valid.js";
 
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
@@ -9,18 +7,20 @@ import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import {
   ComposeInitServiceField,
+  ComposePullPolicyServiceField,
   ComposeServiceKnobFields,
   ComposeTmpfsServiceField,
 } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
-import { ServiceCreds } from "./database-connection.ts";
+import { ServiceCredsConfig } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
-import { EnvironmentValue } from "./environment-value.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
+
 export { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
+
 import { StringImportRef } from "./landofile-reference.ts";
 import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
 import { LogSourceInput } from "./log-source.ts";
@@ -47,7 +47,8 @@ import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "
 import { SqliteTargetConfig } from "./sqlite.ts";
 import { ToolingAuthoredInputFields } from "./tooling-input.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
-export { ToolingFlagShape, ToolingArgShape } from "./tooling-input.ts";
+
+export { ToolingArgShape, ToolingFlagShape } from "./tooling-input.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 const REPLACE = { kind: "replace" } as const;
@@ -70,8 +71,8 @@ const keyedMerge = (identity: Extract<LayerMergeRule, { kind: "keyed" }>["identi
   onMatch: "merge",
 });
 
-export { EndpointInput } from "./endpoint.ts";
 export { BuildBlock } from "./build-block.ts";
+export { EndpointInput } from "./endpoint.ts";
 export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
@@ -506,8 +507,9 @@ const ServiceSecurityField = ServiceSecurityInput.pipe(
 
 /**
  * Login credentials a catalog service may author under `services.<name>.creds`.
+ * Every member is optional; the service type fills omitted members from its own defaults.
  */
-export { ServiceCreds } from "./database-connection.ts";
+export { ServiceCredsConfig } from "./database-connection.ts";
 
 /**
  * App-relative file-backed configuration a catalog service may author under
@@ -649,22 +651,19 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     workingDirectory: Schema.optionalKey(PortablePath).annotate({
       description: "Container working directory for service processes.",
     }),
-    database: Schema.optionalKey(Schema.String).annotate({
-      description: "Default database, bucket, or equivalent data namespace created for the service.",
+    bucket: Schema.optionalKey(Schema.String).annotate({
+      description:
+        "Bucket name created for an object-storage service, used verbatim. MinIO is the only built-in service that uses it.",
     }),
     sqlite: Schema.optionalKey(SqliteTargetConfig).annotate({
       description:
         "File-backed SQLite database relative to this service's app mount. Use db:import, db:export, db:snapshot, db:restore, and db:reset against the file.",
     }),
-    password: Schema.optionalKey(EnvironmentValue).annotate({
-      description:
-        "Redis authentication password, passed through the container environment rather than command arguments.",
-    }),
     persist: Schema.optionalKey(Schema.Boolean).annotate({
       description:
         "Redis disk persistence: defaults to true; false disables durable storage, AOF, and RDB snapshots.",
     }),
-    creds: Schema.optionalKey(ServiceCreds).annotate({
+    creds: Schema.optionalKey(ServiceCredsConfig).annotate({
       description: "Service login credentials used to provision or connect to the service.",
     }),
     config: Schema.optionalKey(ServiceFileConfig).annotate({
@@ -733,6 +732,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
 
     ...ComposeServiceKnobFields,
     init: ComposeInitServiceField,
+    pull_policy: ComposePullPolicyServiceField,
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),

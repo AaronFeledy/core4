@@ -1,6 +1,7 @@
+import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
-import { Effect } from "effect";
-
+import type { LandofileFinalizeOverrides } from "@lando/landofile/service";
 import type { AppPlacementError, GlobalAppError, LandofileParseError } from "@lando/sdk/errors";
 import type { AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import {
@@ -14,10 +15,7 @@ import {
   RuntimeProviderRegistry,
   type StateStore,
 } from "@lando/sdk/services";
-
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
-import type { LandofileFinalizeOverrides } from "@lando/landofile/service";
+import { Effect } from "effect";
 
 import { globalCreateProviderId, resolveGlobalPlacement } from "../global-app/placement.ts";
 import {

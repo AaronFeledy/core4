@@ -1,6 +1,5 @@
-import { homedir, hostname } from "node:os";
-
 import { expect, test } from "bun:test";
+import { homedir, hostname } from "node:os";
 
 import {
   computePlanningRuntimeIdentity,

@@ -1,7 +1,7 @@
-import { Schema } from "effect";
+import type { ConfigTranslateInput, ConfigTranslateDetectInput as DetectInput } from "@lando/sdk/schema";
 
 import { ConfigTranslateDetectInput, ConfigTranslateDocumentSetInput } from "@lando/sdk/schema";
-import type { ConfigTranslateInput, ConfigTranslateDetectInput as DetectInput } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 export const CANONICAL = [
   "name: myapp",

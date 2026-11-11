@@ -3,16 +3,14 @@ import { fileURLToPath } from "node:url";
 import { unified } from "@astrojs/markdown-remark";
 import mdx from "@astrojs/mdx";
 import starlight from "@astrojs/starlight";
-import AutoImport from "astro-auto-import";
 import { defineConfig } from "astro/config";
-
+import AutoImport from "astro-auto-import";
+import { guideComponentVocabulary } from "./src/components/vocabulary.ts";
 import { writeLlmsFiles } from "./src/lib/llms.ts";
 import { createSourceLinkInventory, publishSchemaAssets } from "./src/lib/source-links.ts";
-import { remarkSourceLinks } from "./src/plugins/remark-source-links.ts";
-
-import { guideComponentVocabulary } from "./src/components/vocabulary.ts";
 import { remarkDropLeadingHeading } from "./src/plugins/remark-drop-leading-heading.ts";
 import { remarkGuideContext } from "./src/plugins/remark-guide-context.ts";
+import { remarkSourceLinks } from "./src/plugins/remark-source-links.ts";
 import { escapeReferenceMdxPlaceholders } from "./src/reference-mdx.ts";
 import { sidebar } from "./src/sidebar.ts";
 

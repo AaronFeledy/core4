@@ -2,11 +2,11 @@
  * The retained `lando mcp` session: one host runtime plus per-app contribution generations.
  * The tooling catalog still comes from the session directory's app at session start.
  */
-import { type Context, Effect, Layer, type Result } from "effect";
 
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import type { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { CommandRegistry } from "@lando/sdk/services";
+import { type Context, Effect, Layer, type Result } from "effect";
 
 import type { GenerationHostServices, LandoGenerationRuntime } from "../../../runtime/layer";
 import {

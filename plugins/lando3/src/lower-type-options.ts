@@ -110,7 +110,7 @@ export const lowerTypeOptions = (
     case "redis":
       cursor.take(["password"]);
       cursor.take(["persist"]);
-      if (typeof service.password === "string") patch.password = service.password;
+      if (typeof service.password === "string") patch.creds = { password: service.password };
       if (typeof service.persist === "boolean") patch.persist = service.persist;
       break;
     case "node":

@@ -1,6 +1,5 @@
-import { Option, Schema } from "effect";
-
 import { AppId } from "@lando/sdk/schema";
+import { Option, Schema } from "effect";
 
 import { ROUTE_FILE_PREFIX, ROUTE_FILE_SUFFIX } from "./proxy-paths.ts";
 

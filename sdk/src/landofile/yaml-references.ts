@@ -220,4 +220,5 @@ export const resolveYamlReferences = (
 
   return resolve(root, [], { line: 1, column: 1 });
 };
+
 import { isLandofileOverride, isLandofileReset, override } from "./merge-directives.ts";

@@ -5,8 +5,6 @@
  * verified its target volume.
  */
 
-import { DateTime, Effect, Stream } from "effect";
-
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type {
   AppRef,
@@ -16,6 +14,7 @@ import type {
   FileSyncSessionSpec,
   FileSyncSessionStatus,
 } from "@lando/sdk/schema";
+import { DateTime, Effect, Stream } from "effect";
 
 const ENGINE_ID = "mutagen" as const;
 const UNAVAILABLE_CLIENT_REMEDIATION =
@@ -167,10 +166,7 @@ const fakeNow = (): DateTime.Utc => DateTime.makeUnsafe("2026-05-28T00:00:00Z");
  *   - `terminate("__STOP_FAIL__")` → `FileSyncStopError`
  */
 export const makeFakeMutagenClient = (
-  options: {
-    readonly version?: string;
-    readonly initialSessions?: ReadonlyArray<MutagenSessionRecord>;
-  } = {},
+  options: { readonly version?: string; readonly initialSessions?: ReadonlyArray<MutagenSessionRecord> } = {},
 ): FakeMutagenClient => {
   const sessions = new Map<string, MutagenSessionRecord>(
     options.initialSessions?.map((record) => [record.name, record]) ?? [],

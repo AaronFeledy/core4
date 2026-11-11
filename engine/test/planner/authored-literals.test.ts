@@ -70,8 +70,8 @@ const runPlan = (
   );
 };
 
-const database = (password: string) =>
-  `name: proof\nservices:\n  db:\n    type: mariadb\n    home: false\n    creds:\n      user: wp\n      database: app\n      rootPassword: lando\n      password: ${JSON.stringify(password)}\n`;
+const database = (password: string, rootPassword = true) =>
+  `name: proof\nservices:\n  db:\n    type: mariadb\n    home: false\n    creds:\n      user: wp\n      database: app\n${rootPassword ? "      rootPassword: lando\n" : ""}      password: ${JSON.stringify(password)}\n`;
 
 test.each([
   ["redis", "redis-cli", "REDISCLI_AUTH"],
@@ -84,17 +84,20 @@ test.each([
     await writeFile(
       join(root, ".lando.yml"),
       type === "redis"
-        ? "name: proof\nservices:\n  db:\n    type: redis\n    home: false\n    password: wordpress\n"
+        ? "name: proof\nservices:\n  db:\n    type: redis\n    home: false\n    creds:\n      password: wordpress\n"
         : type === "mssql"
           ? "name: proof\nservices:\n  db:\n    type: mssql\n    home: false\n    creds:\n      user: sa\n      database: app\n      password: wordpress\n"
-          : database("wordpress").replace("type: mariadb", `type: ${type}`),
+          : database("wordpress", type === "mysql" || type === "mariadb").replace(
+              "type: mariadb",
+              `type: ${type}`,
+            ),
     );
     const plan = await runPlan(root);
     expect(effectiveToolingForPlan(plan)?.[task]?.env?.[key]).toBe("wordpress");
     expect(planRedactionValues(plan).wholeToken).toEqual(["wordpress"]);
     expect(planRedactionValues(plan).substring).toEqual([]);
     expect(plan.committedLiteralDigests).toEqual(
-      (type === "redis" || type === "mssql" ? ["wordpress"] : ["lando", "wordpress"]).map(sha256Hex).sort(),
+      (type === "mysql" || type === "mariadb" ? ["lando", "wordpress"] : ["wordpress"]).map(sha256Hex).sort(),
     );
   }),
 );
@@ -106,7 +109,7 @@ test.each([
   withRoot(async (root) => {
     await writeFile(
       join(root, ".lando.yml"),
-      "name: proof\nservices:\n  db:\n    type: redis\n    home: false\n    password: wordpress\n",
+      "name: proof\nservices:\n  db:\n    type: redis\n    home: false\n    creds:\n      password: wordpress\n",
     );
     await writeFile(join(root, ".lando.local.yml"), local);
     const plan = await runPlan(root, { layers: true });
@@ -117,7 +120,10 @@ test.each([
 
 test("generated mongosh URI protects an encoded authored password without collecting public identities", () =>
   withRoot(async (root) => {
-    await writeFile(join(root, ".lando.yml"), database("p!ss").replace("type: mariadb", "type: mongodb"));
+    await writeFile(
+      join(root, ".lando.yml"),
+      database("p!ss", false).replace("type: mariadb", "type: mongodb"),
+    );
     const plan = await runPlan(root);
     const values = planRedactionValues(plan);
     const uri = effectiveToolingForPlan(plan)?.mongosh?.env?.MONGO_URI;
@@ -204,7 +210,10 @@ test("committed Redis environment bytes prove matching credentials from another 
       join(root, ".lando.yml"),
       "name: proof\nservices:\n  db:\n    type: redis\n    home: false\n    environment:\n      REDISCLI_AUTH: wordpress\n",
     );
-    await writeFile(join(root, ".lando.local.yml"), "services:\n  db:\n    password: wordpress\n");
+    await writeFile(
+      join(root, ".lando.local.yml"),
+      "services:\n  db:\n    creds:\n      password: wordpress\n",
+    );
     const values = planRedactionValues(await runPlan(root, { layers: true }));
     expect(values.substring).toEqual([]);
     expect(values.wholeToken).toEqual(["wordpress"]);

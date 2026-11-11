@@ -2,11 +2,9 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { copyFile, link, lstat, mkdir, readFile, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-
-import { Effect } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 const regularFile = async (file: string): Promise<boolean> => {
   const info = await lstat(file);

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Option } from "effect";
-
 import type { DataPlaneApiClient } from "@lando/container-runtime/data-plane";
 import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { Effect, Option } from "effect";
+
 const target = { os: "linux", arch: "x64" } as const;
 const resolveHelper = () =>
   Effect.succeed({ target, path: AbsolutePath.make(import.meta.filename), digest: "1".repeat(64) });

@@ -17,7 +17,11 @@ Starting an app you already ran before works offline, as long as its images were
 
 The bundled SSH sidecar installs `openssh-client` and `socat` when the global app builds its image, not when the container starts. After that first online build, later starts reuse the image and cached build layers without network access. SSH agent forwarding can come back offline after a poweroff or reboot.
 
-`lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is in the result's `warnings` array with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
+`lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is on the envelope's top-level `warnings` array, next to `result`, with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
+
+An image Lando built for a service is never pulled, online or offline. If it's missing, the command fails and tells you to run `lando rebuild -s <service>`. That rebuild needs whatever the build itself needs, such as its base image and any packages it downloads.
+
+A service with `pull_policy: always` pulls on every start and rebuild and fails offline instead of falling back. Use `pull_policy: never` for an image you load or build locally and never want pulled. See [Control when the image is pulled](../services/compose-passthrough.mdx#control-when-the-image-is-pulled).
 
 Stopping an app on an idle managed runtime needs no runtime launch: `lando stop` completes its host-side cleanup. `lando destroy` launches an installed idle runtime when it holds resources that must be removed, so you can destroy after `poweroff` or a reboot without starting the app first. The installed runtime and cached prerequisites must still be usable. Observation commands such as `lando logs` and `lando info` never launch the runtime; an unobservable provider stays an explicit failure rather than evidence that its resources are absent.
 

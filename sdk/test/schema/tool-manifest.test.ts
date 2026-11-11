@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { ToolArtifactEntry, ToolManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const decodeManifest = Schema.decodeUnknownSync(ToolManifest);
 const decodeEntry = Schema.decodeUnknownSync(ToolArtifactEntry);

@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime, Result, Schema } from "effect";
-
 import {
   type LandoEvent,
   LandoEvent as LandoEventSchema,
   PostOpenUrlEvent,
   PreOpenUrlEvent,
 } from "@lando/sdk/events";
+import { DateTime, Result, Schema } from "effect";
 
 const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-07-06T08:00:00Z");
 

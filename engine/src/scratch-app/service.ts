@@ -2,12 +2,11 @@ import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
+import type { UserAppResolution } from "@lando/landofile/app-resolution";
 import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
-
 import {
   AppPlacementError,
   type DebuggerHostUnavailableError,
@@ -32,6 +31,7 @@ import {
   AppPlanner,
   BuildOrchestrator,
   DataMover,
+  EnvironmentValueResolver,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -51,10 +51,7 @@ import {
   type ScratchSummary,
   StateStore,
 } from "@lando/sdk/services";
-
-import type { UserAppResolution } from "@lando/landofile/app-resolution";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import {
@@ -62,7 +59,11 @@ import {
   loadUserLandofileFile,
   makeEngineUserAppResolution,
 } from "../landofile/app-resolution.ts";
-import { captureGlobalConsumerAdmission } from "../operations/global-consumer-admission.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
+import {
+  captureGlobalConsumerAdmission,
+  requireSelectableRouter,
+} from "../operations/global-consumer-admission.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
@@ -671,6 +672,12 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   }) {
     const { id: scratchId, plan, planCache, landofileRouter } = request;
     const markedPlan = markScratchPlan(plan, scratchId);
+    // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
+    if (Option.isSome(proxy))
+      yield* requireSelectableRouter(markedPlan).pipe(
+        Effect.provideService(RouterService, proxy.value),
+        mapFailures((cause) => scratchAppError("start", cause.message, cause, cause.remediation)),
+      );
     const preparedOverlays = yield* prepareDebuggerOverlay(markedPlan);
     yield* ensureAppPlacement(
       { kind: "scratch", id: scratchId, root: markedPlan.root },
@@ -704,10 +711,21 @@ const makeScratchAppService = Effect.fnUntraced(function* (
           ),
         ),
     });
+    const certifiedPlan = yield* prepareServiceCertificates(builtPlan).pipe(
+      Effect.provide(context),
+      mapFailures((cause) =>
+        scratchAppError(
+          "start",
+          `Unable to prepare certificates for scratch app ${scratchId}: ${cause.message}`,
+          cause,
+          cause.remediation,
+        ),
+      ),
+    );
     yield* applyScratchStartup(
       {
         id: scratchId,
-        plan: builtPlan,
+        plan: certifiedPlan,
         preparedOverlays,
         ...(landofileRouter === undefined ? {} : { landofileRouter }),
       },

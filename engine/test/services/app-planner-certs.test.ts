@@ -1,27 +1,30 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
+import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
-import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
+import { serviceCertificatePaths } from "../../src/lifecycle/service-certificate-paths.ts";
+import {
+  appPlannerCertsPaths,
+  makeUntouchableResolver,
+  planAppPlannerCerts,
+} from "./app-planner-certs-harness.ts";
 
-import { planAppPlannerCerts } from "./app-planner-certs-harness.ts";
-
-test("issues a leaf certificate with the documented SAN coverage for certs: true", async () => {
+test("plans a generated leaf certificate with the documented SAN coverage without contacting the CA", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-"));
   const appRoot = join(root, "app");
   const cacheRoot = join(root, "cache");
 
   try {
     await mkdir(appRoot, { recursive: true });
-    const ca = makeTestCertificateAuthority();
+    const untouchable = makeUntouchableResolver();
     const appPlan = await planAppPlannerCerts({
       appRoot,
       cacheRoot,
-      ca,
+      resolver: untouchable.resolver,
       landofile: Schema.decodeUnknownSync(LandofileShape)({
         name: "certs-app",
         runtime: 4,
@@ -38,18 +41,12 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
       }),
     });
 
-    const issued = ca.calls.filter((call) => call.op === "issueCert");
-    expect(issued).toHaveLength(1);
-    expect(issued[0]?.op === "issueCert" ? issued[0].spec.cn : undefined).toBe("web.certs-app.internal");
-    expect(issued[0]?.op === "issueCert" ? issued[0].spec.sans : undefined).toEqual([
+    expect(untouchable.calls()).toBe(0);
+    const leaf = serviceCertificatePaths(
+      appPlannerCertsPaths({ appRoot, cacheRoot }).certsDir,
+      routeOwnerFromPlan(appPlan).ownerKey,
       "web",
-      "web.certs-app.internal",
-      "web.internal.test",
-      "certs-app.lndo.site",
-      "alias.lndo.site",
-      "localhost",
-      "127.0.0.1",
-    ]);
+    );
 
     const web = appPlan.services[ServiceName.make("web")];
     expect(web?.certs).toEqual({
@@ -63,7 +60,7 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
         "localhost",
         "127.0.0.1",
       ],
-      caId: "test",
+      caId: "mkcert",
     });
     expect(web?.extensions).not.toHaveProperty("@lando/core/certs");
     expect(web?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/web.crt");
@@ -71,19 +68,21 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
     expect(web?.mounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          source: "/tmp/test-certs/web.certs-app.internal.crt",
+          source: leaf.certPath,
           target: "/etc/lando/certs/leaf/web.crt",
           readOnly: true,
+          createHostPath: false,
         }),
         expect.objectContaining({
-          source: "/tmp/test-certs/web.certs-app.internal.key",
+          source: leaf.keyPath,
           target: "/etc/lando/certs/leaf/web.key",
           readOnly: true,
+          createHostPath: false,
         }),
       ]),
     );
 
-    // l337-base services never compose lando.certs, so `certs: true` there issues nothing.
+    // l337-base services never compose lando.certs, so `certs: true` there plans nothing.
     const edge = appPlan.services[ServiceName.make("edge")];
     expect(edge?.certs).toBeUndefined();
     expect(edge?.environment.LANDO_SERVICE_CERT).toBeUndefined();
@@ -99,11 +98,9 @@ test("covers the generated default proxy hostname", async () => {
 
   try {
     await mkdir(appRoot, { recursive: true });
-    const ca = makeTestCertificateAuthority();
     const appPlan = await planAppPlannerCerts({
       appRoot,
       cacheRoot,
-      ca,
       landofile: Schema.decodeUnknownSync(LandofileShape)({
         name: "certs-default-route",
         runtime: 4,
@@ -111,8 +108,9 @@ test("covers the generated default proxy hostname", async () => {
       }),
     });
 
-    const issued = ca.calls.find((call) => call.op === "issueCert");
-    expect(issued?.op === "issueCert" ? issued.spec.sans : []).toContain("web.certs-default-route.lndo.site");
+    expect(appPlan.services[ServiceName.make("web")]?.certs?.sans).toContain(
+      "web.certs-default-route.lndo.site",
+    );
     expect(appPlan.routes.map((route) => route.hostname)).toContain("web.certs-default-route.lndo.site");
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -127,12 +125,10 @@ test.each(["certs-configured-domain", "global"])(
     const appRoot = join(root, "app");
     try {
       await mkdir(appRoot, { recursive: true });
-      const ca = makeTestCertificateAuthority();
       // When
       const appPlan = await planAppPlannerCerts({
         appRoot,
         cacheRoot: join(root, "cache"),
-        ca,
         config: Schema.decodeUnknownSync(GlobalConfig)({ proxy: { defaultDomain: "lndo.test" } }),
         landofile: Schema.decodeUnknownSync(LandofileShape)({
           name,
@@ -144,26 +140,22 @@ test.each(["certs-configured-domain", "global"])(
       const hostname = `web.${name}.lndo.test`;
       expect(appPlan.routes.map((route) => route.hostname)).toEqual([hostname]);
       expect(appPlan.services[ServiceName.make("web")]?.certs?.sans).toContain(hostname);
-      const issued = ca.calls.find((call) => call.op === "issueCert");
-      expect(issued?.op === "issueCert" ? issued.spec.sans : []).toContain(hostname);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   },
 );
 
-test("issues a leaf certificate for default type: tomcat without authored certs", async () => {
+test("plans a generated leaf certificate for default type: tomcat without authored certs", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-tomcat-"));
   const appRoot = join(root, "app");
   const cacheRoot = join(root, "cache");
 
   try {
     await mkdir(appRoot, { recursive: true });
-    const ca = makeTestCertificateAuthority();
     const appPlan = await planAppPlannerCerts({
       appRoot,
       cacheRoot,
-      ca,
       landofile: Schema.decodeUnknownSync(LandofileShape)({
         name: "tomcat-certs",
         runtime: 4,
@@ -171,10 +163,8 @@ test("issues a leaf certificate for default type: tomcat without authored certs"
       }),
     });
 
-    const issued = ca.calls.filter((call) => call.op === "issueCert");
-    expect(issued).toHaveLength(1);
     const appserver = appPlan.services[ServiceName.make("appserver")];
-    expect(appserver?.certs?.caId).toBe("test");
+    expect(appserver?.certs?.caId).toBe("mkcert");
     expect(appserver?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/appserver.crt");
     expect(appserver?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/appserver.key");
   } finally {
@@ -189,11 +179,9 @@ test("honors authored certs: false on type: tomcat", async () => {
 
   try {
     await mkdir(appRoot, { recursive: true });
-    const ca = makeTestCertificateAuthority();
     const appPlan = await planAppPlannerCerts({
       appRoot,
       cacheRoot,
-      ca,
       landofile: Schema.decodeUnknownSync(LandofileShape)({
         name: "tomcat-certs-off",
         runtime: 4,
@@ -201,7 +189,6 @@ test("honors authored certs: false on type: tomcat", async () => {
       }),
     });
 
-    expect(ca.calls.filter((call) => call.op === "issueCert")).toHaveLength(0);
     const appserver = appPlan.services[ServiceName.make("appserver")];
     expect(appserver?.certs).toBeUndefined();
     expect(appserver?.extensions["@lando/core/certs"]).toBe("none");

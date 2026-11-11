@@ -8,10 +8,6 @@ import {
   supervisedExecFixtureOptions,
 } from "@lando/container-runtime/testing/exec-supervision";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { DateTime, Duration, Effect, Stream } from "effect";
-
-import type { RetryPolicy } from "@lando/sdk/probe";
-
 import type {
   PodmanApiClient,
   PodmanHttpRequest,
@@ -19,6 +15,7 @@ import type {
   PodmanServiceRunner,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { RetryPolicy } from "@lando/sdk/probe";
 import {
   AbsolutePath,
   AppId,
@@ -29,6 +26,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { DateTime, Duration, Effect, Stream } from "effect";
 import { LEGACY_NATIVE_INIT_BRIDGE_VERSION, catatonitFixture } from "./fixtures/catatonit.ts";
 import { decodeNetworkCreate } from "./network-fixture.ts";
 import { makeRuntimeProvider } from "./provider-fixture.ts";

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { landoServiceStoreName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { landoEnvFeature } from "../src/features/env.ts";
 

@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { type DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import manifest from "./pins.json";
 import {
   DownloadOptions,
   ImageCandidateRequest,
@@ -10,7 +11,6 @@ import {
   decodePinCatalog,
   pinError,
 } from "./pins-schema.ts";
-import manifest from "./pins.json";
 
 const loadCatalog = () => decodePinCatalog(manifest);
 

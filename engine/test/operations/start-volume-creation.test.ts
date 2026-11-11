@@ -7,7 +7,7 @@ import { Effect, Result } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { stopApp, stopAppWithPlan } from "../../src/operations/stop.ts";
+import { haltAppRuntime, stopApp } from "../../src/operations/stop.ts";
 import { resolveTeardownEvidence } from "../../src/providers/applied-state-resolution.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
@@ -122,7 +122,7 @@ test("internal selected stop preserves unrelated ownership hints", async () => {
   });
   // When
   await Effect.runPromise(
-    stopAppWithPlan(
+    haltAppRuntime(
       {},
       {
         plan: plannedApp,

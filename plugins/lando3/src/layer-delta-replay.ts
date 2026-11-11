@@ -8,8 +8,8 @@ import {
   reset,
 } from "@lando/sdk/landofile";
 import { Effect, Result } from "effect";
-import { equal } from "./layer-delta-values.ts";
 import type { DesiredPrefix } from "./layer-delta.ts";
+import { equal } from "./layer-delta-values.ts";
 
 type Path = ReadonlyArray<string | number>;
 type EmittedLayer = {

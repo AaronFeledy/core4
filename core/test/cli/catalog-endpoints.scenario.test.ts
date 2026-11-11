@@ -3,12 +3,11 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { deserialize } from "node:v8";
-import { Schema } from "effect";
-import { stringify } from "yaml";
-
 import { APP_PLAN_CACHE_HEADER_BYTES } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
+import { Schema } from "effect";
+import { stringify } from "yaml";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
 const name = "catalog-endpoint-intent";

@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, LogSourceId, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
@@ -11,6 +8,7 @@ import {
   TestServiceType,
   runServiceCompositionContract,
 } from "@lando/sdk/test";
+import { Cause, Effect, Schema } from "effect";
 
 const baseInput = (
   overrides?: Partial<ServiceCompositionContractInput>,

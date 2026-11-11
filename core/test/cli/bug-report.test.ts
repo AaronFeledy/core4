@@ -337,7 +337,7 @@ describe("buildBugReport: envelope extraction", () => {
         capability: "composeSpec",
         providerId: "lando",
         remediation:
-          "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+          "Remove shm_size from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
       }),
       context: ctx(),
     });
@@ -614,7 +614,7 @@ describe("renderPlainBugReport: stable multi-line output", () => {
           capability: "composeSpec",
           providerId: "lando",
           remediation:
-            "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+            "Remove shm_size from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
         }),
         context: ctx(),
       }),
@@ -756,7 +756,7 @@ describe("renderJsonBugReport: single NDJSON line", () => {
           capability: "composeSpec",
           providerId: "lando",
           remediation:
-            "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+            "Remove shm_size from service web, or use a provider that supports it: docker (`lando setup --provider=docker`).",
         }),
         context: ctx(),
       }),
