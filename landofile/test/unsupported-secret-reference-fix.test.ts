@@ -173,6 +173,11 @@ test.each([
     expected: undefined,
   },
   {
+    name: "a case-pattern delimiter can start a comment without whitespace",
+    value: 'case x in x)# "\nprintf %s ${secret:TOKEN};; esac',
+    expected: undefined,
+  },
+  {
     name: "a comment after the last reference does not block the fix",
     value: 'printf %s ${secret:TOKEN} # don"t',
     expected: 'printf %s "$TOKEN" # don"t',

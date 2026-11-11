@@ -40,12 +40,8 @@ export const secretReferenceFix = (input: {
       while (cursor < offset) {
         const char = input.value[cursor];
         if (char === "\\" && quote !== "'") cursor += 2;
-        else if (
-          quote === undefined &&
-          char === "#" &&
-          (cursor === 0 || /[\s;&|(]/.test(input.value[cursor - 1] ?? ""))
-        ) {
-          // A shell comment carries no quoting syntax and is not command text.
+        else if (quote === undefined && char === "#") {
+          // Without tokenizing the shell, an unquoted # may start a comment.
           shellSafe = false;
           const newline = input.value.indexOf("\n", cursor);
           cursor = newline < 0 ? input.value.length : newline + 1;
