@@ -327,4 +327,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | independent health/readiness authoring, host/user probes, disabling, and pre-action validation | `docs/guides/services/wait-for-your-app.mdx` | Shipped |
 | - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |
 | - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |
-| - | - | Adminer database UI for Postgres and MariaDB via Compose passthrough | `docs/guides/services/adminer.mdx` | Shipped |
+| - | - | Adminer database UI for Postgres, MariaDB, and SQLite via Compose passthrough | `docs/guides/services/adminer.mdx` | Shipped |

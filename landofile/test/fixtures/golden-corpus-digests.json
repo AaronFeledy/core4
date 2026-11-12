@@ -9,6 +9,10 @@
       "digest": "d95964f2ff2e322c14a910381744a5c4a0d349fd7823af8871507efb0cf432e5"
     },
     {
+      "fixture": "docs/guides/adminer/fixtures/adminer-sqlite",
+      "digest": "eae0a8279fddbc1ff3e106819eec5d99684781079699c4b5be71a0d08c7ab063"
+    },
+    {
       "fixture": "docs/guides/apache/fixtures/apache-demo",
       "digest": "0570a254096a54de8402f0ed2aaa7458a8fb978e8f2d29607763bcf91626c3ae"
     },

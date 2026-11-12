@@ -2,12 +2,12 @@
 id: adminer
 provider: test
 timeout: 90000
-tags: [docs, adminer, compose, service, database, postgres, mariadb]
+tags: [docs, adminer, compose, service, database, postgres, mariadb, sqlite]
 ---
 
 # Browse your database in Adminer
 
-`lando psql` is fine until you want to click through tables, edit a row, or eyeball a schema. The phpMyAdmin service only talks to MySQL and MariaDB. Adminer is a one-file database UI that also speaks PostgreSQL, and its official image runs as a Compose service next to your database.
+`lando psql` is fine until you want to click through tables, edit a row, or eyeball a schema. The phpMyAdmin service only talks to MySQL and MariaDB. Adminer is a one-file database UI that also speaks PostgreSQL and SQLite, and its official image runs as a Compose service in your app.
 
 Run every command on this page from the app directory on your host.
 
@@ -40,7 +40,7 @@ services:
         condition: service_healthy
 ```
 
-- `creds:` sets a password you can type into a login form. Without it, Lando generates the Postgres password and redacts it from `lando info` and command output, so Adminer has nothing you can paste. Keep this password for local development only.
+- `creds:` sets a password you choose. Without it, the password is `lando`, and `lando info` prints that published default. Keep an authored password for local development only.
 - `adminer:5` is the official image on the Adminer 5 major. It serves the UI on port `8080`.
 - `appMount: false` keeps your source out of the Adminer container. It only needs the network.
 - `ADMINER_DEFAULT_SERVER` prefills the login form's Server field with `db`, the database service's name on the app network.
@@ -115,9 +115,73 @@ services:
 
 Start it, then log in with System `MySQL / MariaDB`, Server `db`, username `lando`, password `lando`, and database `adminer-mariadb`. For MySQL and MariaDB alone, the typed [phpMyAdmin service](./phpmyadmin.mdx) finds your databases and gets its URL without an endpoint.
 
+## Browse a SQLite file
+
+Adminer can open a SQLite file you declare with `sqlite.path` on an app service. See [Use SQLite with db commands](../tooling/sqlite-database.mdx) for that key. Adminer 5 will not log in to SQLite without a password, and SQLite has none, so you mount the official `login-password-less` plugin that the `adminer:5` image already bundles.
+
+Save this as `.lando.yml` in an empty directory, and save the plugin wrapper next to it as `login-password-less.php`:
+
+```yaml
+name: adminer-sqlite
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    sqlite:
+      path: data/site.sqlite
+  adminer:
+    type: compose
+    image: adminer:5
+    volumes:
+      - ./login-password-less.php:/var/www/html/plugins-enabled/login-password-less.php
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+```
+
+```php
+<?php
+require_once('plugins/login-password-less.php');
+return new AdminerLoginPasswordLess(
+  password_hash("local-development-only", PASSWORD_DEFAULT)
+);
+```
+
+This Adminer service keeps the default app mount, so it sees the file at `/app/` plus your `sqlite.path`. The wrapper passes the bundled plugin a hash of the password you will type. The image loads that wrapper from `/var/www/html/plugins-enabled/`.
+
+Create a database file with a table to show, then start:
+
+```sh
+mkdir -p data
+lando start
+lando exec appserver -- php -r '$db = new PDO("sqlite:data/site.sqlite"); $db->exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES (\"hello from lando\");");'
+```
+
+`lando start` returns after the app service is ready and Adminer is running, so the `lando exec` and the login below work right away. If your app already created the file, skip the `php -r` command.
+
+Run `lando info` and open the `adminer` URL, `https://adminer.adminer-sqlite.lndo.site`. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+Fill in the login form:
+
+| Field | Value |
+| --- | --- |
+| System | SQLite |
+| Server | leave empty |
+| Username | leave empty |
+| Password | `local-development-only` |
+| Database | `/app/data/site.sqlite` |
+
+After login, the tables list shows `notes`. Open it and select its data to see the row you inserted. That proves Adminer opened the SQLite file on the app mount with the plugin password. It doesn't prove your application's own connection settings.
+
+If you already added Adminer next to Postgres, declare `sqlite.path` on the app service, remove `appMount: false` so Adminer can see `/app`, and add the plugin file and its `volumes:` entry.
+
+If the URL doesn't load, check `lando logs -s adminer` for the PHP server's startup line, and see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx) when the hostname doesn't resolve.
+
 ## Check the plan
 
-These scenarios check the planned config for both Landofiles. `lando app:config` proves what Lando will create, not that Adminer can log in; the login steps above are that check.
+These scenarios check the planned config for the Landofiles. `lando app:config` proves what Lando will create, not that Adminer can log in; the login steps above are that check.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -153,15 +217,32 @@ These scenarios check the planned config for both Landofiles. `lando app:config`
       <Cleanup />
     </Step>
   </Scenario>
+
+  <Scenario id="sqlite" render>
+    <Step name="scaffold-sqlite">
+      <UseFixture name="adminer-sqlite" />
+    </Step>
+    <Step name="inspect-sqlite">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"data/site.sqlite\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"adminer:5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "plugins-enabled/login-password-less.php" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"protocol\":\\s*\"http\",\\s*\"port\":\\s*8080" } }} />
+    </Step>
+    <Step name="cleanup-sqlite">
+      <Cleanup />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Remove it
 
-Delete the `adminer` service from `.lando.yml` and run `lando rebuild -y`. Adminer stores nothing of its own, so your database volume is untouched.
+Delete the `adminer` service from `.lando.yml` and run `lando rebuild -y`. Adminer stores nothing of its own, so your database is untouched.
 
 ## Next
 
 - [Add PostgreSQL](./postgres.mdx) for ports, versions, and connection URLs
 - [Add a Compose service](./compose-passthrough.mdx) for the keys `type: compose` accepts
 - [Choose a catalog service's endpoints](../proxy/route-shorthand.mdx#choose-a-catalog-services-endpoints) to name your own hostname
+- [Use SQLite with db commands](../tooling/sqlite-database.mdx) to declare `sqlite.path` and import data first
 - [Import and export app databases](../tooling/db-import-export.mdx) to load real data first
