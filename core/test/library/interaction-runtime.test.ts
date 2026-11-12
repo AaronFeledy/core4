@@ -23,48 +23,60 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   }
 };
 
+// These exercise real recipe acquisition, rendering, private-file checks, and
+// journal publication. Bound hangs without treating CI filesystem speed as API behavior.
+const scaffoldTimeoutMs = 30_000;
+
 describe("embedding host drives apps:init non-interactively with TestInteractionService", () => {
-  test("seeded answers scaffold an app with zero terminal access", async () => {
-    await withTempCwd(async (dir) => {
-      const interaction = makeTestInteractionService({
-        answers: { name: "lib-app", php: "8.3" },
-      });
-      const prompter = makePromiseInteractionPrompter(interaction.service);
+  test(
+    "seeded answers scaffold an app with zero terminal access",
+    async () => {
+      await withTempCwd(async (dir) => {
+        const interaction = makeTestInteractionService({
+          answers: { name: "lib-app", php: "8.3" },
+        });
+        const prompter = makePromiseInteractionPrompter(interaction.service);
 
-      const result = await initApp({
-        cwd: dir,
-        full: false,
-        recipe: "lamp",
-        interaction: prompter,
-        postInitIO: { out: () => {}, err: () => {} },
-      });
-
-      expect(result.appName).toBe("lib-app");
-      expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
-      const names = interaction.transcript().map((entry) => entry.name);
-      expect(names).toContain("name");
-    });
-  });
-
-  test("default init prompter honors an active InteractionService override", async () => {
-    await withTempCwd(async (dir) => {
-      const interaction = makeTestInteractionService({
-        answers: { name: "override-app", php: "8.3" },
-      });
-
-      const result = await withInteractionServiceOverride(interaction.service, () =>
-        initApp({
+        const result = await initApp({
           cwd: dir,
           full: false,
           recipe: "lamp",
+          interaction: prompter,
           postInitIO: { out: () => {}, err: () => {} },
-        }),
-      );
+        });
 
-      expect(result.appName).toBe("override-app");
-      expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
-      const names = interaction.transcript().map((entry) => entry.name);
-      expect(names).toContain("name");
-    });
-  });
+        expect(result.appName).toBe("lib-app");
+        expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
+        const names = interaction.transcript().map((entry) => entry.name);
+        expect(names).toContain("name");
+      });
+    },
+    scaffoldTimeoutMs,
+  );
+
+  test(
+    "default init prompter honors an active InteractionService override",
+    async () => {
+      await withTempCwd(async (dir) => {
+        const interaction = makeTestInteractionService({
+          answers: { name: "override-app", php: "8.3" },
+        });
+
+        const result = await withInteractionServiceOverride(interaction.service, () =>
+          initApp({
+            cwd: dir,
+            full: false,
+            recipe: "lamp",
+            postInitIO: { out: () => {}, err: () => {} },
+          }),
+        );
+
+        expect(result.appName).toBe("override-app");
+        expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
+        const names = interaction.transcript().map((entry) => entry.name);
+        expect(names).toContain("name");
+      });
+    },
+    scaffoldTimeoutMs,
+  );
 });

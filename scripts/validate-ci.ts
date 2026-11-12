@@ -13,7 +13,7 @@ if (import.meta.main) {
     Schema.Record(
       Schema.String,
       Schema.Struct({
-        result: Schema.Literals(["success", "skipped", "failure", "cancelled"]),
+        result: Schema.Literals(["success", "skipped", "failure", "cancelled", "abandoned"]),
       }),
     ),
   )(JSON.parse(env.CI_NEEDS));
