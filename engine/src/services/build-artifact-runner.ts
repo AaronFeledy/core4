@@ -1,4 +1,5 @@
 import { retainCreateArtifactIdentity } from "@lando/container-runtime/create-fingerprint";
+import type { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ArtifactRef as PlannedArtifactRef, ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Predicate } from "effect";
@@ -26,6 +27,7 @@ interface ProviderBuildInput {
   readonly service: ServicePlan;
   readonly buildKey: string;
   readonly resolvedSource?: ArtifactRef;
+  readonly onOutput?: (text: string) => Effect.Effect<void, ProviderInternalError>;
 }
 
 /**
@@ -57,7 +59,13 @@ export const runProviderBuild = Effect.fn("RuntimeProvider.buildArtifact")(funct
     };
   }
   const built = yield* Effect.scoped(
-    provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey }),
+    provider.buildArtifact({
+      app: plan.id,
+      service: service.name,
+      plan,
+      buildKey,
+      ...(input.onOutput === undefined ? {} : { onOutput: input.onOutput }),
+    }),
   );
   return { ...built, origin: "build" as const };
 });

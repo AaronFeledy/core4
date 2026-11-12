@@ -11,7 +11,7 @@ const resolve = (cmd: string, context: ExpressionContext, vars: ToolingTaskShape
   const task = { cmd, vars };
   return Effect.runPromise(
     resolveToolingTaskShape(task, context, authoredInvocationSites(task, "binding.yml")),
-  );
+  ).then((resolved) => resolved.task);
 };
 const argv = async (command: string) => {
   const bun = await $`${{ raw: command }}`.quiet();
@@ -140,7 +140,7 @@ test.each([{ raw: [] }, { raw: ["", "a b", "safe; echo INJECTED"] }])(
     };
     const resolved = await Effect.runPromise(
       resolveToolingTaskShape(task, { raw }, authoredInvocationSites(task, "binding.yml")),
-    );
+    ).then((resolved) => resolved.task);
     if (!Array.isArray(resolved.cmd)) throw new Error("expected argv");
     const child = spawn(resolved.cmd, { stdout: "pipe", stderr: "pipe" });
     expect(JSON.parse(await new Response(child.stdout).text())).toEqual(raw);

@@ -1,19 +1,38 @@
-import {
-  ContainerTransportError,
-  type SocketHttpErrorKind,
-  type SocketReadSystemCode,
-} from "./transport-error.ts";
-
 export { socketHttpConnection } from "./socket-http-connection.ts";
+export { connectSocket } from "./transport-connection.ts";
 export {
   ContainerTransportError,
   type SocketHttpErrorKind,
   type SocketReadSystemCode,
   runtimeRemediation,
 } from "./transport-error.ts";
+export {
+  concatBytes,
+  decodeChunkedBody,
+  decodeChunkedBuffer,
+  flushChunkedBufferAtEnd,
+  indexOfBytes,
+  parseHttpHead,
+} from "./transport-http.ts";
+export { socketHttpRequestText } from "./transport-request.ts";
 
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
+import { connect, readResponse } from "./transport-connection.ts";
+import {
+  type ParsedHttpHead,
+  collectBytes,
+  concatBytes,
+  decodeChunkedBuffer,
+  fail,
+  flushChunkedBufferAtEnd,
+  headerSeparator,
+  indexOfBytes,
+  parseHttpHead,
+  readStreamErrorBody,
+  socketResponse,
+  textDecoder,
+} from "./transport-http.ts";
+import { writeRequest } from "./transport-request.ts";
+import { streamUpload } from "./transport-upload.ts";
 
 export type Bytes = Uint8Array<ArrayBufferLike>;
 
@@ -24,6 +43,12 @@ export interface SocketHttpRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Bytes>;
+  /**
+   * Ordinary HTTP request body written while the response is read. Mutually exclusive with `body` and
+   * `stdin`; sent with a single `Content-Length` header and without upgrade headers. Use it when the
+   * daemon streams a response for a request that carries a body.
+   */
+  readonly upload?: AsyncIterable<Bytes>;
   /** Called after successful stream response headers arrive, before body bytes are emitted. */
   readonly onResponseHead?: () => void;
 }
@@ -40,8 +65,6 @@ export interface SocketHttpConnection extends AsyncIterable<Bytes> {
   destroy(): void;
 }
 
-const SOCKET_READ_SYSTEM_CODES = ["ECONNABORTED", "ECONNRESET", "EPIPE", "ETIMEDOUT"] as const;
-
 export interface ConnectableSocket {
   once(event: "connect", listener: () => void): unknown;
   once(event: "error", listener: (cause: Error) => void): unknown;
@@ -49,38 +72,6 @@ export interface ConnectableSocket {
   off(event: "error", listener: (cause: Error) => void): unknown;
   destroy(): unknown;
 }
-
-export const connectSocket = async (socket: ConnectableSocket, signal?: AbortSignal): Promise<void> => {
-  await new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      socket.off("connect", onConnect);
-      socket.off("error", onError);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    const onConnect = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = (cause: Error) => {
-      cleanup();
-      socket.destroy();
-      reject(cause);
-    };
-    const onAbort = () => {
-      cleanup();
-      socket.destroy();
-      reject(new DOMException("Socket connection aborted.", "AbortError"));
-    };
-
-    if (signal?.aborted) {
-      onAbort();
-      return;
-    }
-    socket.once("connect", onConnect);
-    socket.once("error", onError);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-};
 
 export interface SocketHttpClientOptions {
   readonly connect: (signal?: AbortSignal) => Promise<SocketHttpConnection>;
@@ -94,305 +85,6 @@ export interface SocketHttpClient {
   readonly request: (request: SocketHttpRequest) => Promise<SocketHttpResponse>;
   readonly stream: (request: SocketHttpRequest) => AsyncGenerator<Bytes>;
 }
-
-interface ParsedHttpHead {
-  readonly status: number;
-  readonly headers: ReadonlyMap<string, string>;
-  readonly bodyStart: Bytes;
-}
-
-const headerSeparator: Bytes = textEncoder.encode("\r\n\r\n");
-const chunkSeparator: Bytes = textEncoder.encode("\r\n");
-
-export const indexOfBytes = (haystack: Bytes, needle: Bytes): number => {
-  for (let index = 0; index <= haystack.length - needle.length; index += 1) {
-    let matched = true;
-    for (let offset = 0; offset < needle.length; offset += 1) {
-      if (haystack[index + offset] !== needle[offset]) {
-        matched = false;
-        break;
-      }
-    }
-    if (matched) return index;
-  }
-  return -1;
-};
-
-export const concatBytes = (chunks: ReadonlyArray<Bytes>): Bytes => {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
-};
-
-const fail = (
-  kind: SocketHttpErrorKind,
-  operation: string,
-  message: string,
-  details?: unknown,
-  cause?: unknown,
-): ContainerTransportError =>
-  new ContainerTransportError({
-    kind,
-    operation,
-    message,
-    ...(details === undefined ? {} : { details }),
-    ...(cause === undefined ? {} : { cause }),
-  });
-
-const requestBody = (request: SocketHttpRequest): string | undefined =>
-  request.body === undefined ? undefined : JSON.stringify(request.body);
-
-export const socketHttpRequestText = (
-  request: SocketHttpRequest,
-  options: Pick<SocketHttpClientOptions, "apiPrefix" | "hostHeader" | "defaultHeaders">,
-  body = requestBody(request),
-  rawBodyLength?: number,
-): string => {
-  const explicitConnection = Object.keys(request.headers ?? {}).some(
-    (key) => key.toLowerCase() === "connection",
-  );
-  const headers = [
-    `${request.method} ${options.apiPrefix}${request.path} HTTP/1.1`,
-    `Host: ${options.hostHeader ?? "localhost"}`,
-    ...(explicitConnection ? [] : ["Connection: close"]),
-    ...Object.entries(options.defaultHeaders ?? {}).map(([key, value]) => `${key}: ${value}`),
-    ...Object.entries(request.headers ?? {}).map(([key, value]) => `${key}: ${value}`),
-  ];
-  if (body !== undefined) {
-    headers.push("Content-Type: application/json", `Content-Length: ${textEncoder.encode(body).length}`);
-  } else if (rawBodyLength !== undefined) {
-    headers.push(`Content-Length: ${rawBodyLength}`);
-  }
-  return `${headers.join("\r\n")}\r\n\r\n${body ?? ""}`;
-};
-
-export const parseHttpHead = (bytes: Bytes, operation = "container-transport"): ParsedHttpHead => {
-  const marker = indexOfBytes(bytes, headerSeparator);
-  if (marker === -1) {
-    throw fail(
-      "parse",
-      operation,
-      "Container runtime response did not include HTTP headers.",
-      textDecoder.decode(bytes),
-    );
-  }
-
-  const head = textDecoder.decode(bytes.slice(0, marker));
-  const [statusLine, ...headerLines] = head.split("\r\n");
-  const statusText = statusLine?.split(/\s+/u)[1];
-  const status = statusText === undefined ? Number.NaN : Number.parseInt(statusText, 10);
-  if (!Number.isInteger(status)) {
-    throw fail("parse", operation, "Container runtime response did not include an HTTP status code.", head);
-  }
-
-  const headers = new Map<string, string>();
-  for (const line of headerLines) {
-    const separator = line.indexOf(":");
-    if (separator !== -1) {
-      headers.set(line.slice(0, separator).trim().toLowerCase(), line.slice(separator + 1).trim());
-    }
-  }
-
-  return { status, headers, bodyStart: bytes.slice(marker + headerSeparator.length) };
-};
-
-const headersRecord = (headers: ReadonlyMap<string, string>): Readonly<Record<string, string>> =>
-  Object.fromEntries(headers);
-
-const socketResponse = (
-  status: number,
-  body: string,
-  headers?: ReadonlyMap<string, string>,
-): SocketHttpResponse =>
-  headers === undefined || headers.size === 0
-    ? { status, body }
-    : { status, body, headers: headersRecord(headers) };
-
-export const decodeChunkedBuffer = (
-  buffer: Bytes,
-): { readonly chunks: ReadonlyArray<Bytes>; readonly remainder: Bytes; readonly complete: boolean } => {
-  const chunks: Bytes[] = [];
-  let remaining: Bytes = buffer;
-
-  while (true) {
-    const sizeEnd = indexOfBytes(remaining, chunkSeparator);
-    if (sizeEnd === -1) break;
-
-    const size = Number.parseInt(textDecoder.decode(remaining.slice(0, sizeEnd)), 16);
-    if (!Number.isInteger(size)) break;
-
-    const chunkStart = sizeEnd + chunkSeparator.length;
-    const chunkEnd = chunkStart + size;
-    if (remaining.length < chunkEnd + chunkSeparator.length) break;
-
-    if (size === 0) return { chunks, remainder: new Uint8Array(0) as Bytes, complete: true };
-
-    chunks.push(remaining.slice(chunkStart, chunkEnd));
-    remaining = remaining.slice(chunkEnd + chunkSeparator.length);
-  }
-
-  return { chunks, remainder: remaining, complete: false };
-};
-
-export const flushChunkedBufferAtEnd = (buffer: Bytes, allowPartial = false): ReadonlyArray<Bytes> => {
-  const chunks: Bytes[] = [];
-  let remaining: Bytes = buffer;
-
-  while (true) {
-    const sizeEnd = indexOfBytes(remaining, chunkSeparator);
-    if (sizeEnd === -1) break;
-
-    const size = Number.parseInt(textDecoder.decode(remaining.slice(0, sizeEnd)), 16);
-    if (!Number.isInteger(size)) break;
-
-    const chunkStart = sizeEnd + chunkSeparator.length;
-    const chunkEnd = chunkStart + size;
-    if (remaining.length < chunkEnd && !allowPartial) break;
-
-    if (size === 0) return chunks;
-
-    chunks.push(remaining.slice(chunkStart, chunkEnd));
-    if (remaining.length < chunkEnd + chunkSeparator.length) break;
-
-    remaining = remaining.slice(chunkEnd + chunkSeparator.length);
-  }
-
-  return chunks;
-};
-
-export async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<Bytes> {
-  let buffer: Bytes = new Uint8Array(0);
-  for await (const chunk of chunks) {
-    buffer = concatBytes([buffer, chunk]);
-    while (true) {
-      const decoded = decodeChunkedBuffer(buffer);
-      for (const bodyChunk of decoded.chunks) yield bodyChunk;
-      buffer = decoded.remainder;
-      if (decoded.complete) return;
-      if (decoded.chunks.length === 0) break;
-    }
-  }
-
-  if (buffer.length > 0) {
-    // Intentionally flush complete buffered chunks on EOF without a terminal zero chunk.
-    // Valid chunked responses are unchanged, while truncated responses retain Podman's prior robustness.
-    for (const bodyChunk of flushChunkedBufferAtEnd(buffer)) yield bodyChunk;
-  }
-}
-
-const collectBytes = async (chunks: AsyncIterable<Bytes>): Promise<Bytes> => {
-  const collected: Bytes[] = [];
-  for await (const chunk of chunks) collected.push(chunk);
-  return concatBytes(collected);
-};
-
-const STREAM_ERROR_BODY_LIMIT = 64 * 1024;
-
-const readStreamErrorBody = async (
-  head: ParsedHttpHead,
-  chunks: AsyncIterable<Bytes>,
-): Promise<string | undefined> => {
-  const chunked = head.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
-  const lengthHeader = head.headers.get("content-length");
-  const length = lengthHeader === undefined ? undefined : Number(lengthHeader);
-  if (!chunked && (length === undefined || !Number.isSafeInteger(length) || length < 0)) return undefined;
-  // Bound wire bytes as well as decoded bytes, including incomplete chunks and chunk metadata.
-  const limit = chunked ? STREAM_ERROR_BODY_LIMIT : Math.min(length ?? 0, STREAM_ERROR_BODY_LIMIT);
-  let buffer: Bytes = head.bodyStart.slice(0, limit);
-  if (chunked) {
-    const decoded = decodeChunkedBuffer(buffer);
-    if (decoded.complete) return textDecoder.decode(concatBytes(decoded.chunks));
-  }
-  if (buffer.length < limit) {
-    for await (const chunk of chunks) {
-      buffer = concatBytes([buffer, chunk.slice(0, limit - buffer.length)]);
-      if (chunked) {
-        const decoded = decodeChunkedBuffer(buffer);
-        if (decoded.complete) return textDecoder.decode(concatBytes(decoded.chunks));
-      }
-      if (buffer.length >= limit) break;
-    }
-  }
-  return textDecoder.decode(chunked ? concatBytes(flushChunkedBufferAtEnd(buffer, true)) : buffer);
-};
-
-const socketReadSystemCode = (cause: unknown): SocketReadSystemCode | undefined => {
-  if (typeof cause !== "object" || cause === null) return undefined;
-  const code = Reflect.get(cause, "code");
-  return typeof code === "string"
-    ? SOCKET_READ_SYSTEM_CODES.find((candidate) => candidate === code)
-    : undefined;
-};
-
-async function* readResponse(
-  connection: SocketHttpConnection,
-  operation: string,
-  request: SocketHttpRequest,
-): AsyncGenerator<Bytes> {
-  try {
-    yield* connection;
-  } catch (cause) {
-    if (cause instanceof ContainerTransportError || request.signal?.aborted === true) throw cause;
-    const systemCode = socketReadSystemCode(cause);
-    throw new ContainerTransportError({
-      kind: "read",
-      operation,
-      message: "Failed to read the container runtime HTTP response.",
-      details: { method: request.method, path: request.path },
-      ...(systemCode === undefined ? {} : { systemCode }),
-      cause,
-    });
-  }
-}
-
-const connect = async (
-  options: SocketHttpClientOptions,
-  request: SocketHttpRequest,
-): Promise<SocketHttpConnection> => {
-  try {
-    return await options.connect(request.signal);
-  } catch (cause) {
-    throw fail(
-      "connect",
-      options.operation ?? "container-transport",
-      "Failed to connect to the container runtime socket.",
-      { method: request.method, path: request.path },
-      cause,
-    );
-  }
-};
-
-const writeRequest = async (
-  connection: SocketHttpConnection,
-  request: SocketHttpRequest,
-  options: SocketHttpClientOptions,
-  stdinPayload?: Bytes,
-): Promise<void> => {
-  try {
-    await connection.write(
-      socketHttpRequestText(
-        request,
-        options,
-        stdinPayload === undefined ? requestBody(request) : undefined,
-        stdinPayload?.length,
-      ),
-    );
-    if (stdinPayload !== undefined) await connection.write(stdinPayload);
-  } catch (cause) {
-    throw fail(
-      "write",
-      options.operation ?? "container-transport",
-      "Failed to write the container runtime HTTP request.",
-      { method: request.method, path: request.path },
-      cause,
-    );
-  }
-};
 
 export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHttpClient => {
   const operation = options.operation ?? "container-transport";
@@ -485,6 +177,10 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
   };
 
   async function* stream(input: SocketHttpRequest): AsyncGenerator<Bytes> {
+    if (input.upload !== undefined) {
+      yield* streamUpload(options, operation, input, input.upload);
+      return;
+    }
     const connection = await connect(options, input);
     const hasConnectionHeader = Object.keys(input.headers ?? {}).some(
       (key) => key.toLowerCase() === "connection",

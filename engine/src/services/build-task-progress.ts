@@ -5,10 +5,11 @@ import { Effect } from "effect";
 export interface BuildTaskProgress {
   readonly parentId: string;
   readonly startTree: Effect.Effect<void>;
-  readonly startTask: (service: ServicePlan, transcriptPath: AbsolutePath) => Effect.Effect<void>;
+  readonly startTask: (service: ServicePlan, transcriptPath?: AbsolutePath) => Effect.Effect<void>;
   readonly completeTask: (service: ServicePlan, summary: string) => Effect.Effect<void>;
   readonly failTask: (service: ServicePlan) => Effect.Effect<void>;
-  readonly abortTask: (service: ServicePlan, transcriptPath: AbsolutePath) => Effect.Effect<void>;
+  /** Settle a step that never dispatched: it has no transcript to advertise. */
+  readonly abortTask: (service: ServicePlan) => Effect.Effect<void>;
   readonly unsettledServices: () => ReadonlyArray<ServicePlan>;
   readonly completeTree: Effect.Effect<void>;
   readonly failTree: Effect.Effect<void>;
@@ -34,7 +35,8 @@ export const makeBuildTaskProgress = (events: ProgressEmitter, plan: AppPlan): B
   return {
     parentId,
     startTree: tree.start,
-    startTask: (service, transcriptPath) => tree.startTask(String(service.name), { transcriptPath }),
+    startTask: (service, transcriptPath) =>
+      tree.startTask(String(service.name), transcriptPath === undefined ? {} : { transcriptPath }),
     completeTask: (service, summary) =>
       tree.completeTask(String(service.name), summary).pipe(Effect.andThen(markSettled(service))),
     failTask: (service) =>
@@ -46,9 +48,9 @@ export const makeBuildTaskProgress = (events: ProgressEmitter, plan: AppPlan): B
           ),
           Effect.andThen(markSettled(service)),
         ),
-    abortTask: (service, transcriptPath) =>
+    abortTask: (service) =>
       tree
-        .startTask(String(service.name), { transcriptPath })
+        .startTask(String(service.name))
         .pipe(
           Effect.andThen(
             tree.failTask(String(service.name), `Build ${String(service.name)} aborted`, { exitCode: 1 }),

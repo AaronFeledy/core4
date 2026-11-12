@@ -70,8 +70,8 @@ test("projects a failed healthy gate listener onto the app build failure", async
       },
     });
     if (error._tag !== "BuildPhaseFailedError") throw error;
-    expect(error.failures[0]?.summary).toBe(
-      "web:app:install blocked by db:healthy: no TCP listener observed on 6380; observed ports: 6379",
+    expect(error.failures[0]?.message).toBe(
+      "Build step web:app:install for service web did not run: blocked by db:healthy: no TCP listener observed on 6380; observed ports: 6379.",
     );
     expect(error.remediation.split("\n")[0]).toStartWith("Make db listen on 6380");
     expect(error.remediation.split("\n")[1]).toBe(
@@ -222,8 +222,12 @@ test("blocks a required dependent with one failure when its service_healthy gate
     expect(calls).toEqual([]);
     expect(error).toMatchObject({ _tag: "BuildPhaseFailedError", phase: "app" });
     if (error._tag !== "BuildPhaseFailedError") throw error;
-    expect(error.failures.map((failure) => [failure.step.id, failure.summary, failure.exitCode])).toEqual([
-      ["web:app:install", "web:app:install blocked by db:healthy", 1],
+    expect(error.failures.map((failure) => [failure.step.id, failure.message, failure.exitCode])).toEqual([
+      [
+        "web:app:install",
+        "Build step web:app:install for service web did not run: blocked by db:healthy.",
+        undefined,
+      ],
     ]);
   });
 });
@@ -249,8 +253,11 @@ test("fails waiting steps on a non-zero service_completed_successfully exit whil
     // Then
     expect(calls).toEqual(["build:assets:build"]);
     if (error._tag !== "BuildPhaseFailedError") throw error;
-    expect(error.failures.map((failure) => [failure.step.id, failure.summary])).toEqual([
-      ["web:app:install", "web:app:install blocked by seed:completed"],
+    expect(error.failures.map((failure) => [failure.step.id, failure.message])).toEqual([
+      [
+        "web:app:install",
+        "Build step web:app:install for service web did not run: blocked by seed:completed.",
+      ],
     ]);
   });
 });
@@ -376,8 +383,8 @@ test("blocks a cached step on a newly failed gate instead of short-circuiting it
     // Then
     expect(healthy.calls).toEqual(["exec:db:pg_isready", "build:web:install"]);
     if (result.error._tag !== "BuildPhaseFailedError") throw result.error;
-    expect(result.error.failures.map((failure) => failure.summary)).toEqual([
-      "web:app:install blocked by db:healthy",
+    expect(result.error.failures.map((failure) => failure.message)).toEqual([
+      "Build step web:app:install for service web did not run: blocked by db:healthy.",
     ]);
     expect(
       result.events

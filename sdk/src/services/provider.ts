@@ -137,6 +137,12 @@ export interface ArtifactBuildSpec {
   readonly service: ServiceName;
   readonly plan: AppPlan;
   readonly buildKey: string;
+  /**
+   * Receives the build's output text in arrival order: unredacted and not aligned to lines. The provider
+   * awaits each call before reading further, delivers every call before `buildArtifact` returns, and
+   * fails with the sink's error when the sink fails.
+   */
+  readonly onOutput?: (text: string) => Effect.Effect<void, ProviderInternalError>;
 }
 
 export interface ArtifactRef {

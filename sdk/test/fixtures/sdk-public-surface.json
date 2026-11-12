@@ -578,7 +578,6 @@
       "LANDO_DB_ENV_KEYS"
     ],
     "./digest": ["canonicalJson", "sha256Hex"],
-    "./errno": ["errnoCode", "isErrnoCode"],
     "./docs/components": [
       "AxisToken",
       "CleanupProps",
@@ -635,6 +634,7 @@
       "decodeVariablePropsEither",
       "decodeVerifyPropsEither"
     ],
+    "./errno": ["errnoCode", "isErrnoCode"],
     "./errors": [
       "AgentEnvPatternError",
       "AmbiguousCertificateAuthoritiesError",
@@ -1121,6 +1121,7 @@
       "valueOriginAt",
       "withValueOrigins"
     ],
+    "./landofile/execution-sites": ["ExecutionSiteMatch", "executionSiteAt"],
     "./landofile/flow-mapping-remediation": ["GENERIC_FLOW_MAPPING_REMEDIATION", "flowMappingRemediation"],
     "./log-follow": [
       "DEFAULT_MAX_LINE_BYTES",
@@ -1442,6 +1443,7 @@
       "EventTaskStep",
       "EventsPlan",
       "ExecAppResult",
+      "ExecutionSite",
       "FailureRole",
       "FileFormat",
       "FileRef",
@@ -1750,6 +1752,7 @@
       "ScannerConfig",
       "ScenarioProps",
       "SchemaDeprecationAnnotationId",
+      "SchemaExecutionSiteAnnotationId",
       "SchemaIssueLeaf",
       "SchemaLayerMergeAnnotationId",
       "SecretRef",
@@ -1920,6 +1923,8 @@
       "effectiveReadiness",
       "encodeUriComponent",
       "endpointInvariantIssues",
+      "executionSite",
+      "executionSiteKey",
       "fileSyncDisposalCommitted",
       "fileSyncDisposalTransitions",
       "fileSyncInvalidationRequired",
@@ -1930,6 +1935,7 @@
       "formatValidationIssueLine",
       "formatValidationIssuePath",
       "getEditorJsonSchema",
+      "getExecutionSite",
       "getJsonSchema",
       "getJsonSchemaWithDeprecations",
       "getLayerMergeRule",

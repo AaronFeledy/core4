@@ -1,11 +1,14 @@
 import { LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
-
+import { buildLogsApp } from "@lando/engine/operations/logs-build";
 import { StreamFrame } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { renderLogsAppResult } from "../../commands/logs";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
 import {
+  logBuildConflictFromInput,
+  logBuildFromInput,
   logFollowFromInput,
   logLinesToStreamFrames,
   logOptionsFromInput,
@@ -14,6 +17,7 @@ import {
 
 export interface LogsFlags {
   readonly service?: string;
+  readonly build?: boolean;
   readonly follow?: boolean;
   readonly tail?: number;
   readonly since?: string;
@@ -44,9 +48,12 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  usage: "[--service SERVICE]",
+  usage: "[--service SERVICE] [--build]",
   flags: {
     service: Flags.string({ char: "s", description: "Filter logs to a single planned service." }),
+    build: Flags.boolean({
+      description: "Show saved build output instead of service logs.",
+    }),
     follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),
     tail: Flags.integer({ description: "Show last N lines per service." }),
     since: Flags.string({
@@ -65,11 +72,20 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   streaming: StreamFrame,
   streamingMode: (input) => (logsFollowFromInput(input) ? "live" : undefined),
   run: (input) => {
+    const conflict = logBuildConflictFromInput(input);
+    if (conflict !== undefined) return Effect.fail(conflict);
+    if (logBuildFromInput(input)) {
+      const options = logOptionsFromInput(input);
+      return buildLogsApp({
+        ...(options.service === undefined ? {} : { service: options.service }),
+        ...(options.tail === undefined ? {} : { tail: options.tail }),
+      });
+    }
     const options = logsOptionsFromInput(input);
     if (!logsFollowFromInput(input)) return logsApp(options);
     const signal = logSignalFromInput(input);
     return followLogsApp({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },
   streamFrames: logLinesToStreamFrames,
-  render: renderLogsAppResult,
+  render: (result, input) => renderLogsAppResult(result, logBuildFromInput(input)),
 };

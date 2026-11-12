@@ -76,7 +76,7 @@ const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError
   });
 };
 
-const selectServices = (
+export const selectLogServices = (
   plan: AppPlan,
   filter?: string,
 ): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
@@ -206,7 +206,7 @@ const servicesForPlan = Effect.fnUntraced(function* (
     );
   }
 
-  const services = yield* selectServices(plan, options.service);
+  const services = yield* selectLogServices(plan, options.service);
   yield* validateSource(options.source, services, provider.capabilities.serviceLogSources);
   return {
     services: services.filter(
