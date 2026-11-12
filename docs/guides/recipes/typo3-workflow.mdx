@@ -1,7 +1,7 @@
 ---
 id: typo3-workflow
 provider: test
-timeout: 90000
+timeout: 900000
 tags: [beta, docs, recipes, typo3, lamp, php, mariadb]
 ---
 
@@ -244,6 +244,51 @@ lando db:restore before-update --yes
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="install-path" layer="e2e" render={false} reason="Live regression for the install, trusted hosts, upload, and database steps">
+    <Step name="start">
+      <UseFixture name="typo3-demo" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+    </Step>
+    <Step name="install">
+      <Run command={`lando composer create-project typo3/cms-base-distribution tmp-app "^14"`} />
+      <Run command={`lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'`} />
+      <Verify command="lando exec appserver -- test -f /app/vendor/bin/typo3" />
+    </Step>
+    <Step name="setup">
+      <Run command="lando php vendor/bin/typo3 setup --driver=mysqli --host=database --port=3306 --dbname=typo3-demo --username=lando --password=lando --admin-username=admin --admin-user-password=Aa1-typo3-e2e-only --admin-email=admin@example.com --project-name=TYPO3 --create-site=https://typo3-demo.lndo.site/ --server-type=apache --force -n" />
+      <Verify command="lando exec appserver -- test -f /app/public/.htaccess" />
+    </Step>
+    <Step name="writable-directories">
+      <Run command="lando exec appserver -- chown -R www-data:www-data /app/var /app/config/system /app/public/fileadmin /app/public/typo3temp" />
+    </Step>
+    <Step name="tools">
+      <Verify command="lando typo3 --version" expect={{ stdout: { regex: "TYPO3 CMS 14\\." } }} />
+      <Verify command="lando typo3 site:list" expect={{ stdout: { regex: "https://typo3-demo\\.lndo\\.site/" } }} />
+      <Verify command={`lando mariadb -e "SELECT username FROM be_users;"`} expect={{ stdout: { regex: "admin" } }} />
+    </Step>
+    <Step name="trusted-hosts">
+      <Verify command={`lando exec appserver -- curl -s -H "Host: typo3-demo.lndo.site" -H "X-Forwarded-Proto: https" http://127.0.0.1/`} expect={{ stdout: { regex: "does not match the configured trusted hosts pattern" } }} />
+      <Run command="lando exec appserver -- cp trusted-hosts.php config/system/additional.php" />
+      <Run command="lando typo3 cache:flush" />
+      <Verify command={`lando exec appserver -- curl -s -H "Host: typo3-demo.lndo.site" -H "X-Forwarded-Proto: https" http://127.0.0.1/`} expect={{ stdout: { regex: "Welcome to your default website" } }} />
+    </Step>
+    <Step name="upload-directory">
+      <Run command="lando exec appserver -- cp public/index.php public/fileadmin/probe.php" />
+      <Verify command={`lando exec appserver -- curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/fileadmin/probe.php`} expect={{ stdout: { regex: "403" } }} />
+    </Step>
+    <Step name="database">
+      <Verify command="lando db:export typo3.sql.gz --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:import typo3.sql.gz --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:snapshot --label before-update --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:restore before-update --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command={`lando exec appserver -- sh -c 'chown -R "$(stat -c %u:%g .lando.yml)" /app'`} />
+      <Run command="lando destroy -y --purge" />
     </Step>
   </Scenario>
 </Guide>
