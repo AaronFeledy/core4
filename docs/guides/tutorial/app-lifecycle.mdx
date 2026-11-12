@@ -108,7 +108,9 @@ lando start
 
 `lando start` removes the container of every service the Landofile no longer defines, prints a notice naming those services, and stops publishing their URLs. `lando restart` and `lando rebuild` remove them too and print the same notice. With `--format=json`, all three commands list the removed services under `result.servicesRemoved`: the field is present and empty when nothing was removed, and a selected `-s` operation that removed nothing omits it. Run `lando info` and check that the removed service no longer appears.
 
-The service's named volumes stay, so if you add the service back later, it starts with its old data. To delete that data, use the flags in [Keep data across stop, restart, and destroy](#keep-data-across-stop-restart-and-destroy).
+The service's named volumes stay, so if you add the service back later with the same storage, it starts with its old data. To delete that data, use the flags in [Keep data across stop, restart, and destroy](#keep-data-across-stop-restart-and-destroy).
+
+If the removed service was the last one that used `lando` from inside a container, SSH agent forwarding, or GPG agent forwarding, the same command also stops the background worker that served it.
 
 Lando removes a container only when its labels prove it belongs to this app. If a container for a removed service carries labels that say otherwise, such as another provider's, `lando start` stops before removing anything and names that container. Inspect it with your container runtime and remove it yourself if it is a leftover, then run `lando start` again.
 
