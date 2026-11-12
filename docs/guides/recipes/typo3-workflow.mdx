@@ -1,0 +1,308 @@
+---
+id: typo3-workflow
+provider: test
+timeout: 900000
+tags: [beta, docs, recipes, typo3, lamp, php, mariadb]
+---
+
+# Run a TYPO3 site on the LAMP recipe
+
+TYPO3 needs Composer, a `public/` webroot, working `.htaccess` rewrites, and a `fileadmin/` that never runs PHP. The LAMP recipe plus two service keys covers all four. Run these commands from your host terminal.
+
+```sh
+lando init --recipe lamp --name=typo3-demo --answer=webroot=public --yes
+cd typo3-demo
+```
+
+The named init creates `typo3-demo/` and writes only `.lando.yml` there. `--answer=webroot=public` points Apache at the directory TYPO3 serves. `--yes` keeps PHP 8.4, MariaDB 11.4, and Composer 2. TYPO3 14 needs PHP 8.2 or newer, so don't pass `--answer=php=8.1`.
+
+## Add the TYPO3 pieces
+
+Merge these keys into the generated `.lando.yml`. Keep its `recipe:` block: `webroot`, `type`, and `composer` read their values from it.
+
+```yaml
+services:
+  appserver:
+    allowOverride: true
+    uploadDirs:
+      - fileadmin
+tooling:
+  typo3:
+    service: appserver
+    user: www-data
+    cmds:
+      - php vendor/bin/typo3
+    description: Run the TYPO3 CLI inside the appserver service.
+    wrapper: true
+```
+
+- `allowOverride: true` lets Apache read the `public/.htaccess` TYPO3 writes, so page URLs rewrite to `index.php`.
+- `uploadDirs` is relative to the webroot, so `fileadmin` covers `public/fileadmin`. A PHP request there gets Lando's 403 page instead of running.
+- `lando typo3` runs the CLI as `www-data`, the user Apache runs as. Caches it writes stay writable by the site. `wrapper: true` sends `--help` and `--version` to the TYPO3 CLI instead of Lando.
+
+Check the file, then start the app:
+
+```sh
+lando app:config:lint
+lando start
+```
+
+If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`.
+
+## Install TYPO3
+
+Run the commands in this section from a POSIX shell on your host (WSL on Windows). The password step also needs `openssl`.
+
+`create-project` wants an empty directory, and the app root already holds `.lando.yml`. Install into `tmp-app`, then copy it into the root:
+
+```sh
+lando composer create-project typo3/cms-base-distribution tmp-app "^14"
+lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+```
+
+The copy keeps `.lando.yml` and puts `composer.json`, `public/`, and `vendor/` beside it.
+
+TYPO3's default password policy requires an uppercase letter, a lowercase letter, a digit, and a special character. Random base64 doesn't always include a special character, so the `Aa1-` prefix guarantees all four.
+
+Check two values before you run setup:
+
+- `--dbname` matches the app name (here `typo3-demo`).
+- `--create-site` takes the full HTTPS URL `lando info` prints. On a fallback port the URL includes the port, for example `https://typo3-demo.lndo.site:8443/`.
+
+Generate the admin password, then run setup. The password stays out of shell history, but it's on the command line, so process lists can see it while setup runs.
+
+```sh
+TYPO3_ADMIN_PASSWORD="Aa1-$(openssl rand -base64 24)"
+printf 'Save this TYPO3 admin password: %s\n' "$TYPO3_ADMIN_PASSWORD"
+lando php vendor/bin/typo3 setup \
+  --driver=mysqli \
+  --host=database \
+  --port=3306 \
+  --dbname=typo3-demo \
+  --username=lando \
+  --password=lando \
+  --admin-username=admin \
+  --admin-user-password="$TYPO3_ADMIN_PASSWORD" \
+  --admin-email=admin@example.com \
+  --project-name='TYPO3 Demo' \
+  --create-site=https://typo3-demo.lndo.site/ \
+  --server-type=apache \
+  --force \
+  -n
+unset TYPO3_ADMIN_PASSWORD
+```
+
+Setup runs through `lando php` instead of `lando typo3`. It creates `config/` and `public/.htaccess` in the app root, and `www-data` can't write there yet. `--server-type=apache` is the flag that writes `public/.htaccess`.
+
+Composer and setup ran as root. Give the web user only the directories TYPO3 writes to:
+
+```sh
+lando exec appserver -- chown -R www-data:www-data \
+  /app/var /app/config/system /app/public/fileadmin /app/public/typo3temp
+```
+
+`config/system` is on the list because Admin Tools and `lando typo3 extension:setup` rewrite `settings.php`. Add `/app/config/sites` if you edit site configuration in the backend. Don't chown all of `/app`. That reowns the app root, `.lando.yml`, and your code, so your editor and host `lando` commands lose write access.
+
+On a Linux host you can still read those four directories, but your own user can no longer write to them. TYPO3 and `lando typo3` do the writing there. To change a file yourself, run your command inside the service with `lando exec appserver -- ...`.
+
+## Check the tools and the site
+
+Confirm the tools answer and the admin user exists. The last command's output includes `admin`:
+
+```sh
+lando typo3 --version
+lando typo3 site:list
+lando composer --version
+lando mariadb -e 'SELECT username FROM be_users;'
+```
+
+Open the HTTPS URL `lando info` prints. A fresh install serves the `Home` page that setup created, with the text "Welcome to your default website". The HTTP URL returns TYPO3's 404 because the site base is `https://`.
+
+## Fix a trusted hosts error
+
+Skip this section if the `Home` page loaded. The symptom is "Oops, an error occurred!" on every HTTPS page, with "The current host header value does not match the configured trusted hosts pattern". You see it when Lando's proxy is on port `443`. The proxy serves HTTPS and forwards plain HTTP to Apache, so Apache reports `HTTPS=on` but port `80`, and TYPO3's default host check expects `443`. On a fallback port such as `8443`, Apache takes the port from the request and the check passes.
+
+Set the trusted hosts pattern in `config/system/additional.php`. Replace `typo3-demo\.lndo\.site` with the hostname from the HTTPS URL `lando info` prints, and escape each dot. The command creates the file. If you already have one, add the line to it instead.
+
+```sh
+lando exec appserver -- sh -c 'cat > config/system/additional.php' <<'PHP'
+<?php
+$GLOBALS['TYPO3_CONF_VARS']['SYS']['trustedHostsPattern'] = 'typo3-demo\.lndo\.site(:[0-9]+)?';
+PHP
+lando typo3 cache:flush
+```
+
+TYPO3 matches the pattern as a case-insensitive regular expression against the whole `Host` header. `(:[0-9]+)?` also accepts a fallback port. Requests for any other hostname still get TYPO3's error page. Reload the HTTPS URL, and the `Home` page loads.
+
+## Open the backend
+
+```sh
+lando open --print
+```
+
+Add `/typo3/` to the URL it prints and sign in as `admin` with the password you saved.
+
+## See what you built
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.4`, Apache on port `80`, webroot `public`, `.htaccess` on, PHP blocked in `fileadmin`, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando typo3` as `www-data`, `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. On the `--answer=database=mysql:8.0` path, use `lando mysql` instead of `lando mariadb`.
+
+## Add an extension
+
+Composer and `lando php` still run as root. After Composer adds or removes an extension, set it up and flush the caches as `www-data`:
+
+```sh
+lando composer require typo3/cms-redirects:"^14.3"
+lando typo3 extension:setup
+lando typo3 cache:flush
+```
+
+`extension:setup` creates the extension's tables. The flush clears cache files Composer's run left behind as root.
+
+## Connect TYPO3 to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `typo3-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Setup saved these in `config/system/settings.php`.
+
+## Export and import the database
+
+Import runs the dump's SQL, which can change or replace existing data. Export first if you need to keep it.
+
+```sh
+lando db:export typo3.sql.gz
+lando db:import typo3.sql.gz --yes
+lando typo3 cache:flush
+```
+
+The app has one database service, so neither command needs `--service`. `.gz` dumps compress and decompress on the way through. Importing into a non-empty database asks first, and `--yes` skips the prompt. Flush the caches after an import so TYPO3 stops serving pages built from the old data.
+
+Take a snapshot before an extension install or a core update. Run the second command only to roll back:
+
+```sh
+lando db:snapshot --label before-update
+lando db:restore before-update --yes
+```
+
+`db:restore` takes the label or the id `lando db:snapshots` lists. It asks before it replaces data, and `--yes` skips the prompt. Flush the caches after a restore too.
+
+[Import and export app databases](../tooling/db-import-export.mdx) covers the other dump formats and the recovery snapshot `db:import` takes.
+
+## Check the config
+
+`lando app:config --format=json` shows the planned config, not a running site. This run checks the init answer and the recipe defaults:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="typo3-demo" display="typo3-demo" />
+      <Run command="lando init --recipe lamp --name={{appName}} --answer=webroot=public --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="typo3-keys" render={false} reason="Regression for this guide's Apache, upload, and TYPO3 CLI keys">
+    <Step name="scaffold">
+      <UseFixture name="typo3-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"allowOverride\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"fileadmin\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"typo3\":\\s*\\{[^}]*\"user\":\\s*\"www-data\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"typo3\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"typo3\":\\s*\\{[^}]*\"wrapper\":\\s*true" } }} />
+    </Step>
+    <Step name="resolve-plan">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="install-path" layer="e2e" render={false} reason="Live regression for the install, trusted hosts, upload, and database steps">
+    <Step name="start">
+      <UseFixture name="typo3-demo" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+    </Step>
+    <Step name="install">
+      <Run command={`lando composer create-project typo3/cms-base-distribution tmp-app "^14"`} />
+      <Run command={`lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'`} />
+      <Verify command="lando exec appserver -- test -f /app/vendor/bin/typo3" />
+    </Step>
+    <Step name="setup">
+      <Run command="lando php vendor/bin/typo3 setup --driver=mysqli --host=database --port=3306 --dbname=typo3-demo --username=lando --password=lando --admin-username=admin --admin-user-password=Aa1-typo3-e2e-only --admin-email=admin@example.com --project-name=TYPO3 --create-site=https://typo3-demo.lndo.site/ --server-type=apache --force -n" />
+      <Verify command="lando exec appserver -- test -f /app/public/.htaccess" />
+    </Step>
+    <Step name="writable-directories">
+      <Run command="lando exec appserver -- chown -R www-data:www-data /app/var /app/config/system /app/public/fileadmin /app/public/typo3temp" />
+    </Step>
+    <Step name="tools">
+      <Verify command="lando typo3 --version" expect={{ stdout: { regex: "TYPO3 CMS 14\\." } }} />
+      <Verify command="lando typo3 site:list" expect={{ stdout: { regex: "https://typo3-demo\\.lndo\\.site/" } }} />
+      <Verify command={`lando mariadb -e "SELECT username FROM be_users;"`} expect={{ stdout: { regex: "admin" } }} />
+    </Step>
+    <Step name="trusted-hosts">
+      <Verify command={`lando exec appserver -- curl -s -H "Host: typo3-demo.lndo.site" -H "X-Forwarded-Proto: https" http://127.0.0.1/`} expect={{ stdout: { regex: "does not match the configured trusted hosts pattern" } }} />
+      <Run command="lando exec appserver -- cp trusted-hosts.php config/system/additional.php" />
+      <Run command="lando typo3 cache:flush" />
+      <Verify command={`lando exec appserver -- curl -s -H "Host: typo3-demo.lndo.site" -H "X-Forwarded-Proto: https" http://127.0.0.1/`} expect={{ stdout: { regex: "Welcome to your default website" } }} />
+    </Step>
+    <Step name="upload-directory">
+      <Run command="lando exec appserver -- cp public/index.php public/fileadmin/probe.php" />
+      <Verify command={`lando exec appserver -- curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/fileadmin/probe.php`} expect={{ stdout: { regex: "403" } }} />
+    </Step>
+    <Step name="database">
+      <Verify command="lando db:export typo3.sql.gz --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:import typo3.sql.gz --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:snapshot --label before-update --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:restore before-update --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command={`lando exec appserver -- sh -c 'chown -R "$(stat -c %u:%g .lando.yml)" /app'`} />
+      <Run command="lando destroy -y --purge" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Change a LAMP stack after init](./lamp-stack-variants.mdx)
+- [Add PHP](../services/php.mdx) for `uploadDirs` and `allowOverride`
+- [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx)

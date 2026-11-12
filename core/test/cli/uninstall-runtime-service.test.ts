@@ -2,14 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
-
-import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
-
 import { uninstall as uninstallEffect } from "@lando/engine/operations/uninstall";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer } from "effect";
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
   uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessService.layer));
@@ -53,7 +50,10 @@ describe("runtime-service uninstall execution", () => {
           ...sandboxUninstallIo(root),
         }).pipe(
           Effect.provide(
-            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+            Layer.succeed(
+              HostMaintenanceRegistry,
+              HostMaintenanceRegistry.of({ maintainers: [{ ...maintainer, pluginId: "@lando/test" }] }),
+            ),
           ),
         ),
       );

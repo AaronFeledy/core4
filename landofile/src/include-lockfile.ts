@@ -1,4 +1,5 @@
 import { basename, dirname, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { type LandofileIncludeError, LandofileParseError, causeMessage } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -131,7 +132,7 @@ const openLockfileBucket = (
       },
     })
     .pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new LandofileParseError({
             message: `Failed to open include lockfile ${lockfilePath}: ${causeMessage(cause)}`,
@@ -152,7 +153,7 @@ export const parseLockEntries = (
   openLockfileBucket(stateStore, appRoot, path).pipe(
     Effect.flatMap((bucket) =>
       Effect.flatMap(bucket.exists, (exists) => (exists ? bucket.get : Effect.succeed(undefined))).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new LandofileParseError({
               // StateStoreError carries no message of its own; the codec's reason is its cause.
@@ -193,7 +194,8 @@ export const writeLockEntries = (
       resolve(await realpathOrSelf(dirname(input.lockfilePath)), basename(input.lockfilePath)),
     );
     yield* stateStore.withLock(
-      `landofile-include-lock:${sha256Hex(canonicalPath)}`,
+      // The key becomes one file name under operation-locks; a colon is an NTFS data-stream separator.
+      `landofile-include-lock-${sha256Hex(canonicalPath)}`,
       Effect.gen(function* () {
         const current = yield* parseLockEntries(stateStore, input.appRoot, input.lockfilePath);
         const merged = new Map(input.merge ? current : []);
@@ -203,7 +205,7 @@ export const writeLockEntries = (
       }),
     );
   }).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof LandofileParseError
         ? cause
         : includeError({

@@ -55,7 +55,7 @@ const execute = (plan: AppPlan, context: ExpressionContext) =>
           Effect.gen(function* () {
             const task = effectiveToolingForPlan(plan)?.[leaf.task];
             if (task === undefined) return yield* Effect.die("Missing fixture task");
-            const resolved = yield* resolveToolingTaskShape(
+            const { task: resolved } = yield* resolveToolingTaskShape(
               task,
               taskContext,
               sitesUnder(sites, ["tooling", leaf.task]),
@@ -88,10 +88,10 @@ test("distinguishes equal authored runtime text from escaped and helper-produced
   const commands = await execute(plan, { event: { CANARY: "active" } });
   // Then
   expect(commands).toEqual([
-    { command: "active", env: undefined },
+    { command: "'active'", env: undefined },
     { command: "{{ event.CANARY }}", env: undefined },
     { command: "{{ event.CANARY }}", env: undefined },
-    { command: "{{ event.CANARY }}", env: undefined, service: undefined },
+    { command: "'{{ event.CANARY }}'", env: undefined, service: undefined },
   ]);
 });
 
@@ -112,7 +112,7 @@ test("persists bounded static dependencies and preserves lazy missing paths acro
   // When
   const commands = await execute(cached, { event: { use: true, CANARY: "runtime" } });
   // Then
-  expect(commands).toEqual([{ command: "captured-runtime", env: undefined }]);
+  expect(commands).toEqual([{ command: "'captured-runtime'", env: undefined }]);
   expect(cached.events).toEqual(plan.events);
   expect(invocationAuthorityForPlan(cached)).not.toHaveProperty("events");
   expect(JSON.stringify(cached.extensions)).not.toContain("must-not-persist");
@@ -140,7 +140,7 @@ test("preserves default winners without granting equal overriding literals autho
   const commands = await execute(plan, { event: { CANARY: "runtime", count: 17 } });
   // Then
   expect(commands).toEqual([
-    { command: "runtime", env: { VALUE: "runtime", COUNT: "17" }, service: undefined },
+    { command: "'runtime'", env: { VALUE: "runtime", COUNT: "17" }, service: undefined },
     { command: "{{ event.CANARY }}", env: { VALUE: "{{ event.CANARY }}", COUNT: "17" }, service: undefined },
   ]);
 });
@@ -165,11 +165,11 @@ test("instantiates predicates and canonical inputs at their recorded sites in lo
   const commands = await execute(plan, { event: { enabled: true, count: 17, CANARY: "raw", first: "a" } });
   // Then
   expect(commands).toEqual([
-    { command: "body-a", env: undefined },
-    { command: "body-b", env: undefined },
+    { command: "body-'a'", env: undefined },
+    { command: "body-'b'", env: undefined },
     { flags: { count: 17, env: 17, inert: "{{ event.count }}" }, args: {}, raw: ["raw"] },
-    { command: "cleanup-b", env: undefined },
-    { command: "cleanup-a", env: undefined },
+    { command: "cleanup-'b'", env: undefined },
+    { command: "cleanup-'a'", env: undefined },
   ]);
 });
 
@@ -197,7 +197,7 @@ test("lets call vars override an unevaluated missing task default", async () => 
   // When
   const commands = await execute(plan, {});
   // Then
-  expect(commands).toEqual([{ command: "{{ event.CANARY }}", env: undefined, service: undefined }]);
+  expect(commands).toEqual([{ command: "'{{ event.CANARY }}'", env: undefined, service: undefined }]);
 });
 
 test("captures typed secret bindings in mixed runtime environment expressions", async () => {

@@ -1,7 +1,6 @@
-import { Schema } from "effect";
-
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 export const PLUGIN_NAME = "@lando/sql" as const;
 

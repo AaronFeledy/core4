@@ -1,6 +1,3 @@
-import type { InfoAppResult, InfoAppService, InfoLogSource } from "@lando/sdk/app";
-import type { ListenerAuthority } from "@lando/sdk/schema";
-
 import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import {
   type SummaryDocument,
@@ -9,6 +6,8 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "@lando/renderer/summary";
+import type { InfoAppResult, InfoAppService, InfoLogSource } from "@lando/sdk/app";
+import type { ListenerAuthority } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
@@ -42,6 +41,7 @@ const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<Sum
 };
 
 const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
+  if ("engine" in creds) return `engine=${creds.engine} path=${creds.path}`;
   const parts = [`user=${creds.user}`, `database=${creds.database}`, `password=${creds.password}`];
   if (creds.rootPassword !== undefined) parts.push(`root-password=${creds.rootPassword}`);
   return parts.join(" ");

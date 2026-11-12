@@ -1,13 +1,10 @@
-import { readFile } from "node:fs/promises";
-
 import { defineCollection } from "astro:content";
+import { readFile } from "node:fs/promises";
 import { docsSchema } from "@astrojs/starlight/schema";
 import { type DataStore, type Loader, type LoaderContext, type ParseDataOptions, glob } from "astro/loaders";
 import { z } from "astro/zod";
-
-import { normalizeContentMetadata } from "./lib/titles.ts";
-
 import { docsPatterns } from "./lib/source-links.ts";
+import { normalizeContentMetadata } from "./lib/titles.ts";
 
 export { docsPatterns };
 

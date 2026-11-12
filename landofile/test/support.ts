@@ -208,4 +208,4 @@ export const seedNpmSourceEntry = async (input: {
 };
 
 /** Filter lock publication keys to the include lockfile operation only. */
-export const isIncludeLockKey = (key: string): boolean => key.startsWith("landofile-include-lock:");
+export const isIncludeLockKey = (key: string): boolean => key.startsWith("landofile-include-lock-");

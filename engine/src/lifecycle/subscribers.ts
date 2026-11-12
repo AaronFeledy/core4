@@ -1,9 +1,8 @@
-import { type Context, Effect, Layer, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-
+import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { EventError, PluginLoadError } from "@lando/sdk/errors";
-import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { LandoEvent } from "@lando/sdk/events";
+import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type NotifyConfig, type PluginManifest } from "@lando/sdk/schema";
 import {
@@ -16,9 +15,9 @@ import {
   type RegisteredCommand,
   StateStore,
 } from "@lando/sdk/services";
-
-import { RedactionService } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { type Context, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 import { builtInCommandIds, bundledPluginModules } from "../composition.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { EventDispatchControl } from "../services/event-service.ts";
@@ -115,7 +114,7 @@ const subscriberEventError = (
 
 const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> => {
   const run = input.getHandler.pipe(
-    Effect.mapError((cause) => subscriberEventError(input, cause)),
+    mapFailures((cause) => subscriberEventError(input, cause)),
     Effect.flatMap((handler) => handler(input.event)),
   );
   if (input.event._tag.startsWith("pre-")) return run;

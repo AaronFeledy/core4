@@ -1,4 +1,6 @@
 // allow: SIZE_OK — installer scenarios share this exclusive two-file workstream; fixtures stay local.
+
+import { describe, expect, test } from "bun:test";
 import {
   chmod,
   lstat,
@@ -12,8 +14,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { renderPosixShellenv } from "../../src/cli/commands/shellenv.ts";

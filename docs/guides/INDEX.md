@@ -114,7 +114,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-12 | US-280, US-281, US-283 | Bundled default terminal renderer visual language | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
 | PRD-12 | US-282 | OpenTUI-backed interactive prompts | `docs/guides/cli/interactive-prompts.mdx` | Shipped |
 | PRD-12 | US-284 | Terminal renderer visual QA | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Shipped |
-| PRD-12 | US-425, US-426, US-427, US-428, US-429 | `lando logs` with declared file sources and `--source` | `docs/guides/cli/service-logs.mdx` | Shipped |
+| PRD-12 | US-425, US-426, US-427, US-428, US-429 | `lando logs` with declared file sources, `--source`, and `--build` | `docs/guides/cli/service-logs.mdx` | Shipped |
 | PRD-15 | US-329 | Driving Lando from JSON / an agent | `docs/guides/scripting-with-json.mdx` | Shipped |
 | BETA1-PRD-06 | US-398 | `lando mcp` setup and `--list` audit | `docs/guides/agent-native/mcp.mdx` | Shipped |
 | BETA1-PRD-14 | US-451 | Host-proxy doctor transport reachability and bounded persisted-worker diagnostics | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
@@ -232,6 +232,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | `lando share --target` for a non-primary service or extra port | `docs/guides/cli/share-target.mdx` | Shipped |
 | - | - | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
 | - | - | `lando sources:gc` remote source cache report and prune | `docs/guides/cli/sources-gc.mdx` | Shipped |
+| - | - | `lando apps:gc` missing-folder app cleanup and retained file-sync data | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | - | - | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
 | - | - | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |
 | - | - | service timezone configuration | `docs/guides/services/timezone.mdx` | Shipped |
@@ -260,7 +261,8 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | PHP tooling command resolution | `docs/guides/tooling/php-command-resolution.mdx` | Shipped |
 | L3-PARITY-02 | US-563, US-564 | app-wide tooling defaults, task overrides, and per-app command aliases | `docs/guides/tooling/defaults-and-aliases.mdx` | Shipped |
 | L3-PARITY-02 | US-565 | Landofile events-as-tasks at lifecycle points | `docs/guides/landofile/events.mdx` | Shipped |
-| - | - | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
+| - | - | build step failure recovery: image and app phases, `lando logs --build`, saved build output cleanup | `docs/guides/services/php-build-failures.mdx` | Shipped |
+| - | - | PHP security release pickup | `docs/guides/services/php-security-updates.mdx` | Shipped |
 | - | - | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
 | - | - | LAMP recipe day-to-day workflow | `docs/guides/recipes/lamp-workflow.mdx` | Shipped |
 | - | - | LEMP recipe day-to-day workflow | `docs/guides/recipes/lemp-workflow.mdx` | Shipped |
@@ -289,6 +291,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | - | - | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | - | - | Craft CMS site on the LAMP recipe | `docs/guides/recipes/craft-workflow.mdx` | Shipped |
+| - | - | TYPO3 site on the LAMP recipe | `docs/guides/recipes/typo3-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | MinIO BYO image/build, API and console listeners | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
@@ -300,6 +303,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-03 | US-569 | phpmyadmin service type | `docs/guides/services/phpmyadmin.mdx` | Shipped |
 | L3-PARITY-05 | US-575 | Recipe composition (extends) | `docs/guides/recipes/extending-recipes.mdx` | Shipped |
 | L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |
+| - | - | SQLite file target for db import, export, snapshot, restore, and reset | `docs/guides/tooling/sqlite-database.mdx` | Shipped |
 | - | - | orphaned native snapshot inspection (`meta:snapshots:gc`) | `docs/guides/tooling/db-import-export.mdx` | Shipped |
 | - | - | streaming dumps through stdout and stdin (`db:export -`, `db:import -`, `db:seed -`) | `docs/guides/tooling/db-import-export.mdx` | Shipped |
 | - | - | git worktree as its own app with a seeded database | `docs/guides/tooling/git-worktrees.mdx` | Shipped |

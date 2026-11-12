@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-
-import { Effect, Layer, Schema } from "effect";
-
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { ComposeKeyRejectedError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { MalformedCliFlagValueError } from "@lando/sdk/errors";
+import {
+  ComposeKeyRejectedError,
+  LandoRuntimeBootstrapError,
+  MalformedCliFlagValueError,
+} from "@lando/sdk/errors";
 import type { EventService } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
 import { buildBugReport, renderJsonBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "../../src/cli/spec/command-boundary.ts";
@@ -26,7 +27,7 @@ afterEach(() => {
 
 describe("pre-command failure surface", () => {
   test("Compose rejection bug reports preserve structured context outside the machine envelope", () => {
-    const remediation = "Move deploy.replicas to a provider extension.";
+    const remediation = "Remove deploy.replicas.";
     const report = buildBugReport({
       error: new ComposeKeyRejectedError({
         message: "Compose key deploy.replicas is rejected.",

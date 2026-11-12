@@ -1,18 +1,16 @@
 import { dirname } from "node:path";
 import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
-import { Duration, Effect, Exit } from "effect";
-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import { writeFileAtomic } from "@lando/state-store/atomic";
-
-import { rejectIntelMacHost } from "./host-support.ts";
-import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.ts";
-import type { ArtifactDownload } from "./runtime-bundle.ts";
-
+import { Duration, Effect, Exit } from "effect";
 import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
+import { needsDelegatedRelaunch, verifyServicePlacement } from "./delegated-launch.ts";
+import { type DelegatedScopeHost, delegatedLaunchEligibility } from "./delegated-scope.ts";
+import { rejectIntelMacHost } from "./host-support.ts";
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
@@ -23,8 +21,10 @@ import {
   verifyReplacedServiceTransition,
 } from "./linux-runtime-health.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
+import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import {
+  type PodmanServiceScope,
   type PodmanServiceSpec,
   type RuntimeLaunchError,
   buildPodmanServiceArgs,
@@ -36,6 +36,7 @@ import {
   classifyRootlessFailure,
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
+import type { ArtifactDownload } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { writeLaunchState } from "./runtime-launch-state.ts";
 import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "./setup.ts";
@@ -59,10 +60,16 @@ export interface EnsureRuntimeDeps extends Omit<LinuxRuntimeHealthDeps, "private
   readonly readinessPolicy?: RetryPolicy;
   readonly withLaunchLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly terminationPolicy?: RetryPolicy;
+  readonly admit?: Effect.Effect<void, ProviderUnavailableError>;
   readonly recordLaunch?: (
     pid: number,
     spec: PodmanServiceSpec,
   ) => Effect.Effect<void, ProviderUnavailableError>;
+  /**
+   * Host view for the delegated systemd user scope (Linux). Production always passes it; when it
+   * is omitted the service launches undelegated and its placement is not observed.
+   */
+  readonly delegatedScope?: DelegatedScopeHost;
   readonly setupProgress?: {
     readonly helpers: (
       body: Effect.Effect<void, ProviderUnavailableError>,
@@ -131,6 +138,7 @@ const mapLaunchLockError = (
 
 const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
   deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
+  scope: PodmanServiceScope | undefined,
 ): Effect.fn.Return<number, ProviderUnavailableError> {
   const spec = buildPodmanServiceArgs({
     podmanBin: deps.podmanBin,
@@ -141,7 +149,8 @@ const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
     privateRuntimeDir: deps.privateRuntimeDir,
   });
 
-  const pid = yield* deps.serviceRunner.launch(spec).pipe(
+  yield* deps.admit ?? Effect.void;
+  const pid = yield* deps.serviceRunner.launch(spec, scope).pipe(
     Effect.catch((launchError: RuntimeLaunchError) => {
       const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();
       const rootlessError = classifyRootlessFailure(probes.probe(), launchError.stderr);
@@ -199,7 +208,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
             ),
           ),
     ),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof ProviderUnavailableError
         ? cause
         : new ProviderUnavailableError({
@@ -244,9 +253,17 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       }
     }
   });
+  const eligibility =
+    deps.delegatedScope === undefined
+      ? undefined
+      : delegatedLaunchEligibility(deps.platform, deps.delegatedScope);
+  const scope: PodmanServiceScope | undefined =
+    eligibility?.eligible === true
+      ? { systemdRun: eligibility.systemdRun, userRuntimeDir: eligibility.userRuntimeDir }
+      : undefined;
   const repair = Effect.gen(function* () {
     yield* deps.setupProgress?.helpers(helpers) ?? helpers;
-    if (yield* linuxRuntimeIsHealthy(deps)) {
+    if ((yield* linuxRuntimeIsHealthy(deps)) && !(yield* needsDelegatedRelaunch(deps, scope))) {
       const adopted =
         deps.generationStore === undefined
           ? true
@@ -297,7 +314,7 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       });
     }
     let launchedPid: number | undefined;
-    const launch = launchRuntime(deps).pipe(
+    const launch = launchRuntime(deps, scope).pipe(
       Effect.tap((pid) =>
         Effect.sync(() => {
           launchedPid = pid;
@@ -341,14 +358,23 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
               ),
             ),
           );
-    const readiness =
+    const reachable =
       earlyExit === undefined
         ? verifyRuntimeReachable(deps)
         : Effect.raceFirst(verifyRuntimeReachable(deps), earlyExit);
+    // Ready means the launcher has exec'd into Podman, so the observed cgroup is the service's own.
+    const readiness =
+      launchedPid === undefined || deps.delegatedScope === undefined
+        ? reachable
+        : reachable.pipe(
+            Effect.andThen(
+              verifyServicePlacement(deps, { host: deps.delegatedScope, pid: launchedPid, scope }),
+            ),
+          );
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
   const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(
-    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+    mapFailures((cause) => mapLaunchLockError(deps, cause)),
   );
   yield* launchAndReadiness;
 });
@@ -389,7 +415,7 @@ const ensureMachineRuntime = (
     Effect.flatMap((ready) =>
       ready ? completeProgress : (deps.withLaunchLock?.(launchAndReadiness) ?? launchAndReadiness),
     ),
-    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+    mapFailures((cause) => mapLaunchLockError(deps, cause)),
   );
 };
 

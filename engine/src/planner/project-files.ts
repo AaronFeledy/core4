@@ -1,9 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { type Context, Effect, Stream } from "effect";
-
 import { isPathWithin } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
+import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
 import type {
@@ -11,6 +9,7 @@ import type {
   ServiceTypeProjectFileDeclaration,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
+import { type Context, Effect, Stream } from "effect";
 
 const MAX_PROJECT_FILE_BYTES = 1_048_576;
 
@@ -67,7 +66,7 @@ const assertNoSymlinkComponents = Effect.fnUntraced(function* (
     const stat = yield* input.fileSystem.lstat(current).pipe(
       Effect.map((value) => ({ kind: "present" as const, value })),
       Effect.catchTag("FileNotFoundError", () => Effect.succeed({ kind: "missing" as const })),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         validationError(input, `Unable to inspect project path ${current}: ${cause.message}.`),
       ),
     );
@@ -125,7 +124,7 @@ const readTextBounded = (
         sha256: sha256Hex(content),
       };
     }),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause instanceof LandofileValidationError
         ? cause
         : validationError(input, `Unable to read project file ${absolute}: ${causeMessage(cause)}.`),
@@ -164,7 +163,7 @@ export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
   const packageRootStat = yield* input.fileSystem
     .lstat(packageRoot)
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         validationError(input, `Unable to inspect packageRoot ${packageRoot}: ${cause.message}.`),
       ),
     );
@@ -189,7 +188,7 @@ export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
     const stat = yield* input.fileSystem
       .lstat(absolute)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           validationError(input, `Unable to inspect project file ${absolute}: ${cause.message}.`),
         ),
       );

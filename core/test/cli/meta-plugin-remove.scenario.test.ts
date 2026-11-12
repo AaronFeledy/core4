@@ -3,19 +3,17 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import * as HostContext from "@lando/engine/services/host-execution-context";
-
-import { Cause, Effect, type Exit, Layer } from "effect";
 
 import { FileIoError, PluginPackageOperationError, ProcessExecError } from "@lando/sdk/errors";
 import { ConfigService, PluginTrustStore, ProcessRunner } from "@lando/sdk/services";
-import { makeTestStateStore } from "@lando/state-store/testing";
-import { processRunnerFor } from "../_support/process-runner.ts";
-
-import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import type { NpmPackument, NpmRegistryTransport } from "@lando/source-acquisition";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { Cause, Effect, type Exit, Layer } from "effect";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
+import { processRunnerFor } from "../_support/process-runner.ts";
 
 let userDataRoot: string;
 

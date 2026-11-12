@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { parseLegacyLandofile } from "@lando/sdk/landofile";
+import { Cause, Effect, Exit, Option } from "effect";
 
 const FILE = "/app/.lando.yml";
 

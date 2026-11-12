@@ -1,14 +1,11 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
-
-import { COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY } from "@lando/sdk/schema";
-
+import { resolve } from "node:path";
 import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
 } from "@lando/sdk/landofile";
+import { COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY } from "@lando/sdk/schema";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 

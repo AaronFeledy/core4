@@ -1,8 +1,9 @@
 import { lstatSync, realpathSync, statSync } from "node:fs";
 import { chmod, lstat, mkdir, readFile, readlink, realpath, rm, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
 import { managedLaunchStatePath, privateRuntimeDirName } from "./managed-invocation.ts";
@@ -281,9 +282,9 @@ export const prepareManagedRuntimeDir = (
     } else {
       yield* fsSeam
         .mkdir(privateDir, { recursive: true, mode: OWNER_ONLY_MODE })
-        .pipe(Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)));
+        .pipe(mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)));
       const created = yield* lstatPath(privateDir).pipe(
-        Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)),
+        mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)),
       );
       if (!isSafeOwnedDirectory(created, uid)) {
         return yield* Effect.fail(privateRuntimeDirUnavailable(providerId));
@@ -292,10 +293,10 @@ export const prepareManagedRuntimeDir = (
 
     yield* fsSeam
       .chmod(privateDir, OWNER_ONLY_MODE)
-      .pipe(Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)));
+      .pipe(mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)));
 
     const info = yield* lstatPath(privateDir).pipe(
-      Effect.mapError((cause) => privateRuntimeDirUnavailable(providerId, cause)),
+      mapFailures((cause) => privateRuntimeDirUnavailable(providerId, cause)),
     );
     if (!isUsableRuntimeBase(info, uid)) {
       return yield* Effect.fail(privateRuntimeDirUnavailable(providerId));
@@ -353,43 +354,46 @@ const parseProcStatusUid = (status: string): number | undefined => {
 export const terminateManagedPause = (
   privateRuntimeDir: string,
   seams: ManagedPauseSeams = {},
-): Effect.Effect<void> =>
+): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const fsSeam = seams.fs ?? defaultManagedPauseFsSeam;
     const processSeam = seams.process ?? defaultManagedPauseProcessSeam;
     const getuid = seams.getuid ?? defaultGetuid;
     const uid = getuid();
-    if (uid === undefined) return;
+    if (uid === undefined) return false;
 
     const pausePidPath = join(privateRuntimeDir, PAUSE_PID_RELATIVE);
     const nsHandlesPath = join(privateRuntimeDir, NS_HANDLES_RELATIVE);
 
-    const rawPid = yield* fsSeam.readFile(pausePidPath).pipe(Effect.catch(() => Effect.succeed(undefined)));
+    const rawPid = yield* fsSeam
+      .readFile(pausePidPath)
+      .pipe(Effect.catch((cause) => Effect.succeed(isErrnoCode(cause, "ENOENT") ? undefined : null)));
+    if (rawPid === null) return false;
     if (rawPid === undefined) {
       yield* fsSeam.unlink(nsHandlesPath).pipe(Effect.catch(() => Effect.void));
-      return;
+      return true;
     }
 
     const pid = parsePausePid(rawPid);
     if (pid === undefined) {
       yield* fsSeam.unlink(pausePidPath).pipe(Effect.catch(() => Effect.void));
       yield* fsSeam.unlink(nsHandlesPath).pipe(Effect.catch(() => Effect.void));
-      return;
+      return false;
     }
 
     const alive = yield* processSeam.isAlive(pid);
     if (!alive) {
       yield* fsSeam.unlink(pausePidPath).pipe(Effect.catch(() => Effect.void));
       yield* fsSeam.unlink(nsHandlesPath).pipe(Effect.catch(() => Effect.void));
-      return;
+      return true;
     }
 
     const status = yield* fsSeam
       .readFile(`/proc/${pid}/status`)
       .pipe(Effect.catch(() => Effect.succeed(undefined)));
-    if (status === undefined) return;
+    if (status === undefined) return false;
     const processUid = parseProcStatusUid(status);
-    if (processUid === undefined || processUid !== uid) return;
+    if (processUid === undefined || processUid !== uid) return false;
 
     const ourNs = yield* fsSeam
       .readlink("/proc/self/ns/user")
@@ -399,7 +403,7 @@ export const terminateManagedPause = (
       .pipe(Effect.catch(() => Effect.succeed(undefined)));
     // Only kill a pause that lives in a different user namespace (rootless pause).
     // Same ns means the pid was reused by a process in our namespace, so leave it.
-    if (ourNs === undefined || theirNs === undefined || ourNs === theirNs) return;
+    if (ourNs === undefined || theirNs === undefined || ourNs === theirNs) return false;
 
     // Podman's pause keeps the environment of the process that created it. Requiring this private dir
     // there rejects another data root's or system Podman's pause that reused a stale pid.
@@ -411,14 +415,15 @@ export const terminateManagedPause = (
       !variables.includes("_PODMAN_PAUSE=1") ||
       !variables.includes(`XDG_RUNTIME_DIR=${privateRuntimeDir}`)
     ) {
-      return;
+      return false;
     }
 
     const signaled = yield* processSeam.kill(pid, "SIGKILL").pipe(
       Effect.as(true),
       Effect.catch(() => Effect.succeed(false)),
     );
-    if (!signaled) return;
+    if (!signaled) return false;
     yield* fsSeam.unlink(pausePidPath).pipe(Effect.catch(() => Effect.void));
     yield* fsSeam.unlink(nsHandlesPath).pipe(Effect.catch(() => Effect.void));
+    return true;
   });

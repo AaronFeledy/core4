@@ -1,8 +1,5 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
-
-import { Effect } from "effect";
-
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -21,21 +18,25 @@ import type {
   ProviderRuntimeSnapshot,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 
 export type AppliedStateProvider = Pick<
   RuntimeProviderShape,
-  "id" | "appliedPlans" | "isAvailable" | "list" | "listVolumes"
+  "id" | "appliedPlans" | "list" | "listVolumes"
 > & {
+  readonly isAvailable: Effect.Effect<boolean, ProviderError>;
   readonly appliedStateInventory?: Effect.Effect<AppliedStateInventory, ProviderError>;
   readonly resourceOwnership?: (
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
   readonly canCleanupOwnedResources?: Effect.Effect<boolean, ProviderError>;
+  readonly runtimeOnline?: Effect.Effect<boolean, ProviderError>;
 };
 
-const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter) =>
-  provider.isAvailable.pipe(
+const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter, teardown = false) => {
+  const online = provider.runtimeOnline ?? provider.isAvailable;
+  return (teardown ? online : online.pipe(Effect.catch(() => Effect.succeed(false)))).pipe(
     Effect.flatMap((available) =>
       available
         ? Effect.all({
@@ -46,6 +47,7 @@ const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter) =>
         : Effect.succeed({ runtimeObserved: false, services: [], volumes: [] }),
     ),
   );
+};
 
 const orphanRefusal = new AppResolveError({
   message: "Runtime resources remain without matching applied app state.",
@@ -288,8 +290,14 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   const ownershipHints = ownership === "ancestor" ? yield* readOwnership : teardownOwnership;
   const owned = ownershipHints.length === 0 ? {} : { ownership: ownershipHints };
   if (selected === undefined) {
+    // Only a provider that recorded state for this root fails teardown with its status failure;
+    // another installed provider that cannot be observed simply contributes no evidence.
     const evidence = yield* Effect.forEach(providers, (provider) =>
-      runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
+      runtimeEvidence(
+        provider,
+        ownership === "exact" ? { includeUnplanned: true } : {},
+        ownership === "exact" && ownershipHints.some((hint) => hint.providerId === provider.id),
+      ),
     );
     const groups = groupOrphans(lookupRoot, providers, evidence).filter(
       (group) => belongsToApp(group.providerId, group.appId) && !isProtected(group.providerId, group.appId),
@@ -334,6 +342,10 @@ export const resolveAppliedPlanEvidence = (
           return Effect.fail(orphanRefusal);
         case "absent":
           return Effect.succeed(undefined);
+        default: {
+          const exhaustive: never = evidence;
+          return exhaustive;
+        }
       }
     }),
   );

@@ -1,10 +1,8 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { Context, DateTime, Effect } from "effect";
-
 import { AppLockTimeoutError, StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
@@ -12,6 +10,7 @@ import { EventService, PathsService } from "@lando/sdk/services";
 import { acquireAdvisoryLockAt, peekAdvisoryLockRecord } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, DateTime, Effect } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 import { PinnedAppRoot } from "./app-root-identity.ts";
 
@@ -329,7 +328,7 @@ export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
       privateFileAccess,
     }).pipe(
       Effect.map((lock) => ({ lock, restore: installHolderEnv(key, lock.token) })),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof StateStoreError && cause.reason === "lock"
           ? timeoutError(String(app.id), timeoutMs, cause)
           : cause,

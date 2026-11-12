@@ -1,13 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { renderConfigLintResult } from "@lando/core/cli/operations";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { ConfigLintResult, formatValidationIssuePath } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

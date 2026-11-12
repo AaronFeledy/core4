@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Schema } from "effect";
-
 import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { AppConfigExplainResultSchema } from "../../src/cli/commands/app-config-explain.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const { producer: lampProducer } = bundledRecipe("lamp");
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

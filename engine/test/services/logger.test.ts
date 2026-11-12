@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer } from "effect";
-
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Logger } from "@lando/sdk/services";
-import * as LandoLogger from "../../src/logging/service";
+import { type Context, Effect, Layer } from "effect";
 import type { LoggerLayerOptions } from "../../src/logging/service";
+import * as LandoLogger from "../../src/logging/service";
 
 const captureConsoleLog = async (run: () => Promise<void>): Promise<ReadonlyArray<string>> => {
   const lines: Array<string> = [];

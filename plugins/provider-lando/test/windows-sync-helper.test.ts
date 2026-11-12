@@ -2,20 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
-import { ownerOnlyFileAccess } from "./private-file-access.ts";
-
-import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
-
 import {
   type WindowsSyncHelperSpec,
   ensureWindowsSyncHelper,
   removeWindowsSyncHelper,
 } from "../src/windows-sync-helper.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const spec: WindowsSyncHelperSpec = {
   appId: "demo-id",
@@ -614,7 +612,9 @@ describe("Windows named-volume sync helper", () => {
   test("accepts Podman canonicalizing Config.Image to a tag when the pinned image resolves to the container ID", async () => {
     const fake = makeFakeApi();
     const endpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
-    expect((fake.container?.Config as JsonRecord).Image).toBe("example.invalid/lando-sync:latest");
+    expect((fake.container?.Config as JsonRecord | undefined)?.Image).toBe(
+      "example.invalid/lando-sync:latest",
+    );
     expect(fake.container?.Image).toBe(platformImageId);
     expect(fake.calls.some((call) => call.path === imageInspectPath)).toBe(true);
     expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(

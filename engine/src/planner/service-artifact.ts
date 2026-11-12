@@ -2,7 +2,7 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import type { AppPlan, PluginManifest, ServicePlan } from "@lando/sdk/schema";
 import { type PlannedServiceDraft, contributionId } from "./service-types.ts";
 
-/** Compose builds replace the base; an authored image fills only a missing feature artifact. */
+/** Compose builds replace the base; an authored image fills only a missing feature artifact. The authored pull policy travels with the artifact it governs. */
 export const resolveServiceArtifact = (
   plan: ServicePlan,
   entry: PlannedServiceDraft,
@@ -12,7 +12,8 @@ export const resolveServiceArtifact = (
     entry.authoredArtifact?.kind === "build"
       ? entry.authoredArtifact
       : (plan.artifact ?? entry.authoredArtifact);
-  if (artifact !== undefined) return { ...plan, artifact };
+  if (artifact !== undefined)
+    return { ...plan, artifact, ...(entry.pullPolicy === undefined ? {} : { pullPolicy: entry.pullPolicy }) };
   const serviceType = plan.serviceTypeId ?? entry.draft.serviceType;
   const plugin = manifests.find((manifest) =>
     manifest.contributes?.serviceTypes?.some((type) => contributionId(type) === serviceType),

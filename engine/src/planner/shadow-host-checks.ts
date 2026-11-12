@@ -1,5 +1,4 @@
-import { join } from "node:path";
-import { posix } from "node:path";
+import { join, posix } from "node:path";
 
 import { FileNotFoundError, isErrnoCode } from "@lando/sdk/errors";
 import { type BindMountPlan, VCS_SYNC_IGNORES, effectiveExcludes } from "@lando/sdk/schema";

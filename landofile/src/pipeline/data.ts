@@ -23,7 +23,9 @@ export const checkDocumentData = (value: unknown, source: Omit<AuthoredOrigin, "
           return;
         }
         if (Array.isArray(input)) {
-          input.forEach((entry, index) => visit(entry, [...path, index]));
+          input.forEach((entry, index) => {
+            visit(entry, [...path, index]);
+          });
           return;
         }
         if (isPlainRecord(input)) {

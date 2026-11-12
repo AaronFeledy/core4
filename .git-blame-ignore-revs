@@ -1,0 +1,9 @@
+# Revisions that reformat without changing behavior.
+#
+# GitHub's blame view applies this file automatically. For `git blame`, run once:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Biome 2 reformat of the whole repository. See biome.jsonc and
+# docs/contributing/repository.md for the rule policy behind it.
+49b346c44a74e83d608bb4377869e396d0d903b3

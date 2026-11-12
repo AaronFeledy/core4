@@ -2,6 +2,7 @@ import { CONTAINER_HELPER_JOB_ID, containerHelperDownloadStep } from "./_contain
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { landoManagedPodmanTeardownCommands, linuxGuideE2eProviderSetupSteps } from "./build-ci-workflow.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
+import { testSelectionCommand } from "./test-selections.ts";
 
 export const serviceListenerNightlyJob = `
   service-listeners-linux-x64:
@@ -49,7 +50,7 @@ ${linuxGuideE2eProviderSetupSteps}
         shell: bash
         run: |
           set -euo pipefail
-          bun test plugins/service-lando/test/service-listener-journeys.integration.test.ts --max-concurrency=1 2>&1 | tee "$RUNNER_TEMP/listener-acceptance.log"
+          ${testSelectionCommand("nightly-service-listeners")} 2>&1 | tee "$RUNNER_TEMP/listener-acceptance.log"
           grep -E '^SERVICE_LISTENER_ACCEPTANCE completed=4/4 cases=' "$RUNNER_TEMP/listener-acceptance.log"
 
       - name: Teardown Lando runtime

@@ -1,4 +1,5 @@
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileIncludeError, LandofileLockMismatchError, causeMessage } from "@lando/sdk/errors";
 import type { IncludeEntry } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
@@ -8,8 +9,8 @@ import { hasIncludeCycle } from "./include-graph.ts";
 import { attributeIncludeError, includeError } from "./include-guard.ts";
 import { fetchLocal, fetchUser } from "./include-local.ts";
 import { stageFragmentLock } from "./include-lockfile.ts";
-import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { fetchGit, fetchNpm } from "./include-remote.ts";
+import { fetchRemoteRelative } from "./include-remote-relative.ts";
 import { classify, normalizeInclude } from "./include-source.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 
@@ -76,7 +77,7 @@ export const acquireIncludeRequest = Effect.fnUntraced(
     );
     return { fragment, parsed };
   },
-  (effect, request) => effect.pipe(Effect.mapError((error) => attributeIncludeError(error, request.origin))),
+  (effect, request) => effect.pipe(mapFailures((error) => attributeIncludeError(error, request.origin))),
   (effect, request, ctx) =>
     ctx.observeInclude === undefined
       ? effect

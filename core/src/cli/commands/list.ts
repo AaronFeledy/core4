@@ -1,18 +1,15 @@
 import { access } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { Effect, Schema } from "effect";
-
-import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
-import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
-import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
-
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
+import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
+import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
+import { ConfigService, PathsService, ProcessRunner, StateStore } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundary";
 import {
@@ -59,6 +56,7 @@ export interface ListServicesOptions {
     readonly apps: ReadonlyArray<AppsListEntry>;
     readonly confirmedProviderIds: ReadonlyArray<string>;
     readonly ownedAppIds?: ReadonlyArray<string>;
+    readonly idleProviderIds?: ReadonlyArray<string>;
   }>;
   readonly prune?: boolean;
   readonly pruneLimit?: number;
@@ -128,6 +126,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
 ): Effect.fn.Return<ListServicesResult, CacheError | E | LandoCommandError, ConfigService | R> {
   const configService = yield* ConfigService;
   const invocation = yield* CliInvocation;
+  const processRunner = yield* Effect.serviceOption(ProcessRunner);
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
 
@@ -161,7 +160,11 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       return discoverRunningAppsEvidenceFromSockets(
         userDataRoot,
         containerSocketCandidates(userDataRoot, { env: invocation.env }),
-        options.includeScratch === true ? { includeScratch: true } : {},
+        {
+          ...(options.includeScratch === true ? { includeScratch: true } : {}),
+          env: invocation.env,
+          ...(processRunner._tag === "Some" ? { processRunner: processRunner.value } : {}),
+        },
       );
     }).pipe(
       Effect.catch(() =>
@@ -179,7 +182,8 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
           (entry) => entry.appId === app.appId && entry.providerId === app.providerId,
         )
           ? "active"
-          : evidence.confirmedProviderIds.includes(app.providerId)
+          : evidence.confirmedProviderIds.includes(app.providerId) ||
+              evidence.idleProviderIds?.includes(app.providerId) === true
             ? "stopped"
             : "unknown";
         const entry = { ...app, status } satisfies typeof AppsListEntrySchema.Type;

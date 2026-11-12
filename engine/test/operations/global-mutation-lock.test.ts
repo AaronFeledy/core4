@@ -2,16 +2,14 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { failureOutcomeFromCause, mergeFailure } from "@lando/sdk/command-result";
 import { GlobalAppError, StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, StateStore } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
 import { makeStateStore } from "@lando/state-store/service";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect";
 
 import { withGlobalMutation } from "../../src/global-app/mutation.ts";
 import {

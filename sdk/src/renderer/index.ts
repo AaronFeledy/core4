@@ -17,8 +17,24 @@ import type { Layer } from "effect";
 
 import type { EventService, Renderer } from "../services/index.ts";
 
-export * from "./format.ts";
-
+export {
+  DEFAULT_KEYMAP_BINDINGS,
+  KeymapConfig,
+  type KeymapConfig as KeymapConfigType,
+  type KeymapSurface,
+  RENDERER_ACTION_SURFACE,
+  RendererActionId,
+  type RendererActionId as RendererActionIdType,
+  RendererKeyBinding,
+  type RendererKeyBinding as RendererKeyBindingType,
+  RendererKeyChord,
+  type RendererKeyChord as RendererKeyChordType,
+  RendererKeyChordPattern,
+  RendererKeyName,
+  type RendererKeyName as RendererKeyNameType,
+  decodeKeymapConfig,
+} from "../schema/keymap.ts";
+export { validateKeymapConfigConflicts } from "../schema/keymap-conflict.ts";
 export {
   RENDERER_CAPABILITIES_NONE,
   RENDERER_CAPABILITIES_TTY,
@@ -26,48 +42,28 @@ export {
   RendererCapabilities,
   type RendererCapabilities as RendererCapabilitiesType,
 } from "../schema/renderer-capabilities.ts";
-
-export {
-  DEFAULT_KEYMAP_BINDINGS,
-  KeymapConfig,
-  RENDERER_ACTION_SURFACE,
-  RendererActionId,
-  RendererKeyBinding,
-  RendererKeyChord,
-  RendererKeyChordPattern,
-  RendererKeyName,
-  decodeKeymapConfig,
-  type KeymapConfig as KeymapConfigType,
-  type KeymapSurface,
-  type RendererActionId as RendererActionIdType,
-  type RendererKeyBinding as RendererKeyBindingType,
-  type RendererKeyChord as RendererKeyChordType,
-  type RendererKeyName as RendererKeyNameType,
-} from "../schema/keymap.ts";
-
-export { validateKeymapConfigConflicts } from "../schema/keymap-conflict.ts";
-
 export {
   PanelView,
-  RendererPanelId,
-  RendererPanelManifestEntry,
-  RendererPanelSize,
-  RendererPanelSlot,
-  RendererPanelWatch,
-  RendererPanelContext,
-  StyledSpan,
-  StyledSpanTone,
   type PanelView as PanelViewType,
   type RendererPanel,
+  RendererPanelContext,
   type RendererPanelContext as RendererPanelContextType,
+  RendererPanelId,
   type RendererPanelId as RendererPanelIdType,
+  RendererPanelManifestEntry,
   type RendererPanelManifestEntry as RendererPanelManifestEntryType,
+  RendererPanelSize,
   type RendererPanelSize as RendererPanelSizeType,
+  RendererPanelSlot,
   type RendererPanelSlot as RendererPanelSlotType,
+  RendererPanelWatch,
   type RendererPanelWatch as RendererPanelWatchType,
+  StyledSpan,
   type StyledSpan as StyledSpanType,
+  StyledSpanTone,
   type StyledSpanTone as StyledSpanToneType,
 } from "../schema/renderer-panel.ts";
+export * from "./format.ts";
 
 /**
  * Narration-only terminal access. Event consumers cannot write command stdout.

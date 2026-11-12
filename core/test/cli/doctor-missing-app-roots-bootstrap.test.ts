@@ -79,7 +79,7 @@ test.each([false, true])(
       context: { appRoot: "/apps/gone" },
       status: "warn",
       recovery: "manual",
-      solutions: [{ kind: "manual", command: "lando destroy --root /apps/gone --volumes" }],
+      solutions: [{ kind: "manual", command: "lando apps:gc --prune --volumes" }],
     });
     expect(mutations).toBe(0);
   },

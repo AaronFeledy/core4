@@ -1,10 +1,10 @@
-import { DateTime, Effect, Exit } from "effect";
-import { type GlobalMutationServices, withGlobalMutation } from "../global-app/mutation.ts";
-
 import type {
+  DebuggerHostUnavailableError,
+  EnvironmentValueResolutionError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
+  PlanReplanRequiredError,
   PluginManifestError,
   SecretNotFoundError,
   SecretReferenceInvalidError,
@@ -15,6 +15,7 @@ import type {
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   type AppPlanner,
   type BuildError,
@@ -25,13 +26,7 @@ import {
   type PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import type {
-  DebuggerHostUnavailableError,
-  EnvironmentValueResolutionError,
-  PlanReplanRequiredError,
-} from "@lando/sdk/errors";
-import type { EnvironmentValueResolver } from "@lando/sdk/services";
+import { DateTime, Effect, Exit } from "effect";
 import {
   captureGlobalEnsureInputs,
   forgetGlobalEnsure,
@@ -40,9 +35,11 @@ import {
   observeWarmGlobalServices,
   rememberGlobalEnsure,
 } from "../global-app/ensure-cache.ts";
+import { type GlobalMutationServices, withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
 import { captureGlobalStartupAdmission } from "../global-app/startup-admission.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
@@ -76,6 +73,7 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | import("@lando/sdk/errors").CaError
   | DebuggerHostUnavailableError
   | Effect.Error<ReturnType<typeof globalInstall>>
   | Effect.Error<ReturnType<typeof canonicalAppRoot>>
@@ -277,7 +275,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const beforeStartup = yield* captureGlobalEnsureInputs(plan, loaded.landofile, provider);
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.
-    const realizedPlan = withOrdinaryMounts(planToApply);
+    const realizedPlan = yield* prepareServiceCertificates(withOrdinaryMounts(planToApply));
     const preparedOverlays = yield* prepareDebuggerOverlay(realizedPlan);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
     const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);

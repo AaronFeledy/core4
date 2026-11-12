@@ -1,6 +1,5 @@
-import { type Context, Effect } from "effect";
-
 import type { PrivilegeService, ProcessResult, ProcessRunner } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 import {
   DESIRED_HTTPS_PORT,
@@ -14,8 +13,9 @@ import {
   SOCKET_PROXY_EXIT_FOREIGN,
   SOCKET_PROXY_EXIT_NEEDS_FLOCK,
   SOCKET_PROXY_EXIT_SYMLINK,
+  socketProxyPolkitHeader,
+  socketProxyUnitHeader,
 } from "./socket-proxy-helper.ts";
-import { socketProxyPolkitHeader, socketProxyUnitHeader } from "./socket-proxy-helper.ts";
 import { type HostPathAccess, classifySocketProxy, inspectSocketProxy } from "./socket-proxy-ownership.ts";
 import { shQuote, socketProxyArtifactRecheck, socketProxyLockPreamble } from "./socket-proxy-script.ts";
 import {
@@ -27,9 +27,9 @@ import {
   renderPolkitRule,
 } from "./socket-proxy-units.ts";
 
-export { POLKIT_RULE_PATH, PROXYD_CANDIDATES, SOCKET_UNIT_PATHS, renderPolkitRule };
 export { ProxydBinaryNotFound } from "./socket-proxy-errors.ts";
 export { classifySocketProxy } from "./socket-proxy-ownership.ts";
+export { POLKIT_RULE_PATH, PROXYD_CANDIDATES, SOCKET_UNIT_PATHS, renderPolkitRule };
 
 const failedResult = (exitCode = 1, stderr = ""): ProcessResult => ({ exitCode, stdout: "", stderr });
 

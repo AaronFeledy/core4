@@ -118,8 +118,8 @@ describe("lowerTypeOptions", () => {
     {
       name: "Redis options",
       id: "redis",
-      service: { password: "nerfherder", persist: true },
-      patch: { password: "nerfherder", persist: true },
+      service: { password: "nerfherder", persist: true, creds: { user: "ignored", password: "ignored" } },
+      patch: { creds: { password: "nerfherder" }, persist: true },
       diagnostics: [],
     },
     {

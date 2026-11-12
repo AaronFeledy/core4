@@ -1,9 +1,8 @@
-import { Effect, Schema } from "effect";
-
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { type AppPlan, type ServiceConfig, ServicePlan, isActiveRunStatus } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import {
   activeGlobalPolicyChange,
@@ -30,7 +29,9 @@ import {
   assertGlobalResolution,
   projectEffectiveGlobalResolution,
 } from "../global-app/resolution.ts";
+import { runtimeOnline } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
+import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import { readGlobalConsumerReservations } from "./global-consumer-lease.ts";
 import {
   GlobalConsumerProtectionError,
@@ -38,8 +39,8 @@ import {
   readGlobalConsumerImpact,
 } from "./global-consumers.ts";
 import { GlobalDistResultSchema } from "./global-install.ts";
-import { dependencyError } from "./global-policy-cleanup-evidence.ts";
 import { cleanupDisabledGlobalResources } from "./global-policy-cleanup.ts";
+import { dependencyError } from "./global-policy-cleanup-evidence.ts";
 
 export type GlobalPolicyChangeOptions = {
   readonly selectors?: ReadonlyArray<string>;
@@ -303,7 +304,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           Effect.gen(function* () {
             const registry = yield* RuntimeProviderRegistry;
             const provider = yield* registry.select(applied.provider);
-            if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running) return undefined;
+            if (!(yield* runtimeOnline(provider))) return undefined;
             const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
             const active = new Set(
               observations
@@ -360,7 +361,9 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           ...(placement._tag === "Success"
             ? { providerId: placement.success.realized ?? placement.success.desired }
             : {}),
-          routerId: (yield* RouterService).id,
+          routerId: yield* Effect.map(RouterService, (router) =>
+            unavailableRouterReason(router) === undefined ? router.id : undefined,
+          ),
         });
   const reservations =
     operation === "enable" ? undefined : yield* Effect.result(readGlobalConsumerReservations(ids));

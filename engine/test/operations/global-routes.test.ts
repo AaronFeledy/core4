@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { GlobalAppError, ProviderUnavailableError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -12,6 +10,7 @@ import {
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
+import { DateTime, Effect } from "effect";
 
 import { withGlobalActivationScope, withGlobalPolicyChange } from "../../src/global-app/activation-scope.ts";
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
@@ -267,17 +266,78 @@ describe("global route publication", () => {
   });
 
   test("publication withdraws stale routes when nothing routable is running", async () => {
-    // Given no started or observed routed services.
-    const router = makeRouter();
+    // Given no started or observed routed services, behind a policy check.
+    const calls: string[] = [];
+    const router = {
+      ...makeRouter(),
+      applyRoutes: () => Effect.die("An empty selection must not apply an empty route set"),
+      removeRoutes: (owner: AppRouteOwner) =>
+        Effect.sync(() => {
+          calls.push(`remove:${owner.ownerKey}`);
+        }),
+    };
     // When publication replaces the global file.
     await Effect.runPromise(
-      publishGlobalRoutes(router, { list: () => Effect.succeed([]) }, plan, {
-        started: new Set(),
-        failed: new Set(),
-      }),
+      publishGlobalRoutes(
+        router,
+        {
+          list: () =>
+            Effect.sync(() => {
+              calls.push("list");
+              return [];
+            }),
+        },
+        plan,
+        { started: new Set(), failed: new Set() },
+        Effect.sync(() => {
+          calls.push("beforeRoutes");
+        }),
+      ),
     );
-    // Then applyRoutes receives an empty route set, not a skipped update.
-    expect(router.routesByOwner.get(routeOwnerFromPlan(plan).ownerKey)).toEqual([]);
+    // Then the definition is withdrawn after observation and the policy check.
+    expect(calls).toEqual(["list", "beforeRoutes", `remove:${routeOwnerFromPlan(plan).ownerKey}`]);
+  });
+
+  test("an unavailable router does not fail publication of an empty selection", async () => {
+    // Given a router that cannot withdraw and a selection with nothing routable running.
+    const router = {
+      ...makeRouter(),
+      applyRoutes: () => Effect.die("An empty selection must not apply an empty route set"),
+      removeRoutes: () =>
+        Effect.fail(
+          new ProxyError({ proxyId: "unavailable", message: "unavailable", remediation: "Select a router." }),
+        ),
+    };
+    // When publication runs after the selected service started.
+    const result = await Effect.runPromise(
+      publishGlobalRoutes(router, { list: () => Effect.succeed([]) }, siblingPlan, {
+        started: new Set([ServiceName.make("unrouted")]),
+        failed: new Set(),
+      }).pipe(Effect.result),
+    );
+    // Then the start is not failed by best-effort withdrawal.
+    expect(result._tag).toBe("Success");
+  });
+
+  test("a route-free plan still publishes when best-effort withdrawal fails", async () => {
+    // Given a route-free global plan and a router whose withdrawal fails
+    const router = {
+      ...makeRouter(),
+      applyRoutes: () => Effect.die("A route-free plan must not apply routes"),
+      removeRoutes: () =>
+        Effect.fail(new ProxyError({ proxyId: "test", message: "failed", remediation: "Repair routes." })),
+    };
+    // When publication runs
+    const result = await Effect.runPromise(
+      publishGlobalRoutes(
+        router,
+        { list: () => Effect.die("A route-free plan must not observe services") },
+        { ...plan, routes: [] },
+        { started: new Set(), failed: new Set() },
+      ).pipe(Effect.result),
+    );
+    // Then the router failure does not fail publication
+    expect(result._tag).toBe("Success");
   });
 
   test("publication propagates route application failures unchanged", async () => {

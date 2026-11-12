@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
+import { Effect } from "effect";
 
 export type RootMountPropagation = "shared" | "private" | "unknown";
 
@@ -54,8 +53,7 @@ export const parseRootMountPropagation = (mountinfo: string): RootMountPropagati
       /^\d+$/u.test(parentId) &&
       device !== undefined &&
       /^\d+:\d+$/u.test(device) &&
-      root !== undefined &&
-      root.startsWith("/") &&
+      root?.startsWith("/") &&
       mountOptions !== undefined &&
       mountOptions.length > 0 &&
       filesystemType !== undefined &&

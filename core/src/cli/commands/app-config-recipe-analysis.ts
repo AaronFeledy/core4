@@ -1,11 +1,9 @@
 import { dirname } from "node:path";
-
+import { findDiscoveredLandofilePath } from "@lando/engine/services/landofile-live";
 import { type ExpressionNode, type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import { isBareRecipeReference, validateLandofileRecipeProvenance } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
-
-import { findDiscoveredLandofilePath } from "@lando/engine/services/landofile-live";
 
 export const CANONICAL_LANDOFILE = ".lando.yml";
 export const PROGRAMMATIC_LANDOFILE = ".lando.ts";
@@ -94,7 +92,9 @@ export const collectRecipeSites = (value: unknown, filePath: string): ReadonlyAr
       return;
     }
     if (Array.isArray(current)) {
-      current.forEach((entry, index) => visit(entry, [...path, index]));
+      current.forEach((entry, index) => {
+        visit(entry, [...path, index]);
+      });
       return;
     }
     if (typeof current === "object" && current !== null) {

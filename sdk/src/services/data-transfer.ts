@@ -1,8 +1,4 @@
 import { Context, type Effect, type Scope, type Stream } from "effect";
-import type { StateStoreError } from "../errors/index.ts";
-import type { VolumeIdentity } from "../schema/volume-identity.ts";
-import type { VolumeInitialization } from "./volume-initialization.ts";
-
 import type {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -13,6 +9,7 @@ import type {
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SnapshotOwnershipError,
+  StateStoreError,
   VolumeNotFoundError,
 } from "../errors/index.ts";
 import type {
@@ -30,6 +27,8 @@ import type {
   VolumeRef,
   VolumeSnapshotArtifact,
 } from "../schema/index.ts";
+import type { VolumeIdentity } from "../schema/volume-identity.ts";
+import type { VolumeInitialization } from "./volume-initialization.ts";
 
 export type DataMoverError =
   | DataTransferError

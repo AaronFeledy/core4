@@ -1,42 +1,41 @@
 /**
  * Service leaf-certificate planning.
  *
- * Core owns certificate intent: it derives the SAN coverage for a service,
- * asks the active `CertificateAuthority` to issue the leaf pair, and seeds the
- * `lando.certs` feature with the resolved host paths. Custom certificate
- * material authored on the Landofile is contained to the app root and checked
- * for readability here so the feature stays a pure mount/env application.
+ * Planning is pure: it derives the SAN coverage for a service, selects the
+ * certificate authority that apply will use, and seeds the `lando.certs`
+ * feature with the Lando-owned leaf paths. Apply issues and copies the
+ * material into those paths. Custom certificate material authored on the
+ * Landofile is contained to the app root and checked for readability here so
+ * the feature stays a pure mount/env application.
  */
 import { resolve } from "node:path";
-
-import { type Context, Effect, Result, Schema } from "effect";
-
+import { assertUnderRoot } from "@lando/landofile/include-guard";
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   type AmbiguousCertificateAuthoritiesError,
   LandofileValidationError,
   type NoCertificateAuthorityError,
-  type PluginLoadError,
 } from "@lando/sdk/errors";
 import {
+  type AppId,
+  type AppIdentity,
+  type AppRef,
   CertificateName,
-  type HostPlatform,
   type ServiceConfig,
+  appIdentityKey,
   certificateNameForHostname,
   validationIssue,
 } from "@lando/sdk/schema";
-import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
-
-import { assertUnderRoot } from "@lando/landofile/include-guard";
-import {
-  type CertificateAuthorityCandidateDefinition,
-  selectCertificateAuthorityCandidate,
-} from "../plugins/certificate-authority-resolver.ts";
+import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect, Result, Schema } from "effect";
+import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
+import { serviceCertificatePaths } from "../lifecycle/service-certificate-paths.ts";
 
 export const CERTS_FEATURE_ID = "lando.certs" as const;
 
-const CA_REMEDIATION =
-  "Run `lando setup` to install a certificate authority, or set certs to false or a custom certificate path.";
+const CUSTOM_MATERIAL_REMEDIATION =
+  "Use valid certificate material under the app root, or set certs to false.";
 
 interface CertsFeatureConfig extends Readonly<Record<string, unknown>> {
   readonly certPath?: string;
@@ -54,31 +53,48 @@ interface ResolveCertsFeatureInput {
   readonly hostnames: ReadonlyArray<string>;
   readonly routes: ReadonlyArray<NormalizedRoute>;
   readonly defaultRouteHostname?: string | undefined;
-  readonly resolveCertificateAuthority?:
-    | Effect.Effect<
-        CertificateAuthorityShape,
-        NoCertificateAuthorityError | AmbiguousCertificateAuthoritiesError | PluginLoadError
-      >
-    | undefined;
+  /** The authority apply will issue from, selected without contacting it. */
+  readonly certificateAuthority: Result.Result<
+    { readonly id: string },
+    NoCertificateAuthorityError | AmbiguousCertificateAuthoritiesError
+  >;
+  readonly leafLocation: { readonly certsDir: string; readonly ownerKey: string };
   readonly fileSystem?: Pick<Context.Service.Shape<typeof FileSystem>, "stat" | "readFile"> | undefined;
-  readonly validation?: {
-    readonly authorities: readonly CertificateAuthorityCandidateDefinition[];
-    readonly platform: HostPlatform;
-  };
 }
+
+/**
+ * Where an app's generated leaves live. The owner is the one the route and teardown paths derive
+ * from the finished plan; scratch is keyed by id because the scratch marker is attached after
+ * planning and cwd forks share the user app's root.
+ */
+export const certificateLeafLocation = (app: {
+  readonly certsDir: string;
+  readonly kind: AppRef["kind"] | undefined;
+  readonly id: AppId;
+  readonly root: string;
+  readonly identity: AppIdentity | undefined;
+}): ResolveCertsFeatureInput["leafLocation"] => ({
+  certsDir: app.certsDir,
+  ownerKey:
+    app.kind === "scratch"
+      ? routeOwnerFromScratch(app.id).ownerKey
+      : (app.identity?.ownerKey ?? appIdentityKey("owner", app.root)),
+});
 
 const validationError = (
   input: ResolveCertsFeatureInput,
-  message: string,
-  cause?: unknown,
+  failure: { readonly message: string; readonly remediation: string; readonly cause?: unknown },
 ): LandofileValidationError =>
   new LandofileValidationError({
-    message: `services.${input.serviceName}.certs ${message}`,
-    remediation: "Use valid certificate material under the app root, or set certs to false.",
+    message: `services.${input.serviceName}.certs ${failure.message}`,
+    remediation: failure.remediation,
     file: `${input.appRoot}/.lando.yml`,
-    issues: [validationIssue(["services", input.serviceName, "certs"], message)],
-    cause,
+    issues: [validationIssue(["services", input.serviceName, "certs"], failure.message, failure.remediation)],
+    cause: failure.cause,
   });
+
+const customMaterialError = (input: ResolveCertsFeatureInput, message: string, cause?: unknown) =>
+  validationError(input, { message, remediation: CUSTOM_MATERIAL_REMEDIATION, cause });
 
 const internalAlias = (serviceName: string, appName: string): string => `${serviceName}.${appName}.internal`;
 
@@ -110,7 +126,7 @@ const certificateSans = (input: ResolveCertsFeatureInput): ReadonlyArray<string>
   ]);
 };
 
-/** Mandatory identities must be certificate names before the CA is contacted. */
+/** Mandatory identities must be certificate names before a certificate is planned. */
 const requireMandatoryCertificateIdentities = (
   input: ResolveCertsFeatureInput,
 ): Effect.Effect<void, LandofileValidationError> => {
@@ -120,10 +136,11 @@ const requireMandatoryCertificateIdentities = (
   return identity === undefined
     ? Effect.void
     : Effect.fail(
-        validationError(
-          input,
-          `identity ${identity} is not a valid certificate name. Use a DNS-shaped service name (letters, digits, hyphens, underscores) or disable certs.`,
-        ),
+        validationError(input, {
+          message: `identity ${identity} is not a valid certificate name.`,
+          remediation:
+            "Use a DNS-shaped service and app name (letters, digits, hyphens, underscores), or set certs to false.",
+        }),
       );
 };
 
@@ -134,81 +151,57 @@ const resolveAuthoredPath = (
   Effect.tryPromise({
     try: () => assertUnderRoot(input.appRoot, resolve(input.appRoot, authoredPath), authoredPath),
     catch: () =>
-      validationError(
-        input,
-        `path ${authoredPath} must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.`,
-      ),
+      validationError(input, {
+        message: `path ${authoredPath} must stay inside the app root.`,
+        remediation:
+          "Move the certificate material into the app, or set certs to true to use a generated certificate.",
+      }),
   }).pipe(
     Effect.flatMap((containedPath) => {
       const fileSystem = input.fileSystem;
       if (fileSystem === undefined) {
         return Effect.fail(
-          validationError(
-            input,
-            "requires FileSystem to validate custom certificate material. Restore the standard app runtime services and retry.",
-          ),
+          validationError(input, {
+            message: "requires FileSystem to validate custom certificate material.",
+            remediation: "Restore the standard app runtime services and retry.",
+          }),
         );
       }
       const unreadable = (cause: unknown) =>
-        validationError(
-          input,
-          `path ${authoredPath} could not be read. Create the file or point certs at existing certificate material.`,
-          cause,
-        );
+        customMaterialError(input, `path ${authoredPath} could not be read.`, cause);
       return fileSystem.stat(containedPath).pipe(
-        Effect.mapError(unreadable),
+        mapFailures(unreadable),
         Effect.flatMap((stat) =>
           stat.isFile
-            ? fileSystem.readFile(containedPath).pipe(Effect.as(containedPath), Effect.mapError(unreadable))
-            : Effect.fail(validationError(input, `path ${authoredPath} must be a regular file.`)),
+            ? fileSystem.readFile(containedPath).pipe(Effect.as(containedPath), mapFailures(unreadable))
+            : Effect.fail(customMaterialError(input, `path ${authoredPath} must be a regular file.`)),
         ),
       );
     }),
   );
 
-const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
+const planGeneratedCertificate = (
   input: ResolveCertsFeatureInput,
-): Effect.fn.Return<CertsFeatureConfig, LandofileValidationError> {
-  yield* requireMandatoryCertificateIdentities(input);
-  const cn = internalAlias(input.serviceName, input.appName);
-  const sans = certificateSans(input);
-  if (input.validation !== undefined) {
-    const selected = selectCertificateAuthorityCandidate(
-      input.validation.authorities,
-      input.validation.platform,
-    );
-    if (Result.isFailure(selected))
-      return yield* Effect.fail(
-        validationError(input, `${selected.failure.message} ${selected.failure.remediation}`),
-      );
-    return { cn, sans, caId: selected.success.id };
-  }
-  const resolveAuthority = input.resolveCertificateAuthority;
-  if (resolveAuthority === undefined) {
-    return yield* Effect.fail(
-      validationError(input, `requires an active certificate authority. ${CA_REMEDIATION}`),
-    );
-  }
-  const ca = yield* resolveAuthority.pipe(
-    Effect.mapError((cause) =>
-      validationError(
-        input,
-        `${cause.message} ${"remediation" in cause ? cause.remediation : CA_REMEDIATION}`,
-      ),
+): Effect.Effect<CertsFeatureConfig, LandofileValidationError> =>
+  requireMandatoryCertificateIdentities(input).pipe(
+    Effect.flatMap(() =>
+      Result.match(input.certificateAuthority, {
+        onFailure: (failure) =>
+          Effect.fail(validationError(input, { message: failure.message, remediation: failure.remediation })),
+        onSuccess: (authority) =>
+          Effect.succeed({
+            ...serviceCertificatePaths(
+              input.leafLocation.certsDir,
+              input.leafLocation.ownerKey,
+              input.serviceName,
+            ),
+            cn: internalAlias(input.serviceName, input.appName),
+            sans: certificateSans(input),
+            caId: authority.id,
+          }),
+      }),
     ),
   );
-  const issued = yield* ca
-    .issueCert({ cn, sans })
-    .pipe(
-      Effect.mapError((cause) =>
-        validationError(
-          input,
-          `could not be issued: ${cause.message.replace(/\.$/u, "")}. ${CA_REMEDIATION}`,
-        ),
-      ),
-    );
-  return { certPath: issued.certPath, keyPath: issued.keyPath, cn, sans, caId: ca.id };
-});
 
 export const resolveCertsFeature = Effect.fnUntraced(function* (
   input: ResolveCertsFeatureInput,
@@ -218,7 +211,7 @@ export const resolveCertsFeature = Effect.fnUntraced(function* (
 > {
   const { certs } = input;
   if (certs === undefined || certs === false) return { id: CERTS_FEATURE_ID, config: {} };
-  if (certs === true) return { id: CERTS_FEATURE_ID, config: yield* issueCertificate(input) };
+  if (certs === true) return { id: CERTS_FEATURE_ID, config: yield* planGeneratedCertificate(input) };
 
   const authoredCert = typeof certs === "string" ? certs : certs.cert;
   const authoredKey = typeof certs === "string" ? undefined : certs.key;

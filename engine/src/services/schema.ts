@@ -8,4 +8,4 @@
  * The canonical schemas live in `@lando/sdk/schema`. Re-exported here for
  * intra-core ergonomics.
  */
-export { ServiceConfig, ServicePlan, ServiceInfo } from "@lando/sdk/schema";
+export { ServiceConfig, ServiceInfo, ServicePlan } from "@lando/sdk/schema";

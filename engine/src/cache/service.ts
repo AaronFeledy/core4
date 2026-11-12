@@ -1,8 +1,8 @@
-import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { CacheError } from "@lando/sdk/errors";
 import { CacheService } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
 
 import { writeAtomicCacheFile } from "./atomic.ts";
 
@@ -26,7 +26,7 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A
   }
 
   return Schema.decodeUnknownEffect(schema)(value).pipe(
-    Effect.mapError(
+    mapFailures(
       (decodeError) =>
         new CacheError({
           message: `Cached value for ${key} failed schema decode.`,

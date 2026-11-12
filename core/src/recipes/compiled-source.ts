@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { RecipeManifestValidationError } from "@lando/sdk/errors";
 import { type CompiledRecipeManifest, compileRecipeSource } from "@lando/sdk/recipes";
 import {
@@ -97,7 +98,7 @@ export const compileResolvedRecipe = Effect.fn("RecipeSource.compileResolved")(f
         parents,
       }),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (error) =>
           new RecipeManifestValidationError({
             source: current.source.id,

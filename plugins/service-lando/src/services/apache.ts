@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import {
   AbsolutePath,
   type LogSource,
@@ -14,6 +12,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   ServiceConfigIssue,
   literalEnvironmentValue,
@@ -22,10 +21,9 @@ import {
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { tcpProbe } from "./_tcp-probe.ts";
-
 import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 

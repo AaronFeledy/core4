@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { lintYamlDocument, lintYamlFences } from "../../../scripts/lint-guides-yaml-fence.ts";
 import type { GuideLintDiagnostic } from "../../../scripts/lint-guides.ts";
+import { lintYamlDocument, lintYamlFences } from "../../../scripts/lint-guides-yaml-fence.ts";
 
 describe("YAML fence applicability", () => {
   test.each([

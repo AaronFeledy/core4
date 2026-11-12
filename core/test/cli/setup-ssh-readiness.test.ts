@@ -18,9 +18,9 @@ import {
 import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import { runShellServiceSetupStep } from "../../src/cli/command-specs/meta/setup-service-steps.ts";
 import { makeSetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
-import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import { type SetupReadinessStep, readSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
 

@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type {
   AppFeatureContext,
   AppFeatureServiceMutators,
   AppFeatureServiceView,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { ServiceConfigIssue } from "../src/services/_feature-helpers.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
@@ -605,4 +604,5 @@ describe("uploadDirs glob translation", () => {
     expect(() => uploadDirRegex(path)).toThrow(/uploadDirs path is not a safe webroot-relative directory/);
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

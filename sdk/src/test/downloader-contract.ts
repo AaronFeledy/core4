@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-
 import { Effect, Fiber, Result } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import type { AbsolutePath, DownloadResult } from "../schema/index.ts";
 import type { DownloaderShape, LandoEvent } from "../services/index.ts";
@@ -95,7 +95,7 @@ export const runDownloaderContract = Effect.fnUntraced(function* (harness: Downl
     expectedSha256,
     expectedSizeBytes: payload.length,
     callerId: "contract",
-  }).pipe(Effect.mapError(failWith("a verified https download succeeds")));
+  }).pipe(mapFailures(failWith("a verified https download succeeds")));
   yield* requireDownloaderContract(
     created.fromCache === false && created.sha256 === expectedSha256 && created.sizeBytes === payload.length,
     "the first download streams fresh bytes and returns sha256+size",
@@ -114,7 +114,7 @@ export const runDownloaderContract = Effect.fnUntraced(function* (harness: Downl
     destination: { kind: "file", directory: dir, filename: "artifact.bin" },
     expectedSha256,
     expectedSizeBytes: payload.length,
-  }).pipe(Effect.mapError(failWith("a cached re-request resolves")));
+  }).pipe(mapFailures(failWith("a cached re-request resolves")));
   yield* requireDownloaderContract(
     cached.fromCache === true,
     "an identical re-request is served from the verified cache",
@@ -262,7 +262,7 @@ export const runDownloaderContract = Effect.fnUntraced(function* (harness: Downl
     expectedSha256,
     callerId: `caller-${secret}`,
     redactionTokens: [secret],
-  }).pipe(Effect.mapError(failWith("a secret-bearing download succeeds")));
+  }).pipe(mapFailures(failWith("a secret-bearing download succeeds")));
   const events = yield* harness.events();
   yield* requireDownloaderContract(
     events.some((e) => e._tag === "pre-download") && events.some((e) => e._tag === "post-download"),
@@ -284,7 +284,7 @@ export const runDownloaderContract = Effect.fnUntraced(function* (harness: Downl
       url: egressUrl,
       destination: { kind: "memory" },
       expectedSha256,
-    }).pipe(Effect.mapError(failWith("an egress-observed download succeeds")));
+    }).pipe(mapFailures(failWith("an egress-observed download succeeds")));
     const callsAfter = yield* harness.egress.streamCallCount();
     const bytesAfter = yield* harness.egress.bytesStreamed();
     yield* requireDownloaderContract(

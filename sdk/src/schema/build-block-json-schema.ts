@@ -70,5 +70,6 @@ export const buildBlockJsonSchema = {
     },
   ],
 } as const;
+
 import { BuildScript } from "./artifacts.ts";
 import { getLayerMergeRule } from "./layer-merge.ts";

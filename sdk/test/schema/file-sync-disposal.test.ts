@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -14,6 +12,7 @@ import {
   planFileSyncDisposal,
 } from "@lando/sdk/schema";
 import { TestFileSyncEngine, runFileSyncAppLifecycleContract } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 
 const spec: FileSyncSessionSpec = {
   app: { kind: "user", id: AppId.make("myapp"), root: AbsolutePath.make("/srv/apps/myapp") },

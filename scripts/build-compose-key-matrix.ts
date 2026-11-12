@@ -189,6 +189,8 @@ const renderComposeKeyMatrixPage = (): string => {
     "- `preserved`: Lando accepts the key and carries it in the Compose plan extension. Read the row for provider capability requirements; acceptance does not guarantee every provider can use it.",
     "- `rejected`: Lando stops with a tagged error. The Detail column gives the remediation.",
     "",
+    "A rejected key rejects everything nested under it, so its nested keys are not listed.",
+    "",
     "See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Compose compatibility](../guides/config/compose-compatibility.mdx) for usage guidance.",
     "",
     "## Coverage summary",
@@ -221,4 +223,4 @@ const main = async (): Promise<void> => {
 
 if (import.meta.main) await main();
 
-export { ComposeKeyMatrixError, renderComposeKeyMatrixPage, assertMatrixInvariants };
+export { ComposeKeyMatrixError, assertMatrixInvariants, renderComposeKeyMatrixPage };

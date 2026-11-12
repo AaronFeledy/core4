@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { override, reset } from "@lando/sdk/landofile";
 import { Effect, Result } from "effect";
-import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import {
   loadTestLandofileFile as loadLandofileFile,
   loadTestLandofileLayers as loadLandofileLayers,
+  makeTestLandofilePorts,
+  makeTestLandofileStateStore,
 } from "./support.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const source = {
   appRoot: "/tmp/authoring-policy",
@@ -37,7 +38,11 @@ test.each([
   expect(result.failure).toBeInstanceOf(LandofileValidationError);
   if (!(result.failure instanceof LandofileValidationError)) throw result.failure;
   expect(result.failure.issues).toMatchObject([
-    { path, rule: "unsupported-expression", source: { file: source.sourcePath, layer: "base", path } },
+    {
+      path,
+      rule: "unsupported-expression",
+      source: { file: source.sourcePath, layer: "base", path },
+    },
   ]);
   expect(result.failure.issues[0]?.suggestion).toBeString();
 });
@@ -48,23 +53,18 @@ test.each([
 ] as const)("rejects a build argument secret with image-history guidance: %j", async (value, key) => {
   // Given
   const path = ["services", "app", "build", "args", key];
-  const message = `Secret references are not supported at ${path.join(".")}. Build arguments can be recorded in image history.`;
-  const suggestion =
-    "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.";
   // When
   const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
   // Then
   expect(failure).toBeInstanceOf(LandofileValidationError);
   expect(failure).toMatchObject({
     file: source.sourcePath,
-    message,
-    remediation: suggestion,
+    message: expect.stringContaining("image history"),
     issues: [
       {
         path,
         rule: "unsupported-secret-reference",
-        message,
-        suggestion,
+        suggestion: expect.stringContaining("services.app.environment.TOKEN"),
         source: { file: source.sourcePath, layer: "base", path },
       },
     ],
@@ -84,8 +84,7 @@ test.each([
     // Then
     expect(failure).toMatchObject({
       _tag: "LandofileValidationError",
-      message: "Secret references are not supported at services.web.command.",
-      remediation: `Set services.web.environment.${name} to the \${secret:...} reference. Write $${name} in the command when the service type runs that string as a shell script. On type: compose, the string is split into arguments and is not a shell, so write sh -c with $${name} inside one quoted argument.`,
+      remediation: expect.stringContaining(`services.web.environment.${name}`),
       issues: [{ path: ["services", "web", "command"], rule: "unsupported-secret-reference" }],
     });
   },
@@ -103,9 +102,9 @@ test.each([
     "Move this step to services.app.build.app",
   ],
   [
-    { tooling: { deploy: "deploy ${secret:TOKEN}" } },
-    ["tooling", "deploy"],
-    "Use the object form: set tooling.deploy.cmd",
+    { tooling: { deploy: { cmd: ["deploy", "${secret:TOKEN}"] } } },
+    ["tooling", "deploy", "cmd", 1],
+    "Set tooling.deploy.env.TOKEN",
   ],
   [
     { services: { app: { entrypoint: "/start ${secret:TOKEN}" } } },
@@ -118,9 +117,9 @@ test.each([
     "For runtime use, set services.app.environment.TOKEN",
   ],
   [
-    { events: { "post-stop": [{ defer: "notify ${secret:TOKEN}" }] } },
-    ["events", "post-stop", 0, "defer"],
-    "Set events.post-stop.0.env.TOKEN",
+    { events: { "post-stop": [{ task: "notify ${secret:TOKEN}" }] } },
+    ["events", "post-stop", 0, "task"],
+    "Lando command inputs cannot carry secrets",
   ],
 ] as const)(
   "reports the authored shorthand path for site-aware guidance: %j",

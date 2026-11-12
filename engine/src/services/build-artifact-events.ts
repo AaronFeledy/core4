@@ -1,8 +1,9 @@
-import { type Context, DateTime, Effect } from "effect";
-
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { EventService } from "@lando/sdk/services";
+import { type Context, DateTime, Effect } from "effect";
+
+import { isScratchPlan } from "./build-app-kind.ts";
 
 export interface ArtifactBuildStep {
   readonly phase: "artifact";
@@ -27,7 +28,7 @@ export const redactedBuildContext = (
 ): RedactedBuildContext => {
   return {
     appRef: {
-      kind: String(plan.id).startsWith("scratch-") ? "scratch" : "user",
+      kind: isScratchPlan(plan) ? "scratch" : "user",
       id: redactor.redactString(plan.slug),
     },
     appRoot: redactor.redactString(plan.root),

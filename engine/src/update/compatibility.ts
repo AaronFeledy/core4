@@ -1,6 +1,6 @@
-import { Effect, Schema } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { NotImplementedError } from "@lando/sdk/errors";
+import { Effect, Schema } from "effect";
 import { validatePluginManifest } from "../operations/plugin-install.ts";
 import { inspectInstalledPluginRegistry } from "../plugins/installed-registry.ts";
 import { withPluginMutationLock } from "../plugins/mutation-lock.ts";
@@ -58,7 +58,7 @@ export const guardCoreReplacement = <A, E, R>(
     "meta:update",
     checkCoreReplacement(input).pipe(Effect.andThen(body)),
   ).pipe(
-    Effect.mapError((error) =>
+    mapFailures((error) =>
       error instanceof NotImplementedError
         ? new UpdatePermissionError({ message: error.message, remediation: error.remediation })
         : error,

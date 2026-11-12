@@ -2,9 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Exit } from "effect";
-
 import { makePreparedWindowsMutagenAppClient } from "@lando/file-sync-mutagen";
 import {
   type WindowsSyncTargetOperations,
@@ -23,6 +20,7 @@ import {
 } from "@lando/sdk/schema";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeTestStateStore } from "@lando/state-store/testing";
+import { DateTime, Effect, Exit } from "effect";
 
 const image = "example.invalid/sync@sha256:".concat("a".repeat(64));
 const root = AbsolutePath.make("C:\\Users\\me\\demo");

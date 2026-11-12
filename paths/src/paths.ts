@@ -40,9 +40,8 @@ import { joinFor, normalizeHostPlatform } from "./paths-platform.ts";
 
 export type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
 export { isPathWithin } from "./containment.ts";
+export { normalizeHostPlatform, resolveHostHome } from "./paths-platform.ts";
 export { sameRealpath } from "./realpath-equivalence.ts";
-export { normalizeHostPlatform } from "./paths-platform.ts";
-export { resolveHostHome } from "./paths-platform.ts";
 
 // --- root resolution ---------------------------------------------------------
 

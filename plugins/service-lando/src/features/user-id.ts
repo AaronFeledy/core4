@@ -1,6 +1,5 @@
-import { Effect } from "effect";
-
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export const LANDO_USER_ID_FEATURE_ID = "lando.user-id" as const;
 export const LANDO_USER_ID_FEATURE_PRIORITY = 300;

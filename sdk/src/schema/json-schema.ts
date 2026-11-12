@@ -1,25 +1,6 @@
 import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import {
-  AgentSocketBridgeInput,
-  AgentSocketBridgeResult,
-  AgentSocketDelivery,
-  AgentSocketKind,
-  AgentSocketProviderCapabilities,
-  AgentSocketUpstream,
-  GpgAgentConfig,
-  SshAgentConfig,
-} from "./agent-forwarding.ts";
-import {
-  LandofileSourceDocument,
-  LandofileSourceProjection,
-  LandofileSourceValue,
-} from "./landofile-source.ts";
-import { LayerMergeRule } from "./layer-merge.ts";
-import { ListenerObservation } from "./listener-observation.ts";
-import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
-
-import {
   AxisToken,
   CleanupProps,
   ComponentId,
@@ -157,6 +138,17 @@ import {
   TunnelStatusEvent,
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
+import { ExecutionSiteMatch } from "../landofile/execution-sites.ts";
+import {
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
+  AgentSocketDelivery,
+  AgentSocketKind,
+  AgentSocketProviderCapabilities,
+  AgentSocketUpstream,
+  GpgAgentConfig,
+  SshAgentConfig,
+} from "./agent-forwarding.ts";
 import {
   AppPlan,
   CurrentExecutableAppPlan,
@@ -194,11 +186,6 @@ import {
   ServiceScopedLandofile,
   SourceCompiledLandofile,
 } from "./compiled-landofile.ts";
-import { ConfigKeyDescription } from "./config-key.ts";
-import { ConfigLintRuleDescriptor, ConfigLintRuleId } from "./config-lint-rules.ts";
-import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
-import * as ConfigTranslateSchemas from "./config-translate.ts";
-import { GlobalConfigView } from "./config-view.ts";
 import {
   AgentEnvConfig,
   AppEnvironmentDefaults,
@@ -211,6 +198,11 @@ import {
   TelemetryConfig,
   TracingConfig,
 } from "./config.ts";
+import { ConfigKeyDescription } from "./config-key.ts";
+import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
+import { ConfigLintRuleDescriptor, ConfigLintRuleId } from "./config-lint-rules.ts";
+import * as ConfigTranslateSchemas from "./config-translate.ts";
+import { GlobalConfigView } from "./config-view.ts";
 import {
   ContainerHelperArch,
   ContainerHelperArtifact,
@@ -241,7 +233,12 @@ import {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
-import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
+import {
+  DatabaseConnection,
+  ServiceCreds,
+  ServiceCredsConfig,
+  ServiceCredsDisplay,
+} from "./database-connection.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -255,7 +252,6 @@ import {
   DownloaderCapabilities,
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
-import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "./endpoint-selection.ts";
 import {
   BindAddress,
   EndpointRef,
@@ -265,6 +261,7 @@ import {
   PublicationObservation,
   PublishedEndpoint,
 } from "./endpoint.ts";
+import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "./endpoint-selection.ts";
 import {
   BoundText,
   BoundTextReference,
@@ -273,6 +270,7 @@ import {
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
+import { ExecutionSite } from "./execution-site.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncDisposalPhase,
@@ -311,15 +309,6 @@ import {
   RendererKeyChord,
   RendererKeyName,
 } from "./keymap.ts";
-import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
-import {
-  LandofileAuthoringFragment,
-  LandofileAuthoringFragmentWire,
-  LandofileAuthoringShape,
-  LandofileAuthoringShapeWire,
-} from "./landofile-authoring.ts";
-import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
-import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   AppMountInput,
   CaInput,
@@ -346,7 +335,23 @@ import {
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
+import {
+  LandofileAuthoringFragment,
+  LandofileAuthoringFragmentWire,
+  LandofileAuthoringShape,
+  LandofileAuthoringShapeWire,
+} from "./landofile-authoring.ts";
+import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
+import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
+import { FileRef, StringImportRef } from "./landofile-reference.ts";
+import {
+  LandofileSourceDocument,
+  LandofileSourceProjection,
+  LandofileSourceValue,
+} from "./landofile-source.ts";
+import { LayerMergeRule } from "./layer-merge.ts";
 import { ListenerAuthority } from "./listener.ts";
+import { ListenerObservation } from "./listener-observation.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
 import {
   CommandCompletion,
@@ -389,8 +394,6 @@ import {
   SharedNetworkMembershipPlan,
 } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
-import { PluginDoctorReport } from "./plugin-doctor.ts";
-import { PluginTrustState } from "./plugin-trust.ts";
 import {
   ContributionRef,
   GlobalServiceContribution,
@@ -403,6 +406,8 @@ import {
   RouterServiceContribution,
   SecretStoreContribution,
 } from "./plugin.ts";
+import { PluginDoctorReport } from "./plugin-doctor.ts";
+import { PluginTrustState } from "./plugin-trust.ts";
 import {
   AppId,
   BootstrapLevel,
@@ -421,7 +426,6 @@ import {
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
-import { RouteEvidence } from "./proxy.ts";
 import {
   AppRouteOwner,
   ProxyApplyResult,
@@ -429,8 +433,15 @@ import {
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  RouteEvidence,
   RouterConfig,
 } from "./proxy.ts";
+import {
+  RecipeChoicesFrom,
+  RecipeManifest,
+  RecipeRegistryResolution,
+  RecipeRegistryResponse,
+} from "./recipe.ts";
 import { RecipeDecomposeInput, RecipeDecomposeResult } from "./recipe-decompose.ts";
 import {
   RecipeContentDigest,
@@ -456,12 +467,6 @@ import {
   RecipeSourceOption,
   RecipeSourcePrompt,
 } from "./recipe-source.ts";
-import {
-  RecipeChoicesFrom,
-  RecipeManifest,
-  RecipeRegistryResolution,
-  RecipeRegistryResponse,
-} from "./recipe.ts";
 import {
   AppRemoteEntry,
   AppRemoteMutationResult,
@@ -495,6 +500,7 @@ import {
   StyledSpan,
   StyledSpanTone,
 } from "./renderer-panel.ts";
+import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
@@ -521,6 +527,7 @@ import {
   TomcatServiceConfig,
   VarnishServiceConfig,
 } from "./services/index.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
@@ -530,6 +537,7 @@ import {
   ToolingInputValues,
   ToolingInvocationInput,
 } from "./tooling-input.ts";
+import { ToolingRunSummary, ToolingRunTarget } from "./tooling-run-summary.ts";
 import {
   ShareStopAppResult,
   TunnelCapabilities,
@@ -604,6 +612,8 @@ export type PublicSchemaReferencePage = {
 
 const basePublicSchemaRegistry = schemaRegistry({
   ConfigKeyDescription,
+  ExecutionSite,
+  ExecutionSiteMatch,
   SecretReference,
   SecretRef,
   BoundTextReference,
@@ -611,6 +621,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   EnvironmentValue,
   Environment,
   ServiceCreds,
+  ServiceCredsConfig,
   DatabaseConnection,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
@@ -751,10 +762,13 @@ const basePublicSchemaRegistry = schemaRegistry({
   NormalizedToolingFlag,
   NormalizedToolingArg,
   ToolingInputDeclaration,
+  ToolingRunSummary,
+  ToolingRunTarget,
   ToolingInputValues,
   ToolingInvocationInput,
   ServiceConfigInput,
   ServiceFileConfig,
+  SqliteTargetConfig,
   PhpComposerConfig,
   LogSource,
   LogSourceId,
@@ -2350,7 +2364,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfig.appMount",
   "ServiceConfig.command",
   "ServiceConfig.cores",
-  "ServiceConfig.database",
   "ServiceConfig.endpoints",
   "ServiceConfig.entrypoint",
   "ServiceConfig.framework",
@@ -2370,7 +2383,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.build",
   "ServiceConfigInput.command",
   "ServiceConfigInput.cores",
-  "ServiceConfigInput.database",
   "ServiceConfigInput.dependsOn",
   "ServiceConfigInput.endpoints",
   "ServiceConfigInput.entrypoint",

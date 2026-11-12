@@ -1,12 +1,11 @@
 import { resolve } from "node:path";
-
-import { Effect, Result, Schema } from "effect";
+import type { RootOverrides } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
-
-import type { RootOverrides } from "@lando/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, Result, Schema } from "effect";
 import { type WorkerClaim, withDetachedWorkerLock } from "../detached-worker/claim.ts";
 import { readDetachedWorkerRecord, writeDetachedWorkerRecord } from "../detached-worker/state-file.ts";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";
@@ -74,7 +73,7 @@ export const publishWorkerRecord = (
   privateFileAccess: PrivateFileAccess,
 ) =>
   writeDetachedWorkerRecord(claim, { schema: HostProxyWorkerRecord, privateFileAccess }, record).pipe(
-    Effect.mapError(() => stateError("Failed to write host-proxy worker state.", claim.path)),
+    mapFailures(() => stateError("Failed to write host-proxy worker state.", claim.path)),
   );
 
 export const writeWorkerRecord = (
@@ -89,9 +88,7 @@ export const writeWorkerRecord = (
     (claim) => publishWorkerRecord(claim, record, privateFileAccess),
     privateFileAccess,
   ).pipe(
-    Effect.mapError(() =>
-      stateError("Failed to write host-proxy worker state.", workerStatePath(app, paths)),
-    ),
+    mapFailures(() => stateError("Failed to write host-proxy worker state.", workerStatePath(app, paths))),
   );
 
 export const withWorkerRecordLock = <A, E>(

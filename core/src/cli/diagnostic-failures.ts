@@ -41,6 +41,10 @@ export const formatDiagnosticFailures = (value: unknown): string | undefined => 
     }
     const nested = formatDiagnosticFailures(member.failures);
     if (nested !== undefined) lines.push(nested);
+    const outputTail = Reflect.get(member, "outputTail");
+    if (typeof outputTail === "string" && outputTail.length > 0) {
+      for (const tailLine of outputTail.split("\n")) lines.push(`  ${tailLine}`);
+    }
     lines.push(`  ↳ ${member.remediation}`);
   }
   return lines.length === 0 ? undefined : lines.join("\n");

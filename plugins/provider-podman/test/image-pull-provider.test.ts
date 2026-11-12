@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -17,6 +15,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("podman");
@@ -188,6 +187,28 @@ describe("provider-podman apply image pull", () => {
       ]);
     },
   );
+
+  test("forwards the requested platform on an artifact pull", async () => {
+    // Given
+    const ref = "docker.io/library/alpine:3.20";
+    const fake = makeFakeApi({ inspectStatus: 200 });
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        podmanApi: fake.api,
+        conflictDetector: () => Effect.void,
+      }),
+    );
+
+    // When
+    await Effect.runPromise(provider.pullArtifact({ ref, policy: "always", platform: "linux/arm64" }));
+
+    // Then
+    expect(fake.requests).toContain(
+      `POST ${buildImagePullRequest(ref, libpodPullDialect, { platform: "linux/arm64" }).path}`,
+    );
+  });
 
   test("apply forwards the complete resolved environment callback", async () => {
     // Given

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema, Stream } from "effect";
+import type { DockerApiClient, DockerHttpRequest } from "@lando/provider-docker";
 
 import * as DockerProvider from "@lando/provider-docker";
-import type { DockerApiClient, DockerHttpRequest } from "@lando/provider-docker";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
   AbsolutePath,
@@ -15,6 +14,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { type LogChunk, RuntimeProvider } from "@lando/sdk/services";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("dockerlogfollowapp");

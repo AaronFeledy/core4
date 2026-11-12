@@ -1,5 +1,3 @@
-import { Args } from "../../../spec/metadata";
-
 import {
   type ScratchLogsResult,
   ScratchLogsResultSchema,
@@ -8,6 +6,7 @@ import {
   scratchLogs,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Args } from "../../../spec/metadata";
 
 export const appsScratchLogsSpec: LandoCommandSpec<ScratchLogsResult> = {
   resultSchema: ScratchLogsResultSchema,

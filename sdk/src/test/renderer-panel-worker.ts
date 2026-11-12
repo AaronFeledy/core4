@@ -8,9 +8,8 @@
 import { pathToFileURL } from "node:url";
 
 import { Schema } from "effect";
-
-import { RendererPanelId } from "../schema/renderer-panel.ts";
 import type { RendererPanel } from "../schema/renderer-panel.ts";
+import { RendererPanelId } from "../schema/renderer-panel.ts";
 
 import {
   PANEL_OP,

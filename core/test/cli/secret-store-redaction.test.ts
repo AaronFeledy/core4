@@ -17,8 +17,9 @@ import {
   ProviderId,
   ServiceName,
   StartAppResult,
+  StreamFrame,
 } from "@lando/sdk/schema";
-import { StreamFrame } from "@lando/sdk/schema";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -27,7 +28,6 @@ import {
   SecretStore,
   StateStore,
 } from "@lando/sdk/services";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";

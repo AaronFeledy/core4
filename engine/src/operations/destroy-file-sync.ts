@@ -15,10 +15,10 @@ import {
 import { Effect, Option } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { pendingStartDisposal } from "./accelerated-start-disposal.ts";
+import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
-import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 
 type DestroyFileSync = {
   readonly applicable: boolean;

@@ -5,8 +5,8 @@ import { isLandofileOverride, isLandofileReset } from "./merge-directives.ts";
 import type { ValueOrigins, ValueWithOrigins } from "./overlay-origins.ts";
 import { isPlainRecord } from "./record.ts";
 
+export { type RouteFilterIdentity, routeFilterIdentity, routeFilterMatches } from "./layer-merge-rules.ts";
 export { isPlainRecord } from "./record.ts";
-export { routeFilterIdentity, routeFilterMatches, type RouteFilterIdentity } from "./layer-merge-rules.ts";
 
 const ABSENT = Symbol("absent");
 const untracked: ValueOrigins<undefined> = { source: undefined, deleted: false, children: new Map() };

@@ -1,10 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-
-import { Schema } from "effect";
-
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { CI_PLATFORMS, releaseBinaryFileName } from "./ci-platforms.ts";
 
 type UpdateManifest = typeof UpdateManifestSchema.Encoded;

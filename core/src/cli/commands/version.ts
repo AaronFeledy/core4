@@ -6,9 +6,9 @@
  * Performance budget: `lando --version` must complete in < 80ms cold,
  * < 50ms hot.
  */
-import { Effect, Schema } from "effect";
 
 import { CORE_VERSION } from "@lando/engine/version";
+import { Effect, Schema } from "effect";
 
 export const VersionResultSchema = Schema.Struct({
   core: Schema.String,

@@ -2,6 +2,7 @@ import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtim
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { removeObservedContainer } from "@lando/container-runtime/service-lifecycle";
 import { sameRealpath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo } from "@lando/sdk/services";
@@ -83,7 +84,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
       return yield* Effect.fail(failure("The managed Podman API cannot inspect retained app writers."));
     const read = (input: EngineHttpRequest) =>
       request(input).pipe(
-        Effect.mapError((cause) => failure("Podman could not inspect retained app writers.", cause)),
+        mapFailures((cause) => failure("Podman could not inspect retained app writers.", cause)),
       );
     const inspect = (id: string) =>
       read({ method: "GET", path: `/containers/${encodeURIComponent(id)}/json` }).pipe(

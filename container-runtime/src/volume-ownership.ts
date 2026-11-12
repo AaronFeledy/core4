@@ -43,8 +43,7 @@ import {
   buildLandoVolumeFilters,
   volumeSelectorValue,
 } from "./podman/volume-prune.ts";
-import { volumeClassForStore } from "./volume-classes.ts";
-import { volumeClassFromLabels } from "./volume-classes.ts";
+import { volumeClassForStore, volumeClassFromLabels } from "./volume-classes.ts";
 
 /** Canonical app root, written verbatim; the ownership proof readers compare against. */
 export const VOLUME_OWNER_LABEL = "dev.lando.volume-owner";

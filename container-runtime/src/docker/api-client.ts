@@ -40,14 +40,14 @@ import {
   dockerApiVersionUnavailable,
 } from "./api-version.ts";
 
-export { DOCKER_API_PREFIX } from "./api-version.ts";
+export type { DockerApiPrefixSource } from "./api-prefix.ts";
+export { resetDockerApiPrefixCache } from "./api-prefix.ts";
 export {
   DOCKER_API_MAX_TESTED_VERSION,
   DOCKER_API_PREFERRED_VERSION,
+  DOCKER_API_PREFIX,
   isDockerApiVersionError,
 } from "./api-version.ts";
-export { resetDockerApiPrefixCache } from "./api-prefix.ts";
-export type { DockerApiPrefixSource } from "./api-prefix.ts";
 
 export type DockerApiClient = EngineApiClient;
 export type DockerHttpRequest = EngineHttpRequest;

@@ -5,6 +5,7 @@ import { writeWorkerDiagnostic } from "@lando/engine/subsystems/host-proxy/worke
 import { hostProxyMountInfoFromPlan } from "@lando/engine/subsystems/host-proxy/worker-service-plan";
 import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import { detachStdioWrites, isStdioRendererIO } from "@lando/renderer/io";
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
@@ -33,7 +34,7 @@ export const runHostProxyWorkerProcess = async (
     const input = await Effect.runPromise(
       Schema.decodeUnknownEffect(Schema.fromJsonString(WorkerInput))(
         await new Response(context.io.stdin).text(),
-      ).pipe(Effect.mapError(() => new TypeError("Invalid host-proxy worker input."))),
+      ).pipe(mapFailures(() => new TypeError("Invalid host-proxy worker input."))),
     );
     const app = { kind: input.app.kind, id: input.plan.id, root: input.plan.root } satisfies AppRef;
     if (input.app.id !== app.id || input.app.root !== app.root)

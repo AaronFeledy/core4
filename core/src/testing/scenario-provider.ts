@@ -64,7 +64,14 @@ export const makeScenarioProvider = () => {
     );
   const provider: RuntimeProviderShape = {
     ...testProvider,
-    capabilities: { ...testProvider.capabilities, artifactBuild: true },
+    // Guides show resource limits and GPU requests, so the scenario provider realizes those knobs too.
+    capabilities: {
+      ...testProvider.capabilities,
+      artifactBuild: true,
+      composeKnobs: {
+        supported: [...(testProvider.capabilities.composeKnobs?.supported ?? []), "deploy.resources", "gpus"],
+      },
+    },
     appliedPlans,
     apply: (plan, options) =>
       testProvider

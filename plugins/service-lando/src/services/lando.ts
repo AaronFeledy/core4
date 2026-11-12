@@ -1,6 +1,5 @@
-import { Schema } from "effect";
-
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 import { ServiceConfigIssue, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";

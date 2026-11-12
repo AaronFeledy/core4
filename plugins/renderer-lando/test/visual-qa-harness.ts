@@ -18,9 +18,6 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-import { Schema } from "effect";
-
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import {
@@ -33,6 +30,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import { Schema } from "effect";
 
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 

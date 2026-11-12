@@ -3,12 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rootCertificates } from "node:tls";
-
-import { type Context, Effect, Layer, Schema } from "effect";
-
 import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
+import { type Context, Effect, Layer, Schema } from "effect";
 
 import { networkTrustDoctorStatus } from "../../src/cli/commands/doctor-network-trust.ts";
 

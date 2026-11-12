@@ -210,22 +210,29 @@ test.each(["python:3.12", "ruby:3.3"])(
     expect(web?.extensions["custom.root"]).toEqual({ webroot: "/srv/public" });
   },
 );
-test("a custom Tomcat image without a mount cannot claim image-owned root configuration", async () => {
-  // Given / When / Then
-  await expect(
-    Effect.runPromise(
-      plan({
-        type: "tomcat",
-        image: "example.test/tomcat:fixture",
-        appMount: false,
-        webroot: "/srv/public",
-      }).pipe(Effect.provide(PluginRegistryLayer.layer)),
-    ),
-  ).rejects.toMatchObject({
-    _tag: "LandofileValidationError",
-    issues: [
-      expect.objectContaining({ path: ["services", "web", "webroot"], suggestion: expect.any(String) }),
-    ],
-  });
+test.each([
+  { image: "example.test/tomcat:fixture", webroot: "/srv/public" },
+  { image: "example.test/tomcat:fixture", webroot: "public" },
+  { build: { context: "." }, webroot: "/srv/public" },
+  { build: { context: "." }, webroot: "public" },
+])("a custom Tomcat image or build without a mount rejects webroot %j as unused", async (service) => {
+  // Given a Tomcat service with no ROOT context or LANDO_WEBROOT to receive the root.
+  // When the complete planner runs.
+  const exit = await Effect.runPromiseExit(
+    plan({ type: "tomcat", appMount: false, ...service }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+  );
+  // Then the only diagnostic is the unused-field one.
+  const error = Exit.isFailure(exit) ? Option.getOrUndefined(Cause.findErrorOption(exit.cause)) : undefined;
+  expect(error).toBeInstanceOf(LandofileValidationError);
+  if (!(error instanceof LandofileValidationError)) throw new Error("Expected validation error");
+  expect(error.issues).toEqual([
+    {
+      path: ["services", "web", "webroot"],
+      rule: "landofile.service",
+      message: expect.stringContaining("nothing in this service uses it"),
+      suggestion: expect.any(String),
+    },
+  ]);
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

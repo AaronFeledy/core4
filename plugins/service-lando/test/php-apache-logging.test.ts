@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { php83ServiceType } from "../src/services/php.ts";
 import { apacheLauncherDirectives } from "./support/apache-directives.ts";

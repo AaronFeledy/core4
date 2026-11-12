@@ -1,3 +1,10 @@
+import { mapFailures } from "@lando/sdk/command-result";
+import type { PluginDoctorCheckContribution, PluginDoctorCheckInput } from "@lando/sdk/plugins";
+import {
+  PluginDoctorReport,
+  type ProviderCapabilities as ProviderCapabilitiesShape,
+} from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 /**
  * Plugin-contributed doctor checks.
  *
@@ -7,13 +14,6 @@
  * cannot take the doctor run down.
  */
 import { Effect, Schema } from "effect";
-
-import type { PluginDoctorCheckContribution, PluginDoctorCheckInput } from "@lando/sdk/plugins";
-import {
-  PluginDoctorReport,
-  type ProviderCapabilities as ProviderCapabilitiesShape,
-} from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
 
 import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract";
 import { providerKindFor } from "./doctor-contract";
@@ -116,7 +116,7 @@ export const pluginDoctorReports = Effect.fnUntraced(function* (
                 ),
               ),
               Effect.flatMap(Schema.decodeUnknownEffect(PluginDoctorReports)),
-              Effect.mapError(
+              mapFailures(
                 () =>
                   new PluginDoctorReportInvalidError({
                     message: `Plugin doctor check returned an invalid payload. Reports are limited to ${MAX_REPORTS_PER_CHECK} entries; update the owning plugin to satisfy PluginDoctorReport.`,

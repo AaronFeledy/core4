@@ -1,17 +1,14 @@
 import { join, resolve } from "node:path";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { type Context, Effect } from "effect";
-
-import { LandofileValidationError } from "@lando/sdk/errors";
-import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
-import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
-import type { StringImportRef } from "@lando/sdk/schema";
-import type { FileSystem, LandoPaths } from "@lando/sdk/services";
-
 import { type LoadedCaPem, loadCaPems, resolveServiceNetworkInject } from "@lando/http-client/network-trust";
 import { assertUnderRoot } from "@lando/landofile/include-guard";
+import { mapFailures } from "@lando/sdk/command-result";
+import { sha256Hex } from "@lando/sdk/digest";
+import { LandofileValidationError } from "@lando/sdk/errors";
+import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
+import type { NetworkConfig, ServiceConfig, StringImportRef } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
+import type { FileSystem, LandoPaths } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 const CERTIFICATE_PEM_PATTERN = /^(?:\s*-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----\s*)+$/u;
 export const SECURITY_FEATURE_ID = "lando.security" as const;
@@ -67,7 +64,7 @@ const loadPaths = (
   paths: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyArray<LoadedCaPem>, LandofileValidationError> =>
   loadCaPems(paths).pipe(
-    Effect.mapError((cause) => validationError(input, `${cause.message}. ${cause.remediation}`)),
+    mapFailures((cause) => validationError(input, `${cause.message}. ${cause.remediation}`)),
     Effect.flatMap((loaded) => Effect.forEach(loaded, (ca) => validatePem(input, ca))),
   );
 
@@ -76,7 +73,7 @@ export const loadGlobalSecurityCas = (
   paths: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyArray<LoadedCaPem>, LandofileValidationError> =>
   loadCaPems(paths).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new LandofileValidationError({
           message: `Global network CA could not be loaded: ${cause.message}. ${cause.remediation}`,
@@ -211,14 +208,12 @@ export const resolveSecurityFeature = Effect.fnUntraced(function* (
   const cas = dedupeCas([...globalCas, ...projectCas]);
   yield* input.fileSystem
     .mkdir(cacheDirectory)
-    .pipe(
-      Effect.mapError((cause) => validationError(input, `could not create its app cache: ${cause.message}`)),
-    );
+    .pipe(mapFailures((cause) => validationError(input, `could not create its app cache: ${cause.message}`)));
   for (const ca of projectCas.filter((candidate) => candidate.path.startsWith(cacheDirectory))) {
     yield* input.fileSystem
       .writeAtomic(ca.path, ca.pem)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           validationError(input, `could not materialize inline PEM input: ${cause.message}`),
         ),
       );
@@ -229,7 +224,7 @@ export const resolveSecurityFeature = Effect.fnUntraced(function* (
   yield* input.fileSystem
     .writeAtomic(bundlePath, bundle)
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         validationError(input, `could not write its app-cache CA bundle: ${cause.message}`),
       ),
     );

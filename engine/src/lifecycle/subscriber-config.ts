@@ -1,6 +1,5 @@
-import { Effect, Schema } from "effect";
-
 import { type GlobalConfig, type NotifyConfig, NotifyConfig as NotifyConfigSchema } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 const DEFAULT_NOTIFY_CONFIG = Schema.decodeSync(NotifyConfigSchema)({});
 

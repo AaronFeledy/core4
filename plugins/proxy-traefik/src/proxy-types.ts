@@ -1,8 +1,5 @@
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { PortNumber, PublicationObservation, ServiceName, StartedService } from "@lando/sdk/schema";
-import type { Context, Effect } from "effect";
-import type * as HttpClient from "effect/http/HttpClient";
-
 import type {
   CertificateAuthorityShape,
   EventService,
@@ -10,6 +7,8 @@ import type {
   PrivilegeService,
   ProcessRunner,
 } from "@lando/sdk/services";
+import type { Context, Effect } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import type {
   AcquisitionFingerprint,

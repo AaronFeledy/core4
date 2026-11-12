@@ -1,6 +1,5 @@
-import { relative, resolve, sep } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { relative, resolve, sep } from "node:path";
 import ts from "@typescript/typescript6";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
 import { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
@@ -16,6 +14,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export interface ComposeServicePlanArgs {
   readonly serviceType: ServiceType;

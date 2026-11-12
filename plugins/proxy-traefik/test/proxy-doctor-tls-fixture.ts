@@ -1,10 +1,9 @@
 import { chmod, mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, posix } from "node:path";
-import { Effect } from "effect";
-
 import type { PluginDoctorReport } from "@lando/sdk/plugins";
 import type { AppRouteOwner, HostPlatform, RoutePlan } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { proxyTlsDoctorCheck } from "../src/index.ts";
 import {

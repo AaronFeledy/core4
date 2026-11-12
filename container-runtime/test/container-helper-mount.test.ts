@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { prepareContainerHelperMounts } from "../src/container-helper-mount.ts";
 import { containerHelperDelivery } from "../src/container-helper.ts";
+import { prepareContainerHelperMounts } from "../src/container-helper-mount.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { ctx, fakeEngine, plan, service } from "./fixtures/environment-values.ts";

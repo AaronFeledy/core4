@@ -1,11 +1,10 @@
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { NotImplementedError, StateStoreError } from "@lando/sdk/errors";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect } from "effect";
 
 export const withPluginMutationLock = Effect.fnUntraced(
   function* <A, E, R>(
@@ -29,7 +28,7 @@ export const withPluginMutationLock = Effect.fnUntraced(
   },
   (effect, _pluginsRoot, operation) =>
     effect.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof StateStoreError
           ? new NotImplementedError({
               message: `Could not acquire the shared plugin mutation lock for ${operation}.`,

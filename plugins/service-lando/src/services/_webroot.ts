@@ -1,8 +1,6 @@
 import { posix } from "node:path";
-
-import { Schema } from "effect";
-
 import type { ServiceConfig } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import { appMountTarget } from "./_volume-helpers.ts";
 

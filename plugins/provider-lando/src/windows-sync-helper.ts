@@ -1,24 +1,23 @@
 import { randomBytes } from "node:crypto";
 import { decodeImageInspectDigest, parseImageReference } from "@lando/container-runtime/dialect";
-import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
-import {
-  buildVolumePruneRequest,
-  parseVolumePruneResult,
-} from "@lando/container-runtime/podman/volume-prune";
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { Duration, Effect, Predicate } from "effect";
-import { changeReceipt, openReceipt, stateFailure } from "./windows-sync-helper-receipt.ts";
-
 import {
   type EngineHttpRequest,
   type PodmanApiClient,
   buildContainerRemoveRequest,
 } from "@lando/container-runtime/engine-api";
+import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
+import {
+  buildVolumePruneRequest,
+  parseVolumePruneResult,
+} from "@lando/container-runtime/podman/volume-prune";
+import { mapFailures } from "@lando/sdk/command-result";
+import { sha256Hex } from "@lando/sdk/digest";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
 import { fileSyncVolumeName } from "@lando/sdk/schema";
+import { Duration, Effect, Predicate } from "effect";
+import { changeReceipt, openReceipt, stateFailure } from "./windows-sync-helper-receipt.ts";
 
 const TARGET_PATH = "/sync";
 const ENTRYPOINT = ["sh", "-c"] as const;
@@ -34,9 +33,7 @@ const withReceiptLock = <A, E>(
 ) =>
   stateStore
     .withLock(`windows-sync-helper-${receiptKey(spec)}`, body)
-    .pipe(
-      Effect.mapError((cause) => (cause instanceof ProviderUnavailableError ? cause : stateFailure(cause))),
-    );
+    .pipe(mapFailures((cause) => (cause instanceof ProviderUnavailableError ? cause : stateFailure(cause))));
 
 const REMEDIATION =
   "Inspect the named volume and sync helper in the managed Podman machine, then retry with resources owned by this app.";
@@ -184,7 +181,7 @@ const matchesPinnedImage = Effect.fnUntraced(function* (api: Api, body: JsonReco
     method: "GET",
     path: `/images/${encodeURIComponent(image)}/json` as EngineHttpRequest["path"],
   }).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       failure("syncHelper.image.inspect", "Podman image identity could not be verified.", cause),
     ),
   );
@@ -328,7 +325,7 @@ const requireCreatedAt = (body: JsonRecord): Effect.Effect<string, ProviderUnava
 const loadReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec) =>
   openReceipt(stateStore, receiptKey(spec)).pipe(
     Effect.flatMap((bucket) => bucket.get),
-    Effect.mapError(stateFailure),
+    mapFailures(stateFailure),
   );
 
 const collision = (kind: string) =>

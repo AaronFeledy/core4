@@ -6,6 +6,7 @@ import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
 import {
   beginOrResumeAcceleratedStart,
+  readJournal,
   readPendingAcceleratedStart,
 } from "../../src/operations/accelerated-start-journal.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
@@ -110,7 +111,7 @@ test("pending accelerated start blocks changed ordinary plan before every hook o
   }
 });
 
-test("atomic completed tombstone permits a fresh attempt while stale owners cannot overwrite it", async () => {
+test("settlement removes the journal idempotently while stale owners cannot clear a newer attempt", async () => {
   const harness = await Effect.runPromise(recoveryHarness({ phase: "preparing" }));
   const first = await Effect.runPromise(
     beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
@@ -118,6 +119,8 @@ test("atomic completed tombstone permits a fresh attempt while stale owners cann
   await Effect.runPromise(first.advance("record-sessions"));
   await Effect.runPromise(first.advance("record-apply-intent"));
   await Effect.runPromise(first.complete);
+  await Effect.runPromise(first.complete);
+  expect((await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)))).pending).toBeNull();
   expect(
     await Effect.runPromise(readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer))),
   ).toBeNull();
@@ -125,6 +128,7 @@ test("atomic completed tombstone permits a fresh attempt while stale owners cann
     beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
   );
   expect(second.attemptId).not.toBe(first.attemptId);
+  expect(Exit.isFailure(await Effect.runPromiseExit(first.complete))).toBe(true);
   expect(Exit.isFailure(await Effect.runPromiseExit(first.advance("record-apply-intent")))).toBe(true);
   const pending = await Effect.runPromise(
     readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),

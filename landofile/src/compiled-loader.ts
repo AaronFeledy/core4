@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ValueOrigins } from "@lando/sdk/landofile";
 import { ComposedCompiledLandofile, type ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -11,7 +12,7 @@ export const loadCompiledLandofile = Effect.fn("Landofile.loadCompiled")(functio
 ) {
   const file = "<compiled-landofile>";
   const compiled = yield* Schema.decodeUnknownEffect(ComposedCompiledLandofile)(input).pipe(
-    Effect.mapError((cause) => validationErrorFromCause(file, input.document, cause)),
+    mapFailures((cause) => validationErrorFromCause(file, input.document, cause)),
   );
   const prepared = yield* prepareOverlay(compiled.document, { file, layer: "canonical" });
   const byPath = new Map(compiled.pendingSites.map((site) => [JSON.stringify(site.path), site]));

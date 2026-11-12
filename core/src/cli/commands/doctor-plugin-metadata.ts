@@ -1,12 +1,10 @@
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
 import { loadInstalledPluginManifest } from "@lando/engine/plugins/installed-plugin-loader";
 import {
   type InstalledPluginRegistryFailure,
   inspectInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
+import { Effect } from "effect";
 import {
   type DoctorSelfCheck,
   type DoctorSelfSolution,

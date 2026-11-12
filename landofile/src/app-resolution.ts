@@ -1,7 +1,4 @@
 import { dirname } from "node:path";
-
-import { type Context, Effect } from "effect";
-
 import {
   AppIdReservedError,
   type LandofileParseError,
@@ -10,6 +7,7 @@ import {
 import type { AbsolutePath, AppPlan, AppRef, LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import { normalizeAppSlug } from "@lando/sdk/schema";
 import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
+import { type Context, Effect } from "effect";
 
 export type { UserLandofileError };
 

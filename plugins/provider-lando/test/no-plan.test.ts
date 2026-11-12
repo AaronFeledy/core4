@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
-
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
@@ -13,8 +11,9 @@ import {
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 import { runScopedExit } from "./scope-helpers.ts";
 
 const providerId = ProviderId.make("lando");

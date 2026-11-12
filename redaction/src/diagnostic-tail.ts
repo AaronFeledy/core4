@@ -91,6 +91,7 @@ export const makeDiagnosticTailFactory = Effect.fnUntraced(function* (
       }
     };
     return {
+      redactor,
       write: (chunk: Uint8Array) => {
         if (finished) return;
         for (let offset = 0; offset < chunk.length && !suppressed; offset += LIMIT) {

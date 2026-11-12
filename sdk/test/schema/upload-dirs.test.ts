@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
-import { Result, Schema, SchemaIssue } from "effect";
-
 import {
   LandofileShape,
   ServiceConfig,
@@ -10,6 +7,8 @@ import {
   UploadDir,
   isUploadDir,
 } from "@lando/sdk/schema";
+import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
+import { Result, Schema, SchemaIssue } from "effect";
 
 const decodeService = (raw: unknown, options?: { readonly onExcessProperty?: "error" }): ServiceConfig =>
   Schema.decodeUnknownSync(ServiceConfig)(raw, options);

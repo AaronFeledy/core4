@@ -20,8 +20,8 @@ import type {
 } from "./live-region-types.ts";
 import { recordOpenTuiSubstrateFailure } from "./substrate-availability.ts";
 
-export { OpenTuiLiveRegionUnavailableError } from "./live-region-error.ts";
 export type { OpenTuiLiveRegionFailureStage } from "./live-region-error.ts";
+export { OpenTuiLiveRegionUnavailableError } from "./live-region-error.ts";
 export type * from "./live-region-types.ts";
 
 export class LiveRegionController<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {

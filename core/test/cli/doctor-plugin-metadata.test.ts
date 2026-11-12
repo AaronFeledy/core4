@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer, Schema } from "effect";
-
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
+import { Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";

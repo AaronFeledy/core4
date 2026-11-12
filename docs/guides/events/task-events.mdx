@@ -83,7 +83,7 @@ events:
     - command: app:lint
 ```
 
-`task: lint` is an inline invocation. Lando runs `lint`'s steps right there and does not fire `pre-lint` or `post-lint`.
+`task: lint` is an inline invocation. Lando runs `lint`'s steps right there and does not fire `pre-lint` or `post-lint`. A `task:` step can also set `vars:`; a value it sets wins over the task's own var of the same name, and when that var is computed with `sh`, the command never runs. See [Compute a value with a shell command](../tooling/flags-and-args.mdx#compute-a-value-with-a-shell-command).
 
 `command: app:lint` re-enters the top-level command path, exactly as if you had typed `lando lint`. That fires `pre-lint` and `post-lint` too.
 

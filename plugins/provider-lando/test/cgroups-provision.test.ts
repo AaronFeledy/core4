@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit } from "effect";
-
 import { ProviderSetupProvisioningError, ProviderSetupUnsupportedHostError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
+import { Cause, Effect, Exit } from "effect";
 
 import {
   applyApprovedPrerequisitePlan,

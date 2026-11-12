@@ -1,11 +1,9 @@
-import type { ProjectedFailure } from "@lando/sdk/command-result";
-import { Schema } from "effect";
-
-import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import type { CommandCompletion, DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
-
 import { assertTopLevelAliasesClaimable } from "@lando/engine/operations/reserved-aliases";
 import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
+import type { ProjectedFailure } from "@lando/sdk/command-result";
+import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
+import type { CommandCompletion, DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { assertHostProxyAllowlistSafe } from "../allowlists/host-proxy";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report";
 import type { DeferredCommandPlan } from "../deferred-commands";

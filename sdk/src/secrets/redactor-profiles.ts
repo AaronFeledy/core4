@@ -40,6 +40,7 @@ import {
   unquotedSecretValueSource,
 } from "./env-placeholder.ts";
 import { redactedInspection } from "./inspection.ts";
+import { isPublicDefaultCredential } from "./public-default-credentials.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
 import {
   SECRET_FIELD_PATTERN,
@@ -120,8 +121,19 @@ const SIGNED_QUERY_PARAM_PATTERN = new RegExp(
   "giu",
 );
 
+const isQuotedOrBarePublishedDefault = (value: string): boolean => {
+  if (isPublicDefaultCredential(value)) return true;
+  const quote = value[0];
+  if (value.length < 2 || (quote !== '"' && quote !== "'") || value.at(-1) !== quote) return false;
+  return isPublicDefaultCredential(value.slice(1, -1));
+};
+
 const keepOrRedactAssignment = (match: string, _name: string, value: string): string =>
-  keepCompleteEnvPlaceholderOrRedact(match, `${_name}=${REDACTED}`, value);
+  // The value layer ran first, so a registered or secret-store value is already
+  // masked here; only an authored published default keeps the whole assignment.
+  isQuotedOrBarePublishedDefault(value)
+    ? match
+    : keepCompleteEnvPlaceholderOrRedact(match, `${_name}=${REDACTED}`, value);
 
 const keepOrRedactQuery = (match: string, prefix: string, value: string): string =>
   keepCompleteEnvPlaceholderOrRedact(match, `${prefix}${REDACTED}`, value);

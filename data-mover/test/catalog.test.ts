@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   AbsolutePath,
   AppId,
+  SNAPSHOT_INFO_VERSION,
   type SnapshotHandle,
   SnapshotInfo,
   appIdentityKey,
@@ -185,7 +186,12 @@ test.each(["version", "json", "schema", "owner-hash", "owner-path", "store", "id
                   : data;
       const path = join(f.paths.ownerSnapshotsDir(f.owner.ownerKey), store.store, "snapshot.json");
       const bytes =
-        kind === "json" ? "broken" : JSON.stringify({ version: kind === "version" ? 2 : 1, data: modified });
+        kind === "json"
+          ? "broken"
+          : JSON.stringify({
+              version: kind === "version" ? SNAPSHOT_INFO_VERSION + 1 : SNAPSHOT_INFO_VERSION,
+              data: modified,
+            });
       await writeFile(path, bytes);
       // When scanning the catalog.
       const result = await run(f.mover().listSnapshots({}).pipe(Effect.result));
@@ -194,6 +200,21 @@ test.each(["version", "json", "schema", "owner-hash", "owner-path", "store", "id
       expect(await readFile(path, "utf8")).toBe(bytes);
     }),
 );
+
+test("reads a version 1 server sidecar written before the SQLite metadata arm", () =>
+  withCatalog(async (f) => {
+    // Given a sidecar framed at version 1.
+    const info = f.info();
+    await f.put(info);
+    const path = join(f.paths.ownerSnapshotsDir(f.owner.ownerKey), store.store, "snapshot.json");
+    await writeFile(path, JSON.stringify({ version: 1, data: Schema.encodeSync(SnapshotInfo)(info) }));
+    // When scanning the catalog.
+    const infos = await run(f.mover().listSnapshots({}));
+    // Then the server snapshot decodes unchanged.
+    expect(infos.map((entry) => Schema.encodeSync(SnapshotInfo)(entry))).toEqual([
+      Schema.encodeSync(SnapshotInfo)(info),
+    ]);
+  }));
 
 test("a sidecar that vanishes after enumeration is absent", () =>
   withCatalog(async (f) => {

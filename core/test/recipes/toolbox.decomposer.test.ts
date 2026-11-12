@@ -6,6 +6,7 @@ import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { TOOLBOX_IMAGE } from "../../src/recipes/builtin/toolbox/image.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: toolboxDecomposer,
   defaults: toolboxDefaults,

@@ -4,8 +4,6 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
-import { Effect, Layer, Schema } from "effect";
-
 import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
@@ -13,6 +11,7 @@ import { ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, CacheService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
+import { Effect, Layer, Schema } from "effect";
 import { APP_PLAN_CACHE_HEADER_BYTES } from "../../src/cache/app-plan.ts";
 import {
   readFreshAppCommandCacheForCwd,

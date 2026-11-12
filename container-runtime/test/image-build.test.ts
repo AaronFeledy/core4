@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect } from "effect";
-
 import {
   type ContainerBuildHttpRequest,
   buildContainerArtifact,
@@ -20,6 +18,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime, Effect } from "effect";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("build-app");
@@ -30,7 +29,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const service = (input: Partial<Omit<ServicePlan, "nonSqlCreds">> = {}): ServicePlan => ({
+const service = (input: Partial<Omit<ServicePlan, "nonSqlCreds" | "sqlite">> = {}): ServicePlan => ({
   name: serviceName,
   type: "node",
   provider: providerId,
@@ -310,7 +309,7 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
   const error = new ProviderUnavailableError({
     providerId,
     operation: "buildArtifact",
-    message: `/build?t=x&buildargs={\"TOKEN\":\"${rawSecret}\"}`,
+    message: `/build?t=x&buildargs={"TOKEN":"${rawSecret}"}`,
     details: { path: `/build?t=x&buildargs=%7B%22TOKEN%22%3A%22${encodedSecret}%22%7D` },
     remediation: "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
   });
@@ -342,6 +341,52 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
   expect(JSON.stringify(failure)).not.toContain(rawSecret);
   expect(JSON.stringify(failure)).not.toContain(encodedSecret);
   expect(failure.message).toContain("buildargs=[redacted]");
+});
+
+test("buildContainerArtifact keeps a build error readable when it contains an ordinary build arg", async () => {
+  // Given
+  const token = "npm-token-canary";
+  const context = await mkdtemp(join(tmpdir(), "lando-context-args-"));
+  await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+  const api = {
+    request: () =>
+      Effect.succeed({
+        status: 200,
+        body: JSON.stringify({
+          error: `building at STEP "RUN npm ci ${token}": BUILD_MODE=release; exit status 1`,
+        }),
+      }),
+  };
+
+  // When
+  const failure = await Effect.runPromise(
+    Effect.flip(
+      buildContainerArtifact(
+        {
+          app: appId,
+          service: serviceName,
+          plan: plan(
+            service({
+              artifact: {
+                kind: "build",
+                context: AbsolutePath.make(context),
+                spec: PortablePath.make("Dockerfile"),
+                args: { BUILD_MODE: "release", NPM_TOKEN: token },
+              },
+            }),
+          ),
+          buildKey: "ordinary-arg",
+        },
+        { providerId, api, sourceEnv: {} },
+      ),
+    ),
+  );
+
+  // Then
+  expect(failure._tag).toBe("ArtifactBuildError");
+  expect(failure.message).toContain("exit status 1");
+  expect(failure.message).toContain("BUILD_MODE=release");
+  expect(failure.message).not.toContain(token);
 });
 
 test("injects the inline Dockerfile into the packed context and preserves real context entries", async () => {

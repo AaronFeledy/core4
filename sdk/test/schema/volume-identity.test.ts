@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { AppId, VolumeIdentity, VolumeInfo, VolumeLocator } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 test("preserves legacy volume consumers without inventing identity", () => {
   const result = Schema.decodeUnknownSync(VolumeInfo)({ ref: { app: AppId.make("app"), store: "data" } });
@@ -51,4 +50,20 @@ test("allows a pre-creation locator without fabricating a generation", () => {
   // Then the stable physical key is retained without invented identity facts.
   expect(result).toEqual(encoded);
   expect(result.identity).toBeUndefined();
+});
+
+test("rejects a volume locator that claims absence and a live identity", () => {
+  const result = Schema.decodeUnknownResult(VolumeLocator)({
+    coordinationKey: "key",
+    nativeName: "volume",
+    presence: "absent",
+    identity: {
+      coordinationKey: "key",
+      nativeName: "volume",
+      generation: "generation",
+      ownerRoot: "/root",
+      origin: "created",
+    },
+  });
+  expect(result._tag).toBe("Failure");
 });

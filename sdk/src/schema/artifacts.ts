@@ -13,6 +13,17 @@ export const ArtifactRef = Schema.Struct({
   ref: Schema.String,
   /** Optional digest for reproducibility. */
   digest: Schema.optionalKey(Schema.String),
+  /**
+   * Provenance. `build` marks an artifact the provider produced locally: it
+   * exists in no registry, so bring-up never pulls it. Absent means a registry
+   * reference.
+   */
+  origin: Schema.optionalKey(
+    Schema.Literal("build").annotate({
+      description:
+        "Provenance of the referenced artifact. `build` marks a locally produced artifact that bring-up never pulls from a registry; absent means a registry reference.",
+    }),
+  ),
 });
 export type ArtifactRef = typeof ArtifactRef.Type;
 

@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { RenderEvent } from "@lando/sdk/events";
+import { CliCommandErrorEvent, CliCommandRunEvent } from "@lando/sdk/events";
+import type { LandoPluginContext } from "@lando/sdk/plugins";
+import { NotifyConfig } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { CliCommandErrorEvent, CliCommandRunEvent } from "@lando/sdk/events";
-import type { RenderEvent } from "@lando/sdk/events";
-import type { LandoPluginContext } from "@lando/sdk/plugins";
-import { NotifyConfig } from "@lando/sdk/schema";
 
 import notify from "../src/notify.ts";
 

@@ -1,13 +1,4 @@
 import { dirname, join } from "node:path";
-import { CliInvocation } from "../runtime/invocation-context";
-
-import { Effect, Schema, Scope } from "effect";
-
-import type { App, AppSelector } from "@lando/sdk/app";
-import { AppResolveError } from "@lando/sdk/errors";
-import { type AppPlan, LandofileShape, type LoadScopedLandofile } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry, type StateStore } from "@lando/sdk/services";
-
 import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
 import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
 import { type NormalizedAppSelector, normalizeAppSelector } from "@lando/engine/app/selector";
@@ -27,6 +18,13 @@ import { scopedLandofileRuntimeInputs } from "@lando/engine/services/landofile-l
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import type { App, AppSelector } from "@lando/sdk/app";
+import { mapFailures } from "@lando/sdk/command-result";
+import { AppResolveError } from "@lando/sdk/errors";
+import { type AppPlan, LandofileShape, type LoadScopedLandofile } from "@lando/sdk/schema";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry, type StateStore } from "@lando/sdk/services";
+import { Effect, Schema, Scope } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 
@@ -68,7 +66,7 @@ const planResolvedLandofile = Effect.fnUntraced(function* (
     Effect.suspend(() => planner.plan(landofile, capabilities)),
   );
   return { plan, landofile };
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const planAt = Effect.fnUntraced(function* (
   dir: string | undefined,
@@ -78,7 +76,7 @@ const planAt = Effect.fnUntraced(function* (
   const landofileService = yield* LandofileService;
   const landofile = yield* loadUserLandofileAt(landofileService, root);
   return yield* planResolvedLandofile(landofile, root);
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const planFromShape = Effect.fnUntraced(function* (
   shape: LandofileShape,
@@ -94,14 +92,14 @@ const planFromShape = Effect.fnUntraced(function* (
   yield* assertUserAppIdNotReserved(landofile.document);
   yield* assertLandoVersionConstraint(landofile.document, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const planFromLandofileFile = Effect.fnUntraced(function* (
   filePath: string,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const landofile = yield* loadUserLandofileFile(filePath);
   return yield* planResolvedLandofile(landofile, dirname(filePath));
-}, Effect.mapError(toAppResolveError));
+}, mapFailures(toAppResolveError));
 
 const selectorMismatch = (detail: string): AppResolveError =>
   new AppResolveError({
@@ -231,7 +229,7 @@ const resolveTarget = (
       const root = appliedFallbackRoot(selector);
       if (root === undefined) return Effect.fail(desiredError);
       return withResolvedCwd(root, resolveAppliedStateTarget).pipe(
-        Effect.mapError(toAppResolveError),
+        mapFailures(toAppResolveError),
         Effect.flatMap((target) => {
           if (target === undefined) return Effect.fail(desiredError);
           if (selector.kind === "id" && target.plan.id !== selector.id) {

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { PluginDoctorReport, getJsonSchema } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const maximumReport: typeof PluginDoctorReport.Encoded = {
   name: "n".repeat(128),

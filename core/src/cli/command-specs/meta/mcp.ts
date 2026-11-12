@@ -1,12 +1,11 @@
-import { Effect } from "effect";
-import { Flags } from "../../spec/metadata";
-
 import type { ConfigService } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import { mcpFlagsFromParsed, mcpListResult, mcpRegistryFromBuiltIns } from "../../commands/meta/mcp";
 import { type McpListResult, McpListResultSchema, renderMcpListResult } from "../../commands/meta/mcp-list";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags } from "../../spec/command-boundary";
+import { Flags } from "../../spec/metadata";
 
 export const metaMcpSpec: LandoCommandSpec<McpListResult, unknown, BuiltInCommandCatalog | ConfigService> = {
   resultSchema: McpListResultSchema,

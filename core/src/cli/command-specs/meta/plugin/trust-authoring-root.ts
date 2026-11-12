@@ -1,5 +1,3 @@
-import { Args } from "../../../spec/metadata";
-
 import {
   type PluginTrustAuthoringRootResult,
   PluginTrustAuthoringRootResultSchema,
@@ -8,6 +6,7 @@ import {
 } from "../../../commands/plugin-trust";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args } from "../../../spec/metadata";
 
 const extractInput = (input: unknown): { path: string } => {
   return { path: stringFlag(specArgsOf(input), "path") ?? "" };

@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, Effect, Exit, Option, Result } from "effect";
-
 import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckInput } from "@lando/sdk/plugins";
 import { AppId, type HostPlatform } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Result } from "effect";
 
 import { legacyRouteFilesCheck } from "../src/doctor-legacy-routes.ts";
 import { dynamicConfigDir } from "../src/proxy-paths.ts";
 import { renderRouteFileMetadata } from "../src/route-file-metadata.ts";
+import { legacyContent, legacyName } from "./legacy-route-fixture.ts";
 
 const platform: HostPlatform = process.platform === "win32" ? "win32" : "linux";
 const ownerKey = "cd".repeat(32);
@@ -65,22 +65,41 @@ describe("legacy route files doctor check", () => {
       expect(report.severity).toBe("warn");
       expect(report.runtimeStatus).toBe("legacy-route-files");
       expect(report.runtime).toBeUndefined();
-      expect(report.context.legacyCount).toBe("1");
-      const absoluteFile = join(directory, "routes-old-slug.yml");
-      expect(report.context.files).toBe(absoluteFile);
-      expect(report.context.truncated).toBeUndefined();
+      expect(report.context).toEqual({
+        proxyId: "traefik",
+        unrecognizedCount: "1",
+        unrecognizedFiles: join(directory, "routes-old-slug.yml"),
+      });
+      expect(report.solutions).toHaveLength(1);
       expect(report.solutions.every((solution) => solution.kind === "manual")).toBe(true);
-      expect(report.solutions[0]?.command).toBeUndefined();
       expect(report.solutions.flatMap((solution) => solution.command ?? [])).toEqual(
         platform === "win32" ? ["lando global:restart"] : [],
       );
-      expect(report.solutions.at(-1)).toEqual({
-        kind: "manual",
-        description:
-          "Then republish the routes you still need: run `lando start` in a user app, `lando global:start` for global services, or start the scratch app again with its scratch command.",
-      });
-      expect(report.solutions.every((solution) => solution.kind !== "automatic")).toBe(true);
       expect(await readFile(join(directory, "routes-old-slug.yml"), "utf8")).toBe("http:\n  routers: {}\n");
+    });
+  });
+
+  test.each([false, true])("classifies recognized generated files read-only (mixed: %s)", async (mixed) => {
+    await withUserData(async (userDataRoot) => {
+      const directory = dynamicDir(userDataRoot);
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, legacyName), legacyContent);
+      if (mixed) await writeFile(join(directory, "routes-custom.yml"), "custom configuration");
+
+      const reports = await Effect.runPromise(legacyRouteFilesCheck.run(doctorInput(userDataRoot)));
+
+      expect(reports).toHaveLength(1);
+      expect(reports[0]?.context.generatedCount).toBe("1");
+      expect(reports[0]?.context.unrecognizedCount).toBe(mixed ? "1" : undefined);
+      expect(reports[0]?.context.generatedFiles).toBe(join(directory, legacyName));
+      expect(reports[0]?.context.unrecognizedFiles).toBe(
+        mixed ? join(directory, "routes-custom.yml") : undefined,
+      );
+      expect(reports[0]?.severity).toBe(mixed ? "warn" : "info");
+      expect(reports[0]?.solutions).toHaveLength(mixed ? 2 : 1);
+      expect(reports[0]?.solutions[0]?.command).toBe("lando setup");
+      expect(reports[0]?.solutions.every((solution) => solution.kind === "manual")).toBe(true);
+      expect(await readFile(join(directory, legacyName), "utf8")).toBe(legacyContent);
     });
   });
 
@@ -93,7 +112,7 @@ describe("legacy route files doctor check", () => {
       const reports = await Effect.runPromise(legacyRouteFilesCheck.run(doctorInput(userDataRoot)));
 
       expect(reports).toHaveLength(1);
-      expect(reports[0]?.context.files).toBe(join(directory, `routes-${ownerKey}.yml`));
+      expect(reports[0]?.context.unrecognizedFiles).toBe(join(directory, `routes-${ownerKey}.yml`));
       expect(reports[0]?.status).toBe("warn");
     });
   });
@@ -120,8 +139,8 @@ describe("legacy route files doctor check", () => {
       await writeFile(join(directory, `routes-${ownerKey}.yml`), good, "utf8");
 
       const reports = await Effect.runPromise(legacyRouteFilesCheck.run(doctorInput(userDataRoot)));
-      expect(reports[0]?.context.legacyCount).toBe("2");
-      expect(reports[0]?.context.files).toBe(
+      expect(reports[0]?.context.unrecognizedCount).toBe("2");
+      expect(reports[0]?.context.unrecognizedFiles).toBe(
         [join(directory, "routes-a.yml"), join(directory, "routes-b.yml")].join(", "),
       );
     });
@@ -171,23 +190,34 @@ describe("legacy route files doctor check", () => {
     });
   });
 
-  test("truncates context at a whole path boundary and marks omitted files", async () => {
-    await withUserData(async (userDataRoot) => {
-      const directory = dynamicDir(userDataRoot);
-      await mkdir(directory, { recursive: true });
-      const files = Array.from({ length: 12 }, (_, index) =>
-        join(directory, `routes-${String(index).padStart(2, "0")}-${"x".repeat(180)}.yml`),
-      );
-      for (const file of files) await writeFile(file, "legacy configuration");
+  test.each([false, true])(
+    "bounds whole-path evidence while keeping complete counts (generated: %s)",
+    async (generated) => {
+      await withUserData(async (userDataRoot) => {
+        const directory = dynamicDir(userDataRoot);
+        await mkdir(directory, { recursive: true });
+        const files = Array.from({ length: 12 }, (_, index) =>
+          join(directory, `routes-${String(index).padStart(2, "0")}-${"x".repeat(180)}.yml`),
+        );
+        for (const file of files) {
+          const encoded = file.slice(file.lastIndexOf("routes-") + "routes-".length, -".yml".length);
+          await writeFile(
+            file,
+            generated ? legacyContent.replaceAll("old%2Fapp", encoded) : "legacy configuration",
+          );
+        }
 
-      const reports = await Effect.runPromise(legacyRouteFilesCheck.run(doctorInput(userDataRoot)));
+        const reports = await Effect.runPromise(legacyRouteFilesCheck.run(doctorInput(userDataRoot)));
 
-      const first = files[0];
-      if (first === undefined) throw new Error("legacy file fixture missing");
-      const count = Math.floor((2_000 + 2) / (first.length + 2));
-      expect(reports[0]?.context.files?.split(", ")).toEqual(files.slice(0, count));
-      expect(reports[0]?.context.truncated).toBe("true");
-      expect(reports[0]?.context.legacyCount).toBe("12");
-    });
-  });
+        const first = files[0];
+        if (first === undefined) throw new Error("legacy file fixture missing");
+        const count = Math.floor((2_000 + 2) / (first.length + 2));
+        const key = generated ? "generated" : "unrecognized";
+        expect(reports[0]?.context[`${key}Files`]?.split(", ")).toEqual(files.slice(0, count));
+        expect(reports[0]?.context[`${key}FilesTruncated`]).toBe("true");
+        expect(reports[0]?.context[`${key}Count`]).toBe("12");
+        expect(reports[0]?.context[generated ? "unrecognizedCount" : "generatedCount"]).toBeUndefined();
+      });
+    },
+  );
 });

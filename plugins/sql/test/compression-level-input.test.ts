@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { CommandInputValidationError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { dbInputFromCommand, validateExportCompression } from "../src/command-input.ts";
 import { spec as exportSpec } from "../src/commands/export.ts";

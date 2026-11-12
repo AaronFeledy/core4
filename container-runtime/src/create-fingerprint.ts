@@ -20,12 +20,19 @@ import {
   containerIntegrationLabels,
 } from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
-import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
+import { composeKnobIdentity } from "./podman/compose-knobs.ts";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
 
 const CREATE_ARTIFACT_IDENTITY = "@lando/container-runtime/create-artifact";
+
+/** The artifact as container identity sees it: provenance metadata never recreates a container. */
+const artifactIdentity = (artifact: ServicePlan["artifact"]) => {
+  if (artifact?.kind !== "ref" || artifact.origin === undefined) return artifact;
+  const { origin: _origin, ...identity } = artifact;
+  return identity;
+};
 
 const artifactInputIdentity = (service: ServicePlan): string => {
   const features = service.extensions["@lando/core/service-features"];
@@ -35,7 +42,7 @@ const artifactInputIdentity = (service: ServicePlan): string => {
       : undefined;
   return sha256Hex(
     canonicalJson({
-      artifact: service.artifact,
+      artifact: artifactIdentity(service.artifact),
       buildSteps: Array.isArray(steps)
         ? steps.filter(
             (step: unknown) =>
@@ -81,10 +88,9 @@ export const createConfigFingerprint = (
   service: ServicePlan,
   labels: Readonly<Record<string, string>>,
 ): string => {
-  const knobs = realizePodmanComposeKnobs(service, {
-    onInvalid: (message, details) => {
-      throw new ContainerPlanError(message, details);
-    },
+  // Canonical intent, not one dialect's request body, so every provider fingerprints the same knobs.
+  const knobs = composeKnobIdentity(service, (message, details) => {
+    throw new ContainerPlanError(message, details);
   });
   const integrationLabels = containerIntegrationLabels(service.environment, {}, service.extensions);
   const sshAgentActive = integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true";
@@ -106,7 +112,7 @@ export const createConfigFingerprint = (
   }
   const projection = {
     artifactProvenance: createArtifactIdentity(service),
-    artifact: service.artifact,
+    artifact: artifactIdentity(service.artifact),
     command: normalizeCommand(service.command),
     entrypoint: normalizeEntrypoint(service.entrypoint),
     init: service.init,
@@ -188,5 +194,5 @@ export const createConfigFingerprint = (
     ),
     knobs,
   };
-  return `v3:${sha256Hex(canonicalJson(projection))}`;
+  return `v4:${sha256Hex(canonicalJson(projection))}`;
 };

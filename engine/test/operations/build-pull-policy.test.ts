@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { type BuildOptions, BuildOrchestrator } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { startApp } from "../../src/operations/start.ts";

@@ -9,7 +9,7 @@ test("generates preload dependencies before native Windows ACL tests on a clean 
 
   // When its source-generation and native ACL execution steps are located
   const generation = job.indexOf("run: bun run codegen:check");
-  const acl = job.indexOf("run: bun test state-store/test/state-store/private-file-access.test.ts");
+  const acl = job.indexOf("run: bun run test:selection windows-private-file-access");
 
   // Then the test preload can import generated bundled plugins before any test runs
   expect(generation).toBeGreaterThanOrEqual(0);

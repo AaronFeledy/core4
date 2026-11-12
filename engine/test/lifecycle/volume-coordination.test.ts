@@ -2,12 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option } from "effect";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, type VolumeRef } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option } from "effect";
 
 import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
 

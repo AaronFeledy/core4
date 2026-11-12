@@ -38,7 +38,7 @@ import { pluginHelpRows, printPluginTopicHelp, tryPluginCommandHelp } from "./pl
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { toolingMetadataStatus } from "./tooling-cache-status";
 import { readCliAppCommandCache } from "./tooling-command-cache";
-import { resolveToolingRoute, toolingRouteFailure } from "./tooling-router";
+import { resolveToolingRoute, toolingRouteFailure, unavailableScriptError } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 const readHelpCache = async (context?: CliInvocationContext) => {
@@ -203,7 +203,10 @@ export const dispatchHelpTarget = async (
       const route = resolution.success;
       switch (route._tag) {
         case "tooling":
-        case "bun-script":
+        case "bun-script": {
+          const unavailable = await Effect.runPromise(unavailableScriptError(route));
+          if (unavailable !== undefined && !route.disabled)
+            return renderAliasResolutionFailure(unavailable, catalog.context, route.commandId);
           if (!route.disabled)
             return printToolingHelp(
               {
@@ -226,6 +229,7 @@ export const dispatchHelpTarget = async (
             rendererMode: activeRendererMode,
             resultFormat: activeResultFormat,
           });
+        }
         case "built-in":
           return printCommandHelp(route.entry, catalog.context);
         case "plugin":

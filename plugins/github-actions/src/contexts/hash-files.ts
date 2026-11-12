@@ -29,7 +29,7 @@ const safeRelative = (path: string) =>
   path.length > 0 &&
   path.length <= 2048 &&
   !/^(?:\/|[a-z]:)/iu.test(path) &&
-  !/[\p{Cc}\p{Cf}\\:*?\[\]{}]/u.test(path) &&
+  !/[\p{Cc}\p{Cf}\\:*?[\]{}]/u.test(path) &&
   path.split("/").every((part) => part !== "" && part !== "." && part !== "..");
 export const admitHashCatalogue = (
   input: HashCatalogueInput,

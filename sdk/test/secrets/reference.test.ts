@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Result } from "effect";
-
 import { SecretReferenceInvalidError } from "@lando/sdk/errors";
 import * as secrets from "@lando/sdk/secrets";
+import { Result } from "effect";
 
 test("parses a bare id to the default store", () => {
   // Given

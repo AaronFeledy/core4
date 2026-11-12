@@ -28,8 +28,12 @@ export class CodegenOutputFormatError extends Error {
   constructor(
     readonly exitCode: number,
     readonly paths: readonly string[],
+    readonly output = "",
   ) {
-    super(`Biome check exited with code ${exitCode} for ${paths.join(", ")}.`);
+    const detail = output.trim();
+    super(
+      `Biome check exited with code ${exitCode} for ${paths.join(", ")}.${detail === "" ? "" : `\n${detail.slice(0, 4000)}`}`,
+    );
   }
 }
 
@@ -47,6 +51,7 @@ export const biomeCheckArgv = (paths: readonly string[]): string[] => {
   return [
     process.execPath,
     "x",
+    "--bun",
     "biome",
     "check",
     "--write",
@@ -60,11 +65,15 @@ export const formatGeneratedPaths = async (paths: readonly string[]): Promise<vo
   const check = Bun.spawn({
     cmd: biomeCheckArgv(paths),
     cwd: REPO_ROOT,
-    stdout: "ignore",
-    stderr: "inherit",
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  const exitCode = await check.exited;
-  if (exitCode !== 0) throw new CodegenOutputFormatError(exitCode, paths);
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(check.stdout).text(),
+    new Response(check.stderr).text(),
+    check.exited,
+  ]);
+  if (exitCode !== 0) throw new CodegenOutputFormatError(exitCode, paths, `${stdout}${stderr}`);
 };
 
 export const writeFormattedOutput = async (path: string, content: string): Promise<void> => {

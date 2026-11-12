@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { mapFailures } from "@lando/sdk/command-result";
 import { type SshAgentTransportError, SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
@@ -14,6 +15,7 @@ import { EventService, GlobalAppService, PathsService, SshService } from "@lando
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Option, type Scope } from "effect";
+import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
 import {
@@ -29,7 +31,6 @@ import {
 } from "../subsystems/ssh-agent/overlay.ts";
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import { type AgentRelaySession, runtimeSshAgentReady } from "../subsystems/ssh-agent/session.ts";
-import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { type PublishSession, withRetainedSession } from "./retained-session.ts";
 import { startSshAgentTreeId } from "./start-progress.ts";
 import { startSshSidecar } from "./start-ssh-sidecar.ts";
@@ -91,11 +92,11 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
     case "sidecar": {
       const ssh = yield* Effect.serviceOption(SshService);
       if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
-      const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
+      const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(mapFailures(unavailable));
       const globalApp = yield* Effect.serviceOption(GlobalAppService);
       const globalProvider = Option.isSome(globalApp)
         ? yield* globalApp.value.providerId.pipe(
-            Effect.mapError(
+            mapFailures(
               (cause) =>
                 new SshAgentUnavailableError({
                   message: `Unable to resolve the global app provider for the SSH agent sidecar: ${cause.message}`,

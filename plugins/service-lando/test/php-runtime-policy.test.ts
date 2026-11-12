@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { composeService } from "@lando/engine/services/feature";
 import { ProviderId, ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import { PHP_FEATURE_ID, phpServiceFeature } from "../src/services/php.ts";
 import {
   PHP_RUNTIME_POLICY_KEY,
   PhpRuntimePolicy,
   resolvePhpRuntimePolicy,
 } from "../src/services/php-runtime-policy.ts";
 import { type PhpVia, phpImageFor, resolvePhpVia } from "../src/services/php-via.ts";
-import { PHP_FEATURE_ID, phpServiceFeature } from "../src/services/php.ts";
 import { phpResolution } from "./support/php-resolution.ts";
 
 test.each([

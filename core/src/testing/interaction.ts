@@ -4,8 +4,6 @@
 // answer-source precedence the Live service applies — while never opening a real
 // terminal. Requested prompts are captured in a transcript for assertions.
 
-import { Effect, Layer as EffectLayer, type Layer } from "effect";
-
 import type { PromptAnswer, PromptBatchOptions, PromptSpec, PromptType } from "@lando/sdk/schema";
 import {
   type ConfirmSpec,
@@ -14,6 +12,7 @@ import {
   type SecretSpec,
   type SelectSpec,
 } from "@lando/sdk/services";
+import { Effect, Layer as EffectLayer, type Layer } from "effect";
 
 import { makeInteractionService } from "../interaction/service";
 

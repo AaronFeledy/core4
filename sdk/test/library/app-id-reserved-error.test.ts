@@ -1,8 +1,6 @@
-import { Schema } from "effect";
-
 import { describe, expect, test } from "bun:test";
-
 import { AppIdReservedError } from "@lando/sdk/errors";
+import { Schema } from "effect";
 
 describe("AppIdReservedError schema", () => {
   test("round-trips the reserved id through the encoded form", () => {

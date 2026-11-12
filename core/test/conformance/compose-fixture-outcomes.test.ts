@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Schema } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -12,10 +10,10 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/core/schema";
-
 import { deterministicMetadata } from "@lando/engine/services/draft";
 import type { ComposeDispositionMatch } from "@lando/landofile/compose/rejections";
 import { analyzeComposeDispositions } from "@lando/landofile/compose/rejections";
+import { Schema } from "effect";
 import { ComposeFixtureOutcomeError } from "./compose-fixture-outcome-values.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
 

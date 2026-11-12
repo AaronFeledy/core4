@@ -1,12 +1,10 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
+import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import {
   MSSQL_FEATURE_ID,
@@ -22,7 +20,7 @@ nativeListenPortSuite({
   serviceType: mssqlServiceType,
   variable: "MSSQL_TCP_PORT",
   defaultPort: 1433,
-  reservedPorts: [1434],
+  reservedPorts: [135, 1431, 1434],
   startupCommand: "/bin/bash",
 });
 
@@ -35,9 +33,6 @@ const metadata = {
 const featureOverrides = new Map([[MSSQL_FEATURE_ID, mssqlServiceFeature]]);
 
 const SQLCMD = "/opt/mssql-tools18/bin/sqlcmd";
-const defaultRootPassword = (appName: string, serviceName: string): string =>
-  `Lando!${createHash("sha256").update(`${appName}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
-
 const hostFacts = (arch: string): ServiceTypeHostFacts => ({
   os: "linux",
   user: "lando",
@@ -143,7 +138,7 @@ describe("mssql ServiceType", () => {
     describe(id, () => {
       test("plans the catalog defaults", async () => {
         const plan = await planMssqlService(serviceType, { type: id });
-        const rootPassword = defaultRootPassword("myapp", "database");
+        const rootPassword = MSSQL_DEFAULT_PASSWORD;
 
         expect(serviceType.id).toBe(id);
         expect(serviceType.base).toBe("lando");
@@ -182,7 +177,7 @@ describe("mssql ServiceType", () => {
 
       test("resolves default creds and sqlcmd tooling as literal argv", async () => {
         const resolution = await resolveMssqlService(serviceType, { type: id });
-        const rootPassword = defaultRootPassword("myapp", "database");
+        const rootPassword = MSSQL_DEFAULT_PASSWORD;
 
         expect(resolution.normalizedConfig.creds).toEqual({
           user: "sa",
@@ -378,5 +373,27 @@ describe("mssql ServiceType", () => {
         suggestion: "Use an amd64 host or a provider with architecture emulation.",
       },
     ]);
+  });
+
+  test("a password-only creds block keeps the default database and mirrors the admin password", async () => {
+    const plan = await planMssqlService(mssqlServiceType, {
+      type: "mssql",
+      creds: { password: "Hunter22!" },
+    });
+
+    expect(plan.environment).toMatchObject({
+      MSSQL_SA_PASSWORD: "Hunter22!",
+      SA_PASSWORD: "Hunter22!",
+    });
+    const resolution = await resolveMssqlService(mssqlServiceType, {
+      type: "mssql",
+      creds: { password: "Hunter22!" },
+    });
+    expect(resolution.connection?.creds).toMatchObject({
+      user: "sa",
+      password: "Hunter22!",
+      rootPassword: "Hunter22!",
+      database: "myapp",
+    });
   });
 });

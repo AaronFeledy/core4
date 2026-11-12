@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import type { ImagePlatform, PullDialect } from "./dialect.ts";
 import { parseImagePlatform } from "./dialect.ts";
@@ -12,7 +11,7 @@ import type {
   ProviderErrorContext,
 } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
-import { type PullImageOptions, inspectRequest, pullImage } from "./image-pull.ts";
+import { type PullImageOptions, inspectRequest, neverPullRemediation, pullImage } from "./image-pull.ts";
 import { redactDetails, redactResponseDetails, redactorFor } from "./redact.ts";
 
 export interface EnsureImageOptions<E = never> {
@@ -20,6 +19,10 @@ export interface EnsureImageOptions<E = never> {
   readonly dialect: PullDialect;
   readonly force?: boolean;
   readonly platform?: string;
+  /** The service's acquisition intent; `never` forbids every pull, including a forced one. */
+  readonly pullPolicy?: ServicePlan["pullPolicy"];
+  /** Service whose build produced this image; set, ensure never contacts a registry, forced or not. */
+  readonly producedFor?: string;
   readonly publish?: PullImageOptions<E>["publish"];
 }
 
@@ -72,6 +75,10 @@ export const serviceImagePlatform = (service: ServicePlan): string | undefined =
   return typeof platform === "string" && platform.length > 0 ? platform : undefined;
 };
 
+/** True when the service's planned image is one a provider build produced, not a registry reference. */
+export const isProducedArtifact = (service: ServicePlan): boolean =>
+  service.artifact?.kind === "ref" && service.artifact.origin === "build";
+
 const pull = <E = never>(api: EngineHttpApi, reference: string, options: EnsureImageOptions<E>) =>
   pullImage(api, reference, {
     ctx: options.ctx,
@@ -102,6 +109,45 @@ const localBuildPlatformError = (
       "Rebuild the image for the pinned platform, or delete the local tag so Lando can pull the matching registry image.",
   });
 
+const neverPullError = (
+  ctx: ProviderErrorContext,
+  reference: string,
+  problem: { readonly message: string; readonly remediation: string },
+): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: ctx.providerId,
+    operation: "apply",
+    message: problem.message,
+    details: redactDetails({ reference, pullPolicy: "never" }, redactorFor(ctx)),
+    remediation: problem.remediation,
+  });
+
+const producedImageError = (
+  ctx: ProviderErrorContext,
+  input: { readonly service: string; readonly reference: string; readonly problem: string },
+): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: ctx.providerId,
+    operation: "apply",
+    message: `Image ${input.reference} that Lando built for ${input.service} ${input.problem} Lando never pulls an image it built.`,
+    details: redactDetails({ service: input.service, reference: input.reference }, redactorFor(ctx)),
+    remediation: `Run \`lando rebuild -s ${input.service}\` to build it again.`,
+  });
+
+/** A Lando-built image the engine cannot find; it exists in no registry, so only a rebuild restores it. */
+export const producedImageMissing = (
+  ctx: ProviderErrorContext,
+  service: string,
+  reference: string,
+): ProviderUnavailableError =>
+  producedImageError(ctx, { service, reference, problem: "is no longer present locally." });
+
+const missingLocalImage = (ctx: ProviderErrorContext, reference: string): ProviderUnavailableError =>
+  neverPullError(ctx, reference, {
+    message: `Container image ${reference} is not present locally, and pull_policy: never forbids pulling it.`,
+    remediation: neverPullRemediation(reference),
+  });
+
 const inspectFailure = (ctx: ProviderErrorContext, response: EngineHttpResponse): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: ctx.providerId,
@@ -130,10 +176,17 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
   if (platform !== undefined && pin === undefined) {
     return yield* Effect.fail(unparseablePlatformError(options.ctx, platform));
   }
-  if (options.force === true) return yield* pull(api, reference, options);
+  const producedFor = options.producedFor;
+  const pullAllowed = options.pullPolicy !== "never" && producedFor === undefined;
+  // A forced retry that cannot pull re-checks the local image like any other ensure.
+  if (options.force === true && pullAllowed) return yield* pull(api, reference, options);
 
   const inspectResponse = yield* request(api, options.ctx, inspectRequest(options.dialect, reference));
   if (inspectResponse.status === 404) {
+    if (producedFor !== undefined) {
+      return yield* Effect.fail(producedImageMissing(options.ctx, producedFor, reference));
+    }
+    if (!pullAllowed) return yield* Effect.fail(missingLocalImage(options.ctx, reference));
     yield* pull(api, reference, options);
     return;
   }
@@ -146,7 +199,24 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
     details: redactResponseDetails(inspectResponse, redactorFor(options.ctx)),
   });
   if (inspectMatchesPlatform(decoded, pin)) return;
+  // A produced image never comes from a registry, whatever RepoDigests its base left behind.
+  if (producedFor !== undefined) {
+    return yield* Effect.fail(
+      producedImageError(options.ctx, {
+        service: producedFor,
+        reference,
+        problem: `is ${localPlatformLabel(decoded)} but the service pins ${platform}.`,
+      }),
+    );
+  }
   if (inspectRepoDigests(decoded).length > 0) {
+    if (!pullAllowed)
+      return yield* Effect.fail(
+        neverPullError(options.ctx, reference, {
+          message: `Local image ${reference} is ${localPlatformLabel(decoded)} but the service pins ${platform}, and pull_policy: never forbids pulling it.`,
+          remediation: `Load ${reference} for ${platform} into the container engine, or remove pull_policy: never so Lando can pull the matching image.`,
+        }),
+      );
     yield* pull(api, reference, options);
     return;
   }
@@ -156,7 +226,7 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
 export const makeEnsureImage =
   <E = never>(
     api: EngineHttpApi,
-    options: Omit<EnsureImageOptions<E>, "force" | "platform">,
+    options: Omit<EnsureImageOptions<E>, "force" | "platform" | "pullPolicy">,
   ): ((input: {
     readonly service: ServicePlan;
     readonly ref: string;
@@ -168,5 +238,7 @@ export const makeEnsureImage =
       ...options,
       force,
       ...(platform === undefined ? {} : { platform }),
+      ...(service.pullPolicy === undefined ? {} : { pullPolicy: service.pullPolicy }),
+      ...(isProducedArtifact(service) ? { producedFor: String(service.name) } : {}),
     });
   };

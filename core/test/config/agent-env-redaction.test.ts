@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { SecretNotFoundError } from "@lando/core/errors";
 import { SecretStore } from "@lando/core/services";
-
 import { AGENT_CONTEXT_ENV_ALLOWLIST, resolveAgentContextEnv } from "@lando/engine/config/agent-env";
 import { RedactionService } from "@lando/redaction/service";
+import { Effect, Layer } from "effect";
 
 const emptySecretStore = Layer.succeed(
   SecretStore,

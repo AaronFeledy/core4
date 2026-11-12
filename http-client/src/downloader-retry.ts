@@ -9,10 +9,11 @@
  * attempts bound the request count, so a slow failure can take three
  * transport waits plus backoff.
  */
-import { Cause, Duration, Effect, Exit, Option, Ref } from "effect";
 
+import { mapFailureCause } from "@lando/sdk/command-result";
 import { DownloadFetchError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
+import { Cause, Duration, Effect, Exit, Option, Ref } from "effect";
 
 import type { DownloadError } from "./downloader-errors.ts";
 import { failureObservation } from "./downloader-failure.ts";
@@ -101,5 +102,7 @@ export const runWithTransientRetry = Effect.fnUntraced(function* <A>(
   if (failure === undefined) return yield* Effect.failCause(exit.cause);
   const attempts = yield* Ref.get(input.attempts);
   const exhausted = input.enabled && attempts >= maxAttempts && failureReason(exit) !== undefined;
-  return yield* Effect.fail(annotateFailure(failure, attempts, exhausted));
+  return yield* Effect.failCause(
+    mapFailureCause(exit.cause, (error) => annotateFailure(error, attempts, exhausted)),
+  );
 });

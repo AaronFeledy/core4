@@ -1,9 +1,7 @@
 import { realpath } from "node:fs/promises";
-
-import { Context, Effect, Layer, Option } from "effect";
-
 import { StateStoreError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
+import { Context, Effect, Layer, Option } from "effect";
 
 export class AppRootIdentity extends Context.Service<
   AppRootIdentity,

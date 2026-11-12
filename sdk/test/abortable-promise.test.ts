@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
+import { Cause, Effect, Exit } from "effect";
 
 describe("tryPromiseSettled", () => {
   test("succeeds with the resolved value", async () => {

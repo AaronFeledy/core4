@@ -1,15 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
-
-import { HostProxyCommandNotAllowedError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
-
 import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
+
+import { HostProxyCommandNotAllowedError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { type OpenAppOptions, OpenAppResultSchema } from "../../src/cli/commands/open.ts";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
 import { runOpenForHostProxy } from "../../src/cli/host-proxy/dispatch.ts";

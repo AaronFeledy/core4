@@ -9,24 +9,26 @@ import { withAppMutationLock } from "./app-mutation-lock.ts";
 export const prepareOwnedResourceCleanup = Effect.fnUntraced(function* (
   root: AbsolutePath,
   options: DestroyOptions,
+  intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;
   const evidence = yield* registry.resolveTeardownEvidence(root);
   const ownership = evidence.kind !== "absent" ? (evidence.ownership ?? []) : [];
-  return yield* prepareOwnedResourceCleanupFrom(ownership, root, options);
+  return yield* prepareOwnedResourceCleanupFrom(ownership, root, options, intent);
 });
 
 export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
   ownership: ReadonlyArray<ResourceOwnership>,
   root: AbsolutePath,
   options: DestroyOptions,
+  intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;
   const providers = yield* Effect.forEach(ownership, (hints) =>
     Effect.gen(function* () {
       const provider = yield* registry.select(hints.providerId);
       const cleanup = provider.cleanupOwnedResources;
-      if (cleanup === undefined || !(yield* provider.isAvailable) || !(yield* provider.getStatus).running)
+      if (cleanup === undefined || !(yield* provider.isAvailable))
         return yield* Effect.fail(
           new ProviderUnavailableError({
             providerId: hints.providerId,
@@ -35,6 +37,23 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             remediation: "Restore the owning provider before retrying teardown.",
           }),
         );
+      if ((yield* provider.getStatus).state === "idle") {
+        if (intent === "stop")
+          return () =>
+            Effect.succeed<OwnedResourcesCleanupResult>({
+              servicesRemoved: [],
+              networksRemoved: 0,
+              volumesRemoved: 0,
+            });
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId: hints.providerId,
+            operation: "cleanupOwnedResources",
+            message: "The owning runtime is still idle; stored resources could not be inspected or removed.",
+            remediation: "Inspect the runtime readiness failure with `lando doctor`, then retry destroy.",
+          }),
+        );
+      }
       return (root: AbsolutePath, options: DestroyOptions) =>
         cleanup(root, { ...options, appIds: hints.appIds });
     }),
@@ -54,12 +73,14 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
     yield* runAllAndMergeFailures(
       providers.map((cleanup) =>
         cleanup(root, options).pipe(
-          Effect.map((removed) => {
-            result.servicesRemoved.push(...removed.servicesRemoved);
-            result.networksRemoved += removed.networksRemoved;
-            result.volumesRemoved += removed.volumesRemoved;
-            result.skipped.push(...(removed.skipped ?? []));
-          }),
+          Effect.flatMap((removed) =>
+            Effect.sync(() => {
+              result.servicesRemoved.push(...removed.servicesRemoved);
+              result.networksRemoved += removed.networksRemoved;
+              result.volumesRemoved += removed.volumesRemoved;
+              result.skipped.push(...(removed.skipped ?? []));
+            }),
+          ),
         ),
       ),
     );
@@ -71,6 +92,7 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
 export const tearDownOwnedResources = Effect.fnUntraced(function* (
   root: AbsolutePath,
   options: DestroyOptions,
+  intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;
   const evidence = yield* registry.resolveTeardownEvidence(root);
@@ -78,7 +100,7 @@ export const tearDownOwnedResources = Effect.fnUntraced(function* (
   return yield* withAppMutationLock(
     { id: ownership[0]?.appIds[0] ?? basename(root), root },
     Effect.gen(function* () {
-      const cleanup = yield* prepareOwnedResourceCleanup(root, options);
+      const cleanup = yield* prepareOwnedResourceCleanup(root, options, intent);
       return yield* cleanup;
     }),
   );

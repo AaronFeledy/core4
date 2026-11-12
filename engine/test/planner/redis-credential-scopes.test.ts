@@ -40,7 +40,7 @@ const planRedis = (password: string | undefined, withConsumer = false) =>
                 },
               }
             : {}),
-          cache: { type: "redis", ...(password === undefined ? {} : { password }) },
+          cache: { type: "redis", ...(password === undefined ? {} : { creds: { password } }) },
         },
       },
       root,
@@ -102,11 +102,12 @@ test.each([...cases])(
         const effective = yield* invocationToolingForPlan(compiled, persisted, "lndo.site");
         const task = effective.tooling.check;
         if (task === undefined) return yield* Effect.die("Missing check task");
-        return yield* resolveToolingTaskShape(
+        const resolved = yield* resolveToolingTaskShape(
           task,
           { event: { use: true } },
           sitesUnder(effective.sites, ["tooling", "check"]),
         );
+        return resolved.task;
       }),
     );
     // Then

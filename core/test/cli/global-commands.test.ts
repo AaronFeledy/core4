@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
-
 import { publicationObservationFromInspect } from "@lando/container-runtime/podman/inspect";
 import { invokeOperation } from "@lando/core/cli/operations";
 import {
@@ -54,15 +52,6 @@ import {
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
-import { RedactionService } from "@lando/redaction/service";
-import { PreAppStartEvent } from "@lando/sdk/events";
-import { makeTestRouterService } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import { testStateStoreLayer } from "../_support/landofile-layer.ts";
-import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-
 import * as AppCacheService from "@lando/engine/cache/service";
 import { readGlobalPolicy } from "@lando/engine/global-app/enablement";
 import { withGlobalMutation } from "@lando/engine/global-app/mutation";
@@ -80,10 +69,16 @@ import { globalStop } from "@lando/engine/operations/global-stop";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
+import { RedactionService } from "@lando/redaction/service";
+import { PreAppStartEvent } from "@lando/sdk/events";
+import { makeTestRouterService } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
 import { renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
@@ -91,6 +86,8 @@ import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 interface ApplyCall {
   readonly environments: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -158,6 +155,7 @@ interface HarnessOptions {
   readonly unreadableConsumerState?: boolean;
   readonly beforeApply?: Effect.Effect<void>;
   readonly offline?: boolean;
+  readonly idle?: boolean;
   readonly vanishedServices?: ReadonlyArray<string>;
   readonly failInspect?: boolean;
   readonly exitedServices?: ReadonlyArray<string>;
@@ -196,10 +194,8 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
     process.env.LANDO_USER_CONF_ROOT = confRoot;
     return await run(dataRoot);
   } finally {
-    // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
     if (previousData === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousData;
-    // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
     if (previousConf === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConf;
     await rm(dataRoot, { recursive: true, force: true });
@@ -318,7 +314,18 @@ const makeHarness = async (
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
-    getStatus: Effect.sync(() => ({ running: !options.offline })),
+    getStatus: Effect.suspend(() =>
+      options.offline
+        ? Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation: "getStatus",
+              message: "Runtime is unreachable.",
+              remediation: "Restore runtime access.",
+            }),
+          )
+        : Effect.succeed({ state: options.idle ? ("idle" as const) : ("running" as const) }),
+    ),
     appliedPlans: Effect.sync(() =>
       options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan],
     ),
@@ -1830,6 +1837,23 @@ describe("meta:global command effects", () => {
         result.services.every((service) => service.desired === "enabled" && service.status === "unknown"),
       ).toBe(true);
       expect(result.diagnostics.join(" ")).toContain("resource state is unknown");
+    }, options);
+  });
+
+  test("status reports an idle global provider as stopped without an observation diagnostic", async () => {
+    const options = { idle: false };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.idle = true;
+      harness.calls.inspect.length = 0;
+      const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
+      expect(result.runtimeState).toBe("idle");
+      expect(result.services.map((service) => [service.service, service.status])).toEqual([
+        ["mail", "stopped"],
+        ["proxy", "stopped"],
+      ]);
+      expect(result.diagnostics).toEqual([]);
+      expect(harness.calls.inspect).toEqual([]);
     }, options);
   });
 

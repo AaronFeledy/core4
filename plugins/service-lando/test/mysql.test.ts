@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   MYSQL_CONFIG_TARGET,
@@ -71,7 +70,7 @@ describe("mysql ServiceType", () => {
       MYSQL_PASSWORD: "lando",
       MYSQL_DATABASE: "myapp",
     });
-    expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
+    expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe("lando");
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
     expect(volumes[0]?.store).toBe("lando-myapp--db--mysql-data");
@@ -144,7 +143,7 @@ describe("mysql ServiceType", () => {
     expect(plan.environment.MYSQL_USER).toBe("lando");
     expect(plan.environment.MYSQL_PASSWORD).toBe("lando");
     expect(plan.environment.MYSQL_DATABASE).toBe("myapp");
-    expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
+    expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe("lando");
   });
 
   test("S5 resolve tooling.mysql uses MYSQL_PWD and keeps the password off argv", async () => {
@@ -210,5 +209,15 @@ describe("mysql ServiceType", () => {
     expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
+  });
+
+  test("a password-only creds block keeps the default user and database", async () => {
+    const plan = await planMysqlService({ type: "mysql", creds: { password: "hunter2" } });
+
+    expect(plan.environment).toMatchObject({
+      MYSQL_USER: "lando",
+      MYSQL_PASSWORD: "hunter2",
+      MYSQL_DATABASE: "myapp",
+    });
   });
 });

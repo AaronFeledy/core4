@@ -5,6 +5,7 @@ import { findLandofilePath } from "@lando/landofile/discovery";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
 import { isPathWithin } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -162,7 +163,7 @@ export const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd?: s
 export const readDataIdentityFingerprint = Effect.fnUntraced(function* (root: string, roots?: LandoRoots) {
   const record = yield* resolveAppIdentity(root).pipe(
     Effect.flatMap((identity) => readAppDataIdentity(identity, roots)),
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new CacheError({
           key: "app-command",

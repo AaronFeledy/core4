@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Layer, Schema } from "effect";
-
 import {
   type ExecutableCommandInput,
   type ExecutableCommandRenderContext,
@@ -11,6 +8,7 @@ import {
 } from "@lando/sdk/plugins";
 import { PluginManifest, ProviderId } from "@lando/sdk/schema";
 import { CertificateAuthority } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
 
 type Extends<A, B> = [A] extends [B] ? true : false;
 type ExpectTrue<T extends true> = T;
@@ -72,6 +70,7 @@ describe("definePlugin", () => {
       CertificateAuthority.of({
         id: "test-ca",
         setup: () => Effect.void,
+        root: Effect.die("not exercised"),
         issueCert: () => Effect.die("not exercised"),
       }),
     );

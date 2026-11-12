@@ -35,12 +35,12 @@ export const isBunShellScriptMetadataFailure = (error: BunShellScriptDiscoveryEr
 export const normalizeBunShellScript = (
   script: DiscoveredBunShellScript,
 ): Result.Result<NormalizedBunShellScript, BunShellScriptFrontMatterError> => {
-  const fail = (message: string) =>
+  const fail = (message: string, path: readonly (string | number)[] = []) =>
     Result.fail(
       new BunShellScriptFrontMatterError({
         message: `.bun.sh front-matter at ${script.path} is invalid: ${message}`,
         path: script.path,
-        issues: [validationIssue([], message)],
+        issues: [validationIssue(path, message)],
         remediation: "Correct the script's input declarations and ensure input environment names are unique.",
       }),
     );
@@ -53,7 +53,10 @@ export const normalizeBunShellScript = (
       const suffix = input.name.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase();
       const previous = suffixes.get(suffix);
       if (previous !== undefined)
-        return fail(`${group} ${previous} and ${input.name} collide on environment suffix ${suffix}.`);
+        return fail(`${group} ${previous} and ${input.name} collide on environment suffix ${suffix}.`, [
+          group,
+          input.name,
+        ]);
       suffixes.set(suffix, input.name);
     }
     inputEnvSuffixes[group] = Object.fromEntries([...suffixes].map(([suffix, name]) => [name, suffix]));

@@ -3,9 +3,6 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
-import { Cause, Effect, Exit, Layer, Option, References, Schema, Tracer } from "effect";
-import { planLiteralTestLandofile as planTestLandofile } from "../compiled-landofile.ts";
-
 import {
   CapabilityError,
   LandofileValidationError,
@@ -29,7 +26,9 @@ import {
   type ServiceConfig,
   ServiceName,
   ServicePlan,
+  formatValidationIssuePath,
 } from "@lando/sdk/schema";
+import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   AppPlanner,
   ConfigService,
@@ -37,13 +36,8 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
-import { fileSyncEngineLayer } from "../file-sync-engine.ts";
-
-import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
-
-import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Layer, Option, References, Schema, Tracer } from "effect";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
@@ -57,6 +51,9 @@ import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
+import { planLiteralTestLandofile as planTestLandofile } from "../compiled-landofile.ts";
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
@@ -5415,7 +5412,7 @@ const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
 const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
 
 const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter(
-  (key) => key !== "image" && key !== "tmpfs" && key !== "init",
+  (key) => key !== "image" && key !== "tmpfs" && key !== "init" && key !== "pull_policy",
 );
 
 const allKnobCapabilities: ProviderCapabilities = {
@@ -5440,10 +5437,10 @@ const allKnobCapabilities: ProviderCapabilities = {
       "group_add",
       "read_only",
       "platform",
-      "pull_policy",
       "logging",
       "gpus",
       "deploy.resources",
+      "deploy.resources.reservations.devices",
     ],
   },
 };
@@ -5481,6 +5478,7 @@ describe("Compose runtime knobs", () => {
       // Then
       expect(Object.keys(compose ?? {}).sort()).toEqual([...allKnobExtensionKeys].sort());
       expect(first.services[ServiceName.make("web")]?.init).toBe(true);
+      expect(first.services[ServiceName.make("web")]?.pullPolicy).toBe("always");
       for (const key of allKnobExtensionKeys) {
         expect(JSON.stringify(compose?.[key])).toBe(JSON.stringify(allKnobServiceConfig[key]));
       }
@@ -5687,4 +5685,5 @@ describe("Compose runtime knobs", () => {
     });
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

@@ -1,11 +1,9 @@
 import { isAbsolute, resolve } from "node:path";
-
-import { Effect, Schema } from "effect";
+import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 
 import { type ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import { PluginTrustStore } from "@lando/sdk/services";
-
-import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
+import { Effect, Schema } from "effect";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 

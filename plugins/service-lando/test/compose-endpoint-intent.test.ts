@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-import { compileTestLandofile } from "./support/compiled-landofile.ts";
-
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { linuxMvpCapabilities } from "@lando/provider-lando";
+import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { AppPlanner } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {

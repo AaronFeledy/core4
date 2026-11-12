@@ -1,3 +1,4 @@
+import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 import { getRecipeCatalog } from "../recipes/catalog";
 import { renderRecipeCatalog } from "../recipes/catalog-render";
@@ -13,6 +14,7 @@ export type ThisAppHelpRow = {
   readonly primary: string;
   readonly extras: ReadonlyArray<string>;
   readonly summary: string;
+  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
 };
 
 export type ColdHelpStyle = {
@@ -209,7 +211,20 @@ export const renderColdRootHelp = (
   });
   const thisAppRows = options?.thisAppRows ?? [];
   const thisAppBlock =
-    thisAppRows.length === 0 ? [] : ["", style.bold("THIS APP"), ...formatSection(thisAppRows, style)];
+    thisAppRows.length === 0
+      ? []
+      : [
+          "",
+          style.bold("THIS APP"),
+          ...formatSection(
+            thisAppRows.map((row) =>
+              row.loadError === undefined
+                ? row
+                : { ...row, summary: "[unavailable] Run lando app:config:lint." },
+            ),
+            style,
+          ),
+        ];
   return [
     titleLine(style),
     "",

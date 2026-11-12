@@ -160,3 +160,53 @@ test("later cleanup failure retains earlier shutdown facts and the original erro
     },
   });
 });
+
+test.each([
+  ["exited", true],
+  ["running", false],
+] as const)("a failed stop whose container is %s afterwards completes: %p", async (state, completes) => {
+  // Given a stop request the engine rejects, as Podman does when the container's monitor was killed.
+  const calls: string[] = [];
+  const result = await Effect.runPromise(
+    stopAndRemoveContainer(
+      {
+        appId: AppId.make("shutdown"),
+        providerId: ProviderId.make("lando"),
+        service: ServiceName.make("web"),
+        containerId: "owned",
+      },
+      {
+        ctx: { providerId: "lando", remediation: "retry", env: {} },
+        api: {
+          request: (input) => {
+            calls.push(`${input.method} ${input.path}`);
+            if (input.method === "POST")
+              return Effect.succeed({
+                status: 500,
+                body: JSON.stringify({ message: "conmon exited prematurely" }),
+              });
+            if (input.method === "GET")
+              return Effect.succeed({
+                status: 200,
+                body: JSON.stringify({
+                  State:
+                    state === "exited"
+                      ? { Status: "exited", Running: false, ExitCode: 137 }
+                      : { Status: "running", Running: true },
+                }),
+              });
+            return Effect.succeed({ status: 204, body: "" });
+          },
+        },
+      },
+    ).pipe(Effect.result),
+  );
+  // Then an exited container is removed and only a still-running one keeps the stop failure.
+  if (completes) {
+    expect(result).toMatchObject({ _tag: "Success", success: { changed: true, kind: "removed" } });
+    expect(calls.some((call) => call.startsWith("DELETE /containers/owned"))).toBe(true);
+  } else {
+    expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "bringDown.stop" } });
+    expect(calls.some((call) => call.startsWith("DELETE"))).toBe(false);
+  }
+});

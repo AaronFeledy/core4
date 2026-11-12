@@ -50,6 +50,9 @@ export const normalizeToolingTask = (
   const authoredEnvironments = [
     task.env,
     ...(task.cmds ?? []).map((step) => (typeof step === "string" ? undefined : step.env)),
+    ...Object.values(task.vars ?? {}).map((variable) =>
+      typeof variable === "object" ? variable.env : undefined,
+    ),
   ];
   const reserved = authoredEnvironments.flatMap((env) =>
     Object.keys(env ?? {}).filter((key) => key === "LANDO" || key.startsWith("LANDO_")),
@@ -78,6 +81,12 @@ export const normalizeToolingTask = (
   };
   const service = serviceRef(task.service);
   if (Result.isFailure(service)) return Result.fail(service.failure);
+  for (const [key, variable] of Object.entries(task.vars ?? {})) {
+    if (typeof variable !== "object") continue;
+    const target = serviceRef(variable.service);
+    if (Result.isFailure(target))
+      return fail(`tooling.${name}.vars.${key}.service: ${target.failure.message}`);
+  }
   const env = { ...task.env };
   if (task.cmd !== undefined && task.cmds !== undefined) return fail("Use cmd or cmds, not both.");
   const steps: NormalizedToolingStep[] = [];

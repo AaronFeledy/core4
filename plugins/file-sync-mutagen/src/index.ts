@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 /**
  * Mutagen-backed accelerated file sync for the managed Lando provider on
  * native Windows. The production contribution binds verified provider targets
@@ -5,8 +6,6 @@
  */
 
 import path from "node:path";
-import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
-
 import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
@@ -36,6 +35,7 @@ import {
   ProcessRunner,
 } from "@lando/sdk/services";
 import type { ToolError } from "@lando/sdk/tool-provisioning";
+import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
 import {
   dockerCliConfigDir,
@@ -225,7 +225,7 @@ export const layer = Layer.effect(
           binDir: paths.binDir,
           toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
           force: setupOptions.force,
-        }).pipe(Effect.provideService(Downloader, downloader), Effect.mapError(provisionError)),
+        }).pipe(Effect.provideService(Downloader, downloader), mapFailures(provisionError)),
     });
   }),
 );
@@ -254,7 +254,7 @@ export const layerForContext = (ctx: LandoPluginContext) =>
           ),
           Effect.provideService(Downloader, downloader),
           Effect.provideService(ProcessRunner, runner),
-          Effect.mapError(provisionError),
+          mapFailures(provisionError),
         );
       if (paths.platform !== "win32") return makeFileSyncEngine({ setup });
 
@@ -437,27 +437,26 @@ export const plugin = definePlugin({
 
 export {
   type FakeMutagenClient,
+  MUTAGEN_FAKE_SENTINELS,
   type MutagenClient,
   type MutagenCreateArgs,
   type MutagenSessionRecord,
-  MUTAGEN_FAKE_SENTINELS,
   makeFakeMutagenClient,
   makeUnavailableMutagenClient,
   toFileSyncSessionInfo,
 } from "./mutagen-client.ts";
+export {
+  type MutagenProcessClientOptions,
+  type PreparedWindowsMutagenProcessClientOptions,
+  WINDOWS_LANDO_DOCKER_HOST,
+  makeMutagenProcessClient,
+  makePreparedWindowsMutagenProcessClient,
+} from "./mutagen-process-client.ts";
 
 export {
-  MUTAGEN_NAME_MAX,
-  isValidMutagenSessionName,
-  mutagenSessionName,
-  mutagenSessionNameFromParts,
-  mutagenSessionRef,
-} from "./session-name.ts";
-
-export {
+  type InstalledMutagenStatus,
   MUTAGEN_TOOL_MANIFEST,
   MUTAGEN_TOOL_VERSION,
-  type InstalledMutagenStatus,
   type ProvisionMutagenInput,
   mutagenAgentInstallPath,
   mutagenHostInstallName,
@@ -466,14 +465,13 @@ export {
   provisionMutagen,
   readInstalledMutagenStatus,
 } from "./provision.ts";
-
 export {
-  type MutagenProcessClientOptions,
-  type PreparedWindowsMutagenProcessClientOptions,
-  WINDOWS_LANDO_DOCKER_HOST,
-  makeMutagenProcessClient,
-  makePreparedWindowsMutagenProcessClient,
-} from "./mutagen-process-client.ts";
+  MUTAGEN_NAME_MAX,
+  isValidMutagenSessionName,
+  mutagenSessionName,
+  mutagenSessionNameFromParts,
+  mutagenSessionRef,
+} from "./session-name.ts";
 
 export {
   type PreparedWindowsMutagenAppClientOptions,

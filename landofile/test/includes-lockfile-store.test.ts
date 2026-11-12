@@ -1,14 +1,13 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import type { GitTransport } from "@lando/source-acquisition";
+import { Effect } from "effect";
 
+import { writeLockEntries } from "../src/include-lockfile.ts";
 import {
   resolveAuthoredIncludes,
   updateAuthoredIncludes as updateLandofileIncludes,
@@ -216,5 +215,38 @@ describe("store-backed include lockfile", () => {
       remediation:
         "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
     });
+  });
+
+  test("the lockfile write locks on a portable single-segment key", async () => {
+    // Given
+    const lockKeys: string[] = [];
+    const recordingStore: StateStoreShape = {
+      ...stateStore,
+      withLock: (key, body) => {
+        lockKeys.push(key);
+        return stateStore.withLock(key, body);
+      },
+    };
+    // When
+    await Effect.runPromise(
+      writeLockEntries(recordingStore, {
+        appRoot,
+        lockfilePath: join(appRoot, ".lando.lock.yml"),
+        entries: [
+          {
+            source: "github:acme/fragments/postgres.yml",
+            resolved: "a".repeat(40),
+            checksum: sha256(FRAGMENT),
+          },
+        ],
+        merge: false,
+      }),
+    );
+    // Then
+    expect(lockKeys).toHaveLength(1);
+    const key = lockKeys[0] ?? "";
+    // Windows reserves < > : " / \ | ? * and control characters in a file name, and drops a trailing dot.
+    expect(key).toMatch(/^[A-Za-z0-9._-]+$/u);
+    expect(key).not.toMatch(/\.$/u);
   });
 });

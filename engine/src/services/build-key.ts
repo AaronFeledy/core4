@@ -1,12 +1,9 @@
-import { sha256Hex } from "@lando/sdk/digest";
-
 import { buildContextContentDigest } from "@lando/container-runtime/image-build";
-import { Effect, Predicate } from "effect";
-
-import { canonicalJson } from "@lando/sdk/digest";
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { Environment, ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect, Predicate } from "effect";
 
 import { compareFingerprintText } from "../cache/canonical.ts";
 import { CORE_VERSION } from "../version.ts";

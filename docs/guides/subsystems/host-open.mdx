@@ -80,9 +80,13 @@ Run doctor on the host to inspect those checks. A stale generated allowlist prod
 <Guide>
   <Scenario id="inspect-host-proxy-allowlist" render>
     <Step name="inspect">
-      <Run command="lando doctor --format=json" />
-      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "apiVersion.:.v4.*provider.*checks" } }} />
-      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "^(?!.*\"name\"\\s*:\\s*\"host-proxy-allowlist\")" } }} />
+      <Run runtime="library" displayCode="lando doctor --format=json" code={`const run = yield* context.runCli(["doctor", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.apiVersion).toBe("v4");
+expect(report.result.provider.checks).toEqual(expect.any(Array));
+expect(report.result.provider.checks).not.toContainEqual(
+  expect.objectContaining({ name: "host-proxy-allowlist" }),
+);`} />
     </Step>
   </Scenario>
 </Guide>

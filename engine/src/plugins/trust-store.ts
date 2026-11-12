@@ -1,13 +1,12 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-
-import { Effect, Layer, Option } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigError, type StateStoreError } from "@lando/sdk/errors";
 import { PathsService, type PluginTrustState, PluginTrustStore } from "@lando/sdk/services";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Option } from "effect";
 
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 
@@ -106,7 +105,7 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
         "plugin-trust",
         readState.pipe(Effect.flatMap((state) => writeState(change(state)))),
       ).pipe(
-        Effect.mapError((cause: ConfigError | StateStoreError) =>
+        mapFailures((cause: ConfigError | StateStoreError) =>
           cause instanceof ConfigError
             ? cause
             : configError(path, "Failed to lock the plugin trust store for writing.", cause),

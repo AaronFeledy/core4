@@ -1,3 +1,4 @@
+import { mapDefectCause, mapFailures } from "@lando/sdk/command-result";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { StateStore } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
@@ -45,7 +46,13 @@ const openCache = Effect.fn("ActionSource.openCache")(function* (reference: Reso
       onCorrupt: "quarantine",
       default: { selections: {} },
     })
-    .pipe(Effect.mapError(() => sourceError("cache-failed", reference.source)));
+    .pipe(
+      // A store defect can contain cached action bytes, just like a typed decode failure.
+      Effect.catchCause((cause) =>
+        Effect.failCause(mapDefectCause(cause, () => sourceError("cache-failed", reference.source))),
+      ),
+      mapFailures(() => sourceError("cache-failed", reference.source)),
+    );
 });
 /** The caller supplies the SDK store; this private fixture kernel installs no production persistence layer. */
 export const cacheVerifiedSource = Effect.fn("ActionSource.cacheVerifiedSource")(function* (
@@ -86,7 +93,13 @@ export const cacheVerifiedSource = Effect.fn("ActionSource.cacheVerifiedSource")
       }
       return [true, { selections: { ...selections, [key]: selection } }] as const;
     })
-    .pipe(Effect.mapError(() => sourceError("cache-failed", captured.reference.source)));
+    .pipe(
+      // Store defects must not retain the action bytes supplied to this write.
+      Effect.catchCause((cause) =>
+        Effect.failCause(mapDefectCause(cause, () => sourceError("cache-failed", captured.reference.source))),
+      ),
+      mapFailures(() => sourceError("cache-failed", captured.reference.source)),
+    );
   if (!stored) return yield* sourceError("source-limit", captured.reference.source);
   return source.receipt;
 });
@@ -106,7 +119,11 @@ export const loadCachedSource = Effect.fn("ActionSource.loadCachedSource")(funct
   yield* validateResolvedReference(reference);
   const bucket = yield* openCache(reference);
   const repository = yield* bucket.get.pipe(
-    Effect.mapError(() => sourceError("cache-failed", reference.source)),
+    // A corrupt cache defect can carry the encoded action file payload.
+    Effect.catchCause((cause) =>
+      Effect.failCause(mapDefectCause(cause, () => sourceError("cache-failed", reference.source))),
+    ),
+    mapFailures(() => sourceError("cache-failed", reference.source)),
   );
   if (repository !== null && Object.keys(repository.selections).length > sourceLimits.files)
     return yield* sourceError("source-limit", reference.source);

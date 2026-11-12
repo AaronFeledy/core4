@@ -14,10 +14,12 @@ Each disposition describes what happens during planning:
 
 - **normalized** resolves the input into a provider-neutral plan field.
 - **preserved** accepts the input and carries it in the Compose plan extension. The matrix row detail determines whether provider capability checks apply. Service-level `x-*` extensions are inert and are not capability-gated.
-- **rejected** fails closed with a tagged error and remediation rather than silently dropping intent.
+- **rejected** fails closed with a tagged error and remediation rather than silently dropping intent. A rejected key rejects everything nested under it.
 
 Treat normalized and preserved entries as accepted only for the shapes the matrix documents. Use the matrix remediation for rejected input.
 
-Two keys change meaning on the way in. Top-level `networks:` and service `networks:` are normalized, but membership is additive: a service stays on its app network and the shared proxy network, and `networks:` adds more. In Compose, listing networks on a service replaces `default`. Attachment options other than `aliases` (`ipv4_address`, `mac_address`, `priority`, and the rest) are rejected at lint. See [Reach another project's services](./networks.mdx). `network_mode` is rejected; translate it to `networks:`. Top-level `include:` is accepted: the included compose file's services become `type: compose` services of the app.
+A capability-checked preserved key also needs the selected provider to apply it. If the provider can't, planning fails with `CapabilityError` instead of dropping the key. The remediation tells you to remove the key and names each installed provider that supports it, with the `lando setup --provider=<id>` command that switches to it. `deploy.resources` limits work on the `docker` and `podman` providers, and on the `lando` provider on Linux with a systemd user session; GPU requests (`gpus` and `deploy.resources.reservations.devices`) work on `docker` only. See [Limit memory, CPU, and processes](./compose-service-block.mdx#limit-memory-cpu-and-processes).
+
+Two keys change meaning on the way in. Top-level `networks:` and service `networks:` are normalized, but membership is additive: a service stays on its app network and the shared proxy network, and `networks:` adds more. In Compose, listing networks on a service replaces `default`. Attachment options other than `aliases` (`ipv4_address`, `mac_address`, `priority`, and the rest) are rejected at lint. See [Reach another project's services](./networks.mdx). `network_mode` is rejected; translate it to `networks:`. Top-level `include:` is accepted: the included compose file's services become `type: compose` services of the app. Top-level `models` and `jobs` are rejected.
 
 For a runnable example, continue with [Paste a Compose service into a Landofile](./compose-service-block.mdx).

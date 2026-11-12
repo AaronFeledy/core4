@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Effect, Result, Schema } from "effect";
 
 import {
   SOLR_CONFIG_TARGET,

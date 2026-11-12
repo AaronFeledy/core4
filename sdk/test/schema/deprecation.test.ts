@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-import { SchemaAST as AST, Result, Schema } from "effect";
-
 import { DeprecationUsedEvent, LandoEvent } from "@lando/sdk/events";
 import {
   DeprecationNotice,
@@ -15,6 +12,7 @@ import {
   renderSchemaReferenceMarkdown,
   structuralDeprecationKey,
 } from "@lando/sdk/schema";
+import { SchemaAST as AST, Effect, Result, Schema } from "effect";
 
 const decode = (input: unknown) => Schema.decodeUnknownResult(DeprecationNotice)(input);
 
@@ -56,16 +54,18 @@ describe("DeprecationNotice", () => {
     );
   });
 
-  test("rejects patch, same-release, and past removeIn releases", () => {
-    expect(decode({ since: "4.2.0", removeIn: "4.2.1", note: "Use something else." })._tag).toBe("Failure");
-    expect(decode({ since: "4.2.0", removeIn: "4.2.0", note: "Use something else." })._tag).toBe("Failure");
-    expect(decode({ since: "4.2.0", removeIn: "4.1.0", note: "Use something else." })._tag).toBe("Failure");
+  test.each(["4.2.0", "4.1.0"])("rejects removeIn %s when it is not later than since", (removeIn) => {
+    const result = decode({ since: "4.2.0", removeIn, note: "Use something else." });
+    if (Result.isSuccess(result)) throw new TypeError("Expected an invalid removal schedule");
+    expect(result.failure.message).toContain("removeIn must be a later release than since.");
   });
 
-  test("requires removeIn for notices older than the active 4.x line", () => {
-    expect(decode({ since: "3.21.0", note: "Use something else." })._tag).toBe("Failure");
-    expect(decode({ since: "4.0.0", note: "Use something else." })._tag).toBe("Failure");
-    expect(decode({ since: "4.2.0", note: "Use something else." })._tag).toBe("Success");
+  test.each(["1.2.0", "3.21.0", "4.0.0", "4.2.0"])("accepts an unscheduled notice since %s", (since) => {
+    expect(decode({ since, note: "Use something else." })._tag).toBe("Success");
+  });
+
+  test("accepts a later patch removal in the author's version space", () => {
+    expect(decode({ since: "1.2.0", removeIn: "1.2.5", note: "Use something else." })._tag).toBe("Success");
   });
 
   test("publishes JSON Schema through the registry", () => {

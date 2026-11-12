@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import { LandofileParseError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { CompiledTemplate, TemplateEngine } from "@lando/sdk/template";
+import { Effect, Result, Schema } from "effect";
 
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "../src/template-render.ts";
 

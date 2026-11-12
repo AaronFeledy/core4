@@ -1,8 +1,8 @@
 import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
-import { Context, Effect, Layer, Result, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-import { GlobalConfigSources } from "../services/config.ts";
-
+import { hasResourceOwnershipRecords } from "@lando/container-runtime/provider-assembly";
+import { redactProviderError } from "@lando/redaction/provider-error";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   NoProviderInstalledError,
   PluginDescriptorMismatchError,
@@ -22,13 +22,14 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { GlobalConfigSources } from "../services/config.ts";
 import { captureHostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { TeardownProvider } from "./app-placement.ts";
 import {
@@ -36,7 +37,6 @@ import {
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "./applied-state-resolution.ts";
-import { redactProviderError } from "./error-redaction.ts";
 import { hostProviderId } from "./host-provider.ts";
 import { makeProviderFactory } from "./make-provider.ts";
 import { makeAppliedStateProvider } from "./registry-evidence.ts";
@@ -80,12 +80,13 @@ export const makeRuntimeProviderRegistry = (
           ? yield* redaction.value.forProfile("secrets", redactorOptions)
           : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
+      const redactContributionErrors = mapFailures(redactFailure);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
       const httpClient = yield* HttpClient.HttpClient;
 
       const providerManifests = pluginRegistry.list.pipe(
-        Effect.mapError((cause) => redactFailure(toProviderUnavailable(cause))),
+        mapFailures((cause) => redactFailure(toProviderUnavailable(cause))),
       );
       const providerIds = providerManifests.pipe(
         Effect.map((manifests) => manifests.flatMap(manifestProviderIds)),
@@ -134,7 +135,7 @@ export const makeRuntimeProviderRegistry = (
         const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
           paths.pluginStateDir(module.name),
         ).pipe(
-          Effect.mapError(
+          mapFailures(
             (cause) =>
               new ProviderUnavailableError({
                 providerId: providerIdText,
@@ -144,7 +145,7 @@ export const makeRuntimeProviderRegistry = (
                 cause,
               }),
           ),
-          Effect.mapError(redactFailure),
+          mapFailures(redactFailure),
         );
         const publishRender =
           eventService._tag === "Some" && redaction._tag === "Some"
@@ -159,19 +160,27 @@ export const makeRuntimeProviderRegistry = (
           httpClient,
           ...(publishRender === undefined ? {} : { publishRender }),
         });
+        const appliedStateInventory = contribution.appliedStateInventory;
         const resourceOwnership = contribution.resourceOwnership;
         return {
           contribution: {
             ...contribution,
-            appliedPlans: (ctx) => contribution.appliedPlans(ctx).pipe(Effect.mapError(redactFailure)),
+            appliedPlans: (ctx) => redactContributionErrors(contribution.appliedPlans(ctx)),
+            ...(appliedStateInventory === undefined
+              ? {}
+              : {
+                  appliedStateInventory: (ctx) =>
+                    redactContributionErrors(appliedStateInventory.call(contribution, ctx)),
+                }),
             ...(resourceOwnership === undefined
               ? {}
               : {
                   resourceOwnership: (ctx, root) =>
-                    resourceOwnership.call(contribution, ctx, root).pipe(Effect.mapError(redactFailure)),
+                    redactContributionErrors(resourceOwnership.call(contribution, ctx, root)),
                 }),
           } satisfies typeof contribution,
           context,
+          pluginStateRoot,
         };
       });
 
@@ -240,7 +249,7 @@ export const makeRuntimeProviderRegistry = (
             );
           return yield* contribution
             .appliedStateInventory(context)
-            .pipe(Effect.provideService(PathsService, paths), Effect.mapError(redactFailure));
+            .pipe(Effect.provideService(PathsService, paths), mapFailures(redactFailure));
         }),
         assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
           function* (plan) {
@@ -254,18 +263,30 @@ export const makeRuntimeProviderRegistry = (
             );
             if (issue !== undefined)
               return yield* Effect.fail(
-                unreadableAppliedStateError({
-                  providerId: plan.provider,
-                  path: issue.path,
-                  layout: issue.appId === undefined ? "record" : "per-app",
-                  appId: plan.id,
-                }),
+                redactFailure(
+                  unreadableAppliedStateError({
+                    providerId: plan.provider,
+                    path: issue.path,
+                    layout: issue.appId === undefined ? "record" : "per-app",
+                    appId: plan.id,
+                  }),
+                ),
               );
           },
         ),
         list: providerIds,
-        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
-          const ids = yield* providerIds;
+        hasRecordedOwnership: Effect.fn("RuntimeProviderRegistry.hasRecordedOwnership")((id: ProviderId) =>
+          contributionFor(id).pipe(
+            Effect.flatMap(({ pluginStateRoot }) =>
+              hasResourceOwnershipRecords(id, pluginStateRoot).pipe(mapFailures(redactFailure)),
+            ),
+          ),
+        ),
+        appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (
+          root: AbsolutePath,
+          providerId?: ProviderId,
+        ) {
+          const ids = providerId === undefined ? yield* providerIds : [providerId];
           const plans = yield* Effect.forEach(ids, (id) =>
             contributionFor(id).pipe(
               Effect.flatMap(({ contribution, context }) => contribution.appliedPlans(context)),

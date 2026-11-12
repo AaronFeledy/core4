@@ -1,9 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { describe, expect, test } from "bun:test";
 
 type ChecksumResult = {
   readonly entries: ReadonlyArray<{ readonly vendored: string; readonly ok: boolean }>;

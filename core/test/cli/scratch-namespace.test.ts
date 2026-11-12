@@ -1,5 +1,4 @@
-import { afterEach, beforeEach } from "bun:test";
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -44,19 +43,16 @@ beforeEach(async () => {
 
 afterEach(async () => {
   if (previousCacheRoot === undefined) {
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     delete process.env.LANDO_USER_CACHE_ROOT;
   } else {
     process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
   }
   if (previousDataRoot === undefined) {
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     delete process.env.LANDO_USER_DATA_ROOT;
   } else {
     process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
   }
   if (previousConfRoot === undefined) {
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     delete process.env.LANDO_USER_CONF_ROOT;
   } else {
     process.env.LANDO_USER_CONF_ROOT = previousConfRoot;

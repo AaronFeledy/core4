@@ -1,13 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-
+import { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import { AppPlanner, EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Context, DateTime, Effect, Exit, Layer, Result, Schema, Scope } from "effect";
-
-import { LandoEvent } from "@lando/sdk/events";
 import "../../src/runtime/bundled-plugins";
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import {

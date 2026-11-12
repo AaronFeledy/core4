@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { dirname, join } from "node:path";
-import { corpusRoot } from "./fixtures/corpus-input.ts";
 import manifest from "./fixtures/corpus/manifest.json";
+import { corpusRoot } from "./fixtures/corpus-input.ts";
 
 test.each(manifest.repositories)("preserves upstream bytes for $repo", async (repository) => {
   // Given: pinned upstream paths and hashes, independent of translation.

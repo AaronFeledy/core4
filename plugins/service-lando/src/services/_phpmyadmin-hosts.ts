@@ -9,17 +9,19 @@ export type PmaCreds = {
   readonly password: EnvironmentValue;
 };
 
-export const authoredPmaCreds = (config: ServiceConfig): PmaCreds | undefined => {
+export type AuthoredPmaCreds = Partial<PmaCreds>;
+
+export const authoredPmaCreds = (config: ServiceConfig): AuthoredPmaCreds | undefined => {
   const user = config.creds?.user;
   const password = config.creds?.password;
-  if (user !== undefined && password !== undefined) return { user, password };
-  return undefined;
+  if (user === undefined && password === undefined) return undefined;
+  return {
+    ...(user === undefined ? {} : { user }),
+    ...(password === undefined ? {} : { password }),
+  };
 };
 
 const siblingCreds = (sibling: AppFeatureServiceView): PmaCreds | undefined => sibling.connection?.creds;
-
-const credsAgree = (left: PmaCreds, right: PmaCreds): boolean =>
-  left.user === right.user && credentialValuesAgree(left.password, right.password);
 
 const hostsCredsError = (feature: string): PhpMyAdminHostsCredsError =>
   new PhpMyAdminHostsCredsError({
@@ -28,6 +30,27 @@ const hostsCredsError = (feature: string): PhpMyAdminHostsCredsError =>
     remediation:
       "Use matching database credentials, separate phpMyAdmin services, or explicit creds: for external hosts.",
   });
+
+const missingMemberError = (feature: string, member: "user" | "password"): PhpMyAdminHostsCredsError =>
+  new PhpMyAdminHostsCredsError({
+    message: `App feature ${feature} cannot determine the phpMyAdmin ${member} for every selected host`,
+    feature,
+    remediation: `Set creds.${member} on the phpmyadmin service, or select hosts whose ${member} agrees.`,
+  });
+
+const agreedMembers = (siblings: ReadonlyArray<AppFeatureServiceView>): AuthoredPmaCreds => {
+  const first = siblings[0] === undefined ? undefined : siblingCreds(siblings[0]);
+  if (first === undefined) return {};
+  const userAgrees = siblings.every((sibling) => siblingCreds(sibling)?.user === first.user);
+  const passwordAgrees = siblings.every((sibling) => {
+    const password = siblingCreds(sibling)?.password;
+    return password !== undefined && credentialValuesAgree(password, first.password);
+  });
+  return {
+    ...(userAgrees ? { user: first.user } : {}),
+    ...(passwordAgrees ? { password: first.password } : {}),
+  };
+};
 
 export type AuthoredHostsWire =
   | {
@@ -42,7 +65,7 @@ export type AuthoredHostsWire =
 export const resolveAuthoredHosts = (input: {
   readonly hosts: ReadonlyArray<string>;
   readonly siblings: ReadonlyArray<AppFeatureServiceView>;
-  readonly pmaCreds: PmaCreds | undefined;
+  readonly pmaCreds: AuthoredPmaCreds | undefined;
   readonly feature: string;
 }): AuthoredHostsWire => {
   const byName = new Map(input.siblings.map((sibling) => [sibling.serviceName, sibling] as const));
@@ -58,22 +81,12 @@ export const resolveAuthoredHosts = (input: {
       ports.push(sibling.connection.port);
     }
   }
-  if (input.pmaCreds !== undefined) {
-    return { _tag: "ok", hosts: input.hosts, ports, creds: input.pmaCreds, matched };
-  }
-  const first = matched[0];
-  if (first === undefined || matched.length !== input.hosts.length) {
-    return { _tag: "fail", error: hostsCredsError(input.feature) };
-  }
-  const agreed = siblingCreds(first);
-  if (
-    agreed === undefined ||
-    !matched.every((sibling) => {
-      const creds = siblingCreds(sibling);
-      return creds !== undefined && credsAgree(creds, agreed);
-    })
-  ) {
-    return { _tag: "fail", error: hostsCredsError(input.feature) };
-  }
-  return { _tag: "ok", hosts: input.hosts, ports, creds: agreed, matched };
+  // A sibling member can only be used when every authored host is a sibling and they all agree;
+  // an external host or a disagreement leaves that member for the phpmyadmin service to author.
+  const agreed = matched.length === input.hosts.length ? agreedMembers(matched) : {};
+  const user = input.pmaCreds?.user ?? agreed.user;
+  const password = input.pmaCreds?.password ?? agreed.password;
+  if (user === undefined) return { _tag: "fail", error: missingMemberError(input.feature, "user") };
+  if (password === undefined) return { _tag: "fail", error: missingMemberError(input.feature, "password") };
+  return { _tag: "ok", hosts: input.hosts, ports, creds: { user, password }, matched };
 };

@@ -1,9 +1,9 @@
 import { dirname } from "node:path";
-import { Context, Effect, type Scope } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { AppLockTimeoutError, GlobalAppError, StateStoreError } from "@lando/sdk/errors";
 import { GlobalAppService, type PathsService, type StateStore } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, type Scope } from "effect";
 
 import {
   canonicalMissingAppRoot,
@@ -70,7 +70,7 @@ export const withGlobalMutation = Effect.fnUntraced(function* <A, E, R>(
     );
   });
   const outcome = yield* coordinate.pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new GlobalAppError({
           operation: "coordination",

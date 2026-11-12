@@ -8,8 +8,8 @@ import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { composeIncludeDefaults } from "./include-compose-defaults.ts";
 import type { FragmentResult, ResolveContext, ResolveIncludesError } from "./include-context.ts";
 import { includeError, realpathOrSelf } from "./include-guard.ts";
-import { rememberLandofileReferencedFiles } from "./load-expression-provenance.ts";
 import { resolveLandofileLoadExpressions } from "./load-expression.ts";
+import { rememberLandofileReferencedFiles } from "./load-expression-provenance.ts";
 import { parseLandofile } from "./parser.ts";
 import { rememberOrigins } from "./pipeline/origins.ts";
 import { prepareOverlay } from "./pipeline/prepare.ts";
@@ -53,6 +53,7 @@ export const parseFragment = (
         policy: fragment.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
         pendingSites: ctx.pendingSites,
         recorder: ctx.recorder,
+        ...(fragment.kind === "compose" ? { defaultServiceType: "compose" } : {}),
       }).pipe(
         Effect.map((resolved) => ({
           ...resolved,

@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { Effect, Exit } from "effect";
-
 import type { SqlSeedStateError } from "@lando/sdk/errors";
 import {
   AppId,
@@ -12,6 +10,7 @@ import {
   type VolumeRef,
   snapshotHandle,
 } from "@lando/sdk/schema";
+import { Effect, Exit } from "effect";
 
 import { type SqlExec, runImport } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";

@@ -2,8 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import { Effect } from "effect";
-
 import {
   ProviderSetupPrivilegeUnavailableError,
   ProviderSetupProvisioningError,
@@ -11,6 +9,7 @@ import {
 } from "@lando/sdk/errors";
 import { type HostPlatform, ProviderId, type ProviderSetupPlan, hostPlatformFamily } from "@lando/sdk/schema";
 import type { PrivilegeService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import {
   type RootlessProbes,

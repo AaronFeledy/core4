@@ -30,10 +30,7 @@ const isAsciiWhitespace = (byte: number): boolean =>
 
 /** Retains bounded edges before trailing whitespace, independent of chunk boundaries. */
 export const textDumpCompleteness =
-  (rule: {
-    readonly header: RegExp;
-    readonly complete: RegExp;
-  }): DumpCompletenessRule =>
+  (rule: { readonly header: RegExp; readonly complete: RegExp }): DumpCompletenessRule =>
   () => {
     let head: Uint8Array = new Uint8Array();
     let tail: Uint8Array = new Uint8Array();

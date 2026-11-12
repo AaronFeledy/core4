@@ -1,7 +1,10 @@
-import { SNAPSHOT_SIDECAR_VERSION } from "@lando/data-mover/service";
 import { GLOBAL_POLICY_VERSION, GlobalPolicy } from "@lando/engine/global-app/enablement";
 import { INCLUDE_LOCKFILE_VERSION, LockEntriesSchema } from "@lando/landofile/include-lockfile";
 import { Schema } from "effect";
+import {
+  RUNTIME_SHUTDOWN_VERSION,
+  RuntimeShutdownReceipt,
+} from "../../container-runtime/src/podman/runtime-shutdown.ts";
 import {
   RESOURCE_OWNERSHIP_VERSION,
   ResourceOwnershipInventory,
@@ -22,6 +25,7 @@ import {
   ScratchRegistryEntriesSchema,
   scratchRegistryTransitions,
 } from "../../engine/src/scratch-app/registry.ts";
+import { PULL_CHECK_VERSION, PullChecks } from "../../engine/src/services/artifact-refresh.ts";
 import { TUNNEL_REGISTRY_VERSION, TunnelRegistryEntries } from "../../engine/src/tunnel/registry-migrate.ts";
 import {
   UPDATE_HANDOFF_RECEIPT_VERSION,
@@ -40,6 +44,7 @@ import {
   drainTransitions,
   receiptTransitions as sessionReceiptTransitions,
 } from "../../plugins/file-sync-mutagen/src/session-ledger.ts";
+import { shutdownTransitions } from "../../plugins/provider-lando/src/runtime-shutdown.ts";
 import {
   PUBLISHED_CONTAINER_RECEIPT_VERSION,
   PublishedContainerReceiptSchema,
@@ -49,7 +54,8 @@ import {
   WindowsSyncHelperReceipt,
   transitions as windowsSyncHelperTransitions,
 } from "../../plugins/provider-lando/src/windows-sync-helper-receipt.ts";
-import { SnapshotInfo } from "../../sdk/src/schema/data-transfer.ts";
+import { SqliteSnapshotInfo } from "../../plugins/sql/src/sqlite-snapshot.ts";
+import { SNAPSHOT_INFO_VERSION, SnapshotInfo } from "../../sdk/src/schema/data-transfer.ts";
 import { VolumeInitializationRecord } from "../../sdk/src/schema/volume-initialization.ts";
 import {
   VOLUME_INITIALIZATION_VERSION,
@@ -113,6 +119,20 @@ interface InternalPersistedStore {
 // not a versioned StateStore bucket, so it does not belong in this registry.
 export const INTERNAL_PERSISTED_STORES = [
   {
+    id: "runtime-shutdown",
+    schema: RuntimeShutdownReceipt,
+    version: RUNTIME_SHUTDOWN_VERSION,
+    source: { file: "plugins/provider-lando/src/runtime-shutdown.ts", schema: "RuntimeShutdownReceipt" },
+    lifecycle: shutdownTransitions,
+  },
+  {
+    id: "sqlite-snapshot-sidecar",
+    schema: SqliteSnapshotInfo,
+    version: SNAPSHOT_INFO_VERSION,
+    source: { file: "plugins/sql/src/sqlite-snapshot.ts", schema: "SqliteSnapshotInfo" },
+    lifecycle: "none",
+  },
+  {
     id: "app-data-identity",
     schema: AppDataIdentityRecord,
     version: 1,
@@ -169,11 +189,18 @@ export const INTERNAL_PERSISTED_STORES = [
     },
   },
   {
+    id: "artifact-pull-checks",
+    schema: PullChecks,
+    version: PULL_CHECK_VERSION,
+    source: { file: "engine/src/services/artifact-refresh.ts", schema: "PullChecks" },
+    lifecycle: "none",
+  },
+  {
     id: "accelerated-start",
     schema: PendingStart,
     version: PENDING_START_VERSION,
     source: { file: "engine/src/operations/accelerated-start-record.ts", schema: "PendingStart" },
-    lifecycle: pendingStartTransitions,
+    lifecycle: { fields: { phase: pendingStartTransitions } },
   },
   {
     id: "global-reconciliation",
@@ -221,7 +248,7 @@ export const INTERNAL_PERSISTED_STORES = [
   {
     id: "snapshot-sidecar",
     schema: SnapshotInfo,
-    version: SNAPSHOT_SIDECAR_VERSION,
+    version: SNAPSHOT_INFO_VERSION,
     source: { file: "data-mover/src/snapshot-catalog.ts", schema: "SnapshotInfo" },
     lifecycle: "none",
   },

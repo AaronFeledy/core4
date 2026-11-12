@@ -1,6 +1,6 @@
 # django
 
-Use this recipe for a Django app with PostgreSQL, Redis, and an optional Celery
+Use this recipe for a Django app with PostgreSQL or SQLite, Redis, and an optional Celery
 worker. It writes a Landofile, not a Django project, so install the application
 and its dependencies before starting the Django server.
 
@@ -15,7 +15,7 @@ server. After installing the app, run `lando django runserver 0.0.0.0:8000`.
 You can change port `8000` in the Landofile.
 
 The `web` service and optional Celery `worker` receive `DATABASE_URL` for
-PostgreSQL and `REDIS_URL` for Redis. Lando resolves database credentials from
+the chosen database and `REDIS_URL` for Redis. Lando resolves PostgreSQL credentials from
 the database service when it builds the app plan. Both services use
 `DJANGO_SETTINGS_MODULE: config.settings`; edit their `environment` fields if
 your project uses another settings module.
@@ -29,6 +29,11 @@ what it is doing.
 
 - `web`: `python:3.12`, `framework: django`, no default healthcheck.
 - `database`: `postgres`.
+- With `database=sqlite`, Lando omits the database service and its dependencies,
+  declares `sqlite.path: db.sqlite3` on `web` with an explicit `/app` mount, and
+  sets `DATABASE_URL=sqlite:////app/db.sqlite3` on `web` and `worker`. The documented
+  `startproject config .` layout puts `BASE_DIR` at `/app`, so Django's default
+  file and `dj-database-url` resolve to the same path. PostgreSQL stays the default.
 - `cache`: `redis`.
 - `worker`: additional `python:3.12` running `celery -A app worker` with `restart: unless-stopped` when
   prompt `celery` answers `true`.

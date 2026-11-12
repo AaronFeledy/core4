@@ -8,7 +8,6 @@
  * `ServicePlan`; the app-feature engine (`app-feature.ts`) mutates the already
  * resolved per-service drafts across the whole app.
  */
-import { DateTime } from "effect";
 
 import type {
   DatabaseConnection,
@@ -25,6 +24,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceMountIntent,
 } from "@lando/sdk/services";
+import { DateTime } from "effect";
 
 export interface BaseSeed {
   readonly name: ServicePlan["name"];
@@ -64,7 +64,14 @@ export type DraftOptionalPassThroughKey = (typeof DRAFT_OPTIONAL_PASS_THROUGH_KE
  * Optional ServicePlan keys owned outside the shared draft pass-through:
  * planner-only fields and mutual-exclusion credentials.
  */
-type DraftExternalOptionalServicePlanKey = "home" | "scanner" | "logSources" | "connection" | "nonSqlCreds";
+type DraftExternalOptionalServicePlanKey =
+  | "home"
+  | "pullPolicy"
+  | "scanner"
+  | "logSources"
+  | "connection"
+  | "nonSqlCreds"
+  | "sqlite";
 
 type OptionalServicePlanKey = {
   [K in keyof ServicePlan]-?: undefined extends ServicePlan[K] ? K : never;
@@ -119,6 +126,7 @@ export interface DraftServicePlan {
   environment: Record<string, EnvironmentValue>;
   readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
+  sqlite?: ServicePlan["sqlite"];
   user?: string;
   workingDirectory?: ServicePlan["workingDirectory"];
   appMount?: ServiceAppMountIntent;

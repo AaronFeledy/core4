@@ -50,7 +50,7 @@ test("summarizes all diagnostic kinds in impact order when previewing", () => {
     "# 1 unsupported (blocks --write), 1 non-portable (blocks --write), 1 needs-review, 4 dropped, 1 rewritten, 1 generated",
   );
   expect(
-    comments.filter((line) => /^# [!~?+\-] \[/u.test(line)).map((line) => line.match(/\[([^\]]+)\]/u)?.[1]),
+    comments.filter((line) => /^# [!~?+-] \[/u.test(line)).map((line) => line.match(/\[([^\]]+)\]/u)?.[1]),
   ).toEqual(["unsupported", "non-portable", "needs-review", "dropped", "dropped", "rewritten", "generated"]);
   expect(text).toContain(".lando.yml:services.web.mounts.0.{source, owner, exclude}");
   for (const kind of ["unsupported", "non-portable", "needs-review", "dropped"])
@@ -80,7 +80,7 @@ test.each(["kind", "source", "parent", "message", "remediation"] as const)(
     const text = renderTranslateDiagnostics([base, { ...base, keyPath: ["mount", "b"], ...changes[field] }]);
     // Then: neither source location is collapsed into a sibling list.
     expect(text).not.toContain("{a, b}");
-    expect(text.split("\n").filter((line) => /^# [~\-] \[/u.test(line))).toHaveLength(2);
+    expect(text.split("\n").filter((line) => /^# [~-] \[/u.test(line))).toHaveLength(2);
   },
 );
 

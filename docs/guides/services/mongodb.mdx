@@ -16,15 +16,14 @@ services:
     type: mongodb
 ```
 
-Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the folder's data name (the name this folder's data was first created under).
+Set a member under `creds:` when you want an explicit value. A member you leave out keeps its default. `creds.user` and `creds.password` are the root account, so MongoDB takes no `creds.rootPassword`. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the folder's data name (the name this folder's data was first created under).
 
 ```yaml
 services:
   db:
     type: mongodb
     creds:
-      user: lando
-      password: lando
+      database: catalog
 ```
 
 Check the resolved Landofile before starting the app:

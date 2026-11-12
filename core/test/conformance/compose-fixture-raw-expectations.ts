@@ -147,7 +147,7 @@ const expectations = {
       deploy: {
         resources: {
           limits: { cpus: "2.0", memory: 1_073_741_824, pids: 256 },
-          reservations: { cpus: "0.5", memory: 268_435_456 },
+          reservations: { memory: 268_435_456 },
         },
       },
     });

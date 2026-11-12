@@ -1,7 +1,5 @@
 import { rename, stat } from "node:fs/promises";
-
-import { Effect, Layer, Option } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import {
   type LandoRoots,
@@ -11,6 +9,7 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
+import { Effect, Layer, Option } from "effect";
 
 import { writeFileAtomicScoped } from "./atomic.ts";
 import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
@@ -43,7 +42,7 @@ const makeDiskBucketBackend = (privateFileAccess: PrivateFileAccess): StateBucke
     writeFileAtomicScoped(file, body, {
       ...options,
       privateFileAccess: privateFileAccess.enforce,
-    }).pipe(Effect.mapError((cause) => ioError(operation, file, cause))),
+    }).pipe(mapFailures((cause) => ioError(operation, file, cause))),
   remove: (file) =>
     Effect.tryPromise({
       try: () => Bun.file(file).delete(),

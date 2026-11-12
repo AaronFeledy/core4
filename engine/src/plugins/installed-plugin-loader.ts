@@ -1,11 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { Result, Schema } from "effect";
-
 import { PluginLoadError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 import { importPluginModule, loadPluginModules } from "./module-cache.ts";
 
 import {

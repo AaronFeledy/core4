@@ -1,8 +1,5 @@
 import { createSocket } from "node:dgram";
 import { createServer } from "node:net";
-
-import { Effect } from "effect";
-
 import { errnoCode, isErrnoCode } from "@lando/sdk/errors";
 import {
   DEFAULT_ROUTER_HTTPS_PORTS,
@@ -14,6 +11,7 @@ import {
   type PublishedEndpoint,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import type { EngineHttpResponse } from "./engine-api.ts";
 import { matchPublicationBindings, physicalPublicationIdentity } from "./physical-publications.ts";

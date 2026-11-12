@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Context, DateTime, Effect, Layer, Stream } from "effect";
-
 import { TestRuntimeProvider, makeTestRuntime } from "@lando/core/testing";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, type RuntimeProviderShape } from "@lando/sdk/services";
+import { Context, DateTime, Effect, Layer, Stream } from "effect";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { sshSpec } from "../../src/cli/command-specs/app/ssh.ts";
@@ -13,7 +12,9 @@ import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.t
 const providerId = ProviderId.make("test");
 const serviceName = ServiceName.make("appserver");
 const runtimeTag = Context.Service<unknown>("exec-command-spec/runtime");
+
 import type { CurrentExecutableAppPlan } from "@lando/sdk/schema";
+
 const plan: CurrentExecutableAppPlan = {
   valueModel: 1,
   id: AppId.make("exec-command-spec"),

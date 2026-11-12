@@ -91,6 +91,7 @@ Every platform cell runs the fork-safe portable static gates:
 bun run codegen:check
 bun run typecheck
 bun run lint
+bun run check:test-ownership
 bun run check:boundaries
 bun run check:telemetry-inventory
 bun run check:compose-coverage
@@ -103,7 +104,38 @@ bun run check:runtime-bundle-manifest
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
 
-`scripts/test-shards.ts` collects the unit file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`. It excludes integration files except the fake-client contract suites for `provider-lando`, `provider-docker`, and `provider-podman`. Those suites run in PR shards; their socket-dependent cases may skip when no live engine is available. Dedicated library and recipe suites, plus nightly-tier meta-suites, stay outside the shards. Shard balance comes from the committed timings file.
+`scripts/test-shards.ts` runs the unit file set with `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`, passing every file as an exact path. The unit set is every `*.test.ts` file in a workspace `test/` tree or beside `scripts/` that Git tracks or would track, minus the files a dedicated selection keeps for itself: library, recipes, docs and the nightly tier. Ignored local files, such as anything under `.local/`, never enter it. Shard balance comes from the committed timings file.
+
+Name a suite for what it needs. A `*.test.ts` file runs without a live engine and joins the unit shards automatically. A `*.integration.test.ts` file needs an engine socket, a native non-Linux host, a compiled binary or an opt-in variable, so it runs only in a job that provides one. Split a mixed suite and share its fixtures: each provider's fake-client contract lives in `contract.test.ts` and its live cases in `contract.integration.test.ts`. Podman Desktop fake-client cases live in `plugins/provider-podman/test/desktop.test.ts`, and the native desktop contract in `desktop.integration.test.ts`.
+
+Every other test a workflow step runs is a named selection in `scripts/test-selections.ts`. The provider acceptance matrix is the one exception: its checks live in `scripts/provider-matrix-plan.ts`, and its runner executes them from there. A workflow step runs a selection by ID, and the same command works locally:
+
+```bash
+bun run test:selection providers-core-live
+```
+
+The runner starts Bun once with exact paths: listed files, the files a glob matches, and `./dir` for a tree so Bun keeps its own file order. To run a new integration suite in CI, add it to a selection, emit `bun run test:selection <id>` from the workflow generator, and run `bun run codegen`.
+
+Inspect ownership without starting tests:
+
+```bash
+bun run test:inventory
+bun run check:test-ownership
+bun run scripts/test-shards.ts --list
+```
+
+`bun run test:inventory` prints every test file with the selections that run it and their prerequisites. `bun run check:test-ownership` runs in static CI and `gate:pr`. It parses the committed workflows and reports each problem with a code and the file to edit:
+
+| Code | Meaning |
+| --- | --- |
+| `UNOWNED` | No selection runs an integration suite, and `MANUAL_TESTS` does not list it |
+| `UNBOUND_SELECTION` | A selection's declared job does not run `bun run test:selection <id>`, or the unit shard matrix is incomplete |
+| `STALE_SELECTOR` | A selection path or glob matches no test file |
+| `RAW_BUN_TEST` | A workflow step runs `bun test` directly |
+| `UNKNOWN_LOCATION` | A test file sits outside workspace `test/` trees and `scripts/` |
+| `MANUAL_SELECTED`, `MANUAL_STALE` | A `MANUAL_TESTS` entry is also selected, or no longer exists |
+
+`MANUAL_TESTS` in `scripts/test-ownership.ts` lists the suites no CI job runs, with their prerequisites. A selected file can still skip cases when a prerequisite is missing, so read the skip counts before claiming live coverage.
 
 Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
@@ -123,13 +155,15 @@ bun run scripts/update-test-timings.ts
 
 Nightly runs the same refresh in `refresh-test-timings-linux-x64` and uploads the timings file; commit the artifact when the split has drifted. `NIGHTLY_TIER_TESTS` stay out of both the PR shards and the timings refresh.
 
-The ordinary unsharded unit suite remains available locally. It excludes integration files, including the fake-client contracts added to PR shards:
+The unsharded local command uses exactly the same collected unit file set as CI shards:
 
 ```bash
 bun run test:unit
 ```
 
-To match the added provider-contract coverage, also run `bun test plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts`.
+On Windows the command runs the paths in sequential batches to stay under the command-line length limit, and any failing batch fails the run.
+
+For focused work, run explicit test paths or use the affected selector below. `test:unit` and the timings refresh both run the whole unit set.
 
 For a local review of which shard-eligible tests may relate to your changes, run:
 
@@ -205,7 +239,7 @@ bun run update:tomcat
 
 It resolves the public Docker Hub `9-jre21`, `10-jre21`, and `11-jre21` indexes without a container daemon, verifies manifest/config bytes and both Linux architectures, checks a consistent Tomcat version and distribution environment, and verifies that each exact version tag resolves to the same index. Registry blob redirects are restricted to Docker's `production.cloudfront.docker.com` storage host, with no pull token forwarded. It fetches `server.xml` from the matching Apache release tag's immutable commit. All three candidates must validate before any pin or baseline is written. Same-version image rebuilds count as updates. Network or validation failures leave the previous files untouched.
 
-Review `plugins/service-lando/tomcat/pins.json` and all three `server-*.xml` files together. Keep the Apache notices. The report separates upstream baseline changes from Lando's single intentional HTTP-port substitution. Comments-only classification requires byte-identical active text; formatting changes still require review. A new active config shape fails closed until the local template contract is reviewed.
+Review `plugins/service-lando/tomcat/pins.json` and all three `server-*.xml` files together. Keep the Apache notices. The report separates upstream baseline changes from Lando's two intentional changes: the HTTP-port substitution and the added forwarded-header `RemoteIpValve`. It marks a same-version image refresh as `image rebuilt` and lists a major whose pin and baseline did not change on one `<version>; unchanged.` line. Comments-only classification requires byte-identical active text; formatting changes still require review. A new active config shape fails closed until the local template contract is reviewed.
 
 Regenerate and run the focused checks:
 
@@ -222,13 +256,17 @@ Normal codegen is offline: it checks local hashes and template invariants and de
 
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and exact-title failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+
+When a run fails, the failure job searches open issues in `GH_REPO` for the title `<workflow name> automation failure` and keeps only exact title matches. It comments on the oldest match and files a new issue only when none is open.
+
+The automation owns the PR title and the body text between `<!-- maintenance-report:start -->` and `<!-- maintenance-report:end -->`. A marker counts only when it starts a line, so a sentence can quote one. Text outside the markers survives every run, so put review notes and `Closes #N` lines there. The section ends at the first end marker and starts at the nearest start marker above it. If no start marker comes before the first end marker, the next run replaces the whole body with the marked report.
 
 Each consumer supplies its identity, schedule, branch, owned paths, and two trusted repository-authored shell hooks. `prepare` runs after branch reconciliation and may exit successfully when discovery finds nothing to do. The envelope then checks both working-tree and pending-branch owned-path differences. `checkAndReport` runs before any publication and must set `TITLE` (also the commit message) and `BODY_FILE`. Hook failures stop publication.
 
 Owned-path detection includes staged and untracked outputs. Commits include only owned paths, even when a hook stages an unrelated file.
 
-Tomcat keeps paired candidate validation in `update:tomcat`, captures the `main` baseline, runs codegen and focused candidate checks, and reports baseline changes. Compose keeps stable-tag selection through `selectNewerComposeGoTag`, skips schema fetching when current without a pending bump, reconciles pending bumps even without a newer tag, and reports schema-key differences with a versioned title. Compose does not run `check:compose-coverage` before proposing or classify new keys automatically. PR CI and human review own classification.
+Tomcat keeps paired candidate validation in `update:tomcat`, captures the `main` baseline, runs codegen and focused candidate checks, and reports baseline changes. Compose keeps stable-tag selection through `selectNewerComposeGoTag`, skips schema fetching when current without a pending bump, reconciles pending bumps even without a newer tag, and reports schema-key differences with a versioned title. Compose also runs `check:compose-coverage`, only to report: the report leads with any key paths that still need a disposition, and a failing gate never blocks the proposal. Classification stays with a person.
 
 To add another internal consumer, keep discovery, updating, checks, and reporting in its generator's local hooks; declare only paths it owns. Reuse the envelope rather than adding pipeline modes or a public configuration surface. Keep each real generator in `scripts/codegen-catalog.ts`; the shared renderer is not a generator entry. Regenerate YAML through the consumer generator, never by hand.
 
@@ -239,6 +277,47 @@ bun test core/test/build/maintenance-workflow.test.ts core/test/build/maintenanc
 ```
 
 The POSIX behavioral tests use Bash, Git, and jq. `core/test/build/support/maintenance-workflow-harness.ts` exports isolated real-Git/local-bare-remote fixtures with fake GitHub and domain I/O, plus extracted generated scripts for driver or PTY checks. It changes no global Git configuration or process cwd. Native shell cases skip Windows; YAML checks remain portable.
+
+### Finish a Compose bump
+
+The rolling Compose PR stays red until someone classifies the new schema keys. From the repository root:
+
+1. Check out the rolling branch and list the unclassified paths. The check fails and prints each one.
+
+   ```bash
+   git fetch origin automation/compose-go-bump
+   git checkout automation/compose-go-bump
+   bun run check:compose-coverage
+   ```
+
+2. Classify each listed path in `sdk/src/landofile/compose-dispositions.ts`. Rejecting a key covers everything nested under it, so list only the key itself. The check fails on an entry listed under a rejected key. Nested paths under a normalized or preserved key still need their own entries.
+
+3. Rerun the check. It reads the SDK source, so you don't need to rebuild first. Repeat steps 2 and 3 until it passes.
+
+   ```bash
+   bun run check:compose-coverage
+   ```
+
+4. Regenerate the reference page.
+
+   ```bash
+   bun run codegen:compose-key-matrix
+   ```
+
+5. Build the SDK, then typecheck. The other packages typecheck against the built SDK.
+
+   ```bash
+   bun run --filter='@lando/sdk' build
+   bun run typecheck
+   ```
+
+6. Run the focused tests. All three files must run and pass.
+
+   ```bash
+   bun test core/test/scripts/check-compose-coverage.test.ts landofile/test/compose-rejections.test.ts landofile/test/lint-snapshot.test.ts
+   ```
+
+7. Commit and push to `automation/compose-go-bump`. Later automation runs merge into the branch and never force-push, so your commits stay.
 
 ## Library API and recipe test layers
 
@@ -261,7 +340,7 @@ Build the helper before `bun test` on Linux or compiling `lando` on any host:
 bun run --filter='@lando/core' build:container-helper
 ```
 
-That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way.
+That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way. When that directory has a `source-digest` file, as every helper build writes, the compile checks it against the current sources and fails with the rebuild command if they differ.
 
 Verify the host-architecture helper on Linux:
 
@@ -297,7 +376,7 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. The pinned Bun version includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. The wrapper also enables `--disallow-code-generation-from-strings=strict`. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. The pinned Bun version includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. The wrapper also enables `--disallow-code-generation-from-strings=strict`. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.integration.test.ts`.
 
 ## Local Bun profiling
 
@@ -407,10 +486,9 @@ LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
 LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
 "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
 export LANDO_TEST_PODMAN_SOCKET="$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
-bun test core/test/live
-bun test plugins/provider-lando/test --filter=integration
-bun test plugins/provider-docker/test --filter=integration
-bun test plugins/service-lando/test --filter=integration
+bun run test:selection providers-core-live
+bun run test:selection providers-lando
+bun run test:selection services-lando
 ```
 
 Setup needs `/run/user/$(id -u)` (owned by you, mode 0700) or an `XDG_RUNTIME_DIR` with the same properties as the base for the runtime's private directory; it does not use that base directly.
@@ -521,7 +599,7 @@ LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test plugins/service-lando/test/po
 
 The `providers` PR profile runs Linux x64 provider integration. Other platform-specific provider jobs remain part of broad CI. Fake-client provider contracts also run in the ordinary PR unit shards, independently of live socket availability.
 
-Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line. Linux x64 splits live coverage into two required lanes, `providers` and `services`, each with a 35-minute timeout. Both lanes must pass. Linux arm64 has a 25-minute cap; macOS and Windows contract-only targets have 20-minute caps. Linux x64 diagnostic artifacts use `provider-integration-diagnostics-linux-x64-<runner>-<suite>` so each lane keeps its own results. If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line. Linux x64 splits live coverage into three required lanes, each with a 35-minute timeout: `providers` runs the compiled-CLI suites under `core/test/live`, `engine` runs the suites that drive the engine directly (provider plugins, readiness, data helpers and SQLite), and `services` runs `plugins/service-lando` integration. All three lanes must pass. Linux arm64 has a 25-minute cap; macOS and Windows contract-only targets have 20-minute caps. Linux x64 diagnostic artifacts use `provider-integration-diagnostics-linux-x64-<runner>-<suite>` so each lane keeps its own results. If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
 
 ## Lint guide YAML and negative fixtures
 
@@ -581,14 +659,14 @@ podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
-LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun run test:selection nightly-provider-e2e
 ```
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting.
 
 ## Nightly source-store acceptance
 
-The nightly workflow runs compiled source-store acceptance on `linux-x64`, `darwin-arm64`, and `windows-x64`. Each `source-store-acceptance-<platform>` job downloads the current run's container helper, rebuilds the command registry manifest, compiles that platform's CLI the same way `build-<platform>` does in `ci`, points `LANDO_TEST_COMPILED_CLI` at the binary (including the Windows `.exe`), and runs `core/test/build/source-store-acceptance.integration.test.ts`. Every job checks `git --version`; the Windows job also requires `git-http-backend` under `git --exec-path` because the suite serves bare repos through Git's CGI backend. The suite ends in `.integration.test.ts`, so PR unit shards exclude it.
+The nightly workflow runs compiled source-store acceptance on `linux-x64`, `darwin-arm64`, and `windows-x64`. Each `source-store-acceptance-<platform>` job downloads the current run's container helper, rebuilds the command registry manifest, compiles that platform's CLI the same way `build-<platform>` does in `ci`, points `LANDO_TEST_COMPILED_CLI` at the binary (including the Windows `.exe`), and runs `core/test/build/source-store-acceptance.integration.test.ts`. Every job checks `git --version`; the Windows job also requires `git-http-backend` under `git --exec-path` because the suite serves bare repos through Git's CGI backend. The ownership inventory assigns this suite to the nightly source-store jobs, so PR unit shards exclude it.
 
 ## Provider matrix
 
@@ -605,9 +683,9 @@ Every cell regenerates derived sources before acceptance so plugin tests can imp
 Release-blocking installable cells run the relevant provider contract suite plus live acceptance checks for setup readiness, app bring-up/bring-down, exec, logs, inspect/health, image resolution, and volume cleanup:
 
 ```bash
-bun test plugins/provider-lando/test/contract.integration.test.ts
-bun test plugins/provider-docker/test/contract.integration.test.ts
-bun test plugins/provider-podman/test/contract.integration.test.ts
+bun run test:selection provider-contract-lando
+bun run test:selection provider-contract-docker
+bun run test:selection provider-contract-podman
 ```
 
 Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check.

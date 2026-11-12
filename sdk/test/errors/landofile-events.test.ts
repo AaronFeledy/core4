@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import type { ToolingError } from "@lando/sdk/app";
 import * as errors from "@lando/sdk/errors";
+import { Result, Schema } from "effect";
 
 test("depth failures expose the invocation chain and limit", () => {
   // Given

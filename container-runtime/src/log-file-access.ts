@@ -1,12 +1,11 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-
-import { Effect, Option, type Scope, Stream } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { type ContainerHelperUnavailableError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess, LogFileHandle, LogFileRead, LogFileStat } from "@lando/sdk/log-follow";
 import type { ContainerHelperArtifact } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
+import { Effect, Option, type Scope, Stream } from "effect";
 
 import { containerHelperDelivery, logFileHelperExecArgv } from "./container-helper.ts";
 import type { DataPlaneApiClient, DataPlaneHttpRequest } from "./data-plane.ts";
@@ -89,7 +88,7 @@ export const scopedDockerLogFileAccess = (
       : options.api.stream(input);
 
   const helperPath = options.resolveHelper.pipe(
-    Effect.mapError(
+    mapFailures(
       (error) =>
         new ProviderUnavailableError({
           providerId,

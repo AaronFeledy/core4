@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Result } from "effect";
-import Mustache from "mustache";
-
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import { TemplateCompileError } from "@lando/sdk/template";
+import { Effect, Layer, Result } from "effect";
+import Mustache from "mustache";
 
 import { PLUGIN_NAME, manifest, templateEngine, templateEngines } from "../src/index.ts";
 

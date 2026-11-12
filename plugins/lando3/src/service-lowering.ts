@@ -1,11 +1,11 @@
 import { isLegacyTagged, isPlainRecord, mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
-import { ServiceConfig } from "@lando/sdk/schema";
 import type {
   ConfigTranslateDiagnostic,
   ConfigTranslateExpectation,
   ConfigTranslateSourceId,
   LandofileLayer,
 } from "@lando/sdk/schema";
+import { ServiceConfig } from "@lando/sdk/schema";
 import { lowerBuildHooks } from "./build-hooks.ts";
 import { ClaimCursor } from "./claims.ts";
 import { lowerComposeFields } from "./compose-fields.ts";

@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
+import { Result, Schema } from "effect";
 
 describe("FileSyncStartError", () => {
   test("carries engineId, message, redactable sessionSpec, remediation, cause", () => {

@@ -19,6 +19,7 @@ import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import { resolveSshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { compileAuthoredMounts } from "./authored-mounts.ts";
 import {
+  type ProviderAlternative,
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,
   assertComposeKnobsSupported,
@@ -30,6 +31,7 @@ import {
 import type { ResolvedLandofile } from "./event-set.ts";
 import { mergeComposeExtension } from "./extensions.ts";
 import { normalizeNetworks } from "./networks.ts";
+import { servicePullPolicy } from "./pull-policy.ts";
 import type { PlannerIssue } from "./resolved-validation.ts";
 import {
   agentSocketCapabilityErrors,
@@ -68,6 +70,7 @@ export const capabilityPath = (
   }
   const field = {
     artifactBuild: "build",
+    artifactPull: "pull_policy",
     bindMounts: "appMount",
     persistentStorage: "storage",
     sharedCrossAppNetwork: "routes",
@@ -78,6 +81,7 @@ export const capabilityPath = (
 
 export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(function* (
   resolution: ResolvedLandofile,
+  alternatives: ReadonlyArray<ProviderAlternative>,
 ): Effect.fn.Return<readonly CapabilityIssue[]> {
   const { capabilities, provider, landofile } = resolution;
   if (capabilities === undefined)
@@ -91,6 +95,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
           "Install or select a provider with an offline capability declaration, or run lando start to check runtime capabilities.",
       },
     ];
+  const context = { provider, capabilities, alternatives };
   const issues: CapabilityIssue[] = [];
   const ssh = resolveSshAgentIntent({ landofile, globalConfig: resolution.globalConfig });
   const gpg = resolveGpgAgentIntent({ landofile, globalConfig: resolution.globalConfig });
@@ -117,9 +122,9 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
     if (Predicate.isObject(compose))
       for (const [key, value] of Object.entries(compose)) {
         const services = { [name]: { name, extensions: { compose: { [key]: value } } } };
-        yield* check(assertComposeKnobsSupported(provider, capabilities, services));
-        yield* check(assertComposeServiceFieldsSupported(provider, capabilities, services));
-        yield* check(assertComposePreservedPathsSupported(provider, capabilities, services));
+        yield* check(assertComposeKnobsSupported(context, services));
+        yield* check(assertComposeServiceFieldsSupported(context, services));
+        yield* check(assertComposePreservedPathsSupported(context, services));
       }
     const config = seed.resolution.normalizedConfig;
     yield* check(
@@ -172,6 +177,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
       gpgForward: gpg.forward && seed.resolution.base === "lando",
     }))
       record(error, error.feature === "lando.gpg-agent" ? ["gpgAgent", "forward"] : ["sshAgent"]);
+    const pullPolicy = servicePullPolicy(config);
     for (const error of serviceResourceCapabilityErrors(provider, capabilities, {
       name,
       bindMounts:
@@ -179,14 +185,13 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         mounts.some((mount) => mount.type === "bind"),
       artifactBuild: config.build !== undefined && isComposeBuild(config.build),
       persistentStorage: mounts.some((mount) => mount.type === "volume"),
+      ...(pullPolicy === undefined ? {} : { pullPolicy }),
     }))
       record(error);
   }
   for (const key of ["configs", "secrets"] as const) {
     if (landofile[key] !== undefined)
-      yield* check(
-        assertComposeProjectFieldsSupported(provider, capabilities, { compose: { [key]: landofile[key] } }),
-      );
+      yield* check(assertComposeProjectFieldsSupported(context, { compose: { [key]: landofile[key] } }));
   }
   const normalized = yield* normalizeNetworks({
     landofile,

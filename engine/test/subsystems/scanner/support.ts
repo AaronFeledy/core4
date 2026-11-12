@@ -1,17 +1,14 @@
 import { expect } from "bun:test";
+import { RequestPolicy } from "@lando/http-client/live";
+import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
+import type { ScannerError } from "@lando/sdk/errors";
+import { AppId, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
-
-import { RequestPolicy } from "@lando/http-client/live";
-
-import type { ScannerError } from "@lando/sdk/errors";
-import { AppId, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
-
-import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>

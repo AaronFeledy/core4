@@ -13,6 +13,12 @@ export const routeOwnerFromScratch = (id: string): AppRouteOwner => ({
   ownerKey: appIdentityKey("owner", `scratch:${id}`),
 });
 
+/** Owner of routes published for a canonical app root when no applied plan records its identity. */
+export const routeOwnerFromRoot = (id: string, canonicalRoot: AbsolutePath): AppRouteOwner => ({
+  id: AppId.make(id),
+  ownerKey: appIdentityKey("owner", canonicalRoot),
+});
+
 export const routeOwnerFromPlan = (
   plan: Pick<AppPlan, "id" | "root" | "identity" | "extensions">,
 ): AppRouteOwner =>
@@ -33,7 +39,7 @@ export const routeOwnerFromGlobalTeardown = (resolved: {
     case "orphans":
     case "owned":
     case "absent":
-      return { id: AppId.make("global"), ownerKey: appIdentityKey("owner", resolved.paths.root) };
+      return routeOwnerFromRoot("global", resolved.paths.root);
     default:
       return evidence satisfies never;
   }

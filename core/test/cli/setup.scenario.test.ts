@@ -1,12 +1,12 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema, Stream } from "effect";
-
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
+import { GlobalConfigSources } from "@lando/engine/services/config";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
@@ -18,10 +18,7 @@ import {
   InteractionService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { GlobalConfigSources } from "@lando/engine/services/config";
-import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
+import { Effect, Layer, Schema, Stream } from "effect";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
 interface EventSink {

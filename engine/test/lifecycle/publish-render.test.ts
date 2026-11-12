@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer } from "effect";
-
 import { makeRedactionService } from "@lando/redaction/service";
 import { EventService } from "@lando/sdk/services";
+import { Context, Effect, Layer } from "effect";
 
 import { makePublishRender } from "../../src/lifecycle/publish-render.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";

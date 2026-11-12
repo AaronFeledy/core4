@@ -1,7 +1,6 @@
-import { Duration, Effect } from "effect";
-
 import type { EventError } from "@lando/sdk/errors";
 import { type EventFor, EventService, type EventWaitOptions, type LandoEvent } from "@lando/sdk/services";
+import { Duration, Effect } from "effect";
 
 const DEFAULT_EXPECT_TIMEOUT = Duration.seconds(5);
 

@@ -1,7 +1,6 @@
-import { Effect, Schema } from "effect";
-
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 export const LANDO_SECURITY_FEATURE_ID = "lando.security" as const;
 export const LANDO_SECURITY_FEATURE_PRIORITY = 1100;

@@ -14,8 +14,8 @@ import { resolveStartGpgAgentIntent } from "../../src/operations/start-gpg-agent
 import { resolveStartSshAgentIntent } from "../../src/operations/start-ssh-agent-intent.ts";
 import { gpgAgentPlanExtension, resolveGpgAgentIntent } from "../../src/subsystems/gpg-agent/intent.ts";
 import { gpgAgentEligibleServices } from "../../src/subsystems/gpg-agent/overlay.ts";
-import { sshAgentEligibleServices } from "../../src/subsystems/ssh-agent/overlay.ts";
 import { resolveSshAgentIntent, sshAgentPlanExtension } from "../../src/subsystems/ssh/intent.ts";
+import { sshAgentEligibleServices } from "../../src/subsystems/ssh-agent/overlay.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { plan } from "../subsystems/gpg-agent/fixture.ts";
 

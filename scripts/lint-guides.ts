@@ -28,7 +28,7 @@ import { variantsOf } from "./guides/variants.ts";
 import { lintYamlFences } from "./lint-guides-yaml-fence.ts";
 import { lintFixtureLandofiles } from "./lint-guides-yaml-fixtures.ts";
 
-export type { GuideLintDiagnostic, GuideFixtureInventoryEntry };
+export type { GuideFixtureInventoryEntry, GuideLintDiagnostic };
 export { checkScenarioSourceMap, checkTranscriptFrameDiscipline };
 export interface GuideLintResult {
   readonly diagnostics: ReadonlyArray<GuideLintDiagnostic>;

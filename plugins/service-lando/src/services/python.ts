@@ -1,6 +1,5 @@
-import { Schema } from "effect";
-
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";

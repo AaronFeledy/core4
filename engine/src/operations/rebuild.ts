@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import type { RedactionService } from "@lando/redaction/service";
 
 import type {
   RebuildAppOptions,
@@ -6,7 +6,10 @@ import type {
   RebuildAppError as SdkRebuildAppError,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
+import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type {
+  EnvironmentValueResolver,
   FileSystem,
   GlobalAppService,
   ManagedFileTransactionGuard,
@@ -23,13 +26,10 @@ import {
   type RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-
-import type { RedactionService } from "@lando/redaction/service";
-import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect } from "effect";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
@@ -45,11 +45,13 @@ import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import {
   type GlobalConsumerAdmissionServices,
+  requireSelectableRouter,
   withGlobalConsumerAdmission,
 } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
+import { type StartManagedScope, startApp } from "./start.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import {
@@ -58,9 +60,8 @@ import {
   projectDebuggerOverlay,
   withAcquiredStartOverlays,
 } from "./start-overlays.ts";
-import { type StartManagedScope, startApp } from "./start.ts";
+import { haltAppRuntime } from "./stop.ts";
 import { preflightStopApp } from "./stop-internal.ts";
-import { stopAppWithPlan } from "./stop.ts";
 import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
 import {
   publishPlacementVolumeTransitionNotices,
@@ -89,7 +90,7 @@ type RebuildAppServices =
   | StateStore;
 
 const rebuildSelectedServices = Effect.fnUntraced(function* (
-  plan: AppPlan,
+  selectedPlan: AppPlan,
   target: ResolvedAppTarget,
   options: Pick<RebuildAppOptions, "signal"> & {
     readonly managed?: StartManagedScope;
@@ -111,6 +112,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | GlobalConsumerAdmissionServices
 > {
   const { signal, managed, preparedOverlays, provider } = options;
+  // Prepare certificates before anything stops, so a CA failure leaves the services running.
+  const plan = yield* prepareServiceCertificates(selectedPlan);
   const builds = yield* BuildOrchestrator;
   const services = Object.values(plan.services);
 
@@ -200,6 +203,8 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
         // FIRST under root lock: reconcile before overlays, placement, retirement, or mutation.
         const resolvedTarget = yield* reconcileAppDataIdentity(initialTarget);
         const plan = resolvedTarget.plan;
+        // Refuse a routed rebuild without a selectable router before stopping or building anything.
+        yield* requireSelectableRouter(plan);
         const selectedPlan = yield* selectRebuildPlan(plan, options.services);
         const scoped = options.services !== undefined && options.services.length > 0;
         const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
@@ -253,7 +258,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                 }
               : yield* Effect.gen(function* () {
                   yield* markStartMutation(plan);
-                  yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
+                  yield* haltAppRuntime({}, resolvedTarget, { skipInitEvents: true });
                   yield* managed?.onStopped ?? Effect.void;
                   return yield* startApp(
                     {

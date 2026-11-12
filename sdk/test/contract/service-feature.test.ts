@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Schema } from "effect";
-
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import {
@@ -9,6 +6,7 @@ import {
   type ServiceFeatureContext,
   type ServiceFeatureDefinition,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 describe("ServiceFeature contract surface", () => {
   test("a ServiceFeatureDefinition is satisfiable with intent-only apply", () => {

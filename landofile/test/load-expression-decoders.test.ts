@@ -1,15 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import { LandofileExpressionEvalError, LandofileParseError } from "@lando/sdk/errors";
-
+import { Cause, Effect, Exit } from "effect";
+import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
 import { makeLandofileLoadHelperOverrides } from "../src/load-expression-decoders.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, LandofileFileSession } from "../src/load-expression-file.ts";
-import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
 
 const FIXTURES = join(import.meta.dirname, "fixtures");
 

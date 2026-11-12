@@ -1,8 +1,7 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import ts from "@typescript/typescript6";
 
 import { getLastRunCacheStats, runRuleSet } from "../../../../scripts/boundary/engine.ts";

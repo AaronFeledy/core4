@@ -1,12 +1,10 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { GitTransport } from "@lando/source-acquisition";
+import { Effect } from "effect";
 
 import { updateAuthoredIncludes as updateLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore, seedGitSourceEntry } from "./support.ts";

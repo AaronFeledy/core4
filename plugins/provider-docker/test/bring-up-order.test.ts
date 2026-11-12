@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
-
 import { fixtureContainerLabels as commonContainerLabels } from "@lando/container-runtime/testing/exec-supervision";
 import type { DockerApiClient, DockerHttpResponse } from "@lando/provider-docker";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServicePlan } from "@lando/sdk/schema";
-import { ContainerUser } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ContainerUser, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");

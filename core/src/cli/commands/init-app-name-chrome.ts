@@ -14,8 +14,8 @@ export const appNamePromptChrome = (input: { readonly appRoot: string }): Prompt
   ],
 });
 
-export const chromeForInitNamePrompt = (input: { readonly appRoot: string }): Readonly<
-  Record<string, PromptChrome>
-> => ({
+export const chromeForInitNamePrompt = (input: {
+  readonly appRoot: string;
+}): Readonly<Record<string, PromptChrome>> => ({
   name: appNamePromptChrome(input),
 });

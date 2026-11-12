@@ -7,9 +7,9 @@ import { AbsolutePath, type AppPlan, PortablePath, ServiceName } from "@lando/sd
 import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
+import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
 import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
-import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 test.each(["sidecar", "host"] as const)(
@@ -177,4 +177,5 @@ test.each(["sidecar", "host"] as const)(
     }
   },
 );
+
 import { literalTestLandofile } from "../compiled-landofile.ts";

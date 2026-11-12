@@ -81,6 +81,7 @@ export const renderConfigLintRuleReference = (rules: ConfigLintRuleRegistry = CO
     "- `planning`: `lando start`, `lando rebuild`, and `lando app:cache:refresh` also fail with this rule.",
     "- `global-config`: validation of your global `config.yml`.",
     "- `discovery`: `lando doctor --app` looking for the Landofile.",
+    "- `script`: metadata and Bun Shell syntax in `.lando/scripts/**/*.bun.sh`, even if the Landofile cannot load.",
     "",
     "| Rule | Severity | What it checks | Example paths | Stages |",
     "| --- | --- | --- | --- | --- |",

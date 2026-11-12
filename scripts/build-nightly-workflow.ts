@@ -25,7 +25,8 @@ import {
   LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
-import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
+import { testSelectionCommand } from "./test-selections.ts";
+import { TEST_TIMINGS_FILE } from "./test-shards.ts";
 
 const linuxArm64 = CI_PLATFORMS.find((platform) => platform.id === "linux-arm64");
 if (linuxArm64 === undefined) {
@@ -51,7 +52,7 @@ const regenerateDerivedSourcesStep = `      - name: Regenerate derived sources
 
 const contractTestStep = (platform: string): string => `
       - name: Run file-sync contract matrix (${platform})
-        run: bun test plugins/file-sync-mutagen/test/contract.test.ts
+        run: ${testSelectionCommand("nightly-file-sync")}
         env:
           LANDO_TEST_FILE_SYNC_LIVE: "1"`;
 
@@ -90,7 +91,7 @@ ${linuxGuideE2eProviderSetupSteps}
 
       - name: Run live integration suites
         run: |
-          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${testSelectionCommand("nightly-provider-e2e")}
         env:
           LANDO_CONFIG__default_provider_id: lando
 
@@ -172,8 +173,8 @@ ${landoRootlessPrereqSteps}
       - name: Prepare provider via lando setup against the published manifest
         run: |
           test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
-          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
-          mkdir -p "\$XDG_RUNTIME_DIR"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
           dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
       - name: Verify the published bundle downloaded, verified, and installed
@@ -289,7 +290,7 @@ ${regenerateDerivedSourcesStep}
 ${containerHelperDownloadStep}
 
       - name: Run nightly-tier unit tests
-        run: bun test ${NIGHTLY_TIER_TESTS.join(" ")}`;
+        run: ${testSelectionCommand("nightly-tier")}`;
 
 const refreshTestTimingsJob = `
   refresh-test-timings-linux-x64:
@@ -433,7 +434,7 @@ ${regenerateDerivedSourcesStep}
           test -n "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_URL:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_SHA256:-}"
-          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
           dist/${linuxArm64.binaryName} setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
@@ -455,13 +456,7 @@ ${regenerateDerivedSourcesStep}
         run: |
           wrapper="$RUNNER_TEMP/lando-managed-podman"
           printf '%s\\n' '#!/bin/sh' 'set -eu' \
-            'LAUNCH_STATE="'"$LANDO_USER_DATA_ROOT"'/runtime/run/podman.pid.launch.json"' \
-            'if test -f "$LAUNCH_STATE"; then' \
-            '  XDG_FROM_LAUNCH="$(jq -r ".env.XDG_RUNTIME_DIR // empty" "$LAUNCH_STATE" 2>/dev/null || true)"' \
-            '  if test -n "$XDG_FROM_LAUNCH"; then export XDG_RUNTIME_DIR="$XDG_FROM_LAUNCH"; fi' \
-            'fi' \
-            "export CONTAINERS_CONF=\\"$LANDO_USER_DATA_ROOT/runtime/config/containers.conf\\"" \
-            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\\"\\$@\\\"" \
+            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --remote --url \\"unix://$LANDO_USER_DATA_ROOT/runtime/run/podman.sock\\" \\"\\$@\\"" \
             > "$wrapper"
           chmod 0755 "$wrapper"
           case "$wrapper" in /*) ;; *) echo "wrapper must be absolute" >&2; exit 1 ;; esac
@@ -470,7 +465,7 @@ ${regenerateDerivedSourcesStep}
           echo "LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper" >> "$GITHUB_ENV"
 
       - name: Run native ARM MySQL client tests
-        run: bun test plugins/service-lando/test/mysql-arm-client.integration.test.ts
+        run: ${testSelectionCommand("mysql-arm-client")}
         env:
           LANDO_CONFIG__default_provider_id: lando
 
@@ -506,8 +501,6 @@ ${landoManagedPodmanRuntimeDirCommands}
           path: mysql-arm-client-diagnostics
           if-no-files-found: ignore
           retention-days: 7`;
-
-const SOURCE_STORE_ACCEPTANCE_SUITE = "core/test/build/source-store-acceptance.integration.test.ts";
 
 const SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS = ["linux-x64", "darwin-arm64", "windows-x64"] as const;
 
@@ -569,7 +562,7 @@ ${gitPrereqSteps}
       - name: Run source-store acceptance
         env:
           LANDO_TEST_COMPILED_CLI: ${binaryPath}
-        run: bun test ${SOURCE_STORE_ACCEPTANCE_SUITE}`;
+        run: ${testSelectionCommand("source-store-acceptance")}`;
 };
 
 const sourceStoreAcceptanceJobs = SOURCE_STORE_ACCEPTANCE_PLATFORM_IDS.map((id) =>

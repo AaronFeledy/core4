@@ -12,11 +12,6 @@
  * (a normal result), not an MCP-level error. MCP-level errors are limited to
  * allowlist rejection and input-schema rejection.
  */
-import { Cause, Clock, Effect, Option, Predicate, type Schema } from "effect";
-
-import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/events";
-import type { Redactor } from "@lando/sdk/secrets";
 
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -25,7 +20,11 @@ import {
   failureOutcomeFromCause,
   normalizeDefect,
 } from "@lando/sdk/command-result";
+import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
+import type { LandoEvent } from "@lando/sdk/events";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Logger } from "@lando/sdk/services";
+import { Cause, Clock, Effect, Option, Predicate, type Schema } from "effect";
 import { isMcpNeverAllowed } from "./allowlist";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import { boundedEventString, postEvent, preEvent } from "./call-events";

@@ -6,12 +6,12 @@ import { formatSummary } from "@lando/renderer/summary";
 import type { InfoAppResult } from "@lando/sdk/app";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
-import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
+import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import { doctorTreeSummary } from "../../src/cli/commands/doctor-progress.ts";
-import { countDoctorChecks } from "../../src/cli/commands/doctor-report-render.ts";
 import type { DoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { countDoctorChecks } from "../../src/cli/commands/doctor-report-render.ts";
 import { buildInfoSummary } from "../../src/cli/commands/info-render.ts";
 import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-status.ts";
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
@@ -342,10 +342,11 @@ describe("doctor summary", () => {
       [
         "",
         "╭─ Needs attention",
-        "│ provider podman (podman)",
+        "│ provider: podman · providerName: Podman Runtime Provider · providerVersion:",
+        "│ 5.1.0 · providerKind: podman · runtimeStatus: stopped",
         "│",
         "│ provider",
-        "│ ! selected-provider",
+        "│ ! selected-provider  warn",
         "│   evidence: connect failed: token=[redacted]",
         "│   ↳ Run `lando setup`.",
         "│",
@@ -360,7 +361,7 @@ describe("doctor summary", () => {
     expect(buildDoctorReportSummary(report).tone).toBe("warn");
   });
 
-  test("hides passing checks by default and lists them one-line under --all", () => {
+  test("hides passing checks by default and lists their full context under --all", () => {
     const report = {
       version: "4.0.0-dev",
       provider: {
@@ -376,7 +377,9 @@ describe("doctor summary", () => {
     const summary = buildDoctorReportSummary(report);
     expect(summary.title).toBe("Healthy");
     expect(summary.tone).toBe("ok");
-    expect(summary.subtitle).toBe("Lando 4.0.0-dev · provider lando (managed)");
+    expect(summary.subtitle).toBe(
+      "version: 4.0.0-dev · provider: lando · providerName: Lando · providerVersion: 0.0.0 · providerKind: managed · runtimeStatus: running",
+    );
     expect(summary.sections).toEqual([]);
     expect(summary.nextSteps).toBeUndefined();
     expect(summary.footer).toBe("1 checks passed · lando doctor --all lists every check");
@@ -388,7 +391,17 @@ describe("doctor summary", () => {
       "global app",
       "mcp",
     ]);
-    expect(all.sections[0]?.rows[0]).toEqual({ label: "selected-provider", tone: "ok", value: "pass" });
+    expect(all.sections[0]?.rows[0]).toMatchObject({
+      label: "selected-provider",
+      tone: "ok",
+      value: "pass",
+      fields: [
+        { label: "severity", value: "info" },
+        { label: "runtimeStatus", value: "running" },
+        { label: "reason", value: "no-app-context" },
+      ],
+    });
+    expect(all.sections[0]?.rows[0]?.remedy).toContain("Run inside an app.");
     expect(all.sections[1]?.notes).toEqual(["No checks reported."]);
     expect(all.footer).toBe("1 checks passed");
   });
@@ -428,9 +441,10 @@ describe("doctor summary", () => {
     expect(summary.sections[0]?.rows[0]).toEqual({
       label: "host-proxy-transport",
       tone: "warn",
-      value: "4×",
+      value: "warn (4 checks)",
       fields: [
-        { label: "appId", value: "alpha, beta, gamma" },
+        { label: "entries", value: "appId: alpha; appId: beta; appId: gamma" },
+        { label: "remaining", value: "+1 more (lando doctor --all)" },
         { label: "transport", value: "unix-socket" },
         { label: "failure", value: "control-probe-failed" },
       ],
@@ -438,7 +452,7 @@ describe("doctor summary", () => {
     });
     expect(summary.nextSteps).toEqual(["lando restart"]);
     expect(summary.footer).toBe("5 checks · 0 failed · 4 warnings · lando doctor --all lists every check");
-    expect(buildDoctorReportSummary(summaryReport, { all: true }).sections[0]?.rows).toHaveLength(2);
+    expect(buildDoctorReportSummary(summaryReport, { all: true }).sections[0]?.rows).toHaveLength(5);
   });
 
   test("does not collapse same-named checks whose status or remediation differ", () => {
@@ -468,7 +482,7 @@ describe("doctor summary", () => {
       "Restart. Run `lando restart`.",
       "Rerun setup. Run `lando setup`.",
     ]);
-    expect(summary.nextSteps).toEqual(["lando restart", "lando setup"]);
+    expect(summary.nextSteps).toEqual(["lando restart"]);
   });
 
   test("counts error deprecations as failures in the title, footer, and tree summary", () => {

@@ -2,14 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Context, Effect, Layer } from "effect";
-
 import { Telemetry } from "@lando/core/services";
 import {
   cliRuntimeOptions,
   resolveCliTelemetryState,
   resolveEffectiveCliBootstrap,
 } from "@lando/engine/runtime/cli-options";
+import { Context, Effect, Layer } from "effect";
 import { readConfigCliGlobals } from "../../src/cli/renderer-mode-resolution.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 

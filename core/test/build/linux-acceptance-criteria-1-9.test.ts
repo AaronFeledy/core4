@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";

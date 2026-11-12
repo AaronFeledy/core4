@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { type SourceAcquisitionError, type SourceSession, makeSourceStore } from "@lando/source-acquisition";
 import { Effect, type Scope } from "effect";
@@ -27,7 +28,7 @@ export const mapSourceAcquisitionError = (error: SourceAcquisitionError) => {
 export const runSource = <A>(
   effect: Effect.Effect<A, SourceAcquisitionError>,
   signal: AbortSignal,
-): Promise<A> => Effect.runPromise(effect.pipe(Effect.mapError(mapSourceAcquisitionError)), { signal });
+): Promise<A> => Effect.runPromise(effect.pipe(mapFailures(mapSourceAcquisitionError)), { signal });
 
 export const requiredSourceSession = async (
   ctx: ResolveContext,
@@ -65,7 +66,7 @@ export const withIncludeSourceSession = Effect.fn("Landofile.withSourceSession")
       ...(deps.npmRegistry === undefined ? {} : { npmRegistry: deps.npmRegistry }),
     },
   });
-  const session = yield* store.session.pipe(Effect.mapError(mapSourceAcquisitionError));
+  const session = yield* store.session.pipe(mapFailures(mapSourceAcquisitionError));
   if (input.includeSession !== undefined) input.includeSession.sourceSession.value = session;
   return yield* body(session);
 });

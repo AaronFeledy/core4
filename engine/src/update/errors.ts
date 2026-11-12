@@ -1,5 +1,4 @@
 /** Update operation error contracts. */
-import { Schema } from "effect";
 
 import type {
   BunSelfReentryError,
@@ -13,6 +12,7 @@ import type {
   ProcessTimeoutError,
 } from "@lando/sdk/errors";
 import { UpdateChannel as UpdateChannelSchema } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import type { InstallOwnershipError } from "../install/owned-executable.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));

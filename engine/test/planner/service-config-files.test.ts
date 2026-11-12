@@ -3,10 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Result } from "effect";
-
 import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 import { resolveServiceConfigSources } from "../../src/planner/service-config-files.ts";
 
 const sha256 = (bytes: string | Uint8Array): string => createHash("sha256").update(bytes).digest("hex");

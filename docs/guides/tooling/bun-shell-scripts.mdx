@@ -47,7 +47,51 @@ Use indented YAML mappings for `flags` and `args`, as in the next example. Front
 
 Other tooling features are not script metadata. Keys such as `aliases`, `engine`, `bootstrap`, `sources`, and `run` refuse with `NotImplementedError` and name the field. Unknown keys, malformed YAML, conflicting input declarations, or a file with no block refuse with `BunShellScriptFrontMatterError`. An empty file refuses with `BunShellScriptEmptyError`.
 
-Missing or malformed front matter makes the next command fail while Lando reads your app's commands, before anything runs. Fix the reported script and run the command again. `lando app:cache:refresh` reports the same error if you want to check every script at once.
+Missing or malformed front matter makes that script's own command and help fail with its tagged error. Your other commands still work. `lando start`, `lando restart`, `lando rebuild`, and `lando app:cache:refresh` warn with `LANDO_SCRIPT_INVALID` and continue unless a hook explicitly calls the broken script. Root help lists the script with an `[unavailable]` marker and a correction hint; MCP leaves it out.
+
+Here is an app with a healthy `build.bun.sh` and a `bad.bun.sh` that has no front matter. Refresh warns about the bad script and still succeeds:
+
+```console
+$ lando app:cache:refresh
+⚠ .bun.sh script at /tmp/myapp/.lando/scripts/bad.bun.sh is missing the front-matter block. Run lando app:config:lint to see every finding. Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+refreshed: myapp (2 commands)
+```
+
+The healthy script runs as usual:
+
+```console
+$ lando build
+▼ app:build (1 step)
+[tooling:app:build:exec] start: executing
+built
+[tooling:app:build:exec] ✓ complete (15ms)
+▶ complete (1 ✓ · 0 ✗) (15ms)
+```
+
+The `THIS APP` section of `lando --help` marks the broken one:
+
+```text
+THIS APP
+  app:bad        [unavailable] Run lando app:config:lint.
+  app:build      Build dist/ from src/ on the host
+```
+
+Calling the broken script fails with its own error and exits 1. The report starts like this:
+
+```console
+$ lando bad
+.bun.sh script at /tmp/myapp/.lando/scripts/bad.bun.sh is missing the front-matter block.
+  ↳ Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+code: BunShellScriptFrontMatterError
+```
+
+To find every broken script at once, with the file, line, and column, run lint from the app directory:
+
+```sh
+lando app:config:lint
+```
+
+Each script problem is a `script.front-matter` finding named by the script's path relative to the app, such as `.lando/scripts/bad.bun.sh: error [script.front-matter] ... is missing the front-matter block.`, with the YAML location or the offending key in the `at` line. Lint reports these even when the Landofile itself fails to load. Fix the script and run your command again. See [Read script findings](../landofile/config-lint.mdx#read-script-findings) for the full list and the JSON shape.
 
 ## Declare flags and read inputs by name
 
@@ -85,7 +129,7 @@ lando greet prod release -n team --loud
 
 The first call prints a greeting for `world` with `target=dev`, `label=latest`, and `loud=false`. The second uses `team`, `prod`, `release`, and `loud=true`. This example prints the switch's value; it does not change the greeting's case. `lando greet` without a target, or `lando greet staging`, fails with `ToolingInputError` before running the body. Supply `dev` or `prod` to recover.
 
-For a structured description of this script, run `lando help app:greet --format=json` from the same app. Read `result.target.input` for its flags, arguments, and declaration revision. Unknown targets and unavailable metadata return a tagged failure instead of an unrelated command catalog.
+`lando greet --help` ends with `Runs .lando/scripts/greet.bun.sh on the host.`, so you can tell a script from a Landofile task without opening the file. For a structured description of this script, run `lando help app:greet --format=json` from the same app. Read `result.target.input` for its flags, arguments, and declaration revision, and `result.target.runs` for the same path as `{ "kind": "script", "path": ".lando/scripts/greet.bun.sh" }`. Unknown targets and unavailable metadata return a tagged failure instead of an unrelated command catalog.
 
 The nested declarations follow the [tooling flag and argument rules](../flags-and-args/): flags accept `alias`, `boolean`, `choices`, `default`, `required`, `description`, and `sensitive: true`; arguments accept `order`, `choices`, `default`, `required`, `description`, and `sensitive: true`. Use `required: true` or a `default`, not both. Boolean flags accept `--loud`, `--loud=true`, or `--loud=false`; explicit false overrides a true default. Lando does not generate `--no-loud`, and `--loud false` does not set the flag to false. Booleans cannot have choices.
 
@@ -155,7 +199,11 @@ Lando keeps your app's command index current on the host CLI. Any app tooling co
 
 A fast rebuild prints nothing. In a terminal, one that takes longer than about half a second prints one line naming the cause, such as `Updating this app's commands (scripts changed)...`. The rebuild plans the Landofile the same way `lando app:cache:refresh` does, including fetching and pinning includes, without starting services or the provider. Built-in commands such as `lando start` never trigger it, and neither do `lando` calls from inside a container through the host proxy.
 
-If the rebuild fails because of broken YAML, invalid config, a bad tooling definition, or malformed script front matter, the command fails with that error: `LandofileParseError`, `LandofileValidationError`, `BunShellScriptFrontMatterError`, and so on, as `error._tag` in `--format=json`. Fix it and run the command again; Lando does not cache the failure.
+If the rebuild fails because of broken Landofile YAML, invalid config, or a bad tooling definition, the command fails with that error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag` in `--format=json`. Fix the reported input and run the command again; Lando retries the rebuild.
+
+A broken script stays listed as unavailable while other commands keep working, even with an empty command cache. The automatic refresh is silent about script problems; explicit refresh and app lifecycle commands report the warnings. Adding, editing, or fixing an invalid script updates its metadata on the next relevant command or help listing. A collision between filenames produces one unavailable command naming every conflicting path, even if one file also has malformed front matter. Rename a conflicting file or fix the front matter and run the command again. A Landofile task with the same id still wins. A filename that cannot form a command name appears only in lint findings.
+
+Machine help catalogs carry the unavailable row's `loadError` with `_tag`, `message`, and remediation. `lando help <broken> --format=json` fails with the script's current tagged error and includes the cached `loadError` under `error.loadError`. Neither help form runs the body. Unreadable script files or directories still fail refresh with their own path and error; Lando cannot safely index files it cannot read.
 
 A name that matches no script, task, or other command fails with `UnknownCommandError`, the same error you get for any mistyped command. When a command is spelled close to what you typed, Lando names it: `lando gret` suggests `lando greet`, and `--format=json` lists the suggestions, best first, in `error.suggestions`.
 
@@ -317,7 +365,7 @@ Lando looks for these forms before running anything, so a host command doesn't q
 - `lando app:config:lint` reports a `landofile.host-shell` error for each one in a `:host` tooling or event step and in a host readiness command. In a Landofile, an unescaped `${NAME}` already fails to load (`landofile.load`), so the form lint reports there is the escaped `$${NAME}`, which would reach Bun Shell as `${NAME}`.
 - A `:host` step in a lifecycle event such as `pre-start`, or a host readiness command, also stops `lando start` before it changes anything. `lando stop` and `lando destroy` still tear the app down but skip the Landofile's events, as they do whenever the Landofile can't be planned.
 - A host tooling task fails with `ToolingCompileError` when you run it, before any of its steps start. A broken task you never run doesn't block the rest of the app, but `lando app:cache:refresh` warns about it (`LANDO_HOST_SHELL_SYNTAX` in `--format=json` output) so you hear about it before you need it.
-- A `.bun.sh` script fails with `ToolingCompileError` before it starts, with the line and column. Scripts may use `$1` through `$9`.
+- A `.bun.sh` script fails with `ToolingCompileError` before it starts, with the line and column. `lando app:config:lint` reports the same form ahead of time as a `script.host-shell` error at the script's path, line, and column, for every enabled script that a Landofile task of the same name does not shadow. Scripts may use `$1` through `$9`.
 - `lando shell` prints the problem for that line and, when the fix is mechanical, offers the corrected line at the next prompt for you to run or edit.
 
 Run lint after you edit a host command:
@@ -494,10 +542,26 @@ lando stamp abc1234
     </Step>
   </Scenario>
 
-  <Scenario id="missing-front-matter" render={false} reason="Regression coverage: cache refresh refuses scripts without a front-matter block">
-    <Step name="refresh-missing-front-matter">
+  <Scenario id="missing-front-matter" render>
+    A missing front-matter block does not prevent the refresh that `lando start` also performs. Lint locates it, refresh warns and succeeds, and healthy commands still run. Only the broken script refuses execution.
+    <Step name="lint-missing-front-matter">
       <UseFixture name="missing-front-matter" />
-      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"script\\.front-matter\"[\\s\\S]*\"layer\":\\s*\"script\",\\s*\"file\":\\s*\"[^\"]*hello\\.bun\\.sh\"" } }} />
+      <Verify command="lando app:config:lint" expectExit={1} expect={{ stdout: { regex: "\\.lando/scripts/hello\\.bun\\.sh: error \\[script\\.front-matter\\]" } }} />
+    </Step>
+    <Step name="refresh-missing-front-matter">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true[\\s\\S]*LANDO_SCRIPT_INVALID" } }} />
+    </Step>
+    <Step name="run-healthy-commands">
+      <Run command="lando healthy --format=json" />
+      <Verify command="lando healthy --format=json" expect={{ stdout: { regex: "healthy-task" } }} />
+      <Run command="lando valid --format=json" />
+      <Verify command="lando valid --format=json" expect={{ stdout: { regex: "healthy-script" } }} />
+    </Step>
+    <Step name="invoke-broken-script">
+      <Run command="lando hello --format=json" expectExit={1} />
       <Verify errorTag="BunShellScriptFrontMatterError" expect={{ regex: "missing the front-matter block" }} />
     </Step>
     <Step name="cleanup-missing-front-matter">
@@ -509,6 +573,8 @@ lando stamp abc1234
     <Step name="prepare-declared-inputs">
       <UseFixture name="declared-inputs" />
       <Verify command="lando help app:greet --format=json" expect={{ stdout: { regex: "\"canonicalId\":\"app:greet\"[\\s\\S]*\"revision\":\"[^\"]+\"" } }} />
+      <Verify command="lando help app:greet --format=json" expect={{ stdout: { regex: "\"runs\":\\s*\\{\"kind\":\"script\",\"path\":\"\\.lando/scripts/greet\\.bun\\.sh\"\\}" } }} />
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "Runs \\.lando/scripts/greet\\.bun\\.sh on the host\\." } }} />
     </Step>
     <Step name="use-declared-defaults">
       <Verify command="lando greet dev --format=json" expect={{ stdout: { regex: "\"exitCode\":\\s*0[\\s\\S]*\"stdout\":\\s*\"Hello world: target=dev label=latest loud=false\\\\n\"" } }} />

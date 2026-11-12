@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit, Option, Redacted, type Scope } from "effect";
-
 import { makeTestInteractionService } from "@lando/core/testing";
+import { Cause, Effect, Exit, Option, Redacted, type Scope } from "effect";
 
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
   Effect.runPromise(Effect.scoped(effect));

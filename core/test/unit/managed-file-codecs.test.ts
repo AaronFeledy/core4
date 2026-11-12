@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit } from "effect";
+import { decode, encode, mergeManaged } from "@lando/managed-file/codecs";
 
 import { ManagedFileError } from "@lando/sdk/errors";
-
-import { decode, encode, mergeManaged } from "@lando/managed-file/codecs";
+import { Cause, Effect, Exit } from "effect";
 
 const run = <A>(effect: Effect.Effect<A, ManagedFileError>): Promise<A> => Effect.runPromise(effect);
 

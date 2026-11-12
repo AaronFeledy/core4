@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { Cause, DateTime, Effect, Stream } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -11,6 +9,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Stream } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { exec } from "../src/podman/exec-transport.ts";

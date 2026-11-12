@@ -18,12 +18,12 @@ import {
   withoutIncludeCondition,
 } from "./include-condition-shape.ts";
 import type { ResolveLandofileIncludesOptions } from "./include-context.ts";
+import { resolveLandofileLoadExpressions } from "./load-expression.ts";
 import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression-file.ts";
 import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
-import { resolveLandofileLoadExpressions } from "./load-expression.ts";
 import { createLoadFailureRecorder, finishLoadStage, loadPathBlocked } from "./load-failures.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
@@ -119,9 +119,14 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         );
         continue;
       }
-      const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
-      if (secret !== undefined) {
-        recorder.record(unsupportedSecretReferenceError(source, secret.name, target.value.when), source);
+      const references = parsed.success.segments.flatMap((segment) =>
+        segment.kind === "SecretRefSegment" ? [segment.name] : [],
+      );
+      if (references.length > 0) {
+        recorder.record(
+          unsupportedSecretReferenceError({ source, references, value: target.value.when }),
+          source,
+        );
         continue;
       }
       scope.pendingSites.push({

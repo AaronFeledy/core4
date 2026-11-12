@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { AbsolutePath, AppId, AppPlan, LandofileShape, PortablePath, ProviderId } from "@lando/sdk/schema";
-import { validEventNames } from "../../src/planner/event-names.ts";
-
+import { DateTime, Effect, Schema } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
 import {
   compileEffectiveEvents,
@@ -15,6 +12,7 @@ import {
 } from "../../src/planner/effective-events.ts";
 import * as toolingForPlan from "../../src/planner/effective-tooling.ts";
 import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import { validEventNames } from "../../src/planner/event-names.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("same-app"),

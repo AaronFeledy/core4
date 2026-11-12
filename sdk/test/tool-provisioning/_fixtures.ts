@@ -1,14 +1,12 @@
 /** Archive + Downloader test fixtures for the tool-provisioning helper tests. */
 import { createHash } from "node:crypto";
-import { gzipSync } from "node:zlib";
-
-import { Effect, Layer, Stream } from "effect";
-
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { DownloadFetchError } from "@lando/sdk/errors";
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader, type DownloaderShape } from "@lando/sdk/services";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { Effect, Layer, Stream } from "effect";
 
 export const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

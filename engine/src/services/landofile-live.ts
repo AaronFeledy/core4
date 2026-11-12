@@ -1,15 +1,5 @@
 import { NetworkTrust, resolveTrust } from "@lando/http-client/network-trust";
 import {
-  Downloader,
-  LandofileService,
-  type ManagedFileTransactionGuard,
-  PathsService,
-  ProcessRunner,
-  StateStore,
-} from "@lando/sdk/services";
-import { Context, Effect, Layer, Option, type Scope } from "effect";
-
-import {
   type ResolveLandofileIncludesOptions,
   type UpdateLandofileIncludesOptions,
   type VerifyLandofileIncludesOptions,
@@ -20,6 +10,7 @@ import {
 import type { LintLandofileOptions } from "@lando/landofile/lint";
 import { lintLandofileSnapshot as lintLandofileSnapshotPackage } from "@lando/landofile/lint";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
+import * as LandofileServiceLayer from "@lando/landofile/service";
 import {
   type LandofileFinalizeOverrides,
   acquireLandofileReplacement as acquireLandofileReplacementPackage,
@@ -29,13 +20,21 @@ import {
   prepareLandofileReplacement as prepareLandofileReplacementPackage,
   validateLandofileReplacement as validateLandofileReplacementPackage,
 } from "@lando/landofile/service";
-import * as LandofileServiceLayer from "@lando/landofile/service";
 import {
   type RenderLandofileTemplateOptions,
   buildTemplateEngineRegistry,
   renderLandofileTemplate as renderLandofileTemplatePackage,
 } from "@lando/landofile/template-render";
 import { RedactionService } from "@lando/redaction/service";
+import {
+  Downloader,
+  LandofileService,
+  type ManagedFileTransactionGuard,
+  PathsService,
+  ProcessRunner,
+  StateStore,
+} from "@lando/sdk/services";
+import { Context, Effect, Layer, Option, type Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { landofileRuntimeInputs, landofileSourcePorts } from "../composition.ts";
 import { hostConfigReadPolicy } from "./config.ts";

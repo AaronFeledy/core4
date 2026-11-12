@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import {
   detectLandofileTags,
   emitLandofileYaml,
@@ -8,6 +6,7 @@ import {
   parseLandofile,
   reset,
 } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 const file = "/app/.lando.yml";
 const parse = (content: string, maxDepth?: number) =>

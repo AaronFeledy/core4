@@ -45,7 +45,7 @@ test.each([false, true])(
         "destroy:false",
       ]);
       const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-      expect(pending?.phase).toBe("completed");
+      expect(pending).toBeNull();
     }
   },
 );
@@ -73,4 +73,5 @@ test.each([{ extraSession: true }, { phase: "preparing" as const, extraSession: 
     expect(harness.calls).not.toContain("dispose-targets");
   },
 );
+
 import { literalTestLandofile } from "../compiled-landofile.ts";

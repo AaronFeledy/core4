@@ -484,7 +484,10 @@ indexes, like each `issues[].path`), `error.expression`, and `error.filePath`; `
 and, for a global config that fails validation, `error.issues` and
 `error.remediation` (see below).
 JSON, YAML, terminal result frames, and MCP envelopes preserve the same fields
-with the same secret redaction. `cause`, `stack`, and private redaction metadata
+with the same secret redaction. When the error wraps another Lando failure,
+`error.cause` holds that failure in the same form, with its own `_tag`,
+`message`, `remediation`, and fields, and can carry its own `cause` in turn. A
+cause that isn't a tagged Lando error, `stack`, and private redaction metadata
 are excluded. Fields containing class instances, unsupported values, cycles,
 or nesting beyond 32 levels are omitted whole rather than partly serialized.
 Plain error reports show scalar fields and scalar arrays after their existing
@@ -502,7 +505,8 @@ its only failure otherwise.
 A Landofile that fails validation produces a `LandofileValidationError`
 envelope at exit `1` from `lando app:config`, `lando start`, and
 `lando app:cache:refresh`, and the error carries every problem under
-`error.issues`. Each issue is `{ path, message, suggestion?, source? }`. `path` is an
+`error.issues`. Each issue is
+`{ path, message, rule?, kind?, suggestion?, source? }`. `path` is an
 array of keys and indexes, never a dotted string, so a script indexes into
 the parsed Landofile with it directly. `suggestion` is present when Lando has
 a concrete fix, such as the closest allowed key for a typo:
@@ -514,6 +518,13 @@ lando app:config --format=json | jq ".error.issues[0]"
 For a service that spells `image` as `imgae`, that first issue has `path`
 `["services", "web", "imgae"]` and a `suggestion` naming `image`.
 
+`rule` is a stable id for the cause, such as `unsupported-secret-reference`,
+and `kind` classifies a schema problem as `type`, `value`, `missing`, or
+`unexpected`. Match on those instead of parsing `message`, and follow
+`suggestion` for the change to make.
+[Lint a Landofile](./landofile/config-lint.mdx#print-json) has the full
+contract.
+
 Three independent mistakes produce three issues in one run. Branch on
 `error._tag`, then loop `error.issues`; do not parse `error.message`, which
 is the human rendering of the same list. `lando app:config:lint
@@ -522,7 +533,7 @@ result with `valid: false`, which suits editors that want the list without a
 failing exit. Lint and planning run one shared validation stage, so a
 service-type finding such as `["services", "db", "environment", "PGPORT"]`
 or a bad route hostname shows up with the same `path`, `message`,
-`suggestion`, and `source` in both envelopes. `lando app:config` stops
+`suggestion`, `fix`, and `source` in both envelopes. `lando app:config` stops
 earlier: it echoes the resolved Landofile and reports schema and
 expression issues, not service-type or route findings.
 

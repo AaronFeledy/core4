@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit } from "effect";
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ProviderError } from "@lando/sdk/services";
-
-import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { Cause, Effect, Exit } from "effect";
 import {
   MINIMUM_PODMAN_VERSION,
   type PodmanCommandRunner,

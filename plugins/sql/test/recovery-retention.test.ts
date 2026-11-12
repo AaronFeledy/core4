@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-import { TestClock } from "effect/testing";
-
 import { SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { AppId, type PrunePolicy, ServiceName, appIdentityKey } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 
 import { executeDbCommand } from "../src/run.ts";
 import { FakeRestoreError, cleanupSqlTestDeps } from "./support/fakes.ts";

@@ -7,9 +7,11 @@ import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
+
 const { decomposer: drupalDecomposer } = bundledRecipe("drupal");
 const { decomposer: laravelDecomposer } = bundledRecipe("laravel");
 const { decomposer: wordpressDecomposer } = bundledRecipe("wordpress");
+
 import { previewRecipeLandofile } from "../../src/recipes/init-pipeline.ts";
 
 test.each([

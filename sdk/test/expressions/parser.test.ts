@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
-
 import {
   type CallExpressionNode,
   type ExpressionNode,
@@ -8,6 +6,7 @@ import {
   type ShellParamSegment,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
+import { Result } from "effect";
 
 const filePath = "/app/.lando.yml";
 

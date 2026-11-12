@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
-import { readAcquisitionState } from "../src/port-acquisition-state.ts";
+import { Effect } from "effect";
 import type { AcquisitionDecision } from "../src/port-acquisition.ts";
+import { readAcquisitionState } from "../src/port-acquisition-state.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths } from "../src/proxy-types.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 
 const router = {
   httpPort: 46080,

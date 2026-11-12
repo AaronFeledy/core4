@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect } from "effect";
-
 import type { ManagedRuntimeDirFsSeam } from "@lando/container-runtime/podman/managed-runtime-dir";
+import { Effect } from "effect";
 
 import {
   CGROUPS_V2_DELEGATION_NO_SYSTEMD_REMEDIATION,

@@ -1,4 +1,5 @@
 import { dirname, isAbsolute, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 import type { SourceSession } from "@lando/source-acquisition";
@@ -125,7 +126,7 @@ const inspectRecipe = Effect.fn("Recipes.inspect")(function* (
   const store = (yield* retainedRecipeSourceStore(options.registryUrl)).store;
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      const sources = yield* store.session.pipe(mapFailures((error) => mapSourceAcquisitionError(error)));
       return yield* inspectWithSources(ref, { ...options, sources }, pathOnly);
     }),
   );

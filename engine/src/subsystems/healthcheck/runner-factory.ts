@@ -1,6 +1,6 @@
-import { Effect, Ref, Result } from "effect";
-
 import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { ProbeResult } from "@lando/sdk/probe";
 import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
@@ -11,14 +11,13 @@ import {
   type ProcessResult,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Effect, Ref, Result } from "effect";
 import {
   type HostProbeRunners,
   interruptOnAbort,
   prepareHealthcheckAttempt,
   validateProbeTarget,
 } from "./attempt.ts";
-
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 type AttemptStatus =
   | { readonly _tag: "ok" }
@@ -168,7 +167,7 @@ export const makeHealthcheckRunner: (deps: {
           { id: `healthcheck:${service}`, plan },
           makeAttempt({ attempt: prepared.run, status }),
           Ref.set(status, { _tag: "timeout" }).pipe(Effect.as("red" as const)),
-        ).pipe(Effect.mapError((cause) => toProbeError(service, cause))),
+        ).pipe(mapFailures((cause) => toProbeError(service, cause))),
         deps.signal,
       );
       const finalStatus = yield* Ref.get(status);

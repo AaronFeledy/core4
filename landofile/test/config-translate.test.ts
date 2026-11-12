@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Option } from "effect";
-
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
 import { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type {
@@ -10,6 +7,7 @@ import type {
   ConfigTranslateResult,
   ConfigTranslatorShape,
 } from "@lando/sdk/services";
+import { Cause, Effect, Option } from "effect";
 
 import {
   detectConfigTranslators,

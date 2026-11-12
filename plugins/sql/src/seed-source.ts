@@ -1,8 +1,7 @@
 import { resolve } from "node:path";
-import { Effect, absurd } from "effect";
-
 import { SqlSeedSourceError, SqlServiceAmbiguousError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
+import { Effect, absurd } from "effect";
 
 import { secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -82,6 +81,16 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
         message: `${service.family} cannot seed ${target.family}.`,
         remediation:
           "Use a source database of the same family, or convert a logical export before db:seed <file>.",
+      }),
+    );
+  }
+  if (service.kind === "file") {
+    return yield* Effect.fail(
+      new SqlSeedSourceError({
+        ...details,
+        message: "SQLite file targets cannot stream as a seed source.",
+        remediation:
+          "Use `lando db:export` in the source checkout, then `lando db:seed <file>` in the target checkout.",
       }),
     );
   }

@@ -1,10 +1,8 @@
-import { homedir } from "node:os";
-
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
+import { homedir } from "node:os";
 import { LandofileShape, type ServiceConfig, ServiceName, landoAppStoreName } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -485,4 +483,5 @@ describe("compose ServiceType (raw passthrough)", () => {
     });
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

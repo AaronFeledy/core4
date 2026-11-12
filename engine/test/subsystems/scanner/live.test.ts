@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import { AbsolutePath, type AppPlan, ProviderId, type ScanPlan, ServiceName } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import * as liveModule from "../../../src/subsystems/scanner/live.ts";
 import { appId, drive, endpointsOf, httpStatus, publishedEndpoint, requestSequence } from "./support.ts";

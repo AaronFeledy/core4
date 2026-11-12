@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { DoctorResourceNameQuery } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -22,9 +23,7 @@ export const inspectEngineResourceNames = Effect.fn("RuntimeProvider.inspectReso
 ) {
   const errorFields = { ...ctx, operation: "inspectResourceNames" };
   const checked = yield* Schema.decodeUnknownEffect(DoctorResourceNameQuery)(query).pipe(
-    Effect.mapError(
-      () => new ProviderInternalError({ ...errorFields, message: "Invalid resource name query." }),
-    ),
+    mapFailures(() => new ProviderInternalError({ ...errorFields, message: "Invalid resource name query." })),
   );
   if (api.request === undefined) {
     return yield* Effect.fail(
@@ -69,7 +68,7 @@ export const inspectEngineResourceNames = Effect.fn("RuntimeProvider.inspectReso
             })),
           ),
         )
-  ).pipe(Effect.mapError(malformed));
+  ).pipe(mapFailures(malformed));
   const names = resources
     .filter(
       ({ labels }) =>

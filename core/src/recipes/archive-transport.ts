@@ -5,14 +5,12 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Context, Effect, Layer } from "effect";
-
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
 import { layer as httpClientLayer } from "@lando/http-client/live";
 import { Downloader } from "@lando/sdk/services";
 import type { ArchiveTransport } from "@lando/source-acquisition";
+import { Context, Effect, Layer } from "effect";
 
 export interface AuthenticatedArchiveTransport extends ArchiveTransport {
   readonly fetch: (

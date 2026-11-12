@@ -129,7 +129,9 @@ export const legacyReferenceDiagnostics = (
         }
         return;
       case "sequence":
-        value.items.forEach((item, index) => visit(item.value, [...path, index]));
+        value.items.forEach((item, index) => {
+          visit(item.value, [...path, index]);
+        });
         return;
       case "scalar": {
         if (typeof value.value !== "string") return;

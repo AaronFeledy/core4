@@ -4,9 +4,9 @@ import { AbsolutePath, AppId, ProviderId, type VolumeInfo, appIdentityKey } from
 import { type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { clearAppDataIdentityWhenComplete } from "../../src/operations/data-identity-clear.ts";
+import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { executeTeardown } from "../../src/operations/destroy-execute.ts";
 import type { TeardownPlan } from "../../src/operations/destroy-plan.ts";
-import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { readAppDataIdentity, recordAppDataIdentity } from "../../src/planner/data-identity.ts";
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -122,7 +122,7 @@ test.each([undefined, "inventory", "orphans"] as const)(
       stateStore: store,
       listVolumes: () => Effect.succeed([]),
       providerOverrides: {
-        getStatus: Effect.succeed({ running: true }),
+        getStatus: Effect.succeed({ state: "running" as const }),
         cleanupOwnedResources: () =>
           Effect.succeed({ servicesRemoved: [], networksRemoved: 0, volumesRemoved: 0 }),
       },
@@ -165,7 +165,7 @@ test.each([
       listVolumes: () => Effect.succeed(remaining),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "applied", plan, ownership: [ownership] }),
       providerOverrides: {
-        getStatus: Effect.succeed({ running: true }),
+        getStatus: Effect.succeed({ state: "running" as const }),
         cleanupOwnedResources: () =>
           Effect.succeed({
             servicesRemoved: [],

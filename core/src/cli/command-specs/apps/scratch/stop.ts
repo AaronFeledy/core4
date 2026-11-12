@@ -1,6 +1,3 @@
-import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
-import { Args } from "../../../spec/metadata";
-
 import type { ScratchHandle } from "@lando/sdk/services";
 import {
   ScratchHandleResultSchema,
@@ -9,6 +6,8 @@ import {
   scratchStop,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { nonPromptingYesFlag } from "../../../spec/confirmation-flag";
+import { Args } from "../../../spec/metadata";
 
 export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
   resultSchema: ScratchHandleResultSchema,

@@ -7,9 +7,10 @@
  * or use `Bun.Terminal` in compiled cold-start files.
  */
 import { resolve } from "node:path";
-import { Context, Effect, Layer, Option } from "effect";
-
+import { RedactionService } from "@lando/redaction/service";
+import { identityRedactor, mapFailures } from "@lando/sdk/command-result";
 import { FileIoError, ProcessExecError, ShellExecError } from "@lando/sdk/errors";
+import { REDACTED, type Redactor, isSecretFieldName } from "@lando/sdk/secrets";
 import {
   EventService,
   type LandoEvent,
@@ -19,11 +20,8 @@ import {
   type ShellReplIO,
   ShellRunner,
 } from "@lando/sdk/services";
-
-import { RedactionService } from "@lando/redaction/service";
-import { identityRedactor } from "@lando/sdk/command-result";
-import { REDACTED, type Redactor, isSecretFieldName } from "@lando/sdk/secrets";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Context, Effect, Layer, Option } from "effect";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { bunShellDialectIssues, bunShellScriptIssue, describeBunShellIssue } from "./bun-shell-dialect.ts";
 import {
@@ -252,7 +250,7 @@ export const makeShellRunnerService = (
             const redaction = yield* ShellRedactionTokens;
             const result = yield* streamBunCommand(command, snapshot, { sink, context, redaction }).pipe(
               Effect.provideService(ProcessRunner, runner),
-              Effect.mapError((cause) => shellError(command, snapshot, cause)),
+              mapFailures((cause) => shellError(command, snapshot, cause)),
             );
             return yield* result.exitCode === 0
               ? Effect.succeed(result)
@@ -286,7 +284,7 @@ export const makeShellRunnerService = (
               redaction,
             }).pipe(
               Effect.provideService(ProcessRunner, runner),
-              Effect.mapError((cause) => shellError(command, snapshot, cause)),
+              mapFailures((cause) => shellError(command, snapshot, cause)),
               Effect.flatMap((result) =>
                 result.exitCode === 0
                   ? Effect.succeed(result)

@@ -37,8 +37,12 @@ For a script, read the DNS observations in the JSON report instead of parsing te
 <Guide>
   <Scenario id="inspect-host-dns" render>
     <Step name="inspect">
-      <Run command="lando doctor --format=json" />
-      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "name.:.host-dns.*dnsHostname.*dnsResolved" } }} />
+      <Run runtime="library" displayCode="lando doctor --format=json" code={`const run = yield* context.runCli(["doctor", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.result.subsystems.checks).toContainEqual(expect.objectContaining({
+  name: "host-dns",
+  context: expect.objectContaining({ dnsHostname: expect.any(String), dnsResolved: expect.any(String) }),
+}));`} />
     </Step>
   </Scenario>
 </Guide>

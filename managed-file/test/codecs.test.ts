@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
-
 import { ManagedFileError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { decode, encode } from "../src/codecs.ts";
 

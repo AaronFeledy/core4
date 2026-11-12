@@ -1,3 +1,8 @@
+import { mapFailures } from "@lando/sdk/command-result";
+import { LandofileParseError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import type { TemplateRenderContext } from "@lando/sdk/schema";
+import type { TemplateEngine } from "@lando/sdk/template";
 /**
  * Pre-parse Landofile template rendering.
  *
@@ -23,11 +28,6 @@
  * `LandofileService.discover` error union remains unchanged.
  */
 import { Effect } from "effect";
-
-import { LandofileParseError } from "@lando/sdk/errors";
-import type { LandoPluginModule } from "@lando/sdk/plugins";
-import type { TemplateRenderContext } from "@lando/sdk/schema";
-import type { TemplateEngine } from "@lando/sdk/template";
 
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 
@@ -168,14 +168,12 @@ export const renderLandofileTemplate = (
   }
 
   return engine.compile({ id: filePath, source: blanked }).pipe(
-    Effect.mapError((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
+    mapFailures((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
     Effect.flatMap((compiled) =>
       engine
         .render(compiled, options.context ?? defaultRenderContext())
         .pipe(
-          Effect.mapError((error) =>
-            parseError(filePath, error.message, error.line, error.column, error.cause),
-          ),
+          mapFailures((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
         ),
     ),
   );

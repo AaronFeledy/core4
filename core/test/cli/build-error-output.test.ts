@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
-
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { BuildPhaseFailedError, BuildStepFailedError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, type BuildStep, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { DateTime, Effect, Layer } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { formatCommandError } from "../../src/cli/spec/command-spec.ts";
 
@@ -90,3 +90,59 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
   expect(output).toContain("[redacted]");
   expect(output).not.toContain("hunter2");
 });
+
+test.each(["text", "json"] as const)(
+  "renders a phase failure with messages, transcript paths, and output tails in %s output",
+  async (format) => {
+    // Given
+    const io = createBufferedRendererIO();
+    const app = AppId.make("build-phase-output");
+    const service = ServiceName.make("web");
+    const transcriptPath = AbsolutePath.make("/tmp/builds/build-phase-output/app/web/build.log");
+    const step: BuildStep = {
+      id: "web:app:install",
+      service,
+      phase: "app",
+      kind: "execStream",
+      command: ["install"],
+      dependsOn: [],
+      buildKey: "install-key",
+    };
+    const stepFailure = new BuildStepFailedError({
+      step,
+      exitCode: 1,
+      transcriptPath,
+      message: "Build step web:app:install for service web exited with code 1.",
+      outputTail: "first line\nsecond line",
+      remediation: `Inspect the build transcript at ${transcriptPath}, fix step web:app:install, and rebuild.`,
+    });
+    const error = new BuildPhaseFailedError({
+      app: { kind: "user", id: app, root: AbsolutePath.make("/tmp/build-phase-output") },
+      phase: "app",
+      message: "App build failed: 1 of 1 build steps failed.",
+      failures: [stepFailure],
+      remediation: "Fix the reported app-phase build step failures and rebuild.",
+    });
+
+    // When
+    await runWithRendererHandling(Effect.fail(error), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      command: "app:start",
+      ...(format === "json" ? { resultFormat: "json" as const } : {}),
+      formatError: (failure) =>
+        formatCommandError({ ...failure, commandId: "app:start", rendererMode: "plain" }),
+      setExitCode: () => undefined,
+    });
+
+    // Then
+    const output = format === "json" ? io.stdout() : io.stderr();
+    expect(output).toContain("App build failed: 1 of 1 build steps failed.");
+    expect(output).toContain("Build step web:app:install for service web exited with code 1.");
+    expect(output).toContain("first line");
+    expect(output).toContain("second line");
+    expect(output).toContain(transcriptPath);
+    expect(output).not.toContain("An internal Lando error occurred.");
+  },
+);

@@ -84,7 +84,7 @@ Promise results were restricted to `undefined`, `null`, `[]`, `{}`, and `false`,
 | plugins/provider-lando/src/windows-sync-recovery.ts:84 | 1 | preserve | Retained-writer inventory errors retain the provider API cause before any destructive action. |
 | plugins/provider-lando/src/windows-sync-helper.ts:209 | 1 | preserve | Image-inspection failure retains the original tagged provider cause under the image-verification wrapper. |
 
-Result: **16 preserved, 32 kept**. No blanket mapError ban: legitimate validation, payload-safety, and primary-error-preservation uses remain.
+Result: **16 preserved, 32 kept**; `mapFailures`/`mapStreamFailures` from `@lando/sdk/command-result` now preserve every reason and annotation without changing safe payload mappings.
 
 ### Promise decisions
 
@@ -111,7 +111,7 @@ Result: **6 narrowed, 8 kept**. The baseline return counts were undefined 11, nu
 
 Extend the existing `effect-idioms` rule, not the registry count, to reject **zero-argument `.catch` arrow handlers returning null**. Parenthesized expressions, optional chaining and a single block return are covered. A handler that inspects an error and returns null only for ENOENT remains allowed. Tests also retain legitimate undefined/empty-array cleanup handlers. The registry justification and inventory row record why package dependency direction cannot enforce this behavior.
 
-Do not ban all zero-argument mapError handlers or all promise swallows. The audit above supplies their remaining legitimate uses. Do not add a blanket false/empty-object ban just because those forms were never found.
+The `effect-idioms` ban replaces `Effect.mapError`/`Stream.mapError` in every shipped source root, including zero-argument handlers, with SDK failure mappers; promise swallows, including false/empty-object returns, retain the audit's existing policy.
 
 ## Effect.catch follow-up hotspots
 

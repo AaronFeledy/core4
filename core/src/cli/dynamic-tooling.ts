@@ -1,7 +1,12 @@
+import {
+  type RunToolingResult,
+  runTooling,
+  runToolingRedactionTokens,
+} from "@lando/engine/operations/tooling";
+import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { isStdioRendererIO } from "@lando/renderer/io";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
-import { Effect, Layer } from "effect";
-
 import {
   type BunShellScriptEmptyError,
   type BunShellScriptFrontMatterError,
@@ -14,15 +19,8 @@ import {
   ToolingCompileError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-
-import {
-  type RunToolingResult,
-  runTooling,
-  runToolingRedactionTokens,
-} from "@lando/engine/operations/tooling";
-import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
-import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
-import { isStdioRendererIO } from "@lando/renderer/io";
+import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
+import { Effect, Layer } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
 import { finishCommandProgress } from "./command-progress";
@@ -47,7 +45,10 @@ const dynamicToolingOptions = {
   resultSchema: ToolingResult,
   redactionTokens: runToolingRedactionTokens,
   completion: (result: RunToolingResult) => commandCompletionFromExitCode(result.exitCode),
-  failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
+  failureExitCode: (error: unknown) => {
+    if (!(error instanceof ToolingExecError)) return undefined;
+    return error.variable === undefined ? error.exitCode : 1;
+  },
 } as const;
 
 /** Retire event rendering before a keyboard-attached PTY so the tree does not fight the session. */
@@ -220,8 +221,8 @@ const runDynamicToolingFailure = (
 export const renderAliasResolutionFailure = async (
   error: unknown,
   context?: CliInvocationContext,
+  commandId = "cli:alias-resolution",
 ): Promise<void> => {
-  const commandId = "cli:alias-resolution";
   setActiveCommandId(commandId);
   await renderPreCommandFailure({
     ...(context === undefined ? {} : { context }),

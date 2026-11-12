@@ -4,8 +4,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { parseLandofile } from "@lando/landofile/parser";
 
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
@@ -23,14 +22,13 @@ import {
   type ConfigTranslatorShape,
 } from "@lando/sdk/services";
 import { runConfigTranslatorContractSuite } from "@lando/sdk/test";
-
-import { parseLandofile } from "@lando/landofile/parser";
-import { renderTranslateDiagnostics } from "../../src/cli/commands/app-config-translate-output.ts";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import {
   type AppConfigTranslateResult,
   AppConfigTranslateResultSchema,
   renderConfigTranslateResult,
 } from "../../src/cli/commands/app-config-translate.ts";
+import { renderTranslateDiagnostics } from "../../src/cli/commands/app-config-translate-output.ts";
 import { appConfigTranslateWithOwnerOnlyFileAccess as appConfigTranslate } from "../_support/private-file-access.ts";
 
 const dirs: Array<string> = [];
@@ -149,15 +147,15 @@ describe("appConfigTranslate", () => {
           outputs: [
             {
               targetLayer: "canonical",
-              fragment: { name: "demo", tooling: { echo: { vars: { VALUE: { sh: "echo hi" } } } } },
+              fragment: { name: "demo", services: { web: { security: { ca: ["/certs/a.pem"] } } } },
               sourceIds,
             },
+            // Valid alone, but `ca` and `cas` are mutually exclusive once merged.
             {
               targetLayer: "local",
-              fragment: { tooling: { echo: { vars: { VALUE: { prompt: "Value" } } } } },
+              fragment: { services: { web: { security: { cas: "/certs/b.pem" } } } },
               sourceIds,
             },
-            { targetLayer: "user", fragment: { tooling: { echo: { vars: { VALUE: "fixed" } } } }, sourceIds },
           ],
           diagnostics: [],
           deletions: [],

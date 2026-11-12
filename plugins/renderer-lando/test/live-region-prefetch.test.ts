@@ -1,12 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CliCommandInitEvent, type LandoEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Schema } from "effect";
 
 import {
   type LiveRegionControllerOptions,

@@ -1,9 +1,8 @@
 /** Regression coverage for foreign merging against real legacy YAML documents. */
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { isLegacyTagged, parseLegacyLandofile } from "@lando/sdk/landofile";
 import { ConfigTranslateSourceId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import type { Lando3Source, Lando3SourceLayer } from "../src/contract.ts";
 import { mergeLegacySources, mergedToPlain, occurrencesAt, toMergedValue } from "../src/legacy-merge.ts";

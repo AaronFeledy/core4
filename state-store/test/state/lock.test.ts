@@ -7,6 +7,7 @@ import { Deferred, Effect, Fiber } from "effect";
 
 import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "../../src/lock.ts";
 import { lockTestAccess } from "./lock-test-access.ts";
+
 const withAdvisoryLock = withAdvisoryLockUsing(lockTestAccess);
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);

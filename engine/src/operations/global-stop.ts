@@ -3,23 +3,6 @@ import {
   recordGlobalResourceCleanup,
   recordGlobalRouteCleanup,
 } from "@lando/engine/global-app/reconciliation";
-import { DateTime, Effect, Layer, Schema } from "effect";
-
-import { type EventError, GlobalAppError, type ProxyError } from "@lando/sdk/errors";
-
-import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
-import { AbsolutePath, type ProviderId, StopAppOutcome, StopAppResult } from "@lando/sdk/schema";
-import { EventService, FileSystem, GlobalAppService, RouterService } from "@lando/sdk/services";
-import { makeGlobalAppServiceForRoot } from "../global-app/service.ts";
-import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
-import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
-import { TeardownProvider } from "../providers/app-placement.ts";
-import * as DeferredCertificateAuthority from "../subsystems/proxy/deferred-certificate-authority.ts";
-import { RouterServiceRegistry } from "../subsystems/proxy/registry.ts";
-import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
-import { withGlobalLifecycleEvents } from "./global-common";
-import { withShutdownObservations } from "./shutdown-observations.ts";
-
 import {
   executeGlobalStopSelection,
   executeGlobalTeardown,
@@ -27,6 +10,24 @@ import {
   resolveGlobalStopSelection,
   resolveGlobalTeardown,
 } from "@lando/engine/operations/global-teardown";
+
+import { type EventError, GlobalAppError, type ProxyError } from "@lando/sdk/errors";
+
+import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
+import { AbsolutePath, type ProviderId, StopAppOutcome, StopAppResult } from "@lando/sdk/schema";
+import { EventService, FileSystem, GlobalAppService, RouterService } from "@lando/sdk/services";
+import { DateTime, Effect, Layer, Schema } from "effect";
+import { makeGlobalAppServiceForRoot } from "../global-app/service.ts";
+import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
+import { type RouteWithdrawal, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
+import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import { TeardownProvider } from "../providers/app-placement.ts";
+import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
+import * as DeferredCertificateAuthority from "../subsystems/proxy/deferred-certificate-authority.ts";
+import { RouterServiceRegistry, layerSelected } from "../subsystems/proxy/registry.ts";
+import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
+import { withGlobalLifecycleEvents } from "./global-common";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -73,9 +74,9 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
     const loaded = yield* resolveGlobalTeardown();
     if (loaded.evidence.kind === "absent") {
       if (!options.services?.length) {
-        const router = yield* RouterService;
-        yield* router.removeRoutes(routeOwnerFromGlobalTeardown(loaded));
-        yield* recordGlobalRouteCleanup();
+        const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromGlobalTeardown(loaded));
+        // A skipped withdrawal proves nothing, so route obligations stay pending.
+        if (withdrawal.kind === "withdrawn") yield* recordGlobalRouteCleanup();
       }
       return { app: "global", outcome: "unchanged", materialized: loaded.materialized, servicesStopped: [] };
     }
@@ -110,14 +111,21 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
           ),
       },
       Effect.gen(function* () {
-        const receipt =
+        const receipt: Effect.Success<
+          ReturnType<typeof executeGlobalTeardown | typeof executeGlobalStopSelection>
+        > & { readonly routes?: RouteWithdrawal["kind"] } =
           selection === undefined
             ? yield* executeGlobalTeardown(loaded, { intent: "stop", volumes: false, removeState: false })
             : yield* executeGlobalStopSelection(loaded, selection);
         if (selection === undefined) {
-          const router = yield* RouterService;
-          yield* router.removeRoutes(routeOwnerFromGlobalTeardown(loaded));
-          yield* recordGlobalResourceCleanup();
+          // An idle teardown already withdrew routes; withdrawing again would repeat its warning.
+          const withdrawal =
+            receipt.routes ?? (yield* withdrawOwnerRoutes(routeOwnerFromGlobalTeardown(loaded))).kind;
+          // Cleanup proof covers routes, so a skipped withdrawal leaves every obligation pending.
+          if (withdrawal === "withdrawn")
+            yield* "cleanup" in receipt && receipt.cleanup === "routes"
+              ? recordGlobalRouteCleanup()
+              : recordGlobalResourceCleanup();
         }
         return withShutdownObservations(
           {
@@ -158,11 +166,30 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
                   }),
                 );
               const current = yield* RouterService;
+              // Reselect under the discovered root so an unavailable router's withdrawal through
+              // installed routers targets that root, not the configured one captured at bootstrap.
+              // Fresh: the runtime memoizes the bootstrap build, which is bound to the configured root.
+              if (unavailableRouterReason(current) !== undefined)
+                return yield* effect.pipe(
+                  Effect.provide(
+                    Layer.fresh(layerSelected).pipe(
+                      Layer.provide(
+                        Layer.mergeAll(
+                          Layer.succeed(RouterServiceRegistry, routers.value),
+                          Layer.succeed(CertificateAuthorityResolver, authorities.value),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
               const selected = yield* routers.value.select({ explicit: current.id });
               const authority = DeferredCertificateAuthority.layer.pipe(
                 Layer.provide(Layer.succeed(CertificateAuthorityResolver, authorities.value)),
               );
-              return yield* effect.pipe(Effect.provide(selected.layer.pipe(Layer.provide(authority))));
+              // Fresh: the runtime memoizes this registration's bootstrap build, bound to the configured root.
+              return yield* effect.pipe(
+                Effect.provide(Layer.fresh(selected.layer).pipe(Layer.provide(authority))),
+              );
             });
       return yield* withGlobalMutation(targetedWork).pipe(
         Effect.provideService(GlobalAppService, targeted),

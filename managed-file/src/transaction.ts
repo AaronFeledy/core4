@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { commandFailureCause, mapFailures } from "@lando/sdk/command-result";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
+import { createdOutputs } from "./transaction-create.ts";
 import { applyCommittedEntry } from "./transaction-create-link.ts";
 import { assertCreateAbsent, ensureDirectoryPolicy } from "./transaction-create-path.ts";
-import { createdOutputs } from "./transaction-create.ts";
 import { ManagedFileTransactionError, transactionError, transactionIO } from "./transaction-error.ts";
 import {
   canonicalRoot,
@@ -25,10 +26,10 @@ import {
 import { TransactionRequest, planTransaction, verifyTransactionConditions } from "./transaction-plan.ts";
 import { makeTransactionRecovery } from "./transaction-recovery.ts";
 
-export { ManagedFileTransactionError, TransactionRequest };
 export { makeManagedFileTransactionGuard } from "./transaction-guard.ts";
-export type { RecoveryOutcome } from "./transaction-recovery.ts";
 export type { Journal } from "./transaction-journal.ts";
+export type { RecoveryOutcome } from "./transaction-recovery.ts";
+export { ManagedFileTransactionError, TransactionRequest };
 export interface PreparedTransaction {
   readonly id: string;
   readonly journalPath: string;
@@ -86,7 +87,9 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
 
   const prepare = Effect.fn("ManagedFileTransactions.prepare")(function* (input: TransactionRequest) {
     const request = yield* Schema.decodeUnknownEffect(TransactionRequest)(input).pipe(
-      Effect.mapError(() => transactionError("path", "prepare")),
+      // Authored getters can defect with file bytes; sanitize them without dropping sibling reasons.
+      Effect.catchCause((cause) => Effect.failCause(commandFailureCause(cause))),
+      mapFailures(() => transactionError("path", "prepare")),
     );
     const root = yield* transactionIO("prepare", () => canonicalRoot(request.appRoot));
     const store = yield* openJournal(root, options.journalRoot(), {

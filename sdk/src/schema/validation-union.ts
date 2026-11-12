@@ -5,6 +5,7 @@ import {
   authoringExpectation,
   authoringSource,
   isExpressionSlot,
+  throughSemanticSite,
 } from "./authoring-issue-metadata.ts";
 import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 
@@ -12,6 +13,8 @@ const plainTextSlotRejection = (issue: SchemaIssue.Issue): boolean =>
   issue._tag === "InvalidValue" && issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true;
 
 const forbiddenKeyIssue = (issue: SchemaIssue.Issue): boolean => {
+  const transparent = throughSemanticSite(issue);
+  if (transparent !== issue) return forbiddenKeyIssue(transparent);
   switch (issue._tag) {
     case "Encoding":
       return forbiddenKeyIssue(issue.issue);
@@ -40,6 +43,8 @@ const forbiddenKeyPointer = (issue: SchemaIssue.Issue): boolean =>
   issue._tag === "Pointer" && issue.path.length === 1 && forbiddenKeyIssue(issue.issue);
 
 const fieldIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] | undefined => {
+  const transparent = throughSemanticSite(issue);
+  if (transparent !== issue) return fieldIssues(transparent);
   switch (issue._tag) {
     case "Encoding":
       return fieldIssues(issue.issue);
@@ -111,6 +116,8 @@ export const unionValueMessage = (
   // Key presence only summarizes when several members compete for the input.
   const keyCombination = candidates.length > 1;
   const canSummarize = (issue: SchemaIssue.Issue): boolean => {
+    const transparent = throughSemanticSite(issue);
+    if (transparent !== issue) return canSummarize(transparent);
     switch (issue._tag) {
       case "Pointer":
         return (
@@ -152,6 +159,8 @@ export const unionValueMessage = (
 };
 
 const candidateAst = (issue: SchemaIssue.Issue): SchemaAST.AST | undefined => {
+  const transparent = throughSemanticSite(issue);
+  if (transparent !== issue) return candidateAst(transparent);
   switch (issue._tag) {
     case "Encoding":
       return candidateAst(issue.issue);
@@ -165,6 +174,8 @@ const candidateAst = (issue: SchemaIssue.Issue): SchemaAST.AST | undefined => {
 };
 
 const rejectsDiscriminator = (issue: SchemaIssue.Issue): boolean => {
+  const transparent = throughSemanticSite(issue);
+  if (transparent !== issue) return rejectsDiscriminator(transparent);
   switch (issue._tag) {
     case "InvalidType":
     case "MissingKey":
@@ -182,6 +193,8 @@ const rejectsDiscriminator = (issue: SchemaIssue.Issue): boolean => {
 };
 
 const rejectsKey = (issue: SchemaIssue.Issue, key: PropertyKey): boolean => {
+  const transparent = throughSemanticSite(issue);
+  if (transparent !== issue) return rejectsKey(transparent, key);
   switch (issue._tag) {
     case "Pointer":
       return issue.path[0] === key && rejectsDiscriminator(issue.issue);
@@ -243,8 +256,12 @@ export const diagnosticUnionCandidates = (
   const source = authoringSource(ast);
   if (source?._tag !== "Union") return children;
   // Nested AnyOfs with the same source are derivation wrappers, not source members.
-  const unwrap = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] =>
-    issue._tag === "AnyOf" && authoringSource(issue.ast) === source ? issue.issues.flatMap(unwrap) : [issue];
+  const unwrap = (wrapped: SchemaIssue.Issue): readonly SchemaIssue.Issue[] => {
+    const issue = throughSemanticSite(wrapped);
+    return issue._tag === "AnyOf" && authoringSource(issue.ast) === source
+      ? issue.issues.flatMap(unwrap)
+      : [issue];
+  };
   return children.flatMap(unwrap).filter((child) => {
     const derived = candidateAst(child);
     if (derived === undefined) return true;

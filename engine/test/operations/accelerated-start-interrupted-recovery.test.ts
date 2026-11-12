@@ -62,7 +62,7 @@ test.each(
     expect(harness.calls).not.toContain("flush:interrupted");
     expect(pending?.phase).toBe(phase);
   } else {
-    expect(pending?.phase).toBe("completed");
+    expect(pending).toBeNull();
     expect(harness.calls).not.toContain("create:one-way-replica");
     if (operation === "start") expect(harness.calls).toContain("flush:interrupted");
     else expect(harness.calls).toContain("dispose-targets");

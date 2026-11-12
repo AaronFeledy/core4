@@ -114,7 +114,7 @@ describe("provider machine lifecycle acceptance", () => {
     expect(check?.command).toEqual([
       "bun",
       "test",
-      "plugins/provider-lando/test/compose-knobs-transport.test.ts",
+      "./plugins/provider-lando/test/compose-knobs-transport.test.ts",
     ]);
   });
 

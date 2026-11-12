@@ -16,17 +16,17 @@ services:
     type: postgres
 ```
 
-Without a `creds:` block, Lando generates the password. Do not assume it is `lando`. To choose explicit credentials, provide `user`, `database`, and `password` together:
+Without a `creds:` block, the password is `lando`. `lando info` prints that published default. To choose your own, set it under `creds:`. One member is enough. `user` and `database` keep their defaults when you leave them out:
 
 ```yaml
 services:
   db:
     type: postgres
     creds:
-      user: lando
-      database: postgres-demo
       password: local-development-only
 ```
+
+`creds.password` is the superuser password, so Postgres takes no `creds.rootPassword`.
 
 For a private password, use `password: '${secret:DB_PASSWORD}'` and set its [secret store](../config/secret-stores.mdx) value before starting the app. The server, the `psql` task, and `lando db:*` all receive that same resolved value.
 
@@ -52,9 +52,9 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Setting | Value |
 | --- | --- |
 | Host | `db` |
-| Database | the folder's data name (here `postgres-demo`, the name this folder's data was first created under); override with `database:` under `services.db` |
+| Database | the folder's data name (here `postgres-demo`, the name this folder's data was first created under); override with `creds.database` under `services.db` |
 | User | `lando` |
-| Password | generated when omitted; read it with `{{ services.db.creds.password }}` |
+| Password | `lando`; `lando info` prints it, and another service reads `{{ services.db.creds.password }}` |
 
 Hand the consuming service a URL built from `db`'s resolved credentials and port:
 
@@ -68,7 +68,7 @@ services:
     type: postgres
 ```
 
-`web` gets the real password, and it follows an authored `creds:` block. Don't hardcode it. `{{ services.db.port }}` is `5432` here and follows `port:` when you set one. `url.encodeComponent()` percent-encodes the password for the URL, which matters once you author one with `@` or `/` in it. `lando info` redacts the password, so it's no place to copy it from. A password authored as a `${secret:...}` reference travels through this URL as a reference and resolves when `web` is created. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
+`web` gets the real password, and it follows an authored `creds:` block. Don't hardcode it. `{{ services.db.port }}` is `5432` here and follows `port:` when you set one. `url.encodeComponent()` percent-encodes the password for the URL, which matters once you author one with `@` or `/` in it. `lando info` prints this published default, so you can copy it from there. An authored password that is not a published default stays `[redacted]`. A password authored as a `${secret:...}` reference travels through this URL as a reference and resolves when `web` is created. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 ## Open the client
 

@@ -1,10 +1,10 @@
 import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
-import { Effect, Schema } from "effect";
-
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import { MINIO_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { dataNameFor } from "../app-name.ts";
 import {
   ServiceConfigIssue,
   commandHealthcheck,
@@ -13,8 +13,6 @@ import {
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
 import { assertListenerConfig, launcherAuthority, plannedPort } from "./_port-helpers.ts";
-
-import { dataNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const DEFAULT_API_PORT = 9000;
@@ -45,9 +43,28 @@ const minioPorts = (ctx: Pick<ServiceFeatureContext, "config" | "normalizedConfi
   return { apiPort: plannedPort(ctx.normalizedConfig, MINIO_LISTENER), consolePort };
 };
 
-const bucketNameFor = (value: string): string => {
-  const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "-");
-  return sanitized.length > 0 ? sanitized : "app";
+// The names MinIO accepts as buckets.
+const BUCKET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{1,61}[A-Za-z0-9]$/u;
+const isBucketName = (name: string): boolean => BUCKET_NAME.test(name) && !name.includes("..");
+
+const defaultBucketNameFor = (dataName: string): string => {
+  const name = dataName
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .slice(0, 63)
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+  if (name.length >= 3) return name;
+  return name.length === 0 ? "app" : `${name}-bucket`;
+};
+
+// An authored name is used verbatim, so it must already be one MinIO accepts.
+const assertBucketName = (bucket: string | undefined): void => {
+  if (bucket === undefined || isBucketName(bucket)) return;
+  throw new ServiceConfigIssue(
+    ["bucket"],
+    "MinIO bucket names are 3 to 63 letters, digits, dots, hyphens, or underscores, start and end with a letter or digit, and have no two dots in a row.",
+    "Use a bucket name such as uploads, or remove bucket to derive a name from the app's data name.",
+  );
 };
 
 const defaultServerCommand = (apiPort: number, consolePort: number): string =>
@@ -59,7 +76,7 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   const { apiPort, consolePort } = minioPorts(ctx);
   const rootUser = service.environment?.MINIO_ROOT_USER ?? "lando";
   const rootPassword = service.environment?.MINIO_ROOT_PASSWORD ?? MINIO_DEFAULT_PASSWORD;
-  const bucket = bucketNameFor(service.database ?? appName);
+  const bucket = service.bucket ?? defaultBucketNameFor(appName);
 
   if (service.image?.trim()) ctx.setArtifact({ kind: "ref", ref: service.image });
   ctx.addEnv("MINIO_ROOT_USER", rootUser);
@@ -118,7 +135,8 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
       );
     }
     minioPorts(ctx);
-    return { handledServiceFields: ["consolePort"] };
+    assertBucketName(service.bucket);
+    return { handledServiceFields: ["consolePort", "bucket"] };
   }),
   declareEndpoints: serviceFeatureDeclareEndpoints(MINIO_FEATURE_ID, (ctx) => {
     const { apiPort, consolePort } = minioPorts(ctx);

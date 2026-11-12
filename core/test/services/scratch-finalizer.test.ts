@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
-
 import { ProviderUnavailableError } from "@lando/core/errors";
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
@@ -14,8 +12,6 @@ import {
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -29,13 +25,17 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -134,13 +134,10 @@ const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> 
     return await run(dir);
   } finally {
     process.chdir(previousCwd);
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousCacheRoot === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousConfRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConfRoot;
     await rm(dir, { recursive: true, force: true });
@@ -172,7 +169,7 @@ const makeRecordingLayer = (
     capabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true, message: "ready" }),
+    getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => die("buildArtifact"),
     pullArtifact: () => die("pullArtifact"),
@@ -638,4 +635,5 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
     });
   });
 });
+
 import { environmentResolverLayer } from "../_support/value-contracts.ts";

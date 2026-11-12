@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Stream } from "effect";
-
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import { type AppRef, FileSyncSessionRef, type FileSyncSessionSpec } from "@lando/sdk/schema";
 import type { FileSyncEngine } from "@lando/sdk/services";
@@ -11,6 +8,7 @@ import {
   runFileSyncEngineContract,
   runFileSyncEngineContractMatrix,
 } from "@lando/sdk/test";
+import { Cause, Effect, Stream } from "effect";
 
 const APP_REF: AppRef = {
   kind: "user",

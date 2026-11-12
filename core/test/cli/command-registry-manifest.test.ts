@@ -1,16 +1,15 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { COMMAND_TOPICS } from "../../src/cli/command-topics.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixtureFiles = [
   "package.json",
-  "biome.json",
+  "biome.jsonc",
   "core/package.json",
   "scripts/_codegen-output.ts",
   "scripts/build-command-registry-manifest.ts",

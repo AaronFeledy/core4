@@ -647,4 +647,5 @@ describe("SSH agent doctor posture", () => {
     expect(check.context.securityPosture).toBe("host-win32-loopback");
   });
 });
+
 import { literalLandofile } from "../_support/value-contracts.ts";

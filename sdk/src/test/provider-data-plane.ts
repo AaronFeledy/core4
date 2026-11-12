@@ -1,11 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { Effect, Redacted, Schema, type Scope, Stream } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import {
   CapabilityError,
@@ -168,9 +167,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
 ): Effect.fn.Return<void, ContractFailure, Scope.Scope> {
   const provider = yield* input
     .factory()
-    .pipe(
-      Effect.mapError(mapProviderFailure(`${input.providerName ?? "provider"} data-plane factory resolves`)),
-    );
+    .pipe(mapFailures(mapProviderFailure(`${input.providerName ?? "provider"} data-plane factory resolves`)));
   const store = nextContractRunId();
   const volumePlan = {
     ...makeTestAppPlan(ProviderId.make(provider.id)),
@@ -229,23 +226,23 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   );
 
   yield* requireGenericVolumeFallback(provider).pipe(
-    Effect.mapError((error) =>
+    mapFailures((error) =>
       contractFailure("data-plane contract without ephemeral mounts fails CapabilityError", error),
     ),
   );
 
   yield* writeMountedVolume(provider, volumeOwner, store, volumePayload).pipe(
-    Effect.mapError(mapProviderOrContractFailure("volume import via EphemeralRunSpec.stdinStream succeeds")),
+    mapFailures(mapProviderOrContractFailure("volume import via EphemeralRunSpec.stdinStream succeeds")),
   );
   const targetVolumes = yield* provider
     .listVolumes({ app: TEST_APP_ID, store })
-    .pipe(Effect.mapError(mapProviderFailure("listVolumes succeeds")));
+    .pipe(mapFailures(mapProviderFailure("listVolumes succeeds")));
   const targetGeneration = targetVolumes.find((volume) => volume.ref.store === store)?.instanceId;
   if (targetGeneration === undefined) {
     return yield* contractFailure("created data-plane volume has a generation", targetVolumes);
   }
   const exportedVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
-    Effect.mapError(mapProviderFailure("volume export via runStream succeeds")),
+    mapFailures(mapProviderFailure("volume export via runStream succeeds")),
   );
   yield* requireContract(bytesEqual(exportedVolume, volumePayload), "importVolume(exportVolume(x)) == x", {
     expected: Array.from(volumePayload),
@@ -255,7 +252,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   if (provider.capabilities.volumeSnapshot === "native") {
     const snapshot = yield* provider
       .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
-      .pipe(Effect.mapError(mapProviderFailure("snapshotVolume succeeds")));
+      .pipe(mapFailures(mapProviderFailure("snapshotVolume succeeds")));
     if (input.observations?.usedNativeVolumeSnapshot !== undefined) {
       yield* requireContract(
         input.observations.usedNativeVolumeSnapshot(),
@@ -264,9 +261,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
       );
     }
     yield* writeMountedVolume(provider, volumeOwner, store, mutatedPayload).pipe(
-      Effect.mapError(
-        mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
-      ),
+      mapFailures(mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds")),
     );
     yield* provider
       .restoreVolume({
@@ -275,19 +270,19 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
         expectedTargetGeneration: targetGeneration,
         overwrite: true,
       })
-      .pipe(Effect.mapError(mapProviderFailure("restoreVolume succeeds")));
+      .pipe(mapFailures(mapProviderFailure("restoreVolume succeeds")));
     const restoredVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
-      Effect.mapError(mapProviderFailure("restored volume export via runStream succeeds")),
+      mapFailures(mapProviderFailure("restored volume export via runStream succeeds")),
     );
     if (provider.removeVolumeSnapshot === undefined) {
       return yield* contractFailure("native snapshot providers implement removeVolumeSnapshot", provider.id);
     }
     yield* provider
       .removeVolumeSnapshot(snapshot, { startRuntime: false })
-      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds without runtime startup")));
+      .pipe(mapFailures(mapProviderFailure("removeVolumeSnapshot succeeds without runtime startup")));
     yield* provider
       .removeVolumeSnapshot(snapshot)
-      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot is idempotent")));
+      .pipe(mapFailures(mapProviderFailure("removeVolumeSnapshot is idempotent")));
     yield* requireContract(
       bytesEqual(restoredVolume, volumePayload),
       "snapshot -> mutate -> restore restores volume bytes",
@@ -307,7 +302,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
 
   yield* withTempCopySource(servicePayload, (sourcePath) =>
     provider.copyToService(serviceTarget, { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true }),
-  ).pipe(Effect.mapError(mapProviderFailure("copyToService succeeds")));
+  ).pipe(mapFailures(mapProviderFailure("copyToService succeeds")));
   if (
     provider.capabilities.serviceFileCopy === "native" &&
     input.observations?.usedNativeServiceFileCopy !== undefined
@@ -320,7 +315,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   }
   const copiedServiceBytes = yield* collectByteStream(
     provider.copyFromService(serviceTarget, { sourcePath: TEST_VOLUME_PATH }),
-  ).pipe(Effect.mapError(mapProviderFailure("copyFromService succeeds")));
+  ).pipe(mapFailures(mapProviderFailure("copyFromService succeeds")));
   yield* requireContract(
     bytesEqual(copiedServiceBytes, servicePayload),
     "copyToService/copyFromService round-trips bytes",
@@ -329,9 +324,9 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
 
   const importedArtifact = yield* provider
     .importArtifact(Stream.make(artifactPayload))
-    .pipe(Effect.mapError(mapProviderFailure("importArtifact succeeds")));
+    .pipe(mapFailures(mapProviderFailure("importArtifact succeeds")));
   const exportedArtifact = yield* collectByteStream(provider.exportArtifact(importedArtifact)).pipe(
-    Effect.mapError(mapProviderFailure("exportArtifact succeeds")),
+    mapFailures(mapProviderFailure("exportArtifact succeeds")),
   );
   yield* requireContract(
     bytesEqual(exportedArtifact, artifactPayload),
@@ -439,7 +434,7 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
     isAvailable: Effect.succeed(true),
     planSetup: (_options) => Effect.succeed({ providerId: TEST_PROVIDER_ID, changes: [] }),
     setup: (_plan, _options) => Effect.void,
-    getStatus: Effect.succeed({ running: true, message: "ready" }),
+    getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
     buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),

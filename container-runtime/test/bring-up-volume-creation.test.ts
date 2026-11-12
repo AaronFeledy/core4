@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Option, Result, Schema } from "effect";
-
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -10,6 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Cause, DateTime, Effect, Exit, Option, Result, Schema } from "effect";
 import { bringUp } from "./support/service-creation.ts";
 
 const plan: AppPlan = {

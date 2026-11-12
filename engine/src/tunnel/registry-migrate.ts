@@ -1,6 +1,5 @@
-import { Schema, Struct } from "effect";
-
 import { RouteHostname, TunnelSession as TunnelSessionSchema, TunnelTarget } from "@lando/sdk/schema";
+import { Schema, Struct } from "effect";
 
 /** Version 3 stores registration facts; status is derived from current liveness. */
 export const TUNNEL_REGISTRY_VERSION = 3 as const;

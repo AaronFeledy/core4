@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -7,6 +8,7 @@ import { SourceAcquisitionError, acquisitionError, displaySource } from "./error
 import { type GitNetworkProjection, type GitTransportOptions, withGitTrust } from "./git-trust.ts";
 import { isLiteralGitRef } from "./locator.ts";
 import type { GitTransport } from "./types.ts";
+
 export type { GitTransport } from "./types.ts";
 
 /** HTTP(S) uses resolved Lando trust; SSH/scp URLs use SSH configuration unchanged. */
@@ -55,7 +57,7 @@ export const makeGitTransport = (
             },
           })
           .pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               acquisitionError(
                 "fetch-failed",
                 input.url,

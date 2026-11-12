@@ -4,6 +4,7 @@ import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/ser
 import { Effect, Schema } from "effect";
 
 import { routerEnabled } from "../config/router-config.ts";
+import { observeRuntime, workloadsProvablyStopped } from "../providers/runtime-observation.ts";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 
 export const GlobalConsumerSchema = Schema.Struct({
@@ -40,7 +41,8 @@ export class GlobalConsumerProtectionError extends Schema.TaggedError<GlobalCons
 export const resolveGlobalConsumerImpact = (input: {
   readonly providerId: ProviderId;
   readonly selectedIds: ReadonlyArray<string>;
-  readonly routerId: string;
+  /** `undefined` when no router is selectable, so an unrecorded router identity is unknown. */
+  readonly routerId: string | undefined;
   readonly plans: ReadonlyArray<AppPlan>;
   readonly services: ReadonlyArray<ServiceRuntimeInfo>;
 }): GlobalConsumerImpact => {
@@ -100,10 +102,17 @@ export const resolveGlobalConsumerImpact = (input: {
     );
     if (running.length === 0) continue;
     const requirements = (plan.requires?.globalServices ?? []).filter((id) => selected.has(id));
+    const legacyRouted = routerEnabled(plan) && plan.routes.length > 0 && plan.router?.id === undefined;
+    if (legacyRouted && input.routerId === undefined)
+      uncertainties.add(
+        `Running app ${plan.id} recorded no router and no router is selectable; its router dependency is unknown.`,
+      );
     const routed =
       routerEnabled(plan) &&
       plan.routes.length > 0 &&
-      (plan.router?.id === undefined ? selected.has(input.routerId) : requirements.length > 0);
+      (plan.router?.id === undefined
+        ? input.routerId !== undefined && selected.has(input.routerId)
+        : requirements.length > 0);
     if (requirements.length === 0 && !routed) continue;
     consumers.push({
       id: String(plan.id),
@@ -113,7 +122,12 @@ export const resolveGlobalConsumerImpact = (input: {
       provider: String(plan.provider),
       services: [...new Set(running.map((service) => String(service.service)))].sort(),
       globalServices: [
-        ...new Set([...requirements, ...(routed && plan.router?.id === undefined ? [input.routerId] : [])]),
+        ...new Set([
+          ...requirements,
+          ...(routed && plan.router?.id === undefined && input.routerId !== undefined
+            ? [input.routerId]
+            : []),
+        ]),
       ].sort(),
       routes: routed ? [...new Set(plan.routes.map((route) => route.hostname))].sort() : [],
     });
@@ -126,7 +140,7 @@ export const resolveGlobalConsumerImpact = (input: {
 export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")(function* (input: {
   readonly providerId?: ProviderId;
   readonly selectedIds: ReadonlyArray<string>;
-  readonly routerId: string;
+  readonly routerId: string | undefined;
 }) {
   if (input.selectedIds.length === 0)
     return { consumers: [], uncertainties: [] } satisfies GlobalConsumerImpact;
@@ -164,7 +178,7 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
         String(plan.id) !== "global" &&
         ((plan.requires?.globalServices ?? []).some((id) => selectedIds.has(id)) ||
           (plan.router?.id === undefined &&
-            selectedIds.has(input.routerId) &&
+            (input.routerId === undefined || selectedIds.has(input.routerId)) &&
             routerEnabled(plan) &&
             plan.routes.length > 0)),
     );
@@ -191,14 +205,17 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
     }
     const observations = yield* Effect.result(
       Effect.gen(function* () {
-        if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running)
+        const observation = yield* observeRuntime(provider);
+        if (observation.kind === "unavailable")
           return yield* Effect.fail(
-            new GlobalAppError({
-              operation: "consumerImpact",
-              message: `Runtime ${providerId} is unreachable; running consumers cannot be verified.`,
-              remediation: "Restore runtime access or explicitly acknowledge disruption.",
-            }),
+            observation.error ??
+              new GlobalAppError({
+                operation: "consumerImpact",
+                message: `Runtime ${providerId} is unreachable; running consumers cannot be verified.`,
+                remediation: "Restore runtime access or explicitly acknowledge disruption.",
+              }),
           );
+        if (workloadsProvablyStopped(observation)) return [];
         return yield* provider.list({ includeUnplanned: true, includeScratch: true });
       }),
     );

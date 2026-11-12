@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
+import { DownloadFetchError, HttpTrustError } from "@lando/sdk/errors";
 import { Cause, Effect, Exit } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
-import { DownloadFetchError, HttpTrustError } from "@lando/sdk/errors";
 import { makeDownloaderService } from "../src/downloader-service.ts";
 import { isTransientDownloadFailure } from "../src/downloader-transient.ts";
 import { trustFailure } from "../src/trust-failure.ts";

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Result } from "effect";
 import { admitSecrets, evaluateCondition, evaluateContextExpression } from "../src/contexts/index.ts";
+
 const source = { file: ".github/workflows/test.yml", line: 8, column: 5 };
 const success = { cancelled: false, previousSteps: [], ancestorJobs: [] } as const;
 const condition = (text: string, facts = {}, status: Parameters<typeof evaluateCondition>[3] = success) =>

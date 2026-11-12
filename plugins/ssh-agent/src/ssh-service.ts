@@ -2,10 +2,10 @@
  * SSH Service Live implementation - manages SSH agent sidecar via global app.
  */
 import { chmod, mkdir, stat } from "node:fs/promises";
-import { Effect, Layer } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { SshError, causeMessage, isErrnoCode } from "@lando/sdk/errors";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import { SSH_AGENT_VOLUME } from "./socket.ts";
 
 const SSH_SIDECAR_ID = "sidecar" as const;
@@ -62,7 +62,7 @@ export const layer = Layer.effect(
           catch: (cause: unknown) => cause,
         });
         yield* globalApp.ensureRunning([SSH_GLOBAL_SERVICE_NAME]);
-      }, Effect.mapError(setupError)),
+      }, mapFailures(setupError)),
       getAgentSocket: Effect.fn("SshService.getAgentSocket")((appId) =>
         Effect.succeed({
           socketPath: `${paths.roots.userDataRoot}/ssh/ssh-agent.sock`,

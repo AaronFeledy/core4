@@ -1,0 +1,178 @@
+---
+id: sqlite-database
+provider: test
+timeout: 240000
+tags: [beta, docs, tooling, database, sqlite]
+---
+
+# Use SQLite with db commands
+
+Declare `sqlite.path` on an app service and the `db:*` commands import, export, snapshot, restore, and reset that file the same way they handle a database server. Lando runs a pinned `sqlite3` helper that borrows the service container's own mounts, so the helper always works on exactly the file your application opens.
+
+## Declare the database path
+
+Add `sqlite` to the service that owns the file. The path is relative to that service's app mount.
+
+```yaml
+name: sqlite-database-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    sqlite:
+      path: data/site.sqlite
+```
+
+Lando normalizes `./` segments and repeated slashes, and `lando info` shows the canonical path under `engine: sqlite`. It rejects absolute paths, drive prefixes, backslashes, NUL bytes, any `..` segment, a trailing slash, and a path that resolves to the app mount itself.
+
+The service must have an app mount, and it cannot be a database or credential-bearing service such as `mysql` or `redis`. `lando app:config:lint --format=json` reports either mistake as a lint error with a suggestion before you start anything.
+
+## Start the app
+
+```sh
+lando start
+```
+
+The `db:*` commands need the service's container to exist. The container can be running or paused; if it is missing, the command tells you to run `lando start`. With more than one database target in the app, pass `--service <name>`.
+
+The commands use the path from the last `lando start`, which is the one `lando info` shows. After you add or change `sqlite.path`, run `lando start` again; until then the commands stop with an error that asks you to.
+
+`db:seed` does not support SQLite files. Its error points you at `db:import`, `db:restore`, or `db:reset` instead.
+
+## Export the database
+
+The file name selects the format. `.sqlite`, `.sqlite3`, `.db`, and `.db3` (case-insensitive) save a database copy using SQLite's backup API. Other names save SQL from `.dump --preserve-rowids`, preserving implicit rowids, `user_version`, and `application_id`. Add `.gz` or `.zst` to either format to compress it on the host. `-` streams SQL to stdout.
+
+```sh
+lando db:export backup.sql.gz --service appserver
+lando db:export copy.sqlite --service appserver
+lando db:export copy.db.zst --service appserver
+lando db:export - --service appserver > backup.sql
+```
+
+The app can keep running during export. Lando checks a database copy's integrity before publishing it. Both formats publish atomically, so a failed export leaves an existing destination untouched. If SQLite cannot read the whole database, the export fails instead of writing an empty or partial dump. Lando refuses destinations that resolve to the database file or its `-wal`, `-shm`, or `-journal` sidecars, including through symlinks or hard links. JSON import and export results report `format: "sql"` or `format: "sqlite"`.
+
+## Snapshot and list snapshots
+
+```sh
+lando db:snapshot --service appserver
+lando db:snapshots --service appserver
+```
+
+A snapshot belongs to this app folder, service, and database path. It contains the selected database file, including committed WAL content, and nothing else from that directory. Lando records the SQLite version for information and verifies each archive against its recorded digest and size before using it.
+
+## Import a dump or database file
+
+**Import replaces the selected database's contents.** Lando accepts a SQL dump or a raw SQLite database file, detected from the file header rather than the suffix, plus `.gz` and `.zst` input decompressed on the host. `-` reads stdin and requires `--yes`.
+
+```sh
+lando db:import backup.sql.gz --service appserver --yes
+lando db:import copy.sqlite --service appserver --yes
+cat backup.sql | lando db:import - --service appserver --yes
+```
+
+SQL input loads into a separate staging database first. The staged input, the recovery copy, and the final database each pass `PRAGMA integrity_check`. Lando copies the data into the existing file with SQLite's backup API, so the file, its owner, and its sidecars stay in place.
+
+## Restore a snapshot
+
+Find the ID with `lando db:snapshots --service appserver`, then restore it. **Restore replaces the selected database's contents.**
+
+```sh
+lando db:restore <id> --service appserver --yes
+```
+
+Restore requires the same app folder, service, and database path the snapshot recorded. Rebuilding the app or recreating its storage does not block a restore, and the SQLite version does not have to match.
+
+## Reset to an empty database
+
+**Reset removes the selected database's tables, views, indexes, triggers, and data.** Export or snapshot anything you want to keep first.
+
+```sh
+lando db:reset --service appserver --yes
+```
+
+Reset empties the database in place. It keeps the file, its owner, and its sidecars, sets `user_version` to 0, and runs no migrations or seeds. Run your application's migration command afterward when you want the schema back. `--yes` skips the confirmation prompt only; locking, recovery capture, and verification still run.
+
+## What happens during import, restore, and reset
+
+If the service is running, Lando pauses it for the operation, then resumes it and waits for it to be ready. One SQLite connection takes the exclusive lock and holds it from recovery capture through the change, so a host tool with the file open is fenced by SQLite itself. Lando waits up to 5 seconds for that lock. If another process still holds the file, the command fails with a busy error naming the file and nothing changes.
+
+Before changing an existing database, Lando captures a recovery snapshot under that same lock and reports its ID. A failure after capture reports the ID with `lando db:restore <id>` guidance. If the change finished but the service did not come back, the error says the operation completed and asks you to run `lando start` instead of retrying. If the snapshot could not be catalogued, the error names the retained recovery file as `recoveryFile` instead. A failure is never reported as success, even when part of the operation completed.
+
+When the database file does not exist yet, import, restore, and reset create it along with any missing parent directories, owned like the nearest existing directory. No recovery snapshot is taken because there was nothing to protect, and the result says so with `recoverySkipped: "database-missing"`.
+
+## Prune saved snapshots
+
+Pruning reads the snapshot catalog only; it does not open the database or need its container. The app still needs an applied plan so Lando can select the SQLite service. `--from-path` selects another app folder and `--from-app` a sibling app in the same repository group.
+
+```sh
+lando db:snapshots:prune --service appserver --keep-latest=3 --preview
+```
+
+`--keep-latest` applies per service and database path within the selected scope. Automatic recovery snapshots are never pruned manually. `--preview` lists the candidate IDs; running without it removes only those confirmed IDs, so snapshots added while you confirm stay intact.
+
+## Storage limits
+
+The helper borrows the service container's mounts, so the default file-synced (accelerated) app mount on macOS and Windows works without changing anything. With file sync, the host copy of the file updates once sync catches up.
+
+Lando refuses these with a clear error:
+
+- a database path on a tmpfs mount;
+- import, restore, or reset on a read-only mount.
+
+The helper image is a pinned `alpine/sqlite` build with FTS3, FTS4, FTS5, R*Tree, JSON, and math functions.
+
+## Check the Landofile
+
+<Guide>
+  <Scenario id="lint-sqlite-path" render>
+    <Step name="scaffold">
+      <UseFixture name="sqlite-database-demo" />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="lint-sqlite-on-mysql" render>
+    <Step name="scaffold">
+      <UseFixture name="sqlite-on-mysql" />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"database\",\\s*\"sqlite\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="binary-export-round-trip" layer="e2e" render={false} reason="Verify SQLite file copies against the running app">
+    <Step name="start">
+      <UseFixture name="sqlite-database-demo" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+    </Step>
+    <Step name="seed">
+      <Verify command={`lando exec appserver --format=json -- php -r 'mkdir("data", 0777, true); $db = new PDO("sqlite:data/site.sqlite"); $db->exec("CREATE TABLE items(id INTEGER PRIMARY KEY); INSERT INTO items VALUES(1),(2),(3);");'`} expect={{ stdout: { regex: "\"ok\":true" } }} />
+    </Step>
+    <Step name="export">
+      <Verify command="lando db:export dump.sql --format=json" expect={{ stdout: { regex: "\"ok\":true.*\"format\":\"sql\"" } }} />
+      <Verify command="lando db:export copy.sqlite --format=json" expect={{ stdout: { regex: "\"ok\":true.*\"format\":\"sqlite\"" } }} />
+    </Step>
+    <Step name="reset-and-import">
+      <Verify command="lando db:reset --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Verify command="lando db:import copy.sqlite --yes --format=json" expect={{ stdout: { regex: "\"ok\":true.*\"format\":\"sqlite\"" } }} />
+      <Verify command={`lando exec appserver --format=json -- php -r '$db = new PDO("sqlite:data/site.sqlite"); echo "rows=" . $db->query("SELECT group_concat(id) FROM (SELECT id FROM items ORDER BY id)")->fetchColumn() . PHP_EOL;'`} expect={{ stdout: { regex: "rows=1,2,3[\\s\\S]*\"ok\":true" } }} />
+    </Step>
+    <Step name="snapshot">
+      <Verify command="lando db:snapshot --format=json" expect={{ stdout: { regex: "\"ok\":true.*\"snapshotId\":" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+</Guide>
+
+The second check puts `sqlite` on a `mysql:8.0` service and confirms the lint error lands on `services.database.sqlite`.
+
+## Next
+
+- [Import and export app databases](./db-import-export.mdx)

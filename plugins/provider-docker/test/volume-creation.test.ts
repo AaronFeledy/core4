@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { DateTime, Effect, Schema } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const plan: AppPlan = {

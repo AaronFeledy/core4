@@ -2,16 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer, Queue } from "effect";
-
-import type { ManagedFile } from "@lando/sdk/schema";
-import { EventService, ManagedFileService } from "@lando/sdk/services";
-
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as ManagedFileLayer from "@lando/managed-file/service";
+import type { ManagedFile } from "@lando/sdk/schema";
+import { EventService, ManagedFileService } from "@lando/sdk/services";
+import { Effect, Layer, Queue } from "effect";
+
 const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+
 import { RedactionService } from "@lando/redaction/service";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 

@@ -245,5 +245,5 @@ export const chooseHelperBindPorts = (input: {
   return { bindHttpPort, bindHttpsPort };
 };
 
-export { probeBind, probeForward, probeTcpOpen } from "./port-acquisition-bind.ts";
 export type { ForwardProbeRole } from "./port-acquisition-bind.ts";
+export { probeBind, probeForward, probeTcpOpen } from "./port-acquisition-bind.ts";
