@@ -79,19 +79,22 @@ const lockError = (operation: string, lockPath: string, cause?: unknown): StateS
 
 /** A timed-out wait names the live owner, so the caller can tell a busy command from a leftover lock. */
 const heldLockError = (operation: string, lockPath: string, now: number): Effect.Effect<StateStoreError> =>
-  Effect.promise(() => readLockRecord(lockPath).catch(() => null)).pipe(
-    Effect.map((owner) =>
-      owner === null
-        ? lockError(operation, lockPath)
-        : new StateStoreError({
-            reason: "lock",
-            operation,
-            path: lockPath,
-            cause: { ownerPid: owner.pid, heldMs: Math.max(0, now - owner.createdAt) },
-            remediation: `Process ${owner.pid} has held this lock for ${Math.round(Math.max(0, now - owner.createdAt) / 1000)}s. Wait for that Lando command to finish, then retry. If process ${owner.pid} is not a Lando command, remove ${lockPath} and retry.`,
-          }),
-    ),
-  );
+  Effect.promise(async () => {
+    try {
+      const owner = await readLockRecord(lockPath);
+      if (owner === null) return lockError(operation, lockPath);
+      const heldMs = Math.max(0, now - owner.createdAt);
+      return new StateStoreError({
+        reason: "lock",
+        operation,
+        path: lockPath,
+        cause: { ownerPid: owner.pid, heldMs },
+        remediation: `Process ${owner.pid} has held this lock for ${Math.round(heldMs / 1000)}s. Wait for that Lando command to finish, then retry. If process ${owner.pid} is not a Lando command, remove ${lockPath} and retry.`,
+      });
+    } catch (cause) {
+      return lockError(operation, lockPath, cause);
+    }
+  });
 
 export const makeLockToken = (): string =>
   `${process.pid}-${DateTime.toEpochMillis(DateTime.nowUnsafe())}-${Math.random().toString(36).slice(2)}`;

@@ -54,6 +54,9 @@ const target = {
   app: { kind: "user" as const, id: desired.id, root: desired.root },
 };
 
+const removalNotices = (harness: ReturnType<typeof makeHarness>) =>
+  byTag(harness.events, "message.info").filter((notice) => notice.body.includes("no longer defined"));
+
 const observedAdminer = (
   overrides: Partial<Pick<ServiceRuntimeInfo, "service" | "containerId" | "labels">> = {},
 ): ServiceRuntimeInfo => ({
@@ -356,9 +359,7 @@ test("whole-app rebuild replaces the record through the complete start apply", a
   // replaces the record with the whole desired plan.
   expect(containers.containers).toEqual([]);
   expect(result.servicesRemoved).toEqual([String(adminer.name)]);
-  const notices = byTag(harness.events, "message.info").filter((notice) =>
-    notice.body.includes("no longer defined"),
-  );
+  const notices = removalNotices(harness);
   expect(notices).toHaveLength(1);
   expect(notices[0]?.body).toContain(String(adminer.name));
   expect(notices[0]?.body).toContain("Named volumes were kept");
@@ -388,9 +389,7 @@ test("a whole-app restart reports and announces the service its halt removed", a
   // Then the halt removed the container, named the service once, and reported it.
   expect(containers.containers).toEqual([]);
   expect(result.servicesRemoved).toEqual([String(adminer.name)]);
-  const notices = byTag(harness.events, "message.info").filter((notice) =>
-    notice.body.includes("no longer defined"),
-  );
+  const notices = removalNotices(harness);
   expect(notices).toHaveLength(1);
   expect(notices[0]?.body).toContain(String(adminer.name));
   expect(notices[0]?.body).toContain("Named volumes were kept");
@@ -418,9 +417,7 @@ test("a selected restart omits servicesRemoved and publishes no removal notice",
   // Then the removed service's container stays, nothing is announced, and the field is absent.
   expect(containers.removed).toEqual([]);
   expect(result.servicesRemoved).toBeUndefined();
-  expect(
-    byTag(harness.events, "message.info").filter((notice) => notice.body.includes("no longer defined")),
-  ).toEqual([]);
+  expect(removalNotices(harness)).toEqual([]);
 });
 
 test("selected rebuild keeps a removed but still-running service as cleanup evidence", async () => {
@@ -445,9 +442,7 @@ test("selected rebuild keeps a removed but still-running service as cleanup evid
   // Then nothing is swept, nothing is announced, the field is absent, and the record still names
   // the removed service.
   expect(result.servicesRemoved).toBeUndefined();
-  expect(
-    byTag(harness.events, "message.info").filter((notice) => notice.body.includes("no longer defined")),
-  ).toEqual([]);
+  expect(removalNotices(harness)).toEqual([]);
   expect(containers.removed).toEqual([]);
   expect(seen[0]?.complete).not.toBe(true);
   expect(Object.keys(record.read()?.services ?? {}).sort()).toEqual(["adminer", "web"]);

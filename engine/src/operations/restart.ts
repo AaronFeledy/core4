@@ -14,7 +14,6 @@ import {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import {
-  MessageInfoEvent,
   PostRestartEvent,
   PostServiceStopEvent,
   PreRestartEvent,
@@ -58,7 +57,7 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { type StartManagedScope, startApp } from "./start.ts";
-import { removalNotice, servicesHaltWillRemove } from "./start-convergence.ts";
+import { mergeRemovedServices, publishRemovalNotice, servicesHaltWillRemove } from "./start-convergence.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import {
@@ -322,16 +321,16 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             const events = yield* EventService;
             yield* claimAppDataIdentity(resolvedTarget);
             const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
-            let resumedRemoved: ReadonlyArray<string> = [];
-            if (pending !== null) {
-              const resumed = yield* startApp(
-                options.signal === undefined ? {} : { signal: options.signal },
-                resolvedTarget,
-                managed?.resume ?? managed,
-                { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
-              );
-              resumedRemoved = resumed.servicesRemoved ?? [];
-            }
+            const resumed =
+              pending === null
+                ? undefined
+                : yield* startApp(
+                    options.signal === undefined ? {} : { signal: options.signal },
+                    resolvedTarget,
+                    managed?.resume ?? managed,
+                    { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
+                  );
+            const resumedRemoved = resumed?.servicesRemoved ?? [];
             const stopPreflight = yield* preflightStopApp(resolvedTarget);
             yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
             if (!retired) yield* ensureStartTransactionConsistent(resolvedTarget);
@@ -360,13 +359,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             yield* markStartMutation(plan);
             const removedByHalt = yield* servicesHaltWillRemove(placement.plan, plan, provider);
             yield* haltAppRuntime({}, resolvedTarget, { skipInitEvents: true });
-            if (removedByHalt.length > 0)
-              yield* events.publish(
-                MessageInfoEvent.make({
-                  body: removalNotice(removedByHalt),
-                  timestamp: DateTime.nowUnsafe(),
-                }),
-              );
+            yield* publishRemovalNotice(events, removedByHalt);
             yield* managed?.onStopped ?? Effect.void;
             const result = yield* startApp(
               {
@@ -389,10 +382,10 @@ export const restartApp = Effect.fn("AppOperation.restart")(
               timestamp: DateTime.nowUnsafe(),
             });
             yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
-            const servicesRemoved = [
-              ...new Set([...resumedRemoved, ...removedByHalt, ...(result.servicesRemoved ?? [])]),
-            ].sort();
-            return { ...result, servicesRemoved };
+            return {
+              ...result,
+              servicesRemoved: mergeRemovedServices(resumedRemoved, removedByHalt, result.servicesRemoved),
+            };
           }),
         });
       }),

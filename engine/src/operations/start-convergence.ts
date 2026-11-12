@@ -11,12 +11,28 @@ import type {
 } from "@lando/sdk/services";
 import { DateTime, Effect, Exit } from "effect";
 
-/** The one human notice for services removed because the Landofile no longer defines them. */
-export const removalNotice = (services: ReadonlyArray<string>): string => {
+/** The one human notice for services the Landofile no longer defines. */
+const removalNotice = (services: ReadonlyArray<string>): string => {
   const names = services.join(", ");
   const one = services.length === 1;
   return `${names} ${one ? "is" : "are"} no longer defined in the Landofile, so Lando removed ${one ? "its container" : "their containers"}. Named volumes were kept.`;
 };
+
+/** Announces the services a halt removed because the Landofile no longer defines them. */
+export const publishRemovalNotice = Effect.fnUntraced(function* (
+  events: EventService["Service"],
+  services: ReadonlyArray<string>,
+) {
+  if (services.length === 0) return;
+  yield* events.publish(
+    MessageInfoEvent.make({ body: removalNotice(services), timestamp: DateTime.nowUnsafe() }),
+  );
+});
+
+/** The deduplicated, sorted union of every removed-service list an operation collected. */
+export const mergeRemovedServices = (
+  ...groups: ReadonlyArray<ReadonlyArray<string> | undefined>
+): ReadonlyArray<string> => [...new Set(groups.flatMap((group) => group ?? []))].sort();
 
 const ownershipRefusal = (plan: AppPlan, observation: ServiceRuntimeInfo) => {
   const container = observation.containerId ?? String(observation.service);
@@ -29,10 +45,8 @@ const ownershipRefusal = (plan: AppPlan, observation: ServiceRuntimeInfo) => {
 };
 
 /**
- * Names of applied-plan services the desired plan dropped whose containers a halt is about to
- * remove. Observing before the halt proves each container exists, so a service whose container is
- * already gone is never reported. The provider is asked only when the applied plan names a dropped
- * service.
+ * Services the applied plan dropped whose containers a halt is about to remove. Observing first
+ * proves each container exists; the provider is asked only when the applied plan names a drop.
  */
 export const servicesHaltWillRemove = Effect.fn("AppOperation.servicesHaltWillRemove")(function* (
   applied: AppPlan | undefined,

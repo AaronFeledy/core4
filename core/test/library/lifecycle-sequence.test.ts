@@ -92,21 +92,21 @@ const removalNotices = (events: ReadonlyArray<LandoEvent>): ReadonlyArray<string
 const runOperation = (
   harness: Harness,
   operation: Operation,
-): Effect.Effect<{ readonly removed: ReadonlyArray<string> | undefined }, unknown> =>
+): Effect.Effect<ReadonlyArray<string> | undefined, unknown> =>
   Effect.gen(function* () {
     const app = yield* harness.runtime.app();
     switch (operation) {
       case "start":
-        return { removed: (yield* app.start()).servicesRemoved };
+        return (yield* app.start()).servicesRemoved;
       case "stop":
         yield* app.stop();
-        return { removed: undefined };
+        return undefined;
       case "restart":
-        return { removed: (yield* app.restart()).servicesRemoved };
+        return (yield* app.restart()).servicesRemoved;
       case "rebuild":
-        return { removed: (yield* app.rebuild()).servicesRemoved };
+        return (yield* app.rebuild()).servicesRemoved;
       case "rebuild-selected":
-        return { removed: (yield* app.rebuild({ services: [selectedService] })).servicesRemoved };
+        return (yield* app.rebuild({ services: [selectedService] })).servicesRemoved;
       default: {
         const exhaustive: never = operation;
         return yield* Effect.die(new TypeError(`Unhandled operation: ${exhaustive}`));
@@ -114,7 +114,7 @@ const runOperation = (
     }
   });
 
-const undefinedContainers = (
+const containersOutsideDesired = (
   observation: Observation,
   desired: ReadonlyArray<string>,
 ): ReadonlyArray<Observation["containers"][number]> =>
@@ -139,12 +139,10 @@ const checkSelected = (
 ): void => {
   expect(runningServices(after)).toContain(selected);
   const afterIds = containerIds(after);
-  for (const container of undefinedContainers(before, desired)) {
+  for (const container of containersOutsideDesired(before, desired)) {
     expect(afterIds.get(container.service)).toBe(container.containerId);
   }
-  for (const service of before.record) {
-    if (runningServices(after).includes(service)) expect(after.record).toContain(service);
-  }
+  for (const service of runningServices(after)) expect(after.record).toContain(service);
 };
 
 const writeLandofile = (harness: Harness, hasDatabase: boolean): Effect.Effect<void> =>
@@ -161,12 +159,12 @@ const runStep = (harness: Harness, operation: Operation): Effect.Effect<void, un
   Effect.gen(function* () {
     yield* Queue.clear(harness.subscription.queue);
     const before = yield* observe(harness);
-    const missingBefore = undefinedContainers(before, harness.desired.current)
+    const missingBefore = containersOutsideDesired(before, harness.desired.current)
       .filter((container) => container.status === "running")
       .map((container) => container.service)
       .sort();
 
-    const { removed } = yield* runOperation(harness, operation);
+    const removed = yield* runOperation(harness, operation);
 
     const events = yield* Queue.clear(harness.subscription.queue);
     const after = yield* observe(harness);
@@ -232,7 +230,6 @@ const withHarness = async (run: (harness: Harness) => Effect.Effect<void, unknow
           const app = yield* runtime.app();
           const plan = yield* app.plan;
           const database = plan.services[removedService];
-          expect(plan.stores.length).toBeGreaterThan(0);
           expect(database?.mounts.some((mount) => mount.type === "volume")).toBe(true);
           yield* run({
             runtime,

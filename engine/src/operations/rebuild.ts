@@ -7,7 +7,7 @@ import type {
   StartAppResult,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import { MessageInfoEvent, PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
+import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type {
   EnvironmentValueResolver,
@@ -53,7 +53,7 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { type StartManagedScope, startApp } from "./start.ts";
-import { removalNotice, servicesHaltWillRemove } from "./start-convergence.ts";
+import { mergeRemovedServices, publishRemovalNotice, servicesHaltWillRemove } from "./start-convergence.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import {
@@ -228,16 +228,16 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
           body: Effect.fnUntraced(function* () {
             yield* claimAppDataIdentity(resolvedTarget);
             const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
-            let resumedRemoved: ReadonlyArray<string> = [];
-            if (pending !== null) {
-              const resumed = yield* startApp(
-                options.signal === undefined ? {} : { signal: options.signal },
-                resolvedTarget,
-                managed?.resume ?? managed,
-                { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
-              );
-              resumedRemoved = resumed.servicesRemoved ?? [];
-            }
+            const resumed =
+              pending === null
+                ? undefined
+                : yield* startApp(
+                    options.signal === undefined ? {} : { signal: options.signal },
+                    resolvedTarget,
+                    managed?.resume ?? managed,
+                    { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
+                  );
+            const resumedRemoved = resumed?.servicesRemoved ?? [];
             const stopPreflight = yield* preflightStopApp(resolvedTarget);
             yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
             if (!retired) yield* ensureStartTransactionConsistent(resolvedTarget);
@@ -267,13 +267,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                   yield* markStartMutation(plan);
                   const removedByHalt = yield* servicesHaltWillRemove(placement.plan, plan, provider);
                   yield* haltAppRuntime({}, resolvedTarget, { skipInitEvents: true });
-                  if (removedByHalt.length > 0)
-                    yield* events.publish(
-                      MessageInfoEvent.make({
-                        body: removalNotice(removedByHalt),
-                        timestamp: timestamp(),
-                      }),
-                    );
+                  yield* publishRemovalNotice(events, removedByHalt);
                   yield* managed?.onStopped ?? Effect.void;
                   const result = yield* startApp(
                     {
@@ -290,10 +284,14 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                       preparedOverlays,
                     },
                   );
-                  const servicesRemoved = [
-                    ...new Set([...resumedRemoved, ...removedByHalt, ...(result.servicesRemoved ?? [])]),
-                  ].sort();
-                  return { ...result, servicesRemoved };
+                  return {
+                    ...result,
+                    servicesRemoved: mergeRemovedServices(
+                      resumedRemoved,
+                      removedByHalt,
+                      result.servicesRemoved,
+                    ),
+                  };
                 });
             const postRebuild = PostRebuildEvent.make({
               _tag: "post-rebuild",
