@@ -200,11 +200,18 @@ If the URL doesn't load, check `lando logs -s adminer` for the PHP server's star
 
 ## Remove it
 
-When you no longer need the UI, delete the `adminer` service from `.lando.yml`.
+Delete the `adminer` service from `.lando.yml`, then run:
+
+```sh
+lando destroy -y
+lando start
+```
+
+`lando destroy -y` removes the containers and keeps the database volume, so the `notes` row is still there when the app comes back.
 
 ## Check the plan
 
-The inspect scenarios check the planned config for each Landofile. The browse scenarios start each app, seed a `notes` row, confirm Adminer's `*.lndo.site` URL from `lando info`, and log in to select that row. The SQLite browse scenario also runs the documented `lando exec appserver -- mkdir -p data`.
+The inspect scenarios check the planned config for each Landofile. The browse scenarios start each app, seed a `notes` row, confirm Adminer's `*.lndo.site` URL from `lando info`, and log in to select that row. The SQLite browse scenario also runs the documented `lando exec appserver -- mkdir -p data`. The `remove-it` scenario starts a Postgres app, seeds that same row, removes the Adminer service, and runs the documented `lando destroy -y` and `lando start` to prove Adminer is gone, the app is ready, and the seeded row is still in the database volume.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -339,6 +346,40 @@ The inspect scenarios check the planned config for each Landofile. The browse sc
         <Verify command={`lando exec adminer -- php -r '$base=rtrim($argv[1],"/")."/"; $driver=$argv[2]; $server=$argv[3]; $user=$argv[4]; $pass=$argv[5]; $db=$argv[6]; $needle=$argv[7]; $table=$argv[8]??"notes"; $cookie=sys_get_temp_dir()."/ac-".getmypid(); @unlink($cookie); function H($method,$url,$cookie,$body=null){ $hf=tempnam(sys_get_temp_dir(),"h"); $of=tempnam(sys_get_temp_dir(),"o"); $cmd=["curl","-sS","-c",$cookie,"-b",$cookie,"-D",$hf,"-o",$of,"--max-time","20"]; if($method==="POST"){array_push($cmd,"-X","POST","-H","Content-Type: application/x-www-form-urlencoded","--data",$body??"");} $cmd[]=$url; $p=proc_open($cmd,[2=>["pipe","w"]],$pipes); $err=stream_get_contents($pipes[2]); fclose($pipes[2]); $st=proc_close($p); $hdr=(string)file_get_contents($hf); $out=(string)file_get_contents($of); @unlink($hf); @unlink($of); if($st!==0){fwrite(STDERR,"curl failed ($st): $err\\n"); exit(1);} return [$hdr,$out]; } function T($html){ return trim(html_entity_decode(preg_replace("/\\s+/"," ",strip_tags($html))??$html,ENT_QUOTES|ENT_HTML5)); } function resolve($base,$loc){ $loc=trim($loc); return str_starts_with($loc,"http")?$loc:$base.ltrim($loc,"/"); } function G($url,$cookie,$base){ $hdr=""; $body=""; for($i=0;$i<6;$i++){ [$hdr,$body]=H("GET",$url,$cookie); if(preg_match("/^HTTP\\/\\S+\\s+302\\b/mi",$hdr) && preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $url=resolve($base,$loc[1]); continue; } return [$hdr,$body]; } return [$hdr,$body]; } [$_,$login]=G($base,$cookie,$base); if(!preg_match("/name=.token. value=.([^\\x27]+)./",$login,$m) && !preg_match("/name=.token. value=.([^\\"]+)./",$login,$m)){echo T($login)."\\n"; fwrite(STDERR,"no login token\\n"); exit(1);} $post=http_build_query(["auth[driver]"=>$driver,"auth[server]"=>$server,"auth[username]"=>$user,"auth[password]"=>$pass,"auth[db]"=>$db,"token"=>$m[1]]); [$hdr,$body]=H("POST",$base,$cookie,$post); if(preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $next=resolve($base,$loc[1]); } else { $next=$base; } [$_,$page]=G($next,$cookie,$base); $pages=[$page]; $urls=[]; if(preg_match_all("/href=.([^\\"\\x27>]*select[^\\"\\x27>]*)/",$page,$hs)){ foreach($hs[1] as $h){ $urls[]=resolve($base,html_entity_decode($h,ENT_QUOTES|ENT_HTML5)); } } foreach([ http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"select"=>$table],"","&",PHP_QUERY_RFC3986), http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"ns"=>"public","select"=>$table],"","&",PHP_QUERY_RFC3986), ] as $q){ $urls[]=$base."?".$q; } foreach(array_unique($urls) as $u){ [$_,$p]=G($u,$cookie,$base); $pages[]=$p; } @unlink($cookie); foreach($pages as $p){ if(str_contains($p,$needle)){ echo "BROWSE_OK $needle\\n"; exit(0);} } echo T(implode("\\n",$pages))."\\n"; exit(1);' -- http://127.0.0.1:8080 sqlite '' '' local-development-only /app/data/site.sqlite "hello from lando" notes`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
       </Step>
     </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="remove-it" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-remove" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-remove" } }} />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando psql -c "CREATE TABLE notes (id serial PRIMARY KEY, body text); INSERT INTO notes (body) VALUES ('hello from lando');"`} />
+    </Step>
+    <Hidden reason="Rewrite the Landofile without the Adminer service so the documented destroy and start can run">
+      <Step name="drop-adminer-service">
+        <Run command={`lando exec adminer --user=root -- php -r 'file_put_contents("/app/.lando.yml","name: adminer-remove\\nservices:\\n  db:\\n    type: postgres\\n    creds:\\n      user: lando\\n      database: adminer-remove\\n      password: local-development-only\\n");'`} />
+      </Step>
+    </Hidden>
+    <Step name="destroy">
+      <Verify command="lando destroy -y" expect={{ stdout: { regex: "destroyed: adminer-remove.*volumes preserved" } }} />
+    </Step>
+    <Step name="start-again">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-remove" } }} />
+    </Step>
+    <Step name="adminer-gone">
+      <Verify command="lando info" expect={{ stdout: { not: { regex: "adminer\\.adminer-remove\\.lndo\\.site" } } }} />
+      <Verify command="lando exec adminer -- true" expectExit={1} />
+    </Step>
+    <Step name="row-survived">
+      <Verify command={`lando psql -c "SELECT body FROM notes;"`} expect={{ stdout: { regex: "hello from lando" } }} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y --volumes" />
