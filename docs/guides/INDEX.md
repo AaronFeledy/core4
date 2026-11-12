@@ -290,6 +290,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | - | - | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | - | - | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
+| - | - | Craft CMS site on the LAMP recipe | `docs/guides/recipes/craft-workflow.mdx` | Shipped |
 | - | - | TYPO3 site on the LAMP recipe | `docs/guides/recipes/typo3-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | MinIO BYO image/build, API and console listeners | `docs/guides/services/minio.mdx` | Shipped |
