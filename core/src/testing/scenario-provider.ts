@@ -1,6 +1,8 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
+import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
+import { forgetAppliedPlanUnlessKept, rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -45,6 +47,14 @@ export const makeScenarioProvider = () => {
     withLock: (key, body) => stateStore.withLock(key, body),
   };
   const store = makeAppliedPlanStore({ providerId: "lando", layout: "record" });
+  const appliedPlanCache = makeAppliedPlanCache({
+    providerId: ProviderId.make(testProvider.id),
+    providerName: "scenario",
+    appliedPlanState: appliedState,
+    load: (state, appId) => store.loadAppliedPlanStrict(state, appId),
+    persist: (state, plan) => store.persistAppliedPlan(state, plan),
+    remove: (state, appId) => store.removeAppliedPlan(state, appId),
+  });
   const appliedPlans = store.listAppliedPlans(appliedState).pipe(
     Effect.map((inventory) => inventory.plans),
     Effect.orDie,
@@ -76,15 +86,11 @@ export const makeScenarioProvider = () => {
     apply: (plan, options) =>
       testProvider
         .apply(plan, options)
-        .pipe(Effect.tap(() => store.persistAppliedPlan(appliedState, options.recordedPlan ?? plan))),
+        .pipe(Effect.tap(() => rememberAppliedPlan(appliedPlanCache, plan, options))),
     destroy: (target, options) =>
       testProvider
         .destroy(target, options)
-        .pipe(
-          Effect.tap(() =>
-            options.removeState === false ? Effect.void : store.removeAppliedPlan(appliedState, target.app),
-          ),
-        ),
+        .pipe(Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlanCache, target.app, options))),
   };
   const registry = RuntimeProviderRegistry.of({
     appliedPlansFor: (root) =>
