@@ -124,6 +124,36 @@ describe("advisory state lock", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+  test("a timed-out acquire names the live owner and how long it has held the lock", async () => {
+    // Given a lock a live process took a minute ago
+    const dir = await mkdtemp(join(tmpdir(), "lando-state-lock-"));
+    const path = join(dir, "held.lock");
+    await writeFile(
+      path,
+      JSON.stringify({ pid: process.pid, token: "live", createdAt: Date.now() - 60_000 }),
+    );
+    try {
+      // When a waiter gives up
+      const error = await run(
+        Effect.flip(
+          acquireAdvisoryLockAt(path, "test", {
+            expireLiveOwner: false,
+            timeoutMs: 20,
+            retryMs: 10,
+            privateFileAccess: lockTestAccess,
+          }),
+        ),
+      );
+      // Then the failure identifies the owner instead of an anonymous "another process"
+      expect(error).toMatchObject({ reason: "lock", path, cause: { ownerPid: process.pid } });
+      expect((error.cause as { heldMs: number }).heldMs).toBeGreaterThanOrEqual(60_000);
+      expect(error.remediation).toMatch(
+        new RegExp(`^Process ${process.pid} has held this lock for \\d+s\\.`),
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
   test("acquisition takes over a fresh lock held by a dead pid", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
     try {

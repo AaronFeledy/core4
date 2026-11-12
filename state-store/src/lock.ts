@@ -77,6 +77,22 @@ const lockError = (operation: string, lockPath: string, cause?: unknown): StateS
     remediation: "Another process holds the advisory state lock; retry once it releases.",
   });
 
+/** A timed-out wait names the live owner, so the caller can tell a busy command from a leftover lock. */
+const heldLockError = (operation: string, lockPath: string, now: number): Effect.Effect<StateStoreError> =>
+  Effect.promise(() => readLockRecord(lockPath).catch(() => null)).pipe(
+    Effect.map((owner) =>
+      owner === null
+        ? lockError(operation, lockPath)
+        : new StateStoreError({
+            reason: "lock",
+            operation,
+            path: lockPath,
+            cause: { ownerPid: owner.pid, heldMs: Math.max(0, now - owner.createdAt) },
+            remediation: `Process ${owner.pid} has held this lock for ${Math.round(Math.max(0, now - owner.createdAt) / 1000)}s. Wait for that Lando command to finish, then retry. If process ${owner.pid} is not a Lando command, remove ${lockPath} and retry.`,
+          }),
+    ),
+  );
+
 export const makeLockToken = (): string =>
   `${process.pid}-${DateTime.toEpochMillis(DateTime.nowUnsafe())}-${Math.random().toString(36).slice(2)}`;
 
@@ -193,8 +209,9 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
           remediation: `Lock path ${lockPath} is ${attempt.detail}, so Lando cannot use it. Make sure no Lando command is running, remove ${lockPath}, and retry.`,
         }),
       );
-    if ((yield* Clock.currentTimeMillis) >= deadline)
-      return yield* Effect.fail(lockError(options.operation, lockPath));
+    const current = yield* Clock.currentTimeMillis;
+    if (current >= deadline)
+      return yield* Effect.fail(yield* heldLockError(options.operation, lockPath, current));
     if (attempt === "held" && !announced && options.onWait !== undefined) {
       announced = true;
       yield* options.onWait;
