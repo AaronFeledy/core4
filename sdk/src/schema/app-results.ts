@@ -39,7 +39,7 @@ export const StartAppResult = Schema.Struct({
   }),
   servicesRemoved: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description:
-      "Names of services whose containers the operation removed because the Landofile no longer defines them. Present on a whole-app start, restart, or rebuild, including an empty list when the operation evaluated removals and removed nothing; omitted when the operation acted only on selected services and removed nothing.",
+      "Names of services whose containers were removed because the Landofile no longer defines them; omitted when a service selection removed nothing.",
   }),
 }).annotate({ description: "Services and optional readiness checks returned after starting an app." });
 export type StartAppResult = typeof StartAppResult.Type;
