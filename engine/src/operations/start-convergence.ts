@@ -11,7 +11,8 @@ import type {
 } from "@lando/sdk/services";
 import { DateTime, Effect, Exit } from "effect";
 
-const removalNotice = (services: ReadonlyArray<string>): string => {
+/** The one human notice for services removed because the Landofile no longer defines them. */
+export const removalNotice = (services: ReadonlyArray<string>): string => {
   const names = services.join(", ");
   const one = services.length === 1;
   return `${names} ${one ? "is" : "are"} no longer defined in the Landofile, so Lando removed ${one ? "its container" : "their containers"}. Named volumes were kept.`;
@@ -25,6 +26,33 @@ const ownershipRefusal = (plan: AppPlan, observation: ServiceRuntimeInfo) => {
     message: `Start found container ${container} for service ${observation.service}, which ${plan.name} no longer defines, but its labels do not prove it belongs to this app at ${planAppIdentity(plan).appRoot}.`,
     remediation: `Inspect container ${container} with your container runtime and remove it if it is a leftover, then retry \`lando start\`.`,
   });
+};
+
+/**
+ * Names of applied-plan services whose containers the halt removed because the desired plan dropped
+ * them. The pre-halt observation proves each container existed, so a service whose container was
+ * already gone is never reported.
+ */
+export const servicesRemovedByHalt = (
+  applied: AppPlan,
+  desired: AppPlan,
+  observed: ReadonlyArray<ServiceRuntimeInfo>,
+): ReadonlyArray<string> => {
+  const desiredNames = new Set(Object.keys(desired.services));
+  const appRoot = planAppIdentity(applied).appRoot;
+  const observedNames = new Set(
+    observed
+      .filter(
+        (observation) =>
+          observation.containerId !== undefined &&
+          observation.app === applied.id &&
+          observation.appRoot === appRoot,
+      )
+      .map((observation) => String(observation.service)),
+  );
+  return Object.keys(applied.services)
+    .filter((name) => !desiredNames.has(name) && observedNames.has(name))
+    .sort();
 };
 
 /**

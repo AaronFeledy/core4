@@ -14,6 +14,7 @@ import {
 import type { ApplyOptions, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
+import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import {
   app as acceleratedApp,
@@ -21,7 +22,7 @@ import {
   session as acceleratedSession,
   recoveryHarness,
 } from "./accelerated-start-recovery-support.ts";
-import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
+import { appliedPlanRecord, byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const adminer: ServicePlan = {
   ...web,
@@ -122,9 +123,10 @@ test("a whole-app start removes a removed service's owned container and drops it
   });
 
   // When the whole app starts.
-  await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
+  const result = await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
 
   // Then exactly the removed service's container is removed through the observed identity.
+  expect(result.servicesRemoved).toEqual([String(adminer.name)]);
   expect(containers.removed).toEqual([String(adminer.name)]);
   expect(containers.containers).toEqual([]);
   expect(byTag(harness.events, "pre-service-stop").map((event) => event.serviceName)).toEqual([adminer.name]);
@@ -161,9 +163,10 @@ test("a second start over the converged app removes nothing and stays quiet", as
   const before = byTag(harness.events, "pre-service-stop").length;
 
   // When it starts again.
-  await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
+  const result = await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
 
   // Then the removed container is rediscovered as absent and nothing is re-announced.
+  expect(result.servicesRemoved).toEqual([]);
   expect(byTag(harness.events, "pre-service-stop")).toHaveLength(before);
   expect(byTag(harness.events, "message.info")).toHaveLength(1);
   expect(containers.removed).toEqual([String(adminer.name)]);
@@ -198,9 +201,10 @@ test("a removed service still in the record without a container is dropped, not 
   });
 
   // When the whole app starts.
-  await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
+  const result = await Effect.runPromise(startApp({}, target).pipe(Effect.provide(harness.layer)));
 
   // Then nothing is removed or announced, and the record no longer names the service.
+  expect(result.servicesRemoved).toEqual([]);
   expect(removed).toEqual([]);
   expect(byTag(harness.events, "pre-service-stop")).toEqual([]);
   expect(byTag(harness.events, "message.info")).toEqual([]);
@@ -327,13 +331,18 @@ test("re-adding a removed service later keeps its named store in the plan", asyn
 });
 
 test("whole-app rebuild replaces the record through the complete start apply", async () => {
-  // Given an applied service the Landofile no longer defines.
+  // Given an applied service the Landofile no longer defines and its running container.
   const containers = runningContainer();
   const record = appliedRecord(withAdminer);
   const seen: Array<ApplyOptions | undefined> = [];
   const harness = makeHarness({
     plannedApp: desired,
+    appliedPlans: [withAdminer],
+    resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
     providerOverrides: containers.providerOverrides,
+    onDestroy: () => {
+      containers.containers.splice(0);
+    },
     onApply: (appliedPlan, options) => {
       seen.push(options);
       return options === undefined ? Effect.void : rememberAppliedPlan(record.cache, appliedPlan, options);
@@ -341,11 +350,77 @@ test("whole-app rebuild replaces the record through the complete start apply", a
   });
 
   // When the whole app rebuilds.
-  await Effect.runPromise(rebuildApp({}, target).pipe(Effect.provide(harness.layer)));
+  const result = await Effect.runPromise(rebuildApp({}, target).pipe(Effect.provide(harness.layer)));
 
-  // Then the rebuild's start apply replaces the record with the whole desired plan.
+  // Then the halt removed the container, the rebuild announced it once, and the start apply
+  // replaces the record with the whole desired plan.
+  expect(containers.containers).toEqual([]);
+  expect(result.servicesRemoved).toEqual([String(adminer.name)]);
+  const notices = byTag(harness.events, "message.info").filter((notice) =>
+    notice.body.includes("no longer defined"),
+  );
+  expect(notices).toHaveLength(1);
+  expect(notices[0]?.body).toContain(String(adminer.name));
+  expect(notices[0]?.body).toContain("Named volumes were kept");
   expect(seen.at(-1)?.complete).toBe(true);
   expect(Object.keys(record.read()?.services ?? {})).toEqual([String(web.name)]);
+});
+
+test("a whole-app restart reports and announces the service its halt removed", async () => {
+  // Given an applied service the Landofile no longer defines and its running container.
+  const containers = runningContainer();
+  const record = appliedRecord(withAdminer);
+  const harness = makeHarness({
+    plannedApp: desired,
+    appliedPlans: [withAdminer],
+    resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
+    providerOverrides: containers.providerOverrides,
+    onDestroy: () => {
+      containers.containers.splice(0);
+    },
+    onApply: (appliedPlan, options) =>
+      options === undefined ? Effect.void : rememberAppliedPlan(record.cache, appliedPlan, options),
+  });
+
+  // When the whole app restarts.
+  const result = await Effect.runPromise(restartApp({}, target).pipe(Effect.provide(harness.layer)));
+
+  // Then the halt removed the container, named the service once, and reported it.
+  expect(containers.containers).toEqual([]);
+  expect(result.servicesRemoved).toEqual([String(adminer.name)]);
+  const notices = byTag(harness.events, "message.info").filter((notice) =>
+    notice.body.includes("no longer defined"),
+  );
+  expect(notices).toHaveLength(1);
+  expect(notices[0]?.body).toContain(String(adminer.name));
+  expect(notices[0]?.body).toContain("Named volumes were kept");
+});
+
+test("a selected restart omits servicesRemoved and publishes no removal notice", async () => {
+  // Given an applied service the Landofile no longer defines and its running container.
+  const containers = runningContainer();
+  const harness = makeHarness({
+    plannedApp: desired,
+    appliedPlans: [withAdminer],
+    resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
+    providerOverrides: containers.providerOverrides,
+    onDestroy: () => {
+      containers.containers.splice(0);
+    },
+    onApply: () => Effect.void,
+  });
+
+  // When only the surviving service restarts.
+  const result = await Effect.runPromise(
+    restartApp({ services: [web.name] }, target).pipe(Effect.provide(harness.layer)),
+  );
+
+  // Then the removed service's container stays, nothing is announced, and the field is absent.
+  expect(containers.removed).toEqual([]);
+  expect(result.servicesRemoved).toBeUndefined();
+  expect(
+    byTag(harness.events, "message.info").filter((notice) => notice.body.includes("no longer defined")),
+  ).toEqual([]);
 });
 
 test("selected rebuild keeps a removed but still-running service as cleanup evidence", async () => {
@@ -363,9 +438,16 @@ test("selected rebuild keeps a removed but still-running service as cleanup evid
   });
 
   // When only the surviving service is rebuilt.
-  await Effect.runPromise(rebuildApp({ services: [web.name] }, target).pipe(Effect.provide(harness.layer)));
+  const result = await Effect.runPromise(
+    rebuildApp({ services: [web.name] }, target).pipe(Effect.provide(harness.layer)),
+  );
 
-  // Then nothing is swept and the record still names the removed service.
+  // Then nothing is swept, nothing is announced, the field is absent, and the record still names
+  // the removed service.
+  expect(result.servicesRemoved).toBeUndefined();
+  expect(
+    byTag(harness.events, "message.info").filter((notice) => notice.body.includes("no longer defined")),
+  ).toEqual([]);
   expect(containers.removed).toEqual([]);
   expect(seen[0]?.complete).not.toBe(true);
   expect(Object.keys(record.read()?.services ?? {}).sort()).toEqual(["adminer", "web"]);

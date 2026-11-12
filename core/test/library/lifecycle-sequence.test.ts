@@ -3,12 +3,13 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type LandoRuntime, openLandoRuntime } from "@lando/core";
-import { AbsolutePath, type AppId, ServiceName } from "@lando/core/schema";
+import { AbsolutePath, AppId, ServiceName } from "@lando/core/schema";
 import { EventService, RouterService, RuntimeProvider } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import type { LandoEvent } from "@lando/sdk/services";
+import { MessageInfoEvent } from "@lando/sdk/events";
+import type { LandoEvent, ProviderError } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
-import { Effect, Layer, Queue } from "effect";
+import { Effect, Layer, Queue, Schema } from "effect";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
 
 type ScenarioProvider = ReturnType<typeof makeScenarioProvider>;
@@ -68,7 +69,7 @@ const runningServices = (observation: Observation): ReadonlyArray<string> =>
 const containerIds = (observation: Observation): ReadonlyMap<string, string | undefined> =>
   new Map(observation.containers.map((container) => [container.service, container.containerId]));
 
-const observe = (harness: Harness): Effect.Effect<Observation> =>
+const observe = (harness: Harness): Effect.Effect<Observation, ProviderError> =>
   Effect.gen(function* () {
     const containers = yield* harness.provider.provider.list({ app: harness.appId });
     const records = yield* harness.provider.appliedPlans;
@@ -85,26 +86,30 @@ const observe = (harness: Harness): Effect.Effect<Observation> =>
 
 const removalNotices = (events: ReadonlyArray<LandoEvent>): ReadonlyArray<string> =>
   events.flatMap((event) =>
-    event._tag === "message.info" && event.body.includes("no longer defined") ? [event.body] : [],
+    Schema.is(MessageInfoEvent)(event) && event.body.includes("no longer defined") ? [event.body] : [],
   );
 
-const runOperation = (harness: Harness, operation: Operation): Effect.Effect<unknown, unknown> =>
+const runOperation = (
+  harness: Harness,
+  operation: Operation,
+): Effect.Effect<{ readonly removed: ReadonlyArray<string> | undefined }, unknown> =>
   Effect.gen(function* () {
     const app = yield* harness.runtime.app();
     switch (operation) {
       case "start":
-        return yield* app.start();
+        return { removed: (yield* app.start()).servicesRemoved };
       case "stop":
-        return yield* app.stop();
+        yield* app.stop();
+        return { removed: undefined };
       case "restart":
-        return yield* app.restart();
+        return { removed: (yield* app.restart()).servicesRemoved };
       case "rebuild":
-        return yield* app.rebuild();
+        return { removed: (yield* app.rebuild()).servicesRemoved };
       case "rebuild-selected":
-        return yield* app.rebuild({ services: [selectedService] });
+        return { removed: (yield* app.rebuild({ services: [selectedService] })).servicesRemoved };
       default: {
         const exhaustive: never = operation;
-        return yield* Effect.dieMessage(`Unhandled operation: ${exhaustive}`);
+        return yield* Effect.die(new TypeError(`Unhandled operation: ${exhaustive}`));
       }
     }
   });
@@ -156,9 +161,12 @@ const runStep = (harness: Harness, operation: Operation): Effect.Effect<void, un
   Effect.gen(function* () {
     yield* Queue.clear(harness.subscription.queue);
     const before = yield* observe(harness);
-    const missingBefore = undefinedContainers(before, harness.desired.current);
+    const missingBefore = undefinedContainers(before, harness.desired.current)
+      .filter((container) => container.status === "running")
+      .map((container) => container.service)
+      .sort();
 
-    yield* runOperation(harness, operation);
+    const { removed } = yield* runOperation(harness, operation);
 
     const events = yield* Queue.clear(harness.subscription.queue);
     const after = yield* observe(harness);
@@ -166,22 +174,23 @@ const runStep = (harness: Harness, operation: Operation): Effect.Effect<void, un
 
     switch (operation) {
       case "start":
+      case "restart":
+      case "rebuild":
+        expect(removed).toEqual(missingBefore);
         if (missingBefore.length > 0) {
           expect(notices).toHaveLength(1);
-          for (const container of missingBefore) expect(notices[0]).toContain(container.service);
+          for (const service of missingBefore) expect(notices[0]).toContain(service);
         } else {
           expect(notices).toEqual([]);
         }
         checkWholeApp(harness, after);
         return;
-      case "restart":
-      case "rebuild":
-        checkWholeApp(harness, after);
-        return;
       case "stop":
+        expect(removed).toBeUndefined();
         checkStopped(after);
         return;
       case "rebuild-selected":
+        expect(removed).toBeUndefined();
         checkSelected(before, after, String(selectedService), harness.desired.current);
         return;
       default: {
@@ -229,7 +238,7 @@ const withHarness = async (run: (harness: Harness) => Effect.Effect<void, unknow
             runtime,
             provider,
             root,
-            appId: app.id,
+            appId: AppId.make(app.id),
             subscription,
             desired: { current: ["app", "db"] },
           });

@@ -305,6 +305,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       const builtPlan = yield* withBuildProvider(builds.build(applyPlan, execution.buildOptions), provider);
       const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
       const serviceList = Object.values(runtimePlan.services);
+      const servicesRemoved: string[] = [];
       const readyServices = yield* withGlobalConsumerAdmission(
         {
           plan: builtPlan,
@@ -329,11 +330,13 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
             yield* verifyActiveVolumeCoordination(provider);
             // Whole-app start names every service, so containers of services the Landofile no
             // longer defines are pruned here, after accelerated-start preparation.
-            yield* convergeRemovedServices(runtimePlan, provider, {
-              app: ref,
-              events,
-              verifyAdmission: verifyGlobalConsumerAdmission,
-            });
+            servicesRemoved.push(
+              ...(yield* convergeRemovedServices(runtimePlan, provider, {
+                app: ref,
+                events,
+                verifyAdmission: verifyGlobalConsumerAdmission,
+              })),
+            );
             if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
             yield* Effect.scoped(
               applyWithResolvedEnvironment(
@@ -418,7 +421,12 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
           })
         : undefined;
 
-      return { app: plan.name, servicesStarted, ...(checks === undefined ? {} : { checks }) };
+      return {
+        app: plan.name,
+        servicesStarted,
+        servicesRemoved,
+        ...(checks === undefined ? {} : { checks }),
+      };
     }),
   });
 });
