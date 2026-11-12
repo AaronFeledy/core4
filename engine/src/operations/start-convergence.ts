@@ -29,18 +29,22 @@ const ownershipRefusal = (plan: AppPlan, observation: ServiceRuntimeInfo) => {
 };
 
 /**
- * Names of applied-plan services whose containers the halt removed because the desired plan dropped
- * them. The pre-halt observation proves each container existed, so a service whose container was
- * already gone is never reported.
+ * Names of applied-plan services the desired plan dropped whose containers a halt is about to
+ * remove. Observing before the halt proves each container exists, so a service whose container is
+ * already gone is never reported. The provider is asked only when the applied plan names a dropped
+ * service.
  */
-export const servicesRemovedByHalt = (
-  applied: AppPlan,
+export const servicesHaltWillRemove = Effect.fn("AppOperation.servicesHaltWillRemove")(function* (
+  applied: AppPlan | undefined,
   desired: AppPlan,
-  observed: ReadonlyArray<ServiceRuntimeInfo>,
-): ReadonlyArray<string> => {
-  const desiredNames = new Set(Object.keys(desired.services));
+  provider: Pick<RuntimeProviderShape, "list">,
+): Effect.fn.Return<ReadonlyArray<string>, ProviderError> {
+  if (applied === undefined) return [];
+  const dropped = Object.keys(applied.services).filter((name) => !Object.hasOwn(desired.services, name));
+  if (dropped.length === 0) return [];
   const appRoot = planAppIdentity(applied).appRoot;
-  const observedNames = new Set(
+  const observed = yield* provider.list({ app: applied.id, includeUnplanned: true });
+  const present = new Set(
     observed
       .filter(
         (observation) =>
@@ -50,10 +54,8 @@ export const servicesRemovedByHalt = (
       )
       .map((observation) => String(observation.service)),
   );
-  return Object.keys(applied.services)
-    .filter((name) => !desiredNames.has(name) && observedNames.has(name))
-    .sort();
-};
+  return dropped.filter((name) => present.has(name)).sort();
+});
 
 /**
  * Removes service containers this app owns that its desired plan no longer names.

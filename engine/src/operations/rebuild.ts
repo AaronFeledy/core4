@@ -53,7 +53,7 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { type StartManagedScope, startApp } from "./start.ts";
-import { removalNotice, servicesRemovedByHalt } from "./start-convergence.ts";
+import { removalNotice, servicesHaltWillRemove } from "./start-convergence.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import {
@@ -265,12 +265,8 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
               : yield* Effect.gen(function* () {
                   const events = yield* EventService;
                   yield* markStartMutation(plan);
-                  const observedBeforeHalt = yield* provider.list({
-                    app: plan.id,
-                    includeUnplanned: true,
-                  });
-                  const halted = yield* haltAppRuntime({}, resolvedTarget, { skipInitEvents: true });
-                  const removedByHalt = servicesRemovedByHalt(halted.plan, plan, observedBeforeHalt);
+                  const removedByHalt = yield* servicesHaltWillRemove(placement.plan, plan, provider);
+                  yield* haltAppRuntime({}, resolvedTarget, { skipInitEvents: true });
                   if (removedByHalt.length > 0)
                     yield* events.publish(
                       MessageInfoEvent.make({
