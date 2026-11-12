@@ -6,10 +6,11 @@ import {
   type ServicePlan,
   imageLacksInstallShell,
 } from "@lando/sdk/schema";
-import { Predicate } from "effect";
+import { Effect, Predicate } from "effect";
 
 import type { RecordedClonedService } from "../services/app-feature-types.ts";
-import type { PlannedServiceDraft } from "./service-types.ts";
+import { appFeatureError } from "./app-feature-error.ts";
+import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
 
 export { imageLacksInstallShell };
 
@@ -185,3 +186,43 @@ export const materializeClonedServices = (input: {
   }
   return { drafts, parentNetworks };
 };
+
+export const materializeClonedServiceDrafts = Effect.fnUntraced(function* (
+  plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>,
+  {
+    clones,
+    resolvedServices,
+    appRoot,
+  }: {
+    readonly clones: ReadonlyArray<RecordedClonedService>;
+    readonly resolvedServices: ReadonlyArray<Pick<ResolvedService, "name" | "service">>;
+    readonly appRoot: string;
+  },
+) {
+  const cloned = yield* Effect.try({
+    try: () =>
+      materializeClonedServices({
+        plannedServiceDrafts,
+        clones,
+        parentNetworksByName: new Map(resolvedServices.map((entry) => [entry.name, entry.service.networks])),
+      }),
+    catch: (error) => appFeatureError(appRoot, error),
+  });
+  const plannedWithClones =
+    cloned.drafts.length === 0 ? plannedServiceDrafts : [...plannedServiceDrafts, ...cloned.drafts];
+  return { cloned, plannedWithClones };
+});
+
+export const networkServicesWithClones = (
+  resolvedServices: ReadonlyArray<Pick<ResolvedService, "name" | "service">>,
+  cloned: MaterializedClones,
+  serviceNames: ReadonlyArray<string>,
+): Readonly<Record<string, Pick<ServiceConfig, "networks">>> =>
+  Object.fromEntries([
+    ...resolvedServices
+      .filter(({ name }) => serviceNames.includes(name))
+      .map(({ name, service }) => [name, service] as const),
+    ...cloned.drafts
+      .filter((draft) => serviceNames.includes(draft.name))
+      .map((draft) => [draft.name, { networks: cloned.parentNetworks.get(draft.name) }] as const),
+  ]);
