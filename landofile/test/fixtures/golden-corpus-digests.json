@@ -2,11 +2,11 @@
   "fixtures": [
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-demo",
-      "digest": "2649067646b6891549288e6ffbe4857748e4e4fe6d5786717602f22b92ee7830"
+      "digest": "4c5fdcf2aed9e3c8bef83ee028e6a6cc034329113d19cb59986e314bfb3b2a10"
     },
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-mariadb",
-      "digest": "d95964f2ff2e322c14a910381744a5c4a0d349fd7823af8871507efb0cf432e5"
+      "digest": "c5876f3ec0fc7b699bc2f73d1203fc73102c48b5426689fcaa1d65c901245913"
     },
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-sqlite",

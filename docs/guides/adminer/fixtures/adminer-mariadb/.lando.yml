@@ -6,8 +6,6 @@ services:
     type: compose
     image: adminer:5
     appMount: false
-    environment:
-      ADMINER_DEFAULT_SERVER: db
     endpoints:
       - _tag: internal
         name: ui
