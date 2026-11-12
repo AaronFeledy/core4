@@ -138,6 +138,7 @@ import {
   TunnelStatusEvent,
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
+import { ExecutionSiteMatch } from "../landofile/execution-sites.ts";
 import {
   AgentSocketBridgeInput,
   AgentSocketBridgeResult,
@@ -269,6 +270,7 @@ import {
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
+import { ExecutionSite } from "./execution-site.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncDisposalPhase,
@@ -610,6 +612,8 @@ export type PublicSchemaReferencePage = {
 
 const basePublicSchemaRegistry = schemaRegistry({
   ConfigKeyDescription,
+  ExecutionSite,
+  ExecutionSiteMatch,
   SecretReference,
   SecretRef,
   BoundTextReference,

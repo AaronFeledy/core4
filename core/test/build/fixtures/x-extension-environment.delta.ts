@@ -30,6 +30,12 @@ const environment = (entry: Schema.Top) =>
     ),
     Schema.Array(Schema.String),
   ]);
+
+// Exposed so another frozen delta can nest the same independently modeled environment
+// (the tooling vars delta's per-var `env`) without importing a live schema.
+export const historicalEnvironmentValue = value;
+export const historicalEnvironment = environment;
+
 const oldEnvironment = environment(Schema.String);
 const newEnvironment = environment(value);
 const toolingEnvironment = Schema.Record(

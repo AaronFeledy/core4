@@ -1,143 +1,226 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
-import type { LandofileLayer } from "@lando/sdk/schema";
-import { buildArgumentPath } from "./load-expression-shape.ts";
+import type { ExecutionSiteMatch } from "@lando/sdk/landofile/execution-sites";
+import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
+import { type LandofileLayer, type ValidationIssuePath, formatValidationIssuePath } from "@lando/sdk/schema";
 import { SECRET_BINDING_SITES } from "./secret-reference.ts";
+import { valueAtPath } from "./validation-suggestions.ts";
 
-const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-// Lando owns `LANDO` and `LANDO_*` environment keys, so a suggestion must not tell authors to bind one.
+interface UnsupportedSecretReferenceInput {
+  readonly source: {
+    readonly file: string;
+    readonly layer: LandofileLayer;
+    readonly path: ValidationIssuePath;
+  };
+  readonly value: string;
+  readonly references: readonly string[];
+  /** Plain-word shell position, when a lowered site refused at load. */
+  readonly context?: string;
+  readonly document?: unknown;
+  readonly defaultServiceType?: string;
+}
+
+const list = (values: readonly string[], type: "conjunction" | "disjunction" = "conjunction") =>
+  new Intl.ListFormat("en", { type }).format(values);
 const usableName = (candidate: unknown): candidate is string =>
   typeof candidate === "string" &&
-  IDENTIFIER.test(candidate) &&
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(candidate) &&
   candidate !== "LANDO" &&
+  candidate !== "__proto__" &&
   !candidate.startsWith("LANDO_");
-const genericSuggestion = (): string =>
-  `Use \${secret:...} only in ${new Intl.ListFormat("en", { type: "disjunction" }).format(
-    SECRET_BINDING_SITES.map((site) => site.label.replaceAll("`", "")),
-  )}. Write $\${secret:...} to keep the text literal.`;
 
-// A build script is one step or a list of steps, and each step is a string or `{ run }`.
-const buildStepPath = (path: readonly (string | number)[], kind: "app" | "artifact"): boolean => {
-  if (path[0] !== "services" || path[2] !== "build" || path[3] !== kind) return false;
-  const [step, field, ...rest] = path.slice(4);
-  if (rest.length > 0) return false;
-  if (step === undefined) return true;
-  if (field === undefined) return step === "run" || typeof step === "number";
-  return typeof step === "number" && field === "run";
+const secretVariableNames = (
+  input: { readonly value: string; readonly references: readonly string[] },
+  path: ValidationIssuePath,
+  site: ExecutionSiteMatch["site"] | undefined,
+): ReadonlyMap<string, string> => {
+  const names = new Map<string, string>();
+  const used = new Set<string>();
+  const key = typeof path.at(-1) === "number" ? input.value.slice(0, input.value.indexOf("=")) : path.at(-1);
+  for (const reference of new Set(input.references)) {
+    const candidates = site === "build-arg" ? [key, reference] : [reference];
+    let name = candidates.find(
+      (candidate): candidate is string => usableName(candidate) && !used.has(candidate),
+    );
+    if (name === undefined) {
+      let index = 1;
+      while (used.has(index === 1 ? "SECRET" : `SECRET_${index}`)) index++;
+      name = index === 1 ? "SECRET" : `SECRET_${index}`;
+    }
+    names.set(reference, name);
+    used.add(name);
+  }
+  return names;
 };
 
+const genericSuggestion = () =>
+  `Use \${secret:...} only in ${list(
+    SECRET_BINDING_SITES.map((site) => site.label.replaceAll("`", "")),
+    "disjunction",
+  )}. Write $\${secret:...} to keep the text literal.`;
+
 export const unsupportedSecretReference = (
-  path: readonly (string | number)[],
-  reference: string,
-  value: string,
-): { readonly message: string; readonly suggestion: string } => {
-  const buildArgument = buildArgumentPath(path);
-  const listKey =
-    typeof path[4] === "number" && value.includes("=") ? value.slice(0, value.indexOf("=")) : undefined;
-  const name = (buildArgument ? [path[4], listKey, reference] : [reference]).find(usableName) ?? "SECRET";
+  input: UnsupportedSecretReferenceInput,
+): {
+  readonly message: string;
+  readonly suggestion: string;
+} => {
+  const path = input.source.path;
+  const match = executionSiteAt(path);
+  const site = match?.site;
+  const relative = match?.relativePath ?? [];
+  const names = secretVariableNames(input, path, site);
+  const environmentNames = [...names.values()];
+  const name = list(environmentNames);
+  const shell = list(environmentNames.map((name) => `$${name}`));
+  const referenceLabel = names.size > 1 ? "references" : "reference";
+  const binding = `\${secret:...} ${referenceLabel}`;
   const service = `services.${path[1]}`;
   const tooling = `tooling.${path[1]}`;
-  const shell = `$${name}`;
-  const binding = "${secret:...} reference";
-  const afterStart = `For runtime use, set ${service}.environment.${name} to the ${binding}. For setup that needs it, add an events.post-start step with service ${path[1]}, env.${name} set to the reference, and ${shell} in its cmd; it runs in the started container.`;
-  const rules = [
-    {
-      matches: buildArgument,
-      extra: " Build arguments can be recorded in image history.",
-      suggestion: afterStart,
-    },
-    {
-      matches:
-        path[0] === "services" &&
-        path[2] === "build" &&
-        (path[3] === "dockerfile_inline" || path[3] === "dockerfileInline") &&
-        path.length === 4,
-      extra: " Dockerfile instructions run before secrets resolve and can be recorded in image history.",
-      suggestion: afterStart,
-    },
-    {
-      matches: buildStepPath(path, "artifact"),
-      extra: " Image build steps run before secrets resolve and can be recorded in image history.",
-      suggestion: `Move this step to ${service}.build.app, set ${service}.environment.${name} to the ${binding}, and write ${shell} in the step.`,
-    },
-    {
-      matches: buildStepPath(path, "app"),
-      suggestion: `Set ${service}.environment.${name} to the ${binding} and write ${shell} in the step. The step's shell reads it from the container environment.`,
-    },
-    {
-      matches: path[0] === "tooling" && path.length === 2,
-      suggestion: `Use the object form: set ${tooling}.cmd to this command with ${shell} in place of the reference, and ${tooling}.env.${name} to the ${binding}. The shell reads it when the task runs.`,
-    },
-    {
-      matches:
-        path[0] === "tooling" &&
-        ((path[2] === "cmd" && path.length === 3) ||
-          (path[2] === "cmds" && typeof path[3] === "number" && path.length === 4)),
-      suggestion: `Set ${tooling}.env.${name} to the ${binding} and write ${shell} in the command. The shell reads it when the task runs.`,
-    },
-    {
-      // A step's own env overlays the task env, so only the step binding is sure to reach it.
-      matches:
-        path[0] === "tooling" &&
-        path[2] === "cmds" &&
-        typeof path[3] === "number" &&
-        path[4] === "cmd" &&
-        path.length === 5,
-      suggestion: `Set ${tooling}.cmds.${path[3]}.env.${name} to the ${binding} and write ${shell} in the command. The shell reads it when the step runs.`,
-    },
-    {
-      matches: path[0] === "tooling" && path[2] === "cmd" && typeof path[3] === "number" && path.length === 4,
-      suggestion: `Set ${tooling}.env.${name} to the ${binding} and read ${name} from the environment in your program, or use a string cmd that reads ${shell}. Array commands run without a shell.`,
-    },
-    {
-      matches: path[0] === "events" && typeof path[2] === "number" && path.length === 3,
-      suggestion: `Use the object form: set events.${path[1]}.${path[2]}.cmd to this command with ${shell} in place of the reference, and events.${path[1]}.${path[2]}.env.${name} to the ${binding}. The shell reads it when the step runs.`,
-    },
-    {
-      matches:
-        path[0] === "events" &&
-        typeof path[2] === "number" &&
-        path.length === 4 &&
-        (path[3] === "cmd" || path[3] === "defer"),
-      suggestion: `Set events.${path[1]}.${path[2]}.env.${name} to the ${binding} and write ${shell} in the step's ${path[3] === "defer" ? "deferred command" : "cmd"}.`,
-    },
-    {
-      matches: path[0] === "services" && path[2] === "command" && path.length === 3,
-      suggestion: `Set ${service}.environment.${name} to the ${binding}. Write ${shell} in the command when the service type runs that string as a shell script. On type: compose, the string is split into arguments and is not a shell, so write sh -c with ${shell} inside one quoted argument.`,
-    },
-    {
-      matches:
-        path[0] === "services" && path[2] === "command" && typeof path[3] === "number" && path.length === 4,
-      suggestion: `Set ${service}.environment.${name} to the ${binding}. Array commands run without a shell, so read ${name} from the environment in your program, or use a string command that reads ${shell}. On type: compose, a string command is split into arguments too, so write sh -c with ${shell} inside one quoted argument.`,
-    },
-    {
-      matches:
-        path[0] === "services" &&
-        path[2] === "entrypoint" &&
-        (path.length === 3 || (path.length === 4 && typeof path[3] === "number")),
-      suggestion: `Set ${service}.environment.${name} to the ${binding} and read ${name} from the environment in your program. A string entrypoint is one program name, not a shell. On type: compose it is split into arguments, so use sh -c with ${shell} inside one quoted argument when you need a shell.`,
-    },
-  ];
-  const rule = rules.find((candidate) => candidate.matches);
+  const event = formatValidationIssuePath(["events", String(path[1]), Number(path[2])]);
+  const bindings = (parent: string) => list(environmentNames.map((name) => `${parent}.${name}`));
+  const afterStart = `For runtime use, set ${bindings(`${service}.environment`)} to the ${binding}. For setup that needs it, add an events.post-start step with service ${path[1]}, ${bindings("env")} set to the ${referenceLabel}, and ${shell} in its cmd; it runs in the started container.`;
+  const authoredType = valueAtPath(input.document, ["services", String(path[1]), "type"]);
+  const candidateType = authoredType === undefined ? input.defaultServiceType : authoredType;
+  const type = typeof candidateType === "string" && !candidateType.includes("{{") ? candidateType : undefined;
+  const guidance = ((): {
+    readonly suggestion: string;
+    readonly extra?: string;
+  } => {
+    switch (site) {
+      case undefined:
+        return { suggestion: genericSuggestion() };
+      case "tooling-var":
+        return {
+          suggestion: `Set ${bindings(`tooling.${String(path[1])}.vars.${String(path[3])}.env`)} to the ${binding} and write ${shell} in the var command. The var command does not receive the task's env. Set sensitive: true on the var when its output is secret.`,
+        };
+      case "build-arg":
+        return { suggestion: afterStart, extra: " Build arguments can be recorded in image history." };
+      case "build-dockerfile":
+        return {
+          suggestion: afterStart,
+          extra: " Dockerfile instructions run before secrets resolve and can be recorded in image history.",
+        };
+      case "build-artifact":
+      case "build-app": {
+        const command =
+          relative.length === 0 ||
+          (relative.length === 1 && (relative[0] === "run" || typeof relative[0] === "number")) ||
+          (relative.length === 2 && typeof relative[0] === "number" && relative[1] === "run");
+        if (!command) return { suggestion: genericSuggestion() };
+        if (site === "build-artifact")
+          return {
+            extra: " Image build steps run before secrets resolve and can be recorded in image history.",
+            suggestion: `Move this step to ${service}.build.app, set ${bindings(`${service}.environment`)} to the ${binding}, and write ${shell} in the step.`,
+          };
+        return {
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in the step. The step's shell reads it from the container environment.`,
+        };
+      }
+      case "tooling-task":
+        return {
+          suggestion: `Use the object form: set ${tooling}.cmd to this command with ${shell} in place of the ${referenceLabel}, and ${bindings(`${tooling}.env`)} to the ${binding}. The shell reads it when the task runs.`,
+        };
+      case "tooling-cmd":
+      case "tooling-cmds": {
+        const step = site === "tooling-cmds" && relative.length === 2 && relative[1] === "cmd";
+        const command =
+          site === "tooling-cmd" || (relative.length === 1 && typeof relative[0] === "number") || step;
+        if (!command) return { suggestion: genericSuggestion() };
+        const target = step
+          ? formatValidationIssuePath(["tooling", String(path[1]), "cmds", Number(relative[0]), "env"])
+          : `${tooling}.env`;
+        if (site === "tooling-cmd" && relative.length > 0)
+          return {
+            suggestion: `Set ${bindings(target)} to the ${binding} and read ${name} from the environment in your program, or use a string cmd that reads ${shell}. Array commands run without a shell.`,
+          };
+        return {
+          suggestion: `Set ${bindings(target)} to the ${binding} and write ${shell} in the command. The shell reads it when the ${step ? "step" : "task"} runs.`,
+        };
+      }
+      case "event-step": {
+        const shorthand = path.length === 3;
+        return {
+          suggestion: shorthand
+            ? `Use the object form: set ${event}.cmd to this command with ${shell} in place of the ${referenceLabel}, and ${bindings(`${event}.env`)} to the ${binding}. The shell reads it when the step runs.`
+            : `Set ${bindings(`${event}.env`)} to the ${binding} and write ${shell} in the step's ${path.at(-1) === "defer" ? "deferred command" : "cmd"}.`,
+        };
+      }
+      case "event-lando-command":
+        return {
+          suggestion:
+            "Lando command inputs cannot carry secrets. Move the work into a cmd step with the secret in that step's env.",
+        };
+      case "healthcheck": {
+        const command =
+          relative.length === 0 ||
+          (relative.length === 1 &&
+            (typeof relative[0] === "number" || relative[0] === "command" || relative[0] === "test")) ||
+          (relative.length === 2 &&
+            (relative[0] === "command" || relative[0] === "test") &&
+            typeof relative[1] === "number");
+        if (!command) return { suggestion: genericSuggestion() };
+        const role = path[2] === "readiness" ? "readiness" : "healthcheck";
+        const hostReadiness =
+          role === "readiness" &&
+          valueAtPath(input.document, ["services", String(path[1]), "readiness", "target"]) === "host";
+        if (hostReadiness)
+          return {
+            suggestion: `A host readiness probe runs on the host and receives no Lando secret binding. To use ${name}, keep target: service (the default) and set ${bindings(`${service}.environment`)} to the ${binding}, then write ${shell} in the readiness command. A list command runs without a shell, so the program must read ${name} from its environment.`,
+          };
+        const hostCaveat =
+          role === "readiness"
+            ? " A readiness probe with target: host runs on the host and receives no secret binding."
+            : "";
+        return {
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string ${role} command. A list command runs without a shell, so the program must read ${name} from its environment.${hostCaveat}`,
+        };
+      }
+      case "service-command": {
+        const compose =
+          relative.length === 0
+            ? `On type: compose, the string is split into arguments and is not a shell, so write sh -c with ${shell} inside one quoted argument.`
+            : `On type: compose, a string command is split into arguments too, so write sh -c with ${shell} inside one quoted argument.`;
+        const native =
+          relative.length === 0
+            ? `Write ${shell} in the command${typeof type === "string" ? ". The service type runs that string as a shell script." : " when the service type runs that string as a shell script."}`
+            : `Array commands run without a shell, so read ${name} from the environment in your program, or use a string command that reads ${shell}.`;
+        return {
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding}. ${type === "compose" ? compose : typeof type === "string" ? native : `${native} ${compose}`}`,
+        };
+      }
+      case "service-entrypoint": {
+        const native = "A string entrypoint is one program name, not a shell.";
+        const compose = `On type: compose it is split into arguments, so use sh -c with ${shell} inside one quoted argument when you need a shell.`;
+        return {
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and read ${name} from the environment in your program. ${type === "compose" ? compose : typeof type === "string" ? native : `${native} ${compose}`}`,
+        };
+      }
+      default:
+        return site satisfies never;
+    }
+  })();
+  const context = input.context === undefined ? "" : ` in ${input.context}`;
   return {
-    message: `Secret references are not supported at ${path.join(".")}.${rule?.extra ?? ""}`,
-    suggestion: rule?.suggestion ?? genericSuggestion(),
+    message: `Secret references are not supported at ${formatValidationIssuePath(path)}${context}.${guidance.extra ?? ""}`,
+    suggestion: guidance.suggestion,
   };
 };
 
 export const unsupportedSecretReferenceError = (
-  source: {
-    readonly file: string;
-    readonly layer: LandofileLayer;
-    readonly path: ReadonlyArray<string | number>;
-  },
-  reference: string,
-  value: string,
+  input: UnsupportedSecretReferenceInput,
 ): LandofileValidationError => {
-  const { message, suggestion } = unsupportedSecretReference(source.path, reference, value);
+  const diagnostic = unsupportedSecretReference(input);
   return new LandofileValidationError({
-    file: source.file,
-    message,
-    remediation: suggestion,
-    issues: [{ path: source.path, message, rule: "unsupported-secret-reference", suggestion, source }],
+    file: input.source.file,
+    message: diagnostic.message,
+    remediation: diagnostic.suggestion,
+    issues: [
+      {
+        ...diagnostic,
+        path: input.source.path,
+        rule: "unsupported-secret-reference",
+        source: input.source,
+      },
+    ],
   });
 };

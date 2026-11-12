@@ -50,6 +50,9 @@ export const normalizeToolingTask = (
   const authoredEnvironments = [
     task.env,
     ...(task.cmds ?? []).map((step) => (typeof step === "string" ? undefined : step.env)),
+    ...Object.values(task.vars ?? {}).map((variable) =>
+      typeof variable === "object" ? variable.env : undefined,
+    ),
   ];
   const reserved = authoredEnvironments.flatMap((env) =>
     Object.keys(env ?? {}).filter((key) => key === "LANDO" || key.startsWith("LANDO_")),

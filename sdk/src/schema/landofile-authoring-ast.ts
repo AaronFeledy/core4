@@ -1,6 +1,7 @@
 import { SchemaAST as AST, Array as Arr, Schema } from "effect";
 import { authoringSource, recordAuthoringSource, recordExpressionSlot } from "./authoring-issue-metadata.ts";
 import { authoringSemanticSite } from "./authoring-semantic-site.ts";
+import { executionSiteSources } from "./execution-site-source.ts";
 import {
   type AuthoringExpressionExpectedType,
   isPlainAuthoringString,
@@ -87,6 +88,8 @@ const deriveTree = (ast: AST.AST, options: DeriveAuthoringOptions, semantic: boo
   const site = (source: AST.AST, annotations: Schema.Annotations.Annotations | undefined) =>
     authoringSemanticSite(source, options.partial ? complete : undefined, annotations);
   const derive = (node: AST.AST, allowExpression: boolean): AST.AST => {
+    const executionSource = executionSiteSources.get(node);
+    if (executionSource !== undefined) return derive(executionSource, allowExpression);
     const key = `${options.partial}:${allowExpression}:${options.directives === true}:${options.nativeDirectives === true}:${semantic}`;
     let memo = variants.get(key);
     if (memo === undefined) {

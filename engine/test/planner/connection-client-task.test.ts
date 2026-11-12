@@ -90,7 +90,7 @@ test("applied replacement removes nested overwritten sites and preserves unrelat
   );
   const resolved = await Effect.runPromise(
     resolveToolingTaskShape(client.task, { event: { value: "runtime" } }, client.sites),
-  );
+  ).then((resolved) => resolved.task);
   expect(resolved).toMatchObject({
     dir: "/current",
     vars: { mode: "current" },

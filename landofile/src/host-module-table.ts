@@ -11,6 +11,7 @@ import * as events from "@lando/sdk/events";
 import * as expressions from "@lando/sdk/expressions";
 import * as fuzzy from "@lando/sdk/fuzzy";
 import * as landofile from "@lando/sdk/landofile";
+import * as executionSites from "@lando/sdk/landofile/execution-sites";
 import * as flowMappingRemediation from "@lando/sdk/landofile/flow-mapping-remediation";
 import * as logFollow from "@lando/sdk/log-follow";
 import * as networkTrust from "@lando/sdk/network-trust";
@@ -71,6 +72,7 @@ export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk/expressions": expressions,
   "@lando/sdk/fuzzy": fuzzy,
   "@lando/sdk/landofile": landofile,
+  "@lando/sdk/landofile/execution-sites": executionSites,
   "@lando/sdk/landofile/flow-mapping-remediation": flowMappingRemediation,
   "@lando/sdk/log-follow": logFollow,
   "@lando/sdk/network-trust": networkTrust,
