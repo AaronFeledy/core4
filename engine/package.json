@@ -116,6 +116,7 @@
     "./operations/host-shell-warnings": "./src/operations/host-shell-warnings.ts",
     "./operations/info": "./src/operations/info.ts",
     "./operations/logs": "./src/operations/logs.ts",
+    "./operations/logs-build": "./src/operations/logs-build.ts",
     "./operations/missing-app-roots": "./src/operations/missing-app-roots.ts",
     "./operations/planned-service-artifact": "./src/operations/planned-service-artifact.ts",
     "./operations/plugin-install": "./src/operations/plugin-install.ts",

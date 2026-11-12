@@ -74,6 +74,7 @@ export * from "@lando/engine/operations/global-start";
 export * from "@lando/engine/operations/global-stop";
 export * from "@lando/engine/operations/info";
 export * from "@lando/engine/operations/logs";
+export * from "@lando/engine/operations/logs-build";
 export * from "@lando/engine/operations/rebuild";
 export * from "@lando/engine/operations/remote";
 export * from "@lando/engine/operations/restart";

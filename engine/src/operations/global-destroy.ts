@@ -7,10 +7,14 @@ import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/oper
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
 import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
+import { PathsService, StateStore } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { GLOBAL_APP_ID } from "../global-app/service.ts";
 import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
 import { type RouteWithdrawal, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
+import { clearAppBuildResults } from "../services/build-results.ts";
+import { removeBuildTranscripts } from "../services/build-transcript-cleanup.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
 export interface GlobalDestroyOptions {
@@ -58,6 +62,18 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
 
   return yield* withGlobalMutation(
     Effect.gen(function* () {
+      const stateStore = yield* StateStore;
+      const paths = yield* PathsService;
+      const providerId = String(options.providerId ?? "lando");
+      // A build.app result only describes the container the step ran in; the global app has no app
+      // steps today, but its index is cleared before any provider call for the same reason.
+      yield* clearAppBuildResults(stateStore, GLOBAL_APP_ID);
+      const removeBuildOutput = removeBuildTranscripts({
+        providerId,
+        userDataRoot: paths.roots.userDataRoot,
+        appId: GLOBAL_APP_ID,
+        scratch: false,
+      });
       const loaded = yield* resolveGlobalTeardown("destroy").pipe(
         Effect.provideService(TeardownProvider, options.providerId),
       );
@@ -70,6 +86,7 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
           // A start that failed after certificate preparation leaves only host-side leaf material.
           yield* removeServiceCertificates(routeOwnerFromGlobalTeardown(loaded).ownerKey);
         }
+        yield* removeBuildOutput;
         return {
           app: "global",
           outcome: "unchanged" as const,
@@ -82,6 +99,7 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
       const receipt: Effect.Success<ReturnType<typeof executeGlobalTeardown>> & {
         readonly routes?: RouteWithdrawal["kind"];
       } = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
+      yield* removeBuildOutput;
       // Cleanup proof covers routes, so a skipped withdrawal leaves every obligation pending.
       if (options.providerId === undefined && receipt.routes === "withdrawn")
         yield* recordGlobalResourceCleanup();
