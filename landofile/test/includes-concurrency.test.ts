@@ -52,7 +52,7 @@ test("load merges entries written after its initial lock read under the operatio
       ],
     });
     expect(locks.filter(isIncludeLockKey)).toEqual([
-      expect.stringMatching(/^landofile-include-lock:[a-f0-9]{64}$/u),
+      expect.stringMatching(/^landofile-include-lock-[a-f0-9]{64}$/u),
     ]);
     expect(await readdir(root)).not.toContain(".lando.lock.yml.lock");
   } finally {

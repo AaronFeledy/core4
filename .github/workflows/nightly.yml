@@ -1261,7 +1261,7 @@ jobs:
       - name: Wrap managed Podman for ARM MySQL client tests
         run: |
           wrapper="$RUNNER_TEMP/lando-managed-podman"
-          printf '%s\n' '#!/bin/sh' 'set -eu'             'LAUNCH_STATE="'"$LANDO_USER_DATA_ROOT"'/runtime/run/podman.pid.launch.json"'             'if test -f "$LAUNCH_STATE"; then'             '  XDG_FROM_LAUNCH="$(jq -r ".env.XDG_RUNTIME_DIR // empty" "$LAUNCH_STATE" 2>/dev/null || true)"'             '  if test -n "$XDG_FROM_LAUNCH"; then export XDG_RUNTIME_DIR="$XDG_FROM_LAUNCH"; fi'             'fi'             "export CONTAINERS_CONF=\"$LANDO_USER_DATA_ROOT/runtime/config/containers.conf\""             "exec \"$LANDO_USER_DATA_ROOT/runtime/bin/podman\" --root \"$LANDO_USER_DATA_ROOT/runtime/storage\" --runroot \"$LANDO_USER_DATA_ROOT/runtime/run\" --config \"$LANDO_USER_DATA_ROOT/runtime/config\" \"\$@\""             > "$wrapper"
+          printf '%s\n' '#!/bin/sh' 'set -eu'             "exec \"$LANDO_USER_DATA_ROOT/runtime/bin/podman\" --remote --url \"unix://$LANDO_USER_DATA_ROOT/runtime/run/podman.sock\" \"\$@\""             > "$wrapper"
           chmod 0755 "$wrapper"
           case "$wrapper" in /*) ;; *) echo "wrapper must be absolute" >&2; exit 1 ;; esac
           test -x "$wrapper"
