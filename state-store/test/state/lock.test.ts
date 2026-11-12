@@ -321,6 +321,39 @@ test("same-fiber re-entry dies at once instead of waiting on its own lock", asyn
   }
 });
 
+test("same-fiber re-entry from a wait hook dies while the outer acquire is still waiting", async () => {
+  // Given a file lock another owner holds, so the acquire waits and runs its wait hook.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+  try {
+    const file = join(dir, "state.json");
+    await writeFile(file, "{}\n");
+    await writeFile(
+      `${file}.lock`,
+      JSON.stringify({ pid: process.pid, token: "other-owner", createdAt: Date.now() }),
+    );
+
+    // When the wait hook re-enters the same lock on the same fiber.
+    const result = await Effect.runPromiseExit(
+      withAdvisoryLock(file, "test", Effect.succeed("unreachable"), {
+        expireLiveOwner: false,
+        timeoutMs: 200,
+        retryMs: 10,
+        onWait: withAdvisoryLock(file, "test", Effect.void).pipe(Effect.orDie),
+      }),
+    );
+
+    // Then it dies as a Lando bug instead of waiting on the permit it already holds.
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const defect = Cause.findDefect(result.cause);
+      expect(Result.isSuccess(defect)).toBe(true);
+      if (Result.isSuccess(defect)) expect(String(defect.success)).toContain("Lando bug");
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a different fiber still waits for the held lock and then acquires it", async () => {
   // Given one fiber holding the lock inside its body.
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));

@@ -22,17 +22,21 @@ export const makeLockReentryGuard = () => {
         ),
       );
     return yield* lock.semaphore.withPermits(1)(
-      Effect.acquireUseRelease(
-        lock.acquire.pipe(Effect.tap(() => Effect.sync(() => lockHolders.set(file, fiberId)))),
-        () => body,
-        () =>
-          lock.release.pipe(
-            Effect.ensuring(
-              Effect.sync(() => {
-                if (lockHolders.get(file) === fiberId) lockHolders.delete(file);
-              }),
-            ),
-          ),
+      Effect.suspend(() => {
+        // Recorded as soon as the permit is held, so a re-entry made while still acquiring (from a
+        // wait hook) dies too instead of waiting on this fiber's own permit.
+        lockHolders.set(file, fiberId);
+        return Effect.acquireUseRelease(
+          lock.acquire,
+          () => body,
+          () => lock.release,
+        );
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (lockHolders.get(file) === fiberId) lockHolders.delete(file);
+          }),
+        ),
       ),
     );
   });
