@@ -1,0 +1,1 @@
+# Directory for data/site.sqlite. The reader creates this with mkdir -p data.
