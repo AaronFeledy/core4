@@ -65,6 +65,7 @@ import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
+import { convergeRemovedServices } from "./start-convergence.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import {
@@ -326,6 +327,13 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
           if (pendingStart !== undefined) yield* pendingStart.advance("record-sessions");
           const applyAndInspect = Effect.gen(function* () {
             yield* verifyActiveVolumeCoordination(provider);
+            // Whole-app start names every service, so containers of services the Landofile no
+            // longer defines are pruned here, after accelerated-start preparation.
+            yield* convergeRemovedServices(runtimePlan, provider, {
+              app: ref,
+              events,
+              verifyAdmission: verifyGlobalConsumerAdmission,
+            });
             if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
             yield* Effect.scoped(
               applyWithResolvedEnvironment(
@@ -333,6 +341,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 runtimePlan,
                 {
                   reconcile: resolvedOptions.reconcile ?? false,
+                  complete: true,
                   onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
                   ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                 },

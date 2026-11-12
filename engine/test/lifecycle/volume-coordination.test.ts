@@ -6,9 +6,12 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, type VolumeRef } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option, Result } from "effect";
 
-import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
+import {
+  verifyActiveVolumeCoordination,
+  withPlanVolumeCoordination,
+} from "../../src/lifecycle/volume-coordination.ts";
 
 const coordinationKey = (name: string) => JSON.stringify(["endpoint:test", name]);
 const metadata = {
@@ -311,5 +314,248 @@ describe("physical volume lifecycle coordination", () => {
     );
 
     expect(completed).toBe("nested");
+  });
+
+  test("a nested phase whose plan adds volumes locks only the keys its fiber does not hold", async () => {
+    // Given an outer phase holding one store and a nested phase whose plan also names a second store,
+    // like a rebuild's halt tearing down an applied plan that still has a removed service's volumes.
+    const store = await liveStore();
+    const locked: string[] = [];
+    const recordingStore: StateStoreShape = {
+      ...store,
+      withLock: (key, body) =>
+        Effect.suspend(() => {
+          locked.push(key);
+          return store.withLock(key, body);
+        }),
+    };
+    const provider = {
+      id: "test",
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.succeed({ coordinationKey: coordinationKey(ref.store), nativeName: ref.store }),
+    };
+    const [zeta, alpha] = plan.stores;
+    if (zeta === undefined || alpha === undefined) throw new TypeError("expected store fixtures");
+
+    // When
+    const completed = await Effect.runPromise(
+      withPlanVolumeCoordination({
+        plan: { ...plan, stores: [alpha] },
+        provider,
+        stateStore: recordingStore,
+        body: () =>
+          withPlanVolumeCoordination({
+            plan: { ...plan, stores: [alpha, zeta] },
+            provider,
+            stateStore: recordingStore,
+            body: (coordination) => coordination.verify.pipe(Effect.as("nested")),
+          }),
+      }).pipe(Effect.timeout("1 second")),
+    );
+
+    // Then
+    expect(completed).toBe("nested");
+    expect(locked).toEqual([
+      physicalVolumeLockKey(coordinationKey("alpha")),
+      physicalVolumeLockKey(coordinationKey("zeta")),
+    ]);
+  });
+
+  test("locks the union of a plan and its additional plans once in sorted order", async () => {
+    // Given a desired plan with one store and an applied plan that also names a removed service's store.
+    const store = await liveStore();
+    const locked: string[] = [];
+    const recordingStore: StateStoreShape = {
+      ...store,
+      withLock: (key, body) =>
+        Effect.suspend(() => {
+          locked.push(key);
+          return store.withLock(key, body);
+        }),
+    };
+    const provider = {
+      id: "test",
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.succeed({ coordinationKey: coordinationKey(ref.store), nativeName: ref.store }),
+    };
+    const [zeta, alpha] = plan.stores;
+    if (zeta === undefined || alpha === undefined) throw new TypeError("expected store fixtures");
+    const desired = { ...plan, stores: [zeta] };
+    const applied = { ...plan, id: AppId.make("applied"), stores: [alpha, zeta] };
+    const observed: string[] = [];
+    const observer = {
+      ...provider,
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.sync(() => observed.push(ref.store)).pipe(Effect.andThen(provider.locateVolume(ref))),
+    };
+
+    // When coordination covers the desired and applied plans as one union.
+    const result = await Effect.runPromise(
+      withPlanVolumeCoordination({
+        plan: desired,
+        additionalPlans: [applied],
+        provider,
+        stateStore: recordingStore,
+        body: () => verifyActiveVolumeCoordination(observer).pipe(Effect.as("union")),
+      }).pipe(Effect.timeout("1 second")),
+    );
+
+    // Then each physical key is acquired once in sorted order and the body verifies the union.
+    expect(result).toBe("union");
+    expect(locked).toEqual([
+      physicalVolumeLockKey(coordinationKey("alpha")),
+      physicalVolumeLockKey(coordinationKey("zeta")),
+    ]);
+    expect(observed).toEqual(["alpha", "zeta"]);
+  });
+
+  test("a nested phase covered by the union short-circuits and keeps the union bindings", async () => {
+    // Given a captured context from before coordination and an outer union of desired and applied plans.
+    const store = await liveStore();
+    const locked: string[] = [];
+    const recordingStore: StateStoreShape = {
+      ...store,
+      withLock: (key, body) =>
+        Effect.suspend(() => {
+          locked.push(key);
+          return store.withLock(key, body);
+        }),
+    };
+    const provider = {
+      id: "test",
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.succeed({ coordinationKey: coordinationKey(ref.store), nativeName: ref.store }),
+    };
+    const [zeta, alpha] = plan.stores;
+    if (zeta === undefined || alpha === undefined) throw new TypeError("expected store fixtures");
+    const desired = { ...plan, stores: [zeta] };
+    const applied = { ...plan, id: AppId.make("applied"), stores: [alpha, zeta] };
+    const observed: string[] = [];
+    const observer = {
+      ...provider,
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.sync(() => observed.push(ref.store)).pipe(Effect.andThen(provider.locateVolume(ref))),
+    };
+
+    // When the halt-style nested phase runs inside the stale context it captured before coordination.
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const captured = yield* Effect.context<never>();
+        yield* withPlanVolumeCoordination({
+          plan: desired,
+          additionalPlans: [applied],
+          provider,
+          stateStore: recordingStore,
+          body: () =>
+            withPlanVolumeCoordination({
+              plan: applied,
+              provider,
+              stateStore: recordingStore,
+              body: () => verifyActiveVolumeCoordination(observer).pipe(Effect.as("nested")),
+            }).pipe(Effect.provide(captured)),
+        }).pipe(Effect.provide(captured));
+        return observed;
+      }).pipe(Effect.timeout("1 second")),
+    );
+
+    // Then no key is reacquired and verification inside the nested body still sees both plans' volumes.
+    expect(result).toEqual(["alpha", "zeta"]);
+    expect(locked).toEqual([
+      physicalVolumeLockKey(coordinationKey("alpha")),
+      physicalVolumeLockKey(coordinationKey("zeta")),
+    ]);
+  });
+
+  test("rejects a nested expansion that sorts below a key its fiber already holds", async () => {
+    // Given an outer phase holding the higher-sorted key.
+    const store = await liveStore();
+    const provider = {
+      id: "test",
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.succeed({ coordinationKey: coordinationKey(ref.store), nativeName: ref.store }),
+    };
+    const [zeta, alpha] = plan.stores;
+    if (zeta === undefined || alpha === undefined) throw new TypeError("expected store fixtures");
+
+    // When a nested phase needs the lower-sorted key, which would invert the global lock order.
+    const result = await Effect.runPromiseExit(
+      withPlanVolumeCoordination({
+        plan: { ...plan, stores: [zeta] },
+        provider,
+        stateStore: store,
+        body: () =>
+          withPlanVolumeCoordination({
+            plan: { ...plan, stores: [alpha] },
+            provider,
+            stateStore: store,
+            body: () => Effect.succeed("unreachable"),
+          }),
+      }).pipe(Effect.timeout("1 second")),
+    );
+
+    // Then it dies promptly, names both keys, and calls out the Lando bug instead of deadlocking.
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const defect = Cause.findDefect(result.cause);
+      expect(Result.isSuccess(defect)).toBe(true);
+      if (Result.isSuccess(defect)) {
+        expect(String(defect.success)).toContain(coordinationKey("alpha"));
+        expect(String(defect.success)).toContain(coordinationKey("zeta"));
+        expect(String(defect.success)).toContain("Lando bug");
+      }
+    }
+  });
+
+  test("a context captured inside a phase never hides a nested expansion's bindings", async () => {
+    // Given an outer phase holding alpha and a nested phase that adds the higher-sorted zeta.
+    const store = await liveStore();
+    const locked: string[] = [];
+    const recordingStore: StateStoreShape = {
+      ...store,
+      withLock: (key, body) =>
+        Effect.suspend(() => {
+          locked.push(key);
+          return store.withLock(key, body);
+        }),
+    };
+    const provider = {
+      id: "test",
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.succeed({ coordinationKey: coordinationKey(ref.store), nativeName: ref.store }),
+    };
+    const [zeta, alpha] = plan.stores;
+    if (zeta === undefined || alpha === undefined) throw new TypeError("expected store fixtures");
+    const observed: string[] = [];
+    const observer = {
+      ...provider,
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.sync(() => observed.push(ref.store)).pipe(Effect.andThen(provider.locateVolume(ref))),
+    };
+
+    // When the nested phase runs inside the context it captured from the outer body.
+    const result = await Effect.runPromise(
+      withPlanVolumeCoordination({
+        plan: { ...plan, stores: [alpha] },
+        provider,
+        stateStore: recordingStore,
+        body: Effect.fnUntraced(function* () {
+          const captured = yield* Effect.context<never>();
+          return yield* withPlanVolumeCoordination({
+            plan: { ...plan, stores: [alpha, zeta] },
+            provider,
+            stateStore: recordingStore,
+            body: () => verifyActiveVolumeCoordination(observer).pipe(Effect.as("nested")),
+          }).pipe(Effect.provide(captured));
+        }),
+      }).pipe(Effect.timeout("1 second")),
+    );
+
+    // Then the nested bindings win over the stale captured context and both locks stay ordered.
+    expect(result).toBe("nested");
+    expect(observed).toEqual(["alpha", "zeta"]);
+    expect(locked).toEqual([
+      physicalVolumeLockKey(coordinationKey("alpha")),
+      physicalVolumeLockKey(coordinationKey("zeta")),
+    ]);
   });
 });

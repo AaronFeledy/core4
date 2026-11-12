@@ -282,7 +282,7 @@ test.each(["per-app", "record", "memory"] as const)(
             persist: () => Effect.void,
             remove: () => Effect.void,
           });
-          yield* cache.rememberPlan(desired, true);
+          yield* cache.rememberPlan(desired, { complete: true });
           return yield* cache.resolvePlan(desired.id);
         }
         const store =

@@ -6,6 +6,7 @@ import { Effect, Schema } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { engineApiFailure, missingApi, parseEngineJson } from "../engine-errors.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "../labels.ts";
+import { serviceContainerOwnershipProblem } from "../native-ownership.ts";
 import { redactResponseDetails, redactorFor, withApiReason } from "../redact.ts";
 import { runObservationFromListState } from "../run-observation.ts";
 
@@ -102,11 +103,20 @@ export const labelOwnedSnapshots = (
   discovered: ReadonlyArray<ServiceRuntimeInfo>,
 ): ReadonlyArray<ServiceRuntimeInfo> => {
   const labeledRoots = new Map(
-    discovered.flatMap((snapshot) =>
-      snapshot.containerId === undefined || snapshot.appRoot === undefined
-        ? []
-        : [[snapshot.containerId, snapshot.appRoot] as const],
-    ),
+    discovered.flatMap((snapshot) => {
+      if (snapshot.containerId === undefined || snapshot.appRoot === undefined) return [];
+      // A contradictory label set cannot make its own claim about the root authoritative.
+      if (
+        serviceContainerOwnershipProblem(snapshot.labels, {
+          app: String(snapshot.app),
+          appRoot: String(snapshot.appRoot),
+          service: String(snapshot.service),
+          providerId: String(snapshot.providerId),
+        }) !== undefined
+      )
+        return [];
+      return [[snapshot.containerId, snapshot.appRoot] as const];
+    }),
   );
   return planned.map((snapshot) => {
     const labeled = snapshot.containerId === undefined ? undefined : labeledRoots.get(snapshot.containerId);

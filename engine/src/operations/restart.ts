@@ -314,6 +314,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         });
         return yield* withLaunchVolumeCoordination({
           plan,
+          additionalPlans: placement.plan === undefined ? [] : [placement.plan],
           provider,
           stateStore,
           body: Effect.fnUntraced(function* () {
@@ -375,8 +376,8 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             });
             yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
             return result;
-          }, Effect.provide(context)),
-        });
+          }),
+        }).pipe(Effect.provide(context));
       }),
     );
   },

@@ -70,30 +70,29 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
           plan,
           provider,
           stateStore,
-          body: () =>
-            Effect.gen(function* () {
-              // After ownership preflight (locate/lock), before any volume-producing mutation.
-              yield* claimAppDataIdentity(reconciled);
-              return yield* preflightStartAppDrain(reconciled).pipe(
-                Effect.flatMap((preparedTargets) =>
-                  Effect.gen(function* () {
-                    yield* retired || execution.transactionPreflightDone === true
-                      ? Effect.void
-                      : ensureStartTransactionConsistent(reconciled);
-                    if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
-                    yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
-                    yield* publishPlacementVolumeTransitionNotices(placement, plan);
-                    return yield* startAppForTargetUnlocked(options, reconciled, managed, {
-                      ...execution,
-                      provider,
-                      preparedOverlays,
-                      ...(preparedTargets === undefined ? {} : { preparedTargets }),
-                    });
-                  }),
-                ),
-              );
-            }).pipe(Effect.provide(context)),
-        });
+          body: Effect.fnUntraced(function* () {
+            // After ownership preflight (locate/lock), before any volume-producing mutation.
+            yield* claimAppDataIdentity(reconciled);
+            return yield* preflightStartAppDrain(reconciled).pipe(
+              Effect.flatMap((preparedTargets) =>
+                Effect.gen(function* () {
+                  yield* retired || execution.transactionPreflightDone === true
+                    ? Effect.void
+                    : ensureStartTransactionConsistent(reconciled);
+                  if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
+                  yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
+                  yield* publishPlacementVolumeTransitionNotices(placement, plan);
+                  return yield* startAppForTargetUnlocked(options, reconciled, managed, {
+                    ...execution,
+                    provider,
+                    preparedOverlays,
+                    ...(preparedTargets === undefined ? {} : { preparedTargets }),
+                  });
+                }),
+              ),
+            );
+          }),
+        }).pipe(Effect.provide(context));
       }),
     ),
   );

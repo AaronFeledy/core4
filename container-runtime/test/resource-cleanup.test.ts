@@ -179,6 +179,11 @@ for (const input of [
   { status: 500 },
   { transport: true },
   { labels: { "dev.lando.app-root": "/apps/same-name-other-root" } },
+  { labels: { "dev.lando.provider": "podman" } },
+  { labels: { "dev.lando.owner": "other-owner" } },
+  { labels: { "dev.lando.role": "data-helper" } },
+  { labels: { "dev.lando.scratch": "TRUE" } },
+  { labels: { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": "other" } },
   { kind: "network", labels: { "dev.lando.owner": "other-owner" } },
   { kind: "volume", labels: { "dev.lando.volume-owner": "/apps/other" } },
   { kind: "volume", labels: { "dev.lando.volume-selector": "test:app:wrong:data" } },
@@ -192,6 +197,20 @@ for (const input of [
       expect(fixture.calls.some((call) => call.method === "DELETE")).toBe(false);
   });
 }
+
+test("an inventory container refusal names the container and the label that failed", async () => {
+  // Given a recorded container whose live provider label contradicts the acting provider.
+  const fixture = ownershipFixture({ labels: { "dev.lando.provider": "podman" } });
+  // When / Then
+  expect(await fixture.run()).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ProviderUnavailableError",
+      operation: "resource-ownership",
+      details: { label: "dev.lando.provider" },
+    },
+  });
+});
 
 test("missing ownership inventory authorizes no native discovery or deletion", async () => {
   const fixture = ownershipFixture({ missingInventory: true });

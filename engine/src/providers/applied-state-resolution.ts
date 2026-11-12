@@ -20,6 +20,7 @@ import type {
 } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
+import { refuseContradictoryOrphans } from "./orphan-ownership-refusal.ts";
 
 export type AppliedStateProvider = Pick<
   RuntimeProviderShape,
@@ -299,6 +300,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
         ownership === "exact" && ownershipHints.some((hint) => hint.providerId === provider.id),
       ),
     );
+    yield* refuseContradictoryOrphans({ root: lookupRoot, providers, evidence, isProtected });
     const groups = groupOrphans(lookupRoot, providers, evidence).filter(
       (group) => belongsToApp(group.providerId, group.appId) && !isProtected(group.providerId, group.appId),
     );

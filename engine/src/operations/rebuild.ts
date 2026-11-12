@@ -221,6 +221,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
         });
         return yield* withLaunchVolumeCoordination({
           plan,
+          additionalPlans: placement.plan === undefined ? [] : [placement.plan],
           provider,
           stateStore,
           body: Effect.fnUntraced(function* () {
@@ -288,8 +289,8 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
               servicesStarted: start.servicesStarted,
               ...(start.checks === undefined ? {} : { checks: start.checks }),
             };
-          }, Effect.provide(context)),
-        });
+          }),
+        }).pipe(Effect.provide(context));
       }),
     );
   },

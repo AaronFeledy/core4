@@ -203,8 +203,8 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
             execution.runInitEvents !== false,
             preflight,
           );
-        }, Effect.provide(context)),
-      });
+        }),
+      }).pipe(Effect.provide(context));
   const removed = yield* cleanup;
   return {
     ...stopped,

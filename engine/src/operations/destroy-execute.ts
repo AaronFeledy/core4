@@ -297,8 +297,8 @@ export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(functio
       plan: target.plan,
       provider,
       stateStore,
-      body: () => executeLocked(plan).pipe(Effect.provide(context)),
-    });
+      body: () => executeLocked(plan),
+    }).pipe(Effect.provide(context));
   });
   const refs =
     plan.refs.length === 0 ? [{ kind: "user" as const, id: plan.name, root: plan.root }] : plan.refs;
