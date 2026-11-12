@@ -121,15 +121,20 @@ export const makeOwnedResourcesCleanup = (input: {
           return unreachable;
         }
       }
+      const refusedContainer = (reason: string, details: Readonly<Record<string, string>>) =>
+        new ProviderUnavailableError({
+          providerId: input.ctx.providerId,
+          operation: "resource-ownership",
+          message: `Container ${resource.nativeName} is recorded for this app, but ${reason}, so Lando did not remove it.`,
+          remediation: `Inspect container ${resource.nativeName} with your container runtime and remove it there if it is a leftover, then retry.`,
+          details: { container: resource.nativeName, ...details },
+        });
       if (resource.kind === "container" && containerProblem !== undefined)
         return yield* Effect.fail(
-          new ProviderUnavailableError({
-            providerId: input.ctx.providerId,
-            operation: "resource-ownership",
-            message: `Container ${resource.nativeName} is recorded for this app, but its ${containerProblem} label does not prove it belongs to service ${resource.service} at ${root}, so Lando did not remove it.`,
-            remediation: `Inspect container ${resource.nativeName} with your container runtime and remove it there if it is a leftover, then retry.`,
-            details: { container: resource.nativeName, label: containerProblem },
-          }),
+          refusedContainer(
+            `its ${containerProblem} label does not prove it belongs to service ${resource.service} at ${root}`,
+            { label: containerProblem },
+          ),
         );
       if (
         resource.kind === "network"
@@ -146,6 +151,8 @@ export const makeOwnedResourcesCleanup = (input: {
         return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       const nativeId =
         resource.kind === "volume" ? observed.Name : (observed.Id ?? observed.ID ?? observed.id);
+      if (!nativeId && resource.kind === "container")
+        return yield* Effect.fail(refusedContainer("the runtime reported no native id for it", {}));
       if (!nativeId || (resource.kind === "volume" && nativeId !== resource.nativeName))
         return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       if (resource.kind === "volume") {
