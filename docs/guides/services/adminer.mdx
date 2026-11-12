@@ -1,13 +1,13 @@
 ---
 id: adminer
 provider: test
-timeout: 90000
+timeout: 600000
 tags: [docs, adminer, compose, service, database, postgres, mariadb, sqlite]
 ---
 
 # Browse your database in Adminer
 
-`lando psql` is fine until you want to click through tables, edit a row, or eyeball a schema. The phpMyAdmin service only talks to MySQL and MariaDB. Adminer is a one-file database UI that also speaks PostgreSQL and SQLite, and its official image runs as a Compose service in your app.
+`lando psql` is fine until you want to click through tables or eyeball a schema. The phpMyAdmin service only talks to MySQL and MariaDB. Adminer is a one-file database UI that also speaks PostgreSQL and SQLite, and its official image runs as a Compose service in your app.
 
 Run every command on this page from the app directory on your host.
 
@@ -113,7 +113,30 @@ services:
         condition: service_healthy
 ```
 
-Start it, then log in with System `MySQL / MariaDB`, Server `db`, username `lando`, password `lando`, and database `adminer-mariadb`. For MySQL and MariaDB alone, the typed [phpMyAdmin service](./phpmyadmin.mdx) finds your databases and gets its URL without an endpoint.
+Start the app and give MariaDB something to show:
+
+```sh
+lando start
+lando mariadb -e "CREATE TABLE notes (id INT AUTO_INCREMENT PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES ('hello from lando');"
+```
+
+`lando start` returns after MariaDB accepts connections, so `lando mariadb` works right away.
+
+Run `lando info` and open the `adminer` URL, `https://adminer.adminer-mariadb.lndo.site`. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+Fill in the login form:
+
+| Field | Value |
+| --- | --- |
+| System | MySQL / MariaDB |
+| Server | `db` (already filled in) |
+| Username | `lando` |
+| Password | `lando` |
+| Database | `adminer-mariadb` |
+
+After login, the table list shows `notes`. Open it and select its data to see the row you inserted. That proves Adminer reached MariaDB over the app network with the default credentials. It doesn't prove anything about your app's own connection settings.
+
+For MySQL and MariaDB alone, the typed [phpMyAdmin service](./phpmyadmin.mdx) finds your databases and gets its URL without an endpoint.
 
 ## Browse a SQLite file
 
@@ -179,9 +202,13 @@ If you already added Adminer next to Postgres, declare `sqlite.path` on the app 
 
 If the URL doesn't load, check `lando logs -s adminer` for the PHP server's startup line, and see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx) when the hostname doesn't resolve.
 
+## Remove it
+
+Delete the `adminer` service from `.lando.yml` and run `lando rebuild -y`. Adminer stores nothing of its own, so your database is untouched.
+
 ## Check the plan
 
-These scenarios check the planned config for the Landofiles. `lando app:config` proves what Lando will create, not that Adminer can log in; the login steps above are that check.
+The inspect scenarios check the planned config for each Landofile. The browse scenarios start each app, seed a `notes` row, confirm Adminer's `*.lndo.site` URL from `lando info`, and log in to select that row.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -233,11 +260,112 @@ These scenarios check the planned config for the Landofiles. `lando app:config` 
       <Cleanup />
     </Step>
   </Scenario>
+
+  <Scenario id="postgres-browse" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-demo" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-demo" } }} />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando psql -c "CREATE TABLE notes (id serial PRIMARY KEY, body text); INSERT INTO notes (body) VALUES ('hello from lando');"`} />
+    </Step>
+    <Step name="route">
+      <Verify command="lando info" expect={{ stdout: { regex: "adminer\\.adminer-demo\\.lndo\\.site" } }} />
+    </Step>
+    <Hidden reason="HTTP login and select prove Adminer reached Postgres and the seeded row">
+      <Step name="login-and-select">
+        <Verify command={`sh -c 'b=$(base64 -w0 browse-login.php); lando exec adminer -- sh -c "printf %s \\"$b\\" | base64 -d > /tmp/browse-login.php && php /tmp/browse-login.php http://127.0.0.1:8080 pgsql db lando local-development-only adminer-demo \\"hello from lando\\" notes"'`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Break the stored Postgres password so the documented ALTER USER recovery can run">
+      <Step name="stale-password">
+        <Run command={`lando psql -c "ALTER USER lando WITH PASSWORD 'wrong-temporary';"`} />
+        <Verify command={`sh -c 'b=$(base64 -w0 browse-login.php); lando exec adminer -- sh -c "printf %s \\"$b\\" | base64 -d > /tmp/browse-login.php && php /tmp/browse-login.php http://127.0.0.1:8080 pgsql db lando local-development-only adminer-demo \\"hello from lando\\" notes"'`} expectExit={1} expect={{ stdout: { regex: "password authentication failed" } }} />
+      </Step>
+    </Hidden>
+    <Step name="fix-password">
+      <Run command={`lando psql -c "ALTER USER lando WITH PASSWORD 'local-development-only';"`} />
+    </Step>
+    <Hidden reason="HTTP login after ALTER USER confirms the stored password matches the Landofile">
+      <Step name="login-after-alter">
+        <Verify command={`sh -c 'b=$(base64 -w0 browse-login.php); lando exec adminer -- sh -c "printf %s \\"$b\\" | base64 -d > /tmp/browse-login.php && php /tmp/browse-login.php http://127.0.0.1:8080 pgsql db lando local-development-only adminer-demo \\"hello from lando\\" notes"'`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Rebuild without Adminer and confirm the seeded Postgres row is still there">
+      <Step name="remove-adminer">
+        <Run command={`sh -c 'cat > .lando.yml << "EOF"
+name: adminer-demo
+services:
+  db:
+    type: postgres
+    creds:
+      user: lando
+      database: adminer-demo
+      password: local-development-only
+EOF
+lando rebuild -y'`} />
+        <Verify command={`lando psql -c "SELECT body FROM notes;"`} expect={{ stdout: { regex: "hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mariadb-browse" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-mariadb" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-mariadb" } }} />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando mariadb -e "CREATE TABLE notes (id INT AUTO_INCREMENT PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES ('hello from lando');"`} />
+    </Step>
+    <Step name="route">
+      <Verify command="lando info" expect={{ stdout: { regex: "adminer\\.adminer-mariadb\\.lndo\\.site" } }} />
+    </Step>
+    <Hidden reason="HTTP login and select prove Adminer reached MariaDB and the seeded row">
+      <Step name="login-and-select">
+        <Verify command={`sh -c 'b=$(base64 -w0 browse-login.php); lando exec adminer -- sh -c "printf %s \\"$b\\" | base64 -d > /tmp/browse-login.php && php /tmp/browse-login.php http://127.0.0.1:8080 server db lando lando adminer-mariadb \\"hello from lando\\" notes"'`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="sqlite-browse" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-sqlite" />
+    </Step>
+    <Step name="mkdir">
+      <Run command="mkdir -p data" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-sqlite" } }} />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando exec appserver -- php -r '$db = new PDO("sqlite:data/site.sqlite"); $db->exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES (\\"hello from lando\\");");'`} />
+    </Step>
+    <Step name="route">
+      <Verify command="lando info" expect={{ stdout: { regex: "adminer\\.adminer-sqlite\\.lndo\\.site" } }} />
+    </Step>
+    <Hidden reason="HTTP login and select prove Adminer opened the SQLite file and the seeded row">
+      <Step name="login-and-select">
+        <Verify command={`sh -c 'b=$(base64 -w0 browse-login.php); lando exec adminer -- sh -c "printf %s \\"$b\\" | base64 -d > /tmp/browse-login.php && php /tmp/browse-login.php http://127.0.0.1:8080 sqlite \\"\\" \\"\\" local-development-only /app/data/site.sqlite \\"hello from lando\\" notes"'`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 </Guide>
-
-## Remove it
-
-Delete the `adminer` service from `.lando.yml` and run `lando rebuild -y`. Adminer stores nothing of its own, so your database is untouched.
 
 ## Next
 
