@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect } from "effect";
-
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceMountIntent } from "@lando/sdk/services";
 import {
@@ -8,6 +6,7 @@ import {
   type ServiceFeatureContractHarness,
   runServiceFeatureContract,
 } from "@lando/sdk/test";
+import { Cause, Effect } from "effect";
 
 const expectFeatureFailure = async (
   feature: ServiceFeatureDefinition,

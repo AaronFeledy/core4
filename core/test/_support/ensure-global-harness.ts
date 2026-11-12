@@ -1,6 +1,4 @@
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
-
 import { makeLandoPaths } from "@lando/core/paths";
 import {
   AbsolutePath,
@@ -35,9 +33,10 @@ import * as EnvironmentValueResolverLayer from "@lando/engine/services/environme
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { RedactionService } from "@lando/redaction/service";
-import { PathsService } from "@lando/sdk/services";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
+import { PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { testStateStoreLayer } from "./landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "./legacy-service-type.ts";

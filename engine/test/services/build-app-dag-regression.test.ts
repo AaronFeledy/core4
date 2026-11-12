@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test";
-
-import { Effect, Queue, Stream } from "effect";
-
 import { AppId, ServiceName } from "@lando/sdk/schema";
-import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Queue, Stream } from "effect";
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";
 
 test("fails a cyclic app build through the tagged provider error boundary", async () => {
@@ -91,10 +90,21 @@ test("blocks failed descendants while independent app siblings continue", async 
     expect(calls.sort()).toEqual(["node:install", "web:prepare"]);
     expect(result.error).toMatchObject({ _tag: "BuildPhaseFailedError", phase: "app" });
     if (result.error._tag !== "BuildPhaseFailedError") throw result.error;
-    expect(result.error.failures.map((failure) => [failure.step.id, failure.summary])).toEqual([
-      ["web:app:prepare", "web:app:prepare failed"],
-      ["web:app:install", "web:app:install blocked by web:app:prepare"],
+    expect(result.error.message).toBe("App build failed: 2 of 3 build steps failed.");
+    expect(result.error.failures.map((failure) => [failure.step.id, failure.message])).toEqual([
+      ["web:app:prepare", "Build step web:app:prepare for service web exited with code 7."],
+      [
+        "web:app:install",
+        "Build step web:app:install for service web did not run: blocked by web:app:prepare.",
+      ],
     ]);
+    // A blocked step never dispatches, so neither its error nor its start advertises a transcript.
+    expect(result.error.failures[1]?.transcriptPath).toBeUndefined();
+    const blockedStart = result.events.find(
+      (event) => event._tag === "task.start" && event.taskId === "web:app:install",
+    );
+    expect(blockedStart?._tag).toBe("task.start");
+    if (blockedStart?._tag === "task.start") expect(blockedStart.transcriptPath).toBeUndefined();
     expect(
       result.events
         .filter((event) => event._tag === "build-step-skip")
@@ -120,6 +130,7 @@ test("writes scratch app transcripts under the scratch build namespace", async (
         web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
       }),
       id: AppId.make("scratch-app-build"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-app-build" } },
     };
 
     // When
@@ -154,6 +165,7 @@ test("labels scratch app build-step-skip events with the scratch identity namesp
         web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
       }),
       id: AppId.make("scratch-app-build"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-app-build" } },
     };
 
     // When: build twice so the second run short-circuits from the cache and emits a skip.

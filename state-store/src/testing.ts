@@ -1,7 +1,4 @@
 import { basename, dirname, resolve } from "node:path";
-
-import { Effect, Layer, Semaphore } from "effect";
-
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import {
@@ -10,6 +7,7 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
+import { Effect, Layer, Semaphore } from "effect";
 
 import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
 import { resolveStatePath } from "./paths.ts";

@@ -1,5 +1,7 @@
-import { DateTime, Effect, Option, Result } from "effect";
-
+import { presentLandofileLayers, representativeLandofileLayer } from "@lando/landofile/layers";
+import { planRedactionValues } from "@lando/redaction/plan-values";
+import { RedactionService } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileEventsSkippedError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import type { AppPlan, LandofileEventsOutcome } from "@lando/sdk/schema";
@@ -10,10 +12,7 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { presentLandofileLayers, representativeLandofileLayer } from "@lando/landofile/layers";
-import { planRedactionValues } from "@lando/redaction/plan-values";
-import { RedactionService } from "@lando/redaction/service";
+import { DateTime, Effect, Option, Result } from "effect";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 
 type LandofileEventSource =
@@ -39,7 +38,7 @@ const errorText = (error: unknown): string =>
 /** Whether the applied root itself holds a Landofile; a Landofile in a parent folder is another app's. */
 const landofilePresentAt = (root: string): Effect.Effect<Result.Result<boolean, string>> =>
   presentLandofileLayers(root).pipe(
-    Effect.mapError(errorText),
+    mapFailures(errorText),
     Effect.map((layers) => representativeLandofileLayer(layers) !== undefined),
     Effect.result,
   );

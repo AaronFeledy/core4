@@ -1,5 +1,6 @@
 import { dirname, isAbsolute } from "node:path";
 import { decodeOrFail } from "@lando/landofile/decode";
+import { mapFailures } from "@lando/sdk/command-result";
 import { NotImplementedError, RecipeManifestValidationError } from "@lando/sdk/errors";
 import {
   RecipeManifest,
@@ -199,7 +200,7 @@ const parseRecipe = Effect.fn("RecipeManifestService.parse")(function* (source: 
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const store = (yield* retainedRecipeSourceStore()).store;
-      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      const sources = yield* store.session.pipe(mapFailures((error) => mapSourceAcquisitionError(error)));
       return yield* parseWithSources(source, content, sources);
     }),
   ).pipe(Effect.provideService(StateStore, state.value));

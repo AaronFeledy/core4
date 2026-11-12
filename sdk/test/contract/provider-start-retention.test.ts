@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect } from "effect";
-
 import { ServiceStartError } from "@lando/sdk/errors";
 import {
   type AppId,
@@ -16,6 +14,7 @@ import {
   TestRuntimeProvider,
   runProviderStartRetentionContract,
 } from "@lando/sdk/test";
+import { Cause, Effect } from "effect";
 
 const testProviderId = ProviderId.make(TestRuntimeProvider.id);
 

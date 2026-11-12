@@ -1,5 +1,4 @@
-import { Struct } from "effect";
-import { Schema } from "effect";
+import { Schema, Struct } from "effect";
 import { GlobalConfig } from "./config.ts";
 
 // Effective public config, explicitly selected so new loader state stays private.

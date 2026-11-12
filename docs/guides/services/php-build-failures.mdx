@@ -5,63 +5,334 @@ timeout: 90000
 tags: [docs, php, service, build]
 ---
 
-# Recover from a failed PHP build
+# Recover from a failed build step
 
-A failed PHP build stops startup and reports the command that failed. Read that command's output, fix the script or its dependencies, then rerun `lando start`.
+When a build step fails, `lando start` stops with an error that names the service, repeats the last lines the step printed, and gives you the command that prints the step's full output. Read that output, fix the step, then run `lando start` again.
 
-`build.app` defines shell commands for the app phase of a service build. Each entry executes as `sh -c "<command>"`, in order, after Lando's own PHP prerequisite steps. A `composer install`
-that fails on a bad `composer.json`, a missing PHP extension a package
-requires, or a stray `exit 1` all fail a build step the same way: the step
-exits non-zero, and Lando stops instead of starting a half-built app.
+Run the commands on this page from the app directory on your host.
 
-## Recover from a failing build step
+A service can fail in either of two build phases, and the error looks different in each. Image steps (`build.artifact` steps and Dockerfile builds) run before the container exists. `build.app` steps run inside the running container with your app mounted. [Run build steps as root or as your app user](./build-steps.mdx) covers what belongs in each phase.
 
-Fix the failing command in `build.app`. Most often that means fixing the underlying script itself, not the Landofile. Then rerun `lando start`. It reuses the containers from the failed attempt, reruns the failed step, and only recreates a container whose config changed.
-Editing a `build.app` entry changes that step's content-hash build key, so
-the next `lando start` reruns it. A `build.artifact` edit changes the image
-key the same way, so start rebuilds that image too. `lando rebuild` is the
-forced rerun when the command text is unchanged and only bind-mounted inputs
-changed, or when you want a forced pull.
+## Fix a failed image build
 
-## The build plan captures the exact failing command
+This app builds its one service from a Dockerfile whose `RUN` instruction prints two lines and then fails on purpose:
 
-Every `build.app` entry reaches the app's build plan verbatim, whether or not it will actually succeed. Planning never runs a build step. It just records the command to run later. This means a successful plan check does not prove that `composer install --no-dev`, or any other build command, will succeed when executed.
-
-## What a failing build step looks like
-
-On a real provider (not the in-memory test double), a failing app-phase
-step becomes a tagged `BuildStepFailedError` carrying the step, its exit
-code, and its transcript path. Every step failure in the app build phase
-is collected into one tagged `BuildPhaseFailedError` with a `failures`
-array, not just the first one. A step that depends on a failed step is
-marked blocked and reported as its own failure, so Lando never silently
-skips work downstream of a broken step.
-
-Every app-phase step writes its stdout/stderr to a per-step transcript
-file under the user data root, named by the step's content-hash build key:
-
-```text
-<userDataRoot>/builds/<appId>/app/<service>/<buildKey>.log
+```yaml
+name: bt-failbuild
+services:
+  app:
+    type: compose
+    primary: true
+    build:
+      context: .
 ```
 
-Scratch apps get the same layout under an extra `scratch/` segment. While
-the step runs, its stdout/stderr lines also stream live as `task-detail`
-events, so `lando start` shows the failing command's own output, not just
-its exit code.
+```dockerfile
+FROM docker.io/library/alpine:3.20
+RUN printf "build-step-%s-marker\n" output && echo second-line >&2 && false
+```
 
-On a `BuildPhaseFailedError`, `lando start` stops there and leaves what
-it already applied in place: containers, routes, volumes, and any build
-steps that did finish. The CLI exits non-zero, reports the tagged error
-with its list of `BuildStepFailedError` entries, and prints one warning
-naming which services are running, created/stopped, or unverified. Nothing is
-removed. `lando stop` shuts the app down if you want it quiet while you
-fix the script.
+Start it:
 
-## Prove the plan
+```sh
+lando start
+```
 
-The happy-build fixture runs a successful `build.app` entry through start
-and destroy. The failing-build fixture proves the broken command reaches
-the resolved plan without executing it on the test provider:
+Lando prints the container engine's build output as the build produces it, then the error. This is the output when it is piped or running in CI. In a terminal you get the same lines under the running step in the task tree.
+
+```text
+▼ Building bt-failbuild (1 step)
+[app] start: Build app
+[app] STEP 1/2: FROM docker.io/library/alpine:3.20
+[app] STEP 2/2: RUN printf "build-step-%s-marker\n" output && echo second-line >&2 && false
+[app] build-step-output-marker
+[app] second-line
+[app] ✗ fail: Build app failed (exit 1) (246ms)
+▶ bt-failbuild build failed (0 ✓ · 1 ✗) (250ms)
+Container image build failed: building at STEP "RUN printf "build-step-%s-marker\n" output && echo second-line >&2 && false": while running runtime: exit status 1
+  ↳ Check the failing build step, correct it, and rebuild. The full build output for service app is in ~/.local/share/lando/builds/bt-failbuild/artifact/app/4431d805ed571a08ae49031f80fdb8a1b91ed14a1664fc1711919f8d889b2612.log. Run "lando logs --build --service app" to print it.
+code: ArtifactBuildError
+commandId: app:start
+providerId: lando
+operation: buildArtifact
+service: app
+transcriptPath: ~/.local/share/lando/builds/bt-failbuild/artifact/app/4431d805ed571a08ae49031f80fdb8a1b91ed14a1664fc1711919f8d889b2612.log
+outputTail: STEP 1/2: FROM docker.io/library/alpine:3.20
+STEP 2/2: RUN printf "build-step-%s-marker\n" output && echo second-line >&2 && false
+build-step-output-marker
+second-line
+logsDir: ~/.cache/lando/logs
+cacheDir: ~/.cache/lando
+⚠ Start did not complete. Resources were left in place. Running: none; created/stopped: none; unverified: none. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; named volumes require `--volumes`.
+```
+
+Read it from the top:
+
+- The `[app]` lines are the build's own output for the `app` service: each instruction, then whatever its command printed.
+- The `Container image build failed` line is the engine's message. It names the instruction that failed.
+- The `↳` line names the service to fix, says where the full output is saved, and ends with the command that prints it.
+- `outputTail` repeats the last lines of the step's output, up to 20.
+- The closing warning lists what is running. An image build fails before Lando creates any container, so there is nothing to clean up.
+
+A failed image build also stops the image builds of the app's other services.
+
+Fix the failing instruction in the Dockerfile, or the failing `build.artifact` entry in `.lando.yml`, then start again and check the service:
+
+```sh
+lando start
+lando info
+```
+
+`lando start` builds the image again because a failed step always runs again. `lando info` lists the service once it is up.
+
+## Fix a failed `build.app` step
+
+This app runs one `build.app` step that prints a few lines, including its proxy URL, and exits `3`:
+
+```yaml
+name: bt-failapp
+services:
+  app:
+    type: compose
+    primary: true
+    image: docker.io/library/alpine:3.20
+    command: sleep infinity
+    environment:
+      HTTP_PROXY: "http://proxyuser:proxypass-hunter2@127.0.0.1:3128"
+    build:
+      app:
+        - "echo app-step-marker; echo proxy=$HTTP_PROXY; echo bare=proxypass-hunter2; echo to-stderr >&2; printf 'unterminated proxypass-hunter2 tail'; exit 3"
+```
+
+```sh
+lando start
+```
+
+```text
+▼ Building bt-failapp (1 step)
+[app] start: Build app
+[app] ✓ complete: app cached (1ms)
+▶ bt-failapp built (1 ✓ · 0 ✗) (31ms)
+▼ Apply bt-failapp (1 step)
+[app] start: Apply service app
+[app] ✓ complete: app (running) (253ms)
+▶ bt-failapp applied (1 ✓ · 0 ✗) (254ms)
+▼ Building app dependencies (1 step)
+[app:app:authored-app:1] start: Build app
+[app:app:authored-app:1] app-step-marker
+[app:app:authored-app:1] proxy=http://[redacted]@127.0.0.1:3128
+[app:app:authored-app:1] bare=[redacted]
+[app:app:authored-app:1] ! to-stderr
+[app:app:authored-app:1] unterminated [redacted] tail
+[app:app:authored-app:1] ✗ fail: app:app:authored-app:1 failed (exit 3) (164ms)
+▶ App dependency build failed (0 ✓ · 1 ✗) (177ms)
+App build failed: 1 of 1 build steps failed.
+Build step app:app:authored-app:1 for service app exited with code 3.
+  app-step-marker
+  proxy=http://[redacted]@127.0.0.1:3128
+  bare=[redacted]
+  to-stderr
+  unterminated [redacted] tail
+  ↳ Inspect the build transcript at ~/.local/share/lando/builds/bt-failapp/app/app/e49f1ac5987460eb6f6c31ef6c6ae0fcd5ae3faf15083f08296d53566d88c260.log, fix step app:app:authored-app:1, and rebuild. Run "lando logs --build --service app" to print it.
+  ↳ Fix each failed build step and rebuild.
+code: BuildPhaseFailedError
+commandId: app:start
+appId: bt-failapp
+phase: app
+logsDir: ~/.cache/lando/logs
+cacheDir: ~/.cache/lando
+⚠ Start did not complete. Resources were left in place. Running: app; created/stopped: none; unverified: none. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; named volumes require `--volumes`.
+```
+
+The app's containers are already running by the time `build.app` steps run, which is why the closing warning says `Running: app`. The step's lines appear under `Building app dependencies`, prefixed with the step id. A line the step wrote to stderr is marked with `!`.
+
+One failing step doesn't stop the steps that don't depend on it. When they finish, Lando reports how many steps failed. For each one you get the step id, the service, the exit code, the last lines of its output, and the command that prints all of it.
+
+Two other messages can appear in that list:
+
+- A step that couldn't run because something it depends on failed is reported as blocked. The message names what blocked it. A blocked step never ran, so it has no saved output.
+- If the runtime fails while a step is running, the message says the step did not complete and gives the runtime's reason in place of an exit code.
+
+Fix the failing command. Most often that means fixing the script or dependency file it runs, not the Landofile. Then start again and check the service:
+
+```sh
+lando start
+lando info
+```
+
+`lando start` reuses the containers from the failed attempt, runs the failed step again, and reports the steps that already succeeded as cached. Run `lando stop` first if you want the app quiet while you work on the fix.
+
+## Read the full build output
+
+Lando saves the complete output of every build step that runs. Print the output of the app's most recent build with `lando logs --build`:
+
+```sh
+lando logs --build
+```
+
+For the first example, that is everything the image build printed, ending with the error:
+
+```text
+app stdout [build]: STEP 1/2: FROM docker.io/library/alpine:3.20
+app stdout [build]: STEP 2/2: RUN printf "build-step-%s-marker\n" output && echo second-line >&2 && false
+app stdout [build]: build-step-output-marker
+app stdout [build]: second-line
+app stdout [build]: Error: Container image build failed: building at STEP "RUN printf "build-step-%s-marker\n" output && echo second-line >&2 && false": while running runtime: exit status 1
+```
+
+The second example prints its `build.app` step the same way:
+
+```text
+app stdout [build:app:app:authored-app:1]: app-step-marker
+app stdout [build:app:app:authored-app:1]: proxy=http://[redacted]@127.0.0.1:3128
+app stdout [build:app:app:authored-app:1]: bare=[redacted]
+app stdout [build:app:app:authored-app:1]: to-stderr
+app stdout [build:app:app:authored-app:1]: unterminated [redacted] tail
+app stdout [build:app:app:authored-app:1]: Error: Build step app:app:authored-app:1 for service app exited with code 3.
+```
+
+Each line starts with the service and a label for the step that printed it. `[build]` is the service's image build. `[build:<step id>]` is a `build.app` step, with the same step id the error uses. Every line is labeled `stdout`, including the ones a step wrote to stderr.
+
+The command reads saved files, so it works whether the app is running, stopped, or never got as far as a container.
+
+In an app with several services, add `--service` to print one service's build. `--tail` keeps the last lines of each build step's output, which is usually where the failure is:
+
+```sh
+lando logs --build --tail 2 --service app
+```
+
+```text
+app stdout [build]: second-line
+app stdout [build]: Error: Container image build failed: building at STEP "RUN printf "build-step-%s-marker\n" output && echo second-line >&2 && false": while running runtime: exit status 1
+```
+
+`--build` prints what was saved and exits. It can't be combined with `--follow`, `--since`, or `--source`. Lando rejects the combination as a usage error with exit code `2`. This is `lando logs --build --follow`:
+
+```text
+logs: --build cannot be combined with --follow.
+  ↳ Remove --follow when using --build.
+code: CommandInputValidationError
+commandId: app:logs
+target: app:logs
+field: follow
+kind: flag
+reason: conflict
+logsDir: ~/.cache/lando/logs
+cacheDir: ~/.cache/lando
+[exit 2]
+```
+
+An app that hasn't built anything yet, or whose saved output was removed by `lando destroy`, prints one line and exits `0`:
+
+```text
+bt-destroytest has no recorded build output. Run "lando rebuild" to build the app and record it.
+```
+
+In a terminal, expanding a build task in the task tree shows the same output. An image step that only fetches a published image, with nothing to build, saves one line naming the image and the digest it used.
+
+### Where the output is saved
+
+The files live under `builds/` in Lando's user data root, which is `~/.local/share/lando` on Linux. The error's `transcriptPath` is the file for the step that failed. Only your user can read it.
+
+Lando keeps the output of the five most recent versions of each build step. A step gets a new version when its inputs change, for example when you edit the command. Older output is removed after a later build succeeds. A failed or interrupted build keeps its output, so the output of the failure you are fixing is still there when you come back to it.
+
+`lando destroy` removes all of the app's saved build output.
+
+### Long lines
+
+A build output line longer than 512 characters is cut to 512 in two places: the live lines Lando prints while the step runs, and the error's `outputTail`. The saved output keeps the line, up to 64 KiB. When a cut line hides what you need, such as a long compiler command or a minified stack trace, read it with `lando logs --build`.
+
+### What is masked
+
+Lando redacts build output before it saves it. The live lines and the error go through the same redaction, so all three show `[redacted]` in the same places. The second example shows it: the proxy password never reaches the terminal, the saved output, or `lando logs --build`.
+
+Lando masks:
+
+- values resolved from a [secret store](../config/secret-stores.mdx)
+- values of environment variables with secret-looking names
+- the username and password inside proxy URLs: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `FTP_PROXY` in service environment and build args, and your host's own proxy variables
+- values of build args with secret-looking names, such as `NPM_TOKEN`
+- credential-shaped text such as `scheme://user:pass@host` and `password=...`, even when Lando doesn't know the value
+
+Masking has limits. An ordinary build arg such as `NODE_MAJOR: "22"` is public and printed as written. Build args can also end up in image history, so a build arg is not a safe place for a secret, masked or not. Credential shapes are matched one output line at a time. A value Lando was never told about, with no recognizable shape, can't be masked.
+
+## Choose between `lando start` and `lando rebuild`
+
+`lando start` is the right command after you fix a failed step. A failed step always runs again on the next start. So does a step whose inputs changed. Editing a `build.app` entry changes that step's build key. For an image, the inputs are the Dockerfile and build context contents, the build args, the service's build steps, and the base image digest Lando resolved.
+
+A step that already succeeded with the same inputs doesn't run again. Start reports it as cached, and `lando logs --build` still prints the output of the run that produced it. This holds for both phases. A second `lando start` of an app whose one `build.app` step already succeeded reports:
+
+```text
+▼ Building app dependencies (1 step)
+[app:app:authored-app:1] start: Build app
+[app:app:authored-app:1] ✓ complete: app:app:authored-app:1 cached (0ms)
+▶ App dependencies built (1 ✓ · 0 ✗) (1ms)
+```
+
+Run `lando rebuild` when you need a build that start would skip:
+
+- A `build.app` command is unchanged but the files it reads changed, for example a new `composer.json` for the same `composer install`.
+- You want a newer base image. `lando start` doesn't check a Dockerfile's `FROM` tag. A PHP security release on a floating tag is one such pull. See [Pick up a PHP security release](./php-security-updates.mdx).
+
+A service with `pull_policy: build` builds its image on every start. See [Control when the image is pulled](./compose-passthrough.mdx#control-when-the-image-is-pulled).
+
+### After `lando destroy`
+
+`lando destroy` removes the app's saved build output and forgets the results of its `build.app` steps. Those steps ran inside containers that no longer exist, so the next `lando start` runs every one of them again:
+
+```text
+▼ Building app dependencies (1 step)
+[app:app:authored-app:1] start: Build app
+[app:app:authored-app:1] app build step ok
+[app:app:authored-app:1] ✓ complete: app:app:authored-app:1 complete (170ms)
+```
+
+Images are different. A built image that still exists is reused, not rebuilt, and start reports that step as cached.
+
+## Read the failure from a script
+
+With `--format=json`, `lando start` prints one JSON object per line. Each line of build output is a `task.detail` event, and the last line is the result frame. Its `envelope.error` carries the same facts as the human report:
+
+```sh
+lando start --format=json
+```
+
+This is the result frame of the first example:
+
+```json
+{"_tag":"result","envelope":{"apiVersion":"v4","command":"app:start","ok":false,"error":{"_tag":"ArtifactBuildError","message":"Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","remediation":"Check the failing build step, correct it, and rebuild. The full build output for service app is in ~/.local/share/lando/builds/bt-failbuild/artifact/app/4431d805ed571a08ae49031f80fdb8a1b91ed14a1664fc1711919f8d889b2612.log. Run \"lando logs --build --service app\" to print it.","service":"app","providerId":"lando","operation":"buildArtifact","details":{"message":"building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","tag":"lando-build-lando-app-4431d805ed571a08ae49031f"},"transcriptPath":"~/.local/share/lando/builds/bt-failbuild/artifact/app/4431d805ed571a08ae49031f80fdb8a1b91ed14a1664fc1711919f8d889b2612.log","outputTail":"STEP 1/2: FROM docker.io/library/alpine:3.20\nSTEP 2/2: RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\nbuild-step-output-marker\nsecond-line"},"warnings":[],"deprecations":[]}}
+```
+
+The error's shape depends on the phase:
+
+| Phase | `_tag` | Fields |
+| --- | --- | --- |
+| Image | `ArtifactBuildError` | `message`, `service`, `transcriptPath`, `outputTail`, `remediation` |
+| App | `BuildPhaseFailedError` | `message`, `remediation`, and a `failures` array |
+
+Each entry in `failures` has `_tag: "BuildStepFailedError"`, `message`, and `remediation`. The other fields appear only when they apply: `exitCode` when the command ran and exited, `outputTail` when it printed something, `transcriptPath` when the step ran, and `cause` when the runtime failed. A blocked step's entry has none of them. See [Script Lando with JSON](../scripting-with-json.mdx) for the envelope around the error.
+
+`outputTail` is a tail. To get the full output, run `lando logs --build --format=json`, with `--service` and `--tail` as needed:
+
+```sh
+lando logs --build --format=json --tail 2
+```
+
+These are the last three lines it prints for the first example, two stream frames and the result frame:
+
+```json
+{"_tag":"stdout","chunk":"second-line\n","service":"app","source":"build"}
+{"_tag":"stdout","chunk":"Error: Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1\n","service":"app","source":"build"}
+{"_tag":"result","envelope":{"apiVersion":"v4","command":"app:logs","ok":true,"result":{"app":"bt-failbuild","lines":[{"service":"app","stream":"stdout","line":"second-line","source":"build"},{"service":"app","stream":"stdout","line":"Error: Container image build failed: building at STEP \"RUN printf \"build-step-%s-marker\\n\" output && echo second-line >&2 && false\": while running runtime: exit status 1","source":"build"}]},"warnings":[],"deprecations":[]}}
+```
+
+Read `envelope.result.lines` from the result frame. Each entry has `service`, `stream`, `line`, and `source`. `source` is `build` for an image build and `build:<step id>` for a `build.app` step. `envelope.result.build` is `true`, which tells this result apart from service logs.
+
+## Check the plan before you start
+
+`lando app:config --format=json` shows every `build.app` entry exactly as you wrote it. Planning records a command without running it, so a plan that checks out doesn't prove that `composer install --no-dev`, or any other build command, will succeed.
+
+The scenarios below start an app whose `build.app` step succeeds and confirm that a failing command reaches the plan without running. The last two run both failing examples from this page on a real container runtime and read their saved output back with `lando logs --build`.
 
 <Guide>
   <Scenario id="app-build-step-succeeds" render>
@@ -100,6 +371,53 @@ the resolved plan without executing it on the test provider:
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="image-build-failure-output" layer="e2e" render={false} reason="Prove a failed image build reports its output and that lando logs --build prints the saved copy">
+    <Step name="scaffold-image-failure">
+      <UseFixture name="failing-image-build" />
+    </Step>
+    <Step name="start-fails-with-output">
+      <Run command="lando start" expectExit={1} />
+      <Verify errorTag="ArtifactBuildError" expect={{ regex: "build-step-output-marker" }} />
+      <Verify errorTag="ArtifactBuildError" expect={{ regex: "transcriptPath: \\S+\\.log" }} />
+      <Verify errorTag="ArtifactBuildError" expect={{ regex: "lando logs --build --service app" }} />
+    </Step>
+    <Step name="start-fails-as-json">
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"error\":\\{\"_tag\":\"ArtifactBuildError\".*\"transcriptPath\":\"[^\"]+\\.log\".*build-step-output-marker" } }} />
+    </Step>
+    <Step name="print-saved-output">
+      <Run command="lando logs --build --format=json" />
+      <Verify command="lando logs --build --format=json" expect={{ stdout: { regex: "\"line\":\"build-step-output-marker\"[^}]*\"source\":\"build\"" } }} />
+    </Step>
+    <Step name="cleanup-image-failure">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="app-step-failure-output" layer="e2e" render={false} reason="Prove a failed build.app step reports redacted output and that lando logs --build prints the saved copy">
+    <Step name="scaffold-app-step-failure">
+      <UseFixture name="failing-app-step" />
+    </Step>
+    <Step name="start-fails-with-redacted-output">
+      <Run command="lando start" expectExit={1} />
+      <Verify errorTag="BuildPhaseFailedError" expect={{ regex: "app-step-marker" }} />
+      <Verify errorTag="BuildPhaseFailedError" expect={{ not: { regex: "proxypass-hunter2" } }} />
+    </Step>
+    <Step name="start-fails-as-json">
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "\"error\":\\{\"_tag\":\"BuildPhaseFailedError\".*\"outputTail\":\"app-step-marker.*\"_tag\":\"BuildStepFailedError\"" } }} />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { not: { regex: "proxypass-hunter2" } } }} />
+    </Step>
+    <Step name="print-saved-output">
+      <Run command="lando logs --build --format=json" />
+      <Verify command="lando logs --build --format=json" expect={{ stdout: { regex: "\"line\":\"app-step-marker\"[^}]*\"source\":\"build:app:app:authored-app:1\"" } }} />
+      <Verify command="lando logs --build --format=json" expect={{ stdout: { not: { regex: "proxypass-hunter2" } } }} />
+    </Step>
+    <Step name="cleanup-app-step-failure">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

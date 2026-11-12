@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import {
   PYTHON_FEATURE_ID,
@@ -258,4 +257,5 @@ describe("python:3.12 ServiceType", () => {
     );
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

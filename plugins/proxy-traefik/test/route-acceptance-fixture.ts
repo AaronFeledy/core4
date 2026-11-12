@@ -1,5 +1,5 @@
-import { acquisitionStateFile, defaultDomainFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile, defaultDomainFile } from "../src/proxy-paths.ts";
 import { acquisition } from "./observe-routes-fixture.ts";
 import { makeHarness } from "./proxy-tls-harness.ts";
 

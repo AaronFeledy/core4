@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import { plugin as mkcertPlugin } from "@lando/ca-mkcert";
 import { ConfigTranslatorConflictError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { plugin as mustachePlugin } from "@lando/template-mustache";
+import { Result, Schema } from "effect";
 
 import { makePluginCapabilityIndex } from "../../src/plugins/module-set.ts";
 

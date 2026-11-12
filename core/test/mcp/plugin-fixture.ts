@@ -2,8 +2,8 @@ import { bundledPluginModules } from "@lando/engine/composition";
 import {
   type GraphCommandCandidate,
   PluginContributionGraph,
+  pluginCommandCandidates,
 } from "@lando/engine/plugins/contribution-graph";
-import { pluginCommandCandidates } from "@lando/engine/plugins/contribution-graph";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Context, Effect, Result } from "effect";

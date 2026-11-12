@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
+import { layer as httpClientLayer } from "@lando/http-client/live";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId, type ScanPlan, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { layer as httpClientLayer } from "@lando/http-client/live";
+import { DateTime, Effect, Layer } from "effect";
 import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";
 
 const web = ServiceName.make("web");

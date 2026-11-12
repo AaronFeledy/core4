@@ -1,7 +1,6 @@
-import { Schema } from "effect";
-
 import { type EndpointPlan, type ListenerAuthority, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceEndpointContext } from "@lando/sdk/services";
+import { Schema } from "effect";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 /** A secondary listener the daemon opens beside its primary one. */

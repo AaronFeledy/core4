@@ -6,7 +6,7 @@ import { makePodmanApiClient, layer as providerLayer } from "@lando/provider-lan
 import { ServiceName } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { tomcat9ServiceType, tomcat10ServiceType, tomcat11ServiceType } from "../src/services/tomcat.ts";
+import { tomcat10ServiceType, tomcat11ServiceType, tomcat9ServiceType } from "../src/services/tomcat.ts";
 import { composeCatalogConfigPlan } from "./support/catalog-config-app.ts";
 import { acquireLiveApp, acquireTempAppRoot, execUntil, writeFixture } from "./support/live-app-scope.ts";
 

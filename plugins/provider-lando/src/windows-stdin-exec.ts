@@ -5,13 +5,12 @@ import { serviceContainerName } from "@lando/container-runtime/plan";
 // readiness and log-file helpers) likewise bypass that path.
 import { withoutPodmanRedirectsDefined } from "@lando/container-runtime/podman/managed-invocation";
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import { Effect, Stream } from "effect";
-
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import { ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
-import type { CommandSpec, ExecChunk, ExecResult, ExecTarget } from "@lando/sdk/services";
-import type { ProcessRunner } from "@lando/sdk/services";
+import type { CommandSpec, ExecChunk, ExecResult, ExecTarget, ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
+import { type Effect, Stream } from "effect";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
@@ -61,7 +60,7 @@ export const windowsStdinExec = (
       ...(command.stdinStream === undefined ? {} : { stdinStream: command.stdinStream }),
     })
     .pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ServiceExecError({
             providerId: "lando",
@@ -91,7 +90,7 @@ export const windowsStdinExecStream = (
     })
     .pipe(
       Stream.map((event): ExecChunk => event),
-      Stream.mapError(
+      mapStreamFailures(
         (cause) =>
           new ServiceExecError({
             providerId: "lando",

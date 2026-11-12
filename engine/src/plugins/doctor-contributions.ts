@@ -1,8 +1,7 @@
-import { Predicate, Result, Schema } from "effect";
-
 import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Predicate, Result, Schema } from "effect";
 
 import type { LoadedPluginContribution } from "./contribution-graph.ts";
 

@@ -1,15 +1,17 @@
 import { Effect, Schema } from "effect";
 
 import { ListenerObservation } from "../schema/listener-observation.ts";
-import { ProviderId } from "../schema/primitives.ts";
+import { AbsolutePath, ProviderId } from "../schema/primitives.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
+// Schema.Json's Codec view erases constructor input to unknown; recover its JSON input view.
+const Json = Schema.toEncoded(Schema.Json);
 
 const ProviderErrorBase = {
   providerId: Schema.String,
   operation: Schema.String,
   message: Schema.String,
-  details: Schema.optional(Schema.Unknown),
+  details: Schema.optional(Json),
   remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 };
@@ -34,8 +36,8 @@ export class ProviderCapabilityError extends Schema.TaggedError<ProviderCapabili
   {
     ...ProviderErrorBase,
     capability: Schema.String,
-    requiredValue: Schema.Unknown,
-    actualValue: Schema.Unknown,
+    requiredValue: Json,
+    actualValue: Schema.optional(Json),
   },
 ) {}
 
@@ -49,10 +51,12 @@ export class ProviderInternalError extends Schema.TaggedError<ProviderInternalEr
   ProviderErrorBase,
 ) {}
 
-export class ArtifactBuildError extends Schema.TaggedError<ArtifactBuildError>()(
-  "ArtifactBuildError",
-  ProviderErrorBase,
-) {}
+export class ArtifactBuildError extends Schema.TaggedError<ArtifactBuildError>()("ArtifactBuildError", {
+  ...ProviderErrorBase,
+  service: Schema.optional(Schema.String),
+  transcriptPath: Schema.optional(AbsolutePath),
+  outputTail: Schema.optional(Schema.String),
+}) {}
 
 const ServiceStartLogTail = Schema.Struct({
   service: Schema.String,

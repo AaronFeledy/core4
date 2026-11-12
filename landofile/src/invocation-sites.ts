@@ -11,7 +11,7 @@ import { Effect, Result, Schema } from "effect";
 import { templateSource } from "./expression-source.ts";
 import { captureTemplate } from "./invocation-captures.ts";
 
-export const INVOCATION_SCOPES = ["event", "vars", "item", "key"] as const;
+export const INVOCATION_SCOPES = ["event", "vars", "item", "key", "flags", "args", "raw", "task"] as const;
 
 /** Only executable declaration positions can retain invocation-time expressions. */
 export const executableExpressionPath = (path: readonly (string | number)[]): boolean => {
@@ -85,7 +85,10 @@ export const authoredInvocationSites = (value: unknown, file: string): Invocatio
         const source = { file, layer: "base" as const, path };
         sites.push({ id: JSON.stringify(source), path, source, template: template.success });
       }
-    } else if (Array.isArray(entry)) entry.forEach((child, index) => visit(child, [...path, index]));
+    } else if (Array.isArray(entry))
+      entry.forEach((child, index) => {
+        visit(child, [...path, index]);
+      });
     else if (isPlainRecord(entry))
       for (const [key, child] of Object.entries(entry)) visit(child, [...path, key]);
   };

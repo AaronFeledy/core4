@@ -6,9 +6,6 @@
  * app root), and bounds module evaluation with a configurable timeout.
  */
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-
-import { Clock, Duration, Effect, Predicate } from "effect";
-
 import { normalizeHostPlatform } from "@lando/paths";
 import {
   LandofileParseError,
@@ -16,6 +13,7 @@ import {
   LandofileTimeoutError,
   causeMessage,
 } from "@lando/sdk/errors";
+import { Clock, Duration, Effect, Predicate } from "effect";
 import { importAuthorModule, missingPackageRemediation } from "./author-modules.ts";
 
 export const DEFAULT_TS_TIMEOUT_MS = 5000;

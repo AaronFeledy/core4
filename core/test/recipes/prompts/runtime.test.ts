@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Schema } from "effect";
-
 import { RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sdk/errors";
 import { RecipePrompt } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import {
   type EditorRunner,

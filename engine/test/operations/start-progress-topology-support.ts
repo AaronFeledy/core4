@@ -1,9 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
-
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
@@ -39,8 +36,9 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { applyTreeId } from "../../src/operations/start-progress.ts";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { startApp } from "../../src/operations/start.ts";
+import { applyTreeId } from "../../src/operations/start-progress.ts";
 import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
 import { makeEnvSecretStore } from "../../src/services/secret-store.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -481,5 +479,6 @@ export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: Ap
       },
     ).pipe(Effect.provide(harness.layer)),
   );
+
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 import { makeGlobalAdmissionFixture } from "./global-admission-support.ts";

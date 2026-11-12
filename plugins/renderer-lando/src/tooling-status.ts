@@ -1,6 +1,5 @@
-import { DateTime, Effect } from "effect";
-
 import type { LandoEvent } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 
 import { styleFrame } from "./task-tree-style.ts";
 

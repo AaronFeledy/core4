@@ -1,19 +1,17 @@
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { Effect, Schema } from "effect";
-
-import { NotImplementedError, PluginManifestError, PluginPackageOperationError } from "@lando/sdk/errors";
-
 import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import {
   isInstalledPluginRegistryRejection,
   mutateInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
 import { findLandofilePath } from "@lando/landofile/discovery";
+import { mapFailures } from "@lando/sdk/command-result";
+import { NotImplementedError, PluginManifestError, PluginPackageOperationError } from "@lando/sdk/errors";
 import { parseNpmPackageSpec } from "@lando/source-acquisition/npm";
+import { Effect, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { bunSelfRun } from "./bun-self-runner";
 import { redactPluginPackageError } from "./plugin-package-error";
 import { updateManagedRootManifest } from "./plugin-remove-manifest";
@@ -271,7 +269,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (options:
         return { pluginName: options.name, removed: true };
       }),
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       isInstalledPluginRegistryRejection(cause)
         ? new NotImplementedError({
             message: cause.message,

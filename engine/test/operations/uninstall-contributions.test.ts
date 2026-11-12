@@ -2,20 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
-import { Effect, Layer, Result, Schema } from "effect";
-
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { type HostUninstallStep, UninstallStepResult } from "@lando/sdk/schema";
-
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Result, Schema } from "effect";
+import { uninstall } from "../../src/operations/uninstall.ts";
 import {
   UninstallContributionConflictError,
   contributedStepId,
   contributionBlocksUserDataRoot,
   planHostUninstallContributions,
 } from "../../src/operations/uninstall-contributions.ts";
-import { uninstall } from "../../src/operations/uninstall.ts";
 import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 import { makeUninstallRoots, sandboxUninstallOptions } from "./uninstall-support.ts";
 
@@ -25,7 +22,14 @@ const runUninstall = (
 ) =>
   uninstall(options).pipe(
     Effect.provide(PrivateFileAccessService.layer),
-    Effect.provide(Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers }))),
+    Effect.provide(
+      Layer.succeed(
+        HostMaintenanceRegistry,
+        HostMaintenanceRegistry.of({
+          maintainers: maintainers.map((maintainer) => ({ ...maintainer, pluginId: "@lando/test" })),
+        }),
+      ),
+    ),
   );
 
 const ownedStep = (id: string, overrides: Partial<HostUninstallStep> = {}): HostUninstallStep => ({
@@ -302,7 +306,7 @@ describe("host uninstall contributions", () => {
       const planned = await Effect.runPromise(
         Effect.result(
           planHostUninstallContributions(
-            { maintainers: [maintainer] },
+            { maintainers: [{ ...maintainer, pluginId: "@lando/test" }] },
             { platform: "linux", userDataRoot: roots.userDataRoot, mode: "purge" },
           ),
         ),

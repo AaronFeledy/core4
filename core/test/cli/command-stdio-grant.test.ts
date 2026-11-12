@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
-
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandStdioError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput, ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
+import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { commandStdioRequest, grantCommandStdio } from "../../src/cli/command-stdio.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";

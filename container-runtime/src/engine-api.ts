@@ -1,11 +1,10 @@
-import type { Redactor } from "@lando/sdk/secrets";
-import type { Effect, Stream } from "effect";
-
 import type {
   ProviderCapabilityError,
   ProviderInternalError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
+import type { Effect, Stream } from "effect";
 
 export type ProviderErrorContext = {
   readonly providerId: string;
@@ -13,6 +12,9 @@ export type ProviderErrorContext = {
   /** Explicit host env snapshot for heuristic secret collection. Never read process.env here. */
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly redactor?: Redactor;
+  readonly redactorFor?: (tokens: {
+    readonly authoritativeTokens: readonly string[];
+  }) => Effect.Effect<Redactor>;
 };
 
 export interface EngineHttpRequest {
@@ -24,6 +26,11 @@ export interface EngineHttpRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
+  /**
+   * Ordinary HTTP request body written while a streamed response is read. Mutually exclusive with `body`
+   * and `stdin`; unlike `stdin` it adds no upgrade headers and keeps the response framed and complete.
+   */
+  readonly upload?: AsyncIterable<Uint8Array>;
   /** Called after successful stream response headers arrive, before body bytes are emitted. */
   readonly onResponseHead?: () => void;
 }

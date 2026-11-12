@@ -1,11 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 
-import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
 import { EventError, FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/core/errors";
 import {
@@ -32,12 +30,12 @@ import {
 import { makeTestStateStore } from "@lando/core/testing";
 import * as BunDataMover from "@lando/data-mover/service";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope, SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
-import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -45,10 +43,12 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as DiskStateStore from "@lando/state-store/service";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
@@ -275,7 +275,7 @@ const makeDestroyLayer = (
       : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -656,7 +656,7 @@ describe("lando destroy", () => {
       Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer))),
     );
     expect(result).toMatchObject({ outcome: "unchanged", servicesDestroyed: [], snapshotsRemoved: 0 });
-    expectRecordedBracket(harness, "inventory", { outcome: "unchanged", children: ["provider"] });
+    expectRecordedBracket(harness, "inventory", { outcome: "unchanged", children: ["provider", "routes"] });
     expect(harness.destroyCalls).toEqual([]);
     expect(harness.mutations.indexOf("inventory")).toBeLessThan(harness.mutations.indexOf("post-destroy"));
   });
@@ -673,6 +673,40 @@ describe("lando destroy", () => {
       expect(harness.destroyCalls).toEqual([]);
     },
   );
+
+  test("an app that never applied loses its build output and app results on destroy", async () => {
+    await withTempCwd(async (dataRoot) => {
+      // Given a first build that failed before anything was applied.
+      const harness = makeDestroyLayer({ userDataRoot: dataRoot, absent: true });
+      const appDir = join(dataRoot, "builds", String(plan.id));
+      const transcript = join(appDir, "app", "web", "install.log");
+      await mkdir(join(appDir, "app", "web"), { recursive: true });
+      await writeFile(transcript, "install output\n");
+      const bucket = await Effect.runPromise(openAppBuildResults(harness.stateStore, String(plan.id)));
+      const entry = {
+        buildKey: "app-key",
+        service: web.name,
+        phase: "app" as const,
+        step: "web:app:install",
+        outcome: "complete" as const,
+        exitCode: 0,
+        durationMs: 1,
+        transcriptPath: AbsolutePath.make(transcript),
+      };
+      await Effect.runPromise(recordBuildResult(bucket, entry));
+
+      // When the desired plan is destroyed even though nothing was ever applied.
+      const result = await withCwd(testAppRoot, () =>
+        Effect.runPromise(destroyApp({ yes: true }).pipe(Effect.provide(harness.layer))),
+      );
+
+      // Then the app's build directory and app-step result are gone, so the next start builds again.
+      expect(result).toMatchObject({ outcome: "unchanged" });
+      await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Effect.runPromise(bucket.exists)).toBe(false);
+    });
+  });
 
   test.each([false, true])(
     "snapshot-only purge uses every recorded app id with deleted Landofile=%s",
@@ -796,10 +830,8 @@ describe("lando destroy", () => {
     await runDestroyCli(["-y"], harness, io, "plain");
 
     // Then
-    expect(io.stderr()).toContain(
-      "Proxy service is unavailable; destroying test-destroy without route cleanup.",
-    );
-    expect(io.stdout()).not.toContain("Proxy service is unavailable");
+    expect(io.stderr()).toMatch(/test-destroy.*not withdrawn/);
+    expect(io.stdout()).not.toContain("not withdrawn");
   });
 
   test("paints a real destroy task tree through the native destroy spec in plain mode", async () => {
@@ -874,12 +906,12 @@ describe("lando destroy", () => {
 
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.routeRemovals).toEqual([]);
-    expect(harness.publishedEvents).toContainEqual(
+    expect(harness.publishedEvents.filter((event) => event._tag === "message.warn")).toEqual([
       expect.objectContaining({
         _tag: "message.warn",
-        body: "Proxy service is unavailable; destroying test-destroy without route cleanup.",
+        body: expect.stringMatching(/test-destroy.*not withdrawn/),
       }),
-    );
+    ]);
   });
 
   test("removes routes when provider destroy fails and reports both failures", async () => {
@@ -1172,7 +1204,7 @@ describe("lando destroy", () => {
         expect(harness.mutations).toContain("remove:orphan");
         expectRecordedBracket(harness, "orphans", {
           outcome: "destroyed",
-          children: ["snapshots", "provider"],
+          children: ["snapshots", "provider", "routes"],
         });
       });
     },
@@ -1638,4 +1670,5 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls).toHaveLength(1);
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

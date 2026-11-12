@@ -7,9 +7,10 @@ import {
   LandofileLoadOutsideRootError,
   LandofileParseError,
   LandofileValidationError,
+  NotImplementedError,
 } from "@lando/sdk/errors";
-import type { LandofileLoadSource } from "./load-expression-file.ts";
 import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
+import type { LandofileLoadSource } from "./load-expression-file.ts";
 
 export const normalizeLoadExpressionFailure = (
   cause: unknown,
@@ -52,6 +53,7 @@ export const normalizeLoadExpressionFailure = (
       cause: cause.cause,
     });
   if (
+    cause instanceof NotImplementedError ||
     cause instanceof LandofileImportRefMisuseError ||
     cause instanceof LandofileLoadLimitError ||
     cause instanceof LandofileLoadOutsideRootError ||

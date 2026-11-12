@@ -3,8 +3,6 @@
 // `Map` of secret ids to values so `runSecretStoreContractSuite` can run without
 // reading `process.env` or any external backend.
 
-import { Effect, Layer, Result } from "effect";
-
 import {
   SecretNotFoundError,
   SecretReferenceInvalidError,
@@ -12,6 +10,7 @@ import {
 } from "@lando/sdk/errors";
 import { parseSecretReference } from "@lando/sdk/secrets";
 import { SecretStore, type SecretStoreShape } from "@lando/sdk/services";
+import { Effect, Layer, Result } from "effect";
 
 /** Options for {@link makeTestSecretStore}. */
 export interface TestSecretStoreOptions {

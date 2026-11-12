@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, Scope } from "effect";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import { ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import {
@@ -20,8 +20,7 @@ import {
 import { ConfigService, PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, Scope } from "effect";
 import { installEngineComposition } from "../../src/composition.ts";
 import {
   startHostProxyRunLandoSession,

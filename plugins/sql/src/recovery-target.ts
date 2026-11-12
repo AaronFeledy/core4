@@ -1,8 +1,7 @@
 import { VOLUME_OWNER_LABEL } from "@lando/container-runtime/labels";
-import { Effect, Option } from "effect";
-
+import { isProviderError } from "@lando/redaction/provider-error";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { type AppIdentity, ServiceName } from "@lando/sdk/schema";
 import type {
   SnapshotMetadata,
   VolumeIdentity,
@@ -10,7 +9,9 @@ import type {
   VolumeLocator,
   VolumeRef,
 } from "@lando/sdk/schema";
+import { type AppIdentity, ServiceName } from "@lando/sdk/schema";
 import type { VolumeInitialization } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 
 import type { SqlMover } from "./actions.ts";
 import { normalizeCommandFailure } from "./command-failure.ts";
@@ -215,8 +216,9 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
   );
   const exactTransition = (running: boolean, transition: Effect.Effect<void, unknown>) =>
     transition.pipe(
-      Effect.mapError((error) =>
-        Option.getOrElse(normalizeCommandFailure(error), () =>
+      mapFailures((error) => {
+        if (isProviderError(error)) return error;
+        return Option.getOrElse(normalizeCommandFailure(error), () =>
           recoveryUnavailable(
             input.serviceName,
             running
@@ -226,8 +228,8 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
               ? "Inspect the database runtime before retrying or restoring the reported recovery snapshot."
               : "Leave the database stopped, inspect the service container, and retry recovery.",
           ),
-        ),
-      ),
+        );
+      }),
       Effect.andThen(verifyRuntimeState(input.deps, input.serviceName, target.runtime, running)),
     );
   return {

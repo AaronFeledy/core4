@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { makeRedactionService } from "@lando/redaction/service";
 
 import { StreamFrame } from "@lando/sdk/schema";
-
-import { makeRedactionService } from "@lando/redaction/service";
+import { Effect, Schema } from "effect";
 import { type DoctorNdjsonCheck, renderDoctorChecksAsNdjson } from "../../src/cli/commands/doctor-ndjson.ts";
 
 interface LeakyCheck extends DoctorNdjsonCheck {

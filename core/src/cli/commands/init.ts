@@ -1,16 +1,13 @@
 import { join } from "node:path";
+import { resolveUserDataRoot } from "@lando/engine/config/roots";
 
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
+import { mapFailures } from "@lando/sdk/command-result";
+import { InitTargetExistsError } from "@lando/sdk/errors";
 import type { ProcessRunner } from "@lando/sdk/services";
+import { makeTaskTree } from "@lando/sdk/task-progress";
 import type { SourceSession } from "@lando/source-acquisition";
 import { Effect } from "effect";
-import { retainedRecipeSourceStore } from "../../recipes/runtime-sources";
-import { mapSourceAcquisitionError } from "../../recipes/source-session";
-
-import { InitTargetExistsError } from "@lando/sdk/errors";
-import { makeTaskTree } from "@lando/sdk/task-progress";
-
-import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import {
   RecipeInitCommitError,
   type RecipeInitReceipt,
@@ -19,6 +16,8 @@ import {
 import { type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime";
 import type { RecipeInitPreview } from "../../recipes/prepared-init";
 import type { PromptAnswers } from "../../recipes/prompts/index";
+import { retainedRecipeSourceStore } from "../../recipes/runtime-sources";
+import { mapSourceAcquisitionError } from "../../recipes/source-session";
 import { type AgentSkillsResult, installAgentSkills } from "./agent-skills";
 import type { InitAppOptions } from "./init-options";
 import { prepareInitApp } from "./init-preparation";
@@ -68,7 +67,7 @@ export const initApp = Effect.fn("InitApp.run")(function* (options: InitAppOptio
   const store = options.recipeSourceStore ?? (yield* retainedRecipeSourceStore(options.registryUrl)).store;
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      const sources = yield* store.session.pipe(mapFailures((error) => mapSourceAcquisitionError(error)));
       return yield* runInitWithSources({ ...options, sources });
     }),
   );

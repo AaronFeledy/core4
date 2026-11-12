@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Schema } from "effect";
-
 import * as GlobalAppLayer from "@lando/engine/global-app/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ConfigLayer from "@lando/engine/services/config";
@@ -15,6 +13,7 @@ import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Layer, Schema } from "effect";
 
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 

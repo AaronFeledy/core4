@@ -1,6 +1,5 @@
-import { Effect, Option, Stream } from "effect";
-
 import type { ExecChunk } from "@lando/sdk/services";
+import { Effect, Option, Stream } from "effect";
 
 import { type StreamFrameSinkShape, createCollectingStreamFrameSink } from "./stream-frame-sink.ts";
 

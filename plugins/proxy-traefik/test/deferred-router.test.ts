@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Context, Deferred, Effect, Fiber } from "effect";
-
 import { ProxyError } from "@lando/sdk/errors";
 import { makeTestRouterService } from "@lando/sdk/test";
+import { Context, Deferred, Effect, Fiber } from "effect";
 
 import { deferredRouter } from "../src/deferred-router.ts";
 

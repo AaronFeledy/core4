@@ -1,4 +1,5 @@
 import { lstat } from "node:fs/promises";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import { Effect } from "effect";
@@ -49,14 +50,14 @@ export const npmAcquisition = (
       catch: (cause) => acquisitionError("invalid-locator", spec, cause),
     });
     const registry = yield* registryFor(locator.name).pipe(
-      Effect.mapError(
+      mapFailures(
         (error) => new SourceAcquisitionError({ ...error, message: error.message, phase: "metadata" }),
       ),
     );
     const packument = yield* acquireTransport(spec, (signal) =>
       transport().packument(locator.name, { signal }),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (error) => new SourceAcquisitionError({ ...error, message: error.message, phase: "metadata" }),
       ),
     );
@@ -142,7 +143,7 @@ export const npmAcquisition = (
     const registry = resolved.success;
     const bucket = yield* records.npm(registry, coordinate.name, coordinate.version);
     const record = yield* bucket.get.pipe(
-      Effect.mapError((error) => acquisitionError("cache", coordinate.name, error)),
+      mapFailures((error) => acquisitionError("cache", coordinate.name, error)),
     );
     const exact =
       record === null ||
@@ -169,9 +170,7 @@ export const npmAcquisition = (
       );
     }
     const bucket = yield* records.npm(pin.registry, pin.name, pin.version);
-    const previous = yield* bucket.get.pipe(
-      Effect.mapError((error) => acquisitionError("cache", source, error)),
-    );
+    const previous = yield* bucket.get.pipe(mapFailures((error) => acquisitionError("cache", source, error)));
     if (
       previous !== null &&
       previous.registry === displaySource(pin.registry) &&
@@ -197,7 +196,7 @@ export const npmAcquisition = (
     const bytes = yield* acquireTransport(source, (signal) =>
       transport().tarball({ packageName: pin.name, dist: pin.dist, signal }),
     ).pipe(
-      Effect.mapError(
+      mapFailures(
         (error) => new SourceAcquisitionError({ ...error, message: error.message, phase: "download" }),
       ),
     );

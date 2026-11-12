@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { ToolExtractError, ToolInstallPathError, ToolManifestError } from "@lando/sdk/errors";
 import type { ToolManifest } from "@lando/sdk/schema";
 import {
@@ -15,6 +13,7 @@ import {
   resolveHostKey,
   toolVersionMarkerPath,
 } from "@lando/sdk/tool-provisioning";
+import { Cause, Effect, Exit } from "effect";
 
 import { makeFakeDownloader, makeTarGz, makeZip, sha256Hex } from "./_fixtures.ts";
 

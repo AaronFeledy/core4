@@ -12,11 +12,12 @@ import {
 import { Effect, Result, Schema, type Scope } from "effect";
 import { createIncludeResolutionSession } from "./include-session.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
-import { fragmentIssues } from "./lint-fragments.ts";
+import { fragmentIssues, isToolingRefusal, unreportedToolingRefusals } from "./lint-fragments.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
 import { routerBindWarnings } from "./lint-router.ts";
 import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
 import { appNameOf } from "./lint-violations.ts";
+import { prepareIncludeAcquisition } from "./load-acquisition.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
@@ -72,6 +73,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   let scope: "fragment" | "effective" = "fragment";
   const violations: ConfigLintViolation[] = [];
   let recordedFailures: readonly LandofileLoadFailure[] = [];
+  let composed: unknown;
   const finalized = yield* Effect.gen(function* () {
     const acquired = yield* inspectLandofileRootLayers(
       dirname(file),
@@ -90,7 +92,18 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     scope = "effective";
     const prepared = yield* Effect.forEach(acquired.sources, ({ source, layer }) =>
       prepareLandofileValue(source).pipe(
-        Effect.map(({ value }) => [{ layer, landofile: value }]),
+        Effect.map(({ value }) => [
+          {
+            layer,
+            landofile:
+              acquired.runtime.recorder === undefined
+                ? value
+                : prepareIncludeAcquisition(value, {
+                    recorder: acquired.runtime.recorder,
+                    source: { file: layer.filePath, layer: layer.layer, path: [] },
+                  }),
+          },
+        ]),
         Effect.catch((error) => {
           if (!Schema.is(LandofileLoadFailure)(error)) return Effect.fail(error);
           acquired.runtime.recorder?.record(error);
@@ -107,6 +120,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         ...(inputs === undefined ? {} : { inputs }),
       },
     );
+    composed = merged;
     const roots = new Set(documents.map((document) => document.file));
     const retained = getSourceDocuments(merged);
     violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));
@@ -157,17 +171,22 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       finalized.failure._tag === "LandofileLoadError"
         ? landofileLoadFailures(finalized.failure)
         : [finalized.failure];
+    if (errors.some((error) => isToolingRefusal(composed, violations, error)))
+      violations.push(...unreportedToolingRefusals(composed, violations, documents));
     for (const error of errors) {
-      // A rejected Compose key already has a field-level finding; a pathless copy only repeats it.
+      // A rejected Compose key or refused tooling key already has a located finding; a pathless copy only repeats it.
       const reportedRejection =
-        error._tag === "ComposeKeyRejectedError" &&
-        violations.some((violation) => violation.rule === "landofile.compose-rejection");
+        (error._tag === "ComposeKeyRejectedError" &&
+          violations.some((violation) => violation.rule === "landofile.compose-rejection")) ||
+        isToolingRefusal(composed, violations, error);
       if (error._tag === "LandofileValidationError")
         violations.push(
           ...error.issues.map((issue) =>
             attributeLintIssue(
-              recordedFailures.includes(error)
-                ? { ...issue, rule: "landofile.load", reason: issue.rule ?? error._tag }
+              recordedFailures.includes(error) &&
+                issue.rule !== undefined &&
+                issue.rule !== "landofile.validation"
+                ? { ...issue, rule: "landofile.load", reason: issue.rule }
                 : issue,
               "effective",
               documents,

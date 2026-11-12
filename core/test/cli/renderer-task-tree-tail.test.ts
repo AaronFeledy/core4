@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Layer, Schema } from "effect";
-
+import * as LandoEventService from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import {
+  TASK_DETAIL_TAIL_CAPACITY,
+  TaskDetailRing,
+  TaskTreeViewModel,
+  csi,
+} from "@lando/renderer-lando/task-tree-tail";
 import {
   type LandoEvent,
   TaskCompleteEvent,
@@ -10,18 +16,8 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-import { Effect } from "effect";
-
 import { EventService } from "@lando/sdk/services";
-
-import * as LandoEventService from "@lando/engine/services/event-service";
-import {
-  TASK_DETAIL_TAIL_CAPACITY,
-  TaskDetailRing,
-  TaskTreeViewModel,
-  csi,
-} from "@lando/renderer-lando/task-tree-tail";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Effect, Layer, Schema } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";

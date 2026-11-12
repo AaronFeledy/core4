@@ -1,28 +1,31 @@
-import { Effect, Layer, Schema } from "effect";
-
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { CertificateAuthority, Downloader, PathsService, ProcessRunner } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Schema } from "effect";
 
 import { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
 
 export const PLUGIN_NAME = "@lando/ca-mkcert" as const;
 
+// The contribution layer receives no plugin context, so it acquires its own private-file access for
+// the root lock and temporary directories.
 export const layer = Layer.effect(
   CertificateAuthority,
   Effect.gen(function* () {
     const paths = yield* PathsService;
     const downloader = yield* Downloader;
     const processRunner = yield* ProcessRunner;
+    const privateFileAccess = yield* PrivateFileAccessService;
     return makeMkcertCertificateAuthority({
       binDir: paths.binDir,
-      certsDir: paths.certsDir,
       toolDownloadsDir: paths.toolDownloadsDir(CA_ID),
       downloader,
       processRunner,
+      privateFileAccess,
     });
   }),
-);
+).pipe(Layer.provide(PrivateFileAccessService.layer));
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -51,12 +54,12 @@ export const plugin = definePlugin({
   certificateAuthorities: new Map([[CA_ID, layer]]),
 });
 
-export { CA_ID, makeMkcertCertificateAuthority, mkcertLeafCertificateName } from "./ca.ts";
 export type { MkcertCertificateAuthorityOptions } from "./ca.ts";
+export { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
 export {
+  type InstalledMkcertStatus,
   MKCERT_TOOL_MANIFEST,
   MKCERT_TOOL_VERSION,
-  type InstalledMkcertStatus,
   type ProvisionMkcertInput,
   mkcertInstallName,
   mkcertInstallPath,

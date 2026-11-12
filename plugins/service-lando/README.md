@@ -48,7 +48,7 @@ Ruby, Python, and Go retain the direct-argv keep-alive command `tail -f /dev/nul
 
 Apache serves the app root by default. Set `webroot:` to a path relative to it, such as `public`, or to an absolute container path to change the generated httpd document root. `APACHE_DOCUMENT_ROOT` and `LANDO_WEBROOT` get the resolved absolute path. An authored `APACHE_DOCUMENT_ROOT` environment value wins; an authored `command:` or `entrypoint:` owns its own Apache startup config.
 
-With `appMount: false`, PHP, nginx, Apache, and static still accept an absolute document root for image-provided content, but suppress `LANDO_WEBROOT` app context. Their relative roots require an active mount. Tomcat's image-owned root configuration requires the Lando catalog image. With a custom Tomcat image and no app mount, omit `webroot:` or compose another feature that handles it.
+With `appMount: false`, PHP, nginx, Apache, and static still accept an absolute document root for image-provided content, but suppress `LANDO_WEBROOT` app context. Their relative roots require an active mount. Tomcat's image-owned root configuration requires the Lando catalog image. With a custom Tomcat `image:` or `build.context` and no app mount, nothing uses `webroot:`, so omit it; an authored one fails planning as unused unless another composed feature handles it.
 
 A generated start command runs as the service's planned `user:`. [Default start commands and the planned service user](./DEFAULT_COMMAND_AUDIT.md) records what each bundled default writes and which ones still assume root.
 

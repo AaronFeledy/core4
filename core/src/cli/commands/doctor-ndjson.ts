@@ -1,8 +1,7 @@
-import { DateTime, Effect, Schema } from "effect";
+import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
 
 import type { Redactor } from "@lando/sdk/secrets";
-
-import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
+import { DateTime, Effect, Schema } from "effect";
 import type { DoctorSectionCheck, DoctorSolution } from "./doctor-contract";
 
 export type DoctorNdjsonStatus = "pass" | "warn" | "fail";

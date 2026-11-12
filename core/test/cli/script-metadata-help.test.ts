@@ -129,6 +129,7 @@ test.each([true, false])("carries normalized script help metadata when cached=%s
         service: ":host",
         appRoot: root,
         relativePath: "greet.bun.sh",
+        runs: { kind: "script", path: ".lando/scripts/greet.bun.sh" },
         input: {
           flags: [{ name: "name", alias: "n", default: "world", boolean: false, required: false }],
           args: [{ name: "target", order: 0, required: true }],
@@ -181,6 +182,7 @@ test.each([
       expect(stdout.trim()).toBe(expected.trim());
       expect(stdout).toContain("--name");
       expect(stdout).toContain("TARGET");
+      expect(stdout).toContain("Runs .lando/scripts/greet.bun.sh on the host.");
       expect(stdout + stderr).not.toContain("must-not-execute");
     });
   },

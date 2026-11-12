@@ -1,9 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const mirrorScriptUrl = pathToFileURL(resolve(repoRoot, "scripts/mirror-schema-artifacts.ts"));

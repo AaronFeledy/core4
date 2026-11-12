@@ -1,9 +1,3 @@
-import { Effect, Option } from "effect";
-
-import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, Renderer, RuntimeProviderRegistry } from "@lando/sdk/services";
-
 import {
   type ResolvedAppTarget,
   type UserAppResolution,
@@ -18,6 +12,10 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
+import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
+import type { LandofileShape } from "@lando/sdk/schema";
+import { AppPlanner, LandofileService, Renderer, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 import { scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 import { CORE_VERSION } from "../version.ts";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "./command-warnings.ts";

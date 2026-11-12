@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
-
-import { Effect, type Scope } from "effect";
-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
 import { type ProbeResult, runProbe } from "@lando/sdk/probe";
+import { Effect, type Schema, type Scope } from "effect";
 import {
   DEFAULT_BASE_IMAGE,
   ProviderLandoSmokeError,
@@ -21,13 +20,14 @@ import {
   smokeRemediation,
   startSmokeContainer,
 } from "./smoke-probe-support.ts";
+import { runResourceLimitSmokeProbe } from "./smoke-resource-limits.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 const failureFromResult = (
   operation: "run" | "build" | "health",
   result: ProbeResult,
-  details: Readonly<Record<string, unknown>> = {},
+  details: Readonly<Record<string, Schema.Json>> = {},
 ) => {
   const operationDetails =
     result.lastError instanceof ProviderLandoSmokeError &&
@@ -63,7 +63,7 @@ const mapProbeError = (operation: "run" | "build" | "health") => (cause: unknown
         smokeOperation: operation,
         message: `The provider-lando ${operation} smoke probe could not run.`,
         remediation: smokeRemediation(operation),
-        details: cause,
+        details: redactDetails(cause, hostSecretsRedactor()),
         cause,
       });
 
@@ -94,13 +94,13 @@ export const runContainerSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
             smokeOperation: "run",
             message: `The Podman run smoke container exited with code ${String(exitCode ?? "unknown")}.`,
             remediation: smokeRemediation("run"),
-            details: { exitCode },
+            details: exitCode === undefined ? {} : { exitCode },
           }),
         );
       }),
     ),
   ).pipe(
-    Effect.mapError(mapProbeError("run")),
+    mapFailures(mapProbeError("run")),
     Effect.flatMap((result) => requireGreen("run", result)),
   );
 
@@ -136,7 +136,7 @@ export const runBuildSmokeProbe = (deps: SmokeProbeDeps, baseImage: string) => {
     { id: "provider-lando-smoke-build", policy: deps.retryPolicy ?? defaultSmokeRetryPolicy },
     attempt,
   ).pipe(
-    Effect.mapError(mapProbeError("build")),
+    mapFailures(mapProbeError("build")),
     Effect.flatMap((result) => requireGreen("build", result)),
   );
 };
@@ -192,7 +192,7 @@ export const runHealthSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
           ),
           Effect.map((response) => parseSmokeHealth(response.body)),
         ),
-      ).pipe(Effect.mapError(mapProbeError("health")));
+      ).pipe(mapFailures(mapProbeError("health")));
       if (result.outcome === "green") return;
       return yield* Effect.fail(failureFromResult("health", result, { lastHealth }));
     }),
@@ -206,7 +206,8 @@ export const runSmokeReadinessProbe = Effect.fn("ProviderLando.runSmokeReadiness
   yield* runContainerSmokeProbe(deps, baseImage);
   yield* runBuildSmokeProbe(deps, baseImage);
   yield* runHealthSmokeProbe(deps, baseImage);
+  if (deps.resourceLimits === true) yield* runResourceLimitSmokeProbe(deps, baseImage);
 });
 
-export { DEFAULT_BASE_IMAGE, ProviderLandoSmokeError } from "./smoke-probe-support.ts";
 export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe-support.ts";
+export { DEFAULT_BASE_IMAGE, ProviderLandoSmokeError } from "./smoke-probe-support.ts";

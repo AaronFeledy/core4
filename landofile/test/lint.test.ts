@@ -1,18 +1,15 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import { LandofileFormConflictError } from "@lando/sdk/errors";
-import { formatValidationIssuePath } from "@lando/sdk/schema";
-
 import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
 } from "@lando/sdk/landofile";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { Cause, Effect, Exit } from "effect";
 import { lintLandofile } from "../src/lint.ts";
 import { loadLandofileFile } from "../src/service.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";

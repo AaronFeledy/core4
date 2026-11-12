@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { composerOption } from "../../src/recipes/builtin/source-php.ts";
+
 const DRUPAL_COMPOSER_OPTIONS = composerOption.type.values;
 const COMPOSER_OPTIONS = [...DRUPAL_COMPOSER_OPTIONS, false];
+
 import { composerChoicesForPhp } from "../../src/recipes/php-composer-compat.ts";
 
 describe("composerChoicesForPhp", () => {

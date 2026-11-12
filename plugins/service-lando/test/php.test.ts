@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { Schema } from "effect";
-
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import {
@@ -12,8 +11,6 @@ import {
 } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
 import { apacheHiddenPathDirectives } from "../src/services/http-hidden-paths.ts";
-import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
-import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -23,6 +20,8 @@ import {
   php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
+import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
 import { apacheLauncherDirectives } from "./support/apache-directives.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
@@ -729,4 +728,5 @@ describe("php serving modes (via:)", () => {
     );
   });
 });
+
 import { serviceAppMount } from "@lando/sdk/schema";

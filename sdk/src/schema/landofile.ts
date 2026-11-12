@@ -1,6 +1,4 @@
-import { SchemaIssue } from "effect";
-import { Effect, SchemaTransformation } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import validRange from "semver/ranges/valid.js";
 
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
@@ -9,18 +7,20 @@ import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import {
   ComposeInitServiceField,
+  ComposePullPolicyServiceField,
   ComposeServiceKnobFields,
   ComposeTmpfsServiceField,
 } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
-import { ServiceCreds } from "./database-connection.ts";
+import { ServiceCredsConfig } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
-import { EnvironmentValue } from "./environment-value.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
+
 export { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
+
 import { StringImportRef } from "./landofile-reference.ts";
 import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
 import { LogSourceInput } from "./log-source.ts";
@@ -44,9 +44,11 @@ import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { ToolingAuthoredInputFields } from "./tooling-input.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
-export { ToolingFlagShape, ToolingArgShape } from "./tooling-input.ts";
+
+export { ToolingArgShape, ToolingFlagShape } from "./tooling-input.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 const REPLACE = { kind: "replace" } as const;
@@ -69,8 +71,8 @@ const keyedMerge = (identity: Extract<LayerMergeRule, { kind: "keyed" }>["identi
   onMatch: "merge",
 });
 
-export { EndpointInput } from "./endpoint.ts";
 export { BuildBlock } from "./build-block.ts";
+export { EndpointInput } from "./endpoint.ts";
 export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
@@ -505,8 +507,9 @@ const ServiceSecurityField = ServiceSecurityInput.pipe(
 
 /**
  * Login credentials a catalog service may author under `services.<name>.creds`.
+ * Every member is optional; the service type fills omitted members from its own defaults.
  */
-export { ServiceCreds } from "./database-connection.ts";
+export { ServiceCredsConfig } from "./database-connection.ts";
 
 /**
  * App-relative file-backed configuration a catalog service may author under
@@ -648,18 +651,19 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     workingDirectory: Schema.optionalKey(PortablePath).annotate({
       description: "Container working directory for service processes.",
     }),
-    database: Schema.optionalKey(Schema.String).annotate({
-      description: "Default database, bucket, or equivalent data namespace created for the service.",
-    }),
-    password: Schema.optionalKey(EnvironmentValue).annotate({
+    bucket: Schema.optionalKey(Schema.String).annotate({
       description:
-        "Redis authentication password, passed through the container environment rather than command arguments.",
+        "Bucket name created for an object-storage service, used verbatim. MinIO is the only built-in service that uses it.",
+    }),
+    sqlite: Schema.optionalKey(SqliteTargetConfig).annotate({
+      description:
+        "File-backed SQLite database relative to this service's app mount. Use db:import, db:export, db:snapshot, db:restore, and db:reset against the file.",
     }),
     persist: Schema.optionalKey(Schema.Boolean).annotate({
       description:
         "Redis disk persistence: defaults to true; false disables durable storage, AOF, and RDB snapshots.",
     }),
-    creds: Schema.optionalKey(ServiceCreds).annotate({
+    creds: Schema.optionalKey(ServiceCredsConfig).annotate({
       description: "Service login credentials used to provision or connect to the service.",
     }),
     config: Schema.optionalKey(ServiceFileConfig).annotate({
@@ -728,6 +732,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
 
     ...ComposeServiceKnobFields,
     init: ComposeInitServiceField,
+    pull_policy: ComposePullPolicyServiceField,
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),
@@ -880,24 +885,22 @@ const ServiceConfigDecode = ServiceConfigInput.pipe(
 );
 
 /**
- * ToolingVarDefault — `vars.<name>: { default: <literal> }`.
+ * ToolingVarSh — `vars.<name>: { sh: <command> }`. Captured once after input
+ * admission in the task target, unless caller vars supply the name. Shell
+ * command interpolations bind its output as escaped data; results are never cached.
  */
-export const ToolingVarDefault = Schema.Struct({ default: ToolingVarLiteral });
-export type ToolingVarDefault = typeof ToolingVarDefault.Type;
-
-/**
- * ToolingVarSh — `vars.<name>: { sh: <command> }`. Evaluated at task
- * invocation time via the task's selected engine.
- */
-export const ToolingVarSh = Schema.Struct({ sh: Schema.String });
+export const ToolingVarSh = Schema.Struct({
+  sh: Schema.String,
+  service: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Target for this var command: :host, a service name, or :<declared non-boolean flag>. An explicit target resets task user and dir; invocation overrides still apply.",
+  }),
+  sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
+    description:
+      "Protect captured output from diagnostics and task output. Secret-like names are always sensitive; false is not accepted.",
+  }),
+});
 export type ToolingVarSh = typeof ToolingVarSh.Type;
-
-/**
- * ToolingVarPrompt — `vars.<name>: { prompt: <message> }`. Resolved at task
- * invocation time by prompting the user.
- */
-export const ToolingVarPrompt = Schema.Struct({ prompt: Schema.String });
-export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
 
 /**
  * ToolingVar — var forms accepted by this schema. Unsupported
@@ -905,12 +908,7 @@ export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
  * are rejected before schema decode with a tagged
  * `NotImplementedError`.
  */
-export const ToolingVar = Schema.Union([
-  ToolingVarLiteral,
-  ToolingVarDefault,
-  ToolingVarSh,
-  ToolingVarPrompt,
-]);
+export const ToolingVar = Schema.Union([ToolingVarLiteral, ToolingVarSh]);
 export type ToolingVar = typeof ToolingVar.Type;
 
 export const ToolingStepShape = Schema.Struct({
@@ -943,7 +941,7 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * - `wrapper:` — mark a thin wrapper around one CLI tool.
  * - `dir:` — task working directory.
  * - `env:` — task environment overrides.
- * - `vars:` — accepted `ToolingVar` forms only.
+ * - `vars:` — literals and `{ sh: <command> }` only; caller vars win.
  *
  * Supported deprecation metadata:
  * `deprecated:`, `flags.<name>.deprecated:`, and `args.<name>.deprecated:`.
@@ -1028,8 +1026,6 @@ const ToolingTaskShorthand = Schema.Union([
     ),
   );
 
-// The object member stays outside the shorthand codec so authoring derivation walks the
-// task struct itself and keeps its nested checks instead of a flattened encoded copy.
 export const ToolingTaskInput = Schema.Union([ToolingTaskShape, ToolingTaskShorthand]).annotate({
   identifier: "ToolingTaskInput",
   description:
@@ -1049,8 +1045,9 @@ export const ToolingDefaultsShape = Schema.Struct({
   env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Default environment variables inherited by tooling tasks.",
   }),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
-    description: "Default tooling variables inherited by tooling tasks.",
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)).annotate({
+    description:
+      "Default literal tooling variables inherited by tooling tasks. Shell-computed vars belong on the task that reads them.",
   }),
 });
 export type ToolingDefaultsShape = typeof ToolingDefaultsShape.Type;

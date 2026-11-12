@@ -10,6 +10,7 @@ import type { ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
+import { expectInvalidReason } from "../../../scripts/guides/fixture-marker.ts";
 import { classifyFixtureLandofileName } from "../../../scripts/lint-guides-yaml-fixtures.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
@@ -29,9 +30,9 @@ for (const fixture of fixtures) {
     continue;
   }
   const content = await Bun.file(path).text();
-  const invalid = /^\s*# lando-lint: expect-invalid\b(.*)$/m.exec(content);
-  if (invalid !== null) {
-    test.skip(`${fixture}: authored expect-invalid marker${invalid[1]}`, () => {});
+  const invalid = expectInvalidReason(content);
+  if (invalid !== undefined) {
+    test.skip(`${fixture}: authored expect-invalid marker ${invalid}`, () => {});
     continue;
   }
   if (await Bun.file(resolve(dirname(path), ".lando.ts")).exists()) {
@@ -56,7 +57,8 @@ for (const fixture of fixtures) {
         }),
         Effect.result,
       );
-      return { lint, declaration: declarations.at(-1) };
+      // Lint asks for the selected provider first; later queries look for remediation candidates.
+      return { lint, declaration: declarations[0] };
     }).pipe(Effect.provide(catalog), Effect.provide(testStateStoreLayer)),
   );
   if (Result.isSuccess(lint) && !lint.success.valid) {

@@ -4,10 +4,37 @@
  * and `@lando/core/docs/redactions` subpaths remain unstable.
  */
 
-export * from "./downloader";
-export * from "./host-proxy";
+export { makePluginStateStore } from "@lando/engine/plugins/context-state";
+export * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+export { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
+export { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
+export { buildKeyForService } from "@lando/engine/services/build-key";
+export * as LandoEventService from "@lando/engine/services/event-service";
+export { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
+export * as BunFileSystem from "@lando/engine/services/file-system";
+export { loadLandofileFile } from "@lando/engine/services/landofile-live";
+export * as AppPlannerLayer from "@lando/engine/services/planner";
+export {
+  AppPlanner,
+  applyAuthoredHealthcheck,
+  mergeDefaultExcludes,
+  validateAuthoredAppMount,
+} from "@lando/engine/services/planner";
+export * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
+export { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
+export {
+  type BufferedRendererIO,
+  type BufferedRendererIOOptions,
+  type RendererIO,
+  createBufferedRendererIO,
+} from "@lando/renderer/io";
+export * as RendererRuntime from "@lando/renderer/runtime";
+export { renderPlain } from "@lando/renderer/runtime";
+export { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 export * from "./data-mover";
+export * from "./downloader";
 export * from "./events";
+export * from "./host-proxy";
 export * from "./http-client";
 export * from "./interaction";
 export * from "./live-provider-socket";
@@ -18,31 +45,3 @@ export * from "./secret-store";
 export * from "./state-store";
 export * from "./test-runtime";
 export * from "./tunnel";
-export {
-  type BufferedRendererIO,
-  type BufferedRendererIOOptions,
-  type RendererIO,
-  createBufferedRendererIO,
-} from "@lando/renderer/io";
-export { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
-export { renderPlain } from "@lando/renderer/runtime";
-export * as RendererRuntime from "@lando/renderer/runtime";
-export { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
-
-export { makePluginStateStore } from "@lando/engine/plugins/context-state";
-export * as PluginRegistryLayer from "@lando/engine/plugins/registry";
-export { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
-export { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
-export { buildKeyForService } from "@lando/engine/services/build-key";
-export * as LandoEventService from "@lando/engine/services/event-service";
-export { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
-export * as BunFileSystem from "@lando/engine/services/file-system";
-export { loadLandofileFile } from "@lando/engine/services/landofile-live";
-export {
-  AppPlanner,
-  applyAuthoredHealthcheck,
-  mergeDefaultExcludes,
-  validateAuthoredAppMount,
-} from "@lando/engine/services/planner";
-export * as AppPlannerLayer from "@lando/engine/services/planner";
-export * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";

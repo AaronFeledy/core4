@@ -1,7 +1,5 @@
 import { resolve } from "node:path";
-
-import { Effect } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
@@ -11,6 +9,7 @@ import {
   appIdentityKey,
   planDataId,
 } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import type { SqlCommandDeps } from "./command-types.ts";
 import { type SqlPlan, sqlPlanDataId } from "./views.ts";
 
@@ -58,7 +57,7 @@ export const resolveSnapshotSource = (
         fromApp === input.plan.id || input.appliedPlans === undefined
           ? []
           : yield* input.appliedPlans.pipe(
-              Effect.mapError(
+              mapFailures(
                 (cause) =>
                   new SqlRecoveryUnavailableError({
                     message: `Cannot resolve snapshot source ${fromApp}.`,

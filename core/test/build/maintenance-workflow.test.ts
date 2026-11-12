@@ -4,6 +4,20 @@ import { renderComposeVendorBumpWorkflow } from "../../../scripts/build-compose-
 import { renderTomcatBumpWorkflow } from "../../../scripts/build-tomcat-bump-workflow.ts";
 import { createMaintenanceFixture, workflowScripts } from "./support/maintenance-workflow-harness.ts";
 
+const REPORT_START = "<!-- maintenance-report:start -->";
+const REPORT_END = "<!-- maintenance-report:end -->";
+const DOMAIN_REPORT = "candidate report\n";
+const UNCLASSIFIED_PATH = "  - services.*.fixture_unclassified\n";
+
+// The marked report in a published body: it ends at the first end-marker line and starts at the
+// nearest start-marker line above it.
+const markedReport = (body: string): string => {
+  const padded = `\n${body}`;
+  const end = padded.indexOf(`\n${REPORT_END}`);
+  const start = padded.lastIndexOf(`\n${REPORT_START}\n`, end) + REPORT_START.length + 2;
+  return padded.slice(start, end + 1);
+};
+
 for (const domain of ["tomcat", "compose"] as const) {
   const render = domain === "tomcat" ? renderTomcatBumpWorkflow : renderComposeVendorBumpWorkflow;
   describe.skipIf(process.platform === "win32")(`${domain} generated maintenance shell`, () => {
@@ -89,6 +103,102 @@ for (const domain of ["tomcat", "compose"] as const) {
       });
     }
 
+    // Compose leads its report with a classification section; the domain report stays last.
+    const expectDomainReport = (report: string) =>
+      domain === "tomcat"
+        ? expect(report).toBe(DOMAIN_REPORT)
+        : expect(report.endsWith(`\n${DOMAIN_REPORT}`)).toBe(true);
+
+    test("creates a new PR whose body is only the marked report", async () => {
+      // Given
+      await using fixture = await createMaintenanceFixture({ domain });
+      // When
+      const result = await fixture.proposal(render());
+      // Then
+      expect(result.exitCode, result.stderr).toBe(0);
+      const body = await fixture.prBody();
+      const report = markedReport(body);
+      expectDomainReport(report);
+      expect(body).toBe(`${REPORT_START}\n${report}${REPORT_END}\n`);
+    });
+
+    for (const [name, existingPrBody, expected] of [
+      [
+        "keeps hand-written text around the marked report",
+        `Intro\nCloses #12\n\n${REPORT_START}\nstale report\n${REPORT_END}\n\nFooter`,
+        `Intro\nCloses #12\n\n${REPORT_START}\ncandidate report\n${REPORT_END}\n\nFooter\n`,
+      ],
+      [
+        "keeps CRLF hand-written text around the marked report",
+        `Intro\r\nCloses #12\r\n${REPORT_START}\r\nstale report\r\n${REPORT_END}\r\nFooter`,
+        `Intro\r\nCloses #12\r\n${REPORT_START}\ncandidate report\n${REPORT_END}\r\nFooter\n`,
+      ],
+      [
+        "replaces only the first marked report and keeps text between marker pairs",
+        `Intro\n${REPORT_START}\nstale report\n${REPORT_END}\nBetween\n${REPORT_START}\nquoted\n${REPORT_END}\nFooter`,
+        `Intro\n${REPORT_START}\ncandidate report\n${REPORT_END}\nBetween\n${REPORT_START}\nquoted\n${REPORT_END}\nFooter\n`,
+      ],
+      [
+        "keeps shell and printf metacharacters in hand-written text as data",
+        `$(touch pwned) \`id\` %s %d \\n * ? [a] 'q' "d"\n${REPORT_START}\nstale report\n${REPORT_END}\n$HOME \${BRANCH}; exit 9`,
+        `$(touch pwned) \`id\` %s %d \\n * ? [a] 'q' "d"\n${REPORT_START}\ncandidate report\n${REPORT_END}\n$HOME \${BRANCH}; exit 9\n`,
+      ],
+      [
+        "ignores markers quoted inside a line of hand-written text",
+        `Owns \`${REPORT_START}\` to \`${REPORT_END}\`.\n${REPORT_START}\nstale report\n${REPORT_END}\nFooter`,
+        `Owns \`${REPORT_START}\` to \`${REPORT_END}\`.\n${REPORT_START}\ncandidate report\n${REPORT_END}\nFooter\n`,
+      ],
+      [
+        "keeps text that follows a start marker with no end marker of its own",
+        `Intro\n${REPORT_START}\nnotes\n${REPORT_START}\nstale report\n${REPORT_END}\nFooter`,
+        `Intro\n${REPORT_START}\nnotes\n${REPORT_START}\ncandidate report\n${REPORT_END}\nFooter\n`,
+      ],
+      [
+        "replaces a body whose end marker precedes its start marker",
+        `${REPORT_END}\nnotes\n${REPORT_START}`,
+        `${REPORT_START}\ncandidate report\n${REPORT_END}\n`,
+      ],
+      [
+        "replaces a legacy unmarked body with the marked report",
+        "stale report without markers",
+        `${REPORT_START}\ncandidate report\n${REPORT_END}\n`,
+      ],
+    ] as const) {
+      test(`existing PR edit ${name}`, async () => {
+        // Given
+        await using fixture = await createMaintenanceFixture({ domain, existingPr: true, existingPrBody });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(await fixture.commands()).toContain("gh pr view 71 --json body --jq .body");
+        const body = await fixture.prBody();
+        const report = markedReport(body);
+        expectDomainReport(report);
+        expect(body).toBe(expected.replace(DOMAIN_REPORT, () => report));
+      });
+    }
+
+    test("stops after a rejected PR body read without editing or dispatching", async () => {
+      // Given
+      const stderr = "GraphQL: Resource not accessible by integration (pullRequest)\n";
+      await using fixture = await createMaintenanceFixture({
+        domain,
+        existingPr: true,
+        ghFailure: { operation: "view", exitCode: 34, stderr },
+      });
+      // When
+      const result = await fixture.proposal(render());
+      // Then
+      expect(result.exitCode, result.stderr).toBe(34);
+      expect(result.stderr).toContain(stderr);
+      const commands = await fixture.commands();
+      expect(commands).toContain("gh pr view 71");
+      expect(commands).not.toContain("gh pr edit");
+      expect(commands).not.toContain("gh pr create");
+      expect(commands).not.toContain("gh workflow");
+    });
+
     test("reconciles pending updates without losing manual commits when no newer candidate exists", async () => {
       // Given
       await using fixture = await createMaintenanceFixture({ domain, pending: "bump", existingPr: true });
@@ -153,6 +263,38 @@ for (const domain of ["tomcat", "compose"] as const) {
       expect(await fixture.commands()).not.toContain("gh pr");
     });
 
+    if (domain === "compose") {
+      test("publishes a report that leads with unclassified key paths when the coverage gate fails", async () => {
+        // Given
+        await using fixture = await createMaintenanceFixture({ domain, coverage: "unclassified" });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(0);
+        const commands = await fixture.commands();
+        expect(commands).toContain("bun run check:compose-coverage");
+        expect(commands).toContain(`gh pr create --base main --head ${fixture.branch}`);
+        expect(commands).toContain(`gh workflow run ci.yml --ref ${fixture.branch}`);
+        const body = await fixture.prBody();
+        const listing = body.indexOf(UNCLASSIFIED_PATH);
+        expect(listing).toBeGreaterThan(body.indexOf(REPORT_START));
+        expect(body.indexOf(DOMAIN_REPORT)).toBeGreaterThan(listing);
+      });
+
+      test("omits the unclassified listing when the coverage gate passes", async () => {
+        // Given
+        await using fixture = await createMaintenanceFixture({ domain, existingPr: true, coverage: "pass" });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(await fixture.commands()).toContain(`gh pr edit ${fixture.branch}`);
+        const body = await fixture.prBody();
+        expect(body).not.toContain(UNCLASSIFIED_PATH);
+        expect(body).toContain(DOMAIN_REPORT);
+      });
+    }
+
     for (const exactMatch of [true, false]) {
       test(`reports failure outside a checkout by ${exactMatch ? "commenting on the exact-title issue" : "creating an issue despite a similar title"}`, async () => {
         // Given
@@ -176,6 +318,24 @@ for (const domain of ["tomcat", "compose"] as const) {
       });
     }
 
+    test("comments on the oldest exact-title issue when duplicates exist", async () => {
+      // Given: the title search returns duplicates oldest-first.
+      await using fixture = await createMaintenanceFixture({ domain });
+      const title = `${domain === "tomcat" ? "tomcat-bump" : "compose-vendor-bump"} automation failure`;
+      const issues = [
+        { number: 1437, title },
+        { number: 1592, title },
+      ];
+      // When
+      const result = await fixture.failure(render(), issues);
+      // Then
+      expect(result.exitCode, result.stderr).toBe(0);
+      const commands = await fixture.commands();
+      expect(commands).toContain("gh issue comment 1437 --body");
+      expect(commands).not.toContain("gh issue comment 1592");
+      expect(commands).not.toContain("gh issue create");
+    });
+
     test("scopes failure reporting to the workflow's fork repository", async () => {
       // Given
       const repository = "fork-owner/core4";
@@ -185,7 +345,10 @@ for (const domain of ["tomcat", "compose"] as const) {
       // Then
       expect(result.exitCode, result.stderr).toBe(0);
       const commands = await fixture.commands();
-      expect(commands).toContain("gh issue list --state open --limit 100 --json number,title --jq");
+      const title = `${domain === "tomcat" ? "tomcat-bump" : "compose-vendor-bump"} automation failure`;
+      expect(commands).toContain(
+        `gh issue list --state open --search in:title "${title}" sort:created-asc --limit 100 --json number,title --jq`,
+      );
       expect(commands).toContain(`repo=${repository}`);
       expect(commands).toContain(`https://example.invalid/${repository}/actions/runs/42`);
       expect(commands).not.toContain("fixture/repository");

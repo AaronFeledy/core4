@@ -1,12 +1,10 @@
+import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
+import { Effect, Schema } from "effect";
 import { HelpCatalogResult } from "../../src/cli/compiled-help.ts";
 import type { HelpAliasPolicy } from "../../src/cli/help-names.ts";
 

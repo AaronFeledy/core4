@@ -12,11 +12,11 @@
  * binary. The manifest still records `module:` for documentation and the
  * non-bundled (future) dynamic-import fallback.
  */
-import { Layer, Schema } from "effect";
 
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { TemplateEngine } from "@lando/sdk/template";
+import { Layer, Schema } from "effect";
 
 import handlebarsEngine from "./engine.ts";
 

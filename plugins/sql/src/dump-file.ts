@@ -1,9 +1,7 @@
 import { constants } from "node:fs";
 import { access, chmod, mkdir, mkdtemp, stat } from "node:fs/promises";
 import { join } from "node:path";
-
-import { Effect, Stream } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   CommandStdioError,
   DataTransferError,
@@ -13,6 +11,7 @@ import {
 } from "@lando/sdk/errors";
 import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, Stream } from "effect";
 
 import {
   type DumpCompression,
@@ -223,7 +222,7 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
     destinationPath: path,
     mode: 0o600,
     beforeWrite: makePrivate,
-  }).pipe(Effect.mapError((error) => (error instanceof VerifiedStreamError ? stageFailure(error) : error)));
+  }).pipe(mapFailures((error) => (error instanceof VerifiedStreamError ? stageFailure(error) : error)));
   yield* tracker.requireComplete(label, fromStdin);
   return { path, digest: staged.sha256 } satisfies PreparedDump;
 });

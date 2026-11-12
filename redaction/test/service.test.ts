@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer } from "effect";
-
 import { SecretNotFoundError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
+import { type Context, Effect, Layer } from "effect";
 import { RedactionService, createStandaloneRedactor } from "../src/service.ts";
 
 const secretStoreLayer = (values: Record<string, string>) =>

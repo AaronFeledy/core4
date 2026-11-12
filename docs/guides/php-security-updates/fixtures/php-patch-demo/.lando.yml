@@ -1,0 +1,5 @@
+name: php-patch-demo
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true

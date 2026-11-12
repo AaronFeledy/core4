@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 // ====
 // Subscriber manifest / selector contracts for plugin event handlers.

@@ -1,8 +1,5 @@
 import { posix } from "node:path";
-import { SchemaIssue } from "effect";
-import { Effect } from "effect";
-
-import { Schema, SchemaTransformation } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { withDefaultKey } from "./default-key.ts";
 import { AbsolutePath } from "./primitives.ts";

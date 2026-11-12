@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import corePackage from "../../package.json";
 

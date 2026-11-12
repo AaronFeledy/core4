@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { detectLandofileTags, parseLandofile, parseLegacyLandofile } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 const file = "/app/.lando.yml";
 const genericRemediation =

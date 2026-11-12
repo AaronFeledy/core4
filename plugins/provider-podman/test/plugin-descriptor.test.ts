@@ -2,9 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import type { PluginDoctorCheckContribution } from "@lando/sdk/plugins";
+import { Effect } from "effect";
 
 import { makeRuntimeProvider, manifest, plugin } from "../src/index.ts";
 import { providerLandoSetupStatePath } from "../src/provider-lando-state.ts";

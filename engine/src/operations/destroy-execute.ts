@@ -1,10 +1,21 @@
 import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
-import type { ServiceShutdownObservation } from "@lando/sdk/schema";
-import { EventService, RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
-import { DateTime, Effect, Option } from "effect";
+import { type ServiceShutdownObservation, appIdentityKey } from "@lando/sdk/schema";
+import {
+  EventService,
+  PathsService,
+  RouterService,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { TeardownProvider } from "../providers/app-placement.ts";
+import { clearAppBuildResults } from "../services/build-results.ts";
+import { removeBuildTranscripts } from "../services/build-transcript-cleanup.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import { clearAppDataIdentityWhenComplete } from "./data-identity-clear.ts";
 import { prepareDestroyFileSync } from "./destroy-file-sync.ts";
@@ -14,6 +25,7 @@ import {
   cleanupDestroyHostState,
   cleanupDestroyWorkers,
   destroyPlannedProvider,
+  destroyRoutesTaskDeclared,
 } from "./destroy-provider.ts";
 import { removeSnapshots } from "./destroy-snapshots.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
@@ -31,6 +43,31 @@ const unchanged = (app: string): DestroyAppResult => ({
 });
 
 const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
+  const stateStore = yield* StateStore;
+  const paths = yield* PathsService;
+  const buildAppIds = [
+    ...new Set([
+      ...(plan.buildAppId === undefined ? [] : [plan.buildAppId]),
+      ...plan.refs.map((ref) => ref.id),
+    ]),
+  ];
+  const buildProviderId = String(plan.target?.plan.provider ?? plan.applied?.plan.provider ?? "lando");
+  // A build.app result only describes the container the step ran in, and a teardown that fails
+  // halfway has already removed containers: forget those results before any provider call runs.
+  yield* Effect.forEach(buildAppIds, (appId) => clearAppBuildResults(stateStore, appId), {
+    discard: true,
+  });
+  const removeBuildOutput = Effect.forEach(
+    buildAppIds,
+    (appId) =>
+      removeBuildTranscripts({
+        providerId: buildProviderId,
+        userDataRoot: paths.roots.userDataRoot,
+        appId,
+        scratch: false,
+      }),
+    { discard: true },
+  );
   const evidence = plan.evidence;
   const ownsUserData = plan.refs.length === 0 || plan.refs.some((ref) => ref.kind === "user");
   if (evidence === undefined) {
@@ -41,6 +78,10 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         volumesRequested: plan.options.volumes === true,
       });
     }
+    // A start that failed after certificate preparation leaves only host-side leaf material.
+    if ((yield* TeardownProvider) === undefined)
+      yield* removeServiceCertificates(appIdentityKey("owner", plan.root));
+    yield* removeBuildOutput;
     return unchanged(plan.name);
   }
   const registry = yield* RuntimeProviderRegistry;
@@ -52,7 +93,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
   });
   for (const group of plan.groups) yield* registry.select(group.providerId);
   const fileSync =
-    target === undefined || provider === undefined
+    target === undefined || provider === undefined || plan.missingStart !== undefined
       ? undefined
       : yield* prepareDestroyFileSync(target, provider);
   const events = yield* EventService;
@@ -88,9 +129,10 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       snapshots: plan.snapshots.length > 0,
       provider: hasProvider,
       hostProxy: target !== undefined,
-      proxy: target !== undefined && Option.isSome(proxy),
+      proxy: destroyRoutesTaskDeclared(plan, proxy),
     },
     work: Effect.fnUntraced(function* (tree) {
+      yield* plan.missingStart?.terminate ?? Effect.void;
       const retired = yield* plan.retire ?? Effect.succeed(undefined);
       const targetRetired = target !== undefined && retired?.appIds.includes(target.app.id) === true;
       if (fileSync?.applicable === true) yield* tree.startTask("file-sync");
@@ -177,6 +219,11 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         >([remove, cleanupDestroyHostState(plan, tree)]);
       }
       if (fileSync !== undefined && !targetRetired) yield* fileSync.complete;
+      if (plan.missingStart !== undefined) {
+        yield* plan.missingStart.removeTargets;
+        yield* plan.missingStart.complete;
+        changed = true;
+      }
       if (plan.followUpOrphans) {
         const remaining = yield* registry.resolveTeardownEvidence(plan.root);
         if (remaining.kind === "orphans") {
@@ -194,6 +241,14 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
           changed ||= removed.ownedChanged || removed.services.length > 0 || removed.volumesRemoved;
         }
       }
+      // Reached only when every removal step succeeded; a failed teardown keeps the leaf material.
+      // A provider-scoped destroy keeps it: another provider's realization may still mount it.
+      if ((yield* TeardownProvider) === undefined)
+        yield* removeServiceCertificates(
+          target === undefined
+            ? appIdentityKey("owner", plan.root)
+            : routeOwnerFromPlan(target.plan).ownerKey,
+        );
       const result = withShutdownObservations(
         {
           app: plan.name,
@@ -215,6 +270,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       return result;
     }),
   });
+  yield* removeBuildOutput;
   for (const app of plan.refs) {
     const post = PostDestroyEvent.make({
       app,
@@ -232,8 +288,8 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
 export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(function* (plan: TeardownPlan) {
   const target = plan.target;
   const work = Effect.gen(function* () {
-    if (target === undefined) return yield* executeLocked(plan);
     const registry = yield* RuntimeProviderRegistry;
+    if (target === undefined) return yield* executeLocked(plan);
     const provider = yield* registry.select(target.plan);
     const stateStore = yield* StateStore;
     const context = yield* Effect.context<Effect.Services<ReturnType<typeof executeLocked>>>();

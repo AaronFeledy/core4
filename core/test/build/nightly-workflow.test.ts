@@ -19,19 +19,19 @@ const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, comm
   "container-helper": ["Set up Lando with Docker", "bun core/bin/lando.ts setup"],
   "file-sync-contract-linux-x64": [
     "Run file-sync contract matrix (linux-x64)",
-    "bun test plugins/file-sync-mutagen/test/contract.test.ts",
+    "bun run test:selection nightly-file-sync",
   ],
   "file-sync-contract-darwin-arm64": [
     "Run file-sync contract matrix (darwin-arm64)",
-    "bun test plugins/file-sync-mutagen/test/contract.test.ts",
+    "bun run test:selection nightly-file-sync",
   ],
   "file-sync-contract-darwin-x64": [
     "Run file-sync contract matrix (darwin-x64)",
-    "bun test plugins/file-sync-mutagen/test/contract.test.ts",
+    "bun run test:selection nightly-file-sync",
   ],
   "file-sync-contract-windows-x64": [
     "Run file-sync contract matrix (windows-x64)",
-    "bun test plugins/file-sync-mutagen/test/contract.test.ts",
+    "bun run test:selection nightly-file-sync",
   ],
   "provider-lando-e2e-linux-x64": ["Build Linux x64 binary", "build:manifest"],
   "service-listeners-linux-x64": ["Compile current listener CLI", "build:manifest"],
@@ -41,10 +41,7 @@ const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, comm
   "source-store-acceptance-linux-x64": ["Build command registry manifest", "build:manifest"],
   "source-store-acceptance-darwin-arm64": ["Build command registry manifest", "build:manifest"],
   "source-store-acceptance-windows-x64": ["Build command registry manifest", "build:manifest"],
-  "nightly-tier-unit-tests-linux-x64": [
-    "Run nightly-tier unit tests",
-    "bun test core/test/scripts/codegen-ci.test.ts",
-  ],
+  "nightly-tier-unit-tests-linux-x64": ["Run nightly-tier unit tests", "bun run test:selection nightly-tier"],
   "refresh-test-timings-linux-x64": ["Refresh unit-test timings", "bun run scripts/update-test-timings.ts"],
   "distribution-rehearsal-linux-x64": ["Build command registry manifest", "build:manifest"],
 };
@@ -178,7 +175,7 @@ test("nightly managed-runtime jobs provision the binary under test before runnin
     );
     const socket = steps.findIndex((step) => step.name === "Verify managed runtime socket");
     const tests = steps.findIndex(
-      (step) => typeof step.run === "string" && /bun test |run-guide-scenarios/.test(step.run),
+      (step) => typeof step.run === "string" && /bun run test:selection |run-guide-scenarios/.test(step.run),
     );
     expect(compile).toBeGreaterThanOrEqual(0);
     expect(prereqs).toBeGreaterThan(compile);
@@ -291,7 +288,7 @@ test("source-store acceptance jobs compile the platform binary and run the suite
     expect(suiteStep).toMatchObject({
       name: "Run source-store acceptance",
       env: { LANDO_TEST_COMPILED_CLI: `./dist/${want.binary}` },
-      run: "bun test core/test/build/source-store-acceptance.integration.test.ts",
+      run: "bun run test:selection source-store-acceptance",
     });
 
     const gitRun = steps[git]?.run;

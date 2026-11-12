@@ -126,8 +126,9 @@ const renderGlobal = (): string =>
 
 const renderScratch = (): string =>
   [
-    'import { Effect, Layer } from "effect";',
+    'import { Layer } from "effect";',
     "",
+    'import { mapFailures } from "@lando/sdk/command-result";',
     'import { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";',
     'import { bundledPluginModules } from "@lando/engine/composition";',
     'import * as GlobalAppRuntimeLayer from "@lando/engine/global-app/runtime";',
@@ -149,7 +150,7 @@ const renderScratch = (): string =>
     "  const routerRegistryLayer = Layer.fromBuildMemo((memoMap, scope) => Layer.buildWithMemoMap(RouterServiceRegistryLayer.RouterServiceRegistry.layerWith(bundledPluginModules()).pipe(",
     "    Layer.provide(scratchBase),",
     "  ), memoMap, scope).pipe(",
-    "    Effect.mapError((cause) =>",
+    "    mapFailures((cause) =>",
     '      cause instanceof ConfigError ? cause : new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "provider", cause, remediation: "Check the router plugin routerServices declaration and exported service ids; set defaultRouterService to an installed router id." }),',
     "    ),",
     "  ));",
@@ -157,7 +158,7 @@ const renderScratch = (): string =>
     "  const routerServiceLayer = Layer.fromBuildMemo((memoMap, scope) => Layer.buildWithMemoMap(RouterServiceRegistryLayer.layerSelected.pipe(",
     "    Layer.provide(Layer.mergeAll(scratchBase, globalAppRuntimeLayer, routerRegistryLayer)),",
     "  ), memoMap, scope).pipe(",
-    "    Effect.mapError((cause) =>",
+    "    mapFailures((cause) =>",
     '      cause instanceof ConfigError ? cause : new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "provider", cause, remediation: "Set defaultRouterService to an installed router id and repair that plugin RouterService layer before retrying." }),',
     "    ),",
     "  ));",
@@ -181,8 +182,9 @@ const renderScratch = (): string =>
 
 const renderApp = (): string =>
   [
-    'import { Context, Effect, Layer } from "effect";',
+    'import { Context, Layer } from "effect";',
     "",
+    'import { mapFailures } from "@lando/sdk/command-result";',
     'import { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";',
     'import { EventService } from "@lando/sdk/services";',
     'import { bundledPluginModules } from "@lando/engine/composition";',
@@ -210,7 +212,7 @@ const renderApp = (): string =>
     "  const routerRegistryLayer = Layer.fromBuildMemo((memoMap, scope) => Layer.buildWithMemoMap(RouterServiceRegistryLayer.RouterServiceRegistry.layerWith(bundledPluginModules()).pipe(",
     "    Layer.provide(appBase),",
     "  ), memoMap, scope).pipe(",
-    "    Effect.mapError((cause) =>",
+    "    mapFailures((cause) =>",
     '      cause instanceof ConfigError ? cause : new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "app", cause, remediation: "Check the router plugin routerServices declaration and exported service ids; set defaultRouterService to an installed router id." }),',
     "    ),",
     "  ));",
@@ -218,7 +220,7 @@ const renderApp = (): string =>
     "  const routerServiceLayer = Layer.fromBuildMemo((memoMap, scope) => Layer.buildWithMemoMap(RouterServiceRegistryLayer.layerSelected.pipe(",
     "    Layer.provide(Layer.mergeAll(appBase, globalAppRuntimeLayer, routerRegistryLayer)),",
     "  ), memoMap, scope).pipe(",
-    "    Effect.mapError((cause) =>",
+    "    mapFailures((cause) =>",
     '      cause instanceof ConfigError ? cause : new LandoRuntimeBootstrapError({ message: cause instanceof Error ? cause.message : "RouterService bootstrap failed.", stage: "app", cause, remediation: "Set defaultRouterService to an installed router id and repair that plugin RouterService layer before retrying." }),',
     "    ),",
     "  ));",

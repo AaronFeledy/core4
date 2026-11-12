@@ -2,11 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { DownloadFetchError, FileSyncStartError } from "@lando/sdk/errors";
 import { Downloader, FileSyncEngine, PathsService } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 import { layer } from "../src/index.ts";
 
 test("Mutagen provisioning preserves download advice and appends the setup repair command", async () => {

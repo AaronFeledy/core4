@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { LogSource, LogSourceId, LogSourceInput, ServiceInfoLogSource } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 describe("LogSourceId", () => {
   test("rejects the reserved console id", () => {

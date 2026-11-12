@@ -2,13 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Schema } from "effect";
-
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type StateStoreContractHarness, runStateStoreContract } from "@lando/sdk/test";
-
 import { makeStateStore } from "@lando/state-store/service";
+import { Effect, Schema } from "effect";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 

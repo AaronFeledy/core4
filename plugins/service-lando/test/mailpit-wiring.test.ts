@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-import { compileTestLandofile } from "./support/compiled-landofile.ts";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import { ServiceConfig } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 import { mailpitServiceType } from "../src/services/mailpit.ts";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 const planEffect = (mailFrom: unknown, php = true, firstOverrides: Record<string, unknown> = {}) =>
   Effect.flatMap(AppPlanner, (planner) =>

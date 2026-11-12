@@ -2,15 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
-
 import { ShellExecError } from "@lando/sdk/errors";
-import { EventService, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
+import { EventService, ShellRunner } from "@lando/sdk/services";
+import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 import { withShellRedactionTokens } from "../../src/services/shell-runner";
-import * as BunShellRunner from "../shell-runner.ts";
-
 import { testRedactionLayer } from "../redaction.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const redactionLayer = testRedactionLayer(["topsecret"]);
 

@@ -10,18 +10,18 @@ export type PaintBannerEvent = typeof PaintBannerEvent.Type;
 
 export {
   CommandInvocationCorrelation,
-  NotifyDesktopEvent,
   type CommandInvocationCorrelation as CommandInvocationCorrelationType,
+  NotifyDesktopEvent,
   type NotifyDesktopEvent as NotifyDesktopEventType,
 } from "./notify.ts";
 
 export {
   CodeSnippetEvent,
-  DiffRenderEvent,
-  MarkdownBlockEvent,
-  RenderEvent,
   type CodeSnippetEvent as CodeSnippetEventType,
+  DiffRenderEvent,
   type DiffRenderEvent as DiffRenderEventType,
+  MarkdownBlockEvent,
   type MarkdownBlockEvent as MarkdownBlockEventType,
+  RenderEvent,
   type RenderEvent as RenderEventType,
 } from "./rich-render.ts";

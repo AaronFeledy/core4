@@ -1,14 +1,12 @@
-import { Args } from "../../../spec/metadata";
-
 import {
   type PluginLinkResult,
   PluginLinkResultSchema,
   pluginLink,
   renderPluginLinkResult,
 } from "../../../commands/plugin-link";
-
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args } from "../../../spec/metadata";
 
 const extractInput = (input: unknown): { path?: string } => {
   const path = stringFlag(specArgsOf(input), "path");

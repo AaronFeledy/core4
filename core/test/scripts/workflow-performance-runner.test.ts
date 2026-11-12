@@ -1,9 +1,8 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import type { WorkflowPerformanceCommand } from "../../../scripts/workflow-performance-command.ts";
 import { evaluateWorkflowPerformanceReport } from "../../../scripts/workflow-performance-report.ts";

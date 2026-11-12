@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { SchemaIssue } from "effect";
-import { Result, Schema } from "effect";
-
 import {
   LandofileShape,
   ServiceConfig,
@@ -11,6 +8,7 @@ import {
   serviceAppMount,
 } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { Result, Schema, SchemaIssue } from "effect";
 
 import {
   NODE_FEATURE_ID,

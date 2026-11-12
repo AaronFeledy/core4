@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { php83ServiceType } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 

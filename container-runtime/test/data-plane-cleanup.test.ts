@@ -1,19 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeRedactionService } from "@lando/redaction/service";
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect";
+import { FakeEngine } from "./support/fake-engine.ts";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
-
-const multiplexedStderr = (payload: Uint8Array): Uint8Array => {
-  const frame = new Uint8Array(8 + payload.byteLength);
-  frame[0] = 2;
-  new DataView(frame.buffer).setUint32(4, payload.byteLength, false);
-  frame.set(payload, 8);
-  return frame;
-};
 
 type Cleanup =
   | { readonly kind: "status"; readonly status: number; readonly body?: string }
@@ -43,47 +37,35 @@ const recordedPlane = (
   script: Script,
   waiting?: Deferred.Deferred<void>,
 ) => {
-  const api: DataPlaneApiClient = {
-    request: (request) => {
-      requests.push({ method: request.method, path: request.path });
-      if (request.method === "DELETE") {
-        return script.cleanup.kind === "transport"
-          ? Effect.fail(
-              new ProviderUnavailableError({
-                providerId: "test",
-                operation: "transport",
-                message: "socket down",
-                remediation: "retry",
-              }),
-            )
-          : Effect.succeed({ status: script.cleanup.status, body: script.cleanup.body ?? "" });
-      }
-      if (request.path.endsWith("/start") && script.failStart === true) {
-        return Effect.succeed({ status: 500, body: "start failed" });
-      }
-      if (request.path.endsWith("/wait") && script.hangWait === true && waiting !== undefined) {
-        return Deferred.succeed(waiting, undefined).pipe(Effect.andThen(Effect.never));
-      }
-      if (request.path.endsWith("/json")) {
-        return Effect.succeed({
-          status: 200,
-          body: JSON.stringify({ State: { ExitCode: script.exitCode ?? 0 } }),
-        });
-      }
-      return Effect.succeed({ status: request.method === "POST" ? 201 : 200, body: "{}" });
-    },
-    stream: (request) => {
-      request.onResponseHead?.();
-      return Stream.fromIterable(
-        (script.stderrChunks ?? (script.stderr === undefined ? [] : [bytes(script.stderr)])).map(
-          multiplexedStderr,
-        ),
-      );
-    },
-  };
+  const engine = new FakeEngine({
+    exitCode: script.exitCode ?? 0,
+    stderrChunks: script.stderrChunks ?? (script.stderr === undefined ? [] : [bytes(script.stderr)]),
+  });
+  for (const operation of [
+    "container.create",
+    "container.start",
+    "container.wait",
+    "container.inspect",
+    "container.delete",
+  ] as const) {
+    engine.observers.set(operation, ({ method, path }) => requests.push({ method, path }));
+  }
+  engine.fail(
+    "container.delete",
+    script.cleanup.kind === "transport"
+      ? new ProviderUnavailableError({
+          providerId: "test",
+          operation: "transport",
+          message: "socket down",
+          remediation: "retry",
+        })
+      : { status: script.cleanup.status, body: script.cleanup.body ?? "" },
+  );
+  if (script.failStart === true) engine.fail("container.start", { status: 500, body: "start failed" });
+  if (script.hangWait === true) engine.hang("container.wait", waiting);
   return makeProviderDataPlane({
     providerId: "test",
-    api,
+    api: engine.api,
     capabilities: { volumeSnapshot: "none" },
     redactor: scriptRedactor(script.redact ?? ((value) => value)),
   });
@@ -169,7 +151,11 @@ describe("ephemeral cleanup", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
     expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
-      error: { _tag: "VolumeOperationError", operation: "run", message: "Provider ephemeral run failed." },
+      error: {
+        _tag: "ProviderUnavailableError",
+        operation: "run.start",
+        details: { status: 500 },
+      },
       additionalErrors: [
         { role: "cleanup", error: { _tag: "ProviderUnavailableError", operation: "run.remove" } },
       ],
@@ -188,9 +174,9 @@ describe("ephemeral cleanup", () => {
     if (!Exit.isFailure(exit)) return;
     const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.error).toMatchObject({
-      _tag: "VolumeOperationError",
-      operation: "run",
-      message: "Provider ephemeral run failed.",
+      _tag: "ProviderUnavailableError",
+      operation: "run.start",
+      details: { status: 500 },
     });
     expect(outcome.additionalErrors).toEqual([]);
   });
@@ -232,7 +218,7 @@ describe("ephemeral cleanup", () => {
     if (!Exit.isFailure(exit)) return;
     const outcome = failureOutcomeFromCause(exit.cause);
     expect(outcome.error).toMatchObject({
-      _tag: "VolumeOperationError",
+      _tag: "ProviderInternalError",
       operation: "run",
       details: { exitCode: 9 },
     });
@@ -347,7 +333,7 @@ describe("ephemeral cleanup", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
     expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
-      error: { _tag: "VolumeOperationError", operation: "runStream" },
+      error: { _tag: "ProviderUnavailableError", operation: "run.start" },
       additionalErrors: [{ role: "cleanup", error: { message: "socket down" } }],
     });
   });
@@ -388,7 +374,7 @@ describe("ephemeral cleanup", () => {
     if (!Exit.isFailure(exit)) return;
     expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
       error: {
-        _tag: "VolumeOperationError",
+        _tag: "ProviderInternalError",
         operation: "runStream",
         details: { exitCode: 4, stderrTail: "safe [redacted] stream failure" },
       },
@@ -467,6 +453,60 @@ describe("ephemeral cleanup", () => {
     expect(error).toMatchObject({ details: { exitCode: 8, stderrTail: "[diagnostic truncated]" } });
     expect(forwarded).toEqual(stderrChunks);
   });
+
+  test.each(["buffered", "streamed"] as const)(
+    "%s redacts generated truncation markers before the final byte bound",
+    async (mode) => {
+      const redaction = makeRedactionService();
+      const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
+      await Effect.runPromise(redaction.registerValues(["truncated", "lando"]));
+      const provider = recordedPlane([], {
+        cleanup: { kind: "status", status: 500 },
+        exitCode: 7,
+        stderr: "z".repeat(9000),
+        redact: redactor.redactValue,
+      });
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          mode === "buffered" ? provider.run(spec) : provider.runStream(spec).pipe(Stream.runDrain),
+        ),
+      );
+      if (!Exit.isFailure(exit)) throw new Error("Expected cleanup failure");
+      const error = failureOutcomeFromCause(exit.cause).error;
+      const { details } = Schema.decodeUnknownSync(diagnosticError)(error);
+      expect(bytes(details.stderrTail)).toHaveLength(8192);
+      expect(details.stderrTail).toContain("[diagnostic [redacted]]");
+      expect(details.stderrTail).not.toContain("truncated");
+      expect(error).toMatchObject({ details: { exitCode: 7 } });
+    },
+  );
+
+  test.each(["buffered", "streamed"] as const)(
+    "%s keeps clipped redaction sentinels stable across later boundaries",
+    async (mode) => {
+      const redaction = makeRedactionService();
+      const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
+      await Effect.runPromise(redaction.registerValues(["redact"]));
+      const provider = recordedPlane([], {
+        cleanup: { kind: "status", status: 500 },
+        exitCode: 7,
+        stderr: "redact ".repeat(2000),
+        redact: redactor.redactValue,
+      });
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          mode === "buffered" ? provider.run(spec) : provider.runStream(spec).pipe(Stream.runDrain),
+        ),
+      );
+      if (!Exit.isFailure(exit)) throw new Error("Expected cleanup failure");
+      const { details } = Schema.decodeUnknownSync(diagnosticError)(
+        failureOutcomeFromCause(exit.cause).error,
+      );
+      expect(details.stderrTail).toBe("\n[diagnostic truncated]");
+      expect(bytes(details.stderrTail).length).toBeLessThanOrEqual(8192);
+      expect(redactor.redactValue(details.stderrTail)).toBe(details.stderrTail);
+    },
+  );
 
   test("cleanup API reasons fail closed when the redactor returns a non-string", async () => {
     // Given a provider redactor that suppresses strings with a non-string result.

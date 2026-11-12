@@ -1,7 +1,6 @@
+import { stripAnsi } from "@lando/renderer/console-layout";
 import type { InfoAppResult, InfoAppService } from "@lando/sdk/app";
 import { AbsolutePath, PortablePath, type ServiceInfoMount } from "@lando/sdk/schema";
-
-import { stripAnsi } from "@lando/renderer/console-layout";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
 import { connections } from "./connection-fixtures";
 

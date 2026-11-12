@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 
 import { AppId, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import type { NormalizedRoute } from "@lando/landofile/route-normalize";
+import { DateTime, Effect, Schema } from "effect";
 
 import { finalizeServices } from "../../src/planner/endpoints.ts";
 import type { PlannedServiceDraft } from "../../src/planner/service-types.ts";
@@ -24,6 +23,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
   name: "appserver",
   hostnames: [],
   authoredArtifact: undefined,
+  pullPolicy: undefined,
   authored: { byStore: new Map() },
   authoredStorage: undefined,
   homeIntent: { serviceType: "lando", home: false as const },

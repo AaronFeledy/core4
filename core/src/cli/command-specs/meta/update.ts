@@ -1,8 +1,3 @@
-import { Effect } from "effect";
-import { CliInvocation } from "../../../runtime/invocation-context";
-
-import { Flags } from "../../spec/metadata";
-
 import {
   type UpdateExecve,
   type UpdateOptions,
@@ -12,10 +7,13 @@ import {
   update,
 } from "@lando/engine/operations/update";
 import { StateStore } from "@lando/sdk/services";
+import { Effect } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { makePluginUpdateRunner } from "../../commands/update-plugins";
 import { execProcess } from "../../process-lifecycle";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 const execve: UpdateExecve = (input) =>
   Effect.try({ try: () => execProcess(input), catch: (cause) => cause });

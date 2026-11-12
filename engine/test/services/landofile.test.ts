@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
 import { getVersionConstraintEntries } from "@lando/landofile/version-constraint";
 import {
@@ -13,9 +11,9 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { PortablePath, ServiceName } from "@lando/sdk/schema";
-import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { PortablePath, ServiceName, formatValidationIssuePath } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
+import { Cause, Effect, Exit } from "effect";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -61,7 +59,7 @@ describe("LandofileService layer", () => {
           join(dir, file),
           file.endsWith(".ts")
             ? `export default { name: "layer-${order}", lando: ">=${order}.0.0" };\n`
-            : `name: layer-${order}\nlando: \">=${order}.0.0\"\n`,
+            : `name: layer-${order}\nlando: ">=${order}.0.0"\n`,
         );
       }
       process.chdir(dir);
@@ -788,12 +786,9 @@ describe("LandofileService layer — tooling: parsing (US-017)", () => {
           "      MODE: dev",
           "      COUNT: 3",
           "      DEBUG: true",
-          "      ENV:",
-          "        default: development",
+          "      ENV: development",
           "      SHA:",
           "        sh: git rev-parse HEAD",
-          "      TAG:",
-          "        prompt: Enter the release tag",
           "",
         ].join("\n"),
       );
@@ -812,9 +807,8 @@ describe("LandofileService layer — tooling: parsing (US-017)", () => {
       expect(t?.vars?.MODE).toBe("dev");
       expect(t?.vars?.COUNT).toBe(3);
       expect(t?.vars?.DEBUG).toBe(true);
-      expect(t?.vars?.ENV).toEqual({ default: "development" });
+      expect(t?.vars?.ENV).toBe("development");
       expect(t?.vars?.SHA).toEqual({ sh: "git rev-parse HEAD" });
-      expect(t?.vars?.TAG).toEqual({ prompt: "Enter the release tag" });
     });
   });
 });

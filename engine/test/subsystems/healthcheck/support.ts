@@ -1,7 +1,5 @@
 import { expect } from "bun:test";
-import { Cause, Clock, type Duration, Effect, Exit, Fiber, Layer, Option } from "effect";
-import { TestClock } from "effect/testing";
-
+import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { AppId, type HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
@@ -12,8 +10,8 @@ import type {
   ProviderError,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-
-import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
+import { Cause, Clock, type Duration, Effect, Exit, Fiber, Layer, Option } from "effect";
+import { TestClock } from "effect/testing";
 
 export type HealthcheckExec = {
   readonly exec: (

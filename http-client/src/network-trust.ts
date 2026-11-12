@@ -22,6 +22,7 @@
 import { X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import tls from "node:tls";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { HttpTrustError } from "@lando/sdk/errors";
@@ -36,12 +37,12 @@ import { Context, Effect, Option, Schema } from "effect";
 
 export type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
 export {
-  fetchInitForNetwork,
   NetworkTrustResolutionError,
+  fetchInitForNetwork,
   shouldBypassProxy,
 } from "@lando/sdk/network-trust";
-export { resolveNetworkTrustPlan };
 export type { NetworkTrustPlan };
+export { resolveNetworkTrustPlan };
 
 export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemLoadError", {
   message: Schema.String,
@@ -213,7 +214,7 @@ export const resolveTrust = Effect.fnUntraced(function* (
       }),
   });
   const loaded = yield* loadCaPems(plan.caCertPaths).pipe(
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new HttpTrustError({
           message: cause.message,

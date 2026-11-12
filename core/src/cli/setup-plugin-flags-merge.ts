@@ -7,9 +7,9 @@
  * `SetupFlagCollisionError` so the failure is machine-readable rather than a
  * silent last-writer-wins overwrite.
  */
-import type { PluginSetupFlagContribution } from "@lando/sdk/schema";
 
 import { SetupFlagCollisionError, findSetupFlagCollision } from "@lando/engine/plugins/setup-flags";
+import type { PluginSetupFlagContribution } from "@lando/sdk/schema";
 import type { BundledSetupFlagContribution } from "./generated/setup-plugin-flags";
 import { type BooleanFlag, Flags, type OptionFlag } from "./spec/metadata";
 

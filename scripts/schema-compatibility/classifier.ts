@@ -9,7 +9,9 @@ import {
   stringArray,
 } from "./model.ts";
 import { normalizeJsonSchema } from "./normalize.ts";
+
 export { acceptCompatibilityExceptions } from "./accept-exceptions.ts";
+
 import { compareUnion, compareUnionReplacement } from "./union-classifier.ts";
 
 export type {

@@ -4,11 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { makeLandoPaths } from "@lando/paths";
-import { PathsService } from "@lando/sdk/services";
-import { Effect, Layer, Result, Schema } from "effect";
-
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import {
   type LoadedPluginContribution,

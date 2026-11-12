@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
-
 import {
   installSupervisedExecFixture,
   supervisedExecFixtureOptions,
@@ -24,6 +22,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec } from "@lando/sdk/services";
+import { DateTime, Effect, Stream } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");

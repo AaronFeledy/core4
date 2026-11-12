@@ -155,7 +155,7 @@ export const locateYamlEdit = (
         emptyFlowParent: true,
       });
     const wholeFlowValue = /^\[.*\]$|^\{.*\}$/.test(entry.value);
-    if (/^[\[{]/.test(entry.value) && !(final && wholeFlowValue))
+    if (/^[[{]/.test(entry.value) && !(final && wholeFlowValue))
       return unsupported("Flow collections on the edited path.");
     if (segment.kind === "index" && /^[\w.-]+:\s/.test(entry.value))
       return unsupported("List-item mappings cannot be edited safely.");

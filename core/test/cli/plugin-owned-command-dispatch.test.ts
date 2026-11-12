@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Context, Effect, Exit, Schema } from "effect";
-
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { ToolingCommandLookupError } from "@lando/sdk/errors";
-import { UnknownCliFlagError } from "@lando/sdk/errors";
+import { ToolingCommandLookupError, UnknownCliFlagError } from "@lando/sdk/errors";
 import { type ExecutableCommandInput, type ExecutableCommandSpec, definePlugin } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
+import { Cause, Context, Effect, Exit, Schema } from "effect";
 import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { setActiveRendererMode, setActiveResultFormat } from "../../src/cli/compiled-runtime.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";

@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
 
@@ -119,7 +118,7 @@ describe("public alpha contract", () => {
     expect(manifest.id).toBe("rails");
     expect(manifest.snapshot.identity.sourceKind).toBe("bundled");
     expect(manifest.title).toBe("Ruby on Rails");
-    expect(manifest.prompts).toEqual([]);
+    expect(manifest.prompts?.map((prompt) => prompt.name)).toEqual(["database"]);
     expect(recipe).toContain("PostgreSQL");
     expect(recipe).toContain("Redis");
     expect(recipe).toContain("lando rails");

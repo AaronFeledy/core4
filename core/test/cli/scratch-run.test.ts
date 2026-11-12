@@ -25,9 +25,6 @@ import {
   type ScratchAcquireInput,
   ScratchAppService,
 } from "@lando/core/services";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { DateTime, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
-
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
@@ -46,6 +43,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -55,18 +53,21 @@ import { ServiceExecError } from "@lando/sdk/errors";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
+import { DateTime, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(
   Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
+
 import { FinishCommandProgress } from "../../src/cli/command-progress.ts";
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
+import { scratchList } from "../../src/cli/commands/scratch.ts";
 import {
   type ScratchRunResult,
   defaultScratchRunDeps,
   scratchRun,
   scratchRunOptionsFromInput,
 } from "../../src/cli/commands/scratch-run.ts";
-import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
@@ -173,7 +174,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     isAvailable: Effect.succeed(true),
     planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true, message: "ready" }),
+    getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: (spec) =>
       Effect.sync(() => {
@@ -349,13 +350,10 @@ const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> 
     return await run(dir);
   } finally {
     process.chdir(previousCwd);
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousCacheRoot === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
-    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
     if (previousConfRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConfRoot;
     await rm(dir, { recursive: true, force: true });
@@ -596,6 +594,7 @@ describe("scratchRun", () => {
       expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.artifact).toEqual({
         kind: "ref",
         ref: "web:built",
+        origin: "build",
       });
     });
   });
@@ -952,7 +951,7 @@ describe("scratch run cleanup and warm repeats", () => {
       // Identical resolved image build inputs across runs — content-addressed recipe render.
       const firstInputs = serviceBuildInputs(firstPlan);
       expect(serviceBuildInputs(secondPlan)).toEqual(firstInputs);
-      expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "toolbox:built" });
+      expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "toolbox:built", origin: "build" });
 
       const afterRuns = await Effect.runPromise(
         scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),

@@ -1,12 +1,12 @@
-import type { Effect } from "effect";
-
 import type {
   ConfigExpressionError,
   LandofileExpressionParseError,
+  ToolingCompileError,
   ToolingStepConditionError,
 } from "@lando/sdk/errors";
 import type { ExpressionContext, LandofileExpressionEvaluationError } from "@lando/sdk/expressions";
 import type { PortablePath } from "@lando/sdk/schema";
+import type { Effect } from "effect";
 
 import type { ToolingStepLeaf } from "./step-program.ts";
 
@@ -63,6 +63,7 @@ export interface ToolingStepRunners<E, A> {
 }
 
 export type ToolingStepExpressionError =
+  | ToolingCompileError
   | ConfigExpressionError
   | LandofileExpressionParseError
   | LandofileExpressionEvaluationError;

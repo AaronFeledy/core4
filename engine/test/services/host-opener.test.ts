@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, Effect, Exit, Layer, Option, Result, Stream } from "effect";
-
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Layer, Option, Result, Stream } from "effect";
 
 import {
   HostProxyOpenerError,

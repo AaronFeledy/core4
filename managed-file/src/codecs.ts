@@ -1,11 +1,12 @@
+import { mapFailures } from "@lando/sdk/command-result";
+
 // Keep codecs pure and dependency-light; filesystem access and atomic writes
 // belong to callers.
-
-import { Effect, Predicate } from "effect";
 
 import { ManagedFileError } from "@lando/sdk/errors";
 import { LandofileEmitError, emitLandofileYaml, parseLandofile } from "@lando/sdk/landofile";
 import type { FileFormat } from "@lando/sdk/schema";
+import { Effect, Predicate } from "effect";
 
 /** The `ManagedFileService` operation a codec call is serving, used only to tag errors. */
 export type ManagedFileOperation = "plan" | "apply" | "remove" | "status" | "adopt" | "release";
@@ -194,7 +195,7 @@ export const decode = (
     case "yaml":
     case "landofile":
       return parseLandofile({ file: `<managed-file:${format}>`, content: text, cwd: "." }).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ManagedFileError({
               reason: "decode",

@@ -3,12 +3,11 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect, Layer } from "effect";
-
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { EventService, Renderer } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import { makeInitOutput } from "../../src/cli/commands/init-output.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";

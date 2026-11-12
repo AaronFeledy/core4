@@ -1,17 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer } from "effect";
-
-import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/events";
-import { AbsolutePath } from "@lando/sdk/schema";
-import { EventService } from "@lando/sdk/services";
-
 import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
 import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
+import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
+import type { LandoEvent } from "@lando/sdk/events";
+import { AbsolutePath } from "@lando/sdk/schema";
+import { EventService } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { openOptionsFromRunLandoArgv } from "../../../src/cli/host-proxy/open-argv.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };

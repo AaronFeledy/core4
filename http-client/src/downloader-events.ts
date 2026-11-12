@@ -1,10 +1,10 @@
 /**
  * Redacted lifecycle-event seam for the verified-artifact Downloader.
  */
-import { Cause, type Context, Effect, Option } from "effect";
 
 import type { Redactor } from "@lando/sdk/secrets";
 import type { EventService, LandoEvent } from "@lando/sdk/services";
+import { Cause, type Context, Effect, Option } from "effect";
 
 import { type DownloadError, failureDetailForError, isDownloadError } from "./downloader-errors.ts";
 

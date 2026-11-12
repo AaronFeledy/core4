@@ -2,9 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
-import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
-
 import { followLogsApp } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -20,9 +17,11 @@ import {
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { LogsAppResult } from "@lando/engine/operations/logs";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
+import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const SECRET_VALUE = "supersecret-log-canary-9f3a";
@@ -117,7 +116,7 @@ const makeLayer = (rawLine: string) => {
     isAvailable: Effect.succeed(true),
     planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
@@ -207,7 +206,6 @@ describe("lando logs redaction boundary", () => {
 
   afterEach(() => {
     if (previous === undefined) {
-      // biome-ignore lint/performance/noDelete: env cleanup must remove the key (Bun coerces undefined to "undefined")
       delete process.env.LANDO_SECRET_LOG_PASSWORD;
     } else {
       process.env.LANDO_SECRET_LOG_PASSWORD = previous;
@@ -302,4 +300,5 @@ describe("lando logs redaction boundary", () => {
     expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
   });
 });
+
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

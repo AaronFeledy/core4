@@ -1,5 +1,3 @@
-import { Effect, Schema } from "effect";
-
 import { PortablePath } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type {
@@ -8,6 +6,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   commandHealthcheck,
   rootIdentity,

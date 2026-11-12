@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -22,6 +20,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
 
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
 import {
@@ -127,7 +126,7 @@ const stubProvider: RuntimeProviderShape = {
   capabilities: stubCapabilities,
   isAvailable: Effect.succeed(false),
   setup: () => Effect.void,
-  getStatus: Effect.succeed({ running: false }),
+  getStatus: Effect.succeed({ state: "idle" }),
   getVersions: Effect.succeed({ provider: "0.0.0" }),
   buildArtifact: () => Effect.die("stub"),
   pullArtifact: () => Effect.die("stub"),

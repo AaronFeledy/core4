@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { ToolingInputDeclaration, type ToolingTaskShape } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
+import { bindToolingInput } from "../src/tooling-input.ts";
 import { normalizeToolingInput } from "../src/tooling-input-normalize.ts";
 import { toolingInputRedactionTokens } from "../src/tooling-input-redaction.ts";
-import { bindToolingInput } from "../src/tooling-input.ts";
 
 const invalidMetadata: readonly ToolingTaskShape[] = [
   { flags: { mode: { sensitive: true as const, default: "canary" } } },

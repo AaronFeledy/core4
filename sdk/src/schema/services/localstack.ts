@@ -7,7 +7,6 @@ import { catalogServiceConfig, catalogServiceType } from "./_catalog.ts";
 // ============================================================================
 
 export const LocalStackServiceConfig = catalogServiceConfig({
-  extraKeys: ["database"],
   type: catalogServiceType(Schema.Literal("localstack"), "LocalStack catalog service type."),
   identifier: "LocalStackServiceConfig",
   title: "LocalStack Service Config",

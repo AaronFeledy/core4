@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import {
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
   makeSystemPodmanMachineRunner,
 } from "@lando/provider-lando";
+import { Effect } from "effect";
 
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 

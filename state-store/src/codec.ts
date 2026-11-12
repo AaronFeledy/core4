@@ -1,6 +1,5 @@
-import { Schema } from "effect";
-
 import type { StateCodec } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 const BINARY_MAGIC = new Uint8Array([0x4c, 0x53, 0x42, 0x31]); // "LSB1"
 const BINARY_HEADER_LEN = BINARY_MAGIC.length + 4;

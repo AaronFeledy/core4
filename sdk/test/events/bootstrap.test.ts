@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-
+import { LandoEvent, PostBootstrapEvent } from "@lando/sdk/events";
 import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
-
-import { LandoEvent, PostBootstrapEvent } from "@lando/sdk/events";
 
 const timestamp = "2026-07-19T00:00:00.000Z";
 const levels = ["minimal", "plugins", "commands", "provider", "app", "tooling"] as const;

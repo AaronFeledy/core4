@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import {
   AbsolutePath,
   AppId,
@@ -10,6 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { DateTime } from "effect";
 
 import { renderCompose } from "../src/podman/compose.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";

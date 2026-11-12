@@ -6,9 +6,8 @@ import { WriteStream } from "node:tty";
 
 import * as openTui from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
-
-import type { PromptDriverRequestLike } from "../src/opentui/prompt-driver-types.ts";
 import { createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
+import type { PromptDriverRequestLike } from "../src/opentui/prompt-driver-types.ts";
 import { monochromePromptTerminal } from "../src/opentui/prompt-monochrome.ts";
 
 const chromaticSgr = new RegExp(

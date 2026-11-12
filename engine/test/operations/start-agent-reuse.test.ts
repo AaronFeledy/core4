@@ -10,8 +10,8 @@ import { Effect, Exit, Scope, Stream } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/gpg-agent/intent.ts";
-import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
+import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import { relayHarness } from "../subsystems/ssh-agent/reuse-harness.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -183,4 +183,5 @@ for (const failFirst of [false, true]) {
     },
   );
 }
+
 import { literalTestLandofile } from "../compiled-landofile.ts";

@@ -1,13 +1,12 @@
 import { Schema } from "effect";
 import { ServiceHomePlan } from "./app-plan.ts";
-import { PortablePath } from "./primitives.ts";
-
 import { ServiceCredsDisplay } from "./database-connection.ts";
 import { EndpointRef } from "./endpoint.ts";
 import { HealthcheckPlan } from "./healthcheck-plan.ts";
 import { ListenerAuthority } from "./listener.ts";
 import { LogSourceStream } from "./log-source.ts";
 import { BindMountPlan } from "./mounts.ts";
+import { PortablePath } from "./primitives.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceInfoMount } from "./service-mount.ts";
 
@@ -128,7 +127,8 @@ export const ServiceInfo = Schema.Struct({
   certs: Schema.optionalKey(
     Schema.Struct({ state: Schema.Literals(["none", "generated", "custom"]) }),
   ).annotate({
-    description: "Planned certificate source, when the plan records it.",
+    description:
+      "Planned certificate source; generated means Lando issues and maintains the certificate when applying the service.",
   }),
   health: Schema.optionalKey(ServiceInfoHealth).annotate({
     description: "Safe configured native health policy and provider-reported health state.",

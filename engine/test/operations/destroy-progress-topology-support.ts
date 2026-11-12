@@ -1,8 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { makeLandoPaths } from "@lando/paths";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
@@ -31,13 +30,12 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { emptySnapshotsLayer } from "./data-mover-support.ts";
-
-import { makeLandoPaths } from "@lando/paths";
-import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 export { destroyTreeId };
 
@@ -94,6 +92,7 @@ export const makeHarness = (
     readonly dataMover?: typeof DataMover.Service;
     readonly quiesceEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyAvailable?: boolean;
+    readonly router?: typeof RouterService.Service;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly stateStore?: StateStoreShape;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
@@ -103,6 +102,7 @@ export const makeHarness = (
   } = {},
 ) => {
   const events: LandoEvent[] = [];
+  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-destroy-harness-"));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -141,7 +141,7 @@ export const makeHarness = (
       makeLandoPaths({
         env: {},
         platform: "linux",
-        userDataRoot: mkdtempSync(join(tmpdir(), "lando-destroy-harness-")),
+        userDataRoot,
         userCacheRoot: join(testAppRoot, "cache"),
         userConfRoot: join(testAppRoot, "conf"),
         systemPluginRoot: join(testAppRoot, "sys"),
@@ -175,10 +175,12 @@ export const makeHarness = (
         query: () => Effect.succeed([]),
       }),
     ),
-    ...(options.proxyAvailable === false ? [] : [Layer.succeed(RouterService, TestRouterService)]),
+    ...(options.proxyAvailable === false
+      ? []
+      : [Layer.succeed(RouterService, options.router ?? TestRouterService)]),
     ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
   );
-  return { layer, events };
+  return { layer, events, userDataRoot };
 };
 
 export const runDestroyTarget = (
@@ -192,4 +194,5 @@ export const runDestroyTarget = (
       app: { kind: "user", id: plan.id, root: plan.root },
     }).pipe(Effect.provide(harness.layer)),
   );
+
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";

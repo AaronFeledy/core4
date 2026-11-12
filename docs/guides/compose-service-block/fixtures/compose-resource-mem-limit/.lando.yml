@@ -1,0 +1,9 @@
+# lando-lint: expect-invalid flat Compose mem_limit key for the compose-service-block guide
+name: compose-resource-mem-limit
+services:
+  worker:
+    type: compose
+    image: alpine:3.20
+    appMount: false
+    command: sleep infinity
+    mem_limit: 512m

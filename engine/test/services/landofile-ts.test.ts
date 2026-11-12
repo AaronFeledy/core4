@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Cause, Effect, Exit } from "effect";
+import { TS_TIMEOUT_ENV } from "@lando/landofile/ts-loader";
 
 import {
   LandofileFormConflictError,
@@ -13,11 +12,9 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { ServiceName, defineLandofile } from "@lando/sdk/schema";
+import { ServiceName, defineLandofile, formatValidationIssuePath } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
-
-import { TS_TIMEOUT_ENV } from "@lando/landofile/ts-loader";
-import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { Cause, Effect, Exit } from "effect";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(

@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import { McpTransportError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
+import { Effect } from "effect";
 
 import { isRuntimeProxy } from "./runtime-proxy";
 import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
@@ -92,7 +91,7 @@ class BoundedJsonWriter {
     this.#append('"');
   }
 
-  #secretKeyReplacement(key: string): string | undefined {
+  #secretKeyReplacement(key: string, value: unknown): string | undefined {
     const redacted = this.#redactor.redactValue({ [key]: null });
     if (
       redacted === null ||
@@ -107,7 +106,16 @@ class BoundedJsonWriter {
     const replacement = descriptor.value;
     if (replacement === null) return undefined;
     if (typeof replacement !== "string") throw serializationFailure(this.#context);
-    return replacement;
+    // A published default string survives the key rule; ask the same redactor
+    // about the real bytes so registrations and patterns still mask them.
+    if (typeof value !== "string") return replacement;
+    const actual = this.#redactor.redactValue({ [key]: value });
+    if (actual === null || typeof actual !== "object" || Array.isArray(actual) || isRuntimeProxy(actual))
+      return replacement;
+    const actualDescriptor = Object.getOwnPropertyDescriptor(actual, key);
+    if (actualDescriptor === undefined || !("value" in actualDescriptor))
+      throw serializationFailure(this.#context);
+    return typeof actualDescriptor.value === "string" ? actualDescriptor.value : replacement;
   }
 
   #withAncestor(value: object, write: () => void): void {
@@ -165,7 +173,7 @@ class BoundedJsonWriter {
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (descriptor === undefined) throw serializationFailure(this.#context);
         this.#assertBoundedInputString(key);
-        const secretKeyReplacement = this.#secretKeyReplacement(key);
+        const secretKeyReplacement = this.#secretKeyReplacement(key, descriptor.value);
         if (secretKeyReplacement === undefined && !("value" in descriptor)) {
           throw serializationFailure(this.#context);
         }

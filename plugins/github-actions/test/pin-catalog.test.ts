@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { Effect } from "effect";
-import { decodePinCatalog } from "../src/pins-schema.ts";
 import manifest from "../src/pins.json";
 import { selectImageCandidate, selectNodeRuntime } from "../src/pins.ts";
+import { decodePinCatalog } from "../src/pins-schema.ts";
 
 const fixtures = resolve(import.meta.dirname, "fixtures/pins");
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");

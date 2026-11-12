@@ -1,14 +1,5 @@
 import { join as pathJoin } from "node:path";
-import {
-  APP_LABEL,
-  PROVIDER_LABEL,
-  STORAGE_KIND_LABEL,
-  STORAGE_SCOPE_LABEL,
-  STORE_LABEL,
-} from "../labels.ts";
-
-import { Effect } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -19,15 +10,23 @@ import {
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
-
+import { Effect } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
 import { previewEnvironmentValue } from "../environment-values.ts";
 import type { ExecSupervisionOptions } from "../exec-supervision.ts";
 import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
+import {
+  APP_LABEL,
+  PROVIDER_LABEL,
+  STORAGE_KIND_LABEL,
+  STORAGE_SCOPE_LABEL,
+  STORE_LABEL,
+} from "../labels.ts";
 import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
 import { commonContainerLabels } from "../plan.ts";
+import { redactDetails, redactorFor } from "../redact.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
 import { composeHealthcheck } from "./compose-healthcheck.ts";
 import { type ComposeVolumeEntry, serviceComposeMounts } from "./compose-mounts.ts";
@@ -78,7 +77,7 @@ const composeError = (ctx: ProviderErrorContext, message: string, details?: unkn
     providerId: ctx.providerId,
     operation: "emitCompose",
     message,
-    details,
+    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(ctx)) }),
     remediation: ctx.remediation,
   });
 
@@ -413,7 +412,7 @@ export const emitCompose = Effect.fn("RuntimeProvider.emitCompose")(
     return { path: outputPath, content };
   },
   (effect, _plan, options) =>
-    Effect.mapError(effect, (cause) => {
+    mapFailures(effect, (cause) => {
       if (cause instanceof ProviderInternalError) {
         return cause;
       }

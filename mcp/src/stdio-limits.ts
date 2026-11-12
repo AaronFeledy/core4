@@ -1,10 +1,8 @@
 import { type Stats, fstatSync } from "node:fs";
 import { isatty } from "node:tty";
-import { Duration } from "effect";
-
 import { McpTransportError } from "@lando/sdk/errors";
-
 import type { CommandResultFormat } from "@lando/sdk/schema";
+import { Duration } from "effect";
 
 export const MAX_FRAME_BYTES = 1_048_576;
 export const DEFAULT_MCP_MAX_CONCURRENT = 4;

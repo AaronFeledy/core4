@@ -1,12 +1,14 @@
 import {
-  type InvocationProgram,
+  bindToolingShellSite,
   compiledValueError,
   evaluateInvocationSite,
   instantiateInvocation,
+  replaceSiteValue,
 } from "@lando/landofile/compiled-sites";
-import { type ConfigExpressionError, ToolingStepConditionError } from "@lando/sdk/errors";
+import { mapFailures } from "@lando/sdk/command-result";
+import { ConfigExpressionError, ToolingCompileError, ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import { Environment, EventForSelector, PortablePath, ToolingTaskShape } from "@lando/sdk/schema";
+import { Environment, EventForSelector, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { compileSelector } from "./step-compiler.ts";
 import { runToolingStepProgramWith } from "./step-executor.ts";
@@ -43,34 +45,7 @@ const ResolvedCommand = Schema.Struct({
   raw: Schema.Array(Schema.String),
 });
 
-export const resolveToolingTaskShape = Effect.fnUntraced(function* (
-  task: ToolingTaskShape,
-  context: ExpressionContext,
-  program: InvocationProgram,
-) {
-  const variableValue = yield* instantiateInvocation({
-    value: task,
-    sites: program.filter(
-      (site) => site.path[0] === "vars" && !Object.hasOwn(context.vars ?? {}, String(site.path[1])),
-    ),
-    context: { ...context, vars: { ...task.vars, ...context.vars } },
-  });
-  const variables = yield* Schema.decodeUnknownEffect(ToolingTaskShape)(variableValue).pipe(
-    Effect.mapError((cause) =>
-      compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: program }),
-    ),
-  );
-  const value = yield* instantiateInvocation({
-    value: variables,
-    sites: program.filter((site) => site.path[0] !== "vars"),
-    context: { ...context, vars: { ...variables.vars, ...context.vars } },
-  });
-  return yield* Schema.decodeUnknownEffect(ToolingTaskShape)(value).pipe(
-    Effect.mapError((cause) =>
-      compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: program }),
-    ),
-  );
-});
+export { type DynamicToolingVarResolver, resolveToolingTaskShape } from "./task-shape.ts";
 
 export const conditionAllows = (condition: ToolingStepLeaf["condition"], context: ExpressionContext) => {
   if (condition === undefined || typeof condition === "boolean") return Effect.succeed(condition ?? true);
@@ -106,22 +81,38 @@ export const conditionAllows = (condition: ToolingStepLeaf["condition"], context
 
 export const resolveLeaf = Effect.fnUntraced(function* (leaf: ToolingStepLeaf, context: ExpressionContext) {
   const sites = leaf.invocationSites ?? [];
-  const value = yield* instantiateInvocation({ value: leaf, sites, context });
+  let value = yield* instantiateInvocation({
+    value: leaf,
+    sites: sites.filter((site) => leaf.kind !== "cmd" || site.path[0] !== "command"),
+    context,
+  });
   const locate = (cause: unknown): ConfigExpressionError =>
     compiledValueError(cause, { filePath: "<tooling-step>", pendingSites: sites });
+  if (leaf.kind === "cmd") {
+    for (const site of sites.filter((site) => site.path[0] === "command")) {
+      const command = yield* Effect.try({
+        try: () => bindToolingShellSite(site, context, new Set(Object.keys(context.vars ?? {}))),
+        catch: (cause) =>
+          cause instanceof ToolingCompileError || cause instanceof ConfigExpressionError
+            ? cause
+            : locate(cause),
+      });
+      value = replaceSiteValue(value, site.path, command);
+    }
+  }
   switch (leaf.kind) {
     case "cmd":
       return {
-        leaf: yield* Schema.decodeUnknownEffect(ResolvedCmd)(value).pipe(Effect.mapError(locate)),
+        leaf: yield* Schema.decodeUnknownEffect(ResolvedCmd)(value).pipe(mapFailures(locate)),
         context,
       };
     case "command":
       return {
-        leaf: yield* Schema.decodeUnknownEffect(ResolvedCommand)(value).pipe(Effect.mapError(locate)),
+        leaf: yield* Schema.decodeUnknownEffect(ResolvedCommand)(value).pipe(mapFailures(locate)),
         context,
       };
     case "task": {
-      const resolved = yield* Schema.decodeUnknownEffect(ResolvedTask)(value).pipe(Effect.mapError(locate));
+      const resolved = yield* Schema.decodeUnknownEffect(ResolvedTask)(value).pipe(mapFailures(locate));
       const vars = { ...context.vars, ...resolved.vars };
       return { leaf: { ...resolved, vars }, context: { ...context, vars } };
     }
@@ -142,10 +133,8 @@ const resolveSelector = Effect.fnUntraced(function* (node: ToolingStepForNode, c
   const instantiated = yield* instantiateInvocation({ value, sites, context });
   const locate = (cause: unknown) =>
     compiledValueError(cause, { filePath: "<tooling-selector>", pendingSites: sites });
-  const decoded = yield* Schema.decodeUnknownEffect(EventForSelector)(instantiated).pipe(
-    Effect.mapError(locate),
-  );
-  return yield* compileSelector(decoded).pipe(Effect.mapError(locate));
+  const decoded = yield* Schema.decodeUnknownEffect(EventForSelector)(instantiated).pipe(mapFailures(locate));
+  return yield* compileSelector(decoded).pipe(mapFailures(locate));
 });
 
 export type {

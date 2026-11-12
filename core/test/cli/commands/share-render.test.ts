@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Schema } from "effect";
-
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { AppId, GlobalConfig, ServiceName, type TunnelSession } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
+import { Context, Effect, Schema } from "effect";
 
 import { renderShareResult } from "../../../src/cli/commands/share.ts";
 import { makeEventCommandExecutor } from "../../../src/cli/event-command-executor.ts";

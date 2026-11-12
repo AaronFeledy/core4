@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Schema } from "effect";
-
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { ConfigError } from "@lando/sdk/errors";
 import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 import { runSetVerb, runUnsetVerb } from "../../src/config-write/verbs.ts";
 import { writeValidationErrorFromIssues } from "../../src/config-write/write-core.ts";
 

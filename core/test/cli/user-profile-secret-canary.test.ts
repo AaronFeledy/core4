@@ -3,8 +3,6 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as ContainerHelperAssetsLayer from "@lando/container-runtime/container-helper/assets";
-import { Effect, Layer, Queue, Stream } from "effect";
-
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import {
   appCommandCachePath,
@@ -44,6 +42,7 @@ import {
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { Effect, Layer, Queue, Stream } from "effect";
 import { appConfig } from "../../src/cli/commands/app-config.ts";
 import * as BunShellRunner from "../_support/shell-runner.ts";
 

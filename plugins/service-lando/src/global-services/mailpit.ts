@@ -14,9 +14,9 @@
  * services reach SMTP over the shared cross-app network via the projected
  * `LANDO_MAIL_HOST` / `LANDO_MAIL_PORT` contract.
  */
-import { Effect, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 import {
   MAILPIT_DASHBOARD_HOSTNAME_EXPRESSION,

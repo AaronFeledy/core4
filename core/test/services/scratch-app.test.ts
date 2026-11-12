@@ -2,13 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { AbsolutePath } from "@lando/core/schema";
 import { ScratchAppService } from "@lando/core/services";
+import { Effect } from "effect";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
+
 /** Build after env roots are injected so PathsService honors the test data root. */
 const scratchAppLayer = () => makeLandoRuntime({ bootstrap: "scratch" });
 

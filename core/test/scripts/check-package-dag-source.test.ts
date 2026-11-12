@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { importCycleRule } from "../../../scripts/boundary/rules/import-cycle.ts";
-import { WORKSPACE_EDGE_TABLE } from "../../../scripts/boundary/rules/package-dag-policy.ts";
 import { packageDagRule } from "../../../scripts/boundary/rules/package-dag.ts";
+import { WORKSPACE_EDGE_TABLE } from "../../../scripts/boundary/rules/package-dag-policy.ts";
 import { type PackageDagFixture, createPackageDagFixture } from "./package-dag-fixture.ts";
 
 let fixture: PackageDagFixture;

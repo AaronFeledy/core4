@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
 import { makeLineFramer } from "@lando/sdk/log-follow";
+import { Effect } from "effect";
 import { createStandaloneRedactor, makeRedactionService } from "../src/service.ts";
 
 describe("truncated log line redaction", () => {

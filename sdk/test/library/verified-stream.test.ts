@@ -1,16 +1,14 @@
+import { describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, spyOn, test } from "bun:test";
-import { Cause, Deferred, Effect, Fiber, Stream } from "effect";
-
 import {
   VerifiedStreamError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
+import { Cause, Deferred, Effect, Fiber, Stream } from "effect";
 
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 const digest = (text: string): string => createHash("sha256").update(text).digest("hex");

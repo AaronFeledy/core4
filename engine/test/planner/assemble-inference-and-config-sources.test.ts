@@ -84,4 +84,5 @@ test("keeps Node project-file fingerprints and catalog config sources in one cac
       keys.mockRestore();
     }
   }));
+
 import { planTestLandofile } from "../compiled-landofile.ts";

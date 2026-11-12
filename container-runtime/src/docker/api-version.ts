@@ -271,6 +271,6 @@ export const dockerApiVersionUnavailable = (
     providerId: ctx.providerId,
     operation,
     message: negotiation.message,
-    details: negotiation.details,
+    details: { ...negotiation.details },
     remediation: `Use a Docker Engine whose API range overlaps ${negotiation.ourRange}, or set DOCKER_API_VERSION to a version in that range. Then rerun \`lando setup --provider=docker\` or \`lando doctor --provider=docker\`.`,
   });

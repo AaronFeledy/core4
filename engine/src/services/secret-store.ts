@@ -1,8 +1,7 @@
-import { type Context, Effect, Layer, Result } from "effect";
-
 import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import { parseSecretReference } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
+import { type Context, Effect, Layer, Result } from "effect";
 
 /** Default env-var prefix the built-in `SecretStore` reads `${secret:…}` ids from. */
 export const DEFAULT_SECRET_ENV_PREFIX = "LANDO_SECRET_";

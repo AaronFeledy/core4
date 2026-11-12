@@ -1,6 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
-
+import {
+  type GuidePresentation,
+  firstYaml,
+  processor as guideProcessor,
+  parseFrontmatter,
+  projectGuidePresentation,
+} from "@lando/core/docs/guide-compiler";
 import type { Paragraph, Root, Text } from "mdast";
 import type {
   MdxFlowExpression,
@@ -11,14 +17,6 @@ import type {
 } from "mdast-util-mdx";
 import type { Node, Parent } from "unist";
 import type { VFile } from "vfile";
-
-import {
-  type GuidePresentation,
-  firstYaml,
-  processor as guideProcessor,
-  parseFrontmatter,
-  projectGuidePresentation,
-} from "@lando/core/docs/guide-compiler";
 
 import { CONTEXT_COMPONENT_NAMES } from "../components/vocabulary.ts";
 

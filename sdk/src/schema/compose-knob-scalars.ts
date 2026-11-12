@@ -1,6 +1,4 @@
-import { SchemaIssue } from "effect";
-import { Effect, SchemaTransformation } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { parseComposeByteSize } from "./compose-byte-size.ts";
 import { parseComposeDuration } from "./compose-duration.ts";
@@ -64,33 +62,69 @@ export const ComposeGroupAddField = Schema.Union([Group, GroupList])
   });
 export type ComposeGroupAdd = typeof ComposeGroupAddField.Type;
 
-export const ComposeByteSizeField = Schema.Union([Schema.String, Schema.Int]).pipe(
-  Schema.decodeTo(
-    Schema.Int,
-    SchemaTransformation.transformEffect({
-      decode: (input) => {
-        if (typeof input === "number") return Effect.succeed(input);
-        try {
-          return Effect.succeed(parseComposeByteSize(input));
-        } catch (error) {
-          if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
-          throw error;
-        }
-      },
-      encode: (input) => Effect.succeed(input),
-    }),
-  ),
+// ============================================================================
+// Integer text - interpolated integers a container engine reads as safe integers
+// ============================================================================
+
+const INTEGER_TEXT_PATTERN = /^[+-]?[0-9]+$/;
+
+/** Integer text, as Compose interpolation leaves it, that parses to a safe integer. */
+export const integerTextCheck = (expected: string) =>
+  Schema.makeFilter((text: string) => INTEGER_TEXT_PATTERN.test(text) && Number.isSafeInteger(Number(text)), {
+    expected,
+    // The safe-integer bound has no JSON Schema form; the pattern alone is the looser editor rule.
+    toJsonSchema: () => [{ pattern: INTEGER_TEXT_PATTERN.source }, true],
+  });
+
+// ============================================================================
+// Byte sizes and durations - non-negative Compose quantities
+// ============================================================================
+
+const NonNegativeInt = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0, { expected: "a non-negative byte size" }),
 );
+
+const byteSizeField = <Bytes extends Schema.Codec<number, number, never, never>>(bytes: Bytes) =>
+  Schema.Union([Schema.String, bytes]).pipe(
+    Schema.decodeTo(
+      bytes,
+      SchemaTransformation.transformEffect({
+        decode: (input) => {
+          if (typeof input === "number") return Effect.succeed(input);
+          try {
+            return Effect.succeed(parseComposeByteSize(input));
+          } catch (error) {
+            if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+            throw error;
+          }
+        },
+        encode: (input) => Effect.succeed(input),
+      }),
+    ),
+  );
+
+export const ComposeByteSizeField = byteSizeField(NonNegativeInt);
 export type ComposeByteSize = typeof ComposeByteSizeField.Type;
 
-export const ComposeShmSizeField = ComposeByteSizeField.annotate({
+// Container engines read a zero shared-memory size as "use the default", so Lando requires a real size.
+export const ComposeShmSizeField = byteSizeField(
+  Schema.Int.check(Schema.isGreaterThan(0, { expected: "a shared-memory size greater than 0 bytes" })),
+).annotate({
   description:
     "Shared-memory size as integer bytes or a Compose byte-size string; canonicalized to integer bytes.",
 });
 
-export const ComposeDurationSecondsField = Schema.Union([Schema.String, Schema.Number]).pipe(
+// A duration a container engine can hold as whole seconds: finite, non-negative, within the safe range.
+const DurationSeconds = Schema.Finite.check(
+  Schema.isBetween(
+    { minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+    { expected: "a non-negative number of seconds" },
+  ),
+);
+
+export const ComposeDurationSecondsField = Schema.Union([Schema.String, DurationSeconds]).pipe(
   Schema.decodeTo(
-    Schema.Number,
+    DurationSeconds,
     SchemaTransformation.transformEffect({
       decode: (input) => {
         if (typeof input === "number") return Effect.succeed(input);
@@ -132,21 +166,21 @@ export const ComposePullPolicyField = Schema.Union([
     "Expected always, never, build, if_not_present, missing, refresh, daily, weekly, or every_<interval> such as every_12h",
 });
 
-export const ComposeBooleanOrStringField = Schema.Union([Schema.Boolean, Schema.String]);
-
 // JSON Schema has no regex flags; the end assertion also rejects trailing line breaks.
-const INIT_SPELLING_PATTERN =
+const BOOLEAN_SPELLING_PATTERN =
   /^(?:[Tt][Rr][Uu][Ee]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Nn]|[Oo][Ff][Ff]|[Yy][Ee][Ss]|[Nn][Oo]|[01])(?![\s\S])/;
 
-export const ComposeInitField = Schema.Union([
-  Schema.Boolean,
-  Schema.String.check(
-    Schema.isPattern(INIT_SPELLING_PATTERN, {
-      expected: "true, false, on, off, yes, no, 1, or 0 (ASCII case-insensitive)",
-      toJsonSchema: () => ({ pattern: INIT_SPELLING_PATTERN.source }),
-    }),
-  ),
-]).pipe(
+/** YAML 1.1 boolean spellings, which is how Compose booleans survive as strings through interpolation. */
+const BooleanSpelling = Schema.String.check(
+  Schema.isPattern(BOOLEAN_SPELLING_PATTERN, {
+    expected: "true, false, on, off, yes, no, 1, or 0 (ASCII case-insensitive)",
+    toJsonSchema: () => ({ pattern: BOOLEAN_SPELLING_PATTERN.source }),
+  }),
+);
+
+export const ComposeBooleanOrStringField = Schema.Union([Schema.Boolean, BooleanSpelling]);
+
+export const ComposeInitField = Schema.Union([Schema.Boolean, BooleanSpelling]).pipe(
   Schema.decodeTo(
     Schema.Boolean,
     SchemaTransformation.transform({

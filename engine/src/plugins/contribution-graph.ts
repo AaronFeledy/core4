@@ -1,5 +1,4 @@
-import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   LandoRuntimeBootstrapError,
   PluginDescriptorMismatchError,
@@ -16,12 +15,15 @@ import {
   type ResolvedPluginInput,
 } from "@lando/sdk/schema";
 import { CertificateAuthority, PathsService } from "@lando/sdk/services";
+import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
 import { bundledPluginModules } from "../composition.ts";
 import { resolveGraphCommands } from "./command-contributions.ts";
 import type { PluginImplementation } from "./implementation-identity.ts";
 import { loadInstalledPluginImplementation } from "./installed-plugin-loader.ts";
+
 export { pluginCommandCandidates } from "./command-contributions.ts";
+
 import { PluginManifestResolution, resolvePluginManifests } from "./manifest-resolution.ts";
 import { type ManifestDiagnostic, selectPluginManifests } from "./manifest-selection.ts";
 import { type PluginCapabilityIndexError, makePluginCapabilityIndex } from "./module-set.ts";
@@ -113,7 +115,7 @@ export class PluginContributionGraph extends Context.Service<
         const rawCandidates: GraphCertificateAuthorityCandidate[] = [];
         for (const [index, layer] of policy.layers.entries()) {
           const context = yield* Layer.buildWithScope(layer, scope).pipe(
-            Effect.mapError((cause) => bootstrapFailure(`Failed to build plugins.layers[${index}].`, cause)),
+            mapFailures((cause) => bootstrapFailure(`Failed to build plugins.layers[${index}].`, cause)),
           );
           const authority = Context.getOption(context, CertificateAuthority);
           if (Option.isSome(authority)) {

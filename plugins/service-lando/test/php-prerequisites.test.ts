@@ -1,17 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-
-import {
-  PHP_COMPOSER_RELEASES,
-  PHP_PREREQUISITES_STEP_ID,
-  phpPrerequisiteBuildSteps,
-  phpPrerequisitesBuildKeyInputs,
-} from "../src/services/php-prerequisites.ts";
-import { PHP_WP_CLI } from "../src/services/php-wp-cli.ts";
+import { Schema } from "effect";
 import {
   PHP_APT_PACKAGE_PINS,
   PHP_COMMON_EXTENSIONS,
@@ -24,6 +15,13 @@ import {
   php85ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import {
+  PHP_COMPOSER_RELEASES,
+  PHP_PREREQUISITES_STEP_ID,
+  phpPrerequisiteBuildSteps,
+  phpPrerequisitesBuildKeyInputs,
+} from "../src/services/php-prerequisites.ts";
+import { PHP_WP_CLI } from "../src/services/php-wp-cli.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const BuildSteps = Schema.Struct({

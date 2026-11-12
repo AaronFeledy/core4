@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { encodeCommandResult } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
+import { Effect, Schema } from "effect";
 import { requestContainerBuild } from "../src/image-build-http.ts";
 
 test.each(["error", "errorDetail"] as const)(
@@ -94,7 +93,7 @@ test.each(["error", "errorDetail"] as const)("projects a redacted daemon %s fram
   expect(output).toContain("[redacted]");
   expect(output).not.toContain("hunter2");
   expect(failure.message).not.toContain("hunter2");
-  expect(failure.remediation).toContain("lando-web");
+  expect(failure.remediation).toBe("Check the failing build step, correct it, and rebuild.");
 });
 
 test("redacts before bounding a long daemon diagnostic", async () => {

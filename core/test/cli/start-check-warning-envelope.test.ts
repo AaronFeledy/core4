@@ -1,10 +1,7 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Schema } from "effect";
-
 import { runPostStartScan } from "@lando/engine/operations/post-start-scan";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { StartAppResult } from "@lando/sdk/schema";
 import {
   AbsolutePath,
   AppId,
@@ -12,8 +9,10 @@ import {
   CommandResultEnvelope,
   ProviderId,
   ServiceName,
+  StartAppResult,
 } from "@lando/sdk/schema";
 import { EventService, type UrlScannerShape } from "@lando/sdk/services";
+import { DateTime, Effect, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const service = ServiceName.make("web");

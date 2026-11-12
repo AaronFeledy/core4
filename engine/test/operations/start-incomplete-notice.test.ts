@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -20,9 +16,12 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import {
+  type IncompleteStartCommand,
   markStartMutation,
   withIncompleteStartNotice,
 } from "../../src/operations/start-incomplete-notice.ts";
@@ -116,13 +115,16 @@ const run = <A, E>(
   options: {
     readonly observations?: Readonly<Record<string, Observed>>;
     readonly machineOutput?: boolean;
+    readonly command?: IncompleteStartCommand;
   } = {},
 ) => {
   const warnings = makeCommandWarnings(options.machineOutput ?? false);
   const inspected: string[] = [];
   return Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* Effect.exit(withIncompleteStartNotice(effect));
+      const exit = yield* Effect.exit(
+        withIncompleteStartNotice(effect, options.command ?? { verb: "start" }),
+      );
       return { exit, notices: yield* warnings.failureNotices, inspected };
     }).pipe(
       Effect.provideService(CommandWarnings, warnings),
@@ -150,6 +152,17 @@ describe("incomplete start notice", () => {
     expect(inspected).toEqual([]);
     expect(notices).toEqual([
       "Start did not complete. No app resources changed. Fix the reported error, then run `lando start`.",
+    ]);
+  });
+
+  test("a selected rebuild names the command that was run", async () => {
+    // Given / When: rebuild of one service fails before it changes anything.
+    const { notices } = await run(failing.pipe(Effect.as(plan), Effect.flatMap(markStartMutation)), {
+      command: { verb: "rebuild", services: ["web"] },
+    });
+    // Then: the notice names rebuild and that service, not start.
+    expect(notices).toEqual([
+      "Rebuild did not complete. No app resources changed. Fix the reported error, then run `lando rebuild -s web`.",
     ]);
   });
 
@@ -201,6 +214,7 @@ describe("incomplete start notice", () => {
       const subset = { ...plan, services: { web: service("web") } };
       const inner = withIncompleteStartNotice(
         markStartMutation(outer ? subset : plan).pipe(Effect.andThen(failing)),
+        { verb: "start" },
       );
       // When: the outer operation fails with it.
       const { notices, inspected } = await run((outer ? mutated : Effect.void).pipe(Effect.andThen(inner)));
@@ -214,7 +228,7 @@ describe("incomplete start notice", () => {
   test("library callers without a command warning sink are unaffected", async () => {
     // Given / When: a failed start outside the CLI.
     const exit = await Effect.runPromiseExit(
-      withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing))).pipe(Effect.scoped),
+      withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing)), { verb: "start" }).pipe(Effect.scoped),
     );
     // Then: the failure is unchanged.
     expect(Exit.isFailure(exit)).toBe(true);
@@ -277,7 +291,9 @@ describe("incomplete start notice", () => {
           const selection =
             mode === "hanging" ? Deferred.await(release) : Effect.sleep(mode === "slow" ? "750 millis" : 0);
           const fiber = yield* Effect.forkChild(
-            Effect.exit(withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing)))).pipe(
+            Effect.exit(
+              withIncompleteStartNotice(mutated.pipe(Effect.andThen(failing)), { verb: "start" }),
+            ).pipe(
               Effect.provideService(RuntimeProviderRegistry, {
                 ...registry,
                 select: (target) => selection.pipe(Effect.andThen(() => registry.select(target))),

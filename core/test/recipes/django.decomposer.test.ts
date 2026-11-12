@@ -6,6 +6,7 @@ import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema"
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+
 const {
   decomposer: djangoDecomposer,
   defaults: djangoDefaults,
@@ -79,7 +80,7 @@ describe("django decomposition", () => {
               "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
             REDIS_URL: "redis://cache:6379",
           },
-          dependsOn: ["database", "cache"],
+          dependsOn: [{ service: "cache" }, { service: "database" }],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "postgres" },
@@ -106,7 +107,7 @@ describe("django decomposition", () => {
     const authoring = Schema.decodeUnknownSync(
       Schema.Struct({ services: Schema.Record(Schema.String, Schema.Unknown) }),
     )(authoringOf(withWorker));
-    expect(Object.keys(authoring.services)).toEqual(["web", "database", "cache", "worker"]);
+    expect(Object.keys(authoring.services).sort()).toEqual(["cache", "database", "web", "worker"]);
     expect<unknown>(authoring.services.worker).toEqual({
       type: "python:3.12",
       framework: "django",
@@ -118,7 +119,7 @@ describe("django decomposition", () => {
           "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
         REDIS_URL: "redis://cache:6379",
       },
-      dependsOn: ["database", "cache"],
+      dependsOn: [{ service: "cache" }, { service: "database" }],
     });
   });
 
@@ -176,7 +177,7 @@ describe("django decomposition", () => {
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 
-  test.each([defaults, withWorker])(
+  test.each([defaults, withWorker, { database: "sqlite" }, { database: "sqlite", celery: true }])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
       expect(Result.getOrThrow(renderRecipeSnapshot(djangoSnapshot, options))).toEqual(authoringOf(options));

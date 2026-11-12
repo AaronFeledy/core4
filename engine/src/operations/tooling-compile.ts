@@ -1,25 +1,15 @@
-import { lowerToolingInput, resolveServiceRef } from "@lando/landofile/tooling-input";
+import { resolveServiceRef } from "@lando/landofile/tooling-input";
 import {
   type NormalizedToolingStep,
   type NormalizedToolingTask,
   normalizeToolingTask,
 } from "@lando/landofile/tooling-normalize";
-import { Effect, Option, type Scope } from "effect";
+import { planRedactionValues } from "@lando/redaction/plan-values";
 
+import { ToolingCompileError, type ToolingExecError, type ToolingInputError } from "@lando/sdk/errors";
+import type { AppPlan, HostTerminal, ToolingTaskShape } from "@lando/sdk/schema";
 import {
-  ToolingCompileError,
-  type ToolingDisabledError,
-  type ToolingExecError,
-  type ToolingInputError,
-} from "@lando/sdk/errors";
-import type {
-  AppPlan,
-  HostTerminal,
-  ToolingInputRevision,
-  ToolingInvocationInput,
-  ToolingTaskShape,
-} from "@lando/sdk/schema";
-import {
+  EnvironmentValueResolver,
   type ProviderError,
   type ProviderSelectionError,
   RuntimeProviderRegistry,
@@ -28,14 +18,12 @@ import {
   type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-
-import { planRedactionValues } from "@lando/redaction/plan-values";
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+import { Effect, Option, type Scope } from "effect";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
-import { admitToolingInput } from "./tooling-input-admission.ts";
+import type { AdmittedToolingInput } from "./tooling-input-admission.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 
 const POSITIONAL_PARAMETER = /\$(?:@|[1-9]|\{(?:@|[1-9]))/u;
@@ -66,7 +54,7 @@ interface InvocationOptions {
   readonly signal?: AbortSignal;
 }
 
-const stepInvocation = (
+export const stepInvocation = (
   tool: string,
   step: NormalizedToolingStep & { readonly resolvedService?: string },
   options: InvocationOptions,
@@ -104,8 +92,7 @@ export interface CompiledTooling {
 }
 
 export interface CompileToolingInput extends Omit<InvocationOptions, "args"> {
-  readonly expectedInputRevision?: ToolingInputRevision;
-  readonly input?: ToolingInvocationInput;
+  readonly admitted: AdmittedToolingInput;
   /** Display name used in errors, e.g. `app:build`. */
   readonly name: string;
   /** Effective-tooling key used for normalization and bracket event names. */
@@ -115,17 +102,16 @@ export interface CompileToolingInput extends Omit<InvocationOptions, "args"> {
 }
 
 /**
- * Turns an authored task into one invocation per normalized step. Every deterministic
- * rejection (disabled, empty, bad argv, unknown service reference) happens here, before
- * any provider is selected or any event bracket runs.
+ * Turns a resolved, admitted task into one invocation per normalized step. Empty tasks,
+ * bad argv, and invalid service references fail before task steps or brackets run.
  */
 export const compileToolingInvocations = Effect.fnUntraced(function* (
   input: CompileToolingInput,
-): Effect.fn.Return<CompiledTooling, ToolingCompileError | ToolingDisabledError | ToolingInputError> {
+): Effect.fn.Return<CompiledTooling, ToolingCompileError | ToolingInputError> {
   const normalized = yield* Effect.fromResult(
     normalizeToolingTask(input.lookupKey, input.task, input.source),
   );
-  const admitted = yield* admitToolingInput(normalized, input);
+  const admitted = input.admitted;
   if (normalized.steps.length === 0) {
     return yield* Effect.fail(
       new ToolingCompileError({
@@ -134,13 +120,7 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
       }),
     );
   }
-  const { values, invocation } = admitted;
-  const argv =
-    normalized.input.flags.length + normalized.input.args.length > 0
-      ? yield* Effect.fromResult(lowerToolingInput(normalized, normalized.input, values))
-      : invocation._tag === "RawArgv"
-        ? invocation.argv
-        : (invocation.passthroughArgv ?? []);
+  const { values, argv } = admitted;
   const invocations = yield* Effect.forEach(
     normalized.steps,
     (step, index): Effect.Effect<ToolingInvocation, ToolingInputError> =>
@@ -171,6 +151,7 @@ export type ToolingExecutionError =
   | ProviderError;
 
 export interface ExecuteToolingInput {
+  readonly provider?: import("@lando/sdk/services").RuntimeProvider["Service"];
   readonly plan: AppPlan;
   readonly tool: string;
   readonly invocations: ReadonlyArray<ToolingInvocation>;
@@ -193,9 +174,11 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
   ToolingEngine | RuntimeProviderRegistry | EnvironmentValueResolver | Scope.Scope
 > {
   const session = yield* (yield* EnvironmentValueResolver).openSession();
-  const provider = input.requiresProvider
-    ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
-    : runtimeProviderService;
+  const provider =
+    input.provider ??
+    (input.requiresProvider
+      ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
+      : runtimeProviderService);
   let combined: ToolingEngineResult = {
     tool: input.tool,
     service: "",

@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { probeSshAgent } from "@lando/engine/subsystems/ssh-agent/agent-probe";
 import {
   type HostAgentDiscoveryOptions,
@@ -10,7 +11,6 @@ import {
   runtimeSshAgentReady,
   sidecarSocketCheck,
 } from "@lando/engine/subsystems/ssh-agent/session";
-import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { SshAgentUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
@@ -44,6 +44,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   input: SshAgentDoctorOptions & {
     readonly sshService: Context.Service.Shape<typeof SshService>;
     readonly fix?: boolean;
+    readonly idleProvider?: string;
   },
 ): Effect.fn.Return<DoctorSubsystemCheck> {
   const config = yield* Effect.serviceOption(ConfigService);
@@ -77,6 +78,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   const inspect: Effect.Effect<Details["upstream"]> = Effect.gen(function* () {
     switch (intent.mode) {
       case "sidecar": {
+        if (input.idleProvider !== undefined) return { source: "sidecar" as const, reachable: false };
         const socket = yield* input.sshService.getAgentSocket(AppId.make("global"));
         const provider =
           socket.runtimeVolume !== undefined && Option.isSome(registry)
@@ -150,7 +152,8 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   );
   let upstream = yield* inspect;
   const fixContext: Record<string, string> = {};
-  if (input.fix && (!upstream.reachable || delivery === "none")) {
+  const sidecarSkipped = intent.mode === "sidecar" && input.idleProvider !== undefined;
+  if (input.fix && !sidecarSkipped && (!upstream.reachable || delivery === "none")) {
     switch (intent.mode) {
       case "host":
         fixContext.fixOutcome = "skipped-manual";
@@ -229,6 +232,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
     recovery,
     context: {
       subsystem: "ssh",
+      ...(sidecarSkipped ? { sidecarSkipped: "true", runtimeStatus: "idle" } : {}),
       subsystemId: intent.mode === "sidecar" ? input.sshService.id : "host",
       ready: String(ready),
       state: ready ? "ready" : "degraded",

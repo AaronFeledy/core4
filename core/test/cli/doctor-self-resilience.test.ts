@@ -2,15 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TestClock } from "effect/testing";
-
-import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema } from "effect";
-
 import { makeTestSecretStore } from "@lando/core/testing";
-import { ConfigError } from "@lando/sdk/errors";
-
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import { RedactionService } from "@lando/redaction/service";
+import { ConfigError } from "@lando/sdk/errors";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import {

@@ -1,8 +1,7 @@
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { expect, test } from "bun:test";
 import { makeLandoPaths } from "@lando/paths";
 import {
   LandofileShape,

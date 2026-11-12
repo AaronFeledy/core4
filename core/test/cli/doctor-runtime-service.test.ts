@@ -2,10 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TestClock } from "effect/testing";
-
-import { type Context, Deferred, Effect, Fiber, Layer } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
@@ -13,6 +9,8 @@ import type { RuntimeServiceStatus } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { type Context, Deferred, Effect, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 import { type DoctorCheck, doctor, renderDoctorResult } from "../../src/cli/commands/doctor.ts";
 import { type SetupReadinessStep, writeSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
@@ -81,7 +79,7 @@ describe("meta:doctor runtime-service check", () => {
     const provider: RuntimeServiceTestProvider = {
       ...TestRuntimeProvider,
       id: "lando",
-      getStatus: Effect.succeed({ running: false, message: "stale stopped" }),
+      getStatus: Effect.succeed({ state: "running", message: "runtime reachable" }),
       getRuntimeServiceStatus: Effect.succeed({
         running: true,
         socketReachable: true,
@@ -105,12 +103,12 @@ describe("meta:doctor runtime-service check", () => {
     const provider: RuntimeServiceTestProvider = {
       ...TestRuntimeProvider,
       id: "lando",
-      getStatus: Effect.succeed({ running: false, message: "provider stopped" }),
+      getStatus: Effect.succeed({ state: "idle", message: "idle (starts on demand)" }),
     };
 
     const check = await runtimeServiceCheck(provider);
 
-    expect(check.status).toBe("warn");
+    expect(check.status).toBe("pass");
     expect(check.runtime.running).toBe(false);
     expect(check.context.runtimeRunning).toBe("false");
     expect(check.context.socketReachable).toBe("false");
@@ -121,7 +119,7 @@ describe("meta:doctor runtime-service check", () => {
     const provider: RuntimeServiceTestProvider = {
       ...TestRuntimeProvider,
       id: "lando",
-      getStatus: Effect.succeed({ running: true, message: "provider running" }),
+      getStatus: Effect.succeed({ state: "running" as const, message: "provider running" }),
       getRuntimeServiceStatus: Effect.fail(new Error("status unavailable")),
     };
 
@@ -159,7 +157,7 @@ describe("meta:doctor runtime-service check", () => {
 
     // Then
     expect(detailedStatusReads).toBe(0);
-    expect((result.selfChecks ?? []).map((entry) => entry.section)).toContain("provider-status");
+    expect((result.selfChecks ?? []).map((entry) => entry.section)).not.toContain("provider-status");
   });
 
   test("skips detailed managed status after the primary status probe times out", async () => {
@@ -200,7 +198,7 @@ describe("meta:doctor runtime-service check", () => {
     const provider: RuntimeServiceTestProvider = {
       ...TestRuntimeProvider,
       id: "lando",
-      getStatus: Effect.succeed({ running: true, message: "provider running" }),
+      getStatus: Effect.succeed({ state: "running" as const, message: "provider running" }),
       getRuntimeServiceStatus: Effect.fail(new Error("detailed status unavailable")),
     };
 
@@ -241,7 +239,7 @@ describe("meta:doctor runtime-service check", () => {
       ...TestRuntimeProvider,
       id: "lando",
       getStatus: Effect.succeed({
-        running: true,
+        state: "running",
         message: "runtime socket reachable; pid 1234 owned; orphan pids 4242",
       }),
       getRuntimeServiceStatus: Effect.succeed({

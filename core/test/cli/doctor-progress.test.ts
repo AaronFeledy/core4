@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect, Layer, Queue, Stream } from "effect";
-
 import { ConfigService } from "@lando/core/services";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { Effect, Layer, Queue, Stream } from "effect";
 import {
   DOCTOR_TREE_ID,
   appConfigOutcome,
@@ -17,6 +15,7 @@ import {
 } from "../../src/cli/commands/doctor-progress.ts";
 import { collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { doctorSelfCheck } from "../../src/cli/commands/doctor-self.ts";
+import { healthyFilesystemWatch } from "./doctor-watch-fixture.ts";
 
 const recordingEvents = () => {
   const events: Array<Record<string, unknown>> = [];
@@ -189,8 +188,8 @@ describe("doctor progress events", () => {
           ],
         }),
         deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "mkcert" }),
-      }).pipe(Effect.provide(Layer.merge(recorder.layer, configService))),
+        certs: Effect.succeed({ _tag: "selected", id: "mkcert", trusted: true }),
+      }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
 
     const tags = recorder.events.map((event) => event._tag);
@@ -246,7 +245,7 @@ describe("doctor progress events", () => {
         provider: Effect.die(new Error("provider exploded")),
         deprecations: Effect.succeed({ entries: [] }),
         certs: Effect.succeed({ _tag: "unresolved" }),
-      }).pipe(Effect.provide(Layer.merge(recorder.layer, configService))),
+      }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
     const failures = recorder.events.filter((event) => event._tag === "task.fail");
     expect(failures).toHaveLength(1);
@@ -268,8 +267,8 @@ describe("doctor progress events", () => {
           selfChecks: [doctorSelfCheck({ section: "provider-status", reason: "timeout", message: "slow" })],
         }),
         deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "mkcert" }),
-      }).pipe(Effect.provide(Layer.merge(recorder.layer, configService))),
+        certs: Effect.succeed({ _tag: "selected", id: "mkcert", trusted: true }),
+      }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
     expect(recorder.events.filter((event) => event._tag === "task.fail")).toMatchObject([
       { taskId: "provider", summary: "provider · timeout" },
@@ -287,7 +286,7 @@ describe("doctor progress events", () => {
         provider: Effect.succeed({ checks: [] }),
         deprecations: Effect.succeed({ entries: [] }),
         certs: Effect.succeed({ _tag: "unresolved" }),
-      }).pipe(Effect.provide(configService)),
+      }).pipe(Effect.provide(Layer.merge(configService, healthyFilesystemWatch))),
     );
     expect(report.provider.checks).toEqual([]);
   });

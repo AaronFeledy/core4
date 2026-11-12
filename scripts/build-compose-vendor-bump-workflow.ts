@@ -38,7 +38,22 @@ git show origin/main:vendor/compose/compose-spec.json > "$RUNNER_TEMP/old-compos
 bun run codegen:compose-vendor --tag "$TARGET_TAG"`,
       checkAndReport: `TITLE="bump compose-go vendored schema to $TARGET_TAG"
 BODY_FILE="$RUNNER_TEMP/pr-body.md"
-bun run scripts/report-compose-schema-diff.ts "$RUNNER_TEMP/old-compose-spec.json" vendor/compose/compose-spec.json > "$BODY_FILE"`,
+# Report only: classification stays with a person, so a failing gate never stops the proposal.
+COVERAGE_OUTPUT="$RUNNER_TEMP/compose-coverage.txt"
+if bun run check:compose-coverage > "$COVERAGE_OUTPUT" 2>&1; then
+  printf '%s\\n\\n%s\\n' '## Key path classification' 'Every Compose key path has a disposition.' > "$BODY_FILE"
+else
+  {
+    printf '%s\\n\\n' '## Key path classification needed'
+    printf '%s\\n\\n' 'This PR cannot merge until \`bun run check:compose-coverage\` passes. Fix what it reports in \`sdk/src/landofile/compose-dispositions.ts\`: give each unclassified key path a disposition and remove any entry it flags. Then run \`bun run codegen:compose-key-matrix\` and push to this branch.'
+    printf '%s\\n' '\`\`\`text'
+    cat "$COVERAGE_OUTPUT"
+    if [ -n "$(tail -c 1 "$COVERAGE_OUTPUT")" ]; then printf '\\n'; fi
+    printf '%s\\n' '\`\`\`'
+  } > "$BODY_FILE"
+fi
+printf '\\n' >> "$BODY_FILE"
+bun run scripts/report-compose-schema-diff.ts "$RUNNER_TEMP/old-compose-spec.json" vendor/compose/compose-spec.json >> "$BODY_FILE"`,
     },
   });
 

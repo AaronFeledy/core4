@@ -1,5 +1,3 @@
-import { Flags } from "../../../spec/metadata";
-
 import type { IncludeVerifyReport } from "@lando/landofile/includes";
 import type { StateStore } from "@lando/sdk/services";
 import type { AppIncludesVerifyError } from "../../../commands/app-includes-verify";
@@ -9,6 +7,7 @@ import {
   renderIncludesVerifyResult,
 } from "../../../commands/app-includes-verify";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { Flags } from "../../../spec/metadata";
 
 export const appIncludesVerifySpec: LandoCommandSpec<
   IncludeVerifyReport,

@@ -1,6 +1,5 @@
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
+import { mergeValues } from "@lando/sdk/landofile";
 import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import type {
   FeatureRef,
@@ -9,8 +8,7 @@ import type {
   ServiceTypeInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
-
-import { mergeValues } from "@lando/sdk/landofile";
+import { Effect, Schema } from "effect";
 import { normalizeConnectionClients } from "./connection-client-resolution.ts";
 
 /** Single inheritance chain, depth-limited to at most four `extends` hops. */

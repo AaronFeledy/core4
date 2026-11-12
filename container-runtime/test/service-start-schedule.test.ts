@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { Clock, DateTime, Effect, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
 import {
   AbsolutePath,
   AppId,
@@ -13,6 +9,8 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { Clock, DateTime, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import {
   buildServiceStartGraph,
@@ -37,7 +35,7 @@ const commandHealthcheck: HealthcheckPlan = {
 
 const service = (
   name: string,
-  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds" | "sqlite">> = {},
 ): readonly [string, ServicePlan] => {
   const serviceName = ServiceName.make(name);
   return [

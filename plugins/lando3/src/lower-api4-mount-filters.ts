@@ -91,9 +91,9 @@ export const lowerApi4MountFilters = (
     includes.push(path);
   };
   if (mount.app) {
-    ctx.topLevel.includes.forEach((value, index) =>
-      include(value, mount.relative, ctx.topLevel.includeLocations?.[index]),
-    );
+    ctx.topLevel.includes.forEach((value, index) => {
+      include(value, mount.relative, ctx.topLevel.includeLocations?.[index]);
+    });
     for (const value of ctx.topLevel.excludes)
       if (value.startsWith("!")) include(value.slice(1), mount.relative);
   }
@@ -105,9 +105,9 @@ export const lowerApi4MountFilters = (
   }
   for (const key of ["include", "includes"]) {
     if (item.type === "copy")
-      (asStringArray(item[key]) ?? []).forEach((value, index) =>
-        include(value, [...mount.relative, key, ...(Array.isArray(item[key]) ? [index] : [])]),
-      );
+      (asStringArray(item[key]) ?? []).forEach((value, index) => {
+        include(value, [...mount.relative, key, ...(Array.isArray(item[key]) ? [index] : [])]);
+      });
     else if (Object.hasOwn(item, key))
       diagnostics.push(
         droppedServiceKey({

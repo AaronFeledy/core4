@@ -2,20 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-
 import { makeLandoPaths } from "@lando/paths";
 import { RouterWatcherError } from "@lando/sdk/errors";
 import type { HostPlatform } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { Effect } from "effect";
 
 import {
   type WatcherDiagnosticRecord,
   makeRouterFileWatcherCheck,
   routerFileWatcherCheck,
 } from "../src/doctor-watcher.ts";
-import { dynamicConfigDir, watcherDiagnosticFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { dynamicConfigDir, watcherDiagnosticFile } from "../src/proxy-paths.ts";
 
 type DoctorRunInput = {
   readonly providerId: string;

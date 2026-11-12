@@ -2,6 +2,7 @@ import { lstat, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { canonicalMissingAppRoot } from "@lando/engine/operations/app-mutation-lock";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
+import { mapFailures } from "@lando/sdk/command-result";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import type { ConfigTranslateDiagnostic, RecipeManifest } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape, RecipeDecomposerFactory } from "@lando/sdk/services";
@@ -14,8 +15,8 @@ import {
 } from "./init-pipeline/errors.ts";
 import { runBoundPostInit } from "./init-pipeline/post-init.ts";
 import type { PostInitOutcome, RunPostInitOptions } from "./post-init/runtime.ts";
-import { type RecipeInitReview, recipeInitReview } from "./prepared-init-types.ts";
 import type { PreparedRecipeInit } from "./prepared-init.ts";
+import { type RecipeInitReview, recipeInitReview } from "./prepared-init-types.ts";
 
 export {
   RecipeInitBlockedError,
@@ -91,7 +92,7 @@ export const runRecipeInitPipeline = Effect.fn("RecipeInitPipeline.run")(functio
     anchor.ino !== plan.destinationAnchor.ino
   )
     return yield* Effect.fail(destinationChanged);
-  const root = yield* canonicalMissingAppRoot(plan.appRoot).pipe(Effect.mapError(() => destinationChanged));
+  const root = yield* canonicalMissingAppRoot(plan.appRoot).pipe(mapFailures(() => destinationChanged));
   if (root !== plan.appRoot) return yield* Effect.fail(destinationChanged);
   yield* Effect.tryPromise({
     try: () => mkdir(plan.appRoot, { recursive: true }),

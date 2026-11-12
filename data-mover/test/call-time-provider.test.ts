@@ -1,9 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
-
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
@@ -26,8 +23,10 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { layer as dataMoverLayer } from "../src/service.ts";
 import * as BunDataMover from "./support.ts";
+
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");

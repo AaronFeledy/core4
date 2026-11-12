@@ -21,12 +21,11 @@ export const buildPodmanServiceArgs = (p: {
   readonly runRoot: string;
   readonly configDir: string;
   readonly socketPath: string;
-  readonly useSystemdRunShim?: boolean;
   readonly privateRuntimeDir: string | undefined;
 }): PodmanServiceSpec => {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
   // Always prepend the runtime bin so netavark can exec the bundled nft helper.
-  // The systemd-run shim (when present) lives in the same directory.
+  // The systemd-run shim for Podman descendants lives in the same directory.
   return {
     command: p.podmanBin,
     env: managedPodmanOverlayEnv({

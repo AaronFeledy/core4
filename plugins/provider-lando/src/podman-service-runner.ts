@@ -1,18 +1,23 @@
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
-
-import { managedPodmanChildEnv } from "@lando/container-runtime/podman/managed-invocation";
+import {
+  isManagedPodmanLaunchStage,
+  managedPodmanChildEnv,
+  managedPodmanScopeArgv,
+  managedPodmanScopeLauncherEnv,
+} from "@lando/container-runtime/podman/managed-invocation";
 import { prepareManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
-import { Effect } from "effect";
-
+import { readProcessDescendant } from "@lando/container-runtime/podman/managed-status-io";
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 import type { PodmanServiceSpec } from "./podman-service-args.ts";
 
 const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
-export { buildPodmanServiceArgs, type PodmanServiceSpec } from "./podman-service-args.ts";
+export { type PodmanServiceSpec, buildPodmanServiceArgs } from "./podman-service-args.ts";
 
 const launchRemediation =
   "The Lando runtime service failed to launch. Run `lando doctor` to inspect the runtime, then rerun the command; run `lando setup` if the runtime is not installed.";
@@ -49,7 +54,7 @@ const readPodmanServiceLogTailSync = (socketPath: string): string | undefined =>
 
 const stderrFromCause = (cause: unknown): string | undefined => {
   if (typeof cause !== "object" || cause === null || !("stderr" in cause)) return undefined;
-  const stderr = (cause as { readonly stderr?: unknown }).stderr;
+  const stderr = cause.stderr;
   return typeof stderr === "string" ? stderr : undefined;
 };
 
@@ -74,15 +79,27 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
     if (typeof this.details !== "object" || this.details === null || !("stderr" in this.details)) {
       return undefined;
     }
-    const stderr = (this.details as { readonly stderr?: unknown }).stderr;
+    const stderr = this.details.stderr;
     return typeof stderr === "string" ? stderr : undefined;
   }
 }
 
+/** Launch the service inside a delegated `systemd-run --user --scope` so containers get cgroups. */
+export interface PodmanServiceScope {
+  /** Absolute host `systemd-run`. */
+  readonly systemdRun: string;
+  /** The user's real runtime dir, where the user manager listens on `systemd/private`. */
+  readonly userRuntimeDir: string;
+}
+
 export interface PodmanServiceRunner {
-  readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;
+  readonly launch: (
+    spec: PodmanServiceSpec,
+    scope?: PodmanServiceScope,
+  ) => Effect.Effect<number, RuntimeLaunchError>;
   readonly isAlive: (pid: number) => Effect.Effect<boolean>;
   readonly isServiceProcess?: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<boolean>;
+  readonly isDescendant?: (pid: number, ancestor: number) => Effect.Effect<boolean | undefined>;
   readonly findMatchingServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly findManagedServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
@@ -111,6 +128,26 @@ export type PodmanServiceSpawn = (
 const defaultPodmanServiceSpawn: PodmanServiceSpawn = (argv, options) =>
   Bun.spawn([...argv], { ...options, windowsHide: true });
 
+/** systemd major version from `systemd-run --version`; launch-time only, never on routine commands. */
+export type SystemdVersionReader = (systemdRun: string) => Effect.Effect<number | undefined>;
+
+const SYSTEMD_EXPAND_ENVIRONMENT_VERSION = 254;
+
+const defaultSystemdVersion: SystemdVersionReader = (systemdRun) =>
+  Effect.tryPromise({
+    try: async () => {
+      const proc = Bun.spawn([systemdRun, "--version"], { env: {}, stdout: "pipe", stderr: "ignore" });
+      const text = await new Response(proc.stdout).text();
+      await proc.exited;
+      const version = /^systemd (\d+)/u.exec(text)?.[1];
+      return version === undefined ? undefined : Number(version);
+    },
+    catch: () => undefined,
+  }).pipe(
+    Effect.timeout("5 seconds"),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+
 const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
   Effect.tryPromise({
     try: async () => {
@@ -119,9 +156,6 @@ const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
     },
     catch: () => [],
   }).pipe(Effect.catch((argv) => Effect.succeed(argv)));
-
-const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
-  actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
 
 const argvFlagValue = (argv: ReadonlyArray<string>, flag: string): string | undefined => {
   const index = argv.indexOf(flag);
@@ -163,15 +197,17 @@ const listProcPids = (): Effect.Effect<ReadonlyArray<number>> =>
     catch: () => [] as number[],
   }).pipe(Effect.catch(() => Effect.succeed([] as number[])));
 
+const isServiceLaunchStage = (argv: ReadonlyArray<string>, spec: PodmanServiceSpec): boolean =>
+  isManagedPodmanLaunchStage(argv, [spec.command, ...spec.args], spec.env?.XDG_RUNTIME_DIR);
+
 const findMatchingServicePidsOnHost = Effect.fnUntraced(function* (
   spec: PodmanServiceSpec,
 ): Effect.fn.Return<ReadonlyArray<number>> {
-  const expected = [spec.command, ...spec.args];
   const pids = yield* listProcPids();
   const matching: number[] = [];
   for (const pid of pids) {
     const argv = yield* readProcessArgv(pid);
-    if (sameArgv(argv, expected)) matching.push(pid);
+    if (isServiceLaunchStage(argv, spec)) matching.push(pid);
   }
   return matching;
 });
@@ -195,17 +231,47 @@ export const makeSystemPodmanServiceRunner = (
     resolved: { readonly privateRuntimeDir: string | undefined },
   ) => Effect.Effect<string, ProviderUnavailableError> = (runtimeDir, resolved) =>
     prepareManagedRuntimeDir(runtimeDir, {}, resolved),
+  systemdVersion: SystemdVersionReader = defaultSystemdVersion,
 ): PodmanServiceRunner => {
   const exits = new Map<number, Promise<number>>();
   return {
-    launch: Effect.fn("ProviderLando.launchPodmanService")(function* (spec: PodmanServiceSpec) {
+    launch: Effect.fn("ProviderLando.launchPodmanService")(function* (
+      spec: PodmanServiceSpec,
+      scope?: PodmanServiceScope,
+    ) {
       const runRoot = argvFlagValue(spec.args, "--runroot");
       const privateRuntimeDir =
         runRoot === undefined
           ? undefined
           : yield* prepare(dirname(runRoot), { privateRuntimeDir: spec.env?.XDG_RUNTIME_DIR }).pipe(
-              Effect.mapError((cause) => new RuntimeLaunchError(cause.message, cause)),
+              mapFailures((cause) => new RuntimeLaunchError(cause.message, cause)),
             );
+      const childEnv = managedPodmanChildEnv({
+        ...spec.env,
+        ...(privateRuntimeDir === undefined ? {} : { XDG_RUNTIME_DIR: privateRuntimeDir }),
+      });
+      const podmanArgv = [spec.command, ...spec.args];
+      const launch =
+        scope === undefined
+          ? { argv: podmanArgv, env: childEnv }
+          : privateRuntimeDir === undefined
+            ? yield* Effect.fail(
+                new RuntimeLaunchError(
+                  "A delegated runtime launch needs the managed private runtime directory.",
+                ),
+              )
+            : {
+                argv: managedPodmanScopeArgv(
+                  {
+                    systemdRun: scope.systemdRun,
+                    expandEnvironmentFlag:
+                      ((yield* systemdVersion(scope.systemdRun)) ?? 0) >= SYSTEMD_EXPAND_ENVIRONMENT_VERSION,
+                    privateRuntimeDir,
+                  },
+                  podmanArgv,
+                ),
+                env: managedPodmanScopeLauncherEnv(childEnv, scope.userRuntimeDir),
+              };
       return yield* Effect.try({
         try: () => {
           const logPath = podmanServiceLogPath(spec.socketPath);
@@ -214,11 +280,8 @@ export const makeSystemPodmanServiceRunner = (
           const logFile = openSync(logPath, "w");
           const proc = (() => {
             try {
-              return spawn([spec.command, ...spec.args], {
-                env: managedPodmanChildEnv({
-                  ...spec.env,
-                  ...(privateRuntimeDir === undefined ? {} : { XDG_RUNTIME_DIR: privateRuntimeDir }),
-                }),
+              return spawn(launch.argv, {
+                env: launch.env,
                 stdout: logFile,
                 stderr: logFile,
                 detached: true,
@@ -255,6 +318,7 @@ export const makeSystemPodmanServiceRunner = (
               ),
             );
       }),
+    isDescendant: readProcessDescendant,
     isAlive: (pid) =>
       Effect.sync(() => {
         try {
@@ -265,7 +329,7 @@ export const makeSystemPodmanServiceRunner = (
         }
       }),
     isServiceProcess: (pid, spec) =>
-      readProcessArgv(pid).pipe(Effect.map((argv) => sameArgv(argv, [spec.command, ...spec.args]))),
+      readProcessArgv(pid).pipe(Effect.map((argv) => isServiceLaunchStage(argv, spec))),
     findMatchingServicePids: findMatchingServicePidsOnHost,
     findManagedServicePids: findManagedPodmanServicePidsOnHost,
     terminate: (pid) =>

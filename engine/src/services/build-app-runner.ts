@@ -1,11 +1,9 @@
 import { availableParallelism } from "node:os";
-
 import { gateId } from "@lando/container-runtime/dependency-gates";
 import { runDependencySchedule } from "@lando/container-runtime/dependency-schedule";
 import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { dependencyGateRemediation } from "@lando/container-runtime/podman/bring-up";
-import { Cause, DateTime, Effect, Exit } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { BuildPhaseFailedError, BuildStepFailedError, ProviderInternalError } from "@lando/sdk/errors";
 import {
   TaskCompleteEvent,
@@ -16,14 +14,28 @@ import {
 } from "@lando/sdk/events";
 import type { BuildStep } from "@lando/sdk/schema";
 import type { BuildAppOptions } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { type AppBuildGateResult, runAppBuildGate } from "./build-app-gates.ts";
 import { buildAppGraph } from "./build-app-graph.ts";
+import { buildAppKind, isScratchPlan } from "./build-app-kind.ts";
 import { type AppStep, appSteps } from "./build-app-plan.ts";
-import { type AppBuildInput, runAppBuildStep } from "./build-app-step-runner.ts";
-import { findCompleteBuildResult, openAppBuildResults, recordBuildResult } from "./build-results.ts";
-import { makeBuildTranscriptPath } from "./build-transcript.ts";
+import {
+  type AppBuildInput,
+  appStepExitMessage,
+  appStepProviderFailureMessage,
+  runAppBuildStep,
+} from "./build-app-step-runner.ts";
+import { buildFailureRemediation, buildRemediationSuffix } from "./build-remediation.ts";
+import {
+  findCompleteBuildResult,
+  markBuildResultUsed,
+  openAppBuildResults,
+  recordBuildResult,
+} from "./build-results.ts";
+import { buildTranscriptExists, makeBuildTranscriptPath } from "./build-transcript.ts";
+import { sweepAppBuildTranscripts } from "./build-transcript-cleanup.ts";
 
 const timestamp = DateTime.now;
 
@@ -53,13 +65,13 @@ const transcriptPathFor = (input: AppBuildInput, step: BuildStep) =>
     phase: "app",
     serviceName: String(step.service),
     buildKey: step.buildKey,
-    scratch: String(input.plan.id).startsWith("scratch-"),
+    scratch: isScratchPlan(input.plan),
   });
 
 const appRefFor = (input: AppBuildInput) =>
-  String(input.plan.id).startsWith("scratch-")
-    ? ({ kind: "scratch", id: input.redactor.redactString(input.plan.slug) } as const)
-    : ({ kind: "user", id: input.redactor.redactString(input.plan.slug) } as const);
+  isScratchPlan(input.plan)
+    ? ({ kind: "scratch", id: input.redaction.redactor.redactString(input.plan.slug) } as const)
+    : ({ kind: "user", id: input.redaction.redactor.redactString(input.plan.slug) } as const);
 
 export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* (
   input: AppBuildInput,
@@ -72,10 +84,9 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
   if (graphPlan._tag === "Cycle") return yield* planError(input, graphPlan.edges);
   const parentId = `build-app-${String(input.plan.id)}`;
   const bucket = yield* openAppBuildResults(input.stateStore, String(input.plan.id)).pipe(
-    Effect.mapError((cause) => cacheError(input.provider.id, cause)),
+    mapFailures((cause) => cacheError(input.provider.id, cause)),
   );
-  const cached =
-    (yield* bucket.get.pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)))) ?? [];
+  const cached = (yield* bucket.get.pipe(mapFailures((cause) => cacheError(input.provider.id, cause)))) ?? [];
   yield* input.events.publish(
     TaskTreeStartEvent.make({
       parentId,
@@ -87,6 +98,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
   );
   const started = performance.now();
   const startedIds = new Set<string>();
+  let dispatched = false;
   const settledIds = new Set<string>();
   const succeededIds = new Set<string>();
   const failures = new Map<string, BuildStepFailedError>();
@@ -100,18 +112,18 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
     detail: string | undefined,
   ) {
     const { step } = appStep;
-    const transcriptPath = transcriptPathFor(input, step);
     startedIds.add(step.id);
     // The blocked check stays ahead of the build-results lookup: a cached step
     // must not bypass a gate or predecessor that just failed.
     if (blockedBy.length > 0) {
-      const summary = `${step.id} blocked by ${blockedBy.join(", ")}${detail === undefined ? "" : `: ${detail}`}`;
+      const blockedByText = blockedBy.join(", ");
+      const message = `Build step ${step.id} for service ${String(step.service)} did not run: blocked by ${blockedByText}${detail === undefined ? "" : `: ${detail}`}.`;
+      // A blocked step never dispatches, so it advertises no transcript.
       yield* input.events.publish(
         TaskStartEvent.make({
           taskId: step.id,
           parentId,
           label: `Build ${String(step.service)}`,
-          transcriptPath,
           timestamp: yield* timestamp,
         }),
       );
@@ -119,8 +131,8 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         _tag: "build-step-skip",
         eventName: "build-step-skip",
         appRef: appRefFor(input),
-        serviceName: input.redactor.redactString(step.service),
-        providerId: input.redactor.redactString(input.plan.provider),
+        serviceName: input.redaction.redactor.redactString(step.service),
+        providerId: input.redaction.redactor.redactString(input.plan.provider),
         phase: "app",
         buildKey: step.buildKey,
         cached: false,
@@ -130,8 +142,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
       yield* input.events.publish(
         TaskFailEvent.make({
           taskId: step.id,
-          summary,
-          exitCode: 1,
+          summary: message,
           durationMs: 0,
           timestamp: yield* timestamp,
         }),
@@ -141,21 +152,33 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         step.id,
         new BuildStepFailedError({
           step,
-          exitCode: 1,
-          transcriptPath,
-          summary,
-          remediation: `Resolve the blocking failures (${blockedBy.join(", ")}), then rebuild step ${step.id}. Inspect the transcript at ${transcriptPath} if needed.`,
+          message,
+          remediation: `Resolve the blocking failures (${blockedByText}), then rebuild step ${step.id}.`,
         }),
       );
       return "blocked" as const;
     }
-    if (!options.force && findCompleteBuildResult(cached, step) !== undefined) {
+    const cachedHit = options.force
+      ? undefined
+      : findCompleteBuildResult(cached, {
+          buildKey: step.buildKey,
+          phase: step.phase,
+          service: step.service,
+          step: step.id,
+        });
+    if (cachedHit !== undefined) {
+      // The output that is in use must be the newest entry: never age out a key the app runs.
+      yield* markBuildResultUsed(bucket, cachedHit).pipe(
+        mapFailures((cause) => cacheError(input.provider.id, cause)),
+      );
       yield* input.events.publish(
         TaskStartEvent.make({
           taskId: step.id,
           parentId,
           label: `Build ${String(step.service)}`,
-          transcriptPath,
+          ...((yield* buildTranscriptExists(cachedHit.transcriptPath))
+            ? { transcriptPath: cachedHit.transcriptPath }
+            : {}),
           timestamp: yield* timestamp,
         }),
       );
@@ -163,8 +186,8 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         _tag: "build-step-skip",
         eventName: "build-step-skip",
         appRef: appRefFor(input),
-        serviceName: input.redactor.redactString(step.service),
-        providerId: input.redactor.redactString(input.plan.provider),
+        serviceName: input.redaction.redactor.redactString(step.service),
+        providerId: input.redaction.redactor.redactString(input.plan.provider),
         phase: "app",
         buildKey: step.buildKey,
         cached: true,
@@ -183,27 +206,50 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
       succeededIds.add(step.id);
       return "succeeded" as const;
     }
+    dispatched = true;
+    const transcriptPath = transcriptPathFor(input, step);
     const result = yield* runAppBuildStep(input, appStep, transcriptPath);
     settledIds.add(step.id);
-    if (result.exitCode === 0) succeededIds.add(step.id);
+    const failed =
+      result.providerFailure !== undefined || (result.exitCode !== undefined && result.exitCode !== 0);
+    if (!failed) succeededIds.add(step.id);
     yield* recordBuildResult(bucket, {
       buildKey: step.buildKey,
       service: step.service,
       phase: "app",
-      outcome: result.exitCode === 0 ? "complete" : "fail",
-      exitCode: result.exitCode,
+      step: step.id,
+      outcome: failed ? "fail" : "complete",
+      // A failed step with no observed command exit still records an internal nonzero index value.
+      exitCode: result.exitCode ?? 1,
       durationMs: result.durationMs,
       transcriptPath,
-    }).pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)));
-    if (result.exitCode === 0) return "succeeded" as const;
+    }).pipe(mapFailures((cause) => cacheError(input.provider.id, cause)));
+    if (!failed) return "succeeded" as const;
+    const failure = result.providerFailure;
+    const kind = buildAppKind(input.plan);
+    const remediationSuffix = buildRemediationSuffix(kind, String(step.service), undefined);
+    // A scratch app's output is removed by failure cleanup, so its base text must not name the path.
+    const baseRemediation =
+      kind === "scratch"
+        ? `Fix step ${step.id}, and rebuild.`
+        : `Inspect the build transcript at ${transcriptPath}, fix step ${step.id}, and rebuild.`;
     failures.set(
       step.id,
       new BuildStepFailedError({
         step,
-        exitCode: result.exitCode,
+        ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
         transcriptPath,
-        summary: `${step.id} failed`,
-        remediation: `Inspect the build transcript at ${transcriptPath}, fix step ${step.id}, and rebuild.`,
+        ...(result.outputTail === undefined ? {} : { outputTail: result.outputTail }),
+        ...(failure === undefined
+          ? {
+              message: appStepExitMessage(step, result.exitCode ?? 0),
+              remediation: buildFailureRemediation(baseRemediation, remediationSuffix),
+            }
+          : {
+              message: appStepProviderFailureMessage(step, failure.message),
+              cause: failure,
+              remediation: buildFailureRemediation(failure.remediation, remediationSuffix),
+            }),
       }),
     );
     return "failed" as const;
@@ -275,22 +321,22 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         (primaryGate?.value._tag === "gate" && primaryGate.value.condition === "service_healthy"
           ? listenerAuthorityAction(service)
           : undefined);
-      const remediation =
-        ordered[0]?.remediation ??
-        "Inspect the reported app-phase build step failures, fix them, and rebuild.";
+      // Each failure carries its own remediation; repeating the first one here would print it twice.
+      const remediation = "Fix each failed build step and rebuild.";
       yield* new BuildPhaseFailedError({
         app: {
-          kind: String(input.plan.id).startsWith("scratch-") ? "scratch" : "user",
+          kind: isScratchPlan(input.plan) ? "scratch" : "user",
           id: input.plan.id,
           root: input.plan.root,
         },
         phase: "app",
+        message: `App build failed: ${ordered.length} of ${steps.length} build steps failed.`,
         failures: ordered,
         ...(listener === undefined ? {} : { listener }),
         remediation:
           action === undefined || service === undefined
             ? remediation
-            : input.redactor.redactString(
+            : input.redaction.redactor.redactString(
                 `${action}\n${diagnostic?.authority === undefined ? "" : `${diagnostic.authority}\n`}${dependencyGateRemediation(input.plan, service.name)}`,
               ),
       });
@@ -322,14 +368,13 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
           Effect.gen(function* () {
             for (const { step } of steps) {
               if (settledIds.has(step.id)) continue;
-              const transcriptPath = transcriptPathFor(input, step);
+              // A step that never started has no transcript to advertise.
               if (!startedIds.has(step.id)) {
                 yield* input.events.publish(
                   TaskStartEvent.make({
                     taskId: step.id,
                     parentId,
                     label: `Build ${String(step.service)}`,
-                    transcriptPath,
                     timestamp: yield* timestamp,
                   }),
                 );
@@ -359,4 +404,17 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
       );
     }),
   );
+  // Only a phase that succeeded and dispatched work can leave an unreferenced transcript behind;
+  // a failed, interrupted, or fully reused phase keeps every transcript.
+  if (dispatched) {
+    yield* sweepAppBuildTranscripts({
+      providerId: input.provider.id,
+      userDataRoot: input.paths.roots.userDataRoot,
+      appId: String(input.plan.id),
+      scratch: isScratchPlan(input.plan),
+      phase: "app",
+      stateStore: input.stateStore,
+      redact: (text) => input.redaction.redactor.redactString(text),
+    });
+  }
 });

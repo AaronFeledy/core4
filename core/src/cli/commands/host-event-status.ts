@@ -1,17 +1,16 @@
 export { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
+
 import type { HostEventAppStatus } from "@lando/engine/operations/app-config-result";
-import { CliInvocation } from "../../runtime/invocation-context";
-
-import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
-import { ConfigService, PathsService } from "@lando/sdk/services";
-import { Effect } from "effect";
-
 import { isExcludedFromUserAppDefaults } from "@lando/engine/planner/app-defaults";
 import {
   compileEffectiveEvents,
   hostEventStatusesForApp,
   stampPlanServices,
 } from "@lando/engine/planner/effective-events";
+import { LANDO_HOST_EVENT_ENV, type LandofileEvents } from "@lando/sdk/schema";
+import { ConfigService, PathsService } from "@lando/sdk/services";
+import { Effect } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 
 export interface HostEventPlanInput {
   readonly name: string;

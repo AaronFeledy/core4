@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import * as errors from "@lando/sdk/errors";
+import { Result, Schema } from "effect";
 
 test.each(["socket-not-socket", "socket-owner-mismatch", "env-socket-dangling"] as const)(
   "SshAgentUnavailableError encodes %s",

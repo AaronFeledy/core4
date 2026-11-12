@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import {
   type ProviderCapabilityConstants,
   agentSocketCapabilities,
@@ -11,6 +9,7 @@ import {
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
 import { type AgentSocketDelivery, ProviderCapabilities } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 const baseConstants: Omit<ProviderCapabilityConstants, "composeSpec"> = {
   bindMounts: true,

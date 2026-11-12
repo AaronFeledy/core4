@@ -1,12 +1,13 @@
 import { dirname } from "node:path";
-
 import { Cause, Effect, Option, Result, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import { StateStoreError } from "../errors/index.ts";
 
 import { AbsolutePath } from "../schema/index.ts";
 import type { DurableStateBucketSpec, StateBucketSpec, StateStoreShape } from "../services/index.ts";
 import { ContractFailure, bytesEqual, decodeUtf8, utf8 } from "./_shared.ts";
+
 const stateStoreContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `StateStore contract failed: ${assertion}`, assertion, details });
 
@@ -151,7 +152,7 @@ export const runStateStoreContract = Effect.fnUntraced(
       ),
     );
     yield* Effect.all([lockBody, lockBody], { concurrency: "unbounded" }).pipe(
-      Effect.mapError(failWith("named advisory lock bodies resolve")),
+      mapFailures(failWith("named advisory lock bodies resolve")),
     );
     yield* requireStateStoreContract(
       maximumActiveLockBodies === 1,
@@ -162,9 +163,9 @@ export const runStateStoreContract = Effect.fnUntraced(
     // 1. Codec round-trip: json, binary, and custom raw codec.
     const jsonBucket = yield* store
       .open(stateStoreDocSpec(harness, "codec-json.json"))
-      .pipe(Effect.mapError(failWith("open resolves for a json bucket")));
-    yield* jsonBucket.set({ count: 3, label: "json" }).pipe(Effect.mapError(failWith("json set resolves")));
-    const jsonValue = yield* jsonBucket.get.pipe(Effect.mapError(failWith("json get resolves")));
+      .pipe(mapFailures(failWith("open resolves for a json bucket")));
+    yield* jsonBucket.set({ count: 3, label: "json" }).pipe(mapFailures(failWith("json set resolves")));
+    const jsonValue = yield* jsonBucket.get.pipe(mapFailures(failWith("json get resolves")));
     yield* requireStateStoreContract(
       jsonValue?.count === 3 && jsonValue.label === "json",
       "json codec set/get round-trips a schema value",
@@ -186,11 +187,9 @@ export const runStateStoreContract = Effect.fnUntraced(
 
     const binaryBucket = yield* store
       .open(stateStoreDocSpec(harness, "codec-binary.bin", { codec: "binary" }))
-      .pipe(Effect.mapError(failWith("open resolves for a binary bucket")));
-    yield* binaryBucket
-      .set({ count: 4, label: "binary" })
-      .pipe(Effect.mapError(failWith("binary set resolves")));
-    const binaryValue = yield* binaryBucket.get.pipe(Effect.mapError(failWith("binary get resolves")));
+      .pipe(mapFailures(failWith("open resolves for a binary bucket")));
+    yield* binaryBucket.set({ count: 4, label: "binary" }).pipe(mapFailures(failWith("binary set resolves")));
+    const binaryValue = yield* binaryBucket.get.pipe(mapFailures(failWith("binary get resolves")));
     yield* requireStateStoreContract(
       binaryValue?.count === 4 && binaryValue.label === "binary",
       "binary codec set/get round-trips a schema value",
@@ -221,9 +220,9 @@ export const runStateStoreContract = Effect.fnUntraced(
 
     const customBucket = yield* store
       .open(stateStoreLineSpec(harness, "codec-custom.raw"))
-      .pipe(Effect.mapError(failWith("open resolves for a custom-codec bucket")));
-    yield* customBucket.set({ value: "custom" }).pipe(Effect.mapError(failWith("custom-codec set resolves")));
-    const customValue = yield* customBucket.get.pipe(Effect.mapError(failWith("custom-codec get resolves")));
+      .pipe(mapFailures(failWith("open resolves for a custom-codec bucket")));
+    yield* customBucket.set({ value: "custom" }).pipe(mapFailures(failWith("custom-codec set resolves")));
+    const customValue = yield* customBucket.get.pipe(mapFailures(failWith("custom-codec get resolves")));
     yield* requireStateStoreContract(
       customValue?.value === "custom",
       "custom codec set/get round-trips a decoded value",
@@ -242,13 +241,13 @@ export const runStateStoreContract = Effect.fnUntraced(
     // 2. Atomic replace: no temp leftovers and replacement is complete.
     const atomicBucket = yield* store
       .open(stateStoreDocSpec(harness, "atomic.json"))
-      .pipe(Effect.mapError(failWith("open resolves for an atomic bucket")));
+      .pipe(mapFailures(failWith("open resolves for an atomic bucket")));
     yield* atomicBucket
       .set({ count: 1, label: "old" })
-      .pipe(Effect.mapError(failWith("atomic first set resolves")));
+      .pipe(mapFailures(failWith("atomic first set resolves")));
     yield* atomicBucket
       .set({ count: 2, label: "new" })
-      .pipe(Effect.mapError(failWith("atomic replacement set resolves")));
+      .pipe(mapFailures(failWith("atomic replacement set resolves")));
     const atomicEntries = yield* harness.list(stateStoreDirname(atomicBucket.path));
     yield* requireStateStoreContract(
       atomicEntries.every((entry) => !entry.includes(".tmp-")),
@@ -272,7 +271,7 @@ export const runStateStoreContract = Effect.fnUntraced(
     // 3. Version mismatch: discard returns default; migrator receives raw data and source version.
     const discardSeed = yield* store
       .open(stateStoreDocSpec(harness, "version-discard.json"))
-      .pipe(Effect.mapError(failWith("open resolves for the discard seed bucket")));
+      .pipe(mapFailures(failWith("open resolves for the discard seed bucket")));
     yield* harness.writeRaw(discardSeed.path, stateStoreJsonEnvelopeBytes(1, { count: 1, label: "old" }));
     const discardBucket = yield* store
       .open(
@@ -282,10 +281,8 @@ export const runStateStoreContract = Effect.fnUntraced(
           default: { count: 0, label: "default" },
         }),
       )
-      .pipe(Effect.mapError(failWith("open resolves for version discard")));
-    const discarded = yield* discardBucket.get.pipe(
-      Effect.mapError(failWith("version discard get resolves")),
-    );
+      .pipe(mapFailures(failWith("open resolves for version discard")));
+    const discarded = yield* discardBucket.get.pipe(mapFailures(failWith("version discard get resolves")));
     yield* requireStateStoreContract(
       discarded?.count === 0 && discarded.label === "default",
       "onVersionMismatch discard returns the declared default",
@@ -294,7 +291,7 @@ export const runStateStoreContract = Effect.fnUntraced(
 
     const migrateSeed = yield* store
       .open(stateStoreMigratedDocSpec(harness, "version-migrate.json", { version: 1 }))
-      .pipe(Effect.mapError(failWith("open resolves for the migrate seed bucket")));
+      .pipe(mapFailures(failWith("open resolves for the migrate seed bucket")));
     yield* harness.writeRaw(migrateSeed.path, stateStoreJsonEnvelopeBytes(1, { n: 4 }));
     const migrateBucket = yield* store
       .open(
@@ -306,10 +303,8 @@ export const runStateStoreContract = Effect.fnUntraced(
           },
         }),
       )
-      .pipe(Effect.mapError(failWith("open resolves for version migration")));
-    const migrated = yield* migrateBucket.get.pipe(
-      Effect.mapError(failWith("version migrator get resolves")),
-    );
+      .pipe(mapFailures(failWith("open resolves for version migration")));
+    const migrated = yield* migrateBucket.get.pipe(mapFailures(failWith("version migrator get resolves")));
     yield* requireStateStoreContract(
       migrated?.count === 4 && migrated.label === "migrated" && migrated.from === 1,
       "a StateMigrator receives the raw payload and source version",
@@ -319,7 +314,7 @@ export const runStateStoreContract = Effect.fnUntraced(
     // 4. Corruption handling: quarantine sidecar and fail mode.
     const quarantineSeed = yield* store
       .open(stateStoreDocSpec(harness, "corrupt-quarantine.json"))
-      .pipe(Effect.mapError(failWith("open resolves for the quarantine seed bucket")));
+      .pipe(mapFailures(failWith("open resolves for the quarantine seed bucket")));
     yield* harness.writeRaw(quarantineSeed.path, "{ this is not json");
     const quarantineBucket = yield* store
       .open(
@@ -328,9 +323,9 @@ export const runStateStoreContract = Effect.fnUntraced(
           default: { count: 9, label: "quarantined" },
         }),
       )
-      .pipe(Effect.mapError(failWith("open resolves for corruption quarantine")));
+      .pipe(mapFailures(failWith("open resolves for corruption quarantine")));
     const quarantined = yield* quarantineBucket.get.pipe(
-      Effect.mapError(failWith("corruption quarantine get resolves")),
+      mapFailures(failWith("corruption quarantine get resolves")),
     );
     yield* requireStateStoreContract(
       quarantined?.count === 9 && quarantined.label === "quarantined",
@@ -347,11 +342,11 @@ export const runStateStoreContract = Effect.fnUntraced(
 
     const corruptFailSeed = yield* store
       .open(stateStoreDocSpec(harness, "corrupt-fail.json"))
-      .pipe(Effect.mapError(failWith("open resolves for the fail seed bucket")));
+      .pipe(mapFailures(failWith("open resolves for the fail seed bucket")));
     yield* harness.writeRaw(corruptFailSeed.path, "not-json-at-all");
     const corruptFailBucket = yield* store
       .open(stateStoreDocSpec(harness, "corrupt-fail.json", { onCorrupt: "fail" }))
-      .pipe(Effect.mapError(failWith("open resolves for corruption fail mode")));
+      .pipe(mapFailures(failWith("open resolves for corruption fail mode")));
     const corruptFail = yield* Effect.result(corruptFailBucket.get);
     yield* requireStateStoreContract(
       Result.isFailure(corruptFail) &&
@@ -390,16 +385,16 @@ export const runStateStoreContract = Effect.fnUntraced(
           default: { count: 0, label: "locked" },
         }),
       )
-      .pipe(Effect.mapError(failWith("open resolves for an advisory bucket")));
+      .pipe(mapFailures(failWith("open resolves for an advisory bucket")));
     yield* Effect.all(
       Array.from({ length: 20 }, () =>
         lockedBucket
           .update((cur) => ({ count: (cur?.count ?? 0) + 1, label: "locked" }))
-          .pipe(Effect.mapError(failWith("advisory update resolves"))),
+          .pipe(mapFailures(failWith("advisory update resolves"))),
       ),
       { concurrency: "unbounded" },
     );
-    const locked = yield* lockedBucket.get.pipe(Effect.mapError(failWith("advisory final get resolves")));
+    const locked = yield* lockedBucket.get.pipe(mapFailures(failWith("advisory final get resolves")));
     yield* requireStateStoreContract(
       locked?.count === 20,
       "an advisory bucket serializes concurrent updates without lost writes",
@@ -409,7 +404,7 @@ export const runStateStoreContract = Effect.fnUntraced(
       yield* harness.plantStaleLock(lockedBucket.path);
       const afterStale = yield* lockedBucket
         .update((cur) => ({ count: (cur?.count ?? 0) + 1, label: "locked" }))
-        .pipe(Effect.mapError(failWith("advisory stale-lock takeover update resolves")));
+        .pipe(mapFailures(failWith("advisory stale-lock takeover update resolves")));
       yield* requireStateStoreContract(
         afterStale.count === 21,
         "an advisory bucket takes over a stale lock and completes the update",

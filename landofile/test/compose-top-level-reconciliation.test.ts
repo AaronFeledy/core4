@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
+import { composeTopLevelDispositions } from "@lando/sdk/landofile";
 
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
@@ -7,8 +7,7 @@ import {
   COMPOSE_TOP_LEVEL_KEYS,
   LandofileShape,
 } from "@lando/sdk/schema";
-
-import { composeTopLevelDispositions } from "@lando/sdk/landofile";
+import { Result, Schema } from "effect";
 
 describe("Compose top-level classification reconciliation", () => {
   test("COMPOSE_TOP_LEVEL_KEYS equals the accepted top-level disposition classification", () => {

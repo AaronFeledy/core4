@@ -15,13 +15,25 @@ cd rails-demo
 lando start
 ```
 
-The named init creates `rails-demo/`. Change into it before app commands. `--yes` skips the name prompt. First start builds `web`: `build-essential`, then `gem install rails`. That can take a minute. The `Gemfile` is just `source "https://rubygems.org"`. The Rails gem comes from that build step, not Bundler.
+The named init creates `rails-demo/`. Change into it before app commands. `--yes` skips the name prompt. First start builds `web`: it installs build tools, `git`, and the PostgreSQL and YAML headers that `rails new` needs, then runs `gem install rails`. That can take a minute. The `Gemfile` is just `source "https://rubygems.org"`. The Rails gem comes from that build step, not Bundler.
 
 The `web` container stays up. The Rails server does not start on its own.
 
 ## Run Rails, Bundler, Rake, and the clients
 
-Add your Rails application to the app directory, keeping `.lando.yml`. The recipe installs the Rails toolchain but does not start your application server. Check the tools and start the server:
+For a new app, generate Rails in the app directory, keeping `.lando.yml`.
+`--force` replaces the minimal Gemfile with Rails application files; use it only
+in a new app:
+
+```sh
+lando rails new . --database=postgresql --force
+lando rails db:prepare
+```
+
+The PostgreSQL generator adds the `pg` gem. For an existing app,
+keep its application files and ensure its Gemfile includes the chosen adapter.
+The recipe installs the Rails toolchain but does not start your application
+server. Check the tools and start the server:
 
 ```sh
 lando rails --version
@@ -38,6 +50,37 @@ Bind `0.0.0.0` or the proxy cannot reach it. Then open the URL `lando info` prin
 `lando psql -c` runs one query, prints the result, and exits.
 
 `lando rake db:migrate` runs Rake on `web`. Swap `rails-demo` for your app name anywhere you pass the database name yourself.
+
+## Use SQLite
+
+Create a new SQLite app from the parent directory. `--force` replaces the
+minimal Gemfile, so run these commands only in a new app:
+
+```sh
+lando init --recipe rails --name=rails-sqlite --answer=database=sqlite --yes
+cd rails-sqlite
+lando app:config:lint
+lando start
+lando rails new . --database=sqlite3 --force
+lando rails db:prepare
+```
+
+The generator adds the `sqlite3` gem. Rails 8 stores the development database at
+`storage/development.sqlite3`. Lando declares that file on `web` and omits the
+database service. SQLite uses the generated `config/database.yml` without a
+`DATABASE_URL` override. ActiveRecord resolves the path under the Rails app root.
+Skip `lando psql` for this choice. Once the file exists, export, import, and
+snapshot it from the app directory. **Import replaces the database's contents
+with the backup.**
+
+```sh
+lando db:export backup.sql.gz
+lando db:import backup.sql.gz --yes
+lando db:snapshot
+```
+
+See [Manage a SQLite file database](../tooling/sqlite-database.mdx) for file
+backups and restore behavior.
 
 ## See what the recipe writes
 
@@ -97,7 +140,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. They re
 | `DATABASE_URL` | `postgresql://lando:<password>@database:5432/rails-demo` |
 | `REDIS_URL` | `redis://cache:6379` |
 
-ActiveRecord reads `DATABASE_URL` on its own, so `config/database.yml` can stay at the generator default and `lando rake db:create db:migrate` uses that connection. Point your Redis client at `ENV["REDIS_URL"]`. Do not paste the password into `database.yml` or a committed `.env`; the Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild.
+ActiveRecord reads `DATABASE_URL` on its own, so `config/database.yml` can stay at the generator default and `lando rails db:prepare` uses that connection. Point your Redis client at `ENV["REDIS_URL"]`. Do not paste the password into `database.yml` or a committed `.env`; the Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild.
 
 `lando info` shows the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/rails-demo`. Rails inside `web` still sees the real value.
 

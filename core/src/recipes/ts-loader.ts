@@ -10,14 +10,12 @@
  * canonical `RecipeManifest` schema.
  */
 import { dirname } from "node:path";
-
-import { Clock, Duration, Effect } from "effect";
-
 import { importAuthorModule, missingPackageRemediation } from "@lando/landofile/author-modules";
+import { resolveTsModuleResult, sandboxScan } from "@lando/landofile/ts-loader";
+import { mapFailures } from "@lando/sdk/command-result";
 import { RecipeManifestParseError, causeMessage } from "@lando/sdk/errors";
 import type { RecipeContext } from "@lando/sdk/schema";
-
-import { resolveTsModuleResult, sandboxScan } from "@lando/landofile/ts-loader";
+import { Clock, Duration, Effect } from "effect";
 
 export const DEFAULT_RECIPE_TS_TIMEOUT_MS = 30_000;
 export const RECIPE_TS_TIMEOUT_ENV = "LANDO_RECIPE_TS_TIMEOUT_MS";
@@ -109,7 +107,7 @@ export const loadRecipeTs = Effect.fnUntraced(function* (
   options: LoadRecipeTsOptions,
 ): Effect.fn.Return<unknown, RecipeManifestParseError> {
   yield* sandboxScan(options.filePath, options.recipeRoot, options.content).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       cause._tag === "LandofileParseError"
         ? parseError(
             options.filePath,

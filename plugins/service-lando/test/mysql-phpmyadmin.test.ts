@@ -51,7 +51,7 @@ test("aligns phpMyAdmin ports with authored host order, duplicates, and external
       type: "phpmyadmin",
       certs: false,
       hosts: ["zdb", "remote.example.com", "adb", "zdb"],
-      creds: { user: "lando", password: "lando", database: "app" },
+      creds: { user: "lando", password: "lando" },
     },
   });
   expect(plan.services[ServiceName.make("pma")]?.environment).toMatchObject({

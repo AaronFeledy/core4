@@ -2,10 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
-
 import { ToolExtractError, ToolManifestError } from "@lando/sdk/errors";
 import type { ToolArtifactEntry } from "@lando/sdk/schema";
+import { Cause, Effect, Exit } from "effect";
 
 import {
   MUTAGEN_TOOL_MANIFEST,

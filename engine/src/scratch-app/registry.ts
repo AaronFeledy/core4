@@ -1,9 +1,10 @@
-import { Context, Effect, Layer, Schema } from "effect";
+import { mapFailures } from "@lando/sdk/command-result";
+import type { StateStoreError } from "@lando/sdk/errors";
 
 import { ScratchAppError } from "@lando/sdk/errors";
-import type { StateStoreError } from "@lando/sdk/errors";
 import { type StateBucket, StateStore, type StateWrite } from "@lando/sdk/services";
 import { defineTransitions, illegalTransitionMessage, planTransition } from "@lando/sdk/transitions";
+import { Context, Effect, Layer, Schema } from "effect";
 
 // The scratch registry — a thin, scratch-shaped view over a single durable
 // `StateBucket` under the user data root. All atomic write, advisory
@@ -184,7 +185,7 @@ const openRegistryBucket = (
       default: [],
     })
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         scratchRegistryError("registry.open", "Unable to open the scratch registry.", cause),
       ),
     );
@@ -197,7 +198,7 @@ export const makeScratchRegistry = (store: StateStore["Service"]): ScratchRegist
   ): Effect.Effect<A, ScratchAppError> =>
     openRegistryBucket(store).pipe(
       Effect.flatMap(use),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause._tag === "StateStoreError" ? scratchRegistryError(operation, message, cause) : cause,
       ),
     );
@@ -235,6 +236,10 @@ export const makeScratchRegistry = (store: StateStore["Service"]): ScratchRegist
                 return { _tag: "Set", value: remaining, result: undefined };
               case "Set":
                 return { _tag: "Set", value: sortById([...remaining, plan.value]), result: undefined };
+              default: {
+                const exhaustive: never = plan;
+                return exhaustive;
+              }
             }
           }),
         );

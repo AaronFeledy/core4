@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import { DateTime, Effect, Layer, Option } from "effect";
-
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { SecretNotFoundError, SecretStoreUnavailableError } from "@lando/sdk/errors";
 import {
@@ -13,6 +10,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { EnvironmentValueResolver, SecretStore, type SecretStoreShape } from "@lando/sdk/services";
+import { DateTime, Effect, Layer, Option } from "effect";
 
 import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
 

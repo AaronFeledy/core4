@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
-import { Effect } from "effect";
-
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
 import { makeAppliedPlanCache } from "../src/applied-plan-cache.ts";
 import { plan as valuePlan, service as valueService } from "./fixtures/environment-values.ts";

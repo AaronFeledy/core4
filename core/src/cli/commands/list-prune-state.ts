@@ -1,12 +1,12 @@
 import { join } from "node:path";
-import { Effect, Option, Schema } from "effect";
+import { APPLIED_STATE_VERSION, migrateAppliedPlansRecord } from "@lando/container-runtime/applied-state";
+import { mapFailures } from "@lando/sdk/command-result";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, AppPlan } from "@lando/sdk/schema";
 import type { LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { FileSystem } from "@lando/sdk/services";
-
-import { APPLIED_STATE_VERSION, migrateAppliedPlansRecord } from "@lando/container-runtime/applied-state";
+import { Effect, Option, Schema } from "effect";
 
 import type { AppsListEntry } from "./list-discovery";
 
@@ -87,7 +87,7 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
   const directory = join(paths.roots.userDataRoot, namespace);
   const names = yield* fs.readDir(directory).pipe(
     Effect.catchTag("FileNotFoundError", () => Effect.succeed([])),
-    Effect.mapError(
+    mapFailures(
       (cause) =>
         new StateStoreError({
           reason: "io",

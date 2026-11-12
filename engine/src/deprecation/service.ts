@@ -1,8 +1,7 @@
-import { type Context, Effect, Layer, Option, Ref } from "effect";
-
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import type { DeprecationNotice, DeprecationSurfaceKind, DeprecationUse } from "@lando/sdk/schema";
 import { DeprecationService, type DeprecationSummaryEntry, EventService } from "@lando/sdk/services";
+import { type Context, Effect, Layer, Option, Ref } from "effect";
 
 type DeprecationKey = `${DeprecationSurfaceKind}:${string}`;
 

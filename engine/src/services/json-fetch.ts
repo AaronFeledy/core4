@@ -10,10 +10,9 @@
  * status semantics (404 -> undefined, non-2xx -> throw).
  */
 
+import { RequestPolicy, layer as httpClientLayer } from "@lando/http-client/live";
 import { Duration, Effect, Layer, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
-
-import { RequestPolicy, layer as httpClientLayer } from "@lando/http-client/live";
 
 export interface HttpJsonResult {
   readonly status: number;

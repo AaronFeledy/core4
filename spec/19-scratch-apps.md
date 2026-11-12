@@ -38,9 +38,9 @@ Scratch ids MAY appear in user-facing output and are not secrets.
 
 ### 21.3 The scratch app root
 
-Scratch state lives under `<userDataRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan` record, from which `scratch:info` derives its output; build outcomes use the cache-root `scratch-build-results` index (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
+Scratch state lives under `<userDataRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan` record, from which `scratch:info` derives its output; artifact-step outcomes use the shared cache-root `scratch-build-results` index and app-step outcomes the per-app `build-results` index (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
 
-The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
+The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the scratch app's app-step results before resource destruction (§6.13.5) and its root, caches, and transcripts after it; the shared artifact index is kept. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
 
 ### 21.4 Scratch sources
 
@@ -118,7 +118,7 @@ Destroy payloads carry the teardown plan when one is available, `reason` (`expli
 
 #### 21.6.3 Standard event sequence
 
-Acquisition wraps materialization and start; scratch start wraps the standard App lifecycle and any required global-service start (§20.6.3). Every scratch destroy (explicit `apps:scratch:destroy`, scope close, poweroff, GC reap, and acquisition-failure rollback) nests `pre-scratch-destroy`, the standard stop pair, the standard destroy pair, instance-root and registry cleanup, then `post-scratch-destroy`. A failure at any step keeps the registry entry and skips `post-scratch-destroy`. GC reaps paint no task tree. `apps:poweroff` destroys scratch apps before stopping the global app. `--keep-scratch` suppresses every scratch destroy block and composes with `--keep-global`.
+Acquisition wraps materialization and start; scratch start wraps the standard App lifecycle and any required global-service start (§20.6.3). Every scratch destroy (explicit `apps:scratch:destroy`, scope close, poweroff, GC reap, and acquisition-failure rollback) nests `pre-scratch-destroy`, the standard stop pair, the standard destroy pair, instance-root and registry cleanup, then `post-scratch-destroy`. A failure at any step keeps the registry entry and skips `post-scratch-destroy`. A routed scratch start with no selectable router MUST fail before placement, certificate issuance, builds, and apply with `ScratchAppError` (operation `start`) carrying the selection reason's message and remediation, with the `ProxySetupError` as cause (§10.2). With no selectable router, scratch destroy withdraws routes through every installed router; when that withdrawal is not completed, cleanup still finishes with the §10.2 warning, without asserting route withdrawal. A selected router's failure still keeps the entry. GC reaps paint no task tree. `apps:poweroff` destroys scratch apps before stopping the global app. `--keep-scratch` suppresses every scratch destroy block and composes with `--keep-global`.
 
 ### 21.7 Mount isolation: the `--isolate` knob
 

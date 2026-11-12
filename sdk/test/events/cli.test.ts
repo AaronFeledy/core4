@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-
-import { Result, Schema } from "effect";
-
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
+import { Result, Schema } from "effect";
 
 const timestamp = "2026-07-13T16:00:00.000Z";
 const invocation = {

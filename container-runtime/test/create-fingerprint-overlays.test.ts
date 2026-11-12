@@ -94,7 +94,7 @@ const overlays: Readonly<Record<string, ServicePlan>> = {
   },
 };
 
-test("preserves literal v3 create identities captured before overlay refactoring", () => {
+test("preserves literal v4 create identities across overlay integration evidence", () => {
   // Given representative plans with absent optional fields and exact integration evidence.
   // When the provider emits its existing immutable-create label.
   const fingerprints = Object.fromEntries(
@@ -105,11 +105,11 @@ test("preserves literal v3 create identities captured before overlay refactoring
   );
   // Then existing persisted identities remain byte-identical.
   expect(fingerprints).toEqual({
-    plain: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
-    ssh: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
-    gpg: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
-    hostProxy: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
-    knownHosts: "v3:9e9b6b9f855df341f570cd09a8817283d6ffbf0116f0b3bfac06602b7ff28cbb",
+    plain: "v4:b9eb663e3d91124eaf38f3ffcd1fb369af68a173a93fa53bf12f46406c48d189",
+    ssh: "v4:b9eb663e3d91124eaf38f3ffcd1fb369af68a173a93fa53bf12f46406c48d189",
+    gpg: "v4:b9eb663e3d91124eaf38f3ffcd1fb369af68a173a93fa53bf12f46406c48d189",
+    hostProxy: "v4:b9eb663e3d91124eaf38f3ffcd1fb369af68a173a93fa53bf12f46406c48d189",
+    knownHosts: "v4:db834f4e69a739a88fe1ad96c70cdec691602c65354ccac4917389f7967bcd3d",
   });
 });
 
@@ -130,6 +130,6 @@ test("fingerprints source identity only when a bind defines it", () => {
   const original = fingerprint("2049:9007199254740993");
   const replaced = fingerprint("2049:9007199254740994");
   // Then old plans keep their exact bytes while a new inode requires reconciliation.
-  expect(absent).toBe("v3:9e9b6b9f855df341f570cd09a8817283d6ffbf0116f0b3bfac06602b7ff28cbb");
+  expect(absent).toBe("v4:db834f4e69a739a88fe1ad96c70cdec691602c65354ccac4917389f7967bcd3d");
   expect(new Set([absent, original, replaced]).size).toBe(3);
 });

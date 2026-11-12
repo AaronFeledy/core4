@@ -4,12 +4,6 @@ import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
-import { PortNumber } from "@lando/sdk/schema";
-import { makeTestStateStore } from "@lando/state-store/testing";
-import { volumeInitialization } from "@lando/state-store/volume-initialization";
-import { DateTime, Effect, Stream, absurd } from "effect";
-import { familyFromServiceType } from "../../src/families.ts";
-
 import {
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
@@ -26,11 +20,16 @@ import type {
 import {
   AbsolutePath,
   AppId,
+  PortNumber,
   ProviderId,
   ServiceName,
   SnapshotInfo,
   planAppIdentity,
 } from "@lando/sdk/schema";
+import { makeTestStateStore } from "@lando/state-store/testing";
+import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { DateTime, Effect, Stream, absurd } from "effect";
+import { familyFromServiceType } from "../../src/families.ts";
 
 import type { SqlCommandDeps } from "../../src/run.ts";
 import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
@@ -43,8 +42,9 @@ import {
   type SqlTestOptions,
   fixtureDataDestination,
 } from "./types.ts";
-export type * from "./types.ts";
+
 export { FakeRestoreError, FakeStartError } from "./errors.ts";
+export type * from "./types.ts";
 
 const liveHarnesses: SqlTestHarness[] = [];
 
@@ -85,6 +85,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         MYSQL_DATABASE: "sql-app",
         ...(options.rootPassword === undefined ? {} : { MYSQL_ROOT_PASSWORD: options.rootPassword }),
       },
+      mounts: [],
       extensions: {},
       storage,
     },
@@ -94,6 +95,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       name: extra.name,
       type: extra.type,
       environment: {},
+      mounts: [],
       extensions: {},
       storage: [{ store: `sql-app_${extra.name}_data`, target: fixtureDataDestination(extra.type) }],
     };
@@ -301,6 +303,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return sqlResult({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
+    waitForReady: () => Effect.void,
     resume: Effect.fnUntraced(function* () {
       lifecycle.push("resume");
       if (options.startFails === true) return yield* Effect.fail(new FakeStartError());

@@ -46,7 +46,7 @@ test.each([
 
 test("boundary units share the ASCII and non-ASCII token alphabet", () => {
   for (let unit = 0; unit <= 255; unit += 1) {
-    const token = /[A-Za-z0-9_.\/-]/u.test(String.fromCharCode(unit)) || unit >= 128;
+    const token = /[A-Za-z0-9_./-]/u.test(String.fromCharCode(unit)) || unit >= 128;
     expect(isRedactionTokenBoundaryUnit(unit)).toBe(!token);
   }
   expect(isRedactionTokenBoundaryUnit(undefined)).toBe(true);

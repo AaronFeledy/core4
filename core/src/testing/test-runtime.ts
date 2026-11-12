@@ -7,19 +7,19 @@ import * as EnvironmentValueResolverLayer from "@lando/engine/services/environme
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
-import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  CurrentExecutableAppPlan,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   GlobalConfig,
   type IsolateMode,
   LandofileShape,
+  LoadScopedLandofile,
   type PlanMetadata,
   ProviderId,
   ServiceName,
@@ -58,7 +58,9 @@ import {
   Telemetry,
   ToolingEngine,
 } from "@lando/sdk/services";
+import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
 import { makeTestEventService } from "./test-runtime-events.ts";
+
 /**
  * Re-export of the SDK's contract-valid deterministic runtime provider fixture.
  */
@@ -67,8 +69,6 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
  * Re-export of Effect's deterministic test clock utilities for callers using this test runtime.
  */
 export { TestClock } from "effect/testing";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   ScratchRegistry,
@@ -78,6 +78,8 @@ import {
   planScratchRegistryWrite,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 type TestBootstrapLevel = "minimal" | "provider" | "global" | "scratch" | "app";
 
@@ -358,7 +360,7 @@ const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Cod
   }
 
   return Schema.decodeUnknownEffect(schema)(value).pipe(
-    Effect.mapError(
+    mapFailures(
       (decodeError) =>
         new CacheError({
           message: `Cached value for ${key} failed schema decode.`,

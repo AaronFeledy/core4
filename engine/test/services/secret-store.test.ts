@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Result } from "effect";
-
 import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import { SecretStore } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Result } from "effect";
 
 import * as EnvSecretStore from "../../src/services/secret-store";
 

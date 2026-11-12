@@ -9,15 +9,16 @@ type OutputPolicy =
   | "artifact-bytes"
   | "environment-read";
 
-type ErrorChannel<T> = NonNullable<T> extends Effect.Effect<infer _A, infer _E, infer _R>
-  ? "effect"
-  : NonNullable<T> extends Stream.Stream<infer _A, infer _E, infer _R>
-    ? "stream"
-    : NonNullable<T> extends (...args: never[]) => Effect.Effect<infer _A, infer _E, infer _R>
-      ? "effect"
-      : NonNullable<T> extends (...args: never[]) => Stream.Stream<infer _A, infer _E, infer _R>
-        ? "stream"
-        : "none";
+type ErrorChannel<T> =
+  NonNullable<T> extends Effect.Effect<infer _A, infer _E, infer _R>
+    ? "effect"
+    : NonNullable<T> extends Stream.Stream<infer _A, infer _E, infer _R>
+      ? "stream"
+      : NonNullable<T> extends (...args: never[]) => Effect.Effect<infer _A, infer _E, infer _R>
+        ? "effect"
+        : NonNullable<T> extends (...args: never[]) => Stream.Stream<infer _A, infer _E, infer _R>
+          ? "stream"
+          : "none";
 type MemberPolicy<K extends keyof RuntimeProviderShape> = readonly [
   OutputPolicy,
   ErrorChannel<RuntimeProviderShape[K]>,
@@ -28,6 +29,7 @@ export const providerMemberPolicy = {
   displayName: ["metadata", "none"],
   version: ["metadata", "none"],
   platform: ["metadata", "none"],
+  runtimeIdentity: ["metadata", "none"],
   capabilities: ["metadata", "none"],
   isAvailable: ["lifecycle", "effect"],
   appliedPlans: ["metadata", "effect"],
@@ -41,7 +43,7 @@ export const providerMemberPolicy = {
   matchingPublishPorts: ["metadata", "effect"],
   openHostProxyBridge: ["lifecycle", "effect"],
   openAgentSocketBridge: ["lifecycle", "effect"],
-  buildArtifact: ["lifecycle", "effect"],
+  buildArtifact: ["app-output", "effect"],
   pullArtifact: ["lifecycle", "effect"],
   removeArtifact: ["lifecycle", "effect"],
   inspectAppliedFileSync: ["metadata", "effect"],
@@ -108,6 +110,8 @@ export const withOutputRegistration = (
     logs: (target, options) =>
       Stream.unwrap(before(target).pipe(Effect.as(Stream.suspend(() => runtime.logs(target, options))))),
     run: (spec) => before(spec.owner).pipe(Effect.flatMap(() => runtime.run(spec))),
+    buildArtifact: (spec) =>
+      before({ app: spec.app, plan: spec.plan }).pipe(Effect.flatMap(() => runtime.buildArtifact(spec))),
     runStream: (spec) =>
       Stream.unwrap(before(spec.owner).pipe(Effect.as(Stream.suspend(() => runtime.runStream(spec))))),
     copyFromService: (target, spec) =>

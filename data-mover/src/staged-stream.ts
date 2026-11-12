@@ -3,14 +3,13 @@ import { chmod, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import { DataTransferError } from "@lando/sdk/errors";
-import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, type Scope, type Stream } from "effect";
-
 import {
   type VerifiedStreamError,
   type VerifiedStreamResult,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { Effect, type Scope, type Stream } from "effect";
 
 export type StagedStream = {
   readonly path: string;

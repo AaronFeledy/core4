@@ -4,12 +4,9 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
-
 import { PluginLoadError } from "@lando/core/errors";
-import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import type { ServiceTypeInput } from "@lando/core/services";
+import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import {
   collectGlobalServiceContributions,
@@ -17,6 +14,7 @@ import {
 } from "@lando/engine/services/global-services";
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-lando",

@@ -2,20 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Result, Schema } from "effect";
-
 import { makeLandoPaths } from "@lando/core/paths";
 import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName } from "@lando/core/schema";
 import { PathsService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { globalEnable } from "@lando/engine/operations/global-policy";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { globalInstall } from "@lando/engine/operations/global-install";
+import { globalEnable } from "@lando/engine/operations/global-policy";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Result, Schema } from "effect";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
@@ -29,10 +27,8 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
     process.env.LANDO_USER_CONF_ROOT = confRoot;
     return await run(dataRoot);
   } finally {
-    // biome-ignore lint/performance/noDelete: environment cleanup must remove variables when originally unset.
     if (previousData === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousData;
-    // biome-ignore lint/performance/noDelete: environment cleanup must remove variables when originally unset.
     if (previousConf === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConf;
     await rm(dataRoot, { recursive: true, force: true });

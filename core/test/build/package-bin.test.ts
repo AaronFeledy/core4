@@ -1,7 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { Predicate } from "effect";
-
-import { describe, expect, test } from "bun:test";
 
 const corePackagePath = resolve(import.meta.dirname, "../../package.json");
 

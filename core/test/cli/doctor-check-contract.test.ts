@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer } from "effect";
-
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
@@ -13,6 +12,7 @@ import {
   type DoctorCheckResult,
   runDoctorCheckContractSuite,
 } from "@lando/sdk/test";
+import { type Context, Effect, Layer } from "effect";
 
 import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
 
@@ -116,13 +116,28 @@ const selectedProviderCheck = (provider: RuntimeProviderShape) => ({
 const runningProvider: RuntimeProviderShape = {
   ...TestRuntimeProvider,
   id: "lando",
-  getStatus: Effect.succeed({ running: true, message: "ready" }),
+  getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
 };
 
-const stoppedProvider: RuntimeProviderShape = {
+const idleProvider: RuntimeProviderShape = {
   ...TestRuntimeProvider,
   id: "lando",
-  getStatus: Effect.succeed({ running: false, message: "stopped" }),
+  getStatus: Effect.succeed({ state: "idle" as const }),
+};
+
+const UNREACHABLE_REMEDIATION = "Run `lando poweroff`, then rerun the command to relaunch the runtime.";
+
+const unreachableProvider: RuntimeProviderShape = {
+  ...TestRuntimeProvider,
+  id: "lando",
+  getStatus: Effect.fail(
+    new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "getStatus",
+      message: "The runtime service is running but its API does not answer.",
+      remediation: UNREACHABLE_REMEDIATION,
+    }),
+  ),
 };
 
 describe("DoctorCheck contract — built-in selected-provider check", () => {
@@ -138,11 +153,23 @@ describe("DoctorCheck contract — built-in selected-provider check", () => {
     expect(exit._tag).toBe("Success");
   });
 
-  test("a stopped provider reports a warning with a manual remediation", async () => {
+  test("an idle provider that starts on demand passes the contract (no issues)", async () => {
     const harness: DoctorCheckContractHarness = {
-      name: "selected-provider (stopped)",
-      check: selectedProviderCheck(stoppedProvider),
-      expectedIssue: { severity: "warning", contextKey: "providerId", solutionKind: "manual" },
+      name: "selected-provider (idle)",
+      check: selectedProviderCheck(idleProvider),
+    };
+    const exit = await Effect.runPromiseExit(runDoctorCheckContractSuite(harness));
+    if (exit._tag === "Failure") {
+      throw new Error(`Contract failure: ${JSON.stringify(exit.cause, null, 2)}`);
+    }
+    expect(exit._tag).toBe("Success");
+  });
+
+  test("an unreachable provider reports an error with the failure's own manual remediation", async () => {
+    const harness: DoctorCheckContractHarness = {
+      name: "selected-provider (unreachable)",
+      check: selectedProviderCheck(unreachableProvider),
+      expectedIssue: { severity: "error", contextKey: "providerId", solutionKind: "manual" },
     };
     const exit = await Effect.runPromiseExit(runDoctorCheckContractSuite(harness));
     if (exit._tag === "Failure") {
@@ -155,10 +182,11 @@ describe("DoctorCheck contract — built-in selected-provider check", () => {
     // `doctor()` produces the selected-provider diagnosis without executing any
     // remediation; a default run reports the same issues twice (deterministic,
     // no mutation between runs).
-    const check = selectedProviderCheck(stoppedProvider);
+    const check = selectedProviderCheck(unreachableProvider);
     const first = await Effect.runPromise(check.run({ fix: false }));
     const second = await Effect.runPromise(check.run({ fix: false }));
     expect(second).toEqual(first);
     expect(first.issues[0]?.solutionKind).toBe("manual");
+    expect(first.issues[0]?.solution).toBe(UNREACHABLE_REMEDIATION);
   });
 });

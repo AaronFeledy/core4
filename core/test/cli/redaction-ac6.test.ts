@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Queue, Stream } from "effect";
-
 import { EventService } from "@lando/core/services";
 import * as EnvironmentResolver from "@lando/engine/services/environment-value-resolver";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
@@ -8,6 +6,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
+import { Effect, Layer, Queue, Stream } from "effect";
 import { bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { withProcess } from "../_support/process-runner.ts";

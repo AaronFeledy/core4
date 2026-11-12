@@ -1,12 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { basename, dirname } from "node:path";
-import { Effect, Schema } from "effect";
-
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
-
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { Effect, Schema } from "effect";
 
 export const DEFAULT_SHELL_HISTORY_LIMIT = 1000;
 

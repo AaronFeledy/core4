@@ -21,7 +21,8 @@ test.each(["first-app", "second-app"])("unavailable route application retains ap
           "RouterService is not selected. Install and select the bundled Traefik router plugin, then run `lando setup` to provision the global app.",
         proxyId: "unavailable",
         app: id,
-        remediation: "Install and select a RouterService plugin, then retry route application.",
+        remediation:
+          "Install a RouterService plugin and set `defaultRouterService` to an installed router id.",
       }),
     ),
   );
@@ -45,13 +46,14 @@ test.each(["web", "database"])("unavailable healthcheck retains service %s", asy
   );
 });
 
-test("unavailable certificates preserve setup and issuance errors", async () => {
+test("unavailable certificates preserve setup, root, and issuance errors", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const ca = yield* CertificateAuthority;
       return {
         id: ca.id,
         setup: yield* ca.setup({ force: false }).pipe(Effect.result),
+        root: yield* ca.root.pipe(Effect.result),
         issue: yield* ca.issueCert({ cn: "test", sans: ["test"] }).pipe(Effect.result),
       };
     }).pipe(Effect.provide(Certs.layerUnavailable)),
@@ -64,5 +66,5 @@ test("unavailable certificates preserve setup and issuance errors", async () => 
         "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",
     }),
   );
-  expect(result).toEqual({ id: "unavailable", setup: failure, issue: failure });
+  expect(result).toEqual({ id: "unavailable", setup: failure, root: failure, issue: failure });
 });

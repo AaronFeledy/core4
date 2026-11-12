@@ -1,17 +1,8 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { GlobalConfigSources } from "@lando/engine/services/config";
-import { makeLandoPaths } from "@lando/paths";
-import { PathsService } from "@lando/sdk/services";
-
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
-import * as HttpClientError from "effect/http/HttpClientError";
-import * as HttpClientRequest from "effect/http/HttpClientRequest";
-import * as HttpClientResponse from "effect/http/HttpClientResponse";
-
 import {
   CertificateAuthority,
   ConfigService,
@@ -30,11 +21,16 @@ import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } f
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { hostProviderId } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
-import { manifest as providerLandoManifest } from "@lando/provider-lando";
-import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
+import { makeLandoPaths } from "@lando/paths";
+import {
+  makeRuntimeProvider,
+  manifest as providerLandoManifest,
+  providerStatePath,
+} from "@lando/provider-lando";
 import {
   AmbiguousCertificateAuthoritiesError,
   AppPlacementError,
@@ -54,22 +50,27 @@ import {
   type ProviderSetupPlan,
   appIdentityKey,
 } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
 import {
   TestFileSyncEngine,
   makeTestCertificateAuthority,
   makeTestRouterService,
   makeTestSshService,
+  testCaPem,
 } from "@lando/sdk/test";
-import { testCaPem } from "@lando/sdk/test";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { buildBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
-import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
-import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import {
   SetupResultSchema,
   SetupStepFailedError,
   maybeSelectSetupProvider,
   setupSpec,
 } from "../../src/cli/command-specs/meta/setup.ts";
+import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
+import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import {
   type ResolvedSetupNetworkTrust,
   SetupNetworkTrustError,
@@ -3635,4 +3636,5 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);
 });
+
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";

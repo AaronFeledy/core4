@@ -28,7 +28,7 @@ export const resolveAppPlacement = Effect.fn("AppPlacement.resolve")(function* (
 ) {
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(app.root));
   const registry = yield* RuntimeProviderRegistry;
-  const plans = (yield* registry.appliedPlansFor(root)).filter(
+  const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
     (plan) => (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
   );
   const current = app.kind === "user" ? plans.filter((plan) => plan.id === app.id) : plans;

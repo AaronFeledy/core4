@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Duration, Effect, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
+import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
-
-import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { Deferred, Duration, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { ProviderLandoSmokeError, type SmokeOperation, runSmokeReadinessProbe } from "../src/smoke-probe.ts";
 
 const retryPolicy: RetryPolicy = {
@@ -16,6 +14,7 @@ const retryPolicy: RetryPolicy = {
 
 interface FakeOptions {
   readonly runExitCode?: number;
+  readonly resourceExitCode?: number;
   readonly health?: ReadonlyArray<"healthy" | "starting" | "unhealthy">;
   readonly failBuild?: ProviderUnavailableError;
   readonly failBaseImage?: boolean;
@@ -43,6 +42,9 @@ const fakeApi = (requests: EngineHttpRequest[], options: FakeOptions = {}): Podm
         if (options.failBuild !== undefined) return yield* Effect.fail(options.failBuild);
         return { status: 200, body: "{}" };
       }
+      if (path.includes("/wait") && path.includes("smoke-resources")) {
+        return { status: 200, body: JSON.stringify({ StatusCode: options.resourceExitCode ?? 0 }) };
+      }
       if (path.includes("/wait")) {
         return { status: 200, body: JSON.stringify({ StatusCode: options.runExitCode ?? 0 }) };
       }
@@ -68,6 +70,57 @@ const run = (requests: EngineHttpRequest[], options: FakeOptions = {}) =>
 
 const deletionPaths = (requests: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<string> =>
   requests.filter((request) => request.method === "DELETE").map((request) => request.path);
+
+describe("resource-limit smoke probe", () => {
+  const runWithLimits = (requests: EngineHttpRequest[], options: FakeOptions = {}) =>
+    Effect.scoped(
+      runSmokeReadinessProbe({ podmanApi: fakeApi(requests, options), retryPolicy, resourceLimits: true }),
+    );
+  const resourceCreate = (requests: ReadonlyArray<EngineHttpRequest>) =>
+    requests.find((request) =>
+      request.path.startsWith("/containers/create?name=provider-lando-smoke-resources"),
+    );
+
+  test("creates a limited container that reads back all four cgroup files", async () => {
+    const requests: EngineHttpRequest[] = [];
+
+    await Effect.runPromise(runWithLimits(requests));
+
+    const create = resourceCreate(requests);
+    expect(create?.body).toMatchObject({
+      HostConfig: {
+        Memory: 134_217_728,
+        MemoryReservation: 67_108_864,
+        PidsLimit: 100,
+        NanoCpus: 500_000_000,
+      },
+    });
+    const script = JSON.stringify(create?.body);
+    for (const file of ["memory.max", "pids.max", "cpu.max", "memory.low"]) {
+      expect(script).toContain(`/sys/fs/cgroup/${file}`);
+    }
+    expect(deletionPaths(requests).some((path) => path.includes("smoke-resources"))).toBe(true);
+  });
+
+  test("a limit the container's cgroup does not enforce fails smoke with remediation", async () => {
+    const requests: EngineHttpRequest[] = [];
+
+    const error = await Effect.runPromise(Effect.flip(runWithLimits(requests, { resourceExitCode: 13 })));
+
+    expect(error).toBeInstanceOf(ProviderLandoSmokeError);
+    expect(error).toMatchObject({ smokeOperation: "resource-limits" });
+    expect(error.message).toContain("cpu.max");
+    expect(error.remediation).toContain("lando doctor");
+  });
+
+  test("is skipped when the provider does not declare deploy.resources", async () => {
+    const requests: EngineHttpRequest[] = [];
+
+    await Effect.runPromise(run(requests));
+
+    expect(resourceCreate(requests)).toBeUndefined();
+  });
+});
 
 describe("runSmokeReadinessProbe", () => {
   test("completes run, build-and-resolve, and healthy-container outcomes", async () => {

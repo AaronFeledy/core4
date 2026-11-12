@@ -47,10 +47,24 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     exitCode: Schema.optional(Schema.Number),
     reason: Schema.optional(Schema.Literals(["exit", "protocol", "provider", "timeout", "stdout-limit"])),
     stderrTail: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
     recoverySnapshotId: Schema.optional(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
+
+/**
+ * A SQLite target's planned database path cannot be used: the file does not exist yet for a
+ * read, a path component is a symbolic link, the path names something other than a regular
+ * file, or the nearest existing parent of a database to create is not a directory.
+ */
+export class SqlDatabasePathError extends Schema.TaggedError<SqlDatabasePathError>()("SqlDatabasePathError", {
+  message: Schema.String,
+  service: Schema.String,
+  path: Schema.String,
+  reason: Schema.Literals(["missing", "symlink", "not-a-file", "parent-not-directory"]),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+}) {}
 
 export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundError>()("SqlDumpNotFoundError", {
   message: Schema.String,
@@ -90,6 +104,7 @@ export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryU
     message: Schema.String,
     service: Schema.String,
     reason: Schema.String,
+    recoveryFile: Schema.optional(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

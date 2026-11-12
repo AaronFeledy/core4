@@ -1,9 +1,9 @@
-import { Effect, Schema } from "effect";
+import type { LandoEvent } from "@lando/sdk/events";
 
 import { CliCommandErrorEvent, CliCommandRunEvent } from "@lando/sdk/events";
-import type { LandoEvent } from "@lando/sdk/events";
 import type { SubscriberFactory } from "@lando/sdk/plugins";
 import type { NotifyConfig } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 
 const DEFAULT_NOTIFY_COMMAND_IDS = [
   "app:start",

@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect } from "effect";
-
 import { DEFAULT_ROUTER_HTTPS_PORTS, DEFAULT_ROUTER_HTTP_PORTS, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-
-import { readAcquisitionState } from "../src/port-acquisition-state.ts";
+import { Cause, Effect } from "effect";
 import type { AcquisitionFingerprint } from "../src/port-acquisition.ts";
-import { acquisitionStateFile } from "../src/proxy-paths.ts";
+import { readAcquisitionState } from "../src/port-acquisition-state.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { acquisitionStateFile } from "../src/proxy-paths.ts";
 
 const paths = { platform: "win32" as const, globalAppRoot: "C:\\lando\\global" };
 

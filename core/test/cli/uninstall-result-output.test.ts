@@ -22,6 +22,7 @@ test("uninstall machine output retains owned classification for manual contribut
     maintainers: [
       {
         id: "fixture",
+        pluginId: "@lando/test",
         uninstall: {
           plan: () =>
             Effect.succeed([

@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
-
 import { ToolingExecError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -23,6 +21,7 @@ import {
   makeToolingEngineContractSuite,
   runToolingEngineContractSuite,
 } from "@lando/sdk/test";
+import { DateTime, Effect, Stream } from "effect";
 
 const providerId = ProviderId.make("contract");
 const metadata = {
@@ -118,7 +117,7 @@ const makeRecordingProvider = (
     isAvailable: Effect.succeed(true),
     planSetup: () => Effect.die("not used"),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => Effect.die("not used"),
     pullArtifact: () => Effect.die("not used"),

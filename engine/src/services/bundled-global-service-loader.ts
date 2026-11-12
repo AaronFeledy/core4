@@ -1,3 +1,7 @@
+import { mapFailures } from "@lando/sdk/command-result";
+import { GlobalAppError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { ServiceConfig } from "@lando/sdk/schema";
 /**
  * Bundled-first global-service module loader.
  *
@@ -17,10 +21,6 @@
  * dynamic-import loader.
  */
 import { Effect, Schema } from "effect";
-
-import { GlobalAppError } from "@lando/sdk/errors";
-import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { ServiceConfig } from "@lando/sdk/schema";
 
 import { bundledPluginModules } from "../composition.ts";
 import {
@@ -66,7 +66,7 @@ export const makeBundledFirstGlobalServiceLoader = (
       }
 
       return effect.pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           loaderError(
             `Bundled global service ${entry.contribution.id} from plugin ${entry.plugin} failed.`,
             `Fix the global service module in ${entry.plugin}.`,
@@ -75,7 +75,7 @@ export const makeBundledFirstGlobalServiceLoader = (
         ),
         Effect.flatMap((value) =>
           Schema.decodeUnknownEffect(ServiceConfig)(value).pipe(
-            Effect.mapError((cause) =>
+            mapFailures((cause) =>
               loaderError(
                 `Bundled global service ${entry.contribution.id} from plugin ${entry.plugin} did not return a valid ServiceConfig.`,
                 `Update ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,

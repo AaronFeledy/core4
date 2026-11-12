@@ -1,7 +1,6 @@
-import { Effect, Layer } from "effect";
-
 import type { ContributionRef, DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
 import { DeprecationService, PluginRegistry } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 import {
   SETUP_BUILTIN_FLAG_NAMES,
   findSetupFlagCollision,

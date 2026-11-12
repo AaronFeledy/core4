@@ -1,8 +1,6 @@
 import { type SchemaAST as AST, Effect, Result, Schema } from "effect";
 import { SEMVER_CORE_PATTERN, patternString } from "./string-forms.ts";
 
-const MIN_UNSCHEDULED_DEPRECATION_SINCE = { major: 4, minor: 1, patch: 0 } as const satisfies Semver;
-
 type Semver = {
   readonly major: number;
   readonly minor: number;
@@ -130,33 +128,18 @@ export const DeprecationNoticeJsonShape = Schema.Struct({
   description: "A structured deprecation declaration attached to a public surface.",
 });
 
-const isFutureMajorOrMinorRemoval = (notice: typeof DeprecationNoticeJsonShape.Type): boolean => {
+const isRemovalLaterThanSince = (notice: typeof DeprecationNoticeJsonShape.Type): boolean => {
   if (notice.removeIn === undefined) return true;
   const since = parseSemver(notice.since);
   const removeIn = parseSemver(notice.removeIn);
   if (since === undefined || removeIn === undefined) return false;
-  if (removeIn.patch !== 0) return false;
   return compareSemver(removeIn, since) > 0;
-};
-
-const hasRequiredScheduleForOldNotice = (notice: typeof DeprecationNoticeJsonShape.Type): boolean => {
-  if (notice.removeIn !== undefined) return true;
-  const since = parseSemver(notice.since);
-  if (since === undefined) return false;
-  return compareSemver(since, MIN_UNSCHEDULED_DEPRECATION_SINCE) >= 0;
 };
 
 export const DeprecationNotice = DeprecationNoticeJsonShape.pipe(
   Schema.check(
-    Schema.makeFilter(isFutureMajorOrMinorRemoval, {
-      message:
-        "removeIn must be a future major or minor release; patch, same-release, and past removals are not allowed.",
-      toJsonSchema: () => [DEPRECATION_NOTICE_JSON_SCHEMA, true],
-    }),
-  ),
-  Schema.check(
-    Schema.makeFilter(hasRequiredScheduleForOldNotice, {
-      message: "Notices from releases older than the active 4.1.0 deprecation window must declare removeIn.",
+    Schema.makeFilter(isRemovalLaterThanSince, {
+      message: "removeIn must be a later release than since.",
       toJsonSchema: () => [DEPRECATION_NOTICE_JSON_SCHEMA, true],
     }),
   ),

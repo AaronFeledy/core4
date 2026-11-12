@@ -2,11 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { withEnvVar } from "../_support/temp-cwd.ts";
-
-import { DateTime, Effect, Schema } from "effect";
-
+import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import {
   AbsolutePath,
   AppId,
@@ -19,9 +15,8 @@ import {
 } from "@lando/sdk/schema";
 import type { ScratchInfo, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
-
-import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { makeStateStore } from "@lando/state-store/service";
+import { DateTime, Effect, Schema } from "effect";
 import {
   ScratchInfoResultSchema,
   ScratchListResultSchema,
@@ -30,6 +25,7 @@ import {
 } from "../../src/cli/commands/scratch.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const testRegistry = () => makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }));
 

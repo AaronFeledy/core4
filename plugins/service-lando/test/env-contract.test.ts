@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
+import { Schema } from "effect";
 
 import { appMountTarget } from "../src/services/_volume-helpers.ts";
 import { apacheServiceType } from "../src/services/apache.ts";

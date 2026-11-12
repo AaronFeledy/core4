@@ -1,12 +1,11 @@
 import { ConfigError } from "@lando/sdk/errors";
-import { Schema } from "effect";
-
 import {
   ConfigLintResult,
   type DeprecationNotice,
   DeprecationSeverity,
   DeprecationSurfaceKind,
 } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import type { DoctorResult } from "./doctor";
 import type { GlobalAppDoctorResult } from "./doctor-global-app";

@@ -1,8 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 import { Result, Schema } from "effect";
 
 import {
@@ -137,7 +136,7 @@ describe("public transcript rendering", () => {
               kind: "run",
               sourceFile: "docs/guides/redact-demo.mdx",
               sourceLine: 12,
-              commandDisplay: `lando start --root ${tmpdir()}/lando-load-test --token=\"quoted-token\"`,
+              commandDisplay: `lando start --root ${tmpdir()}/lando-load-test --token="quoted-token"`,
             },
           ],
         }),

@@ -1,5 +1,3 @@
-import { Clock, DateTime, Effect, Option, Schema, Stream } from "effect";
-
 import type { LogsAppOptions, LogsAppError as SdkLogsAppError } from "@lando/sdk/app";
 import {
   CapabilityError,
@@ -16,6 +14,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { Clock, DateTime, Effect, Option, Schema, Stream } from "effect";
 
 import { type ResolvedAppTarget, planDesiredApp } from "../landofile/app-resolution.ts";
 import { observedAppPlan } from "../providers/app-placement.ts";
@@ -24,8 +23,8 @@ import { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { LogsAppOptions } from "@lando/sdk/app";
-export { StreamFrameSink } from "./stream-frame-sink.ts";
 export type { StreamFrameSinkFrame, StreamFrameSinkShape } from "./stream-frame-sink.ts";
+export { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export interface FollowLogsAppOptions extends LogsAppOptions {
   /**
@@ -77,7 +76,7 @@ const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError
   });
 };
 
-const selectServices = (
+export const selectLogServices = (
   plan: AppPlan,
   filter?: string,
 ): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
@@ -207,7 +206,7 @@ const servicesForPlan = Effect.fnUntraced(function* (
     );
   }
 
-  const services = yield* selectServices(plan, options.service);
+  const services = yield* selectLogServices(plan, options.service);
   yield* validateSource(options.source, services, provider.capabilities.serviceLogSources);
   return {
     services: services.filter(

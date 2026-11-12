@@ -1,13 +1,12 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
-
 import { FileSyncEngine } from "@lando/core/services";
 import { makeRedactionService } from "@lando/redaction/service";
+import { mergeFailure } from "@lando/sdk/command-result";
 import { TestFileSyncEngine } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
   type SetupReadinessRecorder,
@@ -144,6 +143,40 @@ describe("file-sync setup step", () => {
 });
 
 describe("setup readiness recorder", () => {
+  test.each([
+    ["interrupt", Cause.interrupt(1), "in-progress"],
+    [
+      "cleanup and interrupt",
+      mergeFailure(Cause.interrupt(1), Cause.fail("cleanup"), "cleanup"),
+      "in-progress",
+    ],
+    ["failure and interrupt", mergeFailure(Cause.fail("provider"), Cause.interrupt(1), "peer"), "failed"],
+    ["defect and interrupt", mergeFailure(Cause.die("provider"), Cause.interrupt(1), "peer"), "failed"],
+  ] as const)("finish records the correct status for %s", async (_name, cause, status) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-setup-finish-"));
+    try {
+      const recorder = makeSetupReadinessRecorder(root, "test");
+      await Effect.runPromise(recorder.start);
+      await Effect.runPromise(recorder.finish(Exit.failCause(cause)));
+      expect(JSON.parse(await readFile(setupReadinessPath(root), "utf8"))).toMatchObject({ status });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  test("finish records a failed step when the run is cancelled afterward", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-setup-finish-"));
+    try {
+      const recorder = makeSetupReadinessRecorder(root, "test");
+      await Effect.runPromise(recorder.start);
+      await Effect.runPromise(recorder.recordFailure("runtime", new Error("runtime failed")));
+      await Effect.runPromise(recorder.finish(Exit.failCause(Cause.interrupt(1))));
+      expect(JSON.parse(await readFile(setupReadinessPath(root), "utf8"))).toMatchObject({
+        status: "failed",
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("masks registered exact values in persisted failure evidence and remediation", async () => {
     // Given
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-registered-redaction-"));
@@ -192,6 +225,7 @@ describe("setup readiness recorder", () => {
     }
   });
 });
+
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import { makeLandoPaths } from "@lando/paths";
 import { PathsService } from "@lando/sdk/services";

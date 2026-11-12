@@ -1,3 +1,4 @@
+import { mapFailures } from "@lando/sdk/command-result";
 // `ManagedFileService`: the single chokepoint for Lando-owned writes into
 // the user's working tree. It renders + encodes content, applies an ownership
 // marker (`file` mode) or a fenced region (`block` mode), records a durable
@@ -11,10 +12,9 @@
 
 import { mkdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { isPathWithin, makeLandoPaths, resolveLandoRoots } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option } from "effect";
-
 import { ManagedFileError, StateStoreError } from "@lando/sdk/errors";
 import {
   ManagedFileConflictDetectedEvent,
@@ -40,13 +40,11 @@ import {
   ManagedFileService,
   PathsService,
 } from "@lando/sdk/services";
-
-import { isPathWithin, makeLandoPaths, resolveLandoRoots } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { findRealpathAncestor } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option } from "effect";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
   LEDGER_VERSION,
@@ -1064,7 +1062,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
       Effect.flatMap((exists) => (exists ? ledgerBucketFor(base, "discard") : Effect.succeed(null))),
       Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
       Effect.map((state) => state?.entries ?? []),
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new ManagedFileError({
             reason: "io",
@@ -1127,7 +1125,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
         ...(mode === undefined ? {} : { mode }),
         privateFileAccess: options.privateFileAccess.enforce,
       }).pipe(
-        Effect.mapError(
+        mapFailures(
           (cause) =>
             new ManagedFileError({
               reason: "io",
@@ -1164,7 +1162,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
             return f(entries).pipe(Effect.map((outcome) => planLedgerStateWrite(entries, outcome)));
           }),
         ),
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           isManagedFileError(cause)
             ? cause
             : new ManagedFileError({

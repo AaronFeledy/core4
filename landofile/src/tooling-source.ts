@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   type ComposeKeyRejectedError,
@@ -21,12 +22,12 @@ import { assertUnderRoot } from "./include-guard.ts";
 import { includeAcquisitionView } from "./include-layer-overlays.ts";
 import { includeReadError } from "./include-read-error.ts";
 import { prepareIncludeAcquisition } from "./load-acquisition.ts";
-import type { LandofileLoadPolicy } from "./load-expression-file.ts";
-import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import {
   type ResolveLandofileLoadExpressionError,
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
+import type { LandofileLoadPolicy } from "./load-expression-file.ts";
+import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import { parseLandofile } from "./parser.ts";
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
@@ -200,7 +201,7 @@ export const loadFragment = (
             return Effect.void;
           const projection = isPlainRecord(materialized) ? mergeLandofiles([materialized]) : materialized;
           return Schema.decodeUnknownEffect(ToolingWire)(projection, { errors: "all" }).pipe(
-            Effect.mapError((cause) => validationErrorFromCause(filePath, materialized, cause)),
+            mapFailures((cause) => validationErrorFromCause(filePath, materialized, cause)),
           );
         }),
         Effect.flatMap((decoded) =>

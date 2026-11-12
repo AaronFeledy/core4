@@ -1,24 +1,24 @@
+export type { ArchiveTransport, GitTransport, NpmRegistryTransport } from "@lando/source-acquisition";
 export type {
   LandofileIncludeDeps,
   LandofileRelaxedRead,
-  ResolveLandofileIncludesOptions,
   ResolveIncludesError,
+  ResolveLandofileIncludesOptions,
 } from "./include-context.ts";
-export type { GitTransport, ArchiveTransport, NpmRegistryTransport } from "@lando/source-acquisition";
+export { resolveLandofileIncludeLayers, resolveLandofileIncludes } from "./include-resolve.ts";
 export { hasResolvableIncludes } from "./include-source.ts";
-export { resolveLandofileIncludes, resolveLandofileIncludeLayers } from "./include-resolve.ts";
 export {
-  updateLandofileIncludes,
-  type IncludeUpdateStatus,
   type IncludeUpdateEntry,
   type IncludeUpdateReport,
+  type IncludeUpdateStatus,
   type UpdateLandofileIncludesOptions,
+  updateLandofileIncludes,
 } from "./include-update.ts";
 export {
-  verifyLandofileIncludes,
-  type IncludeVerifyStatus,
   type IncludeVerifyEntry,
   type IncludeVerifyMismatch,
   type IncludeVerifyReport,
+  type IncludeVerifyStatus,
   type VerifyLandofileIncludesOptions,
+  verifyLandofileIncludes,
 } from "./include-verify.ts";

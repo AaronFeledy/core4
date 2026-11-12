@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { makeTraefikRouterService } from "@lando/proxy-traefik";
 import { AppId, RoutePlan, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { Effect, Schema } from "effect";
 import { prioritizeRoutes } from "../../../src/planner/route-identity.ts";
 import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
 

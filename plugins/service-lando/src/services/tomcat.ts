@@ -1,16 +1,13 @@
-import { Effect, Schema } from "effect";
-
 import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 import {
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-import { tcpProbe } from "./_tcp-probe.ts";
-
 import {
   type ListenerContract,
   assertListenerConfig,
@@ -19,6 +16,7 @@ import {
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { TOMCAT_CATALOG } from "./generated/tomcat-catalog.ts";
 
@@ -34,11 +32,11 @@ export const TOMCAT_LISTENER = {
   },
 } as const satisfies ListenerContract;
 export const APP_MOUNT_TARGET = "/app";
-const TomcatFeatureConfig = Schema.Struct({
-  webroot: Schema.String,
-  ownsImageConfig: Schema.Boolean,
-  major: Schema.Literals(["9", "10", "11"]),
-});
+const TomcatMajor = Schema.Literals(["9", "10", "11"]);
+const TomcatFeatureConfig = Schema.Union([
+  Schema.Struct({ ownsImageConfig: Schema.Literal(true), webroot: Schema.String, major: TomcatMajor }),
+  Schema.Struct({ ownsImageConfig: Schema.Literal(false), major: TomcatMajor }),
+]);
 const VERSIONS = ["9", "10", "11"] as const;
 const ARTIFACTS = {
   "9": TOMCAT_CATALOG["9"].image,
@@ -53,13 +51,13 @@ const tomcatListener = (ownsImageConfig: boolean): ListenerContract =>
 
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const { webroot, ownsImageConfig, major } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
-  assertListenerConfig(service, tomcatListener(ownsImageConfig));
+  const config = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
+  assertListenerConfig(service, tomcatListener(config.ownsImageConfig));
   const port = plannedPort(service, TOMCAT_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
   ctx.setHealthcheck(tcpProbe(port, 20));
-  if (ownsImageConfig) {
+  if (config.ownsImageConfig) {
     ctx.addBuildStep({
       id: "service-lando.tomcat:server-config",
       phase: "build",
@@ -69,7 +67,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
         "-c",
         'set -eu; printf \'%s\' "$1" > "${CATALINA_HOME:-/usr/local/tomcat}/conf/server.xml"',
         "lando-tomcat-config",
-        TOMCAT_CATALOG[major].serverXml.replace("{{HTTP_PORT}}", String(port)),
+        TOMCAT_CATALOG[config.major].serverXml.replace("{{HTTP_PORT}}", String(port)),
       ],
     });
     ctx.addBuildStep({
@@ -79,7 +77,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
       command: [
         "sh",
         "-c",
-        `set -eu; context_dir="\${CATALINA_HOME:-/usr/local/tomcat}/conf/Catalina/localhost"; mkdir -p "$context_dir"; printf '%s\\n' '<Context docBase="${webroot}"/>' > "$context_dir/ROOT.xml"`,
+        `set -eu; context_dir="\${CATALINA_HOME:-/usr/local/tomcat}/conf/Catalina/localhost"; mkdir -p "$context_dir"; printf '%s\\n' '<Context docBase="${config.webroot}"/>' > "$context_dir/ROOT.xml"`,
       ],
     });
   } else {
@@ -118,7 +116,16 @@ const makeTomcatServiceType = (id: string, major: (typeof VERSIONS)[number]): Se
   schema: TomcatServiceConfig,
   resolve: (input) => {
     return serviceTypeResolve(id, `Failed to resolve ${id}`, () => {
-      const webroot = resolveWebroot("tomcat", input.service.webroot, input.service.appMount);
+      const resolveRoot = () => resolveWebroot("tomcat", input.service.webroot, input.service.appMount);
+      const ownsImageConfig =
+        !(input.service.build !== undefined && "context" in input.service.build) &&
+        (input.service.image === undefined || input.service.image === ARTIFACTS[major]);
+      const tomcatConfig = ownsImageConfig
+        ? { ownsImageConfig, webroot: resolveRoot(), major }
+        : { ownsImageConfig, major };
+      // A custom image or build without the app mount gets no ROOT context and no LANDO_WEBROOT,
+      // so nothing uses webroot; leaving it unclaimed rejects an authored one as unused.
+      const webroot = tomcatConfig.webroot ?? (input.service.appMount === false ? undefined : resolveRoot());
       return {
         base: "lando",
         normalizedConfig: {
@@ -130,15 +137,9 @@ const makeTomcatServiceType = (id: string, major: (typeof VERSIONS)[number]): Se
         features: [
           {
             id: TOMCAT_FEATURE_ID,
-            config: {
-              webroot,
-              major,
-              ownsImageConfig:
-                !(input.service.build !== undefined && "context" in input.service.build) &&
-                (input.service.image === undefined || input.service.image === ARTIFACTS[major]),
-            },
+            config: tomcatConfig,
           },
-          { id: "lando.env", config: { webroot } },
+          { id: "lando.env", config: webroot === undefined ? {} : { webroot } },
           { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
       };

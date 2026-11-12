@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import { StateStoreError } from "@lando/sdk/errors";
 import type { StateRoot } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 export const validateCacheSpec = (spec: {
   readonly root: StateRoot;

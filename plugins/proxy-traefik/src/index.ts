@@ -6,8 +6,6 @@
  * importing the manifest `module:` path (which cannot resolve in a
  * `bun build --compile` binary).
  */
-import { Layer, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
 
 import {
   type GlobalServiceContributionEffect,
@@ -15,6 +13,8 @@ import {
   definePlugin,
 } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { routerBindAddressCheck } from "./doctor-bind-address.ts";
@@ -31,22 +31,7 @@ import { makeSocketProxyHostMaintainer } from "./socket-proxy-host-maintainer.ts
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
-export { layer, makeTraefikRouterService, renderTraefikDynamicConfig } from "./proxy.ts";
 export { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
-export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
-export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
-export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
-export { routerBindAddressCheck } from "./doctor-bind-address.ts";
-export { legacyRouteFilesCheck } from "./doctor-legacy-routes.ts";
-export { socketProxyHelperDoctorCheck } from "./doctor-socket-proxy-helper.ts";
-export { routerFileWatcherCheck } from "./doctor-watcher.ts";
-export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
-export { appCertificateFiles } from "./proxy-paths.ts";
-export {
-  TRAEFIK_DIAGNOSTICS_COMMAND,
-  TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
-  TRAEFIK_DIAGNOSTICS_IMAGE,
-} from "./global-services/diagnostics.ts";
 export {
   TRAEFIK_DIAGNOSTICS_CONTAINER_DIR,
   TRAEFIK_DIAGNOSTICS_HOSTNAME,
@@ -56,6 +41,21 @@ export {
   renderTraefikDiagnosticNginxConfig,
   renderTraefikFallbackConfig,
 } from "./diagnostics.ts";
+export { routerBindAddressCheck } from "./doctor-bind-address.ts";
+export { legacyRouteFilesCheck } from "./doctor-legacy-routes.ts";
+export { socketProxyHelperDoctorCheck } from "./doctor-socket-proxy-helper.ts";
+export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
+export { routerFileWatcherCheck } from "./doctor-watcher.ts";
+export {
+  TRAEFIK_DIAGNOSTICS_COMMAND,
+  TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
+  TRAEFIK_DIAGNOSTICS_IMAGE,
+} from "./global-services/diagnostics.ts";
+export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
+export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
+export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
+export { layer, makeTraefikRouterService, renderTraefikDynamicConfig } from "./proxy.ts";
+export { appCertificateFiles } from "./proxy-paths.ts";
 export const routerServices = new Map([
   [
     "traefik",

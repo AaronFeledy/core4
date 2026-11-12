@@ -3,11 +3,10 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
-
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
-import { EventService, ProcessRunner } from "@lando/sdk/services";
 import type { LandoEvent, ProcessStreamChunk } from "@lando/sdk/services";
+import { EventService, ProcessRunner } from "@lando/sdk/services";
+import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner";
 import { awaitSinkResult, resolveProcessCgroup } from "../../src/services/process-runner";
 

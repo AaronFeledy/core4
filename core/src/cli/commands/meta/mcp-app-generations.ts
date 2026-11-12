@@ -1,10 +1,9 @@
-import { Context, Effect, type Scope } from "effect";
-
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { makeAppGenerations } from "@lando/engine/runtime/app-generations";
 import type { OperationDiscovery } from "@lando/landofile/operation-discovery";
 import type { McpAppGeneration, McpAppGenerationFailure, McpAppGenerationsShape } from "@lando/mcp/apps";
 import { RedactionService } from "@lando/redaction/service";
+import { Context, Effect, type Scope } from "effect";
 
 import type {
   AppGenerationServices,

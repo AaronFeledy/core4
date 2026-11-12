@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { sha256Hex } from "@lando/sdk/digest";
-import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -16,8 +16,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SOCKET,

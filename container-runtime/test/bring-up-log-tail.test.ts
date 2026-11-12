@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Deferred, Duration, Effect, Exit, Fiber, Stream } from "effect";
-import { TestClock } from "effect/testing";
-
 import { ProviderInternalError, ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -13,6 +10,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
+import { Cause, DateTime, Deferred, Duration, Effect, Exit, Fiber, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { serviceContainerName } from "../src/plan.ts";
@@ -46,7 +45,7 @@ const textEncoder = new TextEncoder();
 const servicePlan = (
   name: ServicePlan["name"],
   primary: boolean,
-  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds" | "sqlite">> = {},
 ): ServicePlan => ({
   name,
   type: "generic",

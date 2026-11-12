@@ -1,5 +1,3 @@
-import { Effect, Stream } from "effect";
-
 import {
   UstarHeaderError,
   TAR_BLOCK_SIZE as blockSize,
@@ -7,6 +5,7 @@ import {
   padToBlock,
 } from "@lando/container-runtime/tar";
 import { ArchiveFormatError } from "@lando/sdk/errors";
+import { Effect, Stream } from "effect";
 
 export type ArchiveStreamFormat = "tar" | "tar.gz" | "tar.zst";
 

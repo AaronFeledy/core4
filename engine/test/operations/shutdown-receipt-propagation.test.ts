@@ -32,7 +32,7 @@ const stopProvider = (destroy: RuntimeProviderShape["destroy"]) => ({
   ...TestRuntimeProvider,
   id: "lando" as const,
   isAvailable: Effect.succeed(true),
-  getStatus: Effect.succeed({ running: true }),
+  getStatus: Effect.succeed({ state: "running" as const }),
   inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
   destroy,
 });
@@ -92,7 +92,7 @@ test("ownership-only stop never fabricates shutdownObservations", async () => {
       }),
     providerOverrides: {
       isAvailable: Effect.succeed(true),
-      getStatus: Effect.succeed({ running: true }),
+      getStatus: Effect.succeed({ state: "running" as const }),
       cleanupOwnedResources: () =>
         Effect.succeed({
           servicesRemoved: [ServiceName.make("leftover")],

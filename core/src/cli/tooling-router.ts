@@ -1,7 +1,8 @@
+import { compileBunShellScriptCommand } from "@lando/engine/cache/command-compiler";
+import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
+import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
+import { findAppRoot } from "@lando/landofile/discovery";
 import { resolveLandoRoots } from "@lando/paths";
-import { Effect } from "effect";
-import { CliInvocation } from "../runtime/invocation-context";
-
 import {
   type BunShellScriptEmptyError,
   type BunShellScriptFrontMatterError,
@@ -12,11 +13,8 @@ import {
   type NotImplementedError,
   ToolingCommandUnavailableError,
 } from "@lando/sdk/errors";
-
-import { compileBunShellScriptCommand } from "@lando/engine/cache/command-compiler";
-import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
-import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
-import { findAppRoot } from "@lando/landofile/discovery";
+import { Effect } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 import {
   type BuiltInCommandEntry,
   builtInCommandEntries,
@@ -31,14 +29,26 @@ import { readCliAppCommandCache } from "./tooling-command-cache";
 import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./tooling-route";
 
 export {
-  type ToolingRoute,
   type NormalizedToolingRoute,
+  type ToolingRoute,
   toolingHelpRequested,
   toolingVersionRequested,
 } from "./tooling-route";
 
 const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
   builtInCommandEntries.find((entry) => entry.spec.id === commandId);
+
+/**
+ * The live error of a script route, or undefined when the script resolves. Invocation re-resolves
+ * every script itself; help checks here so it never prints a page for a script that cannot run,
+ * such as one a collision added after the index was built.
+ */
+export const unavailableScriptError = (route: ToolingRoute) =>
+  route._tag === "bun-script"
+    ? resolveBunShellScript(route.appRoot, route.commandId).pipe(
+        Effect.match({ onFailure: (error) => error, onSuccess: () => undefined }),
+      )
+    : Effect.succeed(undefined);
 
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
@@ -208,7 +218,25 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   const entry = cache.entries.find((candidate) => candidate.id === commandId);
   if (entry === undefined) {
     if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
-    const script = yield* resolveBunShellScript(appRoot, name);
+    const resolved = yield* Effect.result(resolveBunShellScript(appRoot, name));
+    // A script added since the index was built still answers as `app:<name>`, broken or not.
+    if (resolved._tag === "Failure")
+      return bunScriptRoute(
+        {
+          id: commandId,
+          summary: "Unavailable script",
+          hidden: false,
+          source: "bun-script",
+          loadError: {
+            _tag: resolved.failure._tag,
+            message: resolved.failure.message,
+            remediation: resolved.failure.remediation,
+          },
+        },
+        appRoot,
+        cache,
+      );
+    const script = resolved.success;
     if (script !== undefined) {
       const entry = yield* Effect.fromResult(compileBunShellScriptCommand(script));
       return { ...bunScriptRoute(entry, appRoot, cache), relativePath: script.relativePath };

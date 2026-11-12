@@ -21,12 +21,12 @@ import type {
   ComposeAppFeaturesResult,
 } from "./app-feature-types.ts";
 
-export type * from "./app-feature-types.ts";
-export { viewOf } from "./app-feature-types.ts";
 export {
   decodeAppFeatureConfig,
   snapshotAppFeatureEnv,
 } from "./app-feature-selection.ts";
+export type * from "./app-feature-types.ts";
+export { viewOf } from "./app-feature-types.ts";
 
 const conflictFromCause = (
   cause: Cause.Cause<AppFeatureError>,

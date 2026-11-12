@@ -1,4 +1,5 @@
 import { Effect, Result, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 
 import type { RecipeDecomposeError } from "../errors/recipe.ts";
 import { type RecipeDecomposeInput, RecipeDecomposeResult } from "../schema/recipe-decompose.ts";
@@ -115,7 +116,7 @@ export const runRecipeDecomposerContractSuite = Effect.fnUntraced(function* (
     "provenance preserves stable recipe id and version",
   );
   yield* Schema.encodeUnknownEffect(RecipeDecomposeResult)(result, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(() => failure("result encodes through RecipeDecomposeResult")),
+    mapFailures(() => failure("result encodes through RecipeDecomposeResult")),
   );
   const repeated = yield* succeed(harness.validInput);
   yield* requireContract(deepEquals(result, repeated), "identical input produces deterministic results");

@@ -1,7 +1,6 @@
+import { type TerminalPalette, terminalPalette } from "@lando/renderer/palette";
 import { renderPlainLine } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
-
-import { type TerminalPalette, terminalPalette } from "@lando/renderer/palette";
 import { truncateToWidth, wrapWordsToWidth } from "./terminal-width.ts";
 
 export * from "@lando/sdk/renderer";

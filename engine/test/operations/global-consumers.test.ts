@@ -83,6 +83,28 @@ test("protects legacy routed apps using the actual configured router id", () => 
   expect(resolve([disabled], [row(disabled)], ["router-custom"]).consumers).toEqual([]);
 });
 
+test("#2138 a legacy routed app makes impact uncertain when no router is selectable", () => {
+  // Given: a running routed app that recorded no router, and no selectable router to attribute it to.
+  const routed = app("legacy", { requires: [], routed: true });
+
+  // When
+  const impact = resolveGlobalConsumerImpact({
+    providerId,
+    selectedIds: ["traefik"],
+    routerId: undefined,
+    plans: [routed],
+    services: [row(routed)],
+  });
+
+  // Then: the dependency is reported as unknown instead of silently dropping protection.
+  expect(impact).toEqual({
+    consumers: [],
+    uncertainties: [
+      "Running app legacy recorded no router and no router is selectable; its router dependency is unknown.",
+    ],
+  });
+});
+
 test("#1941 protects the applied router's services after the configured router changes", () => {
   const planned = {
     ...app("custom-routed", { requires: ["gateway"], routed: true }),

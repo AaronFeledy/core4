@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
-
 import { CommandAliasConflictError, LandofileValidationError, PluginLoadError } from "@lando/sdk/errors";
 import {
   type LandofileShape,
@@ -28,6 +26,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import * as AppCacheService from "../../src/cache/service.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
@@ -501,5 +500,6 @@ test("plans when the first service contributor disables a reserved name claimed 
     expect(effectiveToolingForPlan(plan)?.run).toMatchObject({ service: "a", disabled: true });
   });
 });
+
 import { compileTestLandofile, planTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

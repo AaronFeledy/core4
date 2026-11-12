@@ -1,9 +1,9 @@
-import { Duration, Effect, Ref, Schema } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type AppPlan, type ServiceHealthObservation, ServiceRunObservation } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
+import { Duration, Effect, Ref, Schema } from "effect";
 
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { redactDetails, redactorFor } from "../redact.ts";
@@ -100,7 +100,7 @@ export const waitForServiceHealth = Effect.fn("RuntimeProvider.waitForServiceHea
     },
     attempt,
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       unavailableFromProbe(ctx, {
         service,
         attempts: 0,

@@ -1,4 +1,5 @@
 import { sameRealpath } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { type AppPlan, type AppRef, fileSyncInvalidationRequired } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -6,10 +7,10 @@ import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { type PendingStart, matchesRecordedTargets } from "./accelerated-start-record.ts";
+import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { acquireFileSyncEngine, requireFileSyncProvider } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
-import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 
@@ -30,7 +31,7 @@ export const recordedSessionInventory = Effect.fnUntraced(function* (
   if (bundle.kind !== "accelerated" || bundle.id !== record.engineId)
     return yield* Effect.fail(resumeError(record, "The recorded engine disagrees with the executable plan."));
   const engine = yield* acquireFileSyncEngine(record.engineId).pipe(
-    Effect.mapError((cause) => resumeError(record, "Resume requires the recorded file-sync engine.", cause)),
+    mapFailures((cause) => resumeError(record, "Resume requires the recorded file-sync engine.", cause)),
   );
   const sessions = yield* engine.listSessions({ app });
   const identities = new Set<string>();

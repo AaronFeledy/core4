@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { LandofileParseError } from "@lando/sdk/errors";
-import { parseLandofile } from "@lando/sdk/landofile";
-import { override, reset } from "@lando/sdk/landofile";
+import { override, parseLandofile, reset } from "@lando/sdk/landofile";
 import { Effect, Result } from "effect";
 
 test.each([

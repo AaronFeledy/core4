@@ -77,6 +77,7 @@ export const locateVolume = Effect.fn("RuntimeProvider.locateVolume")(
       return yield* Schema.decodeUnknownEffect(VolumeLocator)({
         coordinationKey: key,
         nativeName: ref.store,
+        presence: "absent",
       });
     }
     if (response.status !== 200)
@@ -92,6 +93,7 @@ export const locateVolume = Effect.fn("RuntimeProvider.locateVolume")(
     return yield* Schema.decodeUnknownEffect(VolumeLocator)({
       coordinationKey: key,
       nativeName: volume.Name,
+      presence: "present",
       ...(resolution.identity === undefined ? {} : { identity: resolution.identity }),
     });
   },

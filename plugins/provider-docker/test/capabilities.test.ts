@@ -5,8 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
-import { Effect, Exit, Stream } from "effect";
-
 import {
   dockerCapabilitiesForHost,
   dockerCapabilitiesForPlatform,
@@ -22,6 +20,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { Effect, Exit, Stream } from "effect";
 
 const listen = (server: Server, socketPath: string): Promise<void> =>
   new Promise((resolve, reject) => {

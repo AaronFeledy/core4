@@ -65,6 +65,14 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     mounts.push({ ...entry, origin: "service", type: "volume", target: parsed.value });
   }
 
+  if (draft.sqlite !== undefined && (draft.connection !== undefined || draft.nonSqlCreds !== undefined)) {
+    return new ServiceFeatureError({
+      message: "SQLite cannot coexist with database connections or non-SQL credentials.",
+      feature: "sqlite",
+      remediation: "Publish one database or credential target per service.",
+    });
+  }
+
   return {
     name: draft.name,
     type: draft.type,
@@ -72,11 +80,13 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     primary: draft.primary,
     ...pickDraftOptionalServicePlanFields(draft),
     environment: sortRecord(draft.environment),
-    ...(draft.connection !== undefined
-      ? { connection: draft.connection }
-      : draft.nonSqlCreds === undefined
-        ? {}
-        : { nonSqlCreds: draft.nonSqlCreds }),
+    ...(draft.sqlite !== undefined
+      ? { sqlite: draft.sqlite }
+      : draft.connection !== undefined
+        ? { connection: draft.connection }
+        : draft.nonSqlCreds === undefined
+          ? {}
+          : { nonSqlCreds: draft.nonSqlCreds }),
     mounts,
     endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
     routes: [],

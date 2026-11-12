@@ -1,8 +1,9 @@
-import { Effect } from "effect";
-
+import { collectProxyUrls } from "@lando/redaction/plan-values";
 import { type ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
+import { isSecretEnvName } from "@lando/sdk/secrets";
 import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { type BuildContextEntry, packBuildContext, tarStream, tarText } from "./build-context.ts";
 import { type PreparedBuildStep, copyInstructions, prepareDerivedBuild } from "./image-build-ca.ts";
@@ -159,8 +160,16 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
   const needsInheritedUser = service.user !== undefined || steps.some((step) => step.user !== undefined);
   const tag = deterministicRef(input);
   let digest: string | undefined;
+  // Ordinary build args are public and often short ("1", "22"); treating one as a secret would blank
+  // every error that happens to contain it.
   const secretValues =
-    artifact?.kind === "build" && artifact.args !== undefined ? Object.values(artifact.args) : [];
+    artifact?.kind === "build" && artifact.args !== undefined
+      ? Object.entries(artifact.args).flatMap(([name, value]) => (isSecretEnvName(name) ? [value] : []))
+      : [];
+  // Proxy args carry userinfo the daemon may echo; a proxy under any other key is still a credential.
+  const proxyUrls = artifact?.kind === "build" ? collectProxyUrls(artifact.args) : [];
+  const streamOptions = options.api.stream === undefined ? {} : { stream: options.api.stream };
+  const outputOptions = input.onOutput === undefined ? {} : { onOutput: input.onOutput };
   if (artifact?.kind === "build") {
     const packed = yield* Effect.tryPromise({
       try: () => packBuildContext(artifact.context),
@@ -189,11 +198,14 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
     const baseTag = steps.length === 0 ? tag : `${tag}-base`;
     digest = yield* requestContainerBuild({
       request,
+      ...streamOptions,
       options,
+      ...outputOptions,
       path: buildPath(input, baseTag, false),
       tag: baseTag,
       stdin,
       secretValues,
+      proxyUrls,
     });
     if (steps.length > 0) {
       const inheritedUser = needsInheritedUser
@@ -212,11 +224,14 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
       ];
       digest = yield* requestContainerBuild({
         request,
+        ...streamOptions,
         options,
+        ...outputOptions,
         path: buildPath(input, tag, true),
         tag,
         stdin: tarStream(entries),
         secretValues,
+        proxyUrls,
       });
     }
   } else if (artifact?.kind === "ref" && steps.length > 0) {
@@ -230,8 +245,11 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         inheritedUser: "root",
         finalUser: "root",
       });
+      // This FROM-only build only gives the source image a local name to inspect. Its output is the
+      // engine listing every tag that shares the image, so it is not forwarded.
       yield* requestContainerBuild({
         request,
+        ...streamOptions,
         options,
         path: buildPath(input, baseRef, true),
         tag: baseRef,
@@ -239,6 +257,7 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
           { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(baseDockerfile) },
         ]),
         secretValues,
+        proxyUrls,
       });
     }
     const inheritedUser = needsInheritedUser
@@ -257,11 +276,14 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
     ];
     digest = yield* requestContainerBuild({
       request,
+      ...streamOptions,
       options,
+      ...outputOptions,
       path: buildPath(input, tag, true),
       tag,
       stdin: tarStream(entries),
       secretValues,
+      proxyUrls,
     });
   } else {
     return yield* Effect.fail(

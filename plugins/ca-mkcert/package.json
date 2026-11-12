@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@lando/sdk": "workspace:*",
+    "@lando/state-store": "workspace:*",
     "effect": "catalog:"
   },
   "scripts": {

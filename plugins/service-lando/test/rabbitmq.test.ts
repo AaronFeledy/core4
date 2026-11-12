@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { LandofileShape, RabbitMQServiceConfig, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
-
+import { Effect, Schema } from "effect";
 import {
   RABBITMQ_FEATURE_ID,
   rabbitmq3ServiceType,
@@ -12,6 +9,7 @@ import {
   rabbitmqServiceFeature,
   rabbitmqServiceType,
 } from "../src/services/rabbitmq.ts";
+import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { nativeListenPortSuite } from "./support/listen-port.ts";
 

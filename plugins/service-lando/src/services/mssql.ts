@@ -1,21 +1,18 @@
-import { sha256Hex } from "@lando/sdk/digest";
-
-import { Effect, Schema } from "effect";
-
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
+import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
+import { dataNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
+import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   addEnvRecord,
   commandHealthcheck,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
-
-import { dataNameFor } from "../app-name.ts";
-import { connectionFor } from "./_connection-helpers.ts";
-import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
@@ -38,14 +35,11 @@ const ARTIFACTS = {
 const AMD64_HOST_ARCHES = new Set(["x64", "amd64", "x86_64"]);
 export const MSSQL_FEATURE_ID = "service-lando.mssql";
 
-const defaultRootPassword = (appName: string, serviceName: string): string =>
-  `Lando!${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
-
-const defaultCreds = (appName: string, serviceName: string) => ({
+const defaultCreds = (appName: string) => ({
   user: "sa",
-  password: defaultRootPassword(appName, serviceName),
+  password: MSSQL_DEFAULT_PASSWORD,
   database: appName,
-  rootPassword: defaultRootPassword(appName, serviceName),
+  rootPassword: MSSQL_DEFAULT_PASSWORD,
 });
 
 const sqlcmdToolingArgv = (port: number): readonly string[] => [
@@ -90,6 +84,7 @@ export const mssqlServiceFeature: ServiceFeatureDefinition = {
   id: MSSQL_FEATURE_ID,
   schema: MssqlFeatureConfig,
   priority: 600,
+  validateEffective: claimsCreds(MSSQL_FEATURE_ID),
   declareEndpoints: (ctx) =>
     Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(MSSQL_FEATURE_ID, "mssql service feature failed to apply", applyMssqlFeature),
@@ -149,7 +144,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
       const creds = resolveServiceCreds({
         family: "mssql",
         environment: authoredEnv,
-        defaults: defaultCreds(appName, input.name),
+        defaults: defaultCreds(appName),
         ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
       });
       const port = plannedPort(input.service, MSSQL_LISTENER);

@@ -1,8 +1,7 @@
-import { Result } from "effect";
-
 import { ConfigTranslatorConflictError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { PluginManifest } from "@lando/sdk/schema";
+import { Result } from "effect";
 
 type MapSlot =
   | "runtimeProviders"

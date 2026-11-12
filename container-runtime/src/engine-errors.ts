@@ -1,7 +1,6 @@
-import { Effect } from "effect";
-
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { ServiceSelector } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { redactDetails, redactResponseDetails, redactString, redactorFor, withApiReason } from "./redact.ts";
@@ -95,7 +94,9 @@ export const parseEngineJson = (
         providerId: ctx.providerId,
         operation,
         message: options?.message ?? `provider-${ctx.providerId} API returned invalid JSON.`,
-        ...(options?.details === undefined ? {} : { details: options.details }),
+        ...(options?.details === undefined
+          ? {}
+          : { details: redactDetails(options.details, redactorFor(ctx)) }),
         remediation: options?.remediation ?? ctx.remediation,
         cause,
       }),

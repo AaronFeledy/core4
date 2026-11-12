@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { mapFailures } from "../command-result/failure.ts";
 import { LandofileValidationError } from "../errors/landofile.ts";
 import { LandofileAuthoringShape } from "../schema/landofile-authoring.ts";
 import { validationIssuesFromCause } from "../schema/validation-issue.ts";
@@ -13,7 +14,7 @@ export const decodeLandofileAuthoringLayer = (file: string, input: unknown) =>
     }).pipe(
       Effect.flatMap(Schema.encodeEffect(LandofileAuthoringShape)),
       Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new LandofileValidationError({
             file,

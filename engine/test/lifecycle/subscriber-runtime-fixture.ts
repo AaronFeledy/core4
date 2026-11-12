@@ -1,6 +1,3 @@
-import { Effect, Layer, Schema } from "effect";
-import * as HttpClient from "effect/http/HttpClient";
-
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -17,6 +14,8 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { makeTestStateStore } from "@lando/state-store/testing";
+import { Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { layer as subscriberLayer } from "../../src/lifecycle/subscribers.ts";
 import { layerWith as eventLayer } from "../../src/services/event-service.ts";

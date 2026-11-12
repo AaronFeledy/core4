@@ -92,6 +92,8 @@ export const cgroupsV2DelegationRemediation = (host: CgroupsRemediationHost = {}
 };
 
 export class RootlessPrerequisiteError extends ProviderUnavailableError {
+  declare readonly details: { readonly prerequisite: RootlessPrerequisite };
+
   constructor(prerequisite: RootlessPrerequisite, cause?: unknown, host: CgroupsRemediationHost = {}) {
     const copy = rootlessPrerequisiteCopy[prerequisite];
     const remediation =
@@ -107,7 +109,7 @@ export class RootlessPrerequisiteError extends ProviderUnavailableError {
   }
 
   get prerequisite(): RootlessPrerequisite {
-    return (this.details as RootlessPrerequisiteDetails).prerequisite;
+    return this.details.prerequisite;
   }
 }
 

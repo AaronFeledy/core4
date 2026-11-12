@@ -1,6 +1,4 @@
-import { Clock, DateTime, Duration, Effect, Option, Ref, type Scope, Stream } from "effect";
-import { serviceContainerName } from "../plan.ts";
-
+import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import {
   ProviderInternalError,
   ProviderUnavailableError,
@@ -18,7 +16,7 @@ import {
   type ExecTarget,
   type ProviderError,
 } from "@lando/sdk/services";
-
+import { Clock, DateTime, Duration, Effect, Option, Ref, type Scope, Stream } from "effect";
 import type {
   EngineHttpApi,
   EngineHttpRequest,
@@ -26,6 +24,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
+import { serviceContainerName } from "../plan.ts";
 import { httpResponseDetails, redactDetails, redactorFor } from "../redact.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 import { ContainerTransportError } from "../transport.ts";
@@ -275,10 +274,11 @@ const waitForExecCompletion = Effect.fnUntraced(function* (
       Effect.tap((outcome) => Ref.set(last, outcome)),
     ),
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       execFailure(session, {
         message: "Podman exec completion probe failed.",
-        details: { execId, cause },
+        details: { execId },
+        cause,
       }),
     ),
   );
@@ -310,10 +310,11 @@ const waitForExecCompletion = Effect.fnUntraced(function* (
       return now - last >= 500;
     }),
   ).pipe(
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       execFailure(session, {
         message: "Podman exec output drain probe failed.",
-        details: { execId, cause },
+        details: { execId },
+        cause,
       }),
     ),
   );
@@ -555,7 +556,7 @@ export const execStream = (
               });
             }),
           ),
-          Stream.mapError((error) => execStartFailure(session, target, error)),
+          mapStreamFailures((error) => execStartFailure(session, target, error)),
           command.tty === true
             ? Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk }))
             : options.validateAttach !== undefined
@@ -716,7 +717,7 @@ export const execStream = (
               Stream.interruptWhen(interruptOnSignal(command.signal)),
             );
           }),
-          // biome-ignore lint/correctness/noFlatMapIdentity: Effect Stream does not provide a flat combinator.
+          // biome-ignore lint/complexity/noFlatMapIdentity: Effect Stream does not provide a flat combinator.
         ).pipe(Stream.flatMap((startWithExit) => startWithExit));
       }),
     );

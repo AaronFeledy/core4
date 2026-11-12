@@ -1,6 +1,4 @@
-import { Context, type Effect, type Redacted, type Scope, type Stream } from "effect";
-import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
-
+import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
 import type {
   AppResolveError,
   ArtifactBuildError,
@@ -66,17 +64,20 @@ import type {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
+import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
 import type {
   DestroyOutcome,
   FileSyncQuiesceResult,
   ObservedServiceRemoval,
 } from "../schema/service-shutdown.ts";
+
 export type {
   DestroyOutcome,
   FileSyncQuiesceResult,
   ObservedServiceRemoval,
 } from "../schema/service-shutdown.ts";
+
 import type { PrivilegeService, ProcessResult } from "./process.ts";
 
 export type ProviderError =
@@ -118,10 +119,12 @@ export interface ProviderSetupOptions {
 
 export type ProviderSetupInspectOptions = Omit<ProviderSetupOptions, "privilege">;
 
-export interface ProviderStatus {
-  readonly running: boolean;
-  readonly message?: string;
-}
+/** Idle proves no workloads are running, but does not describe stored resources. */
+export const ProviderStatus = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("running"), message: Schema.optionalKey(Schema.String) }),
+  Schema.Struct({ state: Schema.Literal("idle"), message: Schema.optionalKey(Schema.String) }),
+]);
+export type ProviderStatus = typeof ProviderStatus.Type;
 
 export interface ProviderVersions {
   readonly provider: string;
@@ -134,6 +137,12 @@ export interface ArtifactBuildSpec {
   readonly service: ServiceName;
   readonly plan: AppPlan;
   readonly buildKey: string;
+  /**
+   * Receives the build's output text in arrival order: unredacted and not aligned to lines. The provider
+   * awaits each call before reading further, delivers every call before `buildArtifact` returns, and
+   * fails with the sink's error when the sink fails.
+   */
+  readonly onOutput?: (text: string) => Effect.Effect<void, ProviderInternalError>;
 }
 
 export interface ArtifactRef {
@@ -152,6 +161,8 @@ export interface ArtifactPullSpec {
    * `never` reuses a provider-local copy and fails without contacting the source when absent.
    */
   readonly policy?: ArtifactPullPolicy;
+  /** Platform to acquire, in os/arch or os/arch/variant form; omitted lets the engine choose its default. */
+  readonly platform?: string;
 }
 
 export interface ApplyOptions {
@@ -232,11 +243,29 @@ export type ExecChunk =
   | { readonly kind: "stdout" | "stderr"; readonly chunk: Uint8Array }
   | { readonly exitCode: number };
 
+export const EphemeralBindMount = Schema.Struct({
+  source: Schema.NonEmptyString,
+  target: Schema.NonEmptyString,
+  readOnly: Schema.optionalKey(Schema.Boolean),
+});
+export type EphemeralBindMount = typeof EphemeralBindMount.Type;
+
+export const EphemeralMountSource = Schema.Struct({
+  containerId: Schema.NonEmptyString,
+  readOnly: Schema.Boolean,
+});
+export type EphemeralMountSource = typeof EphemeralMountSource.Type;
+
 export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
   readonly mounts?: ReadonlyArray<VolumeMountPlan>;
+  readonly binds?: ReadonlyArray<EphemeralBindMount>;
+  /** Borrow the realized mounts of an existing service container. */
+  readonly mountsFrom?: EphemeralMountSource;
+  readonly user?: string;
+  readonly entrypoint?: ReadonlyArray<string>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;
@@ -347,16 +376,20 @@ export class RuntimeProviderRegistry extends Context.Service<
     /**
      * Applied plans, across every installed provider contribution, whose `identity.appRoot` exactly
      * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
-     * or contacts a runtime.
+     * or contacts a runtime. With `providerId`, only that provider's applied state is read.
      */
     readonly appliedPlansFor: (
       root: AbsolutePath,
+      providerId?: ProviderId,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */
     readonly appliedStateInventory?: (
       providerId: ProviderId,
     ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
+    readonly hasRecordedOwnership?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<boolean, ProviderUnavailableError | NoProviderInstalledError>;
     readonly assertAppliedStateReadable?: (
       plan: Pick<AppPlan, "id" | "provider">,
     ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
@@ -396,6 +429,8 @@ export class RuntimeProvider extends Context.Service<
     readonly displayName: string;
     readonly version: string;
     readonly platform: HostPlatform;
+    /** Engine endpoint this provider talks to. Pull checks are keyed by it, not by provider id alone. */
+    readonly runtimeIdentity?: string;
     readonly capabilities: ProviderCapabilities;
 
     readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;

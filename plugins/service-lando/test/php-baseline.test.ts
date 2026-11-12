@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
-
+import { Schema } from "effect";
+import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import {
   PHP_BASELINE_INI_PATH,
   PHP_BASELINE_STEP_ID,
@@ -12,7 +11,6 @@ import {
   phpBaselineIniCommand,
   renderPhpBaselineIni,
 } from "../src/services/php-baseline.ts";
-import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const BuildSteps = Schema.Struct({

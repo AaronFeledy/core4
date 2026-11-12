@@ -1,11 +1,10 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { type Context, Effect, Predicate } from "effect";
-
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect, Predicate } from "effect";
 import { bindSource } from "./authored-mount-entry.ts";
 
 type ComposeConfigFileInput = {
@@ -120,7 +119,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
     }
     const source = bindSource(definition.file, input.appRoot);
     const content = yield* input.fileSystem.readText(source).pipe(
-      Effect.mapError(
+      mapFailures(
         (cause) =>
           new LandofileValidationError({
             message: `Unable to read config file ${source} for configs.${name}: ${cause.message}. Create a readable file at that path or remove the configs entry.`,

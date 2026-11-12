@@ -3,17 +3,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import { Effect, Layer } from "effect";
-
-import { ConfigService, PathsService } from "@lando/sdk/services";
-
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
+import { landoServiceContainerName } from "@lando/sdk/schema";
+import { ConfigService, PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
-
-import { landoServiceContainerName } from "@lando/sdk/schema";
+import { Effect, Layer } from "effect";
+import { listServices, listServicesWithPrune, renderAppsListResult } from "../../src/cli/commands/list.ts";
 import {
   type AppsListEntry,
   appsFromContainerList,
@@ -24,7 +21,6 @@ import {
   isNamedPipeSocketPath,
   mergeAppsListEntries,
 } from "../../src/cli/commands/list-discovery.ts";
-import { listServices, listServicesWithPrune, renderAppsListResult } from "../../src/cli/commands/list.ts";
 
 const fakeConfigService = (dataRoot: string) =>
   Layer.succeed(
@@ -703,7 +699,7 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 
-  test("stops at the first successful socket and does not query later host sockets", async () => {
+  test("continues discovery across managed and other provider sockets", async () => {
     await withTempRoot(async (userDataRoot) => {
       const firstPath = join(userDataRoot, "managed.sock");
       const secondPath = join(userDataRoot, "host.sock");
@@ -715,7 +711,11 @@ describe("apps:list host-wide discovery", () => {
           response.end(
             request.url?.startsWith("/volumes") === true
               ? JSON.stringify({ Volumes: [] })
-              : JSON.stringify([labeled(appId, "web", { "dev.lando.provider": "lando" })]),
+              : JSON.stringify([
+                  labeled(appId, "web", {
+                    "dev.lando.provider": appId === "managed-app" ? "lando" : "docker",
+                  }),
+                ]),
           );
         });
         await new Promise<void>((resolve, reject) => {
@@ -728,8 +728,11 @@ describe("apps:list host-wide discovery", () => {
       const second = await listen(secondPath, "host-app");
       try {
         const discovered = await discoverRunningAppsFromSockets(userDataRoot, [firstPath, secondPath]);
-        expect(discovered.map((app) => app.appId)).toEqual(["managed-app"]);
-        expect(hits).toEqual([firstPath, firstPath]);
+        expect(discovered.map((app) => [app.appId, app.providerId])).toEqual([
+          ["managed-app", "lando"],
+          ["host-app", "docker"],
+        ]);
+        expect(hits).toEqual([firstPath, firstPath, secondPath, secondPath]);
       } finally {
         await new Promise<void>((resolve) => first.close(() => resolve()));
         await new Promise<void>((resolve) => second.close(() => resolve()));
@@ -737,7 +740,7 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 
-  test("skips filesystem access for named-pipe candidates and still stops at the first successful socket", async () => {
+  test("discovers apps through a unix socket after a named-pipe candidate", async () => {
     await withTempRoot(async (userDataRoot) => {
       const pipePath = "\\\\.\\pipe\\podman-lando";
       const unixPath = join(userDataRoot, "host.sock");

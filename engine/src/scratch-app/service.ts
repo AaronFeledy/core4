@@ -2,11 +2,11 @@ import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
+import type { UserAppResolution } from "@lando/landofile/app-resolution";
 import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
+import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-
-import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
-
 import {
   AppPlacementError,
   type DebuggerHostUnavailableError,
@@ -31,6 +31,7 @@ import {
   AppPlanner,
   BuildOrchestrator,
   DataMover,
+  EnvironmentValueResolver,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -50,10 +51,7 @@ import {
   type ScratchSummary,
   StateStore,
 } from "@lando/sdk/services";
-
-import type { UserAppResolution } from "@lando/landofile/app-resolution";
-import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import {
@@ -61,7 +59,11 @@ import {
   loadUserLandofileFile,
   makeEngineUserAppResolution,
 } from "../landofile/app-resolution.ts";
-import { captureGlobalConsumerAdmission } from "../operations/global-consumer-admission.ts";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
+import {
+  captureGlobalConsumerAdmission,
+  requireSelectableRouter,
+} from "../operations/global-consumer-admission.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
@@ -356,7 +358,7 @@ const applyScratchStartFlags = Effect.fnUntraced(function* (
     next = mounted;
   } else {
     next = yield* isolateScratchMounts(next, input.source.kind === "fork" && isolation === "baked").pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof ScratchAppError
           ? cause
           : scratchAppError("acquire", "Unable to publish scratch mount isolation warnings.", cause),
@@ -516,7 +518,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
           Effect.provideService(RuntimeProviderRegistry, providerRegistry),
           Effect.provide(context),
           Effect.asVoid,
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             cause instanceof AppPlacementError
               ? cause
               : scratchAppError("start", "Unable to resolve global app placement.", cause),
@@ -528,7 +530,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     Effect.flatMap((path) =>
       fileSystem.mkdir(path).pipe(
         Effect.as(path),
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           scratchAppError("ensureRoot", `Unable to create the scratch app directory at ${path}.`, cause),
         ),
       ),
@@ -567,7 +569,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     fileSystem
       .mkdir(path)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           scratchAppError("materialize", `Unable to create the scratch app directory at ${path}.`, cause),
         ),
       );
@@ -576,7 +578,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     openScratchPlan(planCache).pipe(
       Effect.provideService(StateStore, stateStore),
       Effect.flatMap((bucket) => bucket.set(plan)),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         scratchAppError("planCache", `Unable to write scratch plan cache at ${planCache}.`, cause),
       ),
     );
@@ -649,7 +651,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       }),
     ).pipe(
       Effect.asVoid,
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof ScratchAppError
           ? cause
           : scratchAppError(
@@ -670,13 +672,19 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   }) {
     const { id: scratchId, plan, planCache, landofileRouter } = request;
     const markedPlan = markScratchPlan(plan, scratchId);
+    // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
+    if (Option.isSome(proxy))
+      yield* requireSelectableRouter(markedPlan).pipe(
+        Effect.provideService(RouterService, proxy.value),
+        mapFailures((cause) => scratchAppError("start", cause.message, cause, cause.remediation)),
+      );
     const preparedOverlays = yield* prepareDebuggerOverlay(markedPlan);
     yield* ensureAppPlacement(
       { kind: "scratch", id: scratchId, root: markedPlan.root },
       markedPlan.provider,
     ).pipe(
       Effect.provideService(RuntimeProviderRegistry, providerRegistry),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof AppPlacementError
           ? cause
           : scratchAppError("start", `Unable to place scratch app ${scratchId}.`, cause),
@@ -689,7 +697,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       yield* preflightGlobalPlacement;
     const provider = yield* providerRegistry.select(markedPlan).pipe(
       Effect.flatMap(prepareProvider),
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
       ),
     );
@@ -698,15 +706,26 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       onNone: () => Effect.succeed(markedPlan),
       onSome: (orchestrator) =>
         withBuildProvider(orchestrator.build(markedPlan), provider).pipe(
-          Effect.mapError((cause) =>
+          mapFailures((cause) =>
             scratchAppError("start", `Unable to build scratch app ${scratchId}.`, cause),
           ),
         ),
     });
+    const certifiedPlan = yield* prepareServiceCertificates(builtPlan).pipe(
+      Effect.provide(context),
+      mapFailures((cause) =>
+        scratchAppError(
+          "start",
+          `Unable to prepare certificates for scratch app ${scratchId}: ${cause.message}`,
+          cause,
+          cause.remediation,
+        ),
+      ),
+    );
     yield* applyScratchStartup(
       {
         id: scratchId,
-        plan: builtPlan,
+        plan: certifiedPlan,
         preparedOverlays,
         ...(landofileRouter === undefined ? {} : { landofileRouter }),
       },
@@ -728,19 +747,19 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     const landofile = yield* resolution
       .loadUserLandofile(landofileService)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           cause instanceof LandofileVersionConstraintError ? cause : scratchForkUnresolvedError(),
         ),
       );
     const capabilities = yield* providerRegistry.capabilities.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
       ),
     );
     const sourcePlan = yield* planner
       .plan(landofile, capabilities)
       .pipe(
-        Effect.mapError((cause) =>
+        mapFailures((cause) =>
           scratchAppError("acquire", "Unable to plan the source app for the scratch fork.", cause),
         ),
       );
@@ -791,7 +810,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
           )
         : planner.plan(forkLandofile, capabilities, { kind: "scratch" });
     const forkPlan = yield* planForkPlan.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         cause instanceof ScratchAppError
           ? cause
           : scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
@@ -893,7 +912,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
 
     const landofilePath = join(scratchPaths.root, ".lando.yml");
     const landofile = yield* resolution.loadUserLandofileFile(landofilePath).pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         scratchAppError(
           "materialize",
           `Unable to load the rendered scratch Landofile at ${landofilePath}.`,
@@ -911,7 +930,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     };
 
     const capabilities = yield* providerRegistry.capabilities.pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
       ),
       Effect.tapError(() =>
@@ -922,7 +941,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       scratchPaths.root,
       planner.plan(recipeLandofile, capabilities, { kind: "scratch" }),
     ).pipe(
-      Effect.mapError((cause) => scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause)),
+      mapFailures((cause) => scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause)),
       Effect.tapError(() =>
         unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       ),
@@ -1148,7 +1167,7 @@ export const acquireScratchAppWithPlan = Effect.fn("ScratchAppService.acquireScr
   const scratchPaths = yield* service.paths(handle.id);
   const plan = yield* openScratchPlan(scratchPaths.planCache).pipe(
     Effect.flatMap((bucket) => bucket.get),
-    Effect.mapError((cause) =>
+    mapFailures((cause) =>
       scratchAppError("acquire", `Unable to read the cached plan for scratch app ${handle.id}.`, cause),
     ),
   );
@@ -1177,7 +1196,7 @@ export const readScratchLandofile = Effect.fnUntraced(function* (
   const content = yield* fileSystem
     .readText(landofilePath)
     .pipe(
-      Effect.mapError((cause) =>
+      mapFailures((cause) =>
         scratchAppError("run", `Unable to read the rendered scratch Landofile at ${landofilePath}.`, cause),
       ),
     );

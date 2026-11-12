@@ -1,25 +1,24 @@
 import { readFile, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-
-import { managedPodmanGlobalArgs } from "@lando/container-runtime/podman/managed-invocation";
+import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
+import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import {
+  isManagedPodmanLaunchStage,
+  managedPodmanGlobalArgs,
+} from "@lando/container-runtime/podman/managed-invocation";
 import {
   managedRuntimeDirForTeardown,
   terminateManagedPause,
 } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
+import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
-
-import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
-import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
-
 import {
   type ExecConmonReaper,
   managedConmonPathForPodman,
   reapLingeringExecConmons,
 } from "./exec-conmon.ts";
 import { providerContextForEnv } from "./provider-context.ts";
-
-import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 export interface ManagedRuntimeServicePaths {
   readonly platform: HostPlatform;
@@ -64,10 +63,10 @@ export interface RuntimeServiceSeams {
   readonly apiClient?: (socketPath: string) => EngineHttpApi;
   readonly terminationPolicy?: RetryPolicy;
   readonly privateRuntimeDir?: (runtimeDir: string) => Effect.Effect<string | undefined>;
-  readonly terminatePause?: (privateRuntimeDir: string) => Effect.Effect<void>;
+  readonly terminatePause?: (privateRuntimeDir: string) => Effect.Effect<boolean>;
 }
 
-type TerminationResult = { readonly terminated: boolean; readonly pid?: number };
+type TerminationResult = { readonly terminated: boolean; readonly pid?: number; readonly quiescent?: true };
 
 const pidPattern = /^\d+$/u;
 const emptyArgv: ReadonlyArray<string> = [];
@@ -121,9 +120,6 @@ const parsePid = (raw: string): number | undefined => {
   return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
 };
 
-const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
-  actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
-
 const ownedRuntimePid = Effect.fnUntraced(function* (
   spec: ManagedRuntimeServiceSpec,
   processSeam: ProcessSeam,
@@ -138,7 +134,7 @@ const ownedRuntimePid = Effect.fnUntraced(function* (
   if (!alive) return undefined;
 
   const argv = yield* processSeam.readCmdline(pid).pipe(Effect.catch(() => Effect.succeed(emptyArgv)));
-  return sameArgv(argv, [spec.command, ...spec.args]) ? pid : undefined;
+  return isManagedPodmanLaunchStage(argv, [spec.command, ...spec.args]) ? pid : undefined;
 });
 
 const bestEffortUnlink = (fsSeam: FsSeam, path: string): Effect.Effect<void> =>
@@ -270,7 +266,10 @@ export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOw
     if (quiescent && exited) {
       const runtimeDir = dirname(dirname(spec.command));
       const privateDir = yield* (seams.privateRuntimeDir ?? managedRuntimeDirForTeardown)(runtimeDir);
-      if (privateDir !== undefined) yield* (seams.terminatePause ?? terminateManagedPause)(privateDir);
+      if (privateDir === undefined) return result;
+      const pause = yield* (seams.terminatePause ?? terminateManagedPause)(privateDir);
+      if (pause === false) return result;
+      return { ...result, quiescent: true };
     }
 
     return result;

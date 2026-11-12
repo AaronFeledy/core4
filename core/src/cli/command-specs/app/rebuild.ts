@@ -1,8 +1,7 @@
-import { Effect } from "effect";
-
 import { rebuildApp } from "@lando/engine/operations/rebuild";
 import { withIncompleteStartNotice } from "@lando/engine/operations/start-incomplete-notice";
 import { RebuildAppResult, StreamFrame } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderRebuildAppResult } from "../../commands/rebuild";
 import { requireConfirmation } from "../../require-confirmation";
@@ -32,7 +31,10 @@ export const runRebuildCommand = Effect.fn("RebuildCommand.run")(function* (inpu
     yes: extractSpecFlags(input).yes === true,
     message: `Rebuild ${target}? This recreates containers and discards anything not in the Landofile or a volume.`,
   });
-  return yield* withIncompleteStartNotice(Effect.andThen(refreshAppCache(), rebuildApp(options)));
+  return yield* withIncompleteStartNotice(Effect.andThen(refreshAppCache(), rebuildApp(options)), {
+    verb: "rebuild",
+    ...(options.services === undefined ? {} : { services: options.services }),
+  });
 });
 
 export const rebuildSpec = {

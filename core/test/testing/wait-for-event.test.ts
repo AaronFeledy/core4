@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { TestClock } from "effect/testing";
-
-import { Cause, DateTime, Duration, Effect, Exit, Fiber, Schema } from "effect";
-
 import { EventService } from "@lando/core/services";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
+import { Cause, DateTime, Duration, Effect, Exit, Fiber, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { waitForEvent } from "../../src/testing/events.ts";
 
 const appRefFixture = {

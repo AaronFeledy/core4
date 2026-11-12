@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream, Struct } from "effect";
-
 import { execApp } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -25,6 +23,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Stream, Struct } from "effect";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec";
@@ -116,7 +115,7 @@ const makeProvider = (
     isAvailable: Effect.succeed(true),
     planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
-    getStatus: Effect.succeed({ running: true }),
+    getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(

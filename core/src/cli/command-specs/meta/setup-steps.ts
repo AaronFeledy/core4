@@ -7,18 +7,18 @@
  * (deferred / installed / unavailable / satisfied) and returns the resulting
  * status. These are the side-effecting "steps" the command orchestration drives.
  */
+
+import { fileSyncSelectionInput } from "@lando/engine/plugins/file-sync-policy";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { NetworkTrust } from "@lando/http-client/network-trust";
 import {
   RedactionService,
   type RedactionServiceShape,
   createStandaloneRedactor,
 } from "@lando/redaction/service";
-import { Cause, Effect, Exit, Option, Result, Schema } from "effect";
-
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
 import { type FileSyncEngineShape, type FileSyncError, PathsService } from "@lando/sdk/services";
-
-import { fileSyncSelectionInput } from "@lando/engine/plugins/file-sync-policy";
-import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
-import { NetworkTrust } from "@lando/http-client/network-trust";
+import { Cause, Context, Effect, Exit, Option, Result, Schema } from "effect";
 import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../commands/setup-network-trust";
 import {
   type SetupReadinessRuntimeService,
@@ -157,8 +157,17 @@ export const makeSetupReadinessRecorder = (
   return {
     start: Effect.suspend(() => persist("in-progress")),
     finish: (exit) => {
-      if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)) return Effect.void;
-      return persist(Exit.isFailure(exit) ? "failed" : completedSetupReadinessStatus(readinessSteps));
+      if (Exit.isSuccess(exit)) return persist(completedSetupReadinessStatus(readinessSteps));
+      const cancelled =
+        Cause.hasInterrupts(exit.cause) &&
+        !exit.cause.reasons.some(
+          (reason) =>
+            (Cause.isFailReason(reason) || Cause.isDieReason(reason)) &&
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === undefined,
+        );
+      // A cancelled run stays in progress unless a step already failed; then doctor can name that step.
+      if (cancelled && !readinessSteps.some((step) => step.status === "failed")) return Effect.void;
+      return persist("failed");
     },
     setProvider: (value) => {
       providerId = value;

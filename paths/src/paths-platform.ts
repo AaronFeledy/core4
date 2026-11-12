@@ -44,8 +44,8 @@ export const joinFor =
   (platform: HostPlatform) =>
   (...segments: ReadonlyArray<string>): string => {
     const sep = separatorFor(platform);
-    const trailing = /[\\\/]+$/u;
-    const leading = /^[\\\/]+/u;
+    const trailing = /[\\/]+$/u;
+    const leading = /^[\\/]+/u;
     const parts: string[] = [];
     for (const [index, raw] of segments.entries()) {
       const segment =

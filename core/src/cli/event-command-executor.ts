@@ -1,21 +1,19 @@
-import { Cause, Context, Effect, Layer } from "effect";
-import { CliInvocation } from "../runtime/invocation-context";
-
-import { commandFailureCause } from "@lando/sdk/command-result";
-import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
-import { Renderer } from "@lando/sdk/services";
-
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
+import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import { type ShellRedactionCarrier, withShellRedactionTokens } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
 import { classifyLoweredEnvRedaction, planRedactionValues } from "@lando/redaction/plan-values";
 import { RedactionService } from "@lando/redaction/service";
 import * as RendererOutput from "@lando/renderer/output";
+import { commandFailureCause } from "@lando/sdk/command-result";
+import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
+import { Renderer } from "@lando/sdk/services";
+import { Cause, Context, Effect, Layer } from "effect";
+import { CliInvocation } from "../runtime/invocation-context";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
 import { type BuiltInCommandEntry, embeddingExemptErrorForCommand } from "./built-in-command-registry";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "./command-lifecycle";

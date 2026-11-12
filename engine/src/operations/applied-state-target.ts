@@ -1,6 +1,6 @@
 import { basename } from "node:path";
-import { Effect } from "effect";
-
+import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
@@ -16,9 +16,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-
-import { findAppRoot } from "@lando/landofile/discovery";
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { Effect } from "effect";
 import {
   type ResolvedAppTarget,
   loadUserLandofileAt,
@@ -184,7 +182,7 @@ export const resolveTeardownResolution = Effect.gen(function* () {
         const app: AppRef = { kind: "user", id: normalizeAppSlug(loaded.document.name ?? "app", ""), root };
         const registry = yield* RuntimeProviderRegistry;
         const providerId = yield* TeardownProvider;
-        const plans = (yield* registry.appliedPlansFor(root)).filter(
+        const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
           (plan) =>
             (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
         );

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-
 import * as SDK from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
 const settings = { enabled: true, path: "/ready", okCodes: [204], retries: 2, timeoutMs: 4000 };
 const metadata: typeof SDK.PlanMetadata.Encoded = {

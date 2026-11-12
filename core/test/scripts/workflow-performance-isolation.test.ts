@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
+import type { IsolationWalk } from "../../../scripts/workflow-performance-isolation.ts";
 import {
   inspectOwnedPerformanceResources,
   parseListenEntries,
   processTouchesPerformanceRoot,
 } from "../../../scripts/workflow-performance-isolation.ts";
-import type { IsolationWalk } from "../../../scripts/workflow-performance-isolation.ts";
 import { isPerformanceRuntimeHelper } from "../../../scripts/workflow-performance-processes.ts";
 
 const root = "/private/sample/data";

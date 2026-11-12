@@ -7,8 +7,6 @@
  * compile time with template-source line/column; the Landofile parse seam maps
  * those into `LandofileParseError`.
  */
-import { Effect } from "effect";
-import Handlebars from "handlebars";
 
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import {
@@ -18,6 +16,8 @@ import {
   type TemplateEngine,
   TemplateRenderError,
 } from "@lando/sdk/template";
+import { Effect } from "effect";
+import Handlebars from "handlebars";
 
 const ENGINE_ID = "handlebars" as const;
 const EXTENSIONS = [".hbs", ".handlebars"] as const;

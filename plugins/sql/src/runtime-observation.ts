@@ -1,7 +1,7 @@
-import { Effect, Exit } from "effect";
-
+import { mapFailures } from "@lando/sdk/command-result";
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type { ServiceRuntimeIdentity } from "@lando/sdk/services";
+import { Effect, Exit } from "effect";
 
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
@@ -62,7 +62,7 @@ export const sameRuntime = (expected: ServiceRuntimeIdentity, actual: ServiceRun
   expected.containerId === actual.containerId && expected.imageIdentity === actual.imageIdentity;
 
 const inspectMatchingRuntime = (
-  deps: SqlRuntimeObservationDeps,
+  deps: Pick<SqlRuntimeObservationDeps, "inspect">,
   service: string,
   expected: ServiceRuntimeIdentity,
   running: boolean,
@@ -83,11 +83,24 @@ const inspectMatchingRuntime = (
   );
 
 export const verifyRuntimeState = (
-  deps: SqlRuntimeObservationDeps,
+  deps: Pick<SqlRuntimeObservationDeps, "inspect">,
   service: string,
   expected: ServiceRuntimeIdentity,
   running: boolean,
 ) => inspectMatchingRuntime(deps, service, expected, running).pipe(Effect.asVoid);
+
+export const resumeSqlRuntime = <R>(input: {
+  readonly deps: Pick<SqlRuntimeObservationDeps, "inspect" | "resume">;
+  readonly service: string;
+  readonly identity: ServiceRuntimeIdentity;
+  readonly readiness: Effect.Effect<void, unknown, R>;
+}) =>
+  input.deps
+    .resume(input.service, input.identity)
+    .pipe(
+      Effect.andThen(input.readiness),
+      Effect.andThen(verifyRuntimeState(input.deps, input.service, input.identity, true)),
+    );
 
 export const observeDatabaseVersion = (input: {
   readonly deps: SqlRuntimeObservationDeps;
@@ -124,7 +137,7 @@ export const observeDatabaseVersion = (input: {
         yield* input.deps
           .suspend(input.service, input.runtime)
           .pipe(
-            Effect.mapError(() =>
+            mapFailures(() =>
               recoveryUnavailable(
                 input.service,
                 "The inspected database runtime could not be safely resumed and returned to stopped.",
@@ -144,7 +157,7 @@ export const observeDatabaseVersion = (input: {
       yield* input.deps
         .suspend(input.service, input.runtime)
         .pipe(
-          Effect.mapError(() =>
+          mapFailures(() =>
             recoveryUnavailable(
               input.service,
               "The temporarily resumed database runtime could not be returned to stopped.",

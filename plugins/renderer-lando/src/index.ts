@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
 import { definePlugin } from "@lando/sdk/plugins";
 import type { InteractivePromptDriver, RendererContribution } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { landoRendererContribution } from "./renderer-runtime.ts";
 

@@ -1,13 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
-
 import { type PodmanApiClient, type PodmanServiceRunner, makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit } from "effect";
 import { catatonitFixture } from "./fixtures/catatonit.ts";
 
 const fakeServiceRunner: PodmanServiceRunner = {

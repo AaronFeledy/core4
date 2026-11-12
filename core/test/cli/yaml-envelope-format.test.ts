@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Option, Schema } from "effect";
-
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
-import { EventService } from "@lando/sdk/services";
-
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { EventService } from "@lando/sdk/services";
+import { Effect, Layer, Option, Schema } from "effect";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { CommandWarnings } from "../../src/cli/command-warnings.ts";

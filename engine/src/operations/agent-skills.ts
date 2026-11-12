@@ -1,5 +1,6 @@
-import { Effect, Schema } from "effect";
-
+import { findAppRoot } from "@lando/landofile/discovery";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
   type LandofileFormConflictError,
   type LandofileNotFoundError,
@@ -8,9 +9,7 @@ import {
 } from "@lando/sdk/errors";
 import { ManagedFileAction, type ManagedFileResult } from "@lando/sdk/schema";
 import { ManagedFileService } from "@lando/sdk/services";
-
-import { findAppRoot } from "@lando/landofile/discovery";
-import { findDiscoveredLandofilePath } from "@lando/landofile/service";
+import { Effect, Schema } from "effect";
 import { AGENT_SKILLS_OWNER, agentSkillManagedFiles } from "./agent-skills-pack.ts";
 import { canonicalAppRoot } from "./app-root-identity.ts";
 
@@ -59,7 +58,7 @@ export const resolveAgentSkillsAppRoot = Effect.fn("resolveAgentSkillsAppRoot")(
           : yield* findAppRoot(options.cwd);
       const appRoot = discovered ?? (yield* findDiscoveredLandofilePath(options.cwd)).appRoot;
       return yield* canonicalAppRoot(appRoot).pipe(
-        Effect.mapError(
+        mapFailures(
           (error) =>
             new ManagedFileError({
               reason: "path",

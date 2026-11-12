@@ -1,8 +1,8 @@
 import { join } from "node:path";
+import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
-import { Clock, Effect, Option, Result } from "effect";
-import { HostExecutionDefaults } from "../services/host-execution-context.ts";
+import { RedactionService } from "@lando/redaction/service";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
@@ -19,8 +19,6 @@ import type {
   ToolingInvocationInput,
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-
-import { RedactionService } from "@lando/redaction/service";
 import {
   type AppPlanner,
   ConfigService,
@@ -32,7 +30,8 @@ import {
   type ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Clock, Effect, Option, Result } from "effect";
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import {
@@ -43,18 +42,15 @@ import {
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
-import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
-
-import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
-import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
-import { compileToolingInvocations } from "./tooling-compile.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 import { resolveToolingPlan } from "./tooling-plan.ts";
+import { prepareToolingInvocation } from "./tooling-prepare.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
@@ -194,14 +190,14 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     sites: sitesUnder(sites, ["tooling", toolingLookupKey]),
     currentLandofile: landofile,
   });
-  const resolvedTask = yield* resolveToolingTaskShape(client.task, {}, client.sites);
-  const compiled = yield* compileToolingInvocations({
+  const compileOptions = {
     ...options,
     lookupKey: toolingLookupKey,
-    task: resolvedTask,
+    task: client.task,
     source,
     agentEnvAllowlist,
-  });
+  };
+  const compiled = yield* prepareToolingInvocation({ plan, options: compileOptions, sites: client.sites });
   const invocations = compiled.invocations;
   const planValues = yield* registerPlanRedaction(
     plan,

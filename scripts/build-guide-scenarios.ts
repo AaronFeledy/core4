@@ -19,15 +19,15 @@ import { renderScenarioTest } from "./guides/test-render.ts";
 import { variantsOf } from "./guides/variants.ts";
 
 export type * from "./guides/model.ts";
+export { publicTranscriptSuffixFromVariantString } from "./guides/public-transcript.ts";
 export {
-  parseGuideScenarioAst,
   buildPublicTranscript,
+  discoverGuideMdxFiles,
+  parseGuideScenarioAst,
   publicTranscriptVariantSuffix,
   renderScenarioTest,
   variantsOf,
-  discoverGuideMdxFiles,
 };
-export { publicTranscriptSuffixFromVariantString } from "./guides/public-transcript.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_GENERATED_GUIDE_TEST_ROOT = "test/scenarios/generated/guides";

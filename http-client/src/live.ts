@@ -1,4 +1,5 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mapFailures } from "@lando/sdk/command-result";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
 import { REDACTED } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
@@ -7,7 +8,9 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
+import { acceptedAdditionalCaPems } from "./additional-ca.ts";
 import { type DirectHttpTransport, directHttpRequest } from "./direct-http.ts";
+import { LocalCaTrustSource } from "./local-ca-trust.ts";
 import { requestWithNetworkTrust } from "./network-request.ts";
 import {
   NetworkTrust,
@@ -102,7 +105,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
           const controller = new AbortController();
           const scoped = yield* Effect.serviceOption(Scope.Scope);
           let published = false;
-          let status: number | undefined = undefined;
+          let status: number | undefined;
           const complete = Effect.fnUntraced(function* (exit: Exit.Exit<unknown, unknown>) {
             if (published) return;
             published = true;
@@ -150,8 +153,21 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
               Context.merge(layerContext, fiber.context),
               fiber.getRef(NetworkTrust),
               env,
-            ).pipe(Effect.mapError((cause) => transportError(safeRequest, cause)));
-            const hostCaPems = process.platform === "win32" || resolved !== undefined ? systemCaPems() : [];
+            ).pipe(mapFailures((cause) => transportError(safeRequest, cause)));
+            const localSource = yield* Effect.serviceOption(LocalCaTrustSource);
+            const prepared =
+              url.protocol !== "https:" || Option.isNone(localSource)
+                ? undefined
+                : yield* localSource.value.prepare(url.hostname);
+            const accepted = acceptedAdditionalCaPems(prepared?.pem === undefined ? [] : [prepared.pem]);
+            const localCa =
+              prepared === undefined || accepted[0] === undefined
+                ? undefined
+                : { pem: accepted[0], isLocalHost: prepared.isLocalHost };
+            const hostCaPems =
+              process.platform === "win32" || resolved !== undefined || localCa !== undefined
+                ? systemCaPems()
+                : [];
             const trust = resolved === undefined ? undefined : withWindowsHostTrust(resolved, hostCaPems);
             const body = yield* requestBody(request);
             const web = yield* Effect.tryPromise({
@@ -165,7 +181,12 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
                     redirect: policy.redirect ?? "follow",
                     connectionTarget: policy.connectionTarget,
                   },
-                  { transports, trust, systemCaPems: hostCaPems },
+                  {
+                    transports,
+                    trust,
+                    systemCaPems: hostCaPems,
+                    ...(localCa === undefined ? {} : { localCa }),
+                  },
                   AbortSignal.any([signal, controller.signal]),
                 ),
               catch: (cause) => transportError(safeRequest, trustFailure(url, cause, redact)),

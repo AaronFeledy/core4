@@ -1,5 +1,3 @@
-import { DateTime, Effect, Exit, Layer, Stream } from "effect";
-
 import { collectPlanConnections } from "@lando/engine/operations/connection-collector";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
@@ -20,6 +18,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { type OpenAppOptions, OpenAppResultSchema, openForPlan } from "../../src/cli/commands/open.ts";
 

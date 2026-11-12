@@ -3,12 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Schema } from "effect";
+import { runInstallLifecycleJourney } from "../../../scripts/install-lifecycle-journey.ts";
 import {
   assertLifecycleHostIsolation,
   assertLifecycleRuntimeIsolation,
   assertLifecycleWindowsMachineAbsent,
 } from "../../../scripts/install-lifecycle-journey-preflight.ts";
-import { runInstallLifecycleJourney } from "../../../scripts/install-lifecycle-journey.ts";
 
 const plan = (id: string, status: string) =>
   JSON.stringify({

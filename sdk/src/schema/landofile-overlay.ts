@@ -1,7 +1,7 @@
 import type { Schema } from "effect";
+import type { LandofileShape } from "./landofile.ts";
 import type { AuthoringDeepPartial, AuthoringEncoded } from "./landofile-authoring.ts";
 import type { LandofileOverride, LandofileReset } from "./landofile-directive.ts";
-import type { LandofileShape } from "./landofile.ts";
 
 export type LandofileOverlayValue<T> = T extends readonly unknown[]
   ? { readonly [K in keyof T]: LandofileOverlayValue<T[K]> }

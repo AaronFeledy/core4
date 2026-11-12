@@ -2,12 +2,12 @@ import { expect, test } from "bun:test";
 import { ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-import { declarePreparedAppFeature, prepareAppFeatures } from "../../src/services/app-feature-preparation.ts";
 import {
   type AppFeatureServiceDraft,
   applyPreparedAppFeatures,
   composeAppFeatures,
 } from "../../src/services/app-feature.ts";
+import { declarePreparedAppFeature, prepareAppFeatures } from "../../src/services/app-feature-preparation.ts";
 import { makeDraft } from "../../src/services/draft.ts";
 
 const draft = (name: string): AppFeatureServiceDraft => ({

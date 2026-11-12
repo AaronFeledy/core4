@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-
-import { DateTime, Effect, Layer, Stream } from "effect";
-
 import { FileIoError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -16,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { commonContainerLabels, containerHostConfigFragment } from "../src/plan.ts";
 import { composePath, renderCompose } from "../src/podman/compose.ts";
@@ -1061,7 +1059,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v4:[a-f0-9]{64}$/u),
             "dev.lando.service": "web",
           },
           networks: {
@@ -1077,7 +1075,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v4:[a-f0-9]{64}$/u),
             "dev.lando.service": "database",
           },
           networks: {

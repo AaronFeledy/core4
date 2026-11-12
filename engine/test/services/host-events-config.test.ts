@@ -5,9 +5,8 @@ import { join } from "node:path";
 
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { Effect } from "effect";
-
 import { ConfigService } from "@lando/sdk/services";
+import { Effect } from "effect";
 
 import { isExcludedFromUserAppDefaults } from "../../src/planner/app-defaults.ts";
 import { GlobalConfigSnapshot, layer } from "../../src/services/config.ts";

@@ -1,9 +1,8 @@
+import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
-
-import { describe, expect, test } from "bun:test";
 
 import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
 

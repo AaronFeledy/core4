@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
-
 import { AppPlacementError, FileNotFoundError, type GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { renderTraefikDiagnosticHtml } from "../src/diagnostics.ts";
 import type { SchemeProbe } from "../src/port-acquisition.ts";

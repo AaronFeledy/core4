@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
-
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -10,9 +8,9 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-
-import { dockerWaitDialect, libpodWaitDialect } from "../src/dialect.ts";
+import { DateTime, Effect } from "effect";
 import type { WaitDialect } from "../src/dialect.ts";
+import { dockerWaitDialect, libpodWaitDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { waitForExit } from "../src/wait-for-exit.ts";
 

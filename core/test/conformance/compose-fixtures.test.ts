@@ -3,8 +3,6 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
-
 import { CapabilityError, ComposeKeyRejectedError } from "@lando/core/errors";
 import {
   ComposePreservedPathKey,
@@ -16,8 +14,6 @@ import {
   ServiceName,
 } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -31,6 +27,8 @@ import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { loadLandofileFile } from "@lando/landofile/service";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { COMPOSE_FIXTURE_ASSERTIONS } from "./compose-fixture-assertion-metadata.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
 import {

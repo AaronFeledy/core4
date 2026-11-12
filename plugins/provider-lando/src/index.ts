@@ -1,8 +1,5 @@
 import { dirname } from "node:path";
-import { Semaphore } from "effect";
-import { type Context, Effect, Layer, Schema, Stream } from "effect";
-import { withContainerHelper } from "./convenience-helper.ts";
-
+import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
@@ -62,6 +59,7 @@ import {
   type MachineSshBridgeHost,
   makeMachineSshBridge,
 } from "@lando/container-runtime/podman/machine-ssh-bridge";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
 import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
@@ -84,7 +82,7 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
-import { redactorFor, withApiReason } from "@lando/container-runtime/redact";
+import { redactorFor, runtimeDiagnosticContext, withApiReason } from "@lando/container-runtime/redact";
 import {
   type ResolvedProviderOperation,
   readAppEnvironment,
@@ -100,6 +98,7 @@ import {
   type WaitForExitOptions,
   waitForExit as runtimeWaitForExit,
 } from "@lando/container-runtime/wait-for-exit";
+import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceExecError, type StateStoreError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";
@@ -121,19 +120,8 @@ import {
   RuntimeProvider,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-
+import { type Context, Effect, Layer, Schema, Semaphore, Stream } from "effect";
 import { inspectAppliedFileSync, verifiedFileSyncSessions } from "./applied-file-sync.ts";
-import { inspectWindowsSyncHelper, removeWindowsSyncHelper } from "./windows-sync-helper.ts";
-import { quiesceRetainedWindowsSyncWriters } from "./windows-sync-recovery.ts";
-import {
-  makeWindowsSyncTargetOperations,
-  prepareWindowsSyncTargets,
-  windowsSyncPermissionsForUser,
-} from "./windows-sync-targets.ts";
-
-import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
-import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
-import { runtimeDiagnosticContext } from "@lando/container-runtime/redact";
 import {
   inspectAppliedPlan,
   listAppliedPlans,
@@ -142,18 +130,23 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
-import { introspectProviderCapabilities, mvpProviderCapabilities } from "./capabilities.ts";
+import {
+  declaredProviderLandoCapabilities,
+  introspectProviderCapabilities,
+  mvpProviderCapabilities,
+  withResourceControl,
+} from "./capabilities.ts";
 import type { CatatonitPackage } from "./catatonit-provision.ts";
+import { withContainerHelper } from "./convenience-helper.ts";
+import { type DelegatedScopeHost, systemDelegatedScopeHost } from "./delegated-scope.ts";
 import { ensureRuntime } from "./ensure-runtime.ts";
 import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
-import {
-  buildManagedRuntimeServiceSpec,
-  managedRuntimePodmanArgv0,
-  terminateOwnedRuntimeService,
-} from "./managed-runtime-service.ts";
+import { managedResourceControl } from "./managed-resource-control.ts";
+import { makeManagedRuntimeCgroupCheck } from "./managed-runtime-cgroup-check.ts";
+import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
   validateManagedSocketPathLength,
@@ -171,12 +164,15 @@ import {
   readLinuxHostRelease,
 } from "./prerequisite-provision.ts";
 import { LANDO_CTX, LANDO_CTX_BASE, providerContextForEnv } from "./provider-context.ts";
+import { providerStatus } from "./provider-status.ts";
 import {
   type RootlessProbes,
   classifyRootlessFailure,
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
+import type { RuntimeShutdownStore } from "./runtime-shutdown.ts";
+import { teardownManagedRuntime } from "./runtime-shutdown-teardown.ts";
 import {
   type RuntimeServiceStatus,
   probeRuntimeServiceStatus,
@@ -208,8 +204,16 @@ import {
   withPublishedRecoveryAfterLifecycle,
 } from "./windows-publish-recovery.ts";
 import { windowsStdinExec, windowsStdinExecStream } from "./windows-stdin-exec.ts";
+import { inspectWindowsSyncHelper, removeWindowsSyncHelper } from "./windows-sync-helper.ts";
+import { quiesceRetainedWindowsSyncWriters } from "./windows-sync-recovery.ts";
+import {
+  makeWindowsSyncTargetOperations,
+  prepareWindowsSyncTargets,
+  windowsSyncPermissionsForUser,
+} from "./windows-sync-targets.ts";
 import { makeWslMountPropagationCheck } from "./wsl-mount-propagation.ts";
 
+export type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 export {
   appliedPlanPath,
   appliedPlansDir,
@@ -219,18 +223,19 @@ export {
   removeAppliedPlan,
 } from "./applied-state.ts";
 export { buildImagePullRequest, parseContainerEventPayloads, parseImagePullFrame, withApiReason };
-export type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 export type PodmanHttpRequest = EngineHttpRequest;
 export type PodmanHttpResponse = EngineHttpResponse;
 export type { ImagePullFrame, PullImageDeps, PulledImage } from "@lando/container-runtime/image-pull";
-export type { ContainerDiedEventsOptions } from "@lando/container-runtime/podman/container-events";
-export type { EmitComposeOptions, EmitComposeResult } from "@lando/container-runtime/podman/compose";
 export type { BringDownOptions } from "@lando/container-runtime/podman/bring-down";
 export type { BringUpOptions, StartFailureRemediation } from "@lando/container-runtime/podman/bring-up";
+export type { EmitComposeOptions, EmitComposeResult } from "@lando/container-runtime/podman/compose";
+export type { ContainerDiedEventsOptions } from "@lando/container-runtime/podman/container-events";
 export type { ExecOptions } from "@lando/container-runtime/podman/exec";
 export type { WaitForServiceHealthOptions } from "@lando/container-runtime/podman/health";
 export type { InspectOptions } from "@lando/container-runtime/podman/inspect";
 export type { LogsOptions } from "@lando/container-runtime/podman/logs";
+export type { PodmanVersionNumbers } from "@lando/container-runtime/podman/version-floor";
+export { parsePodmanVersionNumbers } from "@lando/container-runtime/podman/version-floor";
 export type {
   LandoVolumeFilterOptions,
   PrunedVolume,
@@ -240,12 +245,26 @@ export type {
   VolumePruneParse,
   VolumePruneReport,
 } from "@lando/container-runtime/podman/volume-prune";
-export type { PodmanVersionNumbers } from "@lando/container-runtime/podman/version-floor";
 export type {
   ServiceLifecycleAction,
   ServiceLifecycleOptions,
 } from "@lando/container-runtime/service-lifecycle";
 export type { WaitForExitOptions } from "@lando/container-runtime/wait-for-exit";
+export {
+  decodeProviderCapabilities,
+  introspectProviderCapabilities,
+  linuxMvpCapabilities,
+  macosMvpCapabilities,
+  mvpProviderCapabilities,
+  providerLandoCapabilitiesForPlatform,
+} from "./capabilities.ts";
+export type { EnsureRuntimeDeps } from "./ensure-runtime.ts";
+export { ensureRuntime } from "./ensure-runtime.ts";
+export type {
+  MachineTrustDecision,
+  MachineTrustInput,
+  RecordedMachineOwnership,
+} from "./machine-trust.ts";
 export {
   IMPORT_NATIVE_CA_FLAG,
   buildManagedMachineInitArgs,
@@ -253,78 +272,60 @@ export {
   resolveMachineTrustImport,
   windowsHyperVPrepRemediation,
 } from "./machine-trust.ts";
-export type {
-  MachineTrustDecision,
-  MachineTrustInput,
-  RecordedMachineOwnership,
-} from "./machine-trust.ts";
-export {
-  buildLandoVolumeFilters,
-  buildVolumePruneRequest,
-  isManagedNftMissingMessage,
-  parseVolumePruneResult,
-  composeKnobsForDialect,
-  scratchLabelsForPlan,
-  startFailureRemediation,
-  volumeMatchesFilters,
-};
 export { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
-export { ensureRuntime } from "./ensure-runtime.ts";
-export { prepareWindowsDockerCli } from "./windows-docker-cli.ts";
+export type { EnsureManagedNftOptions, NftManifest } from "./nft-provision.ts";
 export {
-  type PreparedWindowsSyncTargets,
-  type WindowsSyncTargetOperations,
-  makeWindowsSyncTargetOperations,
-  windowsSyncPermissionsForUser,
-  prepareWindowsSyncTargets,
-} from "./windows-sync-targets.ts";
-export type { EnsureRuntimeDeps } from "./ensure-runtime.ts";
+  NFT_MANIFEST,
+  NFT_TOOL_VERSION,
+  ensureManagedNft,
+  hasUsableManagedNft,
+  managedNftBinPath,
+} from "./nft-provision.ts";
+export { makePluginArtifactDownload } from "./plugin-runtime.ts";
+export type { PodmanServiceRunner, PodmanServiceSpec } from "./podman-service-runner.ts";
 export {
   RuntimeLaunchError,
   buildPodmanServiceArgs,
   makeSystemPodmanServiceRunner,
 } from "./podman-service-runner.ts";
-export type { PodmanServiceRunner, PodmanServiceSpec } from "./podman-service-runner.ts";
-export {
-  RootlessPrerequisiteError,
-  classifyRootlessFailure,
-  makeSystemRootlessProbes,
-} from "./rootless-preflight.ts";
+export type { LinuxHostRelease } from "./prerequisite-provision.ts";
 export {
   applyApprovedProviderSetupPlan,
   inspectUidmapSetupPlan,
   parseLinuxHostRelease,
   readLinuxHostRelease,
 } from "./prerequisite-provision.ts";
-export type { LinuxHostRelease } from "./prerequisite-provision.ts";
 export type {
   RootlessPrerequisite,
   RootlessProbeResults,
   RootlessProbes,
 } from "./rootless-preflight.ts";
 export {
-  IntelMacUnsupportedError,
-  PodmanMachinePrerequisiteError,
-  PodmanNotInstalledError,
-  PodmanSocketUnreachableError,
-  PodmanVersionUnsupportedError,
-  WindowsMachineOsUnsupportedError,
-  WindowsMachinePrerequisiteError,
-  ensureMacOSPodmanMachine,
-  isIntelMacHost,
-  ensureWindowsPodmanMachine,
-  makeSystemPodmanMachineRunner,
-  MANAGED_MACHINE_NAME,
-  makeSystemPodmanCommandRunner,
-  providerStatePath,
-  setupProviderLando,
-  stopMacOSPodmanMachine,
-  stopWindowsPodmanMachine,
-  teardownMacOSPodmanMachine,
-  teardownWindowsPodmanMachine,
-  upgradeMacOSPodmanMachine,
-  upgradeWindowsPodmanMachine,
-} from "./setup.ts";
+  RootlessPrerequisiteError,
+  classifyRootlessFailure,
+  makeSystemRootlessProbes,
+} from "./rootless-preflight.ts";
+export type {
+  ArtifactDownload,
+  ArtifactDownloadRequest,
+  ArtifactDownloadResult,
+  DefaultRuntimeBundleDownloaderOptions,
+  OverrideRuntimeBundleManifest,
+  RuntimeBundleDownloaderOptions,
+  RuntimeBundleEntry,
+  RuntimeBundleManifest,
+} from "./runtime-bundle.ts";
+export {
+  ProviderBundleChecksumError,
+  RUNTIME_BUNDLE_MANIFEST,
+  RUNTIME_BUNDLE_MANIFEST_ENV,
+  makeDefaultRuntimeBundleDownloader,
+  makeRuntimeBundleDownloader,
+  resolveRuntimeBundleEntry,
+  runtimeBundleCachePath,
+} from "./runtime-bundle.ts";
+export type { RuntimeServiceStatus, RuntimeStatusDeps } from "./runtime-status.ts";
+export { probeRuntimeServiceStatus, teardownRuntimeService } from "./runtime-status.ts";
 export type {
   PodmanCommandRunner,
   PodmanMachineRunner,
@@ -337,15 +338,30 @@ export type {
   SetupOptions,
   SetupResult,
 } from "./setup.ts";
-export { parsePodmanVersionNumbers } from "@lando/container-runtime/podman/version-floor";
 export {
-  makeWslMountPropagationCheck,
-  parseRootMountPropagation,
-} from "./wsl-mount-propagation.ts";
-export type {
-  RootMountPropagation,
-  WslMountPropagationReaders,
-} from "./wsl-mount-propagation.ts";
+  IntelMacUnsupportedError,
+  MANAGED_MACHINE_NAME,
+  PodmanMachinePrerequisiteError,
+  PodmanNotInstalledError,
+  PodmanSocketUnreachableError,
+  PodmanVersionUnsupportedError,
+  WindowsMachineOsUnsupportedError,
+  WindowsMachinePrerequisiteError,
+  ensureMacOSPodmanMachine,
+  ensureWindowsPodmanMachine,
+  isIntelMacHost,
+  makeSystemPodmanCommandRunner,
+  makeSystemPodmanMachineRunner,
+  providerStatePath,
+  setupProviderLando,
+  stopMacOSPodmanMachine,
+  stopWindowsPodmanMachine,
+  teardownMacOSPodmanMachine,
+  teardownWindowsPodmanMachine,
+  upgradeMacOSPodmanMachine,
+  upgradeWindowsPodmanMachine,
+} from "./setup.ts";
+export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe.ts";
 export {
   DEFAULT_BASE_IMAGE,
   ProviderLandoSmokeError,
@@ -354,49 +370,32 @@ export {
   runHealthSmokeProbe,
   runSmokeReadinessProbe,
 } from "./smoke-probe.ts";
-export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe.ts";
-
-export { makePluginArtifactDownload } from "./plugin-runtime.ts";
+export { prepareWindowsDockerCli } from "./windows-docker-cli.ts";
 export {
-  ProviderBundleChecksumError,
-  RUNTIME_BUNDLE_MANIFEST,
-  RUNTIME_BUNDLE_MANIFEST_ENV,
-  makeDefaultRuntimeBundleDownloader,
-  makeRuntimeBundleDownloader,
-  resolveRuntimeBundleEntry,
-  runtimeBundleCachePath,
-} from "./runtime-bundle.ts";
+  type PreparedWindowsSyncTargets,
+  type WindowsSyncTargetOperations,
+  makeWindowsSyncTargetOperations,
+  prepareWindowsSyncTargets,
+  windowsSyncPermissionsForUser,
+} from "./windows-sync-targets.ts";
 export type {
-  ArtifactDownload,
-  ArtifactDownloadRequest,
-  ArtifactDownloadResult,
-  DefaultRuntimeBundleDownloaderOptions,
-  OverrideRuntimeBundleManifest,
-  RuntimeBundleDownloaderOptions,
-  RuntimeBundleEntry,
-  RuntimeBundleManifest,
-} from "./runtime-bundle.ts";
-
+  RootMountPropagation,
+  WslMountPropagationReaders,
+} from "./wsl-mount-propagation.ts";
 export {
-  NFT_MANIFEST,
-  NFT_TOOL_VERSION,
-  ensureManagedNft,
-  hasUsableManagedNft,
-  managedNftBinPath,
-} from "./nft-provision.ts";
-export type { EnsureManagedNftOptions, NftManifest } from "./nft-provision.ts";
-
-export { probeRuntimeServiceStatus, teardownRuntimeService } from "./runtime-status.ts";
-export type { RuntimeServiceStatus, RuntimeStatusDeps } from "./runtime-status.ts";
-
+  makeWslMountPropagationCheck,
+  parseRootMountPropagation,
+} from "./wsl-mount-propagation.ts";
 export {
-  decodeProviderCapabilities,
-  introspectProviderCapabilities,
-  linuxMvpCapabilities,
-  macosMvpCapabilities,
-  mvpProviderCapabilities,
-  providerLandoCapabilitiesForPlatform,
-} from "./capabilities.ts";
+  buildLandoVolumeFilters,
+  buildVolumePruneRequest,
+  composeKnobsForDialect,
+  isManagedNftMissingMessage,
+  parseVolumePruneResult,
+  scratchLabelsForPlan,
+  startFailureRemediation,
+  volumeMatchesFilters,
+};
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
   makeRuntimePodmanApiClient(socketPath, providerContextForEnv({ ...process.env }));
@@ -517,7 +516,7 @@ export const getContainerDiedEvents = (
   options: Omit<ContainerDiedEventsOptions, "ctx"> = {},
 ) => runtimeGetContainerDiedEvents(api, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
-export { renderCompose, emitCompose, composePath } from "./provider-context.ts";
+export { composePath, emitCompose, renderCompose } from "./provider-context.ts";
 
 export const pruneVolumes = (api: PodmanApiClient, options: Omit<VolumePruneOptions, "ctx">) =>
   runtimePruneVolumes(api, { ...options, ctx: providerContextForEnv({ ...process.env }) });
@@ -574,6 +573,11 @@ export interface ProviderLayerOptions {
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly podmanService?: PodmanServiceRunner;
   readonly rootlessProbes?: RootlessProbes;
+  /**
+   * Host view for launching the managed Linux service in a delegated systemd user scope and for
+   * declaring `deploy.resources`. Omitted: the service launches undelegated and the knob is withheld.
+   */
+  readonly delegatedScopeHost?: DelegatedScopeHost;
   readonly linuxHostRelease?: LinuxHostRelease;
   readonly readinessPolicy?: RetryPolicy;
   readonly smokeRetryPolicy?: RetryPolicy;
@@ -584,6 +588,7 @@ export interface ProviderLayerOptions {
   /** Lando user-data root; file-mode bind copies live beneath it. */
   readonly userDataRoot?: string;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
+  readonly runtimeShutdownStore?: RuntimeShutdownStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
 }
 
@@ -740,7 +745,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           pidPath: options.providerPidPath,
           ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
           rootlessProbes,
+          ...(family === "linux" && options.delegatedScopeHost !== undefined
+            ? { delegatedScope: options.delegatedScopeHost }
+            : {}),
           withLaunchLock: progress === undefined ? withLaunchLock : (body) => body,
+          ...(options.runtimeShutdownStore === undefined
+            ? {}
+            : { admit: options.runtimeShutdownStore.admit }),
           ...(options.runtimeGenerationStore === undefined
             ? {}
             : { generationStore: options.runtimeGenerationStore }),
@@ -861,10 +872,29 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
   const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) => ensureEffect.pipe(Effect.andThen(effect));
   return Effect.gen(function* () {
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
+    const delegatedScopeHost = family === "linux" ? options.delegatedScopeHost : undefined;
     const capabilities =
       shouldProbeCapabilities && podmanApi !== undefined
         ? introspectProviderCapabilities(podmanApi, platform)
-        : Effect.succeed(mvpProviderCapabilities(platform, arch));
+        : canEnsure && delegatedScopeHost !== undefined
+          ? managedResourceControl({
+              platform,
+              host: delegatedScopeHost,
+              pidPath: options.providerPidPath,
+              spec: buildPodmanServiceArgs({
+                podmanBin,
+                storageDir: options.runtimeStorageDir,
+                runRoot: options.runtimeRunDir,
+                configDir: options.runtimeConfigDir,
+                socketPath: ensureSocketPath,
+                privateRuntimeDir: undefined,
+              }),
+              serviceRunner,
+              podmanApi,
+            }).pipe(
+              Effect.map((control) => withResourceControl(mvpProviderCapabilities(platform, arch), control)),
+            )
+          : Effect.succeed(mvpProviderCapabilities(platform, arch));
     const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
       Effect.map((resolved) => {
         const logSourceBinding = makeProviderLogSourceBinding({
@@ -1388,7 +1418,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               policy: "missing",
             }).pipe(
               Effect.asVoid,
-              Effect.mapError((cause) =>
+              mapFailures((cause) =>
                 cause instanceof ProviderUnavailableError
                   ? cause
                   : new ProviderUnavailableError({
@@ -1408,6 +1438,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         displayName: "Lando Runtime Provider",
         version: "0.0.0",
         platform,
+        runtimeIdentity: socketPath ?? `lando:${platform}`,
         capabilities: {
           ...resolvedCapabilities,
           ...(windowsSyncTargets === undefined ? {} : { fileSyncTargets: "prepared-volume" as const }),
@@ -1690,6 +1721,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                         Effect.scoped(
                           runSmokeReadinessProbe({
                             podmanApi,
+                            resourceLimits:
+                              resolvedCapabilities.composeKnobs?.supported.includes("deploy.resources") ===
+                              true,
                             ...(options.smokeRetryPolicy === undefined
                               ? {}
                               : { retryPolicy: options.smokeRetryPolicy }),
@@ -1707,9 +1741,22 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         }),
         getStatus: rejectIntelMacHost(platform, arch).pipe(
           Effect.andThen(
-            podmanApi === undefined
-              ? Effect.fail(makeUnavailable("getStatus"))
-              : podmanApi.info.pipe(Effect.as({ running: true, message: "runtime socket reachable" })),
+            providerStatus({
+              api: podmanApi,
+              platform: family,
+              machine: machineRunner,
+              ...(options.runtimeShutdownStore === undefined
+                ? {}
+                : { receipt: options.runtimeShutdownStore.read }),
+              managedPaths:
+                canEnsure && runtimeBinDir !== undefined
+                  ? {
+                      runtimeBinDir,
+                      providerSocketPath: ensureSocketPath,
+                      providerPidPath: options.providerPidPath,
+                    }
+                  : undefined,
+            }),
           ),
         ),
         getVersions: Effect.sync(() => ({
@@ -1737,6 +1784,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     ctx: LANDO_CTX,
                     dialect: libpodPullDialect,
                     ...(spec.policy === undefined ? {} : { policy: spec.policy }),
+                    ...(spec.platform === undefined ? {} : { platform: spec.platform }),
                     publish: (event) =>
                       options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ??
                       Effect.void,
@@ -1977,12 +2025,15 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  doctorChecks: [makeWslMountPropagationCheck(), makeManagedRuntimeSocketPathCheck()],
+  doctorChecks: [
+    makeWslMountPropagationCheck(),
+    makeManagedRuntimeSocketPathCheck(),
+    makeManagedRuntimeCgroupCheck(),
+  ],
   hostMaintainers: [
     {
       id: "lando-runtime-service",
-      teardown: ({ paths, platform }) =>
-        terminateOwnedRuntimeService(buildManagedRuntimeServiceSpec({ ...paths, platform })),
+      teardown: teardownManagedRuntime,
     },
   ],
   runtimeProviders: new Map([
@@ -1990,7 +2041,8 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
-        declaredCapabilities: mvpProviderCapabilities,
+        declaredCapabilities: (platform, arch) =>
+          declaredProviderLandoCapabilities(platform, arch, systemDelegatedScopeHost),
         resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),
         appliedStateInventory: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
@@ -2017,6 +2069,7 @@ export const plugin = definePlugin({
             runtimeConfigDir: paths.runtimeConfigDir,
             providerSocketPath: paths.providerSocketPath,
             providerPidPath: paths.providerPidPath,
+            delegatedScopeHost: systemDelegatedScopeHost,
             artifactDownload: makePluginArtifactDownload(downloader),
             ...(eventService === undefined ? {} : { eventService }),
             nftCacheDir: paths.toolDownloadsDir("nft"),

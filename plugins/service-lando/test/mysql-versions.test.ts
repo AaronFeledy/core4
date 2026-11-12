@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
-
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
-import { landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
+import { ServiceName, landoServiceHomeStoreName as homeStoreName } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { planMysqlApp } from "./support/mysql-planner.ts";

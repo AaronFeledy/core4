@@ -1,9 +1,8 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Predicate } from "effect";
-
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 type ProviderAcceptanceCellId =
   | "docker-desktop-macos"
@@ -154,7 +153,7 @@ describe("provider matrix acceptance reporting", () => {
     expect(report.checks.find((check) => check.id === "sdk-provider-contract")?.command).toEqual([
       "bun",
       "test",
-      "plugins/provider-lando/test/contract.integration.test.ts",
+      "./plugins/provider-lando/test/contract.integration.test.ts",
       "--test-name-pattern",
       "passes the SDK provider contract suite against a live Podman socket",
     ]);
@@ -164,7 +163,7 @@ describe("provider matrix acceptance reporting", () => {
     expect(report.checks.find((check) => check.id === "compose-knobs-transport")?.command).toEqual([
       "bun",
       "test",
-      "plugins/provider-lando/test/compose-knobs-transport.test.ts",
+      "./plugins/provider-lando/test/compose-knobs-transport.test.ts",
     ]);
     expect(evaluateProviderAcceptanceReport(report).exitCode).toBe(0);
   });
@@ -190,7 +189,7 @@ describe("provider matrix acceptance reporting", () => {
       command: [
         "bun",
         "test",
-        "plugins/provider-docker/test/exec-umask.integration.test.ts",
+        "./plugins/provider-docker/test/exec-umask.integration.test.ts",
         "--test-name-pattern",
         "lando exec creates 0644 files",
       ],
@@ -283,7 +282,7 @@ describe("provider matrix acceptance reporting", () => {
       command: [
         "bun",
         "test",
-        "plugins/provider-docker/test/contract.integration.test.ts",
+        "./plugins/provider-docker/test/contract.integration.test.ts",
         "--test-name-pattern",
         "runs the provider contract suite against a live Docker Engine socket",
       ],

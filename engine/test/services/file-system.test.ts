@@ -3,10 +3,9 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Stream } from "effect";
-
 import { FileNotFoundError } from "@lando/sdk/errors";
 import { FileSystem } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Stream } from "effect";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { writeAtomicFile } from "../../src/services/file-system.ts";
 

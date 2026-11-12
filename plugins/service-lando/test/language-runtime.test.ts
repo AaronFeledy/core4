@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
+import { Effect, Schema } from "effect";
 
 import { landoAppMountFeature } from "../src/features/app-mount.ts";
 import { serviceTypeResolve } from "../src/services/_feature-helpers.ts";

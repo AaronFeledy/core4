@@ -5,9 +5,9 @@ import { Effect, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import type { AcquisitionState } from "../src/port-acquisition-state.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile, defaultDomainFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikRouterService } from "../src/proxy.ts";
 import { routeObjectName, routeOwner } from "./route-owner-fixture.ts";
 
 export const app = routeOwner("demo");

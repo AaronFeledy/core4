@@ -1,7 +1,6 @@
+import { beforeAll, describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { beforeAll, describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const generatorPath = resolve(repoRoot, "scripts/build-opentui-native-stubs.ts");
