@@ -1,6 +1,7 @@
 import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { parseComposeDuration } from "./compose-duration.ts";
+import { executionSite } from "./execution-site.ts";
 import { CommandSpec, ContainerUser } from "./primitives.ts";
 import { ProbeIntervalSeconds, ProbeRetries, ProbeTimeoutSeconds } from "./probe-timing.ts";
 
@@ -242,12 +243,15 @@ const validateCommand = (command: typeof CommandSpec.Type) => {
     throw new SchemaIssue.InvalidValue({ message: EMPTY_HEALTHCHECK_COMMAND }, command);
 };
 
-const HealthcheckAccepted = Schema.Union([
-  Schema.Literal(false),
-  Schema.String.check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
-  Schema.Array(Schema.String).check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
-  ComposeHealthcheckAccepted,
-]).annotate({
+const HealthcheckAccepted = executionSite(
+  Schema.Union([
+    Schema.Literal(false),
+    Schema.String.check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
+    Schema.Array(Schema.String).check(Schema.isMinLength(1, { message: EMPTY_HEALTHCHECK_COMMAND })),
+    ComposeHealthcheckAccepted,
+  ]),
+  "healthcheck",
+).annotate({
   identifier: "HealthcheckInput",
   description: HEALTHCHECK_FIELD_DESCRIPTION,
   expected: "false, a command string, an argv array, or a healthcheck object",

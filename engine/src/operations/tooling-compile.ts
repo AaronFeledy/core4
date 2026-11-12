@@ -7,7 +7,7 @@ import {
 import { planRedactionValues } from "@lando/redaction/plan-values";
 
 import { ToolingCompileError, type ToolingExecError, type ToolingInputError } from "@lando/sdk/errors";
-import type { AppPlan, HostTerminal, ToolingTaskShape } from "@lando/sdk/schema";
+import { type AppPlan, type HostTerminal, SecretRef, type ToolingTaskShape } from "@lando/sdk/schema";
 import {
   EnvironmentValueResolver,
   type ProviderError,
@@ -18,11 +18,12 @@ import {
   type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { Effect, Option, type Scope } from "effect";
+import { Effect, Option, Schema, type Scope } from "effect";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
+import type { ToolingShellBindings } from "../tooling/task-shape.ts";
 import type { AdmittedToolingInput } from "./tooling-input-admission.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 
@@ -99,6 +100,8 @@ export interface CompileToolingInput extends Omit<InvocationOptions, "args"> {
   readonly lookupKey: string;
   readonly task: ToolingTaskShape;
   readonly source: ToolingSource;
+  /** Generated execution-scoped secret bindings from the resolved task shape. */
+  readonly bindings?: ToolingShellBindings;
 }
 
 /**
@@ -123,15 +126,33 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
   const { values, argv } = admitted;
   const invocations = yield* Effect.forEach(
     normalized.steps,
-    (step, index): Effect.Effect<ToolingInvocation, ToolingInputError> =>
+    (step, index): Effect.Effect<ToolingInvocation, ToolingInputError | ToolingCompileError> =>
       Effect.gen(function* () {
         const service = yield* Effect.fromResult(resolveServiceRef(step.service, values, normalized));
+        const bound = input.bindings?.commands.get(input.task.cmd !== undefined ? "cmd" : `cmds.${index}`);
+        const clash = Object.entries(bound ?? {}).find(([name, ref]) => {
+          const existing =
+            input.env !== undefined && Object.hasOwn(input.env, name) ? input.env[name] : undefined;
+          return (
+            existing !== undefined &&
+            !(Schema.is(SecretRef)(existing) && existing.reference === ref.reference)
+          );
+        });
+        if (clash !== undefined)
+          return yield* Effect.fail(
+            new ToolingCompileError({
+              tool: input.name,
+              message: `Cannot lower the secret reference in ${input.name}: the generated binding ${clash[0]} is already set in the invocation environment.`,
+              remediation: `Remove ${clash[0]} from the environment passed to ${input.name}; Lando owns that generated name.`,
+            }),
+          );
         return stepInvocation(
           input.name,
           { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
           {
             ...input,
             args: index === normalized.steps.length - 1 ? argv : [],
+            ...(bound === undefined ? {} : { env: { ...input.env, ...bound } }),
           },
         );
       }),

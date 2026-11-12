@@ -109,6 +109,7 @@ export {
 } from "./endpoint.ts";
 export * from "./endpoint-selection.ts";
 export * from "./environment-value.ts";
+export * from "./execution-site.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
 export * from "./file-sync-policy.ts";

@@ -119,9 +119,14 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         );
         continue;
       }
-      const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
-      if (secret !== undefined) {
-        recorder.record(unsupportedSecretReferenceError(source, secret.name, target.value.when), source);
+      const references = parsed.success.segments.flatMap((segment) =>
+        segment.kind === "SecretRefSegment" ? [segment.name] : [],
+      );
+      if (references.length > 0) {
+        recorder.record(
+          unsupportedSecretReferenceError({ source, references, value: target.value.when }),
+          source,
+        );
         continue;
       }
       scope.pendingSites.push({
