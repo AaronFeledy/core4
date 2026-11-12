@@ -67,6 +67,8 @@ import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { convergeRemovedServices } from "./start-convergence.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
+import { retireUnusedGpgAgentWorker } from "./start-gpg-agent.ts";
+import { retireUnusedHostProxyWorker } from "./start-host-proxy.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import {
   type PreparedStartOverlays,
@@ -75,6 +77,7 @@ import {
   withAcquiredStartOverlays,
 } from "./start-overlays.ts";
 import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
+import { retireUnusedSshAgentWorker } from "./start-ssh-agent.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -353,6 +356,11 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
             );
             if (pendingStart !== undefined) yield* pendingStart.complete;
             yield* prepareGpgHome;
+            // Retire only after the apply replaced the previous realization, so a failed start
+            // keeps every worker the still-running app may still use.
+            yield* retireUnusedSshAgentWorker(plan, ref);
+            yield* retireUnusedGpgAgentWorker(plan, ref, preparedOverlays.gpgIntent);
+            yield* retireUnusedHostProxyWorker(plan, ref, provider.capabilities);
             return yield* Effect.forEach(serviceList, (service) =>
               inspectAppliedService({ provider, plan: runtimePlan, service: service.name }).pipe(
                 Effect.map((runtime) => {
