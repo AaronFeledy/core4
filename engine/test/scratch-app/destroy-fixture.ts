@@ -336,6 +336,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     rootObservations,
     removed,
     entries,
+    stateStore,
     layer: Scratch.layer.pipe(Layer.provideMerge(dependencies)),
   };
 };

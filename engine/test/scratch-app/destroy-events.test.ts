@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
-import { access } from "node:fs/promises";
-import { AbsolutePath, AppId, AppPlan } from "@lando/sdk/schema";
+import { access, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { ScratchAppService } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
+import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 import { runDestroy, seedScratchPlan, withDestroyFixture } from "./destroy-fixture.ts";
 
@@ -42,6 +44,41 @@ test("explicit scratch destroy nests standard events and removes its snapshots b
       reason: "explicit",
       retainedArtifacts: { volumes: false, snapshots: "none" },
     });
+  });
+});
+
+test("scratch destroy removes its build output and per-app index and leaves the shared index", async () => {
+  // Given a scratch app with recorded app-step output and a shared image index.
+  await withDestroyFixture({}, async (f) => {
+    const dataRoot = process.env.LANDO_USER_DATA_ROOT ?? "";
+    const cacheRoot = process.env.LANDO_USER_CACHE_ROOT ?? "";
+    const appDir = join(dataRoot, "builds", "scratch", f.id);
+    const transcript = join(appDir, "app", "web", "install.log");
+    await mkdir(join(appDir, "app", "web"), { recursive: true });
+    await writeFile(transcript, "output\n");
+    const shared = join(cacheRoot, "scratch-build-results.bin");
+    await writeFile(shared, "shared-index");
+    const bucket = await Effect.runPromise(openAppBuildResults(f.stateStore, f.id));
+    await Effect.runPromise(
+      recordBuildResult(bucket, {
+        buildKey: "app-key",
+        service: ServiceName.make("web"),
+        phase: "app",
+        outcome: "complete",
+        exitCode: 0,
+        durationMs: 1,
+        transcriptPath: AbsolutePath.make(transcript),
+      }),
+    );
+
+    // When explicit destroy completes.
+    await runDestroy(f);
+
+    // Then only this scratch id's output is gone; the shared image index is untouched.
+    await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await Effect.runPromise(bucket.exists)).toBe(false);
+    expect(await readFile(shared, "utf8")).toBe("shared-index");
   });
 });
 

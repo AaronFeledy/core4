@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
-import { ProviderInternalError, ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
+import {
+  ArtifactBuildError,
+  ProviderInternalError,
+  ProviderUnavailableError,
+  StateStoreError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -29,7 +34,6 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import * as StateStoreLayer from "@lando/state-store/service";
 import {
   Cause,
   type Context,
@@ -43,14 +47,19 @@ import {
   Queue,
   Stream,
 } from "effect";
-import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
-const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+// Each layer build gets its own in-memory store, so one test never observes another test's build results.
+const stateStoreLayer = Layer.suspend(() => Layer.succeed(StateStore, makeTestStateStore().service));
 
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
-import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
+import {
+  openAppBuildResults,
+  openScratchBuildResults,
+  recordBuildResult,
+} from "../../src/services/build-results.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -243,12 +252,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       const firstPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-ca-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-ca-first" } },
         slug: "scratch-ca-first",
         services: { [web.name]: trustService },
       };
       const repeatPlan: AppPlan = {
         ...firstPlan,
         id: AppId.make("scratch-ca-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-ca-second" } },
         slug: "scratch-ca-second",
       };
       let builds = 0;
@@ -357,8 +368,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       ).pipe(Effect.provide(layer(provider))),
     );
 
-    // Then
-    expect(calls).toEqual(["web", "db", "cache"]);
+    // Then: dispatch order within the bounded pool is not part of the contract.
+    expect(calls.sort()).toEqual(["cache", "db", "web"]);
     expect(maxActive).toBe(2);
     expect(
       Array.from(events)
@@ -434,6 +445,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-failure"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-cache-failure" } },
       slug: "scratch-cache-failure",
       services: { [web.name]: web, [db.name]: db },
     };
@@ -489,6 +501,10 @@ describe("BuildOrchestratorLayer.layer", () => {
       succeeded: 0,
       failed: 2,
     });
+    // A step aborted before dispatch advertises no transcript.
+    const abortedStart = result.events.find((event) => event._tag === "task.start" && event.taskId === "db");
+    expect(abortedStart?._tag).toBe("task.start");
+    if (abortedStart?._tag === "task.start") expect(abortedStart.transcriptPath).toBeUndefined();
   });
 
   test("preserves the provider failure when recording the scratch failure also fails", async () => {
@@ -508,6 +524,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-write-failure"),
+      extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-cache-write-failure" } },
       slug: "scratch-cache-write-failure",
       services: { [web.name]: web },
     };
@@ -543,8 +560,13 @@ describe("BuildOrchestratorLayer.layer", () => {
       ).pipe(Effect.provide(layer(provider, failingStateStore))),
     );
 
-    // Then
-    expect(result.error).toBe(providerFailure);
+    // Then the provider's own failure stays the outcome; redaction reconstructs its value.
+    expect(result.error).toMatchObject({
+      _tag: "ProviderInternalError",
+      operation: "buildArtifact",
+      message: "build failed",
+      remediation: providerFailure.remediation,
+    });
     expect(result.events.find((event) => event._tag === "task.fail")).toMatchObject({
       taskId: "web",
       summary: "Build web failed",
@@ -579,8 +601,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       ),
     );
 
-    expect(calls).toEqual(["web", "db"]);
-    expect(error).toBe(failure);
+    // The two services begin concurrently; only the failure's value is part of the contract.
+    expect(calls.sort()).toEqual(["db", "web"]);
+    expect(error).toMatchObject({
+      _tag: "ProviderInternalError",
+      operation: "buildArtifact",
+      message: "build failed",
+      remediation: failure.remediation,
+    });
   });
 
   test.each([
@@ -700,6 +728,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const scratchPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-rebuild-then-start"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-rebuild-then-start" } },
         slug: "scratch-rebuild-then-start",
         services: { [web.name]: derived },
       };
@@ -752,7 +781,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     });
   });
 
-  test("rebuild keeps the local derived image when refresh fails", async () => {
+  test("rebuild builds under the start build key when refresh falls back to the local base", async () => {
     await withTempUserRoots(async () => {
       const derived: ServicePlan = {
         ...web,
@@ -773,6 +802,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const scratchPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-refresh-offline"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-refresh-offline" } },
         slug: "scratch-refresh-offline",
         services: { [web.name]: derived },
       };
@@ -810,8 +840,21 @@ describe("BuildOrchestratorLayer.layer", () => {
         ).pipe(Effect.provideService(CommandWarnings, commandWarnings), Effect.provide(layer(provider))),
       );
 
-      expect(builds).toHaveLength(1);
-      expect(result.rebuilt.services[web.name]?.artifact).toEqual(result.first.services[web.name]?.artifact);
+      // A rebuild always dispatches; the local fallback resolves the same base, so the key is unchanged.
+      expect(builds).toHaveLength(2);
+      expect(builds[1]).toBe(builds[0]);
+      expect(result.first.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:1",
+        digest: "sha256:derived-1",
+        origin: "build",
+      });
+      expect(result.rebuilt.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-1",
+        origin: "build",
+      });
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]?.code).toBe("LANDO_ARTIFACT_REFRESH_FAILED");
     });
@@ -1248,6 +1291,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-toolbox-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-first" } },
         slug: "scratch-toolbox-first",
         root: AbsolutePath.make("/tmp/topsecret/scratch-toolbox-first/root"),
         services: {
@@ -1261,6 +1305,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const repeatPlan: AppPlan = {
         ...artifactPlan,
         id: AppId.make("scratch-toolbox-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-second" } },
         slug: "scratch-toolbox-second",
         root: AbsolutePath.make("/tmp/topsecret/scratch-toolbox-second/root"),
       };
@@ -1313,6 +1358,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-digest-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-digest-first" } },
         slug: "scratch-digest-first",
         root: AbsolutePath.make("/tmp/scratch-digest-first/root"),
         services: {
@@ -1325,6 +1371,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const repeatPlan: AppPlan = {
         ...artifactPlan,
         id: AppId.make("scratch-digest-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-digest-second" } },
         slug: "scratch-digest-second",
         root: AbsolutePath.make("/tmp/scratch-digest-second/root"),
       };
@@ -1372,12 +1419,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       const firstPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-base-digest-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-base-digest-first" } },
         slug: "scratch-base-digest-first",
         services: { [web.name]: derivedService },
       };
       const repeatPlan: AppPlan = {
         ...firstPlan,
         id: AppId.make("scratch-base-digest-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-base-digest-second" } },
         slug: "scratch-base-digest-second",
       };
       let baseDigest = "sha256:first";
@@ -1474,12 +1523,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       const firstPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-produced-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-produced-first" } },
         slug: "scratch-produced-first",
         services: { [web.name]: derived },
       };
       const repeatPlan: AppPlan = {
         ...firstPlan,
         id: AppId.make("scratch-produced-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-produced-second" } },
         slug: "scratch-produced-second",
       };
       const localImages = new Set<string>();
@@ -1539,6 +1590,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-legacy-digest"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-legacy-digest" } },
         slug: "scratch-legacy-digest",
         root: AbsolutePath.make("/tmp/scratch-legacy-digest/root"),
         services: {
@@ -1586,6 +1638,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const artifactPlan: AppPlan = {
         ...plan,
         id: AppId.make("scratch-legacy-different-ref"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-legacy-different-ref" } },
         slug: "scratch-legacy-different-ref",
         root: AbsolutePath.make("/tmp/scratch-legacy-different-ref/root"),
         services: {
@@ -1636,6 +1689,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const planWithRedirect: AppPlan = {
         ...plan,
         id: AppId.make("scratch-toolbox-redirect-first"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-redirect-first" } },
         slug: "scratch-toolbox-redirect-first",
         root: AbsolutePath.make("/tmp/scratch-toolbox-redirect-first/root"),
         services: {
@@ -1663,6 +1717,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const repeatPlan: AppPlan = {
         ...planWithRedirect,
         id: AppId.make("scratch-toolbox-redirect-second"),
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-toolbox-redirect-second" } },
         slug: "scratch-toolbox-redirect-second",
         root: AbsolutePath.make("/tmp/scratch-toolbox-redirect-second/root"),
       };
@@ -1774,6 +1829,906 @@ describe("BuildOrchestratorLayer.layer", () => {
         serviceFeatureExtension(Object.values(planWithRedirect("/logs/failure.log").services)[0] ?? web)
           ?.buildSteps,
       ).toHaveLength(1);
+    });
+  });
+
+  const derivedService = (
+    overrides: Partial<Pick<ServicePlan, "environment" | "pullPolicy">> = {},
+  ): ServicePlan => ({
+    ...web,
+    artifact: { kind: "ref", ref: "php:8.4-apache-bookworm" },
+    extensions: {
+      "@lando/core/service-features": {
+        buildSteps: [{ id: "php-extension", phase: "build", command: ["echo", "build"] }],
+      },
+    },
+    ...overrides,
+  });
+
+  const derivedProvider = () => {
+    const calls = { builds: 0 };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: ArtifactPullSpec) =>
+        spec.policy === "never"
+          ? Effect.succeed({ providerId, ref: spec.ref })
+          : Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:base" }),
+      buildArtifact: () =>
+        Effect.sync(() => {
+          calls.builds += 1;
+          return {
+            providerId,
+            ref: `php-derived:${calls.builds}`,
+            digest: `sha256:derived-${calls.builds}`,
+          };
+        }),
+    };
+    return { provider, calls };
+  };
+
+  const buildTwice = (provider: RuntimeProviderShape, buildPlan: AppPlan, options?: BuildOptions) =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const first = yield* orchestrator.build(buildPlan);
+          const firstEvents = [...(yield* Queue.clear(queue))];
+          const second = yield* orchestrator.build(buildPlan, options);
+          return { first, second, firstEvents, secondEvents: [...(yield* Queue.clear(queue))] };
+        }),
+      ).pipe(Effect.provide(layer(provider))),
+    );
+
+  test("writes redacted build output to the transcript and publishes task detail", async () => {
+    await withTempUserRoots(async () => {
+      // Given a build step whose output prints a plan secret.
+      const context = await mkdtemp(join(makeLandoPaths().roots.userDataRoot, "build-output-context-"));
+      await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+      const built: ServicePlan = {
+        ...web,
+        artifact: {
+          kind: "build",
+          context: AbsolutePath.make(context),
+          contentHash: "sha256:context",
+        },
+        environment: { DB_PASSWORD: "build-output-secret" },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [{ id: "image", phase: "build", command: ["echo", "build"] }],
+          },
+        },
+      };
+      const buildPlan: AppPlan = { ...plan, services: { [built.name]: built } };
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          (spec.onOutput === undefined
+            ? Effect.die("onOutput was not supplied")
+            : spec.onOutput("Step 1: build-output-secret\n")
+          ).pipe(Effect.as({ providerId, ref: "built:web" })),
+      };
+
+      // When
+      const result = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build(buildPlan);
+            return [...(yield* Queue.clear(queue))];
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      const start = result.find((event) => event._tag === "task.start");
+      if (start?._tag !== "task.start") throw new TypeError("task start event is missing");
+      const transcript = await readFile(String(start.transcriptPath), "utf8");
+      expect(transcript).toContain("Step 1: [redacted]");
+      expect(transcript).not.toContain("build-output-secret");
+      const details = result.filter((event) => event._tag === "task.detail");
+      expect(details).toHaveLength(1);
+      expect(details[0]?.line).toBe("Step 1: [redacted]");
+    });
+  });
+
+  test("rebuilds an artifact build failure with service, transcript path, and output tail", async () => {
+    await withTempUserRoots(async () => {
+      // Given a build that prints two lines and then fails.
+      const context = await mkdtemp(join(makeLandoPaths().roots.userDataRoot, "build-failure-context-"));
+      await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+      const built: ServicePlan = {
+        ...web,
+        artifact: {
+          kind: "build",
+          context: AbsolutePath.make(context),
+          contentHash: "sha256:context",
+        },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [{ id: "image", phase: "build", command: ["echo", "build"] }],
+          },
+        },
+      };
+      const providerFailure = new ArtifactBuildError({
+        providerId: "test",
+        operation: "buildArtifact",
+        message: "step failed",
+        remediation: "Fix the failing build step.",
+      });
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          (spec.onOutput === undefined
+            ? Effect.die("onOutput was not supplied")
+            : spec.onOutput("first line\nsecond line\n")
+          ).pipe(Effect.andThen(Effect.fail(providerFailure))),
+      };
+
+      // When
+      const error = await Effect.runPromise(
+        Effect.flip(
+          Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+            orchestrator.build({ ...plan, services: { [built.name]: built } }),
+          ),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      expect(error._tag).toBe("ArtifactBuildError");
+      if (error._tag !== "ArtifactBuildError") throw error;
+      expect(error).not.toBe(providerFailure);
+      expect(error.message).toBe("step failed");
+      expect(error.service).toBe("web");
+      expect(error.outputTail).toContain("first line");
+      expect(error.outputTail).toContain("second line");
+      expect(error.transcriptPath).toBeDefined();
+      expect(error.remediation).toContain("Fix the failing build step.");
+      expect(error.remediation).toContain(String(error.transcriptPath));
+      expect(error.remediation).toEndWith('Run "lando logs --build --service web" to print it.');
+      const transcript = await readFile(String(error.transcriptPath), "utf8");
+      expect(transcript).toContain("first line\nsecond line\n");
+      expect(transcript).toContain("Error: step failed");
+    });
+  });
+
+  test("writes the acquired image reference for an acquisition-only step", async () => {
+    await withTempUserRoots(async () => {
+      // Given a ref-only service the provider merely acquires.
+      const artifactPlan: AppPlan = {
+        ...plan,
+        services: { [web.name]: { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } } },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: () =>
+          Effect.succeed({ providerId, ref: "debian:12.11-slim", digest: "sha256:acquired" }),
+      };
+
+      // When
+      const events = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build(artifactPlan);
+            return [...(yield* Queue.clear(queue))];
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      const start = events.find((event) => event._tag === "task.start");
+      if (start?._tag !== "task.start") throw new TypeError("task start event is missing");
+      expect(await readFile(String(start.transcriptPath), "utf8")).toBe(
+        "Using image debian:12.11-slim@sha256:acquired\n",
+      );
+    });
+  });
+
+  const expectCachedStepTranscript = async (appId: string, transcriptExists: boolean) => {
+    await withTempUserRoots(async () => {
+      // Given a warm scratch result whose recorded transcript may or may not still exist.
+      const scratchPlan: AppPlan = {
+        ...plan,
+        id: AppId.make(appId),
+        slug: appId,
+        extensions: { [SCRATCH_EXTENSION_KEY]: { id: appId } },
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+          },
+        },
+      };
+      const buildsDir = join(makeLandoPaths().roots.userDataRoot, "builds", appId);
+      const recorded = AbsolutePath.make(join(buildsDir, "image.log"));
+      if (transcriptExists) {
+        await mkdir(buildsDir, { recursive: true });
+        await writeFile(recorded, "recorded output\n");
+      }
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: () => Effect.die("a cached step must not build"),
+      };
+
+      // When
+      const result = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const stateStore = yield* StateStore;
+            const buildKey = yield* buildKeyForService(provider, scratchPlan.services[web.name] ?? web);
+            const bucket = yield* openScratchBuildResults(stateStore);
+            yield* recordBuildResult(bucket, {
+              buildKey,
+              service: web.name,
+              phase: "artifact",
+              outcome: "complete",
+              exitCode: 0,
+              durationMs: 1,
+              artifactRef: "debian:12.11-slim",
+              sourceArtifactRef: "debian:12.11-slim",
+              sourceArtifactDigest: "sha256:planned",
+              transcriptPath: recorded,
+            });
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build(scratchPlan);
+            return [...(yield* Queue.clear(queue))];
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      const start = result.find((event) => event._tag === "task.start");
+      if (start?._tag !== "task.start") throw new TypeError("task start event is missing");
+      expect(start.transcriptPath).toBe(transcriptExists ? recorded : undefined);
+      expect(result.find((event) => event._tag === "build-step-skip")).toMatchObject({ cached: true });
+    });
+  };
+
+  test("a cached step advertises its recorded transcript and dispatches nothing", async () => {
+    await expectCachedStepTranscript("scratch-recorded-transcript", true);
+  });
+
+  test("a cached step whose transcript is gone advertises none and still reuses the result", async () => {
+    await expectCachedStepTranscript("scratch-missing-transcript", false);
+  });
+
+  test("sweeps unreferenced artifact transcripts after a successful phase", async () => {
+    await withTempUserRoots(async () => {
+      // Given a phase directory left with a stale file and an orphaned service directory.
+      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      await mkdir(join(phase, "web"), { recursive: true });
+      await mkdir(join(phase, "ghost"), { recursive: true });
+      await writeFile(join(phase, "web", "stale.log"), "stale\n");
+      await writeFile(join(phase, "ghost", "stale.log"), "stale\n");
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+
+      // When
+      await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(plan)).pipe(
+          Effect.provide(layer(provider)),
+        ),
+      );
+
+      // Then the transcript the build just recorded stays and everything else goes.
+      expect(await Bun.file(join(phase, "web", "stale.log")).exists()).toBe(false);
+      const webFiles = await readdir(join(phase, "web"));
+      expect(webFiles).toHaveLength(1);
+      expect(webFiles[0]).toEndWith(".log");
+      await expect(access(join(phase, "ghost"))).rejects.toThrow();
+    });
+  });
+
+  test("keeps unreferenced artifact transcripts when the phase fails", async () => {
+    await withTempUserRoots(async () => {
+      // Given a stale transcript and a build that fails.
+      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      await mkdir(join(phase, "web"), { recursive: true });
+      const stale = join(phase, "web", "stale.log");
+      await writeFile(stale, "stale\n");
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: () =>
+          Effect.fail(
+            new ArtifactBuildError({
+              providerId: "test",
+              operation: "buildArtifact",
+              message: "step failed",
+              remediation: "Fix the failing build step.",
+            }),
+          ),
+      };
+
+      // When
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(plan)).pipe(
+          Effect.provide(layer(provider)),
+        ),
+      );
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(await Bun.file(stale).exists()).toBe(true);
+    });
+  });
+
+  test("keeps unreferenced artifact transcripts when every step is reused", async () => {
+    await withTempUserRoots(async () => {
+      // Given a phase that first succeeds and then runs fully from its recorded results.
+      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const stale = join(phase, "web", "stale.log");
+      let builds = 0;
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.sync(() => {
+            builds += 1;
+            return { providerId, ref: `${spec.service}:test` };
+          }),
+      };
+
+      // When
+      await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(plan);
+            yield* Effect.promise(() => mkdir(join(phase, "web"), { recursive: true }));
+            yield* Effect.promise(() => writeFile(stale, "stale\n"));
+            yield* orchestrator.build(plan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      expect(builds).toBe(2);
+      expect(await Bun.file(stale).exists()).toBe(true);
+    });
+  });
+
+  test("keeps the path-only build failure remediation for the global app", async () => {
+    await withTempUserRoots(async () => {
+      // Given a failing build of the global app.
+      const context = await mkdtemp(join(makeLandoPaths().roots.userDataRoot, "global-failure-context-"));
+      await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+      const globalPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("global"),
+        slug: "global",
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make(context),
+              contentHash: "sha256:context",
+            },
+          },
+        },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: () =>
+          Effect.fail(
+            new ArtifactBuildError({
+              providerId: "test",
+              operation: "buildArtifact",
+              message: "step failed",
+              remediation: "Fix the failing build step.",
+            }),
+          ),
+      };
+
+      // When
+      const error = await Effect.runPromise(
+        Effect.flip(Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(globalPlan))).pipe(
+          Effect.provide(layer(provider)),
+        ),
+      );
+
+      // Then
+      expect(error._tag).toBe("ArtifactBuildError");
+      if (error._tag !== "ArtifactBuildError") throw error;
+      expect(error.remediation).toEndWith(
+        `The full build output for service web is in ${String(error.transcriptPath)}.`,
+      );
+      expect(error.remediation).not.toContain("lando logs --build");
+      expect(error.remediation).toBe(error.remediation.trimEnd());
+    });
+  });
+
+  test("reuses a recorded user artifact build without dispatching provider work", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact build succeeded once.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider, calls } = derivedProvider();
+
+      // When the same plan builds against one state store twice.
+      const run = await buildTwice(provider, buildPlan);
+
+      // Then the second build returns the recorded result and advertises its transcript.
+      expect(calls.builds).toBe(1);
+      expect(run.second).toEqual(run.first);
+      expect(run.second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:1",
+        digest: "sha256:derived-1",
+        origin: "build",
+      });
+      expect(run.secondEvents.filter((event) => event._tag === "task.detail")).toEqual([]);
+      expect(run.secondEvents.find((event) => event._tag === "build-step-skip")).toMatchObject({
+        cached: true,
+        reason: "up-to-date",
+        phase: "artifact",
+        serviceName: ServiceName.make("web"),
+      });
+      expect(
+        run.secondEvents.filter((event) => event._tag === "pre-build" || event._tag === "post-build"),
+      ).toEqual([]);
+      const firstStart = run.firstEvents.find((event) => event._tag === "task.start");
+      const secondStart = run.secondEvents.find((event) => event._tag === "task.start");
+      if (firstStart?._tag !== "task.start" || secondStart?._tag !== "task.start")
+        throw new TypeError("task start event is missing");
+      expect(secondStart.transcriptPath).toBe(firstStart.transcriptPath);
+    });
+  });
+
+  test("dispatches a recorded user artifact build again when refresh is requested", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact build succeeded once.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider, calls } = derivedProvider();
+
+      // When the second build requests a refresh.
+      const { second } = await buildTwice(provider, buildPlan, { refresh: true });
+
+      // Then the provider builds again.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("dispatches a recorded user artifact build again for pull policy build", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact declares pull_policy: build.
+      const derived = derivedService({ pullPolicy: "build" });
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider, calls } = derivedProvider();
+
+      // When the same plan builds twice.
+      const { second } = await buildTwice(provider, buildPlan);
+
+      // Then pull_policy: build dispatches the build again.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("dispatches a recorded user artifact build again when its produced image is gone", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose produced image is removed after the first build.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const { provider: availableProvider, calls } = derivedProvider();
+      let producedPresent = true;
+      const provider = {
+        ...availableProvider,
+        pullArtifact: (spec: ArtifactPullSpec) => {
+          if (spec.policy === "never" && spec.ref.startsWith("php-derived:") && !producedPresent) {
+            return Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "test",
+                operation: "pullArtifact",
+                message: `Container image ${spec.ref} is not present locally.`,
+                remediation: "Rebuild it.",
+              }),
+            );
+          }
+          return availableProvider.pullArtifact(spec);
+        },
+      };
+
+      // When the produced image is gone before the second build.
+      const second = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(buildPlan);
+            producedPresent = false;
+            return yield* orchestrator.build(buildPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the missing image turns the recorded result into a miss.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("a failed user artifact build does not suppress the next build", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose first build fails.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const failure = new ProviderInternalError({
+        providerId: "test",
+        operation: "buildArtifact",
+        message: "first build failed",
+        remediation: "Fix the failing build step.",
+      });
+      let builds = 0;
+      const provider = {
+        ...derivedProvider().provider,
+        buildArtifact: () => {
+          builds += 1;
+          const attempt = builds;
+          return attempt === 1
+            ? Effect.fail(failure)
+            : Effect.succeed({
+                providerId,
+                ref: `php-derived:${attempt}`,
+                digest: `sha256:derived-${attempt}`,
+              });
+        },
+      };
+
+      // When the same plan builds again after the failure.
+      const run = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            const first = yield* Effect.result(orchestrator.build(buildPlan));
+            const second = yield* orchestrator.build(buildPlan);
+            return { first, second };
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the failed attempt is not reused.
+      expect(run.first._tag).toBe("Failure");
+      expect(builds).toBe(2);
+      expect(run.second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("reuses a recorded user acquisition-only result without re-running the provider build", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose acquisition-only step resolved an image digest.
+      const acquired: ServicePlan = { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } };
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: acquired } };
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: (spec: ArtifactPullSpec) =>
+          Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:acquired" }),
+        buildArtifact: () => Effect.die("an acquisition-only step must not build"),
+      };
+
+      // When the same plan builds twice against one state store.
+      const run = await buildTwice(provider, buildPlan);
+
+      // Then the recorded digest is reused.
+      expect(run.second).toEqual(run.first);
+      expect(run.second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "debian:12.11-slim",
+        digest: "sha256:acquired",
+      });
+      expect(run.secondEvents.find((event) => event._tag === "build-step-skip")).toMatchObject({
+        cached: true,
+        reason: "up-to-date",
+        phase: "artifact",
+      });
+      expect(
+        run.secondEvents.filter((event) => event._tag === "pre-build" || event._tag === "post-build"),
+      ).toEqual([]);
+    });
+  });
+
+  test("dispatches a user artifact build again when its build key changes", async () => {
+    await withTempUserRoots(async () => {
+      // Given the same user app described with different build inputs.
+      const firstPlan: AppPlan = {
+        ...plan,
+        services: { [web.name]: derivedService({ environment: { BUILD_INPUT: "one" } }) },
+      };
+      const secondPlan: AppPlan = {
+        ...plan,
+        services: { [web.name]: derivedService({ environment: { BUILD_INPUT: "two" } }) },
+      };
+      const { provider, calls } = derivedProvider();
+
+      // When the changed plan builds against the same state store.
+      const second = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(firstPlan);
+            return yield* orchestrator.build(secondPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the changed build key is a miss.
+      expect(calls.builds).toBe(2);
+      expect(second.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+        origin: "build",
+      });
+    });
+  });
+
+  test("redacts proxy credentials carried in artifact build args", async () => {
+    await withTempUserRoots(async () => {
+      // Given a build arg pair that carries proxy userinfo, not a secret-named value.
+      const context = await mkdtemp(join(makeLandoPaths().roots.userDataRoot, "build-args-context-"));
+      await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+      const built: ServicePlan = {
+        ...web,
+        artifact: {
+          kind: "build",
+          context: AbsolutePath.make(context),
+          contentHash: "sha256:context",
+          args: { HTTP_PROXY: "http://arguser:argpass-hunter2@127.0.0.1:3128" },
+        },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [{ id: "image", phase: "build", command: ["echo", "build"] }],
+          },
+        },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          (spec.onOutput === undefined
+            ? Effect.die("onOutput was not supplied")
+            : spec.onOutput("argpass-hunter2 http://arguser:argpass-hunter2@127.0.0.1:3128\n")
+          ).pipe(Effect.as({ providerId, ref: "built:web" })),
+      };
+
+      // When
+      const events = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build({ ...plan, services: { [built.name]: built } });
+            return [...(yield* Queue.clear(queue))];
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      const start = events.find((event) => event._tag === "task.start");
+      if (start?._tag !== "task.start") throw new TypeError("task start event is missing");
+      const transcript = await readFile(String(start.transcriptPath), "utf8");
+      expect(transcript).toContain("[redacted]");
+      expect(transcript).not.toContain("argpass-hunter2");
+      expect(transcript).not.toContain("arguser");
+    });
+  });
+  test("redacts a host proxy credential from a provider build failure", async () => {
+    await withTempUserRoots(async () => {
+      // Given the host proxy carries credentials the provider echoes.
+      const password = "host-proxy-hunter2";
+      const username = "hostproxyuser";
+      const previousProxy = process.env.HTTPS_PROXY;
+      process.env.HTTPS_PROXY = `http://${username}:${password}@127.0.0.1:3128`;
+      try {
+        const failure = new ProviderUnavailableError({
+          providerId: "test",
+          operation: "buildArtifact",
+          message: `proxy rejected ${password} for ${username}`,
+          remediation: "Check the proxy configuration and retry.",
+        });
+        const provider = {
+          ...TestRuntimeProvider,
+          buildArtifact: () => Effect.fail(failure),
+        };
+
+        // When
+        const error = await Effect.runPromise(
+          Effect.flip(
+            Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+              orchestrator.build({ ...plan, services: { [web.name]: web } }),
+            ),
+          ).pipe(Effect.provide(layer(provider))),
+        );
+
+        // Then
+        expect(error._tag).toBe("ProviderUnavailableError");
+        if (error._tag !== "ProviderUnavailableError") throw error;
+        expect(error.message).not.toContain(password);
+        expect(error.message).not.toContain(username);
+        expect(error.message).toBe("proxy rejected [redacted] for [redacted]");
+        expect(error.operation).toBe("buildArtifact");
+        expect(error.remediation).toBe(failure.remediation);
+      } finally {
+        if (previousProxy === undefined) Reflect.deleteProperty(process.env, "HTTPS_PROXY");
+        else process.env.HTTPS_PROXY = previousProxy;
+      }
+    });
+  });
+
+  test("a newer failed refresh hides an earlier recorded success", async () => {
+    await withTempUserRoots(async () => {
+      // Given a user app whose derived artifact build succeeded once.
+      const derived = derivedService();
+      const buildPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+      const failure = new ProviderInternalError({
+        providerId: "test",
+        operation: "buildArtifact",
+        message: "refresh build failed",
+        remediation: "Fix the failing build step.",
+      });
+      let builds = 0;
+      const provider = {
+        ...derivedProvider().provider,
+        buildArtifact: () => {
+          builds += 1;
+          if (builds === 2) return Effect.fail(failure);
+          return Effect.succeed({
+            providerId,
+            ref: `php-derived:${builds}`,
+            digest: `sha256:derived-${builds}`,
+          });
+        },
+      };
+
+      // When the plan succeeds, rebuilds with refresh and fails, then builds plainly again.
+      const { refresh, third } = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(buildPlan);
+            const refresh = yield* Effect.result(orchestrator.build(buildPlan, { refresh: true }));
+            const third = yield* orchestrator.build(buildPlan);
+            return { refresh, third };
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then the newer failure hides the older success and the provider builds again.
+      expect(refresh).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "ProviderInternalError",
+          operation: "buildArtifact",
+          message: "refresh build failed",
+        },
+      });
+      expect(builds).toBe(3);
+      expect(third.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:3",
+        digest: "sha256:derived-3",
+        origin: "build",
+      });
+    });
+  });
+
+  test("reusing an older artifact key moves it to the newest position", async () => {
+    await withTempUserRoots(async () => {
+      // Given a recorded key for this plan that precedes a newer recorded key of the same identity.
+      const store = makeTestStateStore();
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          spec.service === web.name
+            ? Effect.die("a reused step must not build")
+            : Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+      const buildKey = await Effect.runPromise(buildKeyForService(provider, web));
+      const root = makeLandoPaths().roots.userDataRoot;
+      const directory = join(root, "builds", String(plan.id), "artifact", "web");
+      const olderPath = join(directory, `${buildKey}.log`);
+      const newerPath = join(directory, "newer.log");
+      await mkdir(directory, { recursive: true });
+      await writeFile(olderPath, "version 6\n");
+      await writeFile(newerPath, "version 7\n");
+      const injected = Layer.succeed(StateStore, store.service);
+
+      // When the plan reuses the older key.
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const stateStore = yield* StateStore;
+          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+          yield* recordBuildResult(bucket, {
+            buildKey,
+            service: web.name,
+            phase: "artifact",
+            outcome: "complete",
+            exitCode: 0,
+            durationMs: 1,
+            artifactRef: "web:test",
+            transcriptPath: AbsolutePath.make(olderPath),
+          });
+          yield* recordBuildResult(bucket, {
+            buildKey: "newer-key",
+            service: web.name,
+            phase: "artifact",
+            outcome: "complete",
+            exitCode: 0,
+            durationMs: 1,
+            artifactRef: "web:newer",
+            transcriptPath: AbsolutePath.make(newerPath),
+          });
+          const built = yield* (yield* BuildOrchestrator).build(plan);
+          const entries = (yield* bucket.get) ?? [];
+          return { artifact: built.services[web.name]?.artifact, entries };
+        }).pipe(Effect.provide(layer(provider, injected))),
+      );
+
+      // Then the reused key is last, so the next rotation and `logs --build` see it as current.
+      expect(result.artifact).toMatchObject({ ref: "web:test" });
+      expect(
+        result.entries.filter((entry) => entry.service === web.name).map((entry) => entry.buildKey),
+      ).toEqual(["newer-key", buildKey]);
+    });
+  });
+
+  test("a warm artifact start writes no build-results bytes", async () => {
+    await withTempUserRoots(async () => {
+      // Given a plan whose artifact results are already recorded.
+      const store = makeTestStateStore();
+      const injected = Layer.succeed(StateStore, store.service);
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+
+      // When a second, fully reused build runs.
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const stateStore = yield* StateStore;
+          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+          const orchestrator = yield* BuildOrchestrator;
+          yield* orchestrator.build(plan);
+          const before = yield* store.readRaw(bucket.path);
+          yield* orchestrator.build(plan);
+          const after = yield* store.readRaw(bucket.path);
+          return { before, after };
+        }).pipe(Effect.provide(layer(provider, injected))),
+      );
+
+      // Then the index was read but not rewritten.
+      expect(result.before).not.toBeNull();
+      expect(result.after).toEqual(result.before);
     });
   });
 });

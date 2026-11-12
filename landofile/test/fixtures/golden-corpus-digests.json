@@ -870,8 +870,16 @@
       "digest": "9185bfe3f0ad6878eed4924a4157fe63bca16fa652f941560b83d8bf328931e9"
     },
     {
+      "fixture": "docs/guides/php-build-failures/fixtures/failing-app-step",
+      "digest": "a6a3963a8f581b1cbf72b55ff08d926fc1779fae82e1bdd445c78046206547e1"
+    },
+    {
       "fixture": "docs/guides/php-build-failures/fixtures/failing-build",
       "digest": "f9e620e671090153b8f279c317ebc51881ef95402e2c2d09e94dcc69937764be"
+    },
+    {
+      "fixture": "docs/guides/php-build-failures/fixtures/failing-image-build",
+      "digest": "d749fc5a9d8bc0807083ee2c280e291c5f1e7c0937c1078198f30d098d4da521"
     },
     {
       "fixture": "docs/guides/php-build-failures/fixtures/happy-build",

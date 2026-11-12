@@ -25,6 +25,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
 
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
@@ -212,8 +213,12 @@ describe("BuildOrchestrator pull_policy acquisition", () => {
         });
 
         // When
-        await build(appPlan(service, "scratch-pull-first"), provider, false);
-        await build(appPlan(service, "scratch-pull-second"), provider, false);
+        const scratchPlan = (id: string) => ({
+          ...appPlan(service, id),
+          extensions: { [SCRATCH_EXTENSION_KEY]: { id } },
+        });
+        await build(scratchPlan("scratch-pull-first"), provider, false);
+        await build(scratchPlan("scratch-pull-second"), provider, false);
 
         // Then
         expect(builds).toEqual([...expected]);

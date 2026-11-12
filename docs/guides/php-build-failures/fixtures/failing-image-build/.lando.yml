@@ -1,0 +1,7 @@
+name: bt-failbuild
+services:
+  app:
+    type: compose
+    primary: true
+    build:
+      context: .

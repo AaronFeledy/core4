@@ -9,10 +9,25 @@ import {
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import { collectPublicCredentialValues, nonEmpty } from "./heuristic-values.ts";
+import { collectUrlCredentialValues } from "./service.ts";
 
 type Candidate = {
   readonly path: ReadonlyArray<string | number>;
   readonly value: EnvironmentValue;
+};
+
+/** Proxy URL credentials live under ordinary proxy keys rather than secret-named ones. */
+const PROXY_ENV_KEYS: ReadonlySet<string> = new Set(["http_proxy", "https_proxy", "all_proxy", "ftp_proxy"]);
+
+export const collectProxyUrls = (
+  environment: Readonly<Record<string, unknown>> | undefined,
+): ReadonlyArray<string> => {
+  if (environment === undefined) return [];
+  const urls: string[] = [];
+  for (const [key, value] of Object.entries(environment)) {
+    if (PROXY_ENV_KEYS.has(key.toLowerCase()) && typeof value === "string") urls.push(value);
+  }
+  return urls;
 };
 
 export type RedactionPlan = Partial<Pick<AppPlan, "committedLiteralDigests" | "events" | "extensions">> & {
@@ -99,6 +114,13 @@ export const planRedactionValues = (
     if (digests.has(sha256Hex(value))) wholeToken.add(value);
     else substring.add(value);
   }
+  for (const service of Object.values(plan.services)) {
+    for (const value of collectUrlCredentialValues(collectProxyUrls(service.environment))) {
+      if (isPublicDefaultCredential(value) || publicValues.has(value)) continue;
+      if (!isUsableExactRedactionValue(value)) continue;
+      substring.add(value);
+    }
+  }
   return {
     substring: [...substring],
     wholeToken: [...wholeToken],
@@ -140,6 +162,11 @@ export const classifyLoweredEnvRedaction = (
     if (isPublicDefaultCredential(value) || publicValues.has(value)) continue;
     if (options?.wholeToken?.has(value)) wholeToken.add(value);
     else substring.add(value);
+  }
+  for (const value of collectUrlCredentialValues(collectProxyUrls(env))) {
+    if (!isUsableExactRedactionValue(value)) continue;
+    if (isPublicDefaultCredential(value) || publicValues.has(value)) continue;
+    substring.add(value);
   }
   return {
     substring: [...substring],
