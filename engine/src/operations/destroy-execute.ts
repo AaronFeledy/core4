@@ -292,13 +292,12 @@ export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(functio
     if (target === undefined) return yield* executeLocked(plan);
     const provider = yield* registry.select(target.plan);
     const stateStore = yield* StateStore;
-    const context = yield* Effect.context<Effect.Services<ReturnType<typeof executeLocked>>>();
     return yield* withPlanVolumeCoordination({
       plan: target.plan,
       provider,
       stateStore,
       body: () => executeLocked(plan),
-    }).pipe(Effect.provide(context));
+    });
   });
   const refs =
     plan.refs.length === 0 ? [{ kind: "user" as const, id: plan.name, root: plan.root }] : plan.refs;

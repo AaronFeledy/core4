@@ -58,8 +58,6 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
           (reconciled === target ? execution.preparedOverlays : undefined) ??
           (yield* prepareStartOverlays(reconciled, yield* providerRegistry.select(reconciled.plan)));
         const placement = yield* ensureAppPlacementState(reconciled.app, reconciled.plan.provider);
-        const context =
-          yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
         const stateStore = yield* StateStore;
         const plan = reconciled.plan;
         const provider = yield* selectPreparedProvider(plan);
@@ -92,7 +90,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
               ),
             );
           }),
-        }).pipe(Effect.provide(context));
+        });
       }),
     ),
   );

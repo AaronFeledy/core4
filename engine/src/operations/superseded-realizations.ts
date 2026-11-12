@@ -162,7 +162,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
               }),
             );
           }),
-        }).pipe(Effect.provide(context));
+        });
       }
       return withShutdownObservations(
         { appIds: superseded.map((plan) => plan.id), servicesRemoved: [...servicesRemoved], volumesRemoved },

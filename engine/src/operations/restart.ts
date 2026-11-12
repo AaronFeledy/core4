@@ -290,7 +290,6 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const initialTarget = target ?? (yield* resolveDesiredAppTarget);
-    const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
     return yield* withAppMutationLock(
       appLockTarget(initialTarget.plan),
@@ -377,7 +376,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
             return result;
           }),
-        }).pipe(Effect.provide(context));
+        });
       }),
     );
   },

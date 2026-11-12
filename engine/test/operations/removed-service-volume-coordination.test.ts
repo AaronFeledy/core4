@@ -4,6 +4,7 @@ import { physicalVolumeLockKey } from "@lando/sdk/services";
 import { Effect } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 
+import { withAppMutationLock } from "../../src/operations/app-mutation-lock.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
@@ -134,6 +135,24 @@ describe("whole-app lifecycle with a removed service", () => {
         });
         expect(outcome.failure instanceof Error ? outcome.failure.message : "").toContain("zeta-adminer");
       }
+    });
+
+    test(`${operation.name} nested under another app's lock still sees its own app lock as held`, async () => {
+      // Given a fiber that already holds an unrelated app's mutation lock.
+      const scenario = makeScenario({ preTag: operation.preTag, mutateInsideHalt: false });
+
+      // When the whole app is rebuilt or restarted inside that lock.
+      const outcome = await Effect.runPromise(
+        Effect.result(
+          withAppMutationLock(
+            { id: "outer-app", root: `${desired.root}-outer` },
+            operation.effect(scenario.harness),
+          ),
+        ).pipe(Effect.provide(scenario.harness.layer), Effect.timeout("10 seconds")),
+      );
+
+      // Then its nested halt and start reuse the lock it took instead of waiting on it.
+      expect(outcome._tag).toBe("Success");
     });
   }
 });

@@ -94,7 +94,6 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
   );
   const events = yield* EventService;
   const stateStore = yield* StateStore;
-  const context = yield* Effect.context<Effect.Services<typeof disposal.dispose>>();
   yield* withLaunchVolumeCoordination({
     plan: old,
     provider: oldProvider,
@@ -123,5 +122,5 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
       );
       yield* disposal.complete;
     }),
-  }).pipe(Effect.provide(context), Effect.provideService(FileSyncEngine, oldEngine));
+  }).pipe(Effect.provideService(FileSyncEngine, oldEngine));
 });

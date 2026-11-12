@@ -195,7 +195,6 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
     managed?: StartManagedScope,
   ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
     const initialTarget = target ?? (yield* resolveDesiredAppTarget);
-    const context = yield* Effect.context<RebuildAppServices>();
     const stateStore = yield* StateStore;
     return yield* withAppMutationLock(
       appLockTarget(initialTarget.plan),
@@ -290,7 +289,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
               ...(start.checks === undefined ? {} : { checks: start.checks }),
             };
           }),
-        }).pipe(Effect.provide(context));
+        });
       }),
     );
   },
