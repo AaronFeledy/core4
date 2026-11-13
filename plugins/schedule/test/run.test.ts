@@ -4,6 +4,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  CLONED_SERVICE_PROVENANCE_KEY,
   LoadScopedLandofile,
   ProviderId,
   ServiceName,
@@ -55,7 +56,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const servicePlan = (name: string) =>
+const servicePlan = (name: string, clonedFrom?: string) =>
   ServicePlan.make({
     name: ServiceName.make(name),
     type: "compose",
@@ -69,16 +70,32 @@ const servicePlan = (name: string) =>
     hostAliases: [],
     metadata,
     extensions: {},
+    ...(clonedFrom === undefined
+      ? {}
+      : { provenance: { [CLONED_SERVICE_PROVENANCE_KEY]: { from: clonedFrom } } }),
   });
 
-const makePlan = (names: ReadonlyArray<string> = ["web", "web-schedule", "web-schedule-1002"]) =>
+interface PlannedService {
+  readonly name: string;
+  readonly clonedFrom?: string;
+}
+
+const makePlan = (
+  services: ReadonlyArray<PlannedService> = [
+    { name: "web" },
+    { name: "web-schedule", clonedFrom: "web" },
+    { name: "web-schedule-1002", clonedFrom: "web" },
+  ],
+) =>
   AppPlan.make({
     id: AppId.make("demo"),
     name: "demo",
     slug: "demo",
     root: appRoot,
     provider: ProviderId.make("lando"),
-    services: Object.fromEntries(names.map((name) => [ServiceName.make(name), servicePlan(name)])),
+    services: Object.fromEntries(
+      services.map(({ name, clonedFrom }) => [ServiceName.make(name), servicePlan(name, clonedFrom)]),
+    ),
     routes: [],
     stores: [],
     fileSync: [],
@@ -87,7 +104,7 @@ const makePlan = (names: ReadonlyArray<string> = ["web", "web-schedule", "web-sc
   });
 
 const makeRuntime = (
-  options: { readonly applied?: boolean; readonly planServices?: ReadonlyArray<string> } = {},
+  options: { readonly applied?: boolean; readonly planServices?: ReadonlyArray<PlannedService> } = {},
 ) => {
   const execs: Array<{ readonly target: ExecTarget; readonly command: ProviderCommandSpec }> = [];
   const plan = makePlan(options.planServices);
@@ -167,14 +184,14 @@ describe("schedule:run", () => {
     expect(runtime.execs[1]?.command.command, "a list job must run as argv").toEqual(["echo", "ok"]);
 
     await runtime.run("fail");
-    expect(String(runtime.execs[2]?.target.service), "a later user group must use its suffix name").toBe(
+    expect(String(runtime.execs[2]?.target.service), "a user group must use its suffix name").toBe(
       "web-schedule-1002",
     );
     expect(runtime.execs[2]?.command.command).toEqual(["sh", "-c", "exit 3"]);
   });
 
   test("fails when the applied plan predates the job's sidecar", async () => {
-    const runtime = makeRuntime({ planServices: ["web"] });
+    const runtime = makeRuntime({ planServices: [{ name: "web" }] });
     const error = await runtime.run("ok").catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(PlanReplanRequiredError);
     if (!(error instanceof PlanReplanRequiredError)) return;
@@ -182,6 +199,28 @@ describe("schedule:run", () => {
     expect(error.message).toContain("web-schedule");
     expect(error.remediation, "the remediation must direct a restart").toContain("lando restart");
     expect(runtime.execs, "a missing sidecar must not reach the provider").toEqual([]);
+  });
+
+  test("fails when the same-named applied service was not cloned from the job's service", async () => {
+    const runtime = makeRuntime({ planServices: [{ name: "web" }, { name: "web-schedule" }] });
+    const error = await runtime.run("ok").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(PlanReplanRequiredError);
+    if (!(error instanceof PlanReplanRequiredError)) return;
+    expect(error.message).toContain("web.ok");
+    expect(error.message).toContain("web-schedule");
+    expect(error.remediation).toContain("lando restart");
+    expect(runtime.execs, "an unprovenanced service must not reach the provider").toEqual([]);
+  });
+
+  test("fails when the sidecar was cloned from a different service", async () => {
+    const runtime = makeRuntime({
+      planServices: [{ name: "web" }, { name: "web-schedule", clonedFrom: "db" }],
+    });
+    const error = await runtime.run("ok").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(PlanReplanRequiredError);
+    if (!(error instanceof PlanReplanRequiredError)) return;
+    expect(error.remediation).toContain("lando restart");
+    expect(runtime.execs, "a foreign clone must not reach the provider").toEqual([]);
   });
 
   test("fails with the not-found and ambiguous errors before touching the provider", async () => {

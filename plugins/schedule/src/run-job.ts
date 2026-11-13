@@ -1,5 +1,5 @@
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
-import { type CommandSpec as SchemaCommandSpec, ServiceName } from "@lando/sdk/schema";
+import { type CommandSpec as SchemaCommandSpec, ServiceName, clonedServiceParent } from "@lando/sdk/schema";
 import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -90,13 +90,16 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
       }),
     );
   }
-  if (planned.services[ServiceName.make(group.name)] === undefined) {
+  const sidecar = planned.services[ServiceName.make(group.name)];
+  // A same-named authored service is not this job's timer: exec there would run
+  // an unexpected image as the wrong user, so require the clone provenance.
+  if (sidecar === undefined || clonedServiceParent(sidecar) !== job.service) {
     return yield* Effect.fail(
       new PlanReplanRequiredError({
         app: document.name ?? appRoot,
         providerId: planned.provider,
         operation: "schedule run",
-        message: `Scheduled job ${job.service}.${job.name} runs in ${group.name}, but the applied plan has no such service.`,
+        message: `Scheduled job ${job.service}.${job.name} runs in ${group.name}, but the applied plan has no such service cloned from ${job.service}.`,
         remediation: "Run `lando restart` to apply the schedule, then retry.",
       }),
     );
