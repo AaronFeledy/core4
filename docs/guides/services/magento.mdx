@@ -199,7 +199,7 @@ lando restart
 lando schedule:list
 ```
 
-The list should show `magento-cron` on `appserver`, user `www-data`, with a next run time within the minute. Lando runs the job in a sidecar service named `appserver-schedule`, which shares the code, `vendor` volume, and environment of `appserver`. It starts and stops with the app, so there's nothing to launch by hand.
+The list should show `magento-cron` on `appserver`, user `www-data`, with a next run time within the minute. Lando runs the job in a sidecar service named `appserver-schedule-www-data`, which shares the code, `vendor` volume, and environment of `appserver`. It starts and stops with the app, so there's nothing to launch by hand.
 
 To trigger a run without waiting, or to see its output in your terminal:
 
@@ -213,7 +213,7 @@ The first run schedules work. Later runs execute jobs once their scheduled time 
 lando mariadb -e 'SELECT status, COUNT(*) AS jobs FROM cron_schedule GROUP BY status'
 ```
 
-Look for completed jobs with `success` status. Pending future jobs are normal. For failed or missed jobs, read the timed runs' output with `lando logs --service appserver-schedule`, then inspect `var/log/cron.log` and `var/log/exception.log` inside `appserver`. Runs missed while the app was stopped aren't replayed. See [Run scheduled jobs](./schedule.mdx) for the other `schedule:` options, and [Configure and run cron jobs](https://experienceleague.adobe.com/en/docs/commerce-operations/configuration-guide/cli/configure-cron-jobs) for a production setup.
+Look for completed jobs with `success` status. Pending future jobs are normal. For failed or missed jobs, read the timed runs' output with `lando logs --service appserver-schedule-www-data`, then inspect `var/log/cron.log` and `var/log/exception.log` inside `appserver`. Runs missed while the app was stopped aren't replayed. See [Run scheduled jobs](./schedule.mdx) for the other `schedule:` options, and [Configure and run cron jobs](https://experienceleague.adobe.com/en/docs/commerce-operations/configuration-guide/cli/configure-cron-jobs) for a production setup.
 
 ## Reindex and check search
 

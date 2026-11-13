@@ -39,16 +39,30 @@ Each job takes these keys:
 | --- | --- |
 | `name` | A name unique within the service. Start with a letter, then use letters, digits, `_`, or `-`. |
 | `every` | When the job runs. See the forms below. |
-| `run` | The command. A string runs through `sh -c`, so pipes and `$(...)` work. A list runs as written, with no shell. |
+| `run` | The command. A string is a shell script that `sh` runs, so pipes and `$(...)` work and it can span several lines. A list runs as written, with no shell. |
 | `user` | Optional. The container user the job runs as. See [Choose the user](#choose-the-user). |
 
 `every` accepts three forms:
 
-- A 5-field cron expression, such as `"0 6 * * 1-5"` for 06:00 on weekdays.
+- A cron expression with exactly five fields, such as `"0 6 * * 1-5"` for 06:00 on weekdays. A six-field expression with seconds is rejected.
 - A named schedule: `@hourly`, `@daily`, `@midnight`, `@weekly`, `@monthly`, `@yearly`, or `@annually`.
-- `@every <duration>` with a step that lines up with the clock: seconds or minutes that divide 60, or hours that divide 24. `@every 30s`, `@every 5m`, and `@every 6h` are valid.
+- `@every <duration>` with a whole number of seconds and a step that lines up with the clock: seconds or minutes that divide 60, or hours that divide 24. `@every 30s`, `@every 5m`, and `@every 6h` are valid. `@every 24h` means daily at midnight.
 
 Quote `every` values. A bare `@` or `*` at the start of a YAML value isn't a plain string.
+
+A job can be several shell lines. Write `run` as a YAML block and Lando runs the lines as one script:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: cleanup
+        every: "0 2 * * *"
+        run: |
+          set -e
+          find /tmp -name "*.cache" -mtime +7 -delete
+          echo "cleanup finished"
+```
 
 A job starts in the service's working directory, the directory the service's own process starts in. Lando service types such as `php:*` and `node:*` start in the app mount, `/app`. A `type: compose` service uses its image's `WORKDIR`.
 
@@ -106,6 +120,8 @@ The first start after you add a schedule takes longer, because Lando builds the 
 
 With `--format=json` the result is `{ "jobs": [...] }`. `--service <name>` limits the list to one service.
 
+A job whose calendar never occurs, such as `"0 0 31 2 *"` for February 31, is still listed. It has no next run.
+
 ## Run a job now
 
 Don't wait for the clock while you're writing a job. Run it once by name:
@@ -116,7 +132,7 @@ lando schedule:run report
 
 The job runs in the sidecar that schedules it, here `appserver-schedule`. A manual run is the same execution as a timed one: same container user, same working directory, same environment.
 
-That means the app has to be started with the schedule applied. After you add a job, or change `user:` so the set of sidecars changes, run `lando restart` first. Otherwise the command fails with `PlanReplanRequiredError`. Its message names the job and the missing sidecar, and its remediation is to run `lando restart`.
+That means the app has to be started with the schedule applied. After you add a job, or change `user:` so the set of sidecars changes, run `lando restart` first. Otherwise the command fails with `PlanReplanRequiredError`. Its message names the job and the missing sidecar, and its remediation is to run `lando restart`. You get the same error, with the same fix, when the running service of that name isn't that job's sidecar.
 
 Output prints when the job finishes, not line by line while it runs. The exit code of `lando schedule:run` is the job's exit code. With `--format=json`, a job that exits nonzero returns `"ok": false` and still includes `result`, with the job's `service`, `name`, `exitCode`, `stdout`, and `stderr`.
 
@@ -151,6 +167,8 @@ Timed runs write their output to the sidecar's log:
 lando logs --service appserver-schedule
 ```
 
+A job that sets `user:` logs to a sidecar with a longer name. See [Choose the user](#choose-the-user).
+
 The sidecar is an ordinary service, so `lando exec appserver-schedule -- sh` opens a shell in it too. It is never the app's primary service.
 
 ## Choose the user
@@ -172,20 +190,36 @@ services:
 
 `user` takes a name, a uid, `name:group`, or `uid:gid`. Lando runs that job in a sidecar whose container user is that user.
 
-Lando groups a service's jobs by user and runs one sidecar per group. Most services have one group, so one sidecar. In the example above there are two:
+Lando runs one sidecar for a service's jobs without `user:`, and one more for each different `user:`. Most services have one sidecar. In the example above there are two:
 
-- `appserver-schedule` runs `heartbeat`. The first job in the list decides which group gets the plain name.
-- `appserver-schedule-node` runs `report`. Other groups add the user, lowercased, with any other character turned into `-`. A later group of jobs without `user:` is named `appserver-schedule-default`.
+- `appserver-schedule` runs `heartbeat`. Jobs without `user:` always run in `<service>-schedule`.
+- `appserver-schedule-node` runs `report`. Jobs with `user:` run in `<service>-schedule-<user>`.
 
-The first job's user owns the plain `appserver-schedule` name, so reordering jobs that use different users can rename the sidecars.
+To build that suffix, Lando lowercases the user, replaces each run of characters other than `a-z` and `0-9` with one `-`, and drops a `-` at either end:
 
-Read a job's log from the sidecar that runs it.
+| `user` | Sidecar for a job on `appserver` |
+| --- | --- |
+| none | `appserver-schedule` |
+| `node` | `appserver-schedule-node` |
+| `www-data` | `appserver-schedule-www-data` |
+| `1002` | `appserver-schedule-1002` |
+| `www-data:staff` | `appserver-schedule-www-data-staff` |
+
+A sidecar's name depends only on `user:`, so reordering jobs never renames one. When every job on a service sets the same `user:`, the service has one sidecar, named with that user, and no plain `appserver-schedule`.
+
+Read a job's log from the sidecar that runs it:
+
+```sh
+lando logs --service appserver-schedule-node
+```
 
 ## Set the timezone
 
-Jobs use the service's `TZ`, and `lando schedule:list` reports times in the same zone. Without `TZ`, jobs run on UTC. There is no app-wide timezone key; see [Set the timezone](./timezone.mdx).
+The schedule zone for a service's jobs comes from `TZ` under that service's `environment:`, written there as a plain string. A leading `:` is ignored. Without it, jobs run on UTC. A `TZ` that arrives another way, such as an `env_file` or a value Lando computes, doesn't set the schedule zone. There is no app-wide timezone key; see [Set the timezone](./timezone.mdx).
 
-A zone name such as `America/Chicago` needs the image's timezone database. Debian-based images ship it. When the image has no data for the zone, `lando start` or `lando restart` fails while it builds the sidecar's image. The error is one line that names the service, the `TZ` value, and the fix: install the timezone database in the service's `build.artifact`, or remove `TZ`. On Alpine:
+Each job starts with `TZ` set to the schedule zone. `lando schedule:list`, the timer, and `date` inside a job all agree.
+
+A zone other than UTC needs the image's timezone database. Debian-based images ship it. When the image has no data for the zone, `lando start` or `lando restart` fails while it builds the sidecar's image. The error is one line that names the service, the `TZ` value, and the fix: install the timezone database in the service's `build.artifact`, or remove `TZ`. On Alpine:
 
 ```yaml
 services:
@@ -198,7 +232,9 @@ services:
           user: root
 ```
 
-Lando never swaps in UTC for a zone name it can't load, so `lando schedule:list` and the timer agree.
+Lando never swaps in UTC for a zone it can't load.
+
+`TZ` has to be a zone name. A POSIX rule string such as `EST5EDT,M3.2.0,M11.1.0` fails the same build, with one line that asks for a zone name such as `America/Chicago` or `UTC`.
 
 ## Know what the sidecar shares
 
@@ -210,7 +246,7 @@ Some things stay with the parent only:
 - Healthchecks and certificates.
 - The parent's server process and its app build steps (`build.app`). Those run once, in the parent.
 
-The image needs a shell. An image without one, such as a distroless image, can't carry scheduled jobs, and Lando says so when it plans the app.
+The image needs a shell. Lando rejects the empty `scratch` image and `gcr.io/distroless/*` images when it plans the app. Any other image without a shell fails later, when Lando builds the sidecar's image.
 
 ## Change or remove jobs
 
@@ -230,13 +266,13 @@ When Landofile layers both set `schedule:` on a service, the higher layer's list
 
 Runs of one job can overlap. If `heartbeat` takes seven minutes, the next run still starts on time. A job that must not run twice at once has to lock itself, for example with `flock`.
 
-Missed runs aren't replayed. After your laptop sleeps or the app stops, the next run is the next scheduled time.
+Lando doesn't catch up on missed runs. Runs that were due while the app was stopped aren't replayed. After your laptop sleeps, at most the one run that was already pending can start late when it wakes. Earlier missed runs are skipped.
 
 `@every` follows the clock, not the moment the app started. At 12:02, `@every 5m` next runs at 12:05.
 
 ## Fix a rejected schedule
 
-Lando checks `schedule:` whenever it loads the Landofile. An `@every` step that doesn't line up with the clock, such as `@every 7m` or `@every 1h30m`, fails with `LandofileValidationError` at the job's `every` path, and the message tells you to use a 5-field cron expression instead:
+Lando checks `schedule:` whenever it loads the Landofile. An `@every` value that isn't a whole number of seconds or doesn't line up with the clock, such as `@every 1500ms`, `@every 7m`, or `@every 1h30m`, fails with `LandofileValidationError` at the job's `every` path, and the message tells you to use a 5-field cron expression instead:
 
   <Scenario id="rejected-every" render>
     <Step name="scaffold">
@@ -249,6 +285,8 @@ Lando checks `schedule:` whenever it loads the Landofile. An `@every` step that 
   </Scenario>
 
 For every seven minutes within each hour, write `every: "*/7 * * * *"`. Two jobs with the same name on one service fail the same way. `lando app:config:lint` reports these errors without starting anything.
+
+Lando also has the scheduler check the finished job table while it builds the sidecar's image. A table the scheduler would reject fails that build on `lando start` or `lando restart`, not later in the running sidecar.
 
 </Guide>
 

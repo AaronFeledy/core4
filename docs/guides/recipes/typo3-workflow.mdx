@@ -178,7 +178,7 @@ services:
         user: www-data
 ```
 
-The job runs as `www-data`, like `lando typo3`. `lando schedule:run typo3-scheduler` runs it once right away. See [Run scheduled jobs](../services/schedule.mdx).
+The job runs as `www-data`, like `lando typo3`. `lando schedule:run typo3-scheduler` runs it once right away. Timed runs write their output to the job's sidecar, which you read with `lando logs --service appserver-schedule-www-data`. See [Run scheduled jobs](../services/schedule.mdx).
 
 ## Connect TYPO3 to MariaDB
 
