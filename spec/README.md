@@ -125,6 +125,7 @@ If you are looking for a public surface or policy:
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
+| User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
