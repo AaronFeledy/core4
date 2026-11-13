@@ -36,17 +36,16 @@ import { DateTime, Effect, Option } from "effect";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
-import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
-import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
-import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
+import type { AdmittedApp } from "./app-activation.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
@@ -70,12 +69,7 @@ import type { StartManagedScope } from "./start-file-sync.ts";
 import { retireUnusedGpgAgentWorker } from "./start-gpg-agent.ts";
 import { retireUnusedHostProxyWorker } from "./start-host-proxy.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
-import {
-  type PreparedStartOverlays,
-  prepareStartOverlays,
-  projectDebuggerOverlay,
-  withAcquiredStartOverlays,
-} from "./start-overlays.ts";
+import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
 import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
 import { retireUnusedSshAgentWorker } from "./start-ssh-agent.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
@@ -176,25 +170,23 @@ export const preflightStartAppDrain = Effect.fnUntraced(function* (
   yield* lifecycle.invalidateDrain(target.app);
 });
 
-export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
+export const launchAdmittedApp = Effect.fnUntraced(function* (
+  admitted: AdmittedApp,
   options: StartAppOptions | undefined,
-  target: ResolvedAppTarget,
   managed: StartManagedScope | undefined,
   execution: {
-    readonly provider: PreparedRuntimeProvider;
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
-    readonly preparedOverlays?: PreparedStartOverlays;
   },
 ): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
+  const { target, provider, overlays: preparedOverlays } = admitted;
   const bundle = yield* fileSyncBundle(target.plan);
   const resolvedOptions = options ?? {};
   const events = yield* EventService;
   const builds = yield* BuildOrchestrator;
   const proxy = yield* RouterService;
 
-  const provider = execution.provider;
   const inspectAppliedFileSync = provider.inspectAppliedFileSync;
   const inspectPrior =
     inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
@@ -227,10 +219,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
         remediation: "Restore a provider with the recorded prepared-volume lifecycle before retrying start.",
       }),
     );
-  // Issue and stamp generated certificates before any hook or provider work can fail later on them.
-  const plan = yield* prepareServiceCertificates(resolvedPlan);
-  const preparedOverlays =
-    execution.preparedOverlays ?? (yield* prepareStartOverlays({ ...target, plan }, provider));
+  // Prepare before hooks; the activation applier requires this proof to stamp the plan it applies.
+  const { plan, certificates } = yield* prepareServiceCertificates(resolvedPlan);
   const engineId = bundle.kind === "accelerated" ? bundle.id : "unknown";
   if (bundle.kind === "accelerated" && inspectPrior !== undefined) {
     const prior = yield* inspectPrior();
@@ -341,19 +331,15 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
               })),
             );
             if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
-            yield* Effect.scoped(
-              applyWithResolvedEnvironment(
-                provider,
-                runtimePlan,
-                {
-                  reconcile: resolvedOptions.reconcile ?? false,
-                  complete: true,
-                  onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
-                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                },
-                verifyGlobalConsumerAdmission,
-              ),
-            );
+            yield* applyActivation({
+              provider,
+              plan: runtimePlan,
+              certificates,
+              reconcile: resolvedOptions.reconcile ?? false,
+              complete: true,
+              ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+              beforeApply: verifyGlobalConsumerAdmission,
+            });
             if (pendingStart !== undefined) yield* pendingStart.complete;
             yield* prepareGpgHome;
             // Retire only after the apply replaced the previous realization, so a failed start
