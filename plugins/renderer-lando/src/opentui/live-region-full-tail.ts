@@ -136,7 +136,12 @@ export const dropFullTailRegion = (renderer: LiveRegionRendererLike): void => {
 /** Resolves once OpenTUI has restored the terminal, so later writes reach the main screen. */
 export const leaveFullTail = async (session: FullTailSession): Promise<void> => {
   session.renderer.off("resize", session.resizeListener);
-  session.renderer.externalOutputMode = "passthrough";
-  removeFullTailFooter(session);
+  if (session.renderer.isDestroyed) {
+    // OpenTUI tore the renderer and its nodes down itself; only its restore remains to await.
+    session.footer = undefined;
+  } else {
+    session.renderer.externalOutputMode = "passthrough";
+    removeFullTailFooter(session);
+  }
   await closeRenderer(session.renderer);
 };

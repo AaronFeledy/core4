@@ -512,6 +512,35 @@ describe("LiveRegionController", () => {
 const nextTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 describe("LiveRegionController — OpenTUI terminal transitions", () => {
+  test("full-tail acquires the alternate screen without mouse reporting or OpenTUI signal handlers", async () => {
+    // Given: Lando never reads the mouse, and it owns signals and renderer teardown.
+    const fixture = makeFixture();
+    let config: Record<string, unknown> | undefined;
+    const module = {
+      ...fixture.module,
+      createCliRenderer: async (nextConfig: Record<string, unknown>) => {
+        config = nextConfig;
+        return fixture.renderer;
+      },
+    } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
+    const controller = await createLiveRegionController(
+      { stdout: createCapturingStdout(fixture.writes), width: 80, height: 24 },
+      { loadModule: async () => module },
+    );
+
+    // When
+    await controller.enterFullTail();
+
+    // Then
+    expect(config).toMatchObject({
+      screenMode: "alternate-screen",
+      externalOutputMode: "passthrough",
+      useMouse: false,
+      exitSignals: [],
+    });
+    await controller.dispose();
+  });
+
   test("exit keeps rows deferred until OpenTUI has restored the terminal", async () => {
     // Given
     const fixture = makeFixture();
