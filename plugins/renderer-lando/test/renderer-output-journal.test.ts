@@ -109,12 +109,6 @@ test("stderr byte payload suspends and repaints the attached terminal frame with
 const createSuspendableFullTail = async () => {
   const fixture = makeLiveRegionFixture();
   const controller = await createTestLiveRegionController(fixture);
-  fixture.renderer.suspend = () => {
-    fixture.calls.push("suspend");
-  };
-  fixture.renderer.resume = () => {
-    fixture.calls.push("resume");
-  };
   controller.setFooter(["expanded-tail"]);
   await controller.enterFullTail();
   fixture.writes.length = 0;
@@ -131,10 +125,10 @@ test("full-tail stays suspended across a partial payload line and repaints once 
   const { fixture, controller, payload } = await createSuspendableFullTail();
 
   // When
-  payload("part");
-  payload("ial");
+  await payload("part");
+  await payload("ial");
   const whileOpen = [...fixture.calls];
-  payload(" done\n");
+  await payload(" done\n");
 
   // Then
   expect(whileOpen).toEqual(["suspend", "stdout:part", "stdout:ial"]);
@@ -147,13 +141,13 @@ test("full-tail stays suspended across a partial payload line and repaints once 
 test("full-tail footer and resize updates wait for the open payload line", async () => {
   // Given
   const { fixture, controller, payload } = await createSuspendableFullTail();
-  payload("partial");
+  await payload("partial");
 
   // When
   controller.setFooter(["updated-tail"]);
   controller.resize(100, 30);
   const whileOpen = [...fixture.calls];
-  payload("\n");
+  await payload("\n");
 
   // Then
   expect(whileOpen).toEqual(["suspend", "stdout:partial", "resize:100x30"]);
@@ -165,12 +159,12 @@ test("full-tail footer and resize updates wait for the open payload line", async
 test("collapsing full-tail during an open payload line leaves the inline frame erased until the line ends", async () => {
   // Given
   const { fixture, controller, payload } = await createSuspendableFullTail();
-  payload("partial");
+  await payload("partial");
 
   // When
   await controller.exitFullTail();
   const afterCollapse = fixture.writes.join("");
-  payload(" done\n");
+  await payload(" done\n");
 
   // Then
   expect(fixture.calls).not.toContain("resume");
@@ -182,7 +176,7 @@ test("collapsing full-tail during an open payload line leaves the inline frame e
 test("retiring the tree after a partial payload line leaves a clean frame", async () => {
   // Given
   const { fixture, controller, payload } = await createSuspendableFullTail();
-  payload("partial");
+  await payload("partial");
 
   // When
   controller.clearFooter();

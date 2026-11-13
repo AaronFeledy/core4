@@ -4,6 +4,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # 0.8.1+ native packages statically link LGPL FFmpeg; stay on 0.8.0 until
+      # https://github.com/anomalyco/opentui/issues/2088 ships a video-free build.
+      - dependency-name: "@opentui/core"
+        versions: [">=0.8.1"]
     groups:
       minor-and-patch:
         patterns: ["*"]

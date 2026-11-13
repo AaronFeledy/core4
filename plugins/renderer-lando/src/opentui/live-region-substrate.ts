@@ -51,6 +51,14 @@ export const prefetchLiveRegionModule = (loadModule: LiveRegionModuleLoader = lo
   void cachedModule.catch(recordOpenTuiSubstrateFailure);
 };
 
+/** Destroys the renderer and waits until OpenTUI restores the terminal and flushes its output. */
+export const closeRenderer = async (
+  renderer: Pick<LiveRegionRendererLike, "destroy" | "closed">,
+): Promise<void> => {
+  renderer.destroy();
+  await renderer.closed;
+};
+
 export const resetLiveRegionModuleCacheForTests = (): void => {
   cachedModule = undefined;
 };
@@ -93,7 +101,7 @@ export async function acquireLiveRegionSubstrate(
   } catch (cause) {
     recordOpenTuiSubstrateFailure(cause);
     try {
-      renderer?.destroy();
+      if (renderer !== undefined) await closeRenderer(renderer);
     } catch (cleanupCause) {
       recordOpenTuiSubstrateFailure(
         cleanupCause instanceof Error

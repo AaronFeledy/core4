@@ -201,7 +201,8 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
         cleanupCause ??= cause;
       }
       try {
-        await renderer.destroy();
+        renderer.destroy();
+        await renderer.closed;
       } catch (cause) {
         cleanupCause ??= cause;
       }

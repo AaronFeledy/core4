@@ -53,10 +53,8 @@ export const createOpenTuiPromptTestKit = () => {
     await testSetup.renderOnce();
   };
 
-  const cleanup = (): void => {
-    for (const testSetup of setups.splice(0)) {
-      testSetup.renderer.destroy();
-    }
+  const cleanup = async (): Promise<void> => {
+    await Promise.all(setups.splice(0).map((testSetup) => testSetup.dispose()));
   };
 
   return { basePrompt, cleanup, flavors, flushInput, makeDriver, makeSetup, openTui, waitForBuild };
@@ -110,8 +108,10 @@ export const makeDestroyFailureFixture = (cancel: boolean) => {
     },
     width: 60,
     height: 12,
-    destroy: async () => {
-      throw destroyFailure;
+    destroy: () => {},
+    // OpenTUI reports a failed terminal restore through `closed`, not through `destroy()`.
+    get closed() {
+      return Promise.reject(destroyFailure);
     },
   };
   const module = makeLifecycleModule(renderer);
@@ -150,9 +150,10 @@ export const makeAbortFixture = () => {
     },
     width: 60,
     height: 12,
-    destroy: async () => {
+    destroy: () => {
       cleanup.renderer += 1;
     },
+    closed: Promise.resolve(),
   };
   const module = makeLifecycleModule(renderer, AbortTestRenderable);
   const driver = createOpenTuiPromptDriver({

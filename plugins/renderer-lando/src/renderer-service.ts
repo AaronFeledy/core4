@@ -54,6 +54,13 @@ const makeMessageContract = (io: RendererNarrationIO, color: boolean) => {
   };
 };
 
+/** Inline writes finish synchronously; a full-tail terminal hand-off settles asynchronously. */
+const writeThroughJournal = (write: () => void | Promise<void>): Effect.Effect<void> =>
+  Effect.suspend(() => {
+    const pending = write();
+    return pending === undefined ? Effect.void : Effect.promise(() => pending);
+  });
+
 export const makeLandoService = (
   io: RendererIO,
   getCapabilities: () => RendererCapabilities,
@@ -70,13 +77,13 @@ export const makeLandoService = (
         message: makeMessageContract(io, getCapabilities().color),
         output: {
           stdout: (chunk: string | Uint8Array) =>
-            Effect.sync(() =>
+            writeThroughJournal(() =>
               output.writeOutput(chunk, () => io.writeStdout(chunk), io.stdoutIsTTY === true),
             ).pipe(Effect.andThen(waitForRendererOutput(io, "stdout"))),
           stderr: (chunk: string | Uint8Array) =>
-            Effect.sync(() => output.writeOutput(chunk, () => io.writeStderr(chunk), io.isTTY === true)).pipe(
-              Effect.andThen(waitForRendererOutput(io, "stderr")),
-            ),
+            writeThroughJournal(() =>
+              output.writeOutput(chunk, () => io.writeStderr(chunk), io.isTTY === true),
+            ).pipe(Effect.andThen(waitForRendererOutput(io, "stderr"))),
         },
       });
     })(),

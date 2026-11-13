@@ -507,3 +507,103 @@ describe("LiveRegionController", () => {
     expect(fixture.state().destroyCount).toBe(0);
   });
 });
+
+// Transition steps wait only on promises the test holds, so one event-loop turn runs everything else first.
+const nextTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+describe("LiveRegionController — OpenTUI terminal transitions", () => {
+  test("exit keeps rows deferred until OpenTUI has restored the terminal", async () => {
+    // Given
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    await controller.enterFullTail();
+    controller.commitScrollback("before close\n");
+    fixture.writes.length = 0;
+    const releaseClose = fixture.holdClose();
+
+    // When
+    const exiting = controller.exitFullTail();
+    controller.commitScrollback("while closing\n");
+    await nextTurn();
+
+    // Then
+    expect(fixture.state().destroyCount).toBe(1);
+    expect(written(fixture)).toBe("");
+    releaseClose();
+    await exiting;
+    expectOrder(written(fixture), ["before close", "while closing"]);
+    await controller.dispose();
+  });
+
+  test("a terminal payload is written only after OpenTUI suspends the full tail", async () => {
+    // Given
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    await controller.enterFullTail();
+    let releaseSuspend = (): void => {};
+    fixture.renderer.suspend = () => {
+      fixture.calls.push("suspend");
+      return new Promise<void>((resolve) => {
+        releaseSuspend = resolve;
+      });
+    };
+    fixture.calls.length = 0;
+
+    // When
+    const writing = controller.suspendOutput("payload\n", () => {
+      fixture.calls.push("stdout:payload");
+    });
+    await nextTurn();
+
+    // Then
+    expect(fixture.calls).toEqual(["suspend"]);
+    releaseSuspend();
+    await writing;
+    expect(fixture.calls).toEqual(["suspend", "stdout:payload", "resume"]);
+    await controller.dispose();
+  });
+
+  test.each(["suspend", "resume"] as const)(
+    "a rejected %s leaves the full-tail footer painting",
+    async (transition) => {
+      // Given
+      const fixture = makeFixture();
+      const controller = await createController(fixture);
+      await controller.enterFullTail();
+      const failure = new Error(`${transition} failed`);
+      fixture.renderer[transition] = () => Promise.reject(failure);
+
+      // When
+      const writing = controller.suspendOutput("payload\n", () => {});
+      await expect(writing).rejects.toBe(failure);
+      controller.setFooter(["after failure"]);
+
+      // Then
+      expect(fixture.footerText()).toBe("after failure");
+      await controller.dispose();
+    },
+  );
+
+  test("a payload during exit waits for the restore and never suspends the closing renderer", async () => {
+    // Given
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    await controller.enterFullTail();
+    const releaseClose = fixture.holdClose();
+    const exiting = controller.exitFullTail();
+    fixture.calls.length = 0;
+
+    // When
+    const writing = controller.suspendOutput("payload\n", () => {
+      fixture.calls.push("stdout:payload");
+    });
+    await nextTurn();
+
+    // Then
+    expect(fixture.calls).toEqual([]);
+    releaseClose();
+    await Promise.all([exiting, writing]);
+    expect(fixture.calls).toEqual(["stdout:payload"]);
+    await controller.dispose();
+  });
+});
