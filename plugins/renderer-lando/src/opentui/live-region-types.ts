@@ -1,13 +1,22 @@
-import type { NativeStyledTextModuleLike } from "./ansi-styled-text.ts";
+import type { NativeStyledTextLike, NativeStyledTextModuleLike } from "./ansi-styled-text.ts";
 import type { LiveRegionSpoolFactory } from "./live-region-spool.ts";
 import type { OpenTuiModuleLike, RendererLike } from "./prompt-driver-types.ts";
 
 export type LiveRegionScreenMode = "alternate-screen" | "main-screen" | "split-footer";
 type LiveRegionExternalOutputMode = "capture-stdout" | "passthrough";
 
-export interface LiveRegionRenderableLike {
-  add?(child: LiveRegionRenderableLike): unknown;
+interface LiveRegionNodeLike {
   destroy?(): unknown;
+  width: number;
+  height: number;
+}
+
+export interface LiveRegionRenderableLike extends LiveRegionNodeLike {
+  add?(child: LiveRegionNodeLike): unknown;
+}
+
+export interface LiveRegionTextLike extends LiveRegionNodeLike {
+  content: NativeStyledTextLike;
 }
 
 export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProcessFn"> {
@@ -34,8 +43,8 @@ export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProce
   resume(): Promise<void>;
 }
 
-interface RenderableConstructorLike {
-  new (context: unknown, options: Record<string, unknown>): LiveRegionRenderableLike;
+interface RenderableConstructorLike<TRenderable> {
+  new (context: unknown, options: Record<string, unknown>): TRenderable;
 }
 
 export interface OpenTuiLiveRegionModuleLike<
@@ -43,11 +52,8 @@ export interface OpenTuiLiveRegionModuleLike<
 > extends NativeStyledTextModuleLike {
   createCliRenderer(config: Record<string, unknown>): Promise<TRenderer>;
   readonly RGBA: NativeStyledTextModuleLike["RGBA"] & OpenTuiModuleLike["RGBA"];
-  BoxRenderable: RenderableConstructorLike;
-  TextRenderable: new (
-    context: unknown,
-    options: Record<string, unknown>,
-  ) => Pick<LiveRegionRenderableLike, "destroy">;
+  BoxRenderable: RenderableConstructorLike<LiveRegionRenderableLike>;
+  TextRenderable: RenderableConstructorLike<LiveRegionTextLike>;
 }
 
 export interface LiveRegionStdout {

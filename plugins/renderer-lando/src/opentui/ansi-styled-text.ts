@@ -9,7 +9,7 @@ type NativeTextChunkLike = {
   readonly fg?: NativeRgbaLike;
 };
 
-type NativeStyledTextLike = {
+export type NativeStyledTextLike = {
   readonly chunks: ReadonlyArray<NativeTextChunkLike>;
 };
 

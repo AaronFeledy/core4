@@ -174,6 +174,25 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
     await controller.dispose();
   });
 
+  test("a spinner-only footer change repaints only that row", async () => {
+    // Given: the full-tail footer is on screen.
+    const { controller, setup } = await createFullTailFixture();
+    await controller.enterFullTail();
+    controller.setFooter(["⠋ building", "appserver online", "database online"]);
+    await setup.renderOnce();
+
+    // When: only the spinner glyph advances.
+    controller.setFooter(["⠙ building", "appserver online", "database online"]);
+    await setup.renderOnce();
+
+    // Then
+    const work = setup.getNativeStats().frameWork;
+    expect(work.damageRows).toBe(1);
+    expect(work.memberCells).toBe(80);
+    expect(setup.captureCharFrame()).toContain("⠙ building");
+    await controller.dispose();
+  });
+
   test("live requests use the real substrate counter and retain the 30 fps cap", async () => {
     const { clock, controller, setup } = await createFullTailFixture();
     await controller.enterFullTail();

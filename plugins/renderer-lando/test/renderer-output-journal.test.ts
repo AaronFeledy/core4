@@ -132,7 +132,8 @@ test("full-tail stays suspended across a partial payload line and repaints once 
 
   // Then
   expect(whileOpen).toEqual(["suspend", "stdout:part", "stdout:ial"]);
-  expect(fixture.calls.slice(whileOpen.length)).toEqual(["stdout: done\n", "resume", "footer:expanded-tail"]);
+  expect(fixture.calls.slice(whileOpen.length)).toEqual(["stdout: done\n", "resume"]);
+  expect(fixture.footerText()).toBe("expanded-tail");
   expect(fixture.writes).toEqual([]);
   await controller.exitFullTail();
   await controller.dispose();

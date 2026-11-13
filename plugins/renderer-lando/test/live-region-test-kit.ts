@@ -9,7 +9,11 @@ import {
 } from "../src/opentui/live-region-controller.ts";
 import { resetLiveRegionModuleCacheForTests } from "../src/opentui/live-region-substrate.ts";
 
-type RenderableOptions = { readonly content?: string | FakeStyledText; readonly width?: number };
+type RenderableOptions = {
+  readonly content?: string | FakeStyledText;
+  readonly width?: number;
+  readonly height?: number;
+};
 type FakeChunk = { readonly __isChunk: true; readonly text: string };
 
 class FakeStyledText {
@@ -19,28 +23,59 @@ class FakeStyledText {
 const fakeStyle = (input: string | FakeChunk): FakeChunk =>
   typeof input === "string" ? { __isChunk: true, text: input } : input;
 
+const plainText = (content: string | FakeStyledText | undefined): string | undefined =>
+  typeof content === "string" ? content : content?.chunks.map((chunk) => chunk.text).join("");
+
 export class FakeRenderable {
   readonly children: FakeRenderable[] = [];
-  readonly content: string | undefined;
-  readonly width: number | undefined;
+  #content: FakeStyledText;
+  width: number;
+  height: number;
   destroyCount = 0;
+  parent: FakeRenderable | undefined;
+  /** Set once the renderable is mounted under the fake root, so later tree and content changes are observable. */
+  onChange: (() => void) | undefined;
 
   constructor(_context: unknown, options: RenderableOptions) {
-    this.content =
-      typeof options.content === "string"
-        ? options.content
-        : options.content?.chunks.map((chunk) => chunk.text).join("");
-    this.width = options.width;
+    this.#content = new FakeStyledText([fakeStyle(plainText(options.content) ?? "")]);
+    this.width = options.width ?? 0;
+    this.height = options.height ?? 0;
+  }
+
+  get content(): FakeStyledText {
+    return this.#content;
+  }
+
+  set content(value: FakeStyledText) {
+    this.#content = value;
+    this.onChange?.();
+  }
+
+  get text(): string {
+    return plainText(this.#content) ?? "";
   }
 
   add(child: FakeRenderable): void {
     this.children.push(child);
+    child.parent = this;
+    child.onChange = this.onChange;
+    this.onChange?.();
   }
 
+  /** Like OpenTUI, destroying a renderable detaches it from its parent. */
   destroy(): void {
     this.destroyCount += 1;
+    this.onChange = undefined;
+    const parent = this.parent;
+    if (parent === undefined) return;
+    parent.children.splice(parent.children.indexOf(this), 1);
+    this.parent = undefined;
+    parent.onChange?.();
   }
 }
+
+const footerRows = (footer: FakeRenderable): ReadonlyArray<string> =>
+  footer.children.map((child) => child.text);
 
 export interface FakeRenderer extends LiveRegionRendererLike {
   externalOutputMode: "capture-stdout" | "passthrough";
@@ -108,9 +143,13 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
       add: (child) => {
         if (!(child instanceof FakeRenderable)) throw new TypeError("Expected a fake footer renderable.");
         footers.push(child);
-        const lines = child.children.map((line) => line.content ?? "");
-        footerWidths.push(child.width ?? 0);
-        record(`footer:${lines.join("|")}`);
+        const recordFooter = (): void => {
+          footerWidths.push(child.width);
+          record(`footer:${footerRows(child).join("|")}`);
+        };
+        child.onChange = recordFooter;
+        for (const row of child.children) row.onChange = recordFooter;
+        recordFooter();
       },
     },
     requestLive: () => {
@@ -238,8 +277,7 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     /** Rows of the footer currently mounted on the fake root. */
     footerText: (): string => {
       const footer = footers.at(-1);
-      if (footer === undefined || footer.destroyCount > 0) return "";
-      return footer.children.map((row) => row.content ?? "").join("|");
+      return footer === undefined || footer.destroyCount > 0 ? "" : footerRows(footer).join("|");
     },
   };
   return fixture;
