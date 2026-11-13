@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import { AppFeatureCloneError, LandofileValidationError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
-import { AbsoluteContainerPath, PluginManifest, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import {
+  AbsoluteContainerPath,
+  AbsolutePath,
+  LogSourceId,
+  PluginManifest,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import type {
   AppFeatureDefinition,
   ClonedServiceRequest,
@@ -14,8 +21,9 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Option, Predicate, Schema } from "effect";
 
 import { DATA_TREE_OWNERSHIP_STEP_ID } from "../../src/planner/data-tree.ts";
-import { SERVICE_FEATURES_EXTENSION_KEY } from "../../src/planner/extensions.ts";
+import { LOG_SOURCES_EXTENSION_KEY, SERVICE_FEATURES_EXTENSION_KEY } from "../../src/planner/extensions.ts";
 import * as Registry from "../../src/plugins/registry.ts";
+import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
 
@@ -75,6 +83,39 @@ const homeServiceType: ServiceType = {
   },
 };
 
+const redirectLogServiceType: ServiceType = {
+  ...clonedServiceType,
+  id: "cloned-logs",
+  name: "cloned-logs",
+  base: "lando",
+  resolve: ({ service }) =>
+    Effect.succeed({
+      base: "lando",
+      normalizedConfig: service,
+      features: [{ id: entrypointFeature.id }],
+      logSources: [
+        {
+          id: LogSourceId.make("access"),
+          path: AbsolutePath.make("/var/log/access.log"),
+          stream: "stdout",
+          strategy: "redirect",
+          required: false,
+          timestamps: false,
+        },
+      ],
+    }),
+};
+
+/** Base lando seeds its bundled feature stack; this test supplies inert doubles for it. */
+const landoBaseFeatureStubs: ReadonlyArray<ServiceFeatureDefinition> = LANDO_BASE_DEFAULT_FEATURE_IDS.map(
+  (id) => ({ id, priority: 100, apply: () => Effect.void }),
+);
+
+const testServiceFeatures = new Map<string, ServiceFeatureDefinition>([
+  ...landoBaseFeatureStubs.map((feature) => [feature.id, feature] as const),
+  [entrypointFeature.id, entrypointFeature],
+]);
+
 const pluginFor = (feature: AppFeatureDefinition) =>
   definePlugin({
     name: "@test/cloned-service",
@@ -84,16 +125,17 @@ const pluginFor = (feature: AppFeatureDefinition) =>
       api: 4,
       entry: "index.js",
       contributes: {
-        serviceTypes: [clonedServiceType.id, homeServiceType.id],
-        serviceFeatures: [entrypointFeature.id],
+        serviceTypes: [clonedServiceType.id, homeServiceType.id, redirectLogServiceType.id],
+        serviceFeatures: [...LANDO_BASE_DEFAULT_FEATURE_IDS, entrypointFeature.id],
         appFeatures: [feature.id],
       },
     }),
     serviceTypes: new Map([
       [clonedServiceType.id, clonedServiceType],
       [homeServiceType.id, homeServiceType],
+      [redirectLogServiceType.id, redirectLogServiceType],
     ]),
-    serviceFeatures: new Map([[entrypointFeature.id, entrypointFeature]]),
+    serviceFeatures: testServiceFeatures,
     appFeatures: new Map([[feature.id, feature]]),
   });
 
@@ -342,6 +384,43 @@ describe("cloned services in a planned app", () => {
     expect(failure.value.cause.reason).toBe("name-collision");
     expect(failure.value.message).toContain("taken");
     expect(failure.value.remediation).toContain("taken");
+  });
+
+  test("clones carry no log sources and keep their own extra build steps last", async () => {
+    // Given a parent whose type declares a redirect log source.
+    const extraStep: ServiceBuildStepIntent = {
+      id: "clone.extra",
+      phase: "build",
+      command: ["echo", "extra"],
+    };
+    const app = await Effect.runPromise(
+      planWithClone(
+        {
+          name: "clones",
+          services: { web: { type: "cloned-logs:3.22", build: { artifact: ["echo artifact"] } } },
+        },
+        cloneFeature({ ...cloneRequest, user: "node", extraBuildSteps: [extraStep] }),
+        { ...TestRuntimeProvider.capabilities, artifactBuild: true },
+      ),
+    );
+    const parent = app.services[ServiceName.make("web")];
+    const clone = app.services[ServiceName.make("web-schedule")];
+    if (parent === undefined || clone === undefined) throw new Error("expected both services");
+
+    // Then the parent owns the redirect source and its reification steps.
+    expect(parent.logSources?.map((source) => String(source.id))).toEqual(["access"]);
+    expect(buildSteps(parent).some((step) => (step.id ?? "").startsWith("lando-log-redirect"))).toBe(true);
+
+    // And the clone advertises no source, no log extension, and no redirect step.
+    expect(clone.logSources).toBeUndefined();
+    expect(clone.extensions).not.toHaveProperty(LOG_SOURCES_EXTENSION_KEY);
+    const inheritedIds = buildSteps(parent)
+      .filter(
+        (step) =>
+          step.id !== DATA_TREE_OWNERSHIP_STEP_ID && !(step.id ?? "").startsWith("lando-log-redirect"),
+      )
+      .map((step) => step.id);
+    expect(buildSteps(clone).map((step) => step.id)).toEqual([...inheritedIds, extraStep.id]);
   });
 
   test("rejects a clone whose derived internal name is already claimed", async () => {

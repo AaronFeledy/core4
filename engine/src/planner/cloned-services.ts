@@ -125,7 +125,9 @@ const clonePlannedDraft = (
       request.user === undefined
         ? parent.homeIntent
         : { serviceType: parent.homeIntent.serviceType, home: false },
-    logSources: parent.logSources,
+    // Log files belong to the parent's process. Following them would also append
+    // the parent's redirect build steps after the request's own extra steps.
+    logSources: [],
     routes: undefined,
     extensions: stripComposePublish(parent.extensions ?? {}),
     // The clone shares the parent's service-scoped stores: same files, same

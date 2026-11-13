@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import { AppFeatureCloneError } from "@lando/sdk/errors";
 import {
+  AbsolutePath,
   CLONED_SERVICE_PROVENANCE_KEY,
   DatabaseConnection,
+  LogSourceId,
   PortNumber,
   PortablePath,
   ProviderId,
@@ -159,6 +161,23 @@ describe("cloned services", () => {
       "parent.build",
       "schedule.supercronic",
     ]);
+  });
+
+  test("carries none of the parent's log sources", () => {
+    const parent = {
+      ...parentDraft(),
+      logSources: [
+        {
+          id: LogSourceId.make("access"),
+          path: AbsolutePath.make("/var/log/access.log"),
+          stream: "stdout" as const,
+          strategy: "redirect" as const,
+          required: false,
+          timestamps: false,
+        },
+      ],
+    };
+    expect(clone({ parent }).drafts[0]?.logSources).toEqual([]);
   });
 
   test("pins inherited unpinned build steps only when the clone overrides user", () => {
