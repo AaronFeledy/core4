@@ -90,9 +90,26 @@ describe("supercronic build scripts", () => {
     expect(script).toContain(`chmod 0644 ${SUPERCRONIC_CRONTAB}`);
   });
 
+  test("guards the crontab step on the parent service timezone when given one", () => {
+    const script = crontabInstallCommand(["@hourly true"], { service: "web", zone: "Europe/Berlin" });
+    expect(script.startsWith("set -eu\nif [ ! -e '/usr/share/zoneinfo/Europe/Berlin' ]; then\n")).toBe(true);
+    expect(script).toContain("use TZ=Europe/Berlin");
+    expect(script).toContain("run on UTC");
+    expect(script).toContain("apk add --no-cache tzdata");
+    expect(script).toContain("exit 1");
+    expect(script).toContain(
+      `mkdir -p ${SUPERCRONIC_CRONTAB.slice(0, SUPERCRONIC_CRONTAB.lastIndexOf("/"))}`,
+    );
+  });
+
   test("both generated scripts are valid POSIX shell", () => {
     expect(shellCheck(supercronicInstallCommand())).toBe(0);
     expect(shellCheck(crontabInstallCommand(["@hourly true"]))).toBe(0);
     expect(shellCheck(crontabInstallCommand([]))).toBe(0);
+    expect(
+      shellCheck(
+        crontabInstallCommand(["@hourly true"], { service: "web", zone: "America/Argentina/Buenos_Aires" }),
+      ),
+    ).toBe(0);
   });
 });

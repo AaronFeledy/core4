@@ -107,6 +107,37 @@ describe("schedule compile feature", () => {
     expect(await apply([view("web", { image: "alpine:3.22" })])).toEqual([]);
   });
 
+  test.each([
+    ["Europe/Berlin", "Europe/Berlin"],
+    [":Europe/Berlin", "Europe/Berlin"],
+    ["Etc/UTC", undefined],
+    ["UTC", undefined],
+    [undefined, undefined],
+    ["Europe/Berlin; touch /tmp/pwned", undefined],
+    ["$(touch /tmp/pwned)", undefined],
+  ] as const)("timezone %s gates the crontab step: %s", async (tz, zone) => {
+    const clones = await apply([
+      view("web", {
+        image: "alpine:3.22",
+        ...(tz === undefined ? {} : { environment: { TZ: tz } }),
+        schedule: [job("tick", "@hourly", "true")],
+      }),
+    ]);
+    const crontab = clones[0]?.extraBuildSteps?.find((step) => step.id === SUPERCRONIC_CRONTAB_STEP_ID);
+    const script = Array.isArray(crontab?.command) ? crontab.command.join("\n") : "";
+    if (zone === undefined) {
+      expect(script).not.toContain("zoneinfo");
+      expect(crontab?.buildKeyInputs).toEqual({ crontab: ["@hourly true"] });
+      if (tz !== undefined) expect(script).not.toContain(tz);
+      return;
+    }
+    expect(script).toContain(`[ ! -e '/usr/share/zoneinfo/${zone}' ]`);
+    expect(script).toContain("run on UTC");
+    expect(script).toContain("apk add --no-cache tzdata");
+    expect(script).toContain("service web");
+    expect(crontab?.buildKeyInputs).toEqual({ crontab: ["@hourly true"], timezone: zone });
+  });
+
   test("does not pre-check image shells; the planner owns the unsupported-image error", async () => {
     const clones = await apply([
       view("web", {

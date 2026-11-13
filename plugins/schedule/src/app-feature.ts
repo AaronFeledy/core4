@@ -1,3 +1,4 @@
+import type { EnvironmentValue } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -12,6 +13,18 @@ import {
 
 export const SCHEDULE_FEATURE_ID = "schedule.compile" as const;
 
+const IANA_ZONE = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)+$/u;
+
+/**
+ * The one leading `:` is a POSIX TZ form that keeps UTC and zone names alike;
+ * only a real IANA zone names a `/usr/share/zoneinfo` file to check.
+ */
+const scheduleTimezone = (value: EnvironmentValue | undefined): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const zone = value.startsWith(":") ? value.slice(1) : value;
+  return !zone.startsWith("Etc/") && IANA_ZONE.test(zone) ? zone : undefined;
+};
+
 export const scheduleCompileFeature: AppFeatureDefinition = {
   id: SCHEDULE_FEATURE_ID,
   priority: 200,
@@ -20,6 +33,7 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
     for (const service of ctx.selected) {
       const jobs = service.normalizedConfig.schedule ?? [];
       if (jobs.length === 0) continue;
+      const timezone = scheduleTimezone(service.normalizedConfig.environment?.TZ);
       for (const group of scheduleSidecarGroups(service.serviceName, jobs)) {
         const crontab = group.jobs.map((job) => crontabLine(job));
         ctx.addClonedService({
@@ -39,8 +53,15 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
               id: SUPERCRONIC_CRONTAB_STEP_ID,
               phase: "build",
               user: "root",
-              command: ["sh", "-c", crontabInstallCommand(crontab)],
-              buildKeyInputs: { crontab },
+              command: [
+                "sh",
+                "-c",
+                crontabInstallCommand(
+                  crontab,
+                  timezone === undefined ? undefined : { service: service.serviceName, zone: timezone },
+                ),
+              ],
+              buildKeyInputs: { crontab, ...(timezone === undefined ? {} : { timezone }) },
             },
           ],
           omitConfigKeys: ["schedule"],

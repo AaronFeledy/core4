@@ -81,17 +81,36 @@ chmod 0755 ${SUPERCRONIC_BIN}
 rm -f "$tmp"`;
 };
 
+export interface CrontabTimezone {
+  readonly service: string;
+  readonly zone: string;
+}
+
+/**
+ * Fail the build when the parent service's timezone is absent from the image,
+ * because supercronic would otherwise run every job on UTC while Lando reports
+ * the configured zone.
+ */
+const timezoneGuard = ({ service, zone }: CrontabTimezone): string => {
+  const message = `Scheduled jobs for service ${service} use TZ=${zone}, but this image has no timezone data for that zone, so jobs would run on UTC. Install the image's timezone database in the service's build.artifact, for example apk add --no-cache tzdata on Alpine, or remove TZ.`;
+  return `if [ ! -e ${posixQuote(`/usr/share/zoneinfo/${zone}`)} ]; then
+  echo ${posixQuote(message)} >&2
+  exit 1
+fi
+`;
+};
+
 /**
  * Shell script that writes the sidecar crontab. The file is world-readable so a
  * sidecar running as any job user can read the schedules it was started with.
  */
-export const crontabInstallCommand = (crontab: ReadonlyArray<string>): string => {
+export const crontabInstallCommand = (crontab: ReadonlyArray<string>, timezone?: CrontabTimezone): string => {
   const directory = SUPERCRONIC_CRONTAB.slice(0, SUPERCRONIC_CRONTAB.lastIndexOf("/"));
   const writeLines = crontab
     .map((line) => `printf '%s\\n' ${posixQuote(line)} >> ${SUPERCRONIC_CRONTAB}`)
     .join("\n");
   return `set -eu
-mkdir -p ${directory}
+${timezone === undefined ? "" : timezoneGuard(timezone)}mkdir -p ${directory}
 : > ${SUPERCRONIC_CRONTAB}
 ${writeLines}
 chmod 0644 ${SUPERCRONIC_CRONTAB}`;
