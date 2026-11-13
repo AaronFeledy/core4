@@ -124,14 +124,34 @@ const timezoneRefusal = ({ service, zone }: CrontabTimezone): string | undefined
 };
 
 /**
- * Fail the build when the parent service's zone name is absent from the image,
- * because the crontab pins `CRON_TZ` and the scheduler spawns jobs in it.
+ * Shell script that makes the zone loadable, because the crontab pins
+ * `CRON_TZ` and the scheduler spawns jobs in it. An image with no timezone
+ * database gets one from its package manager. An image that has a database but
+ * not this zone is not reinstalled: the name is wrong. A zone that still cannot
+ * be loaded fails this step, so a failed install is never cached as a layer.
+ * UTC needs no data, and a value that names no zone is refused by the crontab
+ * step instead.
  */
-const timezoneDataGuard = ({ service, zone }: CrontabTimezone): string | undefined => {
-  if (zone === "UTC") return undefined;
-  const message = `Scheduled jobs for service ${service} use TZ=${zone}, but this image has no timezone data for it. Install the image's timezone database in the service's build.artifact, for example apk add --no-cache tzdata on Alpine, or remove TZ.`;
-  return `if [ ! -e ${posixQuote(`/usr/share/zoneinfo/${zone}`)} ]; then
-  echo ${posixQuote(message)} >&2
+export const timezoneDataInstallCommand = ({ service, zone }: CrontabTimezone): string | undefined => {
+  if (zone === "UTC" || !ZONE_NAME.test(zone)) return undefined;
+  const failedInstall = `Scheduled jobs for service ${service} use TZ=${zone}, but Lando could not install the image's timezone database. Fix the package error above, or install the timezone database in the service's build.artifact.`;
+  const unknownZone = `Scheduled jobs for service ${service} use TZ=${zone}, but the image cannot load that timezone. Check the zone name. If the name is right, install the image's timezone database in the service's build.artifact.`;
+  return `set -eu
+zone_file=${posixQuote(`/usr/share/zoneinfo/${zone}`)}
+installed=yes
+if [ ! -e "$zone_file" ] && [ ! -e /usr/share/zoneinfo/Etc/UTC ]; then
+  if command -v apk >/dev/null 2>&1; then
+    apk add --no-cache tzdata || installed=no
+  elif command -v apt-get >/dev/null 2>&1; then
+    { apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata; } || installed=no
+  fi
+fi
+if [ "$installed" = no ]; then
+  echo ${posixQuote(failedInstall)} >&2
+  exit 1
+fi
+if [ ! -e "$zone_file" ]; then
+  echo ${posixQuote(unknownZone)} >&2
   exit 1
 fi`;
 };
@@ -158,10 +178,8 @@ export const crontabInstallCommand = (
   const rows = jobs.map(
     (job) => `printf '%s\\n' ${posixQuote(crontabLine(job, paths.jobsDirectory))} >> ${paths.crontab}`,
   );
-  const guard = timezoneDataGuard(timezone);
   return [
     "set -eu",
-    ...(guard === undefined ? [] : [guard]),
     `mkdir -p ${crontabDirectory} ${paths.jobsDirectory}`,
     `: > ${paths.crontab}`,
     `printf '%s\\n' ${posixQuote(`CRON_TZ=${timezone.zone}`)} >> ${paths.crontab}`,

@@ -1,9 +1,15 @@
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { crontabInstallCommand, everyToSupercronicSchedule, supercronicInstallCommand } from "./crontab.ts";
+import {
+  crontabInstallCommand,
+  everyToSupercronicSchedule,
+  supercronicInstallCommand,
+  timezoneDataInstallCommand,
+} from "./crontab.ts";
 import { scheduleSidecarGroups, scheduleTimezone } from "./jobs.ts";
 import {
+  SCHEDULE_TIMEZONE_STEP_ID,
   SUPERCRONIC_BIN,
   SUPERCRONIC_CRONTAB,
   SUPERCRONIC_CRONTAB_STEP_ID,
@@ -26,6 +32,7 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
       // Listing, the crontab, and the scheduler must agree on one zone, so the
       // step always pins the sidecar's zone instead of inheriting the image's.
       const timezone = scheduleTimezone(service.normalizedConfig.environment);
+      const timezoneData = timezoneDataInstallCommand({ service: service.serviceName, zone: timezone });
       for (const group of scheduleSidecarGroups(service.serviceName, jobs)) {
         ctx.addClonedService({
           from: service.serviceName,
@@ -40,6 +47,17 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
               command: ["sh", "-c", supercronicInstallCommand()],
               buildKeyInputs: { supercronic: SUPERCRONIC_PINS },
             },
+            // Its own step, ahead of the job table, so editing a job reuses the layer.
+            ...(timezoneData === undefined
+              ? []
+              : [
+                  {
+                    id: SCHEDULE_TIMEZONE_STEP_ID,
+                    phase: "build",
+                    user: "root",
+                    command: ["sh", "-c", timezoneData],
+                  },
+                ]),
             {
               id: SUPERCRONIC_CRONTAB_STEP_ID,
               phase: "build",

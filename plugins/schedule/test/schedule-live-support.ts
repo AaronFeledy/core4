@@ -119,15 +119,13 @@ export const reserveLoopbackPort = (): number => {
 export type ScheduleMode = "full" | "edited" | "none";
 
 /**
- * The zone authored on the parent service. Debian's php image ships tzdata, so
- * it proves the scheduler pins a real zone; Alpine's bare image has none, so it
- * keeps UTC.
+ * The zone authored on the parent service. Debian's php image ships tzdata;
+ * Alpine's bare image has none, so that cell proves the sidecar build installs it.
  */
-export const scheduleZone = (image: string): string => (image === "php:8.3" ? "America/Chicago" : "UTC");
+const SCHEDULE_ZONE = "America/Chicago";
 
 /** Every abbreviation `date +%Z` can report for that zone as seasons change. */
-export const scheduleZoneAbbreviations = (image: string): ReadonlyArray<string> =>
-  image === "php:8.3" ? ["CST", "CDT"] : ["UTC"];
+export const SCHEDULE_ZONE_ABBREVIATIONS: ReadonlyArray<string> = ["CST", "CDT"];
 
 const identityProbe = (prefix: string): string =>
   `id -u; id -g; echo $HOME; pwd; date +%Z; mkdir -p /app; id -u > /app/${prefix}-uid.txt; id -g > /app/${prefix}-gid.txt; echo $HOME > /app/${prefix}-home.txt; pwd > /app/${prefix}-pwd.txt; date +%Z > /app/${prefix}-tz.txt`;
@@ -193,7 +191,7 @@ export const landofile = (input: {
     "    home: false",
     "    appMount: /app",
     "    environment:",
-    `      TZ: ${scheduleZone(input.image)}`,
+    `      TZ: ${SCHEDULE_ZONE}`,
     "    ports:",
     `      - "127.0.0.1:${input.port}:80"`,
     "    dependsOn:",

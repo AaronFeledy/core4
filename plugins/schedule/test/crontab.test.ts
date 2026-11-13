@@ -12,6 +12,7 @@ import {
   everyToSupercronicSchedule,
   posixQuote,
   supercronicInstallCommand,
+  timezoneDataInstallCommand,
 } from "../src/crontab.ts";
 import {
   SUPERCRONIC_ARTIFACTS,
@@ -160,17 +161,19 @@ describe("supercronic build scripts", () => {
     expect(utcScript).toContain(`printf '%s\\n' 'CRON_TZ=UTC' >> ${SUPERCRONIC_CRONTAB}`);
   });
 
-  test("UTC skips the zone-data check, while a zone name is checked before anything is written", () => {
+  test("only a zone name other than UTC gets a timezone-data step", () => {
+    expect(timezoneDataInstallCommand(utc)).toBeUndefined();
+    expect(timezoneDataInstallCommand({ service: "web", zone: "EST5EDT,M3.2.0,M11.1.0" })).toBeUndefined();
+    const berlin = timezoneDataInstallCommand({ service: "web", zone: "Europe/Berlin" });
+    expect(berlin).toContain("zone_file='/usr/share/zoneinfo/Europe/Berlin'");
+    expect(shellCheck(berlin ?? "")).toBe(0);
+  });
+
+  test("the crontab step leaves timezone data to its own step", () => {
     const jobs = [{ name: "tick", every: "@hourly", run: "true" }];
-    expect(crontabInstallCommand(jobs, productionPaths, utc)).not.toContain("zoneinfo");
     const berlin = crontabInstallCommand(jobs, productionPaths, { service: "web", zone: "Europe/Berlin" });
-    expect(berlin.startsWith("set -eu\nif [ ! -e '/usr/share/zoneinfo/Europe/Berlin' ]; then\n")).toBe(true);
-    expect(berlin).toContain("web");
-    expect(berlin).toContain("TZ=Europe/Berlin");
-    expect(berlin).toContain("exit 1");
-    expect(berlin).toContain(
-      `mkdir -p ${SUPERCRONIC_CRONTAB.slice(0, SUPERCRONIC_CRONTAB.lastIndexOf("/"))}`,
-    );
+    expect(berlin).toContain("'CRON_TZ=Europe/Berlin'");
+    expect(berlin).not.toContain("zoneinfo");
   });
 
   test("a POSIX rule string is refused and never reaches a path, a CRON_TZ line, or unquoted shell", () => {
@@ -257,26 +260,35 @@ describe("supercronic build scripts", () => {
     },
   );
 
-  test("a missing zone file exits 1 with the service and zone on stderr", () => {
-    const dir = mkdtempSync(join(tmpdir(), "schedule-crontab-nozone-"));
-    const paths = tempPaths(dir, stubScheduler(dir, 0));
+  // An empty PATH hides every package manager, so the step can never install
+  // anything on the machine running this test.
+  const runTimezoneStep = (zone: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "schedule-timezone-step-"));
     const installer = join(dir, "install.sh");
-    writeFileSync(
-      installer,
-      crontabInstallCommand([{ name: "tick", every: "@hourly", run: "true" }], paths, {
-        service: "web",
-        zone: "Not/AZone",
-      }),
-    );
+    writeFileSync(installer, timezoneDataInstallCommand({ service: "web", zone }) ?? "");
     try {
-      const install = Bun.spawnSync(["sh", installer], { stdout: "pipe", stderr: "pipe" });
-      expect(install.exitCode).toBe(1);
-      expect(install.stderr.toString()).toContain("web");
-      expect(install.stderr.toString()).toContain("TZ=Not/AZone");
+      return Bun.spawnSync(["/bin/sh", installer], { env: { PATH: dir }, stdout: "pipe", stderr: "pipe" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  };
+
+  test.skipIf(process.platform === "win32")(
+    "a zone that cannot be loaded or installed exits 1 with the service and zone on stderr",
+    () => {
+      const step = runTimezoneStep("Not/AZone");
+      expect(step.exitCode).toBe(1);
+      expect(step.stderr.toString()).toContain("web");
+      expect(step.stderr.toString()).toContain("TZ=Not/AZone");
+    },
+  );
+
+  test.skipIf(!existsSync("/usr/share/zoneinfo/Europe/Berlin"))(
+    "a zone the image already has passes without a package manager",
+    () => {
+      expect(runTimezoneStep("Europe/Berlin").exitCode).toBe(0);
+    },
+  );
 
   test("a scheduler that rejects the crontab fails the step", () => {
     const dir = mkdtempSync(join(tmpdir(), "schedule-crontab-reject-"));

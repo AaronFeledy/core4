@@ -4,6 +4,7 @@ import { Effect } from "effect";
 
 import { scheduleCompileFeature } from "../src/app-feature.ts";
 import {
+  SCHEDULE_TIMEZONE_STEP_ID,
   SUPERCRONIC_ARTIFACTS,
   SUPERCRONIC_BIN,
   SUPERCRONIC_CRONTAB,
@@ -54,10 +55,14 @@ const crontabScriptOf = async (
       schedule: [job("tick", "@hourly", "true")],
     }),
   ]);
-  const crontab = clones[0]?.extraBuildSteps?.find((step) => step.id === SUPERCRONIC_CRONTAB_STEP_ID);
+  const steps = clones[0]?.extraBuildSteps ?? [];
+  const crontab = steps.find((step) => step.id === SUPERCRONIC_CRONTAB_STEP_ID);
+  const timezone = steps.find((step) => step.id === SCHEDULE_TIMEZONE_STEP_ID);
   return {
+    stepIds: steps.map((step) => step.id),
     buildKeyInputs: crontab?.buildKeyInputs,
     script: Array.isArray(crontab?.command) ? crontab.command.join("\n") : "",
+    timezoneScript: Array.isArray(timezone?.command) ? timezone.command.join("\n") : undefined,
   };
 };
 
@@ -130,35 +135,30 @@ describe("schedule compile feature", () => {
     expect(await apply([view("web", { image: "alpine:3.22" })])).toEqual([]);
   });
 
-  test("an unset TZ pins UTC on the crontab", async () => {
-    const { buildKeyInputs, script } = await crontabScriptOf();
+  test.each([
+    ["an unset TZ", undefined],
+    ["TZ UTC", { TZ: "UTC" }],
+  ] as const)("%s pins UTC on the crontab and needs no timezone-data step", async (_label, environment) => {
+    const { buildKeyInputs, script, timezoneScript } = await crontabScriptOf(environment);
     expect(buildKeyInputs).toEqual({
       jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
       timezone: "UTC",
     });
     expect(script).toContain("'CRON_TZ=UTC'");
-    expect(script).not.toContain("zoneinfo");
-  });
-
-  test("UTC needs no zone-data check but still pins CRON_TZ", async () => {
-    const { script } = await crontabScriptOf({ TZ: "UTC" });
-    expect(script).toContain("'CRON_TZ=UTC'");
-    expect(script).not.toContain("zoneinfo");
+    expect(timezoneScript).toBeUndefined();
   });
 
   test.each(["America/Chicago", ":America/Chicago"] as const)(
-    "TZ %s pins the stripped zone and checks the image zone database",
+    "TZ %s pins the stripped zone and makes its data loadable before the job table is built",
     async (tz) => {
-      const { buildKeyInputs, script } = await crontabScriptOf({ TZ: tz });
+      const { buildKeyInputs, script, stepIds, timezoneScript } = await crontabScriptOf({ TZ: tz });
       expect(buildKeyInputs).toEqual({
         jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
         timezone: "America/Chicago",
       });
       expect(script).toContain("'CRON_TZ=America/Chicago'");
-      expect(script).toContain("[ ! -e '/usr/share/zoneinfo/America/Chicago' ]");
-      expect(script).toContain("web");
-      expect(script).toContain("TZ=America/Chicago");
-      expect(script).toContain("exit 1");
+      expect(stepIds).toEqual([SUPERCRONIC_STEP_ID, SCHEDULE_TIMEZONE_STEP_ID, SUPERCRONIC_CRONTAB_STEP_ID]);
+      expect(timezoneScript).toContain("zone_file='/usr/share/zoneinfo/America/Chicago'");
     },
   );
 

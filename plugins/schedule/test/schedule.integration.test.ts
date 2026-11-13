@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { SUPERCRONIC_JOBS_DIRECTORY } from "../src/supercronic.ts";
 import {
   RunEnvelope,
+  SCHEDULE_ZONE_ABBREVIATIONS,
   cells,
   decodeLastLine,
   expectSuccess,
@@ -13,7 +14,6 @@ import {
   landofile,
   reserveLoopbackPort,
   runCli,
-  scheduleZoneAbbreviations,
   sidecarNames,
   waitForText,
 } from "./schedule-live-support.ts";
@@ -60,7 +60,7 @@ for (const cell of cells) {
           expect(inherited[0], "the no-user job must run as the parent uid").toBe("1001");
           const zone = await waitForText(join(appRoot, "scheduled-tz.txt"), 90_000, "the tick job zone");
           expect(
-            scheduleZoneAbbreviations(image),
+            SCHEDULE_ZONE_ABBREVIATIONS,
             `the scheduler must run jobs in the service TZ, not the image default: ${zone.trim()}`,
           ).toContain(zone.trim());
           expect(
