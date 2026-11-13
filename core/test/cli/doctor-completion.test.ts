@@ -90,6 +90,8 @@ describe("doctor command completion", () => {
       if (format === "text") {
         expect(io.stdout()).toContain("selected-provider: fail");
       } else if (format === "ndjson") {
+        expect(io.stdout().endsWith("}\n")).toBe(true);
+        expect(io.stdout().endsWith("\n\n")).toBe(false);
         const frames = io
           .stdout()
           .trimEnd()
