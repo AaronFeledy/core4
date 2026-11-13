@@ -12,6 +12,7 @@ import { renderGlobalAppDoctorResultAsNdjson } from "./doctor-global-app";
 import { renderMcpDoctorResultAsNdjson } from "./doctor-mcp";
 import { DoctorNdjsonSummarySchema } from "./doctor-ndjson";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
+import { countDoctorChecks } from "./doctor-report-counts";
 import type { DoctorSelfCheck } from "./doctor-self";
 import { renderSubsystemDoctorResultAsNdjson } from "./doctor-subsystems";
 import { appVersionConstraintCheckPayload } from "./doctor-version-constraint";
@@ -99,26 +100,12 @@ export const renderDoctorReportAsNdjson = (
   if (report.appConfig !== undefined) lines.push(appConfigCheckLine(report.appConfig));
   const selfChecks = report.self?.checks ?? [];
   lines.push(...selfChecks.map(selfCheckLine));
-  const checks = [
-    ...report.provider.checks,
-    ...(report.appListeners?.checks ?? []),
-    ...report.subsystems.checks,
-    ...report.globalApp.checks,
-    ...report.mcp.checks,
-    ...(report.appVersionConstraints?.checks ?? []),
-  ];
-  const deprecationsCheckCount = report.deprecations === undefined ? 0 : 1;
-  const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
-  const appConfigWarned = report.appConfig?.violations.some((issue) => issue.severity === "warning") === true;
+  const { checks, failed, warned } = countDoctorChecks(report);
   const summary = {
     timestamp,
-    checks:
-      checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
-    failed:
-      checks.filter((check) => check.status === "fail").length +
-      (appConfigInvalid ? 1 : 0) +
-      selfChecks.length,
-    warned: checks.filter((check) => check.status === "warn").length + (appConfigWarned ? 1 : 0),
+    checks,
+    failed,
+    warned,
   };
   lines.push(
     Effect.runSync(

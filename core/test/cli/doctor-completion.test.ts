@@ -9,6 +9,8 @@ import { Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor";
 import { doctor } from "../../src/cli/commands/doctor";
 import type { DoctorReport } from "../../src/cli/commands/doctor-report";
+import { buildDoctorReportSummary, renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-report";
+import { countDoctorChecks } from "../../src/cli/commands/doctor-report-counts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { compiledCommandOptionsFromSpec } from "../../src/cli/run-built-in-command";
 
@@ -62,6 +64,32 @@ const providerReport = async (state: "running" | "idle" | "failure"): Promise<Do
 };
 
 describe("doctor command completion", () => {
+  test("counts each deprecation entry once by severity across completion and summaries", () => {
+    const report: DoctorReport = {
+      ...emptyReport,
+      deprecations: {
+        entries: ["error", "warn", "info"].map((severity) => ({
+          kind: "command",
+          id: severity,
+          severity: Schema.decodeUnknownSync(Schema.Literals(["error", "warn", "info"]))(severity),
+          since: "4.1.0",
+          note: "Deprecated command",
+          source: "core",
+          count: 7,
+        })),
+      },
+    };
+    expect(metaDoctorSpec.completion?.(report, {})).toEqual({ ok: true, exitCode: 1 });
+    expect(countDoctorChecks(report)).toEqual({ checks: 3, failed: 1, warned: 1, passed: 1 });
+    expect(buildDoctorReportSummary(report, { all: true }).footer).toBe("3 checks · 1 failed · 1 warning");
+    const frame = Schema.decodeUnknownSync(StreamFrame)(
+      JSON.parse(renderDoctorReportAsNdjson(report).split("\n").at(-1) ?? "{}"),
+    );
+    expect(frame).toMatchObject({
+      _tag: "result",
+      envelope: { ok: true, result: { checks: 3, failed: 1, warned: 1 } },
+    });
+  });
   test("matches JSON completion when a doctor section fails", async () => {
     const report: DoctorReport = {
       ...emptyReport,
