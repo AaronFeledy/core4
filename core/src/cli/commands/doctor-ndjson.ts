@@ -103,5 +103,5 @@ export const renderDoctorChecksAsNdjson = <Check extends DoctorNdjsonCheck>({
       }),
     ),
   );
-  return `${lines.join("\n")}\n`;
+  return lines.join("\n");
 };

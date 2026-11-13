@@ -34,6 +34,11 @@ const eventLines = (ndjson: string): ReadonlyArray<StreamFrame> =>
     .filter((frame) => frame._tag === "event");
 
 describe("renderDoctorChecksAsNdjson stream-frame seam", () => {
+  test("leaves the final newline to the renderer boundary", () => {
+    const ndjson = renderDoctorChecksAsNdjson({ checks: [], checkEventPayload });
+    expect(ndjson.endsWith("\n")).toBe(false);
+    expect(Schema.decodeUnknownSync(StreamFrame)(JSON.parse(ndjson))._tag).toBe("result");
+  });
   test("default (no redactor) event lines are byte-identical to the central StreamFrame encoding", () => {
     const check: LeakyCheck = { status: "fail", detail: "socket=/tmp/run.sock" };
     const ndjson = renderDoctorChecksAsNdjson<LeakyCheck>({
