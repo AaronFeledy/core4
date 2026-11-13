@@ -1,10 +1,15 @@
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
-import type { CommandSpec as SchemaCommandSpec } from "@lando/sdk/schema";
-import { LandofileService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
+import { type CommandSpec as SchemaCommandSpec, ServiceName } from "@lando/sdk/schema";
+import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "./errors.ts";
-import { type ResolvedScheduleJob, findScheduleJob, jobsFromLandofile } from "./jobs.ts";
+import {
+  type ResolvedScheduleJob,
+  findScheduleJob,
+  jobsFromLandofile,
+  scheduleSidecarGroups,
+} from "./jobs.ts";
 
 const jobLabels = (jobs: ReadonlyArray<ResolvedScheduleJob>): ReadonlyArray<string> =>
   jobs.map((job) => `${job.service}.${job.name}`);
@@ -48,14 +53,14 @@ const resolveScheduleJob = Effect.fn("Schedule.resolveJob")(function* (
       }),
     );
   }
-  return { document: landofile.document, appRoot: landofile.context.appRoot, job };
+  return { document: landofile.document, appRoot: landofile.context.appRoot, job, jobs };
 });
 
 export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
   readonly name: string;
   readonly service?: string;
 }) {
-  const { document, appRoot, job } = yield* resolveScheduleJob(input.name, input.service);
+  const { document, appRoot, job, jobs } = yield* resolveScheduleJob(input.name, input.service);
   const registry = yield* RuntimeProviderRegistry;
   const planned = yield* registry.resolveAppliedPlan(appRoot);
   if (planned === undefined) {
@@ -70,16 +75,35 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
     );
   }
   const provider = yield* registry.select(planned);
-  const tooling = yield* ToolingEngine;
-  const result = yield* tooling.run(
-    {
-      tool: "schedule:run",
-      service: job.service,
-      ...(job.user === undefined ? {} : { user: job.user }),
-      commands: [argvFor(job.run)],
-    },
-    planned,
-    provider,
+  // The timer runs this job inside the sidecar for its user group, so run there
+  // too: the sidecar already carries the job's user, home, cwd, and environment.
+  const serviceJobs = jobs.filter((entry) => entry.service === job.service);
+  const group = scheduleSidecarGroups(job.service, serviceJobs).find((entry) => entry.jobs.includes(job));
+  if (group === undefined) {
+    return yield* Effect.fail(
+      new PlanReplanRequiredError({
+        app: document.name ?? appRoot,
+        providerId: planned.provider,
+        operation: "schedule run",
+        message: `Scheduled job ${job.service}.${job.name} has no sidecar group.`,
+        remediation: "Run `lando restart` to apply the schedule, then retry.",
+      }),
+    );
+  }
+  if (planned.services[ServiceName.make(group.name)] === undefined) {
+    return yield* Effect.fail(
+      new PlanReplanRequiredError({
+        app: document.name ?? appRoot,
+        providerId: planned.provider,
+        operation: "schedule run",
+        message: `Scheduled job ${job.service}.${job.name} runs in ${group.name}, but the applied plan has no such service.`,
+        remediation: "Run `lando restart` to apply the schedule, then retry.",
+      }),
+    );
+  }
+  const result = yield* provider.exec(
+    { app: planned.id, service: ServiceName.make(group.name), plan: planned },
+    { command: argvFor(job.run) },
   );
   return {
     service: job.service,

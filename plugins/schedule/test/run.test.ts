@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { PlanReplanRequiredError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -6,14 +7,16 @@ import {
   LoadScopedLandofile,
   ProviderId,
   ServiceName,
+  ServicePlan,
 } from "@lando/sdk/schema";
 import {
+  type ExecTarget,
   LandofileService,
+  type CommandSpec as ProviderCommandSpec,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-  ToolingEngine,
-  type ToolingInvocation,
 } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 
 import { spec } from "../src/commands/run.ts";
@@ -46,43 +49,60 @@ const landofile = LoadScopedLandofile.make({
   },
 });
 
-const plan = AppPlan.make({
-  id: AppId.make("demo"),
-  name: "demo",
-  slug: "demo",
-  root: appRoot,
-  provider: ProviderId.make("lando"),
-  services: {},
-  routes: [],
-  stores: [],
-  fileSync: [],
-  metadata: {
-    resolvedAt: DateTime.makeUnsafe("2026-11-03T12:00:00Z"),
-    source: "run.test",
-    runtime: 4,
-  },
-  extensions: {},
-});
+const metadata = {
+  resolvedAt: DateTime.makeUnsafe("2026-11-03T12:00:00Z"),
+  source: "run.test",
+  runtime: 4 as const,
+};
 
-const provider = {} as RuntimeProviderShape;
+const servicePlan = (name: string) =>
+  ServicePlan.make({
+    name: ServiceName.make(name),
+    type: "compose",
+    provider: ProviderId.make("lando"),
+    primary: name === "web",
+    environment: {},
+    mounts: [],
+    endpoints: [],
+    routes: [],
+    dependsOn: [],
+    hostAliases: [],
+    metadata,
+    extensions: {},
+  });
 
-const makeRuntime = (options: { readonly applied?: boolean } = {}) => {
-  const invocations: ToolingInvocation[] = [];
-  const tooling = ToolingEngine.of({
-    id: "test",
-    run: (invocation) => {
-      invocations.push(invocation);
-      const command = invocation.commands[0]?.join(" ") ?? "";
-      const failed = command.includes("exit 3");
+const makePlan = (names: ReadonlyArray<string> = ["web", "web-schedule", "web-schedule-1002"]) =>
+  AppPlan.make({
+    id: AppId.make("demo"),
+    name: "demo",
+    slug: "demo",
+    root: appRoot,
+    provider: ProviderId.make("lando"),
+    services: Object.fromEntries(names.map((name) => [ServiceName.make(name), servicePlan(name)])),
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  });
+
+const makeRuntime = (
+  options: { readonly applied?: boolean; readonly planServices?: ReadonlyArray<string> } = {},
+) => {
+  const execs: Array<{ readonly target: ExecTarget; readonly command: ProviderCommandSpec }> = [];
+  const plan = makePlan(options.planServices);
+  const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
+    exec: (target, command) => {
+      execs.push({ target, command });
+      const failed = command.command.includes("exit 3");
       return Effect.succeed({
-        tool: invocation.tool,
-        service: invocation.service ?? "web",
         exitCode: failed ? 3 : 0,
         stdout: "job-stdout\n",
         stderr: failed ? "job-stderr\n" : "",
       });
     },
-  });
+  };
   const registry = RuntimeProviderRegistry.of({
     list: Effect.succeed([]),
     capabilities: Effect.die("unused"),
@@ -94,10 +114,9 @@ const makeRuntime = (options: { readonly applied?: boolean } = {}) => {
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
     Layer.succeed(RuntimeProviderRegistry, registry),
-    Layer.succeed(ToolingEngine, tooling),
   );
   return {
-    invocations,
+    execs,
     run: (name: string, service?: string) =>
       Effect.runPromise(
         runScheduleJob({ name, ...(service === undefined ? {} : { service }) }).pipe(Effect.provide(layer)),
@@ -123,21 +142,46 @@ describe("schedule:run", () => {
     expect(spec.completion?.(success)).toEqual({ ok: true, exitCode: 0 });
   });
 
-  test("forwards the job user and the resolved argv into the tooling invocation", async () => {
+  test("executes in the sidecar that runs the job, without a user or cwd override", async () => {
     const runtime = makeRuntime();
     await runtime.run("ok");
-    const inherit = runtime.invocations[0];
-    expect(inherit?.tool).toBe("schedule:run");
-    expect(inherit?.service).toBe("web");
-    expect(inherit === undefined || "user" in inherit).toBe(false);
-    expect(inherit?.commands).toEqual([["sh", "-c", "echo ok"]]);
+    const inherit = runtime.execs[0];
+    expect(String(inherit?.target.service), "an inherit job must run in the unsuffixed sidecar").toBe(
+      "web-schedule",
+    );
+    expect(
+      inherit === undefined || "user" in inherit.target,
+      "the sidecar already runs as the job user",
+    ).toBe(false);
+    expect(inherit?.command.command, "a string job must keep the shell wrapper").toEqual([
+      "sh",
+      "-c",
+      "echo ok",
+    ]);
+    expect(
+      inherit === undefined || "cwd" in inherit.command,
+      "the sidecar default cwd is the timer cwd",
+    ).toBe(false);
 
     await runtime.run("argv");
-    expect(runtime.invocations[1]?.commands).toEqual([["echo", "ok"]]);
+    expect(runtime.execs[1]?.command.command, "a list job must run as argv").toEqual(["echo", "ok"]);
 
     await runtime.run("fail");
-    expect(runtime.invocations[2]?.user).toBe("1002");
-    expect(runtime.invocations[2]?.commands).toEqual([["sh", "-c", "exit 3"]]);
+    expect(String(runtime.execs[2]?.target.service), "a later user group must use its suffix name").toBe(
+      "web-schedule-1002",
+    );
+    expect(runtime.execs[2]?.command.command).toEqual(["sh", "-c", "exit 3"]);
+  });
+
+  test("fails when the applied plan predates the job's sidecar", async () => {
+    const runtime = makeRuntime({ planServices: ["web"] });
+    const error = await runtime.run("ok").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(PlanReplanRequiredError);
+    if (!(error instanceof PlanReplanRequiredError)) return;
+    expect(error.message, "the message must name the job and its missing sidecar").toContain("web.ok");
+    expect(error.message).toContain("web-schedule");
+    expect(error.remediation, "the remediation must direct a restart").toContain("lando restart");
+    expect(runtime.execs, "a missing sidecar must not reach the provider").toEqual([]);
   });
 
   test("fails with the not-found and ambiguous errors before touching the provider", async () => {
@@ -146,7 +190,7 @@ describe("schedule:run", () => {
     await expect(runtime.run("dup")).rejects.toBeInstanceOf(ScheduleJobAmbiguousError);
     const scoped = await runtime.run("dup", "web");
     expect(scoped.service).toBe("web");
-    expect(runtime.invocations).toHaveLength(1);
-    expect(runtime.invocations[0]?.service).toBe("web");
+    expect(runtime.execs).toHaveLength(1);
+    expect(String(runtime.execs[0]?.target.service)).toBe("web-schedule");
   });
 });

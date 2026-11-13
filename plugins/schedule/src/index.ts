@@ -18,7 +18,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     appFeatures: [scheduleCompileFeature.id],
     commands: [
       { id: "schedule:list", summary: "List scheduled jobs and their next run times.", mcpAllowed: true },
-      { id: "schedule:run", summary: "Run a scheduled job once in its parent service." },
+      { id: "schedule:run", summary: "Run a scheduled job once, now, in the sidecar that schedules it." },
     ],
   },
 });

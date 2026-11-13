@@ -298,7 +298,7 @@
           },
           {
             "id": "schedule:run",
-            "summary": "Run a scheduled job once in its parent service."
+            "summary": "Run a scheduled job once, now, in the sidecar that schedules it."
           }
         ]
       },
