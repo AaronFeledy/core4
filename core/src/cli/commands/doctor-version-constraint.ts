@@ -137,7 +137,17 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
         [INCLUDE_RESOLUTION_SOLUTION],
       );
     }
-    return undefined;
+    // Any other load failure is a Landofile problem the app-config section reports; the
+    // constraint was never evaluated, so it is listed as skipped rather than failed twice.
+    return {
+      checks: [],
+      skipped: [
+        {
+          check: "app-version-constraint",
+          reason: `The Landofile could not be loaded, so its version constraint was not evaluated: ${redact(resolved.failure.message)}`,
+        },
+      ],
+    };
   }
   const landofile = resolved.success.document;
   const entries = getVersionConstraintEntries(landofile, filePath);

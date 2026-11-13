@@ -534,6 +534,23 @@ describe("meta:doctor combined report", () => {
     }
   });
 
+  test("version constraint producer lists an unevaluated constraint as skipped when the Landofile cannot load", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-doctor-version-lando3-"));
+    try {
+      await writeFile(join(dir, ".lando.yml"), "name: legacy-app\ncompose:\n  - docker-compose.yml\n");
+      const result = await withCwd(dir, () => Effect.runPromise(appVersionConstraintsForReport()));
+      expect(result?.checks).toEqual([]);
+      expect(result?.skipped).toEqual([
+        {
+          check: "app-version-constraint",
+          reason: expect.stringContaining("contains Lando 3 configuration"),
+        },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("keeps a user interrupt in the non-isolated listeners section as an interrupt", async () => {
     // Given the listeners slot, which owns its isolation, yielding a user interrupt
     // When the runner executes it
