@@ -1,5 +1,6 @@
 import { Cron, Result, Schema } from "effect";
 
+import { executionSiteKey } from "./execution-site.ts";
 import { layerMerge } from "./layer-merge.ts";
 import { CommandSpec, ContainerUser } from "./primitives.ts";
 
@@ -128,7 +129,7 @@ export const ScheduleJob = Schema.Struct({
     description:
       "When the job runs: a 5-field cron expression, a named schedule, or @every with seconds or minutes that divide 60, or hours that divide 24.",
   }),
-  run: CommandSpec.annotate({
+  run: executionSiteKey(CommandSpec, "schedule-job").annotate({
     description: "Command the job runs, as a shell string or argv array.",
   }),
   user: Schema.optionalKey(ContainerUser).annotate({

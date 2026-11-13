@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { formatValidationIssuePath } from "@lando/sdk/schema";
-import { unsupportedSecretReference } from "../src/unsupported-secret-reference.ts";
+import {
+  unsupportedSecretReference,
+  unsupportedSecretReferenceError,
+} from "../src/unsupported-secret-reference.ts";
 
 test.each([
   {
@@ -144,6 +147,18 @@ test.each([
     extra: "",
     suggestion:
       "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in a string healthcheck command. A list command runs without a shell, so the program must read TOKEN from its environment.",
+  },
+  {
+    path: ["services", "app", "schedule", 0, "run"],
+    extra: "",
+    suggestion:
+      "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in a string run. A list run executes without a shell, so the program must read TOKEN from its environment. The job command is written into the scheduler image, so a secret must not be written in it.",
+  },
+  {
+    path: ["services", "app", "schedule", 0, "run", 1],
+    extra: "",
+    suggestion:
+      "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in a string run. A list run executes without a shell, so the program must read TOKEN from its environment. The job command is written into the scheduler image, so a secret must not be written in it.",
   },
   {
     path: ["services", "app", "readiness", "command"],
@@ -335,4 +350,22 @@ test.each([
   expect(diagnostic.suggestion).toContain(`services.app.environment.${name}`);
   expect(diagnostic.suggestion).toContain(`$${name}`);
   if (buildArgument) expect(diagnostic.suggestion).toContain(`env.${name}`);
+});
+
+test.each([
+  ["string", ["services", "app", "schedule", 0, "run"]],
+  ["list", ["services", "app", "schedule", 0, "run", 1]],
+] as const)("tags a secret in a %s schedule run as unsupported-secret-reference", (_form, path) => {
+  // Given an authored secret inside a scheduled job command.
+  // When
+  const error = unsupportedSecretReferenceError({
+    source: { file: ".lando.yml", layer: "base", path },
+    references: ["TOKEN"],
+    value: "${secret:TOKEN}",
+  });
+  // Then
+  expect(error._tag).toBe("LandofileValidationError");
+  expect(error.issues[0]?.rule).toBe("unsupported-secret-reference");
+  expect(error.issues[0]?.path).toEqual(path);
+  expect(error.remediation).toContain("services.app.environment.TOKEN");
 });

@@ -11,6 +11,7 @@ export const ExecutionSite = Schema.Literals([
   "service-command",
   "service-entrypoint",
   "healthcheck",
+  "schedule-job",
   "build-app",
   "build-artifact",
   "build-arg",

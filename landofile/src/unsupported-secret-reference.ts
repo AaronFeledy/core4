@@ -175,6 +175,13 @@ export const unsupportedSecretReference = (
           suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string ${role} command. A list command runs without a shell, so the program must read ${name} from its environment.${hostCaveat}`,
         };
       }
+      case "schedule-job": {
+        const command = relative.length === 0 || (relative.length === 1 && typeof relative[0] === "number");
+        if (!command) return { suggestion: genericSuggestion() };
+        return {
+          suggestion: `Set ${bindings(`${service}.environment`)} to the ${binding} and write ${shell} in a string run. A list run executes without a shell, so the program must read ${name} from its environment. The job command is written into the scheduler image, so a secret must not be written in it.`,
+        };
+      }
       case "service-command": {
         const compose =
           relative.length === 0
