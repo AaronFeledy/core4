@@ -114,6 +114,11 @@ export interface ClonedServiceRequest {
   readonly from: string;
   readonly name: string;
   readonly command: CommandSpec;
+  /**
+   * Container user the clone runs as. Setting it disables home persistence and
+   * home preparation, so the image build stays the parent's steps plus
+   * `extraBuildSteps`. Omitted inherits the parent's user and home intent.
+   */
   readonly user?: string;
   readonly extraBuildSteps?: ReadonlyArray<ServiceBuildStepIntent>;
   readonly extraEnv?: Readonly<Record<string, EnvironmentValue>>;

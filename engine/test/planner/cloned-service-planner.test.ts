@@ -12,6 +12,7 @@ import type {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Option, Predicate, Schema } from "effect";
 
+import { DATA_TREE_OWNERSHIP_STEP_ID } from "../../src/planner/data-tree.ts";
 import { SERVICE_FEATURES_EXTENSION_KEY } from "../../src/planner/extensions.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
@@ -44,6 +45,21 @@ const clonedServiceType: ServiceType = {
   resolve: ({ service }) => Effect.succeed({ base: "l337", normalizedConfig: service, features: [] }),
 };
 
+const homeServiceType: ServiceType = {
+  ...clonedServiceType,
+  id: "cloned-home",
+  name: "cloned-home",
+  identity: {
+    defaultUser: "node",
+    homes: {
+      node: AbsoluteContainerPath.make("/home/node"),
+      root: AbsoluteContainerPath.make("/root"),
+      "www-data": AbsoluteContainerPath.make("/var/www"),
+    },
+    preparedHomes: ["node", "www-data"],
+  },
+};
+
 const pluginFor = (feature: AppFeatureDefinition) =>
   definePlugin({
     name: "@test/cloned-service",
@@ -52,18 +68,25 @@ const pluginFor = (feature: AppFeatureDefinition) =>
       version: "1.0.0",
       api: 4,
       entry: "index.js",
-      contributes: { serviceTypes: [clonedServiceType.id], appFeatures: [feature.id] },
+      contributes: { serviceTypes: [clonedServiceType.id, homeServiceType.id], appFeatures: [feature.id] },
     }),
-    serviceTypes: new Map([[clonedServiceType.id, clonedServiceType]]),
+    serviceTypes: new Map([
+      [clonedServiceType.id, clonedServiceType],
+      [homeServiceType.id, homeServiceType],
+    ]),
     serviceFeatures: new Map(),
     appFeatures: new Map([[feature.id, feature]]),
   });
 
-const planWithClone = (document: Record<string, unknown>, feature: AppFeatureDefinition) =>
+const planWithClone = (
+  document: Record<string, unknown>,
+  feature: AppFeatureDefinition,
+  providerCapabilities = TestRuntimeProvider.capabilities,
+) =>
   Effect.gen(function* () {
     const landofile = yield* compileTestLandofile(document, "/srv/clones");
     return yield* planApp(
-      { landofile, providerCapabilities: TestRuntimeProvider.capabilities },
+      { landofile, providerCapabilities },
       Registry.layerWith({ app: false, user: false }, [pluginFor(feature)]),
     );
   });
@@ -143,24 +166,65 @@ describe("cloned services in a planned app", () => {
     expect(clone.certs).toBeUndefined();
   });
 
-  test("pins inherited steps and takes its own home when a request overrides user", async () => {
-    // Given a clone that runs natively as root instead of the parent's node.
+  test("a user override keeps the parent image steps and drops home persistence", async () => {
+    // Given a prepared-home parent and two clones, one inheriting and one overriding its user.
+    const preparedWeb = { type: "cloned-home:3.22", build: { artifact: ["echo artifact"] } };
+    const inherit = { ...cloneRequest, name: "web-inherit" };
+    const extraStep: ServiceBuildStepIntent = {
+      id: "clone.extra",
+      phase: "build",
+      command: ["echo", "extra"],
+    };
+    const override = { ...cloneRequest, name: "web-other", user: "www-data", extraBuildSteps: [extraStep] };
+    const feature: AppFeatureDefinition = {
+      id: "test.clone",
+      priority: 500,
+      selectors: { names: ["web"] },
+      apply: (ctx) =>
+        Effect.sync(() => {
+          ctx.addClonedService(inherit);
+          ctx.addClonedService(override);
+        }),
+    };
     const app = await Effect.runPromise(
-      planWithClone({ name: "clones", services: { web } }, cloneFeature({ ...cloneRequest, user: "root" })),
+      planWithClone({ name: "clones", services: { web: preparedWeb } }, feature, {
+        ...TestRuntimeProvider.capabilities,
+        artifactBuild: true,
+      }),
     );
     const parent = app.services[ServiceName.make("web")];
-    const clone = app.services[ServiceName.make("web-schedule")];
-    if (parent === undefined || clone === undefined) throw new Error("expected both services");
+    const shared = app.services[ServiceName.make("web-inherit")];
+    const own = app.services[ServiceName.make("web-other")];
+    if (parent === undefined || shared === undefined || own === undefined)
+      throw new Error("expected all three services");
 
-    // Then the parent's unpinned artifact step is pinned to the parent's build identity.
-    expect(buildSteps(parent)[0]?.user).toBeUndefined();
-    expect(buildSteps(clone)).toEqual([expect.objectContaining({ phase: "build", user: "root" })]);
+    // Then the no-override clone keeps the parent's leading prepared-home step and home store.
+    expect(buildSteps(parent)[0]?.id).toBe(DATA_TREE_OWNERSHIP_STEP_ID);
+    expect(buildSteps(shared)[0]).toEqual(buildSteps(parent)[0]);
+    expect(buildSteps(shared)).toEqual(buildSteps(parent));
+    expect(homeStore(shared)).toBe(homeStore(parent));
 
-    // And the two principals keep separate home stores while sharing the rest.
-    expect(homeStore(parent)).toBeDefined();
-    expect(homeStore(clone)).toBeDefined();
-    expect(homeStore(clone)).not.toBe(homeStore(parent));
-    expect(volumeStores(clone)).not.toEqual(volumeStores(parent));
+    // And the override clone keeps only the parent's image steps plus its own extra step.
+    const parentImageSteps = buildSteps(parent).filter(
+      (step) => step.id !== DATA_TREE_OWNERSHIP_STEP_ID && step.phase !== "app",
+    );
+    const imageShape = (step: ServiceBuildStepIntent) => ({
+      id: step.id,
+      phase: step.phase,
+      command: step.command,
+    });
+    expect(buildSteps(own).map(imageShape)).toEqual([
+      ...parentImageSteps.map(imageShape),
+      imageShape(extraStep),
+    ]);
+    expect(buildSteps(own).some((step) => step.id === DATA_TREE_OWNERSHIP_STEP_ID)).toBe(false);
+    expect(own.home).toEqual({ state: "disabled" });
+    expect(homeStore(own)).toBeUndefined();
+    const parentHomeStore = homeStore(parent);
+    expect(
+      volumeStores(own).some((store) => store === parentHomeStore),
+      "a user override must not mount the parent home store",
+    ).toBe(false);
   });
 
   test("a clone never re-claims a Compose host publication", async () => {

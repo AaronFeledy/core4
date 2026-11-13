@@ -109,12 +109,18 @@ const clonePlannedDraft = (
     authoredArtifact: parent.authoredArtifact,
     pullPolicy: parent.pullPolicy,
     authored: parent.authored,
-    homeIntent: parent.homeIntent,
+    // A different principal cannot share the parent's home store, and preparing
+    // a new one would insert a build step before the inherited layers.
+    homeIntent:
+      request.user === undefined
+        ? parent.homeIntent
+        : { serviceType: parent.homeIntent.serviceType, home: false },
     logSources: parent.logSources,
     routes: undefined,
     extensions: stripComposePublish(parent.extensions ?? {}),
     // The clone shares the parent's service-scoped stores: same files, same
-    // dependencies. A different `user` still yields its own home principal.
+    // dependencies. A user override drops home persistence, so it mounts no
+    // home store here or in finalize.
     storeOwner: parent.name,
     draft: {
       ...rest,
