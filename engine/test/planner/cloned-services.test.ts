@@ -305,7 +305,7 @@ describe("cloned services", () => {
     ["scratch", "scratch"],
     ["scratch tag", "scratch:latest"],
     ["distroless", "gcr.io/distroless/static"],
-    ["registry scratch", "ghcr.io/example/scratch:latest"],
+    ["distroless tag", "gcr.io/distroless/base-debian12:nonroot"],
   ])("fails when extra build steps target a %s parent image", (_label, image) => {
     try {
       materializeClonedServices({
@@ -325,6 +325,53 @@ describe("cloned services", () => {
       expect(error.reason).toBe("unsupported-image");
       expect(error.image).toBe(image);
     }
+  });
+
+  test.each([
+    ["name contains distroless", "example/distroless-tools:1"],
+    ["name contains scratch", "ghcr.io/example/scratch:latest"],
+    ["ordinary image", "alpine:3.22"],
+  ])("accepts extra build steps on a parent image whose %s", (_label, image) => {
+    expect(() =>
+      materializeClonedServices({
+        plannedServiceDrafts: [
+          parentDraft({
+            normalizedConfig: { image },
+            artifact: { kind: "ref", ref: image },
+          }),
+        ],
+        clones: [request()],
+        parentNetworksByName: new Map(),
+      }),
+    ).not.toThrow();
+  });
+
+  test("judges the effective artifact reference before the normalized image", () => {
+    // Given a feature replaced the authored scratch image with a real artifact.
+    const replaced = parentDraft({
+      normalizedConfig: { image: "scratch" },
+      artifact: { kind: "ref", ref: "alpine:3.22" },
+    });
+    expect(() =>
+      materializeClonedServices({
+        plannedServiceDrafts: [replaced],
+        clones: [request()],
+        parentNetworksByName: new Map(),
+      }),
+    ).not.toThrow();
+
+    // And given the artifact itself is scratch even though the config names alpine.
+    const builtFromScratch = parentDraft({
+      normalizedConfig: { image: "alpine:3.22" },
+      artifact: { kind: "ref", ref: "scratch" },
+    });
+    expect(() =>
+      materializeClonedServices({
+        plannedServiceDrafts: [builtFromScratch],
+        clones: [request()],
+        parentNetworksByName: new Map(),
+      }),
+    ).toThrow(AppFeatureCloneError);
   });
 
   test("rejects two clones whose names differ only by case", () => {

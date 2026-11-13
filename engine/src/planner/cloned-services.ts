@@ -32,20 +32,26 @@ const CLONE_OMITTED_CONFIG_KEYS = [
   "routes",
 ] as const;
 
-/** True when the image reference is scratch or distroless and cannot run install steps. */
+/**
+ * True only when the reference itself proves the image has no install shell:
+ * the reserved empty `scratch` image (bare name, optional tag or digest) and
+ * Google's distroless repositories. A name that merely contains those words
+ * does not establish the property.
+ */
 const imageLacksInstallShell = (image: string | undefined): boolean => {
   if (image === undefined || image.length === 0) return false;
-  const withoutDigest = image.toLowerCase().split("@")[0] ?? image.toLowerCase();
-  if (withoutDigest === "scratch" || withoutDigest.startsWith("scratch:")) return true;
-  if (withoutDigest.endsWith("/scratch") || withoutDigest.includes("/scratch:")) return true;
-  return withoutDigest.includes("distroless");
+  const reference = image.toLowerCase().split("@")[0] ?? image.toLowerCase();
+  if (/^scratch(?::[^/:@]+)?$/u.test(reference)) return true;
+  return /^gcr\.io\/distroless\/[^/:@]+(?::[^/:@]+)?$/u.test(reference);
 };
 
 const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined => {
-  const image = draft.normalizedConfig.image;
-  if (typeof image === "string" && image.length > 0) return image;
+  // The effective artifact is what an image build runs from, so judge it
+  // before the authored image a feature may have replaced.
   const artifact = draft.artifact;
   if (artifact !== undefined && "kind" in artifact && artifact.kind === "ref") return artifact.ref;
+  const image = draft.normalizedConfig.image;
+  if (typeof image === "string" && image.length > 0) return image;
   return undefined;
 };
 
