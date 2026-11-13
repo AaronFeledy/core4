@@ -1,4 +1,9 @@
-import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
+import {
+  encodeStreamEventFrame,
+  encodeStreamResultFrame,
+  identityRedactor,
+  resolveCommandCompletion,
+} from "@lando/sdk/command-result";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
@@ -120,7 +125,10 @@ export const renderDoctorReportAsNdjson = (
       encodeStreamResultFrame({
         command: "meta:doctor",
         resultSchema: DoctorNdjsonSummarySchema,
-        outcome: { _tag: "success", value: summary },
+        outcome: resolveCommandCompletion("meta:doctor", summary, () => ({
+          ok: report.self === undefined,
+          exitCode: report.self === undefined && summary.failed === 0 ? 0 : 1,
+        })),
         redactor: identityRedactor,
       }),
     ),
