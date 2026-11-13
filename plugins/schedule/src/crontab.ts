@@ -40,6 +40,7 @@ export interface CrontabJob {
 export interface CrontabPaths {
   readonly crontab: string;
   readonly jobsDirectory: string;
+  readonly scheduler: string;
 }
 
 export const jobScriptPath = (jobsDirectory: string, name: string): string => `${jobsDirectory}/${name}`;
@@ -112,13 +113,26 @@ export interface CrontabTimezone {
   readonly zone: string;
 }
 
+/** A zone name the scheduler can resolve from the image's zone database. */
+const ZONE_NAME = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)*$/u;
+
 /**
- * Fail the build when the parent service's timezone is absent from the image,
- * because supercronic would otherwise run every job on UTC while Lando reports
- * the configured zone.
+ * A value that names no zone at all cannot be honored, and it must never reach
+ * a `/usr/share/zoneinfo` path or the crontab, so the step becomes the refusal.
  */
-const timezoneGuard = ({ service, zone }: CrontabTimezone): string => {
-  const message = `Scheduled jobs for service ${service} use TZ=${zone}, but this image has no timezone data for that zone, so jobs would run on UTC. Install the image's timezone database in the service's build.artifact, for example apk add --no-cache tzdata on Alpine, or remove TZ.`;
+const timezoneRefusal = ({ service, zone }: CrontabTimezone): string | undefined => {
+  if (ZONE_NAME.test(zone)) return undefined;
+  const message = `Scheduled jobs for service ${service} use TZ=${zone}, which is not a timezone name. Scheduled jobs need a zone name such as America/Chicago or UTC.`;
+  return `echo ${posixQuote(message)} >&2\nexit 1`;
+};
+
+/**
+ * Fail the build when the parent service's zone name is absent from the image,
+ * because the crontab pins `CRON_TZ` and the scheduler spawns jobs in it.
+ */
+const timezoneDataGuard = ({ service, zone }: CrontabTimezone): string | undefined => {
+  if (zone === "UTC") return undefined;
+  const message = `Scheduled jobs for service ${service} use TZ=${zone}, but this image has no timezone data for it, so jobs would run on UTC. Install the image's timezone database in the service's build.artifact, for example apk add --no-cache tzdata on Alpine, or remove TZ.`;
   return `if [ ! -e ${posixQuote(`/usr/share/zoneinfo/${zone}`)} ]; then
   echo ${posixQuote(message)} >&2
   exit 1
@@ -128,13 +142,17 @@ fi`;
 /**
  * Shell script that writes one script per job, then the crontab that names
  * them. The files are world-readable so a sidecar running as any job user can
- * read the schedules it was started with.
+ * read the schedules it was started with. The crontab's first line always pins
+ * the zone, and the step validates its own output with the scheduler binary so
+ * a schedule the scheduler would reject fails the build instead of the sidecar.
  */
 export const crontabInstallCommand = (
   jobs: ReadonlyArray<CrontabJob>,
   paths: CrontabPaths,
-  timezone?: CrontabTimezone,
+  timezone: CrontabTimezone,
 ): string => {
+  const refusal = timezoneRefusal(timezone);
+  if (refusal !== undefined) return ["set -eu", refusal].join("\n");
   const crontabDirectory = paths.crontab.slice(0, paths.crontab.lastIndexOf("/"));
   const writes = jobs.flatMap((job) => {
     const script = posixQuote(jobScriptPath(paths.jobsDirectory, job.name));
@@ -143,13 +161,21 @@ export const crontabInstallCommand = (
   const rows = jobs.map(
     (job) => `printf '%s\\n' ${posixQuote(crontabLine(job, paths.jobsDirectory))} >> ${paths.crontab}`,
   );
+  const guard = timezoneDataGuard(timezone);
   return [
     "set -eu",
-    ...(timezone === undefined ? [] : [timezoneGuard(timezone)]),
+    ...(guard === undefined ? [] : [guard]),
     `mkdir -p ${crontabDirectory} ${paths.jobsDirectory}`,
     `: > ${paths.crontab}`,
+    `printf '%s\\n' ${posixQuote(`CRON_TZ=${timezone.zone}`)} >> ${paths.crontab}`,
     ...writes,
     ...rows,
     `chmod 0644 ${paths.crontab}`,
+    `if scheduler_output=$(${posixQuote(paths.scheduler)} -test ${posixQuote(paths.crontab)} 2>&1); then`,
+    "  :",
+    "else",
+    "  printf '%s\\n' \"$scheduler_output\" >&2",
+    "  exit 1",
+    "fi",
   ].join("\n");
 };

@@ -44,6 +44,23 @@ const job = (name: string, every: string, run: string, user?: string) => ({
   ...(user === undefined ? {} : { user }),
 });
 
+const crontabScriptOf = async (
+  environment?: AppFeatureContext["selected"][number]["normalizedConfig"]["environment"],
+) => {
+  const clones = await apply([
+    view("web", {
+      image: "php:8.3",
+      ...(environment === undefined ? {} : { environment }),
+      schedule: [job("tick", "@hourly", "true")],
+    }),
+  ]);
+  const crontab = clones[0]?.extraBuildSteps?.find((step) => step.id === SUPERCRONIC_CRONTAB_STEP_ID);
+  return {
+    buildKeyInputs: crontab?.buildKeyInputs,
+    script: Array.isArray(crontab?.command) ? crontab.command.join("\n") : "",
+  };
+};
+
 describe("schedule compile feature", () => {
   test("splits one parent into user sidecars with separate binary and crontab build steps", async () => {
     const clones = await apply([
@@ -84,11 +101,13 @@ describe("schedule compile feature", () => {
     expect(JSON.stringify(binary?.command)).not.toContain("setpriv");
     expect(crontab?.buildKeyInputs).toEqual({
       jobs: [{ name: "tick", schedule: "* * * * * * *", run: "true" }],
+      timezone: "UTC",
     });
     expect(JSON.stringify(crontab?.command)).not.toContain("@every");
     expect(JSON.stringify(crontab?.command)).not.toContain("aptible/supercronic");
     const crontabScript = Array.isArray(crontab?.command) ? crontab.command.join("\n") : "";
     expect(crontabScript).toContain(`chmod 0644 ${SUPERCRONIC_CRONTAB}`);
+    expect(crontabScript).toContain(`'${SUPERCRONIC_BIN}' -test`);
   });
 
   test("an inherit group keeps the plain sidecar name when an explicit user group comes first", async () => {
@@ -107,38 +126,65 @@ describe("schedule compile feature", () => {
     expect(await apply([view("web", { image: "alpine:3.22" })])).toEqual([]);
   });
 
-  test.each([
-    ["Europe/Berlin", "Europe/Berlin"],
-    [":Europe/Berlin", "Europe/Berlin"],
-    ["Etc/UTC", undefined],
-    ["UTC", undefined],
-    [undefined, undefined],
-    ["Europe/Berlin; touch /tmp/pwned", undefined],
-    ["$(touch /tmp/pwned)", undefined],
-  ] as const)("timezone %s gates the crontab step: %s", async (tz, zone) => {
-    const clones = await apply([
-      view("web", {
-        image: "alpine:3.22",
-        ...(tz === undefined ? {} : { environment: { TZ: tz } }),
-        schedule: [job("tick", "@hourly", "true")],
-      }),
-    ]);
-    const crontab = clones[0]?.extraBuildSteps?.find((step) => step.id === SUPERCRONIC_CRONTAB_STEP_ID);
-    const script = Array.isArray(crontab?.command) ? crontab.command.join("\n") : "";
-    if (zone === undefined) {
-      expect(script).not.toContain("zoneinfo");
-      expect(crontab?.buildKeyInputs).toEqual({ jobs: [{ name: "tick", schedule: "@hourly", run: "true" }] });
-      if (tz !== undefined) expect(script).not.toContain(tz);
-      return;
-    }
-    expect(script).toContain(`[ ! -e '/usr/share/zoneinfo/${zone}' ]`);
-    expect(script).toContain("run on UTC");
-    expect(script).toContain("apk add --no-cache tzdata");
-    expect(script).toContain("service web");
-    expect(crontab?.buildKeyInputs).toEqual({
+  test("an unset TZ pins UTC on the crontab", async () => {
+    const { buildKeyInputs, script } = await crontabScriptOf();
+    expect(buildKeyInputs).toEqual({
       jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
-      timezone: zone,
+      timezone: "UTC",
     });
+    expect(script).toContain("'CRON_TZ=UTC'");
+    expect(script).not.toContain("zoneinfo");
+  });
+
+  test("UTC needs no zone-data check but still pins CRON_TZ", async () => {
+    const { script } = await crontabScriptOf({ TZ: "UTC" });
+    expect(script).toContain("'CRON_TZ=UTC'");
+    expect(script).not.toContain("zoneinfo");
+  });
+
+  test.each(["America/Chicago", ":America/Chicago"] as const)(
+    "TZ %s pins the stripped zone and checks the image zone database",
+    async (tz) => {
+      const { buildKeyInputs, script } = await crontabScriptOf({ TZ: tz });
+      expect(buildKeyInputs).toEqual({
+        jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
+        timezone: "America/Chicago",
+      });
+      expect(script).toContain("'CRON_TZ=America/Chicago'");
+      expect(script).toContain("[ ! -e '/usr/share/zoneinfo/America/Chicago' ]");
+      expect(script).toContain("service web");
+      expect(script).toContain("TZ=America/Chicago");
+      expect(script).toContain("apk add --no-cache tzdata");
+    },
+  );
+
+  test("a non-string TZ descriptor cannot be honored, so the job zone is UTC", async () => {
+    const { buildKeyInputs, script } = await crontabScriptOf({
+      TZ: { _tag: "SecretRef", reference: "TZ" },
+    });
+    expect(buildKeyInputs).toEqual({
+      jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
+      timezone: "UTC",
+    });
+    expect(script).toContain("'CRON_TZ=UTC'");
+  });
+
+  test.each([
+    "EST5EDT,M3.2.0,M11.1.0",
+    "<+03>-3",
+    "Europe/Berlin; touch /tmp/pwned",
+    "$(touch /tmp/pwned)",
+  ] as const)("the POSIX or unsafe TZ %s is refused before it can reach a path", async (tz) => {
+    const { buildKeyInputs, script } = await crontabScriptOf({ TZ: tz });
+    expect(buildKeyInputs).toEqual({
+      jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
+      timezone: tz,
+    });
+    expect(script).toContain("is not a timezone name");
+    expect(script).toContain("Scheduled jobs need a zone name such as America/Chicago or UTC");
+    expect(script).toContain("service web");
+    expect(script).not.toContain("zoneinfo");
+    expect(script).not.toContain("CRON_TZ=");
   });
 
   test("does not pre-check image shells; the planner owns the unsupported-image error", async () => {

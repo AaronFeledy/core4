@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { crontabInstallCommand, everyToSupercronicSchedule, supercronicInstallCommand } from "./crontab.ts";
 import { scheduleSidecarGroups, scheduleTimezone } from "./jobs.ts";
 import {
+  SUPERCRONIC_BIN,
   SUPERCRONIC_CRONTAB,
   SUPERCRONIC_CRONTAB_STEP_ID,
   SUPERCRONIC_JOBS_DIRECTORY,
@@ -14,15 +15,6 @@ import {
 
 export const SCHEDULE_FEATURE_ID = "schedule.compile" as const;
 
-const IANA_ZONE = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)+$/u;
-
-/**
- * Only a real IANA zone names a `/usr/share/zoneinfo` file worth checking;
- * `Etc/` zones are not guaranteed to ship with an image's zone database.
- */
-const zoneInfoZone = (zone: string): string | undefined =>
-  !zone.startsWith("Etc/") && IANA_ZONE.test(zone) ? zone : undefined;
-
 export const scheduleCompileFeature: AppFeatureDefinition = {
   id: SCHEDULE_FEATURE_ID,
   priority: 200,
@@ -31,7 +23,9 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
     for (const service of ctx.selected) {
       const jobs = service.normalizedConfig.schedule ?? [];
       if (jobs.length === 0) continue;
-      const timezone = zoneInfoZone(scheduleTimezone(service.normalizedConfig.environment));
+      // Listing, the crontab, and the scheduler must agree on one zone, so the
+      // step always pins the sidecar's zone instead of inheriting the image's.
+      const timezone = scheduleTimezone(service.normalizedConfig.environment);
       for (const group of scheduleSidecarGroups(service.serviceName, jobs)) {
         ctx.addClonedService({
           from: service.serviceName,
@@ -55,8 +49,12 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
                 "-c",
                 crontabInstallCommand(
                   group.jobs,
-                  { crontab: SUPERCRONIC_CRONTAB, jobsDirectory: SUPERCRONIC_JOBS_DIRECTORY },
-                  timezone === undefined ? undefined : { service: service.serviceName, zone: timezone },
+                  {
+                    crontab: SUPERCRONIC_CRONTAB,
+                    jobsDirectory: SUPERCRONIC_JOBS_DIRECTORY,
+                    scheduler: SUPERCRONIC_BIN,
+                  },
+                  { service: service.serviceName, zone: timezone },
                 ),
               ],
               buildKeyInputs: {
@@ -65,7 +63,7 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
                   schedule: everyToSupercronicSchedule(job.every) ?? job.every,
                   run: job.run,
                 })),
-                ...(timezone === undefined ? {} : { timezone }),
+                timezone,
               },
             },
           ],

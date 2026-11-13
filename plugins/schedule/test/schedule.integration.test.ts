@@ -13,6 +13,7 @@ import {
   landofile,
   reserveLoopbackPort,
   runCli,
+  scheduleZoneAbbreviations,
   sidecarNames,
   waitForText,
 } from "./schedule-live-support.ts";
@@ -61,6 +62,11 @@ for (const cell of cells) {
 
           const inherited = await timerIdentity("tick", "scheduled");
           expect(inherited[0], "the no-user job must run as the parent uid").toBe("1001");
+          const zone = await waitForText(join(appRoot, "scheduled-tz.txt"), 90_000, "the tick job zone");
+          expect(
+            scheduleZoneAbbreviations(image),
+            `the scheduler must run jobs in the service TZ, not the image default: ${zone.trim()}`,
+          ).toContain(zone.trim());
           expect(
             await runIdentity("tick"),
             "schedule:run must report the identity the timer used for the no-user job",
