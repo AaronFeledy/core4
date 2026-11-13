@@ -1,5 +1,5 @@
 import { RendererSelectionError } from "@lando/sdk/errors";
-import { scanArgvFlags } from "./argv-walk";
+import { scanLandoFlags } from "./lando-flags";
 import type { RendererMode } from "./renderer-selection";
 import { Flags } from "./spec/metadata";
 
@@ -48,11 +48,7 @@ export const JSON_CONTROL_OFF: JsonControl = { mode: "off" };
 const ALLOWED_VALUES_DISPLAY = RESULT_FORMATS.join(", ");
 const REMEDIATION = `Use --format=<value> where <value> is one of: ${ALLOWED_VALUES_DISPLAY}. Use --json or -j as a shortcut for --format=json.`;
 
-// Equals form `--json=echo` is always a field list. Space form `--json <token>`
-// is consumed only when the token matches this pattern AND contains `,` or `.`.
-// A single bare identifier (`echo`) stays positional so `lando exec --json echo`
-// does not steal the command; use `--json=app` for a one-key projection.
-export const JSON_FIELD_LIST = /^[A-Za-z_][\w.-]*(,[A-Za-z_][\w.-]*)*$/;
+export { JSON_FIELD_LIST, isSpaceFormJsonFieldList } from "./lando-flags";
 
 export const isResultFormat = (value: string): value is ResultFormat =>
   (RESULT_FORMATS as ReadonlyArray<string>).includes(value);
@@ -104,9 +100,6 @@ export const parseJsonFieldList = (raw: string): readonly string[] => {
   return fields;
 };
 
-export const isSpaceFormJsonFieldList = (token: string): boolean =>
-  !token.startsWith("-") && JSON_FIELD_LIST.test(token) && (token.includes(",") || token.includes("."));
-
 export interface ExtractFormatFlagsResult {
   readonly format?: ResultFormat;
   readonly json: boolean;
@@ -116,73 +109,38 @@ export interface ExtractFormatFlagsResult {
   readonly remainingArgv: ReadonlyArray<string>;
 }
 
-const FORMAT_LONG_FLAG = "--format";
-const FORMAT_EQ_PREFIX = `${FORMAT_LONG_FLAG}=`;
-const JSON_LONG_FLAG = "--json";
-const JSON_EQ_PREFIX = `${JSON_LONG_FLAG}=`;
-const JQ_LONG_FLAG = "--jq";
-const JQ_EQ_PREFIX = `${JQ_LONG_FLAG}=`;
-
 export const extractFormatFlags = (argv: ReadonlyArray<string>): ExtractFormatFlagsResult => {
   let format: ResultFormat | undefined;
   let json = false;
   let jsonList = false;
   let jsonFields: readonly string[] | undefined;
   let jq: string | undefined;
-  const remaining = scanArgvFlags(argv, (arg, next) => {
-    if (arg === "-j") {
+  const remaining = scanLandoFlags(argv, {
+    "-j": () => {
       json = true;
-      return { consumed: 0 };
-    }
-
-    if (arg === JSON_LONG_FLAG) {
+    },
+    "--json": (match) => {
       json = true;
-      if (next !== undefined && isSpaceFormJsonFieldList(next)) {
-        jsonList = false;
-        jsonFields = parseJsonFieldList(next);
-        return { consumed: 1 };
+      const value = match.value;
+      if (value === undefined) {
+        jsonList = true;
+        jsonFields = undefined;
+        return;
       }
-      jsonList = true;
-      jsonFields = undefined;
-      return { consumed: 0 };
-    }
-
-    if (arg.startsWith(JSON_EQ_PREFIX)) {
-      json = true;
       jsonList = false;
-      jsonFields = parseJsonFieldList(arg.slice(JSON_EQ_PREFIX.length));
-      return { consumed: 0 };
-    }
-
-    if (arg === JQ_LONG_FLAG) {
-      if (next === undefined || next.startsWith("-")) throw missingJqValueError();
-      jq = next;
-      json = true;
-      return { consumed: 1 };
-    }
-
-    if (arg.startsWith(JQ_EQ_PREFIX)) {
-      const value = arg.slice(JQ_EQ_PREFIX.length);
-      if (value === "") throw missingJqValueError();
+      jsonFields = parseJsonFieldList(value);
+    },
+    "--jq": (match) => {
+      const value = match.value;
+      if (value === undefined || (match.attached && value === "")) throw missingJqValueError();
       jq = value;
       json = true;
-      return { consumed: 0 };
-    }
-
-    if (arg === FORMAT_LONG_FLAG) {
-      if (next === undefined || next.startsWith("-")) throw missingFormatValueError();
-      format = validate(next);
-      return { consumed: 1 };
-    }
-
-    if (arg.startsWith(FORMAT_EQ_PREFIX)) {
-      const value = arg.slice(FORMAT_EQ_PREFIX.length);
-      if (value === "") throw missingFormatValueError();
+    },
+    "--format": (match) => {
+      const value = match.value;
+      if (value === undefined || (match.attached && value === "")) throw missingFormatValueError();
       format = validate(value);
-      return { consumed: 0 };
-    }
-
-    return undefined;
+    },
   });
 
   return {
@@ -248,6 +206,12 @@ export const universalFormatFlagDefs = {
     description: "Shortcut for --format=json.",
   }),
 } as const;
+
+/**
+ * The command-flag names every command already advertises, so text and machine
+ * help hide them: the keys of `universalFormatFlagDefs`.
+ */
+export const UNIVERSAL_FORMAT_FLAG_NAMES: ReadonlySet<string> = new Set(Object.keys(universalFormatFlagDefs));
 
 /**
  * The flag-definition shape every advertisement surface reads. Both the CLI's

@@ -16,7 +16,7 @@ import { DeprecationService, Renderer } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { CliInvocation } from "../runtime/invocation-context";
 
-import { scanArgvFlags } from "./argv-walk";
+import { scanLandoFlags } from "./lando-flags";
 
 export interface ResolveCliDeprecationWarningsOptions {
   readonly argv: ReadonlyArray<string>;
@@ -28,18 +28,14 @@ export interface ResolveCliDeprecationWarningsResult {
   readonly remainingArgv: ReadonlyArray<string>;
 }
 
-const NO_DEPRECATION_WARNINGS_FLAG = "--no-deprecation-warnings";
-
 export const resolveCliDeprecationWarnings = (
   options: ResolveCliDeprecationWarningsOptions,
 ): ResolveCliDeprecationWarningsResult => {
   let disabledByFlag = false;
-  const remainingArgv = scanArgvFlags(options.argv, (arg) => {
-    if (arg === NO_DEPRECATION_WARNINGS_FLAG) {
+  const remainingArgv = scanLandoFlags(options.argv, {
+    "--no-deprecation-warnings": () => {
       disabledByFlag = true;
-      return { consumed: 0 };
-    }
-    return undefined;
+    },
   });
   return {
     enabled: !disabledByFlag && options.env.LANDO_DEPRECATION_WARNINGS !== "0",

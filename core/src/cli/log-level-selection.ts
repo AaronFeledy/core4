@@ -1,18 +1,13 @@
 import { LogLevelSelectionError } from "@lando/sdk/errors";
 import { LOG_LEVELS, type LogLevel } from "@lando/sdk/schema";
 
-import { scanArgvFlags } from "./argv-walk";
+import { scanLandoFlags } from "./lando-flags";
 
 export const LOG_LEVEL_ENV_VAR = "LANDO_LOG_LEVEL" as const;
 export const DEFAULT_LOG_LEVEL: LogLevel = "none";
 
 const ALLOWED_VALUES_DISPLAY = LOG_LEVELS.join(", ");
 const REMEDIATION = `Use --log-level=<value> where <value> is one of: ${ALLOWED_VALUES_DISPLAY}.`;
-
-const LOG_LEVEL_LONG_FLAG = "--log-level";
-const LOG_LEVEL_EQ_PREFIX = `${LOG_LEVEL_LONG_FLAG}=`;
-const DEBUG_LONG_FLAG = "--debug";
-const VERBOSE_LONG_FLAG = "--verbose";
 
 export const isLogLevel = (value: string): value is LogLevel => LOG_LEVELS.some((level) => level === value);
 
@@ -45,31 +40,18 @@ export const extractLogLevelFlags = (argv: ReadonlyArray<string>): ExtractLogLev
   let level: LogLevel | undefined;
   let debug = false;
   let verbose = false;
-  const remaining = scanArgvFlags(argv, (arg, next) => {
-    if (arg === DEBUG_LONG_FLAG) {
+  const remaining = scanLandoFlags(argv, {
+    "--debug": () => {
       debug = true;
-      return { consumed: 0 };
-    }
-
-    if (arg === VERBOSE_LONG_FLAG) {
+    },
+    "--verbose": () => {
       verbose = true;
-      return { consumed: 0 };
-    }
-
-    if (arg === LOG_LEVEL_LONG_FLAG) {
-      if (next === undefined || next.startsWith("-")) throw missingLogLevelValueError();
-      level = validate(next, "flag");
-      return { consumed: 1 };
-    }
-
-    if (arg.startsWith(LOG_LEVEL_EQ_PREFIX)) {
-      const value = arg.slice(LOG_LEVEL_EQ_PREFIX.length);
-      if (value === "") throw missingLogLevelValueError();
+    },
+    "--log-level": (match) => {
+      const value = match.value;
+      if (value === undefined || (match.attached && value === "")) throw missingLogLevelValueError();
       level = validate(value, "flag");
-      return { consumed: 0 };
-    }
-
-    return undefined;
+    },
   });
 
   return level === undefined

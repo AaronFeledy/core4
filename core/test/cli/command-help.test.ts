@@ -505,7 +505,6 @@ describe("command help color", () => {
     const styled = shouldStyleHelp({
       isTTY: true,
       env: { NO_COLOR: "1" },
-      argv: [],
       rendererMode: "lando",
     });
 

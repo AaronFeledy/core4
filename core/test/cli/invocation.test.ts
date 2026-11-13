@@ -2,12 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { NotImplementedError } from "@lando/sdk/errors";
 import { commandTailIndex } from "../../src/cli/command-tail.ts";
 import { extractFormatFlags, resolveJsonControl, resolveResultFormat } from "../../src/cli/format-flags.ts";
-import {
-  type TailPolicy,
-  matchDispatcherFlag,
-  resolveInvocationHead,
-  splitInvocation,
-} from "../../src/cli/invocation.ts";
+import { type TailPolicy, resolveInvocationHead, splitInvocation } from "../../src/cli/invocation.ts";
 import { resolveLogLevel } from "../../src/cli/log-level-selection.ts";
 import { resolveRendererMode } from "../../src/cli/renderer-selection.ts";
 import { resolveTrace } from "../../src/cli/trace-selection.ts";
@@ -92,17 +87,6 @@ describe("dispatcher table", () => {
       expect(result.globals).toEqual([]);
     },
   );
-
-  test("matches only the exact extractor forms", () => {
-    expect(matchDispatcherFlag("--verbose=true", undefined)).toBeUndefined();
-    expect(matchDispatcherFlag("--tail=5", undefined)).toBeUndefined();
-    expect(matchDispatcherFlag("--tail", "5")).toBeUndefined();
-    expect(matchDispatcherFlag("--tail", "--verbose")).toEqual({
-      flag: "--tail",
-      strip: true,
-      consumed: 0,
-    });
-  });
 });
 
 describe("splitInvocation", () => {

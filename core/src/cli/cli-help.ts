@@ -2,21 +2,30 @@ import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import type { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { argStdioDescription } from "./arg-stdio";
 import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
-import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
+import {
+  type OptInResultFormat,
+  UNIVERSAL_FORMAT_FLAG_NAMES,
+  commandResultFormats,
+  formatFlagDefsForCommand,
+} from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
 import { landoFlagForSpelling } from "./invocation";
+import { landoFlagFooterLabels } from "./lando-flags";
 import { resolveTopLevelAliases } from "./spec/command-base";
 import { toolingRunHelp } from "./tooling-run-help";
 
-const UNIVERSAL_FLAGS = new Set(["format", "json", "jq"]);
-
 // The footer is the only place a reader learns which `--format` values exist,
 // so it names the resolved list for this command rather than the vocabulary.
-const globalFlagsFooter = (command: { readonly resultFormats?: ReadonlyArray<OptInResultFormat> }): string =>
-  `Global flags (--format (${commandResultFormats(command).join(
-    ", ",
-  )}), --json [fields], --jq, --renderer, --verbose, --log-level, --debug, --trace) work on every command.`;
+const FORMAT_FLAG_LABEL = "--format";
+const globalFlagsFooter = (command: {
+  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
+}): string => {
+  const labels = landoFlagFooterLabels().map((label) =>
+    label === FORMAT_FLAG_LABEL ? `${label} (${commandResultFormats(command).join(", ")})` : label,
+  );
+  return `Global flags (${labels.join(", ")}) work on every command.`;
+};
 
 export type CommandHelpStatus =
   | { readonly kind: "implemented" }
@@ -140,7 +149,7 @@ export const renderCommandHelpFlags = (command: {
   readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
 }): ReadonlyArray<string> => {
   const entries = Object.entries(formatFlagDefsForCommand(command))
-    .filter(([name]) => !UNIVERSAL_FLAGS.has(name))
+    .filter(([name]) => !UNIVERSAL_FORMAT_FLAG_NAMES.has(name))
     .sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) return [];
   const lines = ["", "FLAGS"];

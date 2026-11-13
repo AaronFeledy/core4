@@ -15,7 +15,7 @@ import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
 import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
-import { activeResultFormat, emitResultLine } from "./compiled-runtime";
+import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { HelpCommandDescriptor } from "./help-command-descriptor";
@@ -218,20 +218,6 @@ export const printHelpCatalogJson = (
     }).pipe(Effect.provideService(CliInvocation, context)),
   );
 
-const rendererModeFrom = (
-  argv: ReadonlyArray<string>,
-  env: Readonly<Record<string, string | undefined>>,
-): string | undefined => {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--") break;
-    if (arg === "--renderer") return argv[index + 1];
-    if (arg?.startsWith("--renderer=")) return arg.slice("--renderer=".length);
-  }
-  const fromEnv = env.LANDO_RENDERER;
-  return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
-};
-
 export const printCommandHelp = (
   entry: BuiltInCommandEntry,
   context: CliInvocationContext = processInvocationContext(),
@@ -250,14 +236,12 @@ export const printCommandHelp = (
       context,
     );
   }
-  const argv = process.argv.slice(2);
   return emitResultLine(
     renderCommandHelp(entry, {
       styled: shouldStyleHelp({
         isTTY: context.io.stdoutIsTTY === true,
         env: context.env,
-        argv,
-        rendererMode: rendererModeFrom(argv, context.env),
+        rendererMode: activeRendererMode,
       }),
     }),
     context,
@@ -291,14 +275,12 @@ export const printToolingHelp = (
       context,
     );
   }
-  const argv = process.argv.slice(2);
   return redactHelpText(
     renderToolingHelp(entry, {
       styled: shouldStyleHelp({
         isTTY: context.io.stdoutIsTTY === true,
         env: context.env,
-        argv,
-        rendererMode: rendererModeFrom(argv, context.env),
+        rendererMode: activeRendererMode,
       }),
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     }),

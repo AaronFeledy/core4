@@ -65,7 +65,6 @@ export const tryPluginCommandHelp = async (
           styled: shouldStyleHelp({
             isTTY: catalog.context?.io.stdoutIsTTY === true,
             env: catalog.context?.env ?? process.env,
-            argv: process.argv.slice(2),
             rendererMode: activeRendererMode,
           }),
         }),
@@ -102,7 +101,6 @@ export const printPluginTopicHelp = async (
         style: shouldStyleHelp({
           isTTY: catalog.context?.io.stdoutIsTTY === true,
           env: catalog.context?.env ?? process.env,
-          argv: process.argv.slice(2),
           rendererMode: activeRendererMode,
         }),
       }),

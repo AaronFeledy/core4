@@ -14,6 +14,7 @@ import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/prox
 import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { resolveLandoRoots, updateHandoffDir } from "@lando/paths";
 
+import { hasDiagnosticFlag } from "../src/cli/lando-flags";
 import { installProcessLifecycle } from "../src/cli/process-lifecycle";
 import { runWithProcessSignalReraise } from "../src/cli/process-signals";
 import { cliUserArgv } from "../src/cli/user-argv";
@@ -24,17 +25,7 @@ ensureHostProxyNoProxy("localhost");
 
 const argv = cliUserArgv(Bun.argv);
 const hasDiagnosticOverride = (tokens: ReadonlyArray<string>, env: NodeJS.ProcessEnv): boolean => {
-  if (
-    tokens.some(
-      (token) =>
-        token === "--debug" ||
-        token === "--verbose" ||
-        token === "--log-level" ||
-        token.startsWith("--log-level="),
-    )
-  ) {
-    return true;
-  }
+  if (hasDiagnosticFlag(tokens)) return true;
   const level = env.LANDO_LOG_LEVEL;
   return level !== undefined && level !== "" && level !== "none";
 };

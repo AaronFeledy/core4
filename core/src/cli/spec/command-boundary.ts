@@ -4,6 +4,7 @@ import type { CliInvocationContext } from "../../runtime/invocation-context";
 import { type RendererMode, formatBugReport } from "../bug-report";
 import { validateCommandCliFlags } from "../flag-value-validation";
 import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
+import { scanLandoFlags } from "../lando-flags";
 import { runWithRendererHandling } from "../renderer-boundary";
 
 const EmptyPreCommandResultSchema = Schema.Struct({});
@@ -73,36 +74,29 @@ export const preCommandOutputMode = (input: {
   readonly argv: ReadonlyArray<string>;
   readonly env: Readonly<Record<string, string | undefined>>;
 }): { readonly rendererMode: RendererMode; readonly resultFormat: ResultFormat } => {
-  const beforeTerminator = input.argv.slice(
-    0,
-    input.argv.indexOf("--") === -1 ? undefined : input.argv.indexOf("--"),
-  );
   // An explicit --format wins, last spelling first, so a pre-command failure is
   // serialized in the format the user asked for rather than always as JSON.
   let explicitFormat: ResultFormat | undefined;
-  for (const [index, arg] of beforeTerminator.entries()) {
-    const value = arg.startsWith("--format=")
-      ? arg.slice("--format=".length)
-      : arg === "--format"
-        ? beforeTerminator[index + 1]
-        : undefined;
-    if (value !== undefined && isEnvelopeResultFormat(value)) explicitFormat = value;
-  }
-  if (explicitFormat !== undefined) return { rendererMode: "json", resultFormat: explicitFormat };
-  const machineRequested = beforeTerminator.some((arg, index) => {
-    if (
-      arg === "--json" ||
-      arg.startsWith("--json=") ||
-      arg === "-j" ||
-      arg === "--jq" ||
-      arg.startsWith("--jq=") ||
-      arg === "--renderer=json"
-    ) {
-      return true;
-    }
-    if (arg !== "--renderer") return false;
-    return beforeTerminator[index + 1] === "json";
+  let machineRequested = false;
+  scanLandoFlags(input.argv, {
+    "--format": (match) => {
+      const value = match.value;
+      if (value !== undefined && isEnvelopeResultFormat(value)) explicitFormat = value;
+    },
+    "--json": () => {
+      machineRequested = true;
+    },
+    "-j": () => {
+      machineRequested = true;
+    },
+    "--jq": () => {
+      machineRequested = true;
+    },
+    "--renderer": (match) => {
+      if (match.value === "json") machineRequested = true;
+    },
   });
+  if (explicitFormat !== undefined) return { rendererMode: "json", resultFormat: explicitFormat };
   if (machineRequested || input.env.LANDO_RENDERER === "json") {
     return { rendererMode: "json", resultFormat: "json" };
   }

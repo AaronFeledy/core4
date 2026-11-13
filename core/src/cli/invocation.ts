@@ -1,133 +1,36 @@
 import type { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { normalizeCompiledCommandArgv } from "./compiled-normalize";
 import { type FlagDefinition, flagDefinitionsByToken, normalizeCliFlagTokens } from "./flag-tokens";
-import { isSpaceFormJsonFieldList } from "./format-flags";
+import { LANDO_FLAGS, type LandoFlagMatch, matchLandoFlag } from "./lando-flags";
 
 /**
  * The one lexical contract for a CLI invocation.
  *
- * Nothing outside this module decides whether a token is Lando's. The table
- * below is the dispatcher-owned surface; `resolveInvocationHead` finds the
- * command name through it, and `splitInvocation` partitions argv into the
- * tokens Lando reads and the tokens the command receives.
+ * Nothing outside this module decides whether a token is Lando's. The table in
+ * `lando-flags.ts` is the dispatcher-owned surface; `resolveInvocationHead`
+ * finds the command name through it, and `splitInvocation` partitions argv into
+ * the tokens Lando reads and the tokens the command receives.
  *
  * Original adjacency is authoritative: a flag's value is the token next to it
  * in what the user typed. Removing a flag never makes two tokens adjacent.
  */
 
-type DispatcherFlagArity =
-  /** Exact bare spelling only. `--verbose=true` is the command's. */
-  | "none"
-  /** `--name` or `--name=value`; the bare form takes the adjacent token unless it is missing or starts with `-`. */
-  | "adjacent"
-  /** `--json` special: bare, `=fields`, or the adjacent token when it is a field list. */
-  | "json"
-  /** A deferred renderer flag: bare or `=value`, stripped when matched. */
-  | "deferred"
-  /** `--tail`: bare only when the adjacent token is missing or starts with `-`; `--tail=N` is never Lando's. */
-  | "deferred-tail";
-
-interface DispatcherFlag {
-  readonly strip: boolean;
-  readonly arity: DispatcherFlagArity;
-}
-
-/** Dispatcher-owned flags. Help and version stay in argv for the help/version logic. */
-const INVOCATION_FLAGS: ReadonlyMap<string, DispatcherFlag> = new Map<string, DispatcherFlag>([
-  ["--trace", { strip: true, arity: "none" }],
-  ["--debug", { strip: true, arity: "none" }],
-  ["--verbose", { strip: true, arity: "none" }],
-  ["--no-deprecation-warnings", { strip: true, arity: "none" }],
-  ["--log-level", { strip: true, arity: "adjacent" }],
-  ["--renderer", { strip: true, arity: "adjacent" }],
-  ["--format", { strip: true, arity: "adjacent" }],
-  ["--json", { strip: true, arity: "json" }],
-  ["-j", { strip: true, arity: "none" }],
-  ["--jq", { strip: true, arity: "adjacent" }],
-  ["--help", { strip: false, arity: "none" }],
-  ["-h", { strip: false, arity: "none" }],
-  ["--version", { strip: false, arity: "none" }],
-  ["-v", { strip: false, arity: "none" }],
-  ["--expand", { strip: true, arity: "deferred" }],
-  ["--no-expand", { strip: true, arity: "deferred" }],
-  ["--collapse", { strip: true, arity: "deferred" }],
-  ["--no-collapse", { strip: true, arity: "deferred" }],
-  ["--tail", { strip: true, arity: "deferred-tail" }],
-  ["--no-tail", { strip: true, arity: "deferred" }],
-]);
+/**
+ * Whether a match is Lando's to read: selection and reserved flags are
+ * stripped into `globals`; help and version stay in argv for the help/version
+ * logic.
+ */
+const isLandoOwned = (match: LandoFlagMatch): boolean =>
+  match.flag.role === "selection" || match.flag.role === "reserved";
 
 /**
  * Whether `spelling` is a flag Lando acts on, and whether it takes a value.
- * Deferred renderer flags are reserved, not features, so they do not count.
+ * Reserved task-tree flags are not features, so they do not count.
  */
 export const landoFlagForSpelling = (spelling: string): { readonly takesValue: boolean } | undefined => {
-  const entry = INVOCATION_FLAGS.get(spelling);
-  if (entry === undefined || entry.arity === "deferred" || entry.arity === "deferred-tail") return undefined;
-  return { takesValue: entry.arity === "adjacent" };
-};
-
-export interface DispatcherFlagMatch {
-  /** The spelling that matched, without an `=` value. */
-  readonly flag: string;
-  /** Whether the token belongs in `globals` (stripped) or stays in `argv` (kept). */
-  readonly strip: boolean;
-  /** How many following tokens the flag consumed. */
-  readonly consumed: 0 | 1;
-}
-
-/**
- * Match one token against the dispatcher table. Returns `undefined` for every
- * token the extractors would not consume, including `--verbose=true`.
- */
-export const matchDispatcherFlag = (
-  token: string,
-  next: string | undefined,
-): DispatcherFlagMatch | undefined => {
-  const exact = INVOCATION_FLAGS.get(token);
-  if (exact !== undefined) {
-    const arity = exact.arity;
-    switch (arity) {
-      case "none":
-      case "deferred":
-        return { flag: token, strip: exact.strip, consumed: 0 };
-      case "adjacent":
-        return {
-          flag: token,
-          strip: exact.strip,
-          consumed: next !== undefined && !next.startsWith("-") ? 1 : 0,
-        };
-      case "json":
-        return {
-          flag: token,
-          strip: exact.strip,
-          consumed: next !== undefined && isSpaceFormJsonFieldList(next) ? 1 : 0,
-        };
-      case "deferred-tail":
-        return next === undefined || next.startsWith("-")
-          ? { flag: token, strip: exact.strip, consumed: 0 }
-          : undefined;
-      default:
-        return arity satisfies never;
-    }
-  }
-
-  const equalsIndex = token.indexOf("=");
-  if (equalsIndex <= 0) return undefined;
-  const head = token.slice(0, equalsIndex);
-  const entry = INVOCATION_FLAGS.get(head);
-  if (entry === undefined) return undefined;
-  const arity = entry.arity;
-  switch (arity) {
-    case "none":
-    case "deferred-tail":
-      return undefined;
-    case "adjacent":
-    case "json":
-    case "deferred":
-      return { flag: head, strip: entry.strip, consumed: 0 };
-    default:
-      return arity satisfies never;
-  }
+  const flag = LANDO_FLAGS.find((entry) => entry.spelling === spelling);
+  if (flag === undefined || flag.role === "reserved") return undefined;
+  return { takesValue: flag.arity === "value" };
 };
 
 /**
@@ -191,9 +94,9 @@ export const resolveInvocationHead = (argv: ReadonlyArray<string>): InvocationHe
     }
     if (token === "--") return emptyHead(index, headGlobals);
     if (token === "-" || !token.startsWith("-")) break;
-    const match = matchDispatcherFlag(token, argv[index + 1]);
+    const match = matchLandoFlag(token, argv[index + 1]);
     // An unknown leading flag is not a command, and a leading help or version flag is Lando's to answer.
-    if (match === undefined || !match.strip) return emptyHead(argv.length, headGlobals);
+    if (match === undefined || !isLandoOwned(match)) return emptyHead(argv.length, headGlobals);
     const value = argv[index + 1];
     headGlobals.push(token);
     if (match.consumed === 1 && value !== undefined) headGlobals.push(value);
@@ -218,8 +121,8 @@ export const resolveInvocationHead = (argv: ReadonlyArray<string>): InvocationHe
       cursor += 1;
       continue;
     }
-    const match = matchDispatcherFlag(token, argv[cursor + 1]);
-    if (match === undefined || !match.strip) break;
+    const match = matchLandoFlag(token, argv[cursor + 1]);
+    if (match === undefined || !isLandoOwned(match)) break;
     const value = argv[cursor + 1];
     globalEntries.push({
       index: cursor,
@@ -299,9 +202,9 @@ export const splitInvocation = (
   };
 
   const takeTableFlag = (token: string, next: string | undefined): number | undefined => {
-    const match = matchDispatcherFlag(token, next);
+    const match = matchLandoFlag(token, next);
     if (match === undefined) return undefined;
-    if (match.strip) {
+    if (isLandoOwned(match)) {
       globals.push(token);
       if (match.consumed === 1 && next !== undefined) globals.push(next);
     } else {

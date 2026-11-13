@@ -88,7 +88,6 @@ const resolveStyle = (options?: ColdHelpStyle): StyleFns => {
     shouldStyleHelp({
       isTTY: process.stdout.isTTY === true,
       env: process.env,
-      argv: process.argv.slice(2),
       rendererMode: undefined,
     });
   return styled
