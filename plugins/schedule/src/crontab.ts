@@ -81,9 +81,12 @@ if command -v curl >/dev/null 2>&1; then
 elif command -v wget >/dev/null 2>&1; then
   wget -qO "$tmp" "$url"
 elif command -v apt-get >/dev/null 2>&1; then
-  apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && curl -fsSL "$url" -o "$tmp"
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates
+  curl -fsSL "$url" -o "$tmp"
 elif command -v apk >/dev/null 2>&1; then
-  apk add --no-cache curl && curl -fsSL "$url" -o "$tmp"
+  apk add --no-cache curl
+  curl -fsSL "$url" -o "$tmp"
 else
   echo "Cannot install the scheduler: this image has no curl, wget, apt-get, or apk." >&2
   exit 1
