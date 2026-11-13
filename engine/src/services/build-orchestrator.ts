@@ -1,7 +1,7 @@
 import { redactProviderError } from "@lando/redaction/provider-error";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ArtifactBuildError, ProviderInternalError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServicePlan, clonedServiceParent } from "@lando/sdk/schema";
 import type { ArtifactRef, RuntimeProviderShape } from "@lando/sdk/services";
 import {
   BuildOrchestrator,
@@ -328,6 +328,22 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
   ).pipe(Effect.tapError(() => progress.failTask(service)));
 });
 
+/**
+ * A companion's inherited build steps reuse its parent's layers, so a companion whose parent is
+ * in this plan builds after the other services. The planner clones only authored services, so a
+ * parent is never itself a companion and two waves suffice.
+ */
+const buildWaves = (services: ReadonlyArray<ServicePlan>): ReadonlyArray<ReadonlyArray<ServicePlan>> => {
+  const names = new Set(services.map((service) => String(service.name)));
+  const waitsForParent = (service: ServicePlan): boolean => {
+    const parent = clonedServiceParent(service);
+    return parent !== undefined && names.has(parent);
+  };
+  return [services.filter((service) => !waitsForParent(service)), services.filter(waitsForParent)].filter(
+    (wave) => wave.length > 0,
+  );
+};
+
 export const layer = Layer.effect(
   BuildOrchestrator,
   Effect.gen(function* () {
@@ -346,22 +362,25 @@ export const layer = Layer.effect(
         const redaction = yield* registerBuildRedaction(plan);
         const progress = makeBuildTaskProgress(events, plan);
         yield* progress.startTree;
-        const built = yield* Effect.forEach(
-          servicePlans,
-          (service) =>
-            buildService({
-              events,
-              paths,
-              progress,
-              provider,
-              refresh,
-              plan,
-              redaction,
-              service,
-              stateStore,
-            }),
-          { concurrency: 2 },
-        ).pipe(
+        const buildBatch = (batch: ReadonlyArray<ServicePlan>) =>
+          Effect.forEach(
+            batch,
+            (service) =>
+              buildService({
+                events,
+                paths,
+                progress,
+                provider,
+                refresh,
+                plan,
+                redaction,
+                service,
+                stateStore,
+              }),
+            { concurrency: 2 },
+          );
+        const built = yield* Effect.forEach(buildWaves(servicePlans), buildBatch, { concurrency: 1 }).pipe(
+          Effect.map((waves) => waves.flat()),
           Effect.tapError(() =>
             Effect.gen(function* () {
               for (const service of progress.unsettledServices()) {
@@ -378,6 +397,9 @@ export const layer = Layer.effect(
             }),
           ),
         );
+        // Overwriting existing keys keeps the plan's service order whatever order the waves ran in.
+        const services = { ...plan.services };
+        for (const { service } of built) services[service.name] = service;
         if (built.some((entry) => entry.dispatched)) {
           yield* sweepAppBuildTranscripts({
             providerId: provider.id,
@@ -390,10 +412,7 @@ export const layer = Layer.effect(
           });
         }
         yield* progress.completeTree;
-        return {
-          ...plan,
-          services: Object.fromEntries(built.map(({ service }) => [service.name, service])),
-        };
+        return { ...plan, services };
       }),
       buildApp: Effect.fn("BuildOrchestrator.buildApp")(function* (plan, options) {
         const redaction = yield* registerBuildRedaction(plan);

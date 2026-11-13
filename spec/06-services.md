@@ -616,7 +616,7 @@ The existing error tag MUST carry `service`, reason `replacement-build` or `unpr
 
 | Phase | Source and dispatch | Dependency | Default policy |
 |---|---|---|---|
-| `artifact` | Artifact intent to `buildArtifact` or `pullArtifact` | Independent across services | fail-fast |
+| `artifact` | Artifact intent to `buildArtifact` or `pullArtifact` | Independent across authored services; scheduling of a generated companion's build relative to its parent's is implementation-owned | fail-fast |
 | `app` | Runtime scripts to `execStream` | Own artifact, running service, and authored `depends_on` | continue-all |
 
 The build scope publishes `pre-build`, `post-build`, `pre-build-phase`, `post-build-phase`, `build-step-start`, `build-step-progress`, `build-step-skip`, `build-step-complete`, and `build-step-fail` through `EventService`. Global, app, and service `build:` configuration resolves concurrency and failure policy; limits are bounded but tuning constants are implementation-owned.
