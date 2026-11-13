@@ -24,10 +24,12 @@ export const countDoctorChecks = (
   const selfChecks = report.self?.checks ?? [];
   const deprecations = report.deprecations?.entries ?? [];
   return {
-    checks: checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
+    checks:
+      checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length + deprecations.length,
     passed:
       checks.filter((check) => check.status === "pass").length +
-      (report.appConfig?.valid === true && !appConfigWarned ? 1 : 0),
+      (report.appConfig?.valid === true && !appConfigWarned ? 1 : 0) +
+      deprecations.filter((entry) => entry.severity === "info").length,
     failed:
       checks.filter((check) => check.status === "fail").length +
       (appConfigInvalid ? 1 : 0) +
