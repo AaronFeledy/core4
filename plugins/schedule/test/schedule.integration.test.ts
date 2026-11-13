@@ -36,47 +36,50 @@ for (const cell of cells) {
             `lando start on ${cell.label} (${image})`,
           );
 
-          // 2. Jobs run natively as their own identity, including a named user whose group differs.
-          const scheduledUid = await waitForText(
-            join(appRoot, "scheduled-uid.txt"),
-            90_000,
-            "the inherited-user job",
-          );
-          expect(scheduledUid.trim(), "the no-user job must run as the parent uid").toBe("1001");
-
-          const otherUid = await waitForText(join(appRoot, "other-uid.txt"), 90_000, "the 1002 job");
-          expect(otherUid.trim(), "the user: 1002 job must run as 1002").toBe("1002");
-
-          if (image === "php:8.3") {
-            const nobodyUid = await waitForText(join(appRoot, "nobody-uid.txt"), 90_000, "the nobody job");
-            expect(nobodyUid.trim(), "a named user with a different group must still run").toBe("65534");
-          }
-
-          const parentHome = async (user: string): Promise<string> => {
-            const result = expectSuccess(
-              await runCli(cell, appRoot, ["exec", "--user", user, "web", "--", "sh", "-c", "echo $HOME"]),
-              `lando exec --user ${user} web`,
-            );
-            return result.stdout.trim();
+          // 2. Jobs run natively as their own identity, and schedule:run reports the same
+          // identity the timer used: uid, gid, HOME, and cwd must match exactly.
+          const timerIdentity = async (job: string, prefix: string) => {
+            const [uid, gid, home, cwd] = await Promise.all([
+              waitForText(join(appRoot, `${prefix}-uid.txt`), 90_000, `the ${job} job uid`),
+              waitForText(join(appRoot, `${prefix}-gid.txt`), 90_000, `the ${job} job gid`),
+              waitForText(join(appRoot, `${prefix}-home.txt`), 90_000, `the ${job} job HOME`),
+              waitForText(join(appRoot, `${prefix}-pwd.txt`), 90_000, `the ${job} job cwd`),
+            ]);
+            return [uid.trim(), gid.trim(), home.trim(), cwd.trim()];
           };
 
-          const inheritedHome = await waitForText(
-            join(appRoot, "scheduled-home.txt"),
-            30_000,
-            "the inherited-user HOME",
-          );
-          expect(inheritedHome.trim(), "the inherited job HOME must match the parent identity").toBe(
-            await parentHome("1001"),
-          );
-          const otherHome = await waitForText(join(appRoot, "other-home.txt"), 30_000, "the 1002 HOME");
-          expect(otherHome.trim(), "the user: 1002 job HOME must match that identity").toBe(
-            await parentHome("1002"),
-          );
-          if (image === "php:8.3") {
-            const nobodyHome = await waitForText(join(appRoot, "nobody-home.txt"), 30_000, "the nobody HOME");
-            expect(nobodyHome.trim(), "the nobody job HOME must match that identity").toBe(
-              await parentHome("nobody"),
+          const runIdentity = async (job: string) => {
+            const run = expectSuccess(
+              await runCli(cell, appRoot, ["schedule:run", job, "--format=json"]),
+              `lando schedule:run ${job} on ${cell.label} (${image})`,
             );
+            const envelope = decodeLastLine(RunEnvelope, run.stdout, `schedule:run ${job}`);
+            expect(envelope.ok, `schedule:run ${job} must succeed`).toBe(true);
+            return envelope.result.stdout.trim().split("\n");
+          };
+
+          const inherited = await timerIdentity("tick", "scheduled");
+          expect(inherited[0], "the no-user job must run as the parent uid").toBe("1001");
+          expect(
+            await runIdentity("tick"),
+            "schedule:run must report the identity the timer used for the no-user job",
+          ).toEqual(inherited);
+
+          const other = await timerIdentity("second", "other");
+          expect(other[0], "the user: 1002 job must run as 1002").toBe("1002");
+          expect(
+            await runIdentity("second"),
+            "schedule:run must report the identity the timer used for the 1002 job",
+          ).toEqual(other);
+
+          if (image === "php:8.3") {
+            const nobody = await timerIdentity("named", "nobody");
+            expect(nobody[0], "a named user with a different group must still run as 65534").toBe("65534");
+            expect(nobody[1], "nobody must run in group nogroup (65534)").toBe("65534");
+            expect(
+              await runIdentity("named"),
+              "schedule:run must report the identity the timer used for the nobody job",
+            ).toEqual(nobody);
           }
 
           // 3. A shadowed app path is shared with the sidecars.
@@ -109,6 +112,13 @@ for (const cell of cells) {
             parentHostConnections.map((connection) => connection.port),
             "the parent must publish the authored loopback port",
           ).toContain(port);
+          expect(
+            services
+              .map((service) => service.service)
+              .filter((name) => name.includes("-schedule"))
+              .sort(),
+            `lando info must list exactly the expected sidecars: ${expectedSidecars.join(", ")}`,
+          ).toEqual([...expectedSidecars].sort());
           for (const name of expectedSidecars) {
             const sidecar = byName.get(name);
             expect(sidecar, `lando info must list the ${name} sidecar`).toBeDefined();
@@ -161,17 +171,31 @@ for (const cell of cells) {
           );
           expect(failingEnvelope.error?.exitCode).toBe(3);
 
-          // 7. Editing a job updates only the crontab layer; the scheduler download stays cached.
+          // 7. Editing a job updates the sidecar crontab after a restart.
           await writeFile(join(appRoot, ".lando.yml"), landofile({ appName, image, port, mode: "edited" }));
-          const restart = expectSuccess(
+          expectSuccess(
             await runCli(cell, appRoot, ["restart"], 600_000),
             `lando restart after editing a job on ${cell.label}`,
           );
           await waitForText(join(appRoot, "restarted.txt"), 90_000, "the edited job to run");
+          const crontab = expectSuccess(
+            await runCli(cell, appRoot, [
+              "exec",
+              "web-schedule",
+              "--",
+              "cat",
+              "/usr/local/etc/supercronic/crontab",
+            ]),
+            `reading the restarted web-schedule crontab on ${cell.label} (${image})`,
+          );
           expect(
-            restart.stdout + restart.stderr,
-            "restart must not download supercronic again when only the crontab changed",
-          ).not.toContain("aptible/supercronic");
+            crontab.stdout,
+            "the restarted sidecar crontab must contain the edited job command",
+          ).toContain("restarted.txt");
+          expect(
+            crontab.stdout,
+            "the edited job command must replace the previous tick command",
+          ).not.toContain("scheduled.txt");
 
           // 8. Removing schedule: removes every sidecar.
           await writeFile(join(appRoot, ".lando.yml"), landofile({ appName, image, port, mode: "none" }));

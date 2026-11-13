@@ -118,12 +118,14 @@ export const reserveLoopbackPort = (): number => {
 
 export type ScheduleMode = "full" | "edited" | "none";
 
+/** Print the identity the timer used and record the same values for the assertions. */
+const identityProbe = (prefix: string): string =>
+  `id -u; id -g; echo $HOME; pwd; mkdir -p /app; id -u > /app/${prefix}-uid.txt; id -g > /app/${prefix}-gid.txt; echo $HOME > /app/${prefix}-home.txt; pwd > /app/${prefix}-pwd.txt`;
+
 const jobsFor = (mode: ScheduleMode, image: string): ReadonlyArray<string> => {
   if (mode === "none") return [];
-  const tick =
-    mode === "edited"
-      ? "touch /app/restarted.txt && id -u > /app/scheduled-uid.txt && echo $HOME > /app/scheduled-home.txt"
-      : "touch /app/scheduled.txt && id -u > /app/scheduled-uid.txt && echo $HOME > /app/scheduled-home.txt";
+  const touched = mode === "edited" ? "/app/restarted.txt" : "/app/scheduled.txt";
+  const tick = `touch ${touched} && ${identityProbe("scheduled")}`;
   return [
     "    schedule:",
     "      - name: tick",
@@ -135,13 +137,13 @@ const jobsFor = (mode: ScheduleMode, image: string): ReadonlyArray<string> => {
     "      - name: second",
     '        every: "@every 1s"',
     '        user: "1002"',
-    '        run: "touch /app/other.txt && id -u > /app/other-uid.txt && echo $HOME > /app/other-home.txt"',
+    `        run: "touch /app/other.txt && ${identityProbe("other")}"`,
     ...(image === "php:8.3"
       ? [
           "      - name: named",
           '        every: "@every 1s"',
           '        user: "nobody"',
-          '        run: "touch /app/nobody.txt && id -u > /app/nobody-uid.txt && echo $HOME > /app/nobody-home.txt"',
+          `        run: "touch /app/nobody.txt && ${identityProbe("nobody")}"`,
         ]
       : []),
     "      - name: yearly",
