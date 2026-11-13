@@ -101,12 +101,22 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
     validatedTarget.plan.provider,
     yield* TeardownProvider,
   );
-  if (placement.plan !== undefined)
+  if (placement.plan !== undefined) {
+    const desired = validatedTarget.plan;
+    // An applied record never carries Landofile events. A target resolved from its Landofile
+    // keeps that Landofile's steps while the record still describes the same app and provider.
+    const events =
+      validatedTarget.landofile !== undefined &&
+      desired.id === placement.plan.id &&
+      desired.provider === placement.plan.provider
+        ? desired.events
+        : undefined;
     validatedTarget = {
       ...validatedTarget,
-      plan: placement.plan,
+      plan: events === undefined ? placement.plan : { ...placement.plan, events },
       root: placement.plan.root,
     };
+  }
   const owningProvider = yield* registry.select(validatedTarget.plan);
   yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
   const { pending } = yield* readDiscardableStart(validatedTarget.app);
@@ -248,7 +258,6 @@ const haltResolvedRuntime = (
 export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
   options: StopAppOptions = {},
   target?: ResolvedAppTarget,
-  execution: { readonly skipInitEvents?: boolean } = {},
 ): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   StopAppError,
@@ -260,7 +269,7 @@ export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
           haltResolvedRuntime(options, resolved, {
             revalidate: false,
             requireAppliedEvidence: true,
-            runInitEvents: execution.skipInitEvents !== true,
+            runInitEvents: false,
             cleanupOwnership: false,
           }),
         ),
@@ -268,7 +277,7 @@ export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
     : haltResolvedRuntime(options, target, {
         revalidate: true,
         requireAppliedEvidence: target.landofile !== undefined,
-        runInitEvents: execution.skipInitEvents !== true,
+        runInitEvents: false,
         cleanupOwnership: false,
       });
 });
