@@ -1,10 +1,4 @@
-import {
-  type CommandSpec,
-  type EnvironmentValue,
-  type LandofileShape,
-  type ScheduleJob,
-  ServiceName,
-} from "@lando/sdk/schema";
+import type { CommandSpec, EnvironmentValue, LandofileShape } from "@lando/sdk/schema";
 
 export const SCHEDULE_SIDECAR_SUFFIX = "-schedule" as const;
 
@@ -17,6 +11,16 @@ export interface ResolvedScheduleJob {
   readonly run: CommandSpec;
   readonly user?: string;
   readonly timezone: string;
+}
+
+export interface ScheduleJobIdentity {
+  readonly user?: string;
+}
+
+export interface ScheduleSidecarGroup<Job extends ScheduleJobIdentity = ScheduleJobIdentity> {
+  readonly name: string;
+  readonly user?: string;
+  readonly jobs: ReadonlyArray<Job>;
 }
 
 const timezoneOf = (environment: Readonly<Record<string, EnvironmentValue>> | undefined): string => {
@@ -49,7 +53,43 @@ export const findScheduleJob = (
 ): ReadonlyArray<ResolvedScheduleJob> =>
   jobs.filter((job) => job.name === name && (service === undefined || job.service === service));
 
-export const parentUserOf = (landofile: LandofileShape, service: string): string | undefined =>
-  landofile.services?.[ServiceName.make(service)]?.user;
+const scheduleUserSlug = (user: string): string =>
+  user
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
 
-export type { ScheduleJob };
+const scheduleGroupSuffix = (user: string | undefined): string =>
+  user === undefined ? "default" : scheduleUserSlug(user);
+
+export const scheduleSidecarGroupName = (
+  service: string,
+  groupIndex: number,
+  user: string | undefined,
+): string =>
+  groupIndex === 0
+    ? scheduleSidecarName(service)
+    : `${scheduleSidecarName(service)}-${scheduleGroupSuffix(user)}`;
+
+/**
+ * Group a service's jobs by the exact `user:` string each job runs as. Jobs
+ * without `user:` form one inherit group that keeps the parent service identity.
+ * The first-seen group gets the plain sidecar name; later groups are suffixed
+ * by their user slug, or `default` for the inherit group.
+ */
+export const scheduleSidecarGroups = <Job extends ScheduleJobIdentity>(
+  service: string,
+  jobs: ReadonlyArray<Job>,
+): ReadonlyArray<ScheduleSidecarGroup<Job>> => {
+  const grouped = new Map<string | undefined, Job[]>();
+  for (const job of jobs) {
+    const entries = grouped.get(job.user);
+    if (entries === undefined) grouped.set(job.user, [job]);
+    else entries.push(job);
+  }
+  return [...grouped.entries()].map(([user, groupedJobs], index) => ({
+    name: scheduleSidecarGroupName(service, index, user),
+    ...(user === undefined ? {} : { user }),
+    jobs: groupedJobs,
+  }));
+};

@@ -1,11 +1,14 @@
-import { AppFeatureCloneError } from "@lando/sdk/errors";
-import { imageLacksInstallShell } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { crontabLine, supercronicInstallCommand } from "./crontab.ts";
-import { scheduleSidecarName } from "./jobs.ts";
-import { SUPERCRONIC_PINS, SUPERCRONIC_STEP_ID, supercronicCommand } from "./supercronic.ts";
+import { crontabInstallCommand, crontabLine, supercronicInstallCommand } from "./crontab.ts";
+import { scheduleSidecarGroups } from "./jobs.ts";
+import {
+  SUPERCRONIC_CRONTAB_STEP_ID,
+  SUPERCRONIC_PINS,
+  SUPERCRONIC_STEP_ID,
+  supercronicCommand,
+} from "./supercronic.ts";
 
 export const SCHEDULE_FEATURE_ID = "schedule.compile" as const;
 
@@ -17,38 +20,32 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
     for (const service of ctx.selected) {
       const jobs = service.normalizedConfig.schedule ?? [];
       if (jobs.length === 0) continue;
-      const sidecar = scheduleSidecarName(service.serviceName);
-      const image = service.normalizedConfig.image;
-      if (imageLacksInstallShell(image)) {
-        return yield* Effect.fail(
-          new AppFeatureCloneError({
-            feature: ctx.featureId,
-            service: sidecar,
-            from: service.serviceName,
-            reason: "unsupported-image",
-            ...(image === undefined ? {} : { image }),
-            message: `Cannot install the scheduler into ${sidecar}: image ${image ?? "(none)"} has no shell.`,
-            remediation: `Use an image that includes a shell, not distroless or scratch, or drop schedule: from ${service.serviceName}.`,
-          }),
-        );
+      for (const group of scheduleSidecarGroups(service.serviceName, jobs)) {
+        const crontab = group.jobs.map((job) => crontabLine(job));
+        ctx.addClonedService({
+          from: service.serviceName,
+          name: group.name,
+          ...(group.user === undefined ? {} : { user: group.user }),
+          command: [...supercronicCommand()],
+          extraBuildSteps: [
+            {
+              id: SUPERCRONIC_STEP_ID,
+              phase: "build",
+              user: "root",
+              command: ["sh", "-c", supercronicInstallCommand()],
+              buildKeyInputs: { supercronic: SUPERCRONIC_PINS },
+            },
+            {
+              id: SUPERCRONIC_CRONTAB_STEP_ID,
+              phase: "build",
+              user: "root",
+              command: ["sh", "-c", crontabInstallCommand(crontab)],
+              buildKeyInputs: { crontab },
+            },
+          ],
+          omitConfigKeys: ["schedule"],
+        });
       }
-      const crontab = jobs.map((job) => crontabLine(job, service.normalizedConfig.user));
-      ctx.addClonedService({
-        from: service.serviceName,
-        name: sidecar,
-        user: "root",
-        command: [...supercronicCommand()],
-        extraBuildSteps: [
-          {
-            id: SUPERCRONIC_STEP_ID,
-            phase: "build",
-            user: "root",
-            command: ["sh", "-c", supercronicInstallCommand(crontab)],
-            buildKeyInputs: { supercronic: SUPERCRONIC_PINS },
-          },
-        ],
-        omitConfigKeys: ["schedule"],
-      });
     }
   }),
 };

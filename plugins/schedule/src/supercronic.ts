@@ -60,6 +60,7 @@ export const validateSupercronicPins = (pins: SupercronicPins): void => {
 };
 
 export const SUPERCRONIC_STEP_ID = "schedule.supercronic" as const;
+export const SUPERCRONIC_CRONTAB_STEP_ID = "schedule.crontab" as const;
 
 export const supercronicCommand = (): readonly string[] => [
   SUPERCRONIC_BIN,

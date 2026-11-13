@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { AppFeatureCloneError } from "@lando/sdk/errors";
 import type { AppFeatureContext, ClonedServiceRequest } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { scheduleCompileFeature } from "../src/app-feature.ts";
-import { SUPERCRONIC_BIN, SUPERCRONIC_STEP_ID } from "../src/supercronic.ts";
+import {
+  SUPERCRONIC_ARTIFACTS,
+  SUPERCRONIC_BIN,
+  SUPERCRONIC_CRONTAB,
+  SUPERCRONIC_CRONTAB_STEP_ID,
+  SUPERCRONIC_STEP_ID,
+} from "../src/supercronic.ts";
 
 const view = (name: string, config: AppFeatureContext["selected"][number]["normalizedConfig"]) => ({
   serviceName: name,
@@ -32,49 +37,83 @@ const apply = async (services: ReadonlyArray<AppFeatureContext["selected"][numbe
   return clones;
 };
 
+const job = (name: string, every: string, run: string, user?: string) => ({
+  name,
+  every,
+  run,
+  ...(user === undefined ? {} : { user }),
+});
+
 describe("schedule compile feature", () => {
-  test("clones each scheduled parent into a sidecar with a pinned scheduler install", async () => {
+  test("splits one parent into user sidecars with separate binary and crontab build steps", async () => {
     const clones = await apply([
       view("web", {
-        image: "alpine:3.22",
+        image: "php:8.3",
         user: "1001",
         environment: { TZ: "UTC", DB_HOST: "db" },
-        schedule: [{ name: "tick", every: "@every 1s", run: "true" }],
+        schedule: [
+          job("tick", "@every 1s", "true"),
+          job("other", "@every 5m", "touch /app/other", "1002"),
+          job("named", "@hourly", "echo named", "nobody"),
+        ],
       }),
       view("db", { image: "mariadb:11", appMount: false }),
     ]);
-    expect(clones).toHaveLength(1);
-    expect(clones[0]?.from).toBe("web");
-    expect(clones[0]?.name).toBe("web-schedule");
-    expect(clones[0]?.command).toEqual([SUPERCRONIC_BIN, "-overlapping", expect.any(String)]);
-    expect(clones[0]?.omitConfigKeys).toEqual(["schedule"]);
-    expect(clones[0]?.user).toBe("root");
-    expect(clones[0]?.extraBuildSteps?.[0]?.id).toBe(SUPERCRONIC_STEP_ID);
-    expect(clones[0]?.extraBuildSteps?.[0]?.user).toBe("root");
-    expect(JSON.stringify(clones[0]?.extraBuildSteps?.[0]?.buildKeyInputs)).toContain("0.2.51");
-    expect(JSON.stringify(clones[0]?.extraBuildSteps)).toContain("* * * * * * *");
-    expect(JSON.stringify(clones[0]?.extraBuildSteps)).not.toContain("@every");
+
+    expect(clones.map((clone) => clone.name)).toEqual([
+      "web-schedule",
+      "web-schedule-1002",
+      "web-schedule-nobody",
+    ]);
+    expect(clones.map((clone) => clone.user)).toEqual([undefined, "1002", "nobody"]);
+    expect("user" in (clones[0] ?? {})).toBe(false);
+
+    const inherit = clones[0];
+    expect(inherit?.from).toBe("web");
+    expect(inherit?.command).toEqual([SUPERCRONIC_BIN, "-overlapping", SUPERCRONIC_CRONTAB]);
+    expect(inherit?.omitConfigKeys).toEqual(["schedule"]);
+
+    const steps = inherit?.extraBuildSteps ?? [];
+    expect(steps.map((step) => step.id)).toEqual([SUPERCRONIC_STEP_ID, SUPERCRONIC_CRONTAB_STEP_ID]);
+    expect(steps.every((step) => step.phase === "build")).toBe(true);
+    expect(steps.every((step) => step.user === "root")).toBe(true);
+
+    const [binary, crontab] = steps;
+    expect(binary?.buildKeyInputs).toMatchObject({ supercronic: { version: expect.any(String) } });
+    expect(JSON.stringify(binary?.command)).toContain(SUPERCRONIC_ARTIFACTS.amd64.sha256);
+    expect(JSON.stringify(binary?.command)).not.toContain("setpriv");
+    expect(crontab?.buildKeyInputs).toEqual({
+      crontab: ["* * * * * * * true"],
+    });
+    expect(JSON.stringify(crontab?.command)).not.toContain("@every");
+    expect(JSON.stringify(crontab?.command)).not.toContain("aptible/supercronic");
+    const crontabScript = Array.isArray(crontab?.command) ? crontab.command.join("\n") : "";
+    expect(crontabScript).toContain(`chmod 0644 ${SUPERCRONIC_CRONTAB}`);
   });
 
-  test("fails at plan time when the parent image has no shell", async () => {
-    const ctx: AppFeatureContext = {
-      featureId: scheduleCompileFeature.id,
-      appRoot: "/tmp/schedule-distroless",
-      config: {},
-      selected: [
-        view("web", {
-          image: "gcr.io/distroless/static",
-          schedule: [{ name: "tick", every: "@hourly", run: "true" }],
-        }),
-      ],
-      forEachSelected: () => undefined,
-      select: () => undefined,
-      addClonedService: () => {
-        throw new Error("must not clone a distroless parent");
-      },
-    };
-    await expect(Effect.runPromise(scheduleCompileFeature.apply(ctx))).rejects.toBeInstanceOf(
-      AppFeatureCloneError,
-    );
+  test("a later group carries no user when the first group is an explicit user", async () => {
+    const clones = await apply([
+      view("web", {
+        image: "alpine:3.22",
+        schedule: [job("first", "@hourly", "true", "www-data"), job("inherit", "@daily", "true")],
+      }),
+    ]);
+    expect(clones.map((clone) => clone.name)).toEqual(["web-schedule", "web-schedule-default"]);
+    expect(clones[0]?.user).toBe("www-data");
+    expect("user" in (clones[1] ?? {})).toBe(false);
+  });
+
+  test("no schedule means no clone", async () => {
+    expect(await apply([view("web", { image: "alpine:3.22" })])).toEqual([]);
+  });
+
+  test("does not pre-check image shells; the planner owns the unsupported-image error", async () => {
+    const clones = await apply([
+      view("web", {
+        image: "gcr.io/distroless/static",
+        schedule: [job("tick", "@hourly", "true")],
+      }),
+    ]);
+    expect(clones.map((clone) => clone.name)).toEqual(["web-schedule"]);
   });
 });
