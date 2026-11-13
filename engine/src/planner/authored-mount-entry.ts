@@ -24,7 +24,10 @@ export interface CompiledAuthoredMount {
 export interface MountAuthoringContext {
   readonly appRoot: string;
   readonly appSlug: string;
+  /** Service identity used for diagnostics and issue paths. */
   readonly serviceName: string;
+  /** Service whose name keys service-scoped stores; defaults to `serviceName`. */
+  readonly storeOwner?: string;
   readonly configs?: LandofileShape["configs"];
 }
 
@@ -149,7 +152,7 @@ export const classifyMount = (
           target,
           store:
             entry.source === undefined
-              ? landoServiceStorageName(context.appSlug, context.serviceName, target)
+              ? landoServiceStorageName(context.appSlug, context.storeOwner ?? context.serviceName, target)
               : landoAppStoreName(context.appSlug, entry.source),
           readOnly: entry.readOnly ?? false,
           ...("subpath" in entry && entry.subpath !== undefined ? { subpath: entry.subpath } : {}),

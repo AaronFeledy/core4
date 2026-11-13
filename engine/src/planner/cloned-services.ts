@@ -1,17 +1,39 @@
 import { AppFeatureCloneError } from "@lando/sdk/errors";
-import { type ServiceConfig, ServiceName, type ServicePlan, imageLacksInstallShell } from "@lando/sdk/schema";
+import {
+  CLONED_SERVICE_PROVENANCE_KEY,
+  type ServiceConfig,
+  ServiceName,
+  type ServicePlan,
+  imageLacksInstallShell,
+} from "@lando/sdk/schema";
 import { Effect, Predicate } from "effect";
 
 import type { RecordedClonedService } from "../services/app-feature-types.ts";
 import { appFeatureError } from "./app-feature-error.ts";
+import { type DnsNameClaim, dnsNameClaims } from "./dns-name-validation.ts";
 import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
 
 export { imageLacksInstallShell };
 
 const COMPOSE_PUBLISH_KEYS = ["ports", "expose", "healthcheck"] as const;
 
-/** Provenance key stamped onto every service materialized by `addClonedService`. */
-export const CLONED_SERVICE_PROVENANCE_KEY = "clonedBy" as const;
+/**
+ * Normalized-config inputs finalization can turn into a listener, host
+ * publication, route, hostname, alias, probe, or certificate. A clone is a
+ * companion of its parent, not a second copy of its network presence, so these
+ * never reach the clone. Engine-owned: features do not have to remember them.
+ */
+const CLONE_OMITTED_CONFIG_KEYS = [
+  "certs",
+  "endpoints",
+  "expose",
+  "healthcheck",
+  "hostnames",
+  "networks",
+  "ports",
+  "readiness",
+  "routes",
+] as const;
 
 const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined => {
   const image = draft.normalizedConfig.image;
@@ -21,9 +43,12 @@ const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined =>
   return undefined;
 };
 
-const omitConfigKeys = (config: ServiceConfig, keys: ReadonlyArray<string> | undefined): ServiceConfig => {
-  if (keys === undefined || keys.length === 0) return { ...config };
-  const omit = new Set(keys);
+/** Remove the engine-owned clone keys plus the feature's own config keys. */
+const cloneConfig = (
+  config: ServiceConfig,
+  requestKeys: ReadonlyArray<string> | undefined,
+): ServiceConfig => {
+  const omit = new Set<string>([...CLONE_OMITTED_CONFIG_KEYS, ...(requestKeys ?? [])]);
   return Object.fromEntries(Object.entries(config).filter(([key]) => !omit.has(key))) as ServiceConfig;
 };
 
@@ -34,6 +59,22 @@ const stripComposePublish = (extensions: ServicePlan["extensions"]): ServicePlan
   for (const key of COMPOSE_PUBLISH_KEYS) delete compose[key];
   return { ...extensions, compose };
 };
+
+/** Inherited build steps, minus the parent's app phase, pinned when the clone runs as another user. */
+const inheritedBuildSteps = (
+  parentDraft: PlannedServiceDraft["draft"],
+  request: RecordedClonedService,
+): PlannedServiceDraft["draft"]["buildSteps"] =>
+  parentDraft.buildSteps
+    .filter((step) => step.phase !== "app")
+    .map((step) => {
+      if (request.user === undefined) return { ...step };
+      // The parent's unpinned steps run as the parent's user or the image
+      // default, which the planner cannot observe. Root is the default for
+      // images whose unpinned steps install anything, so pin them here rather
+      // than letting a clone user override silently change the parent's build.
+      return { ...step, user: step.user ?? parentDraft.user ?? "root" };
+    });
 
 const clonePlannedDraft = (
   parent: PlannedServiceDraft,
@@ -49,6 +90,10 @@ const clonePlannedDraft = (
     readinessSource: _readinessSource,
     listenerAuthority: _listenerAuthority,
     certs: _certs,
+    storageOwnership: _storageOwnership,
+    connection: _connection,
+    nonSqlCreds: _nonSqlCreds,
+    sqlite: _sqlite,
     ...rest
   } = parentDraft;
   return {
@@ -62,6 +107,9 @@ const clonePlannedDraft = (
     logSources: parent.logSources,
     routes: undefined,
     extensions: stripComposePublish(parent.extensions ?? {}),
+    // The clone shares the parent's service-scoped stores: same files, same
+    // dependencies. A different `user` still yields its own home principal.
+    storeOwner: parent.name,
     draft: {
       ...rest,
       name,
@@ -71,16 +119,11 @@ const clonePlannedDraft = (
       ...(request.user === undefined ? {} : { user: request.user }),
       environment: { ...parentDraft.environment, ...extraEnv },
       mounts: parentDraft.mounts.map((mount) => ({ ...mount })),
-      buildSteps: [...parentDraft.buildSteps.map((step) => ({ ...step })), ...extraBuildSteps],
+      buildSteps: [
+        ...inheritedBuildSteps(parentDraft, request),
+        ...extraBuildSteps.map((step) => ({ ...step })),
+      ],
       storage: parentDraft.storage.map((entry) => ({ ...entry })),
-      ...(parentDraft.storageOwnership === undefined
-        ? {}
-        : {
-            storageOwnership: parentDraft.storageOwnership.map((tree) => ({
-              target: tree.target,
-              seededOwners: [...tree.seededOwners],
-            })),
-          }),
       endpoints: [],
       dependsOn: [
         ...parentDraft.dependsOn.map((dependency) => ({ ...dependency })),
@@ -88,7 +131,7 @@ const clonePlannedDraft = (
       ],
       hostAliases: parentDraft.hostAliases.map((alias) => ({ ...alias })),
       normalizedConfig: {
-        ...omitConfigKeys(parentDraft.normalizedConfig, request.omitConfigKeys),
+        ...cloneConfig(parentDraft.normalizedConfig, request.omitConfigKeys),
         ...(request.user === undefined ? {} : { user: request.user }),
       },
       provenance: {
@@ -100,21 +143,47 @@ const clonePlannedDraft = (
   };
 };
 
+/** Drop the parent's authored aliases while keeping its network membership. */
+const networksWithoutAliases = (
+  networks: ServiceConfig["networks"] | undefined,
+): ServiceConfig["networks"] | undefined =>
+  networks === undefined
+    ? undefined
+    : (Object.fromEntries(
+        Object.entries(networks).map(([key, attachment]) => {
+          const { aliases: _aliases, ...membership } = attachment;
+          return [key, membership];
+        }),
+      ) as ServiceConfig["networks"]);
+
+const claimKind = (claim: DnsNameClaim): string => {
+  if (claim.path.includes("hostnames")) return "hostname";
+  if (claim.path.includes("networks")) return "network alias";
+  return "service name";
+};
+
 export interface MaterializedClones {
   readonly drafts: ReadonlyArray<PlannedServiceDraft>;
-  readonly parentNetworks: ReadonlyMap<string, NonNullable<ServiceConfig["networks"]> | undefined>;
+  readonly parentNetworks: ReadonlyMap<string, ServiceConfig["networks"] | undefined>;
 }
 
 export const materializeClonedServices = (input: {
   readonly plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>;
   readonly clones: ReadonlyArray<RecordedClonedService>;
   readonly parentNetworksByName: ReadonlyMap<string, ServiceConfig["networks"]>;
+  /** Every DNS name the app already claims, for case-insensitive clone-name rejection. */
+  readonly reservedDnsNames?: ReadonlyArray<DnsNameClaim>;
 }): MaterializedClones => {
   if (input.clones.length === 0) return { drafts: [], parentNetworks: new Map() };
   const byName = new Map(input.plannedServiceDrafts.map((entry) => [entry.name, entry]));
+  const reserved = new Map<string, DnsNameClaim>();
+  for (const claim of input.reservedDnsNames ?? []) {
+    const key = claim.name.toLowerCase();
+    if (!reserved.has(key)) reserved.set(key, claim);
+  }
   const seenCloneNames = new Set<string>();
   const drafts: PlannedServiceDraft[] = [];
-  const parentNetworks = new Map<string, ServiceConfig["networks"]>();
+  const parentNetworks = new Map<string, ServiceConfig["networks"] | undefined>();
   for (const request of input.clones) {
     if (seenCloneNames.has(request.name) || byName.has(request.name)) {
       throw new AppFeatureCloneError({
@@ -126,6 +195,17 @@ export const materializeClonedServices = (input: {
           ? `Cannot clone service ${request.from} to ${request.name}: that name is already a service.`
           : `Cannot clone service ${request.from} to ${request.name}: that clone name was already requested.`,
         remediation: `Choose a free service name for the clone, or remove the extra ${request.name} service.`,
+      });
+    }
+    const collision = reserved.get(request.name.toLowerCase());
+    if (collision !== undefined) {
+      throw new AppFeatureCloneError({
+        feature: request.feature,
+        service: request.name,
+        from: request.from,
+        reason: "name-collision",
+        message: `Cannot clone service ${request.from} to ${request.name}: ${collision.name} is already the ${claimKind(collision)} of service ${collision.service}.`,
+        remediation: `Choose a clone name other than ${collision.name}; a service key, hostname, and network alias must each identify exactly one service.`,
       });
     }
     const parent = byName.get(request.from);
@@ -152,9 +232,8 @@ export const materializeClonedServices = (input: {
       });
     }
     seenCloneNames.add(request.name);
-    const cloned = clonePlannedDraft(parent, request);
-    drafts.push(cloned);
-    parentNetworks.set(request.name, input.parentNetworksByName.get(request.from));
+    drafts.push(clonePlannedDraft(parent, request));
+    parentNetworks.set(request.name, networksWithoutAliases(input.parentNetworksByName.get(request.from)));
   }
   return { drafts, parentNetworks };
 };
@@ -177,6 +256,9 @@ export const materializeClonedServiceDrafts = Effect.fnUntraced(function* (
         plannedServiceDrafts,
         clones,
         parentNetworksByName: new Map(resolvedServices.map((entry) => [entry.name, entry.service.networks])),
+        reservedDnsNames: dnsNameClaims({
+          services: Object.fromEntries(resolvedServices.map((entry) => [entry.name, entry.service])),
+        }),
       }),
     catch: (error) => appFeatureError(appRoot, error),
   });
