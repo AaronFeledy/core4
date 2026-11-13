@@ -18,7 +18,10 @@ export const countDoctorChecks = (
   readonly failed: number;
   readonly warned: number;
 } => {
-  const checks = allDoctorChecks(report);
+  const checks = [
+    ...allDoctorChecks(report),
+    ...(report.globalConfig === undefined ? [] : [report.globalConfig]),
+  ];
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   const appConfigWarned = report.appConfig?.violations.some((issue) => issue.severity === "warning") === true;
   const selfChecks = report.self?.checks ?? [];
