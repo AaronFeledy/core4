@@ -45,7 +45,7 @@ jobs:
           bun run test:selection container-helper
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -86,7 +86,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 
       - name: Upload current-commit Linux x64 runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
@@ -133,7 +133,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
 
       - name: Upload current-commit Linux arm64 runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-linux-arm64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
@@ -535,7 +535,7 @@ jobs:
 
       - name: Upload provider-lando e2e diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-lando-e2e-diagnostics-linux-x64
           path: provider-lando-e2e-diagnostics
@@ -766,7 +766,7 @@ jobs:
 
       - name: Upload listener diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: service-listener-acceptance-linux-x64
           path: |
@@ -990,7 +990,7 @@ jobs:
 
       - name: Upload listener matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: service-listener-matrix-linux-x64
           path: |
@@ -1305,7 +1305,7 @@ jobs:
 
       - name: Upload ARM MySQL client diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mysql-arm-client-diagnostics-linux-arm64
           path: mysql-arm-client-diagnostics
@@ -1544,7 +1544,7 @@ jobs:
 
       - name: Upload refreshed timings
         if: success()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bun-test-timings
           path: .bun-test-timings.json
@@ -1629,7 +1629,7 @@ jobs:
         run: bun run scripts/dist-bundle.ts --verify dist/bundle
 
       - name: Upload distribution rehearsal bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-dist-rehearsal-v4.0.0-nightly.${{ github.run_number }}
           path: dist/bundle
