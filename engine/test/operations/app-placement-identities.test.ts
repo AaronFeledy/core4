@@ -114,7 +114,14 @@ test("scratch teardown evidence selects only its own colocated applied plan", as
 });
 
 test("scratch-only evidence is not observed or torn down as a user app", async () => {
-  const providers = [{ ...TestRuntimeProvider, id: "lando", appliedPlans: Effect.succeed([scratch]) }];
+  const providers = [
+    {
+      ...TestRuntimeProvider,
+      id: "lando",
+      appliedPlans: Effect.succeed([scratch]),
+      list: () => Effect.succeed([]),
+    },
+  ];
   expect(await Effect.runPromise(resolveAppliedPlanEvidence(plan.root, providers))).toBeUndefined();
   expect(await Effect.runPromise(resolveTeardownEvidence(plan.root, providers))).toEqual({ kind: "absent" });
 });

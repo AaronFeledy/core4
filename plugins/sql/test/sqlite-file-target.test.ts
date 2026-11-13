@@ -478,7 +478,7 @@ describe("sqlite export dump", () => {
         },
         stateStore: {
           open: () => Effect.die("unused"),
-          withLock: <A, E>(_key: string, body: Effect.Effect<A, E>) => body,
+          withLock: <A, E, R>(_key: string, body: Effect.Effect<A, E, R>) => body,
         },
       },
     };

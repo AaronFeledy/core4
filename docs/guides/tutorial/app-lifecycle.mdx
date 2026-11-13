@@ -94,6 +94,46 @@ lando restart
 lando rebuild
 ```
 
+## Remove a service
+
+Delete the service from `.lando.yml`, or let Lando edit the file for you with `lando app:config:unset`, then run `lando start`:
+
+```sh
+# Remove the db service from the Landofile
+lando app:config:unset services.db
+
+# Remove the db container and keep the rest of the app running
+lando start
+```
+
+`lando start` removes the container of every service the Landofile no longer defines, prints a notice naming those services, and stops publishing their URLs. `lando restart` and `lando rebuild` remove them too and print the same notice. With `--format=json`, all three commands list the removed services under `result.servicesRemoved`: the field is present and empty when nothing was removed, and a selected `-s` operation that removed nothing omits it. Run `lando info` and check that the removed service no longer appears.
+
+The service's named volumes stay, so if you add the service back later with the same storage, it starts with its old data. To delete that data, use the flags in [Keep data across stop, restart, and destroy](#keep-data-across-stop-restart-and-destroy).
+
+If the removed service was the last one that used `lando` from inside a container, SSH agent forwarding, or GPG agent forwarding, the same command also stops the background worker that served it.
+
+Lando removes a container only when its labels prove it belongs to this app. If a container for a removed service carries labels that say otherwise, such as another provider's, `lando start` stops before removing anything and names that container. Inspect it with your container runtime and remove it yourself if it is a leftover, then run `lando start` again.
+
+  <Scenario id="remove-a-service" layer="e2e" render>
+    <Step name="start">
+      <UseFixture name="app-lifecycle-demo" />
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" } }} />
+    </Step>
+    <Step name="remove">
+      <Run command="lando app:config:unset services.db" />
+    </Step>
+    <Step name="converge">
+      <Verify command="lando start" expect={{ stderr: { regex: "db is no longer defined in the Landofile, so Lando removed its container" } }} />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando info --format=json" expect={{ stdout: { not: { regex: "\"service\":\\s*\"db\"" } } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
 ## Read what stop reports
 
 `lando stop` sends each container its stop signal, waits out the container's stop grace period, and then kills whatever is still running. Before it removes a container, Lando asks the runtime how that container ended and repeats the answer beside the service name in the `stopped:` or `destroyed:` line, for example `app (exit 143)`. Catalog services such as `node` and `postgres` run under a small init process by default that forwards the stop signal to your command, so a server that handles SIGTERM gets the chance to finish in-flight work; see [Stop cleanly](../services/node.mdx#stop-cleanly) for how commands, wrappers, and `init: false` affect that.

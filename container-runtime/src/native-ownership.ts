@@ -11,13 +11,19 @@ import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
-  ROLE_LABEL,
   SCRATCH_ID_LABEL,
   SCRATCH_LABEL,
   SERVICE_LABEL,
   scratchLabelsForPlan,
 } from "./labels.ts";
 import { isOwnershipRoot } from "./ownership-root.ts";
+import { serviceContainerOwnershipProblem } from "./service-container-ownership.ts";
+
+export {
+  type ServiceContainerIdentity,
+  serviceContainerOwnershipLabels,
+  serviceContainerOwnershipProblem,
+} from "./service-container-ownership.ts";
 
 const Labels = Schema.Record(Schema.String, Schema.String);
 const Observation = Schema.Struct({
@@ -46,22 +52,18 @@ export const coherentContainerOwnership = (
 ): boolean => {
   const app = labels[APP_LABEL];
   const legacy = labels["com.lando.app"];
-  if (app === undefined) {
-    return !!legacy && !Object.keys(labels).some((key) => key.startsWith("dev.lando."));
-  }
-  const root = labels[APP_ROOT_LABEL];
+  if (app === undefined) return !!legacy && !Object.keys(labels).some((key) => key.startsWith("dev.lando."));
   return (
-    !!app &&
-    !!root &&
-    isOwnershipRoot(root) &&
-    !!labels[SERVICE_LABEL] &&
-    (legacy === undefined || legacy === app) &&
-    (labels["dev.lando.provider"] === undefined || labels["dev.lando.provider"] === providerId) &&
-    (labels["dev.lando.owner"] === undefined || labels["dev.lando.owner"] === appIdentityKey("owner", root))
+    serviceContainerOwnershipProblem(labels, {
+      app,
+      appRoot: labels[APP_ROOT_LABEL] ?? "",
+      service: labels[SERVICE_LABEL] ?? "",
+      providerId,
+    }) === undefined
   );
 };
 
-/** Native labels, rather than projected observation fields, authorize service-container mutation. */
+/** Authorizes a planned service-container mutation from native labels plus its observed identity. */
 export const ownsServiceContainer = (
   plan: AppPlan,
   observation: {
@@ -72,15 +74,18 @@ export const ownsServiceContainer = (
 ): boolean => {
   const labels = observation.labels;
   if (labels === undefined || !observation.containerId) return false;
+  if (
+    serviceContainerOwnershipProblem(labels, {
+      app: plan.id,
+      appRoot: planAppIdentity(plan).appRoot,
+      service: observation.service,
+      providerId: plan.provider,
+    }) !== undefined
+  )
+    return false;
   const scratch = scratchLabelsForPlan(plan);
   return (
-    labels[ROLE_LABEL] === undefined &&
-    coherentContainerOwnership(labels, plan.provider) &&
-    labels[APP_LABEL] === plan.id &&
-    labels[APP_ROOT_LABEL] === planAppIdentity(plan).appRoot &&
-    labels[SCRATCH_LABEL] === scratch[SCRATCH_LABEL] &&
-    labels[SCRATCH_ID_LABEL] === scratch[SCRATCH_ID_LABEL] &&
-    labels[SERVICE_LABEL] === observation.service
+    labels[SCRATCH_LABEL] === scratch[SCRATCH_LABEL] && labels[SCRATCH_ID_LABEL] === scratch[SCRATCH_ID_LABEL]
   );
 };
 
@@ -129,6 +134,7 @@ export const containerOwnershipLabels = (plan: AppPlan, service: string) => ({
   [APP_LABEL]: plan.id,
   [APP_ROOT_LABEL]: planAppIdentity(plan).appRoot,
   [SERVICE_LABEL]: service,
+  ...scratchLabelsForPlan(plan),
 });
 
 export const networkOwnershipLabels = (plan: AppPlan) => {
@@ -164,6 +170,8 @@ const refused = (
     readonly name: string;
     readonly labels: Readonly<Record<string, string>>;
     readonly expected: Readonly<Record<string, string>>;
+    /** The label, or the native id, that failed verification. */
+    readonly problem?: string;
   },
 ) => {
   const root = resource?.labels[APP_ROOT_LABEL];
@@ -179,11 +187,17 @@ const refused = (
     operation: "resource-ownership",
     message: foreign
       ? `${resource.kind === "container" ? "Container" : "Network"} ${resource.name} already belongs to the Lando app at ${root}. Two apps can't use the same name.`
-      : "Native resource ownership labels or identity could not be verified. No mutation is authorized.",
+      : resource?.problem === undefined
+        ? "Native resource ownership labels or identity could not be verified. No mutation is authorized."
+        : `${resource.kind === "container" ? "Container" : "Network"} ${resource.name} failed ownership verification on its ${resource.problem}. No mutation is authorized.`,
     remediation: foreign
       ? "Change `name:` in this app's .lando.yml (or destroy the other app) and run `lando start` again."
       : "Inspect the conflicting native resource and restore its verified Lando ownership or move it out of the planned name before retrying. Unlabeled resources cannot be adopted.",
-    ...(foreign ? { details: { root } } : {}),
+    ...(foreign
+      ? { details: { root } }
+      : resource?.problem === undefined
+        ? {}
+        : { details: { [resource.kind]: resource.name, problem: resource.problem } }),
   });
 };
 
@@ -207,8 +221,32 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
     (typeof observedName === "string" && observedName.length > 0
       ? observedName.replace(/^\//u, "")
       : "resource");
-  if (!id || Object.entries(expected).some(([key, value]) => labels[key] !== value))
-    return yield* Effect.fail(refused(ctx, { kind: resource.kind, name, labels, expected }));
+  const ownershipProblem =
+    expected[APP_LABEL] === undefined
+      ? Object.entries(expected).some(([key, value]) => labels[key] !== value)
+        ? APP_LABEL
+        : undefined
+      : serviceContainerOwnershipProblem(labels, {
+          app: expected[APP_LABEL] ?? "",
+          appRoot: expected[APP_ROOT_LABEL] ?? "",
+          service: expected[SERVICE_LABEL] ?? "",
+          providerId: ctx.providerId,
+        });
+  const scratchExpected = expected[SCRATCH_LABEL];
+  const scratchMatches =
+    scratchExpected === "TRUE"
+      ? labels[SCRATCH_LABEL] === "TRUE" && labels[SCRATCH_ID_LABEL] === expected[SCRATCH_ID_LABEL]
+      : labels[SCRATCH_LABEL] === undefined && labels[SCRATCH_ID_LABEL] === undefined;
+  const problem =
+    ownershipProblem !== undefined
+      ? `${ownershipProblem} label`
+      : !scratchMatches
+        ? `${SCRATCH_LABEL} label`
+        : !id
+          ? "native id"
+          : undefined;
+  if (problem !== undefined)
+    return yield* Effect.fail(refused(ctx, { kind: resource.kind, name, labels, expected, problem }));
   return id;
 });
 

@@ -1154,6 +1154,8 @@ describe("meta:global command effects", () => {
         expect(harness.calls.destroy).toEqual([]);
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-start");
         expect(harness.calls.apply.every(({ options }) => options.recordedPlan === undefined)).toBe(true);
+        // Global start keeps merging with the previous record, as before.
+        expect(harness.calls.apply.every(({ options }) => options.complete === undefined)).toBe(true);
       },
       { serviceNames: independentGlobalServices, failApply: ["ssh-agent"] },
     );
@@ -1330,6 +1332,8 @@ describe("meta:global command effects", () => {
           expectedGlobalGroups,
         );
         expect(harness.calls.apply.every(({ options }) => options.reconcile)).toBe(true);
+        // Global rebuild names every global service, so each apply replaces the record.
+        expect(harness.calls.apply.every(({ options }) => options.complete)).toBe(true);
         expect([...new Set(harness.calls.inspect.map((call) => String(call.target.service)))].sort()).toEqual(
           ["mailpit", "traefik", "traefik-diagnostics"],
         );

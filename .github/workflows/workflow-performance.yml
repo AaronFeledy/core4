@@ -63,7 +63,7 @@ jobs:
           bun run test:selection container-helper
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -228,7 +228,7 @@ jobs:
 
       - name: Upload workflow performance report and trend
         if: always() && steps.performance.outcome != 'skipped'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: workflow-performance-linux-x64
           path: |
@@ -408,7 +408,7 @@ jobs:
 
       - name: Upload workflow performance report and trend
         if: always() && steps.performance.outcome != 'skipped'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: workflow-performance-linux-arm64
           path: |

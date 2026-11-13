@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
+import { mergeAppliedPlan } from "@lando/container-runtime/plan";
 import { FileSyncStartError } from "@lando/sdk/errors";
+import { ServiceName } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
 import { requireFileSyncProvider } from "../../src/operations/file-sync-acquire.ts";
@@ -123,3 +125,38 @@ test.each(["complete", "missing-prepare", "missing-inspect", "missing-capability
     expect(calls).toBe(0);
   },
 );
+
+test("a partial record merge keeps a carried accelerated service's sync session", () => {
+  // Given an accelerated record with web and adminer, and a selected rebuild that records only web.
+  const web = Object.values(acceleratedPlan.services)[0];
+  const first = acceleratedPlan.fileSync[0];
+  if (web === undefined || first === undefined) throw new Error("Missing accelerated fixture");
+  const adminer = { ...web, name: ServiceName.make("adminer"), primary: false };
+  const adminerSession = {
+    ...first,
+    session: {
+      ...first.session,
+      service: adminer.name,
+      target: { ...first.session.target, name: "test-start-adminer-app-mount" },
+    },
+  };
+  const previous = {
+    ...acceleratedPlan,
+    services: { ...acceleratedPlan.services, [adminer.name]: adminer },
+    fileSync: [...acceleratedPlan.fileSync, adminerSession],
+  };
+
+  // When the merge carries adminer forward.
+  const merged = mergeAppliedPlan(previous, acceleratedPlan);
+
+  // Then the merged record still normalizes as one complete accelerated bundle.
+  expect(Object.keys(merged.services).sort()).toEqual(["adminer", String(web.name)].sort());
+  const result = normalizeFileSyncBundle(merged);
+  expect(Result.isSuccess(result)).toBe(true);
+
+  // And a subset record that already lists every session gains no duplicate for the carried service.
+  const subsetWithAllSessions = { ...acceleratedPlan, fileSync: previous.fileSync };
+  const deduplicated = mergeAppliedPlan(previous, subsetWithAllSessions);
+  expect(deduplicated.fileSync).toHaveLength(2);
+  expect(Result.isSuccess(normalizeFileSyncBundle(deduplicated))).toBe(true);
+});

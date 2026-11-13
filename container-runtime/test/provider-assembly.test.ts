@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { AppPlanSanitizer, ContainerHelperAssets, EventService, PathsService } from "@lando/sdk/services";
+import {
+  AppPlanSanitizer,
+  type ApplyOptions,
+  ContainerHelperAssets,
+  EventService,
+  PathsService,
+} from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { dataHelperImage } from "../src/data-plane.ts";
 import {
@@ -120,25 +126,37 @@ const hostLayer = Layer.mergeAll(
 
 describe("provider assembly", () => {
   for (const recordedPlan of [undefined, { ...plan, name: "recorded" }]) {
-    for (const reconcile of [false, true]) {
-      test(`remembers selected plan with reconcile=${reconcile} when recorded=${recordedPlan !== undefined}`, async () => {
+    for (const complete of [false, true]) {
+      test(`remembers the selected plan with complete=${complete} when recorded=${recordedPlan !== undefined}`, async () => {
         const calls: unknown[] = [];
         const cache = {
-          rememberPlan: (value: AppPlan, mode: boolean) =>
+          rememberPlan: (value: AppPlan, options: { readonly complete?: boolean } = {}) =>
             Effect.sync(() => {
-              calls.push([value, mode]);
+              calls.push([value, options]);
             }),
         };
         await Effect.runPromise(
           rememberAppliedPlan(cache, plan, {
-            reconcile,
+            complete,
             ...(recordedPlan === undefined ? {} : { recordedPlan }),
           }),
         );
-        expect(calls).toEqual([[recordedPlan ?? plan, reconcile]]);
+        expect(calls).toEqual([[recordedPlan ?? plan, { complete }]]);
       });
     }
   }
+  test("recording ignores reconcile, which only forces recreation", async () => {
+    const calls: unknown[] = [];
+    const cache = {
+      rememberPlan: (value: AppPlan, options: { readonly complete?: boolean } = {}) =>
+        Effect.sync(() => {
+          calls.push([value, options]);
+        }),
+    };
+    const reconcileOnly: ApplyOptions = { reconcile: true };
+    await Effect.runPromise(rememberAppliedPlan(cache, plan, reconcileOnly));
+    expect(calls).toEqual([[plan, { complete: false }]]);
+  });
   for (const removeState of [undefined, false, true]) {
     test(`forgets state only when removeState is not false (${removeState})`, async () => {
       const calls: string[] = [];
@@ -263,7 +281,7 @@ describe("provider assembly", () => {
 
   test("binds execution-specific before callbacks to shared plan state", async () => {
     const state = makeProviderPlanState(stateOptions);
-    await Effect.runPromise(rememberAppliedPlan(state.appliedPlans, plan, { reconcile: true }));
+    await Effect.runPromise(rememberAppliedPlan(state.appliedPlans, plan, { complete: true }));
     const calls: string[] = [];
     const service = {
       lifecycle: () =>

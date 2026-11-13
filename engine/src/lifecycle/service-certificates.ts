@@ -9,9 +9,12 @@
  * the authority issues a fresh pair, which is checked and then published. The
  * certificate digest is stamped onto both binds as `sourceIdentity`. The
  * create fingerprint covers that identity, so changed material recreates the
- * service and unchanged material never does. Every apply path must run this
- * before provider apply, or fingerprints flap between stamped and unstamped
- * plans.
+ * service and unchanged material never does.
+ *
+ * Preparation returns the stamped plan and a proof bound to the owner key and
+ * to each service's certificate request and bind sources. The activation
+ * applier takes that proof and stamps the plan it applies, so no apply can
+ * carry an identity that was not prepared for it.
  *
  * Publication is atomic per file. An incomplete pair is rejected and repaired
  * before the next Lando apply; a container the runtime starts on its own
@@ -57,15 +60,78 @@ const readText = (path: string) =>
 const hasBindFrom = (service: ServicePlan, source: string): boolean =>
   service.mounts.some((mount) => mount.type === "bind" && mount.source === source);
 
+declare const preparedCertificates: unique symbol;
+
+type PreparedCertificate = {
+  readonly certs: NonNullable<ServicePlan["certs"]>;
+  readonly certPath: string;
+  readonly keyPath: string;
+  readonly identity: string;
+};
+
+export interface PreparedCertificates {
+  readonly [preparedCertificates]: true;
+  readonly ownerKey: string;
+  readonly services: ReadonlyMap<string, PreparedCertificate>;
+}
+
+/** The only constructor of the proof; called once preparation has made every pair current. */
+const certificateProof = (
+  ownerKey: string,
+  services: ReadonlyMap<string, PreparedCertificate>,
+): PreparedCertificates => ({ ownerKey, services }) as PreparedCertificates;
+
+/** Checks a plan against the proof, then writes the prepared identity onto each certificate bind. */
+export const stampPreparedCertificates = Effect.fn("ServiceCertificates.stamp")(function* (
+  plan: AppPlan,
+  certificates: PreparedCertificates,
+): Effect.fn.Return<AppPlan, CaError> {
+  const sameOwner = routeOwnerFromPlan(plan).ownerKey === certificates.ownerKey;
+  const services = { ...plan.services };
+  for (const service of Object.values(plan.services)) {
+    const certs = service.certs;
+    if (certs === undefined) continue;
+    const prepared = certificates.services.get(service.name);
+    if (
+      !sameOwner ||
+      prepared === undefined ||
+      certs.caId !== prepared.certs.caId ||
+      certs.cn !== prepared.certs.cn ||
+      new Set(certs.sans).size !== new Set(prepared.certs.sans).size ||
+      certs.sans.some((name) => !prepared.certs.sans.includes(name)) ||
+      !hasBindFrom(service, prepared.certPath) ||
+      !hasBindFrom(service, prepared.keyPath)
+    ) {
+      return yield* Effect.fail(
+        new CaError({
+          caId: certs.caId,
+          message: `Prepared certificates do not match service ${service.name}.`,
+          remediation: "Re-run the command so Lando plans and prepares the app again.",
+        }),
+      );
+    }
+    services[service.name] = {
+      ...service,
+      mounts: service.mounts.map((mount) =>
+        mount.type === "bind" && (mount.source === prepared.certPath || mount.source === prepared.keyPath)
+          ? { ...mount, sourceIdentity: prepared.identity }
+          : mount,
+      ),
+    };
+  }
+  return { ...plan, services };
+});
+
 export const prepareServiceCertificates = Effect.fn("ServiceCertificates.prepare")(function* (
   plan: AppPlan,
-): Effect.fn.Return<AppPlan, CaError> {
+): Effect.fn.Return<{ readonly plan: AppPlan; readonly certificates: PreparedCertificates }, CaError> {
+  const ownerKey = routeOwnerFromPlan(plan).ownerKey;
+  const prepared = new Map<string, PreparedCertificate>();
   const withCerts = Object.values(plan.services).flatMap((service) =>
     service.certs === undefined ? [] : [{ service, certs: service.certs, name: service.name }],
   );
-  if (withCerts.length === 0) return plan;
+  if (withCerts.length === 0) return { plan, certificates: certificateProof(ownerKey, prepared) };
   const certsDir = yield* resolveCertsDir();
-  const ownerKey = routeOwnerFromPlan(plan).ownerKey;
   const generated = withCerts.map((entry) => ({
     ...entry,
     paths: serviceCertificatePaths(certsDir, ownerKey, entry.name),
@@ -96,7 +162,6 @@ export const prepareServiceCertificates = Effect.fn("ServiceCertificates.prepare
           }),
         );
   const authority = yield* Effect.cached(resolve);
-  const services = { ...plan.services };
   let root: string | undefined;
   for (const { service, certs, name, paths } of generated) {
     const dir = dirname(paths.certPath);
@@ -205,15 +270,12 @@ export const prepareServiceCertificates = Effect.fn("ServiceCertificates.prepare
       );
       certificate = issued.certificate;
     }
-    const identity = sha256Hex(certificate);
-    services[service.name] = {
-      ...service,
-      mounts: service.mounts.map((mount) =>
-        mount.type === "bind" && (mount.source === paths.certPath || mount.source === paths.keyPath)
-          ? { ...mount, sourceIdentity: identity }
-          : mount,
-      ),
-    };
+    prepared.set(service.name, {
+      certs: { ...certs, sans: [...certs.sans] },
+      ...paths,
+      identity: sha256Hex(certificate),
+    });
   }
-  return { ...plan, services };
+  const certificates = certificateProof(ownerKey, prepared);
+  return { plan: yield* stampPreparedCertificates(plan, certificates), certificates };
 });

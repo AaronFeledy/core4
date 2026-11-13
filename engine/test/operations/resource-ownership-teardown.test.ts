@@ -65,7 +65,6 @@ test("selected internal stop preserves the non-teardown orphan refusal", async (
         app: { kind: "user", id: plan.id, root: plan.root },
         landofile: literalTestLandofile({ name: plan.name, services: {} }),
       },
-      { skipInitEvents: true },
     ).pipe(Effect.provide(harness.layer)),
   );
   // Then
@@ -137,6 +136,7 @@ for (const operation of ["stop", "destroy"] as const) {
     };
     const harness = makeHarness({
       selectProvider: () => Effect.succeed(provider),
+      appliedPlans: [],
       resolveAppliedPlan: () => Effect.die("Non-teardown resolution must not be used for cleanup hints"),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "owned", ownership: [hints] }),
     });

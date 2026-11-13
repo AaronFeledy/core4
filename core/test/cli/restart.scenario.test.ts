@@ -205,6 +205,8 @@ const makeRestartLayer = (
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
+  // A started app as a provider reports it: every lookup answers the same record, without Landofile events.
+  const { events: _events, ...appliedRecord } = currentTestPlan(plannedApp);
   const events: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const applyCalls: Array<{
@@ -309,12 +311,12 @@ const makeRestartLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: appliedRecord }),
+        appliedPlansFor: () => Effect.succeed([appliedRecord]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
-        resolveAppliedPlan: () => Effect.succeed(plannedApp),
+        resolveAppliedPlan: () => Effect.succeed(appliedRecord),
       }),
     ),
     Layer.succeed(

@@ -442,7 +442,12 @@ describe("provider-lando cross-process state", () => {
       const services = await runOnce(freshProvider.list({ app: plan.id }));
       expect(services.map((service) => String(service.service)).sort()).toEqual(["database", "web"]);
 
+      // Forced recreation alone still merges; only a complete apply replaces the record.
       await runOnce(provider.apply(first, { reconcile: true }).pipe(Effect.scoped));
+      const recreated = await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id));
+      expect(Object.keys(recreated?.services ?? {}).sort()).toEqual(["database", "web"]);
+
+      await runOnce(provider.apply(first, { reconcile: false, complete: true }).pipe(Effect.scoped));
       const replaced = await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id));
       expect(Object.keys(replaced?.services ?? {})).toEqual(["database"]);
     });

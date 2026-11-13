@@ -503,7 +503,7 @@
     ],
     "StateStore": [
       "open:<A,I>(spec:StateBucketSpec<A,I>) => Effect.Effect<StateBucket<A>,StateStoreError>",
-      "withLock:<A,E>(key:string,body:Effect.Effect<A,E>) => Effect.Effect<A,E|StateStoreError>"
+      "withLock:<A,E,R>(key:string,body:Effect.Effect<A,E,R>) => Effect.Effect<A,E|StateStoreError,R>"
     ],
     "Telemetry": [
       "enabled:boolean",

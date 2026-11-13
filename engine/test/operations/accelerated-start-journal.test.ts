@@ -99,7 +99,8 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
 
 test("pending accelerated start blocks changed ordinary plan before every hook or provider action", async () => {
   for (const operation of [startApp, restartApp, rebuildApp, stopApp, destroyApp]) {
-    const harness = await Effect.runPromise(recoveryHarness());
+    // Nothing is applied yet: a stop of an applied app tears down its record, not the changed plan.
+    const harness = await Effect.runPromise(recoveryHarness({ harnessOptions: { appliedPlans: [] } }));
     const result = await Effect.runPromiseExit(
       Effect.gen(function* () {
         yield* operation({}, { ...target, plan });

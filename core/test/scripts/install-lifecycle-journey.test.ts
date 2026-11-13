@@ -252,7 +252,7 @@ describe("trusted install lifecycle evidence workflow", () => {
       expect(
         job.steps.some((step) => step.run?.includes("scripts/install-lifecycle-journey.ts --binary")),
       ).toBe(true);
-      expect(job.steps.find((step) => step.uses === "actions/upload-artifact@v6")).toMatchObject({
+      expect(job.steps.find((step) => step.uses === "actions/upload-artifact@v7")).toMatchObject({
         if: "always()",
         with: { "if-no-files-found": "error" },
       });

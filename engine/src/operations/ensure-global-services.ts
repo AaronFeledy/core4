@@ -39,10 +39,9 @@ import { type GlobalMutationServices, withGlobalMutation } from "../global-app/m
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
 import { captureGlobalStartupAdmission } from "../global-app/startup-admission.ts";
+import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
-import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
-import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { debuggerHostConfigured } from "../subsystems/debugger-host.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
@@ -275,7 +274,9 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const beforeStartup = yield* captureGlobalEnsureInputs(plan, loaded.landofile, provider);
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.
-    const realizedPlan = yield* prepareServiceCertificates(withOrdinaryMounts(planToApply));
+    const { plan: realizedPlan, certificates } = yield* prepareServiceCertificates(
+      withOrdinaryMounts(planToApply),
+    );
     const preparedOverlays = yield* prepareDebuggerOverlay(realizedPlan);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
     const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
@@ -293,23 +294,18 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     yield* withGlobalConsumerReservation(
       builtPlan,
       Object.keys(builtPlan.services),
-      Effect.scoped(
-        applyWithResolvedEnvironment(
-          provider,
-          runtimePlan,
-          {
-            reconcile: false,
-            recordedPlan: finalPlan,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
-            onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
-          },
-          Effect.gen(function* () {
-            yield* verifyAdmission;
-            for (const removal of retained.removals)
-              yield* provider.removeObservedService(removal.observation);
-          }),
-        ),
-      ),
+      applyActivation({
+        provider,
+        plan: runtimePlan,
+        certificates,
+        reconcile: false,
+        recordedPlan: finalPlan,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        beforeApply: Effect.gen(function* () {
+          yield* verifyAdmission;
+          for (const removal of retained.removals) yield* provider.removeObservedService(removal.observation);
+        }),
+      }),
       [...retained.joinedIds, ...removalIds],
     );
 

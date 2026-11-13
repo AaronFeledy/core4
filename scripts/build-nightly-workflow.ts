@@ -113,7 +113,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload provider-lando e2e diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-lando-e2e-diagnostics-linux-x64
           path: provider-lando-e2e-diagnostics
@@ -245,7 +245,7 @@ ${distributionSanitizeLines}
         run: bun run scripts/dist-bundle.ts --verify dist/bundle
 
       - name: Upload distribution rehearsal bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-dist-rehearsal-v4.0.0-nightly.\${{ github.run_number }}
           path: dist/bundle
@@ -310,7 +310,7 @@ ${containerHelperDownloadStep}
 
       - name: Upload refreshed timings
         if: success()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bun-test-timings
           path: ${TEST_TIMINGS_FILE}
@@ -456,13 +456,7 @@ ${regenerateDerivedSourcesStep}
         run: |
           wrapper="$RUNNER_TEMP/lando-managed-podman"
           printf '%s\\n' '#!/bin/sh' 'set -eu' \
-            'LAUNCH_STATE="'"$LANDO_USER_DATA_ROOT"'/runtime/run/podman.pid.launch.json"' \
-            'if test -f "$LAUNCH_STATE"; then' \
-            '  XDG_FROM_LAUNCH="$(jq -r ".env.XDG_RUNTIME_DIR // empty" "$LAUNCH_STATE" 2>/dev/null || true)"' \
-            '  if test -n "$XDG_FROM_LAUNCH"; then export XDG_RUNTIME_DIR="$XDG_FROM_LAUNCH"; fi' \
-            'fi' \
-            "export CONTAINERS_CONF=\\"$LANDO_USER_DATA_ROOT/runtime/config/containers.conf\\"" \
-            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\"\\$@\\"" \
+            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --remote --url \\"unix://$LANDO_USER_DATA_ROOT/runtime/run/podman.sock\\" \\"\\$@\\"" \
             > "$wrapper"
           chmod 0755 "$wrapper"
           case "$wrapper" in /*) ;; *) echo "wrapper must be absolute" >&2; exit 1 ;; esac
@@ -501,7 +495,7 @@ ${landoManagedPodmanRuntimeDirCommands}
 
       - name: Upload ARM MySQL client diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mysql-arm-client-diagnostics-linux-arm64
           path: mysql-arm-client-diagnostics

@@ -264,13 +264,13 @@ test("partial apply cannot certify retained legacy services", () => {
   const retained = { ...service, name: ServiceName.make("old") };
   const previous = { ...legacyPlan(), services: { [retained.name]: retained } };
   // When
-  const merged = mergeAppliedPlan(previous, plan, false);
+  const merged = mergeAppliedPlan(previous, plan);
   // Then
   expect(merged.services[retained.name]).toBe(retained);
   expect(merged).not.toHaveProperty("valueModel");
   expect(() => containerCreateBodyFragment(merged, retained)).toThrow(PlanReplanRequiredError);
-  expect(mergeAppliedPlan(previous, plan, true).valueModel).toBe(1);
-  expect(mergeAppliedPlan(legacyPlan(), plan, false).valueModel).toBe(1);
+  expect(mergeAppliedPlan(previous, plan, { complete: true }).valueModel).toBe(1);
+  expect(mergeAppliedPlan(legacyPlan(), plan).valueModel).toBe(1);
 });
 
 test("compose preview explicitly lowers typed descriptors as quoted data without lookup", () => {

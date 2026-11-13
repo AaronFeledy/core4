@@ -132,6 +132,9 @@ export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
     readonly globalServiceIds?: ReadonlyArray<string>;
+    /**
+     * When omitted, placement uses `resolveAppliedPlan`. Pass `[]` to model no applied user app.
+     */
     readonly appliedPlans?: ReadonlyArray<AppPlan>;
     readonly providerOverrides?: Partial<RuntimeProviderShape>;
     readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
@@ -321,13 +324,22 @@ export const makeHarness = (
     logs: options.logs ?? (() => Stream.empty),
   };
   const provider = globalAdmission.wrapProvider(userProvider);
+  // What a provider really hands back: a decoded record, never the planner's object, with no events.
+  const resolveUserAppliedPlan =
+    options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp)));
   const runtimeProviderRegistry = {
+    // Both lookups answer from one applied state, so placement sees the app `resolveAppliedPlan` reports.
     appliedPlansFor: (root: AbsolutePath) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         const persisted = (options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root);
         if (persisted.length > 0) return persisted;
-        const global = globalAdmission.appliedPlan();
-        return root === globalAdmission.root && global !== undefined ? [global] : [];
+        if (root === globalAdmission.root) {
+          const global = globalAdmission.appliedPlan();
+          return global === undefined ? [] : [global];
+        }
+        if (options.appliedPlans !== undefined) return [];
+        const applied = yield* resolveUserAppliedPlan(root).pipe(Effect.orDie);
+        return applied !== undefined && planAppIdentity(applied).appRoot === root ? [applied] : [];
       }),
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
@@ -338,15 +350,14 @@ export const makeHarness = (
         ? Effect.succeed(provider)
         : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
     },
-    // What a provider really hands back: a decoded record, never the planner's object, with no events.
     resolveAppliedPlan: (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
       root === globalAdmission.root
         ? Effect.sync(() => globalAdmission.appliedPlan())
-        : (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root, app),
+        : resolveUserAppliedPlan(root, app),
     resolveTeardownEvidence:
       options.resolveTeardownEvidence ??
       ((root: AbsolutePath) =>
-        (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root).pipe(
+        resolveUserAppliedPlan(root).pipe(
           Effect.map((plan) =>
             plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
           ),
