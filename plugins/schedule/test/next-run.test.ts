@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime } from "effect";
 
+import { scheduleTimezone } from "../src/jobs.ts";
 import { formatNextRun, nextRunAt } from "../src/next-run.ts";
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
@@ -26,6 +27,15 @@ describe("schedule next run", () => {
 
   test("the service timezone decides the next occurrence", () => {
     expect(nextIso("@daily", "2026-11-03T23:30:00Z", "Europe/Berlin")).toBe("2026-11-04T23:00:00.000Z");
+  });
+
+  test("a POSIX TZ colon still resolves the next run in its zone", () => {
+    expect(nextIso("@daily", "2026-11-03T23:30:00Z", scheduleTimezone({ TZ: ":America/Chicago" }))).toBe(
+      "2026-11-04T06:00:00.000Z",
+    );
+    expect(
+      nextRunAt("@daily", at("2026-11-03T23:30:00Z"), scheduleTimezone({ TZ: ":America/Chicago" })),
+    ).toBeDefined();
   });
 
   test("unrepresentable durations and invalid expressions have no next run", () => {

@@ -1,9 +1,8 @@
-import type { EnvironmentValue } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { crontabInstallCommand, crontabLine, supercronicInstallCommand } from "./crontab.ts";
-import { scheduleSidecarGroups } from "./jobs.ts";
+import { scheduleSidecarGroups, scheduleTimezone } from "./jobs.ts";
 import {
   SUPERCRONIC_CRONTAB_STEP_ID,
   SUPERCRONIC_PINS,
@@ -16,14 +15,11 @@ export const SCHEDULE_FEATURE_ID = "schedule.compile" as const;
 const IANA_ZONE = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)+$/u;
 
 /**
- * The one leading `:` is a POSIX TZ form that keeps UTC and zone names alike;
- * only a real IANA zone names a `/usr/share/zoneinfo` file to check.
+ * Only a real IANA zone names a `/usr/share/zoneinfo` file worth checking;
+ * `Etc/` zones are not guaranteed to ship with an image's zone database.
  */
-const scheduleTimezone = (value: EnvironmentValue | undefined): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  const zone = value.startsWith(":") ? value.slice(1) : value;
-  return !zone.startsWith("Etc/") && IANA_ZONE.test(zone) ? zone : undefined;
-};
+const zoneInfoZone = (zone: string): string | undefined =>
+  !zone.startsWith("Etc/") && IANA_ZONE.test(zone) ? zone : undefined;
 
 export const scheduleCompileFeature: AppFeatureDefinition = {
   id: SCHEDULE_FEATURE_ID,
@@ -33,7 +29,7 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
     for (const service of ctx.selected) {
       const jobs = service.normalizedConfig.schedule ?? [];
       if (jobs.length === 0) continue;
-      const timezone = scheduleTimezone(service.normalizedConfig.environment?.TZ);
+      const timezone = zoneInfoZone(scheduleTimezone(service.normalizedConfig.environment));
       for (const group of scheduleSidecarGroups(service.serviceName, jobs)) {
         const crontab = group.jobs.map((job) => crontabLine(job));
         ctx.addClonedService({

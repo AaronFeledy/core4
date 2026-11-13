@@ -23,15 +23,24 @@ export interface ScheduleSidecarGroup<Job extends ScheduleJobIdentity = Schedule
   readonly jobs: ReadonlyArray<Job>;
 }
 
-const timezoneOf = (environment: Readonly<Record<string, EnvironmentValue>> | undefined): string => {
+/**
+ * The zone name a service's `TZ` selects. POSIX lets one leading `:` mean
+ * "load this zone from the database"; the scheduler strips it, so listing and
+ * the build-time zone check must read the same zone.
+ */
+export const scheduleTimezone = (
+  environment: Readonly<Record<string, EnvironmentValue>> | undefined,
+): string => {
   const value = environment?.TZ;
-  return typeof value === "string" && value.length > 0 ? value : "UTC";
+  if (typeof value !== "string") return "UTC";
+  const zone = value.startsWith(":") ? value.slice(1) : value;
+  return zone.length === 0 ? "UTC" : zone;
 };
 
 export const jobsFromLandofile = (landofile: LandofileShape): ReadonlyArray<ResolvedScheduleJob> => {
   const jobs: ResolvedScheduleJob[] = [];
   for (const [service, config] of Object.entries(landofile.services ?? {})) {
-    const timezone = timezoneOf(config.environment);
+    const timezone = scheduleTimezone(config.environment);
     for (const job of config.schedule ?? []) {
       jobs.push({
         service,

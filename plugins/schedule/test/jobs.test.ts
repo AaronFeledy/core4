@@ -94,6 +94,19 @@ describe("schedule jobs", () => {
     expect(findScheduleJob(jobs, "missing")).toEqual([]);
   });
 
+  test("strips the POSIX leading colon so the listed zone is the real zone name", () => {
+    const jobs = jobsFromLandofile({
+      services: {
+        [ServiceName.make("web")]: {
+          type: "compose",
+          environment: { TZ: ":America/Chicago" },
+          schedule: [{ name: "tick", every: "@hourly", run: "true" }],
+        },
+      },
+    });
+    expect(jobs[0]?.timezone).toBe("America/Chicago");
+  });
+
   test("defaults the job timezone to UTC when the service sets no TZ", () => {
     const jobs = jobsFromLandofile({
       services: {
