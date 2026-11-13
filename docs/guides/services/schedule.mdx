@@ -263,7 +263,9 @@ The image needs a shell. Lando rejects the empty `scratch` image and `gcr.io/dis
 
 Edit `schedule:`, then run `lando start` or `lando restart`. Lando rebuilds only the small layer that holds the job table. You don't need `lando rebuild`.
 
-Whole-app `start`, `stop`, `restart`, `rebuild`, and `destroy` include the sidecar. A command scoped to the parent leaves the sidecar alone, so `lando restart --service appserver` doesn't apply a schedule edit. Run the whole-app `lando restart` for that.
+Whole-app `start`, `stop`, `restart`, `rebuild`, and `destroy` include the sidecar. To rebuild one service and apply its schedule edits together, run `lando rebuild --service appserver`. That rebuild includes the service's sidecars and prerequisites.
+
+`lando restart --service appserver` restarts only the named service and leaves its sidecars alone. It doesn't apply a schedule edit. Use the whole-app `lando restart` or the selected rebuild above for that.
 
 Delete the `schedule:` list and the next whole-app `start`, `restart`, or `rebuild` removes the sidecar. The result reports it under removed services.
 
