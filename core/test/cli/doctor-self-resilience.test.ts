@@ -210,6 +210,7 @@ describe("isolateDoctorSection", () => {
     // Then
     expect(outcome.value).toBe("fallback");
     expect(outcome.self?.context.failure).toBe("ConfigError");
+    expect(outcome.self?.subject).toBe("provider");
     expect(outcome.self?.context.reason).toBe("failure");
     expect(outcome.self?.status).toBe("fail");
   });
@@ -292,6 +293,8 @@ describe("isolateDoctorSection", () => {
       isolateDoctorSection({
         section: "provider",
         effect: Effect.die(new Error("token=abc123")),
+        probe: "plugin-check:abc123",
+        context: { checkId: "abc123" },
         fallback: undefined,
         redact: (value) => value.replace("abc123", "[redacted]"),
       }),
@@ -299,6 +302,9 @@ describe("isolateDoctorSection", () => {
 
     // Then
     expect(outcome.self?.context.message).toBe("token=[redacted]");
+    expect(outcome.self?.subject).toBe("plugin-check:[redacted]");
+    expect(outcome.self?.context.probe).toBe("plugin-check:[redacted]");
+    expect(outcome.self?.context.checkId).toBe("[redacted]");
   });
 
   test("redacts a registered secret crossing the message boundary before applying the final cap", async () => {

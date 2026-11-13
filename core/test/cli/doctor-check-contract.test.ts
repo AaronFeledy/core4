@@ -76,7 +76,12 @@ const toDoctorCheckResult = (check: DoctorFinding): DoctorCheckResult => ({
   issues: check.solutions.map(
     (solution): DoctorCheckIssue => ({
       severity: mapSeverity(check.severity),
-      context: check.context,
+      context: Object.fromEntries(
+        Object.entries(check.context).map(([key, value]) => [
+          key,
+          typeof value === "string" ? value : value.join(", "),
+        ]),
+      ),
       solutionKind: solution.kind,
       solution: solution.description,
       ...(solution.command === undefined ? {} : { command: solution.command }),

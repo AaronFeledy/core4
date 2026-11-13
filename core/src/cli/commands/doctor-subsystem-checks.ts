@@ -181,22 +181,22 @@ const errorMessage = (cause: unknown, redactor: Redactor): string => {
   return redactString(String(cause), redactor);
 };
 
-export const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorFinding =>
+export const passCheck = (spec: SubsystemSpec, context: DoctorFinding["context"]): DoctorFinding =>
   passCheckNamed({ name: spec.name, recovery: spec.recovery, context });
 
-const withoutPreFixState = (context: Record<string, string>): Record<string, string> =>
+const withoutPreFixState = (context: DoctorFinding["context"]): DoctorFinding["context"] =>
   Object.fromEntries(Object.entries(context).filter(([key]) => key !== "state"));
 
 export const buildDegradedCheck = Effect.fnUntraced(function* (
   spec: SubsystemSpec,
-  baseContext: Record<string, string>,
+  baseContext: DoctorFinding["context"],
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
   cause?: unknown,
-  refreshContext?: () => Effect.Effect<Record<string, string>, never>,
+  refreshContext?: () => Effect.Effect<DoctorFinding["context"], never>,
 ): Effect.fn.Return<DoctorFinding, never> {
   const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
-  const serviceId = baseContext.subsystemId ?? "unknown";
+  const serviceId = typeof baseContext.subsystemId === "string" ? baseContext.subsystemId : "unknown";
 
   if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
     const fixCommand = `${spec.name}.setup`;

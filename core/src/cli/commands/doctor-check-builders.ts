@@ -2,7 +2,8 @@ import type { DoctorFinding, DoctorRecovery, DoctorSolution } from "./doctor-con
 
 type CheckInput = {
   readonly name: string;
-  readonly context: Readonly<Record<string, string>>;
+  readonly subject?: string;
+  readonly context: DoctorFinding["context"];
   readonly recovery?: DoctorRecovery;
 };
 type DegradedInput = CheckInput & {
@@ -17,6 +18,7 @@ const buildCheck = (
   solutions: readonly DoctorSolution[],
 ): DoctorFinding => ({
   name: input.name,
+  ...(input.subject === undefined ? {} : { subject: input.subject }),
   status,
   severity: severityByStatus[status],
   ...(input.recovery === undefined ? {} : { recovery: input.recovery }),

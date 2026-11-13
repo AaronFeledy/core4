@@ -176,6 +176,7 @@ export const isRelevantContribution = (
 
 export const mapPluginDoctorCheck = ({ report, contributor }: PluginDoctorCheckMapping): DoctorFinding => ({
   name: report.name,
+  ...(report.subject === undefined ? {} : { subject: report.subject }),
   status: report.status,
   severity: report.severity,
   ...(report.runtimeStatus === undefined ? {} : { runtimeStatus: report.runtimeStatus }),

@@ -123,11 +123,12 @@ export type DoctorRecovery = typeof DoctorRecovery.Type;
  */
 export const DoctorFinding = Schema.Struct({
   name: Schema.String,
+  subject: Schema.optionalKey(Schema.String),
   status: DoctorStatus,
   severity: DoctorSeverity,
   runtimeStatus: Schema.optionalKey(Schema.String),
   runtime: Schema.optionalKey(DoctorRuntime),
-  context: Schema.Record(Schema.String, Schema.String),
+  context: Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Array(Schema.String)])),
   solutions: Schema.Array(DoctorSolution),
   /** Plugin doctor contribution id; absent for core producers. */
   contributor: Schema.optionalKey(Schema.String),

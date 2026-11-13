@@ -239,10 +239,22 @@ describe("buildOomDoctorCheck", () => {
     expect(serialized).not.toContain("s3cr3t");
     expect(serialized).not.toContain("pw@app.example.com");
     expect(check.context.image).toContain("[redacted]");
+    expect(check.subject).toBe("lando-secret--web");
   });
 });
 
 describe("collectOomDoctorChecks", () => {
+  test("uses redacted app and service when the container name is absent", () => {
+    const check = buildOomDoctorCheck(
+      {
+        kind: "oom",
+        correlation: { app: "https://user:password@app.example.com", service: "web" },
+      },
+      CONTEXT,
+      REDACTOR,
+    );
+    expect(check?.subject).toBe("https://[redacted]@app.example.com/web");
+  });
   test("returns one check per oom-killed event, skipping non-oom and malformed", () => {
     const checks = collectOomDoctorChecks(
       [

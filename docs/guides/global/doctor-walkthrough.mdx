@@ -33,7 +33,25 @@ lando global:status --format=json
 
 ## When it is installed
 
-The check passes and reports the generated dist Landofile (`<userDataRoot>/global/.lando.dist.yml`), the overlay (`<userDataRoot>/global/.lando.yml`), the dist file mtime as `lastInstallTimestamp`, materialized service ids, and plugin names that declare `globalServices:`.
+The check passes and reports the generated dist Landofile (`<userDataRoot>/global/.lando.dist.yml`), the overlay (`<userDataRoot>/global/.lando.yml`), the dist file mtime as `lastInstallTimestamp`, materialized service ids in `context.services`, and plugin names that declare `globalServices:` in `context.contributingPlugins`. Both lists are arrays of strings in JSON.
+
+<Guide>
+  <Scenario id="global-context-lists" render={false} reason="Verify global doctor list values through the JSON command surface">
+    <Step name="materialize-and-inspect">
+      <Run runtime="library" displayCode="lando global:reconcile --format=json" code={`const run = yield* context.runCli(["global:reconcile", "--format=json"]);
+expect(run.exitCode).toBe(0);`} />
+      <Run runtime="library" displayCode="lando doctor --format=json" code={`const run = yield* context.runCli(["doctor", "--format=json"]);
+const report = JSON.parse(run.stdout).result;
+const global = report.checks.find((check: { readonly section: string }) => check.section === "global-app");
+expect(global.status).toBe("pass");
+expect(Array.isArray(global.context.services)).toBe(true);
+if (global.context.contributingPlugins !== undefined) {
+  expect(Array.isArray(global.context.contributingPlugins)).toBe(true);
+}`} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+</Guide>
 
 If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:reconcile`. Reconcile preserves saved policy and starts no containers. Use `lando global:status --format=json` to inspect desired policy, observed services, and pending cleanup separately; generated configuration alone isn't proof that a disabled service has stopped.
 

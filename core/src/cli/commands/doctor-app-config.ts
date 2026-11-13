@@ -59,21 +59,25 @@ export const appConfigFindings = (result: ConfigLintResult): ReadonlyArray<Docto
         solutions: [],
       },
     ];
-  return result.violations.map((violation) => ({
-    name: violation.rule,
-    status: violation.severity === "error" ? "fail" : "warn",
-    severity: violation.severity === "error" ? "error" : "warn",
-    context: {
-      file: result.file,
-      location: violationLocation(violation),
-      message: violation.message,
-      ...(violation.reason === undefined ? {} : { reason: violation.reason }),
-      ...(violation.line === undefined ? {} : { line: String(violation.line) }),
-      ...(violation.column === undefined ? {} : { column: String(violation.column) }),
-      ...(violation.source === undefined ? {} : { source: violation.source.layer }),
-    },
-    solutions:
-      violation.suggestion === undefined ? [] : [{ kind: "manual", description: violation.suggestion }],
-    details: violation,
-  }));
+  return result.violations.map((violation) => {
+    const location = violationLocation(violation);
+    return {
+      name: violation.rule,
+      subject: `${result.file}#${location}`,
+      status: violation.severity === "error" ? "fail" : "warn",
+      severity: violation.severity === "error" ? "error" : "warn",
+      context: {
+        file: result.file,
+        location,
+        message: violation.message,
+        ...(violation.reason === undefined ? {} : { reason: violation.reason }),
+        ...(violation.line === undefined ? {} : { line: String(violation.line) }),
+        ...(violation.column === undefined ? {} : { column: String(violation.column) }),
+        ...(violation.source === undefined ? {} : { source: violation.source.layer }),
+      },
+      solutions:
+        violation.suggestion === undefined ? [] : [{ kind: "manual", description: violation.suggestion }],
+      details: violation,
+    };
+  });
 };

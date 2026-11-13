@@ -83,9 +83,13 @@ test.each([
     const result = await Effect.runPromise(collect().pipe(Effect.provide(listenerRegistry(plan, provider))));
     expect(result.checks).toHaveLength(1);
     expect(result.checks[0]).toMatchObject({
+      subject: `${plan.id}/web:8080`,
       status,
       context: { providerId: "docker", listenerState, service: "web", port: "8080" },
     });
+    expect(result.checks[0]?.context.bindings).toEqual(
+      address === undefined ? [] : [address === "0100007F" ? "127.0.0.1:8080" : "0.0.0.0:8080"],
+    );
     const report = asReport(result);
     const text = renderDoctorReport(report, undefined, { all: true });
     expect(text).toContain(`listenerState: ${listenerState}`);

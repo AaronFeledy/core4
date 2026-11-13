@@ -157,6 +157,7 @@ export const doctorSelfCheck = (input: {
 }): DoctorSelfFinding => ({
   section: input.section,
   name: DOCTOR_SELF_CHECK_NAME,
+  subject: input.context?.pluginId ?? input.probe ?? input.section,
   status: "fail",
   severity: "error",
   context: {
@@ -179,6 +180,10 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
 ): Effect.fn.Return<IsolatedDoctorSection<A>, never, R> {
   const budgetMs = options.budgetMs ?? doctorSectionBudgetMs();
   const redact = options.redact ?? ((value: string) => value);
+  const probe = options.probe === undefined ? undefined : redact(options.probe);
+  const context = Object.fromEntries(
+    Object.entries(options.context ?? {}).map(([key, value]) => [key, redact(value)]),
+  );
   // Forked so a section that interrupts *itself* cannot masquerade as user
   // cancellation: if the parent were interrupted, `Fiber.await` would itself be
   // interrupted and never reach the classification below.
@@ -191,10 +196,10 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
       value: options.fallback,
       self: doctorSelfCheck({
         section: options.section,
-        probe: options.probe,
+        probe,
         reason: "timeout",
         message: `Section did not complete within ${budgetMs}ms and was abandoned.`,
-        context: { budgetMs: String(budgetMs), ...options.context },
+        context: { budgetMs: String(budgetMs), ...context },
         ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
       }),
     };
@@ -207,10 +212,10 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
       value: options.fallback,
       self: doctorSelfCheck({
         section: options.section,
-        probe: options.probe,
+        probe,
         reason: "defect",
         message: "Section interrupted itself before producing a result.",
-        ...(options.context === undefined ? {} : { context: options.context }),
+        context,
         ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
       }),
     };
@@ -233,11 +238,11 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
     value: options.fallback,
     self: doctorSelfCheck({
       section: options.section,
-      probe: options.probe,
+      probe,
       reason: described.reason,
       message: redactDoctorMessage(described.message, redact),
       ...(described.tag === undefined ? {} : { tag: described.tag }),
-      ...(options.context === undefined ? {} : { context: options.context }),
+      context,
       ...(solutions === undefined ? {} : { solutions }),
       ...(remediation === undefined ? {} : { reportIssue: false }),
     }),

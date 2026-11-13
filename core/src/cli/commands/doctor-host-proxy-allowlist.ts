@@ -58,8 +58,8 @@ export const buildHostProxyAllowlistDoctorCheck = (
         severity: "warn",
         context: {
           freshness: "stale",
-          missing: freshness.missing.join(",") || "none",
-          unexpected: freshness.unexpected.join(",") || "none",
+          missing: freshness.missing,
+          unexpected: freshness.unexpected,
         },
         solutions: [HOST_PROXY_ALLOWLIST_REMEDIATION],
       };

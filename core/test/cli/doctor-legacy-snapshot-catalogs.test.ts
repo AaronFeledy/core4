@@ -29,7 +29,7 @@ test.each([false, true])(
       );
       // Then absence is a passing check.
       expect(checks).toMatchObject([
-        { name: "legacy-snapshot-catalogs", status: "pass", context: { count: "0", paths: "" } },
+        { name: "legacy-snapshot-catalogs", status: "pass", context: { count: "0", paths: [] } },
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -87,7 +87,7 @@ test("doctor warns with redacted paths even when legacy catalog contents cannot 
         name: "legacy-snapshot-catalogs",
         status: "warn",
         recovery: "manual",
-        context: { count: "2", paths: files.map(redact).join("\n") },
+        context: { count: "2", paths: files.map(redact) },
         solutions: [{ kind: "manual" }],
       },
     ]);
@@ -124,7 +124,11 @@ test.each([false, true])(
       );
       // Then the registered check warns with manual recovery rather than starting a provider.
       expect(report.checks.filter((check) => check.section === "legacy-snapshot-catalogs")).toMatchObject([
-        { status: "warn", recovery: "manual", context: { count: "1", paths: join(directory, "index.bin") } },
+        {
+          status: "warn",
+          recovery: "manual",
+          context: { count: "1", paths: [join(directory, "index.bin")] },
+        },
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });

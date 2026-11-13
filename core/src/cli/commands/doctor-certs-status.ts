@@ -186,7 +186,7 @@ export const certsSubsystemId = (status: CertsDoctorStatus): string => {
   }
 };
 
-export const certsCheckContext = (status: CertsDoctorStatus): Readonly<Record<string, string>> => {
+export const certsCheckContext = (status: CertsDoctorStatus): DoctorFinding["context"] => {
   switch (status._tag) {
     case "unresolved":
     case "selected":
@@ -198,7 +198,7 @@ export const certsCheckContext = (status: CertsDoctorStatus): Readonly<Record<st
     case "ambiguous":
       return {
         certsReason: "ambiguous",
-        certsCandidateIds: status.candidateIds.join(","),
+        certsCandidateIds: status.candidateIds,
         certsDetail: status.detail,
       };
     case "load-failed":

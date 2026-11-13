@@ -89,6 +89,7 @@ describe("doctor installed-plugin metadata health", () => {
         (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
       );
       expect(metadataCheck).toMatchObject({
+        subject: "@example/[redacted]",
         status: "fail",
         severity: "error",
         context: { reason: "failure" },
@@ -138,6 +139,7 @@ describe("doctor installed-plugin metadata health", () => {
         (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
       );
       expect(metadataCheck).toMatchObject({
+        subject: pluginName,
         status: "fail",
         severity: "error",
         context: { pluginId: pluginName, failure: "PluginManifestError" },
@@ -165,6 +167,7 @@ describe("doctor installed-plugin metadata health", () => {
         (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
       );
       expect(metadataCheck).toMatchObject({
+        subject: "registry",
         status: "fail",
         severity: "error",
         context: { pluginId: "registry" },

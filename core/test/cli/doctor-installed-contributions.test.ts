@@ -131,8 +131,7 @@ describe("doctor installed contributions through runtime discovery", () => {
         );
         expect(
           result.checks.some(
-            (check) =>
-              check.name === "doctor-self" && (check.context.probe?.startsWith("plugin-check:") ?? false),
+            (check) => check.name === "doctor-self" && (check.subject?.startsWith("plugin-check:") ?? false),
           ),
         ).toBe(false);
         expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);

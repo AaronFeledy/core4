@@ -184,13 +184,13 @@ export const doctor = Effect.fn("Doctor.collect")(
 
     const preemptiveReports = reports.filter((entry) => entry.report.preempts === true);
     if (preemptiveReports.length > 0) {
-      const version = preemptiveReports[0]?.report.context.providerVersion ?? UNKNOWN_PROVIDER_VERSION;
+      const version = preemptiveReports[0]?.report.context.providerVersion;
       const provider: DoctorProvider = {
         id: providerId,
         kind: providerKindFor(providerId),
         selection,
         name: providerStubFor(providerId).displayName,
-        version,
+        version: typeof version === "string" ? version : UNKNOWN_PROVIDER_VERSION,
       };
       return {
         ...withSelfFindings(

@@ -53,13 +53,14 @@ const leftovers = report([
   ...Array.from({ length: 365 }, (_, index) =>
     findingIn("accelerated-starts", {
       name: "accelerated-start",
+      subject: `/apps/accelerated-${index}`,
       status: "warn",
       severity: "warn",
       context: {
         appId: `app-${index}`,
         appRoot: `/apps/accelerated-${index}`,
         journalPath: `/journals/${index}`,
-        volumes: Array.from({ length: 40 }, (_, n) => `volume-${n}`).join(", "),
+        volumes: Array.from({ length: 40 }, (_, n) => `volume-${n}`),
       },
       solutions: [
         {
@@ -73,6 +74,7 @@ const leftovers = report([
   ...Array.from({ length: 24 }, (_, index) =>
     findingIn("missing-app-roots", {
       name: "missing-app-root",
+      subject: `/apps/missing-${index}`,
       status: "warn",
       severity: "warn",
       context: { root: `/apps/missing-${index}` },
@@ -143,6 +145,8 @@ describe("bounded doctor text", () => {
     const finding = (pluginId: string, root: string, description: string): DoctorCheck =>
       check({
         name: "cleanup",
+        contributor: pluginId,
+        subject: root,
         status: "warn",
         severity: "warn",
         context: { pluginId, root },
@@ -163,11 +167,11 @@ describe("bounded doctor text", () => {
     expect(rows).toHaveLength(3);
     expect(rows?.[0]?.value).toBe("warn (2 checks)");
     expect(rows?.[0]?.remedy).toBe("2 remediation variants (lando doctor --all) Run `lando cleanup`.");
-    expect(rows?.[0]?.fields).toContainEqual({ label: "entries", value: "root: /first; root: /second" });
+    expect(rows?.[0]?.fields).toContainEqual({ label: "entries", value: "/first; /second" });
     expect(rows?.[1]?.remedy).toContain("Foreign");
   });
 
-  test("bounds only declared list keys and context values, preserving complete solutions", () => {
+  test("bounds array context and long items while preserving scalars and complete solutions", () => {
     const command = `lando repair ${"x".repeat(400)}`;
     const description = `Keep your data. ${"details, ".repeat(80)}`;
     const value = report([
@@ -175,8 +179,9 @@ describe("bounded doctor text", () => {
         status: "warn",
         severity: "warn",
         context: {
-          files: "one, two, three, four, five",
-          targets: "a-sync, b-sync, c-sync, d-sync",
+          files: ["one, two", "three", "four", "five"],
+          targets: ["a-sync", "b-sync", "c-sync", "d-sync"],
+          arbitrary: ["y".repeat(500), "last"],
           error: "one, two, three, four, five",
           evidence: "x".repeat(500),
         },
@@ -184,15 +189,17 @@ describe("bounded doctor text", () => {
       }),
     ]);
     const text = renderDoctorReport(value);
-    expect(text).toContain("files: one, two, three (+2 more)");
+    expect(text).toContain("files: one, two, three, four (+1 more)");
     expect(text).toContain("targets: a-sync, b-sync, c-sync (+1 more)");
     expect(text).toContain("error: one, two, three, four, five");
     expect(text).not.toContain("x".repeat(500));
+    expect(text).toContain(`arbitrary: ${"y".repeat(240)}..., last`);
     expect(text).toContain(description);
     expect(text).toContain(command);
     const full = renderDoctorReport(value, undefined, { all: true });
     expect(full).toContain("files: one, two, three, four, five");
     expect(full).toContain(`evidence: ${"x".repeat(500)}`);
+    expect(full).toContain(`arbitrary: ${"y".repeat(500)}, last`);
   });
 
   test("plain header prints provider identity and selection once and flag plumbing enables full output", () => {

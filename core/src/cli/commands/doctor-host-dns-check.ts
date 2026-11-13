@@ -34,13 +34,13 @@ export const buildHostDnsCheck = Effect.fnUntraced(function* (
   );
   const addresses = yield* Ref.get(addressesRef);
   const dnsReady = Result.isSuccess(resolved) && resolved.success.outcome === "green";
-  const dnsContext: Record<string, string> = {
+  const dnsContext: Record<string, string | ReadonlyArray<string>> = {
     subsystem: "host-dns",
     baseDomain,
     loopback,
     dnsHostname: hostname,
     dnsResolved: String(dnsReady),
-    ...(addresses.length === 0 ? {} : { dnsAddresses: addresses.join(",") }),
+    ...(addresses.length === 0 ? {} : { dnsAddresses: addresses }),
   };
   if (dnsReady) return passCheck(HOST_DNS_SPEC, dnsContext);
 

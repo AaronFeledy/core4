@@ -251,7 +251,7 @@ describe("doctor provider-bootstrap failure", () => {
         report.checks.find((check) => check.section === "subsystems" && check.name === "host-dns"),
       ).toMatchObject({
         status: "pass",
-        context: { dnsResolved: "true", dnsAddresses: "127.0.0.1" },
+        context: { dnsResolved: "true", dnsAddresses: ["127.0.0.1"] },
       });
       for (const name of ["router", "ssh", "certs", "healthcheck", "url-scanner"]) {
         expect(report.checks.some((check) => check.section === "subsystems" && check.name === name)).toBe(

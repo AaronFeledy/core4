@@ -494,6 +494,34 @@ describe("meta:doctor combined report", () => {
     }
   });
 
+  test("app-config violations name their file and location as the subject", () => {
+    const findings = appConfigFindings({
+      app: "demo",
+      file: "/app/.lando.yml",
+      valid: false,
+      violations: [
+        {
+          rule: "landofile.capability",
+          severity: "error",
+          path: ["services", "web"],
+          scopes: ["fragment"],
+          message: "Unknown key.",
+        },
+        {
+          rule: "landofile.capability",
+          severity: "warning",
+          path: [],
+          scopes: ["fragment"],
+          message: "Unknown key.",
+        },
+      ],
+    });
+    expect(findings.map((finding) => finding.subject)).toEqual([
+      "/app/.lando.yml#services.web",
+      "/app/.lando.yml#(root)",
+    ]);
+  });
+
   test("version constraint producer returns undefined with no Landofile", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-doctor-version-none-"));
     try {
@@ -581,7 +609,8 @@ describe("meta:doctor combined report", () => {
         severity: "error",
         context: {
           runningVersion: "0.0.0",
-          unsatisfied: ">=99 (canonical#3: .lando.yml)",
+          declared: [">=99 (canonical#3: .lando.yml)"],
+          unsatisfied: [">=99 (canonical#3: .lando.yml)"],
           skipped: "false",
         },
       });
@@ -614,7 +643,8 @@ describe("meta:doctor combined report", () => {
         severity: "error",
         context: {
           runningVersion: "0.0.0",
-          unsatisfied: ">=99 (canonical#3: .lando.ts)",
+          declared: [">=99 (canonical#3: .lando.ts)"],
+          unsatisfied: [">=99 (canonical#3: .lando.ts)"],
           skipped: "false",
         },
       });
@@ -644,9 +674,14 @@ describe("meta:doctor combined report", () => {
         severity: "error",
         context: { declared: count === 1 ? "(unresolved includes)" : "(Landofile load failures)" },
       });
-      expect(version?.context.includeResolution).toContain("missing.yml");
+      expect(version?.context.includeResolution).toEqual(
+        expect.arrayContaining([expect.stringContaining("missing.yml")]),
+      );
       if (count === 1) expect(renderDoctorReport(report)).toContain("lando app:includes:update");
-      else expect(version?.context.includeResolution).toContain("also-missing.yml");
+      else
+        expect(version?.context.includeResolution).toEqual(
+          expect.arrayContaining([expect.stringContaining("also-missing.yml")]),
+        );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -749,7 +784,7 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "warn",
         severity: "warn",
-        context: { skipped: "true", unsatisfied: ">=99 (canonical#3: .lando.yml)" },
+        context: { skipped: "true", unsatisfied: [">=99 (canonical#3: .lando.yml)"] },
       });
       expect(renderDoctorReport(report)).toContain("LANDO_SKIP_VERSION_CONSTRAINT=1 is active");
     } finally {
@@ -947,6 +982,7 @@ describe("meta:doctor combined report", () => {
         name: "deprecation",
         status: "warn",
         severity: "warn",
+        subject: "env-override:LANDO_LEGACY",
         context: { kind: "env-override", id: "LANDO_LEGACY", count: "1" },
       });
       const summary = (resultEnvelope(ndjson).result as { readonly summary: DoctorReport["summary"] })

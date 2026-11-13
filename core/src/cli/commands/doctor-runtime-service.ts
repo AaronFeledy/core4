@@ -75,13 +75,13 @@ export const buildRuntimeServiceDoctorCheck = (
   const hasOrphans = status.orphanPids !== undefined && status.orphanPids.length > 0;
   const checkStatus: DoctorStatus = (status.running || status.idle === true) && !hasOrphans ? "pass" : "warn";
   const severity: DoctorSeverity = checkStatus === "pass" ? "info" : "warn";
-  const context: Record<string, string> = {
+  const context: Record<string, string | ReadonlyArray<string>> = {
     runtimeRunning: String(status.running),
     socketReachable: String(status.socketReachable),
     ownedServiceProcess: String(status.ownedServiceProcess),
   };
   if (status.pid !== undefined) context.runtimePid = String(status.pid);
-  if (hasOrphans) context.orphanPids = (status.orphanPids ?? []).join(",");
+  if (hasOrphans) context.orphanPids = (status.orphanPids ?? []).map(String);
   if (readinessRuntimeService !== undefined) {
     context.lastRecordedRunning = String(readinessRuntimeService.running);
     context.lastRecordedSocketPath = readinessRuntimeService.socketPath;
