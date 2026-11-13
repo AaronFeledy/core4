@@ -93,7 +93,15 @@ describe("cloned services", () => {
     expect(sidecar?.environment).toEqual(parent.draft.environment);
     expect(sidecar?.user).toBe("1001");
     expect(cloned.drafts[0]?.pullPolicy).toEqual(parent.pullPolicy);
-    expect(sidecar?.command).toEqual(request().command);
+    expect(sidecar?.entrypoint).toEqual(request().command);
+    expect(sidecar).not.toHaveProperty("command");
+    expect(sidecar?.healthcheck).toEqual({
+      kind: "none",
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+    });
+    expect(sidecar).not.toHaveProperty("readiness");
     expect(sidecar?.dependsOn).toEqual([
       { service: ServiceName.make("web"), condition: "service_started", required: true },
     ]);
@@ -103,6 +111,34 @@ describe("cloned services", () => {
     });
     expect(cloned.drafts[0]?.storeOwner).toBe("web");
     expect(cloned.parentNetworks.get("web-schedule")).toEqual(networks);
+  });
+
+  test("replaces a parent entrypoint with the requested argv as its only process", () => {
+    const parent = parentDraft({ entrypoint: ["node", "server.js"], command: ["node", "server.js"] });
+    const sidecar = clone({ parent }).drafts[0]?.draft;
+    expect(sidecar?.entrypoint).toEqual(request().command);
+    expect(sidecar).not.toHaveProperty("command");
+  });
+
+  test("runs a string request command through the shell as its only process", () => {
+    const sidecar = clone({ request: request({ command: "echo hello" }) }).drafts[0]?.draft;
+    expect(sidecar?.entrypoint).toEqual(["sh", "-c", "echo hello"]);
+    expect(sidecar).not.toHaveProperty("command");
+  });
+
+  test("disables the healthcheck whether or not the parent has one", () => {
+    const disabled = { kind: "none" as const, intervalSeconds: 10, timeoutSeconds: 5, retries: 5 };
+    const parentCheck = {
+      kind: "command" as const,
+      command: ["true"],
+      intervalSeconds: 30,
+      timeoutSeconds: 4,
+      retries: 2,
+    };
+    expect(clone({ parent: parentDraft({ healthcheck: parentCheck }) }).drafts[0]?.draft.healthcheck).toEqual(
+      disabled,
+    );
+    expect(clone().drafts[0]?.draft.healthcheck).toEqual(disabled);
   });
 
   test("overrides the cloned user when the request sets one", () => {

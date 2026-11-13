@@ -66,6 +66,14 @@ const stripComposePublish = (extensions: ServicePlan["extensions"]): ServicePlan
   return { ...extensions, compose };
 };
 
+/**
+ * The clone's container process is exactly its requested command. An entrypoint
+ * with no command replaces the image ENTRYPOINT and suppresses its CMD; as a
+ * command it would instead be appended to the parent's entrypoint.
+ */
+const cloneEntrypoint = (command: RecordedClonedService["command"]): ReadonlyArray<string> =>
+  typeof command === "string" ? ["sh", "-c", command] : [...command];
+
 /** Inherited build steps, minus the parent's app phase, pinned when the clone runs as another user. */
 const inheritedBuildSteps = (
   parentDraft: PlannedServiceDraft["draft"],
@@ -100,6 +108,8 @@ const clonePlannedDraft = (
     connection: _connection,
     nonSqlCreds: _nonSqlCreds,
     sqlite: _sqlite,
+    entrypoint: _entrypoint,
+    command: _command,
     ...rest
   } = parentDraft;
   return {
@@ -127,7 +137,10 @@ const clonePlannedDraft = (
       name,
       serviceName: request.name,
       primary: false,
-      command: request.command,
+      entrypoint: cloneEntrypoint(request.command),
+      // A clone may inherit an image HEALTHCHECK aimed at the parent's server,
+      // so disable it explicitly instead of leaving it absent.
+      healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 },
       ...(request.user === undefined ? {} : { user: request.user }),
       environment: { ...parentDraft.environment, ...extraEnv },
       mounts: parentDraft.mounts.map((mount) => ({ ...mount })),

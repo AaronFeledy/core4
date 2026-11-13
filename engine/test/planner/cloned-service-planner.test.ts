@@ -7,6 +7,7 @@ import type {
   AppFeatureDefinition,
   ClonedServiceRequest,
   ServiceBuildStepIntent,
+  ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -28,6 +29,15 @@ const cloneFeature = (request: ClonedServiceRequest): AppFeatureDefinition => ({
     }),
 });
 
+const entrypointFeature: ServiceFeatureDefinition = {
+  id: "test.entrypoint",
+  priority: 100,
+  apply: (ctx) =>
+    Effect.sync(() => {
+      if (ctx.normalizedConfig.entrypoint !== undefined) ctx.setEntrypoint(ctx.normalizedConfig.entrypoint);
+    }),
+};
+
 const clonedServiceType: ServiceType = {
   id: "cloned",
   name: "cloned",
@@ -42,7 +52,12 @@ const clonedServiceType: ServiceType = {
       root: AbsoluteContainerPath.make("/root"),
     },
   },
-  resolve: ({ service }) => Effect.succeed({ base: "l337", normalizedConfig: service, features: [] }),
+  resolve: ({ service }) =>
+    Effect.succeed({
+      base: "l337",
+      normalizedConfig: service,
+      features: [{ id: entrypointFeature.id }],
+    }),
 };
 
 const homeServiceType: ServiceType = {
@@ -68,13 +83,17 @@ const pluginFor = (feature: AppFeatureDefinition) =>
       version: "1.0.0",
       api: 4,
       entry: "index.js",
-      contributes: { serviceTypes: [clonedServiceType.id, homeServiceType.id], appFeatures: [feature.id] },
+      contributes: {
+        serviceTypes: [clonedServiceType.id, homeServiceType.id],
+        serviceFeatures: [entrypointFeature.id],
+        appFeatures: [feature.id],
+      },
     }),
     serviceTypes: new Map([
       [clonedServiceType.id, clonedServiceType],
       [homeServiceType.id, homeServiceType],
     ]),
-    serviceFeatures: new Map(),
+    serviceFeatures: new Map([[entrypointFeature.id, entrypointFeature]]),
     appFeatures: new Map([[feature.id, feature]]),
   });
 
@@ -162,8 +181,60 @@ describe("cloned services in a planned app", () => {
     ]);
 
     // And it carries no probe or certificate of its own.
-    expect(clone.healthcheck).toBeUndefined();
+    expect(clone.healthcheck).toEqual({
+      kind: "none",
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+    });
+    expect(clone.readiness).toBeUndefined();
     expect(clone.certs).toBeUndefined();
+  });
+
+  test("runs exactly the requested command, ignoring the parent entrypoint", async () => {
+    // Given a parent service whose own process is an authored entrypoint.
+    const withEntrypoint = { ...web, entrypoint: ["node", "server.js"] };
+    const argvPlan = await Effect.runPromise(
+      planWithClone({ name: "clones", services: { web: withEntrypoint } }, cloneFeature(cloneRequest)),
+    );
+    const argvParent = argvPlan.services[ServiceName.make("web")];
+    const argvClone = argvPlan.services[ServiceName.make("web-schedule")];
+    if (argvParent === undefined || argvClone === undefined) throw new Error("expected both services");
+
+    // Then the clone's process is exactly the requested argv, with no command.
+    expect(argvParent.entrypoint).toEqual(["node", "server.js"]);
+    expect(argvClone.entrypoint).toEqual(cloneRequest.command);
+    expect(argvClone).not.toHaveProperty("command");
+
+    // And a string command form becomes the shell argv with no command either.
+    const stringPlan = await Effect.runPromise(
+      planWithClone(
+        { name: "clones", services: { web: withEntrypoint } },
+        cloneFeature({ ...cloneRequest, command: "echo hello" }),
+      ),
+    );
+    const stringClone = stringPlan.services[ServiceName.make("web-schedule")];
+    if (stringClone === undefined) throw new Error("expected the clone");
+    expect(stringClone.entrypoint).toEqual(["sh", "-c", "echo hello"]);
+    expect(stringClone).not.toHaveProperty("command");
+  });
+
+  test("disables the healthcheck when the parent has none", async () => {
+    const app = await Effect.runPromise(
+      planWithClone(
+        { name: "clones", services: { web: { type: "cloned:3.22" } } },
+        cloneFeature(cloneRequest),
+      ),
+    );
+    const clone = app.services[ServiceName.make("web-schedule")];
+    if (clone === undefined) throw new Error("expected the clone");
+    expect(clone.healthcheck).toEqual({
+      kind: "none",
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+    });
+    expect(clone.readiness).toBeUndefined();
   });
 
   test("a user override keeps the parent image steps and drops home persistence", async () => {
