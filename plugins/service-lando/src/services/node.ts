@@ -29,7 +29,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 export const SUPPORTED_NODE_MAJORS = [
   { major: 22, codename: "jod" },
   { major: 24, codename: "krypton", lts: true },
-  { major: 26 },
+  { major: 26, codename: "lithium" },
 ] as const;
 
 export type SupportedNodeMajor = (typeof SUPPORTED_NODE_MAJORS)[number]["major"];

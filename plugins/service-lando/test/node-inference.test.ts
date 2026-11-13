@@ -36,6 +36,8 @@ describe("bare node version inference", () => {
     ["lts/krypton", "node:24", "24"],
     ["26", "node:26", "26"],
     ["v26.1.0", "node:26.1.0", "26.1.0"],
+    ["lithium", "node:26", "26"],
+    ["lts/lithium", "node:26", "26"],
     ["lts", "node:24", "lts"],
     ["lts/*", "node:24", "lts/*"],
     ["22.11.0 # pin", "node:22.11.0", "22.11.0"],
@@ -89,6 +91,7 @@ describe("bare node version inference", () => {
 
   test("lists supported majors in nvmrc and engines remediation", () => {
     expect(() => resolve("18", undefined)).toThrow(/supported Node major \(22, 24, 26\)/);
+    expect(() => resolve("18", undefined)).toThrow(/LTS codename \(jod, krypton, lithium\)/);
     expect(() => resolve(undefined, JSON.stringify({ engines: { node: ">=22.11.0 <23" } }))).toThrow(
       /complete supported Node image channel \(22, 24, 26\)/,
     );
