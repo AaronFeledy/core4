@@ -156,6 +156,7 @@ export const buildConfig: BuildConfig = {
     { id: "django" },
     { id: "drupal" },
     { id: "drupal-cms" },
+    { id: "drupal-contrib" },
     { id: "fastapi" },
     { id: "rails" },
     { id: "jekyll" },

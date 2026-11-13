@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { PromptValidationError, RecipePromptValidationError } from "@lando/sdk/errors";
+import { PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -274,6 +275,39 @@ describe("recipe option parity", () => {
       expect(yaml).toContain("vendor/bin/drush");
       expect(yaml).toContain("drupal/cms");
       expect(yaml).not.toContain("recommended-project");
+    });
+  });
+
+  test("drupal-contrib init writes a nested app mount, /app volume, and contrib scaffolding", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "drupal-contrib",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "contrib-defaults", project: "example" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain('php: "8.4"');
+      expect(yaml).toContain("webroot: /app/web");
+      expect(yaml).toContain("drupal-contrib-scaffold");
+      expect(yaml).toContain("/app/web/{{ recipe.type }}s/custom/{{ recipe.project }}");
+      expect(yaml).toContain("selenium/standalone-chromium:155.0-20261010");
+      expect(yaml).toContain("vendor/bin/phpunit");
+      expect(yaml).toContain("SIMPLETEST_DB");
+      expect(yaml).not.toContain("store: app");
+      expect(yaml).not.toContain("extends: drupal");
+      const landofile = await discoverFrom(result.directory);
+      const appserver = landofile.services?.[ServiceName.make("appserver")];
+      expect(appserver?.webroot).toBe(PortablePath.make("/app/web"));
+      expect(appserver?.storage).toEqual(["/app"]);
+      expect(appserver?.appMount).toMatchObject({
+        includes: ["vendor", "node_modules", "tmp"],
+      });
+      expect(landofile.tooling?.["drupal-contrib-scaffold"]).toBeDefined();
+      expect(landofile.tooling?.phpunit).toBeDefined();
     });
   });
 

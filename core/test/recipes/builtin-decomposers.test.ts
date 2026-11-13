@@ -18,7 +18,7 @@ const mistypedValueFor = (descriptor: RecipeOptionType): RecipeOptionValue =>
 describe("bundled recipe decomposers", () => {
   it("ships one decomposer per source in shipping order", () => {
     expect(builtinRecipeDecomposerIds()).toEqual(ids);
-    expect(BUILTIN_RECIPE_DECOMPOSERS.size).toBe(24);
+    expect(BUILTIN_RECIPE_DECOMPOSERS.size).toBe(25);
     expect(lookupRecipeDecomposer("unshipped-recipe")).toBeUndefined();
   });
   it("keys every decomposer by its bundled producer and gives each distinct content identity", () => {
@@ -32,7 +32,7 @@ describe("bundled recipe decomposers", () => {
       expect(producer.contentDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
       digests.add(producer.contentDigest);
     }
-    expect(digests.size).toBe(24);
+    expect(digests.size).toBe(25);
   });
   it("remediates each rejected option using its own descriptor", () => {
     for (const [id, snapshot] of BUILTIN_RECIPE_SNAPSHOTS) {
