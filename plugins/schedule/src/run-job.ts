@@ -4,7 +4,7 @@ import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "./errors.ts";
-import { findScheduleJob, jobsFromLandofile, scheduleSidecarGroupName } from "./jobs.ts";
+import { findScheduleJob, jobsFromLandofile } from "./jobs.ts";
 
 const resolveScheduleJob = Effect.fn("Schedule.resolveJob")(function* (
   name: string,
@@ -68,7 +68,7 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
   const provider = yield* registry.select(planned);
   // The timer runs this job inside the sidecar for its user group, so run there
   // too: the sidecar already carries the job's user, home, cwd, and environment.
-  const sidecarName = ServiceName.make(scheduleSidecarGroupName(job.service, job.user));
+  const sidecarName = ServiceName.make(job.sidecar);
   const sidecar = planned.services[sidecarName];
   // A same-named authored service is not this job's timer: exec there would run
   // an unexpected image as the wrong user, so require the clone provenance.

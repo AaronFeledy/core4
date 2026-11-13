@@ -110,6 +110,7 @@ describe("schedule jobs", () => {
     expect(jobs[0]?.service).toBe("web");
     expect(jobs[0]?.timezone).toBe("Europe/Berlin");
     expect(jobs[1]?.user).toBe("www-data");
+    expect(jobs.map((entry) => entry.sidecar)).toEqual(["web-schedule", "web-schedule-www-data"]);
     expect(findScheduleJob(jobs, "tick").map((entry) => entry.name)).toEqual(["tick"]);
     expect(findScheduleJob(jobs, "missing")).toEqual([]);
   });

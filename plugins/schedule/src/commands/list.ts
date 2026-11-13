@@ -15,8 +15,8 @@ const render: NonNullable<ExecutableCommandSpec<ScheduleListResult>["render"]> =
     }
     const lines = result.jobs.map((job) => {
       const next = job.nextRun === undefined ? "unknown" : job.nextRun;
-      const user = job.user === undefined ? "" : ` user=${job.user}`;
-      return `${job.service}.${job.name}  ${job.every}  next=${next}  tz=${job.timezone}${user}`;
+      const user = job.user === undefined ? "" : `  user=${job.user}`;
+      return `${job.service}.${job.name}  ${job.every}  next=${next}  tz=${job.timezone}${user}  sidecar=${job.sidecar}`;
     });
     yield* renderer.output.stdout(`${lines.join("\n")}\n`);
   },
@@ -46,6 +46,7 @@ export const spec = {
           run: job.run,
           ...(job.user === undefined ? {} : { user: job.user }),
           timezone: job.timezone,
+          sidecar: job.sidecar,
           ...(nextRun === undefined ? {} : { nextRun }),
         };
       });

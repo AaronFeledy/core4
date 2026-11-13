@@ -8,6 +8,7 @@ export const ScheduleListedJob = Schema.Struct({
   run: CommandSpec,
   user: Schema.optionalKey(Schema.String),
   timezone: Schema.String,
+  sidecar: Schema.String,
   nextRun: Schema.optionalKey(Schema.String),
 });
 export type ScheduleListedJob = typeof ScheduleListedJob.Type;

@@ -12,6 +12,8 @@ export interface ResolvedScheduleJob {
   readonly run: CommandSpec;
   readonly user?: string;
   readonly timezone: string;
+  /** Service that runs the job: the name `lando logs --service` and `lando exec` take. */
+  readonly sidecar: string;
 }
 
 export interface ScheduleJobIdentity {
@@ -50,6 +52,7 @@ export const jobsFromLandofile = (landofile: LandofileShape): ReadonlyArray<Reso
         run: job.run,
         ...(job.user === undefined ? {} : { user: job.user }),
         timezone,
+        sidecar: scheduleSidecarGroupName(service, job.user),
       });
     }
   }
