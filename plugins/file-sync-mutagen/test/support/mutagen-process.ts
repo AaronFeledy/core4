@@ -66,6 +66,14 @@ export const fake = (
     failPauseOnce?: boolean;
     failTerminateOnce?: boolean;
     failTerminateAfterDeleteOnce?: boolean;
+    failListAfterCreate?: boolean;
+    createFailures?: ReadonlyArray<{
+      readonly exitCode: number;
+      readonly stdout?: string;
+      readonly stderr?: string;
+      readonly persistSession?: boolean;
+    }>;
+    onCreateAttempt?: (attempt: number) => Effect.Effect<void>;
     transientScanningLists?: number;
     flushGate?: {
       readonly identifier: string;
@@ -82,8 +90,37 @@ export const fake = (
   let failPauseOnce = options.failPauseOnce === true;
   let failTerminateOnce = options.failTerminateOnce === true;
   let failTerminateAfterDeleteOnce = options.failTerminateAfterDeleteOnce === true;
+  let failListAfterCreate = options.failListAfterCreate === true;
+  const remainingCreateFailures = [...(options.createFailures ?? [])];
+  let createAttempts = 0;
   let targetResolutions = 0;
   let scanningRemaining = 0;
+  const persistCreatedSession = (args: ReadonlyArray<string>) => {
+    const createdName = args[args.indexOf("--name") + 1] ?? name;
+    const createdId = createdName === name ? id : "sync_New456";
+    const beta = options.mismatch
+      ? { protocol: "docker", host: "other", path: "/lando-data", connected: true }
+      : {
+          protocol: "docker",
+          host: createdName.startsWith("cms-api") ? `${helper}-api` : helper,
+          path: "/lando-data",
+          environment: options.betaEnvironment ?? {
+            DOCKER_HOST: "npipe:////./pipe/podman-lando",
+            DOCKER_CONTEXT: "",
+          },
+          connected: true,
+        };
+    sessions = [
+      ...sessions,
+      session({
+        name: createdName,
+        identifier: createdId,
+        alpha: { protocol: "local", path: args[args.length - 2], connected: true },
+        beta,
+      }),
+    ];
+    return createdId;
+  };
   const stateStore =
     options.stateStore ??
     makePluginStateStore(
@@ -116,10 +153,18 @@ export const fake = (
             gate.entered();
             yield* Effect.promise(() => gate.release);
           }
+          if (args[1] === "create") {
+            createAttempts += 1;
+            if (options.onCreateAttempt !== undefined) yield* options.onCreateAttempt(createAttempts);
+          }
           return yield* Effect.sync(() => {
             calls.push({ args, env: env ?? {} });
             if (args[0] === "version") return { exitCode: 0, stdout: "Mutagen version 0.18.1", stderr: "" };
             if (args[1] === "list") {
+              if (failListAfterCreate && calls.some((call) => call.args[1] === "create")) {
+                failListAfterCreate = false;
+                return { exitCode: 1, stdout: "", stderr: "list inspect failed" };
+              }
               const listed =
                 scanningRemaining > 0
                   ? sessions.map((entry) => ({ ...entry, status: "scanning" }))
@@ -128,33 +173,20 @@ export const fake = (
               return { exitCode: 0, stdout: JSON.stringify(listed), stderr: "" };
             }
             if (args[1] === "create") {
+              const scripted = remainingCreateFailures.shift();
+              if (scripted !== undefined) {
+                if (scripted.persistSession === true) persistCreatedSession(args);
+                return {
+                  exitCode: scripted.exitCode,
+                  stdout: scripted.stdout ?? "",
+                  stderr: scripted.stderr ?? "",
+                };
+              }
               if (failCreateOnce) {
                 failCreateOnce = false;
                 return { exitCode: 1, stdout: "", stderr: "create failed before session creation" };
               }
-              const createdName = args[args.indexOf("--name") + 1] ?? name;
-              const createdId = createdName === name ? id : "sync_New456";
-              const beta = options.mismatch
-                ? { protocol: "docker", host: "other", path: "/lando-data", connected: true }
-                : {
-                    protocol: "docker",
-                    host: createdName.startsWith("cms-api") ? `${helper}-api` : helper,
-                    path: "/lando-data",
-                    environment: options.betaEnvironment ?? {
-                      DOCKER_HOST: "npipe:////./pipe/podman-lando",
-                      DOCKER_CONTEXT: "",
-                    },
-                    connected: true,
-                  };
-              sessions = [
-                ...sessions,
-                session({
-                  name: createdName,
-                  identifier: createdId,
-                  alpha: { protocol: "local", path: args[args.length - 2], connected: true },
-                  beta,
-                }),
-              ];
+              const createdId = persistCreatedSession(args);
               return {
                 exitCode: 0,
                 stdout: options.ambiguousId

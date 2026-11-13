@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { sameRealpath } from "@lando/paths";
-import { mapFailures } from "@lando/sdk/command-result";
+import { mapFailures, mergeFailure } from "@lando/sdk/command-result";
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
 import type { FileSyncDisposalPhase, FileSyncSessionSpec, FileSyncSessionStatus } from "@lando/sdk/schema";
 import type { ProcessResult, ProcessRunner, StateBucket } from "@lando/sdk/services";
-import { type Context, DateTime, Duration, Effect, Stream } from "effect";
+import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
 
 import type { MutagenClient, MutagenSessionRecord } from "./mutagen-client.ts";
 import { mutagenHostInstallPath, readInstalledMutagenStatus } from "./provision.ts";
@@ -31,6 +31,10 @@ const LIST_TEMPLATE = "{{ json . }}";
 const IDENTIFIER = /^sync_[A-Za-z0-9]+$/u;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const FLUSH_TIMEOUT_MS = 1_800_000;
+const COMMAND_OUTPUT_TAIL_LIMIT = 4_096;
+/** Mutagen 0.18.1 can fail `sync create` while the daemon prompter is racing (mutagen-io/mutagen#579). */
+const MUTAGEN_PROMPTER_RACE_SIGNATURE = "unable to message prompter: prompter not found";
+const MUTAGEN_PROMPTER_RACE_MESSAGE = "Mutagen create hit a daemon prompter race.";
 const REMEDIATION =
   "Stop the app and retry; if the session changed outside Lando, inspect Mutagen's isolated session data before removing it.";
 
@@ -153,13 +157,39 @@ export interface MutagenProcessClientOptions {
   readonly verifyInstalled?: () => Promise<boolean>;
 }
 
-const startError = (message: string, spec?: FileSyncSessionSpec): FileSyncStartError =>
+const startError = (message: string, spec?: FileSyncSessionSpec, cause?: unknown): FileSyncStartError =>
   new FileSyncStartError({
     engineId: ENGINE_ID,
     message,
     ...(spec === undefined ? {} : { sessionSpec: spec }),
     remediation: REMEDIATION,
+    ...(cause === undefined ? {} : { cause }),
   });
+
+const stripControls = (value: string): string =>
+  Array.from(value)
+    .filter((character) => {
+      const code = character.charCodeAt(0);
+      return code === 9 || code === 10 || code === 13 || (code >= 32 && code !== 127);
+    })
+    .join("");
+
+const commandOutputTail = (stdout: string, stderr: string): string =>
+  stripControls(`${stdout}${stdout.length > 0 && stderr.length > 0 ? "\n" : ""}${stderr}`).slice(
+    -COMMAND_OUTPUT_TAIL_LIMIT,
+  );
+
+const commandFailed = (args: ReadonlyArray<string>, result: ProcessResult): FileSyncStartError => {
+  const combined = `${result.stdout}\n${result.stderr}`;
+  const tail = commandOutputTail(result.stdout, result.stderr);
+  return startError(
+    combined.includes(MUTAGEN_PROMPTER_RACE_SIGNATURE)
+      ? MUTAGEN_PROMPTER_RACE_MESSAGE
+      : `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
+    undefined,
+    tail === "" ? undefined : tail,
+  );
+};
 
 const stopError = (message: string, name: string): FileSyncStopError =>
   new FileSyncStopError({ engineId: ENGINE_ID, sessionRef: name, message, remediation: REMEDIATION });
@@ -621,13 +651,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             : startError(`Mutagen command failed: ${args.slice(0, 2).join(" ")}.`),
         ),
         Effect.flatMap((result: ProcessResult) =>
-          result.exitCode === 0
-            ? Effect.succeed(result.stdout)
-            : Effect.fail(
-                startError(
-                  `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
-                ),
-              ),
+          result.exitCode === 0 ? Effect.succeed(result.stdout) : Effect.fail(commandFailed(args, result)),
         ),
       ),
   );
@@ -1383,7 +1407,39 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
               spec.source,
               `docker://${target.containerId}${target.path}`,
             ];
-            const output = yield* run(args, DEFAULT_TIMEOUT_MS);
+            const output = yield* run(args, DEFAULT_TIMEOUT_MS).pipe(
+              Effect.catchCause((cause) => {
+                const primary = Cause.findErrorOption(cause);
+                if (primary._tag !== "Some" || primary.value.message !== MUTAGEN_PROMPTER_RACE_MESSAGE) {
+                  return Effect.failCause(cause);
+                }
+                return inspectAll.pipe(
+                  Effect.matchCauseEffect({
+                    onFailure: (inspectCause) => Effect.failCause(mergeFailure(cause, inspectCause, "peer")),
+                    onSuccess: (listed) =>
+                      listed.some((session) => session.name === name)
+                        ? Effect.failCause(
+                            mergeFailure(
+                              cause,
+                              Cause.fail(
+                                startError(
+                                  `Mutagen session "${name}" already exists after a raced create.`,
+                                  spec,
+                                ),
+                              ),
+                              "peer",
+                            ),
+                          )
+                        : Effect.logDebug("Retrying Mutagen sync create after a daemon prompter race.").pipe(
+                            Effect.andThen(run(args, DEFAULT_TIMEOUT_MS)),
+                            Effect.catchCause((retryCause) =>
+                              Effect.failCause(mergeFailure(cause, retryCause, "peer")),
+                            ),
+                          ),
+                  }),
+                );
+              }),
+            );
             const identifiers = output.match(/sync_[A-Za-z0-9]+/gu) ?? [];
             const identifier = identifiers[0];
             if (identifiers.length !== 1 || identifier === undefined) {
