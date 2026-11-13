@@ -6,7 +6,6 @@ import {
 } from "@lando/sdk/schema";
 import type { PlannerIssue } from "./resolved-validation.ts";
 
-/** One DNS name a service claims, before per-network namespace validation. */
 export interface DnsNameClaim {
   readonly network: string;
   readonly name: string;

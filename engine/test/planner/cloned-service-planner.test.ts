@@ -186,7 +186,6 @@ const homeStore = (service: ServicePlan): string | undefined =>
 
 describe("cloned services in a planned app", () => {
   test("shares the parent's stores and gains no listeners, routes, aliases, or app build", async () => {
-    // Given an app whose web service carries every listener and store kind.
     const app = await Effect.runPromise(
       planWithClone({ name: "clones", services: { web } }, cloneFeature(cloneRequest)),
     );
@@ -195,18 +194,15 @@ describe("cloned services in a planned app", () => {
     if (parent === undefined || clone === undefined) throw new Error("expected both services");
     const stores = volumeStores(parent);
 
-    // Then the clone mounts exactly the parent's volume stores.
     expect(stores.length).toBeGreaterThan(0);
     expect(volumeStores(clone)).toEqual(stores);
     expect(stores.some((store) => store.includes("--web--shadow--"))).toBe(true);
     expect(stores.some((store) => store.includes("--web--storage--"))).toBe(true);
     expect(homeStore(clone)).toBe(homeStore(parent));
 
-    // And the parent's app build stays with the parent.
     expect(buildSteps(parent).map((step) => step.phase)).toEqual(["build", "app"]);
     expect(buildSteps(clone).map((step) => step.phase)).toEqual(["build"]);
 
-    // And neither the host publication nor the authored route is claimed twice.
     expect(parent.endpoints).toContainEqual(
       expect.objectContaining({ _tag: "published", publication: { hostPort: 8099 } }),
     );
@@ -215,14 +211,12 @@ describe("cloned services in a planned app", () => {
     expect(app.routes.map((route) => String(route.service))).toEqual(["web"]);
     expect(app.routes.some((route) => route.hostname === "app.lndo.site")).toBe(true);
 
-    // And the clone answers to no DNS name but its own.
     expect(app.networking?.perAppBridge?.aliases?.[ServiceName.make("web")]).toEqual(["db-alias"]);
     expect(app.networking?.perAppBridge?.aliases?.[ServiceName.make("web-schedule")]).toBeUndefined();
     expect(app.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web-schedule")]).toEqual([
       "web-schedule.clones.internal",
     ]);
 
-    // And it carries no probe or certificate of its own.
     expect(clone.healthcheck).toEqual({
       kind: "none",
       intervalSeconds: 10,
@@ -234,7 +228,6 @@ describe("cloned services in a planned app", () => {
   });
 
   test("runs exactly the requested command, ignoring the parent entrypoint", async () => {
-    // Given a parent service whose own process is an authored entrypoint.
     const withEntrypoint = { ...web, entrypoint: ["node", "server.js"] };
     const argvPlan = await Effect.runPromise(
       planWithClone({ name: "clones", services: { web: withEntrypoint } }, cloneFeature(cloneRequest)),
@@ -243,12 +236,10 @@ describe("cloned services in a planned app", () => {
     const argvClone = argvPlan.services[ServiceName.make("web-schedule")];
     if (argvParent === undefined || argvClone === undefined) throw new Error("expected both services");
 
-    // Then the clone's process is exactly the requested argv, with no command.
     expect(argvParent.entrypoint).toEqual(["node", "server.js"]);
     expect(argvClone.entrypoint).toEqual(cloneRequest.command);
     expect(argvClone).not.toHaveProperty("command");
 
-    // And a string command form becomes the shell argv with no command either.
     const stringPlan = await Effect.runPromise(
       planWithClone(
         { name: "clones", services: { web: withEntrypoint } },
@@ -280,7 +271,6 @@ describe("cloned services in a planned app", () => {
   });
 
   test("a user override keeps the parent image steps and drops home persistence", async () => {
-    // Given a prepared-home parent and two clones, one inheriting and one overriding its user.
     const preparedWeb = { type: "cloned-home:3.22", build: { artifact: ["echo artifact"] } };
     const inherit = { ...cloneRequest, name: "web-inherit" };
     const extraStep: ServiceBuildStepIntent = {
@@ -311,13 +301,11 @@ describe("cloned services in a planned app", () => {
     if (parent === undefined || shared === undefined || own === undefined)
       throw new Error("expected all three services");
 
-    // Then the no-override clone keeps the parent's leading prepared-home step and home store.
     expect(buildSteps(parent)[0]?.id).toBe(DATA_TREE_OWNERSHIP_STEP_ID);
     expect(buildSteps(shared)[0]).toEqual(buildSteps(parent)[0]);
     expect(buildSteps(shared)).toEqual(buildSteps(parent));
     expect(homeStore(shared)).toBe(homeStore(parent));
 
-    // And the override clone keeps only the parent's image steps plus its own extra step.
     const parentImageSteps = buildSteps(parent).filter(
       (step) => step.id !== DATA_TREE_OWNERSHIP_STEP_ID && step.phase !== "app",
     );
@@ -341,7 +329,6 @@ describe("cloned services in a planned app", () => {
   });
 
   test("a clone never re-claims a Compose host publication", async () => {
-    // Given a parent that publishes a fixed host port through Compose ports.
     const app = await Effect.runPromise(
       planWithClone(
         { name: "clones", services: { web: { type: "cloned:3.22", ports: ["8099:80"] } } },
@@ -352,7 +339,6 @@ describe("cloned services in a planned app", () => {
     const clone = app.services[ServiceName.make("web-schedule")];
     if (parent === undefined || clone === undefined) throw new Error("expected both services");
 
-    // Then only the parent owns the publication.
     expect(parent.endpoints).toContainEqual(
       expect.objectContaining({ _tag: "published", publication: { hostPort: 8099 } }),
     );
@@ -363,7 +349,6 @@ describe("cloned services in a planned app", () => {
     ["hostname", { hostnames: ["taken"] }],
     ["network alias", { networks: { default: { aliases: ["taken"] } } }],
   ] as const)("rejects a clone name that collides with an authored %s", async (_label, api) => {
-    // Given another service that already answers to the clone name.
     const result = await Effect.runPromiseExit(
       planWithClone(
         { name: "clones", services: { web, api: { type: "cloned:3.22", ...api } } },
@@ -371,7 +356,6 @@ describe("cloned services in a planned app", () => {
       ),
     );
 
-    // Then planning fails at the clone with the colliding name in the remediation.
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") return;
     const failure = Cause.findErrorOption(result.cause);
@@ -382,12 +366,13 @@ describe("cloned services in a planned app", () => {
     expect(failure.value.cause).toBeInstanceOf(AppFeatureCloneError);
     if (!(failure.value.cause instanceof AppFeatureCloneError)) return;
     expect(failure.value.cause.reason).toBe("name-collision");
+    expect(failure.value.cause.service).toBe("Taken");
+    expect(failure.value.cause.from).toBe("web");
     expect(failure.value.message).toContain("taken");
     expect(failure.value.remediation).toContain("taken");
   });
 
   test("clones carry no log sources and keep their own extra build steps last", async () => {
-    // Given a parent whose type declares a redirect log source.
     const extraStep: ServiceBuildStepIntent = {
       id: "clone.extra",
       phase: "build",
@@ -407,11 +392,9 @@ describe("cloned services in a planned app", () => {
     const clone = app.services[ServiceName.make("web-schedule")];
     if (parent === undefined || clone === undefined) throw new Error("expected both services");
 
-    // Then the parent owns the redirect source and its reification steps.
     expect(parent.logSources?.map((source) => String(source.id))).toEqual(["access"]);
     expect(buildSteps(parent).some((step) => (step.id ?? "").startsWith("lando-log-redirect"))).toBe(true);
 
-    // And the clone advertises no source, no log extension, and no redirect step.
     expect(clone.logSources).toBeUndefined();
     expect(clone.extensions).not.toHaveProperty(LOG_SOURCES_EXTENSION_KEY);
     const inheritedIds = buildSteps(parent)
@@ -424,7 +407,6 @@ describe("cloned services in a planned app", () => {
   });
 
   test("rejects a clone whose derived internal name is already claimed", async () => {
-    // Given an authored hostname equal to the clone's derived internal name.
     const derived = "web-schedule.clones.internal";
     const result = await Effect.runPromiseExit(
       planWithClone(
@@ -439,7 +421,6 @@ describe("cloned services in a planned app", () => {
       ),
     );
 
-    // Then planning fails at the clone and names the derived colliding name.
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") return;
     const failure = Cause.findErrorOption(result.cause);
@@ -450,6 +431,8 @@ describe("cloned services in a planned app", () => {
     expect(failure.value.cause).toBeInstanceOf(AppFeatureCloneError);
     if (!(failure.value.cause instanceof AppFeatureCloneError)) return;
     expect(failure.value.cause.reason).toBe("name-collision");
+    expect(failure.value.cause.service).toBe("web-schedule");
+    expect(failure.value.cause.from).toBe("web");
     expect(failure.value.cause.message).toContain(derived);
     expect(failure.value.cause.remediation).toContain(derived);
   });

@@ -269,37 +269,33 @@ describe("cloned services", () => {
   });
 
   test.each([
-    ["hostname", ["services", "api", "hostnames", 0], "hostname"],
-    ["network alias", ["services", "api", "networks", "default", "aliases", 1], "network alias"],
-    ["service name", ["services", "Taken"], "service name"],
-    ["service named hostnames", ["services", "hostnames"], "service name"],
-    ["service named networks", ["services", "networks"], "service name"],
-  ] as const)(
-    "rejects a clone name that collides case-insensitively with an existing %s",
-    (_label, path, kind) => {
-      const reservedDnsNames = [
-        {
-          network: "default",
-          name: "taken",
-          service: "taken",
-          path: [...path],
-          concrete: true,
-          authored: true,
-        },
-      ];
-      try {
-        clone({ request: request({ name: "TAKEN" }), reservedDnsNames });
-        throw new Error("expected a clone-name collision");
-      } catch (error) {
-        expect(error).toBeInstanceOf(AppFeatureCloneError);
-        if (!(error instanceof AppFeatureCloneError)) return;
-        expect(error.reason).toBe("name-collision");
-        expect(error.message).toContain("taken");
-        expect(error.message).toContain(kind);
-        expect(error.remediation).toContain("taken");
-      }
-    },
-  );
+    ["hostname", ["services", "api", "hostnames", 0]],
+    ["network alias", ["services", "api", "networks", "default", "aliases", 1]],
+    ["service name", ["services", "Taken"]],
+    ["service named hostnames", ["services", "hostnames"]],
+    ["service named networks", ["services", "networks"]],
+  ] as const)("rejects a clone name that collides case-insensitively with an existing %s", (_label, path) => {
+    const reservedDnsNames = [
+      {
+        network: "default",
+        name: "taken",
+        service: "taken",
+        path: [...path],
+        concrete: true,
+        authored: true,
+      },
+    ];
+    expect(() => clone({ request: request({ name: "TAKEN" }), reservedDnsNames })).toThrow(
+      expect.objectContaining({
+        _tag: "CloneError",
+        reason: "name-collision",
+        service: "TAKEN",
+        from: "web",
+        message: expect.stringContaining("taken"),
+        remediation: expect.stringContaining("taken"),
+      }),
+    );
+  });
 
   test.each([
     ["scratch", "scratch"],
@@ -307,7 +303,7 @@ describe("cloned services", () => {
     ["distroless", "gcr.io/distroless/static"],
     ["distroless tag", "gcr.io/distroless/base-debian12:nonroot"],
   ])("fails when extra build steps target a %s parent image", (_label, image) => {
-    try {
+    expect(() =>
       materializeClonedServices({
         plannedServiceDrafts: [
           parentDraft({
@@ -317,14 +313,8 @@ describe("cloned services", () => {
         ],
         clones: [request()],
         parentNetworksByName: new Map(),
-      });
-      throw new Error("expected an unsupported-image failure");
-    } catch (error) {
-      expect(error).toBeInstanceOf(AppFeatureCloneError);
-      if (!(error instanceof AppFeatureCloneError)) return;
-      expect(error.reason).toBe("unsupported-image");
-      expect(error.image).toBe(image);
-    }
+      }),
+    ).toThrow(expect.objectContaining({ _tag: "CloneError", reason: "unsupported-image", image }));
   });
 
   test.each([
@@ -347,7 +337,6 @@ describe("cloned services", () => {
   });
 
   test("judges the effective artifact reference before the normalized image", () => {
-    // Given a feature replaced the authored scratch image with a real artifact.
     const replaced = parentDraft({
       normalizedConfig: { image: "scratch" },
       artifact: { kind: "ref", ref: "alpine:3.22" },
@@ -360,7 +349,6 @@ describe("cloned services", () => {
       }),
     ).not.toThrow();
 
-    // And given the artifact itself is scratch even though the config names alpine.
     const builtFromScratch = parentDraft({
       normalizedConfig: { image: "alpine:3.22" },
       artifact: { kind: "ref", ref: "scratch" },
@@ -375,24 +363,18 @@ describe("cloned services", () => {
   });
 
   test("rejects two clones whose names differ only by case", () => {
-    try {
+    expect(() =>
       materializeClonedServices({
         plannedServiceDrafts: [parentDraft()],
         clones: [request({ name: "Timer" }), request({ name: "timer" })],
         parentNetworksByName: new Map(),
-      });
-      throw new Error("expected a duplicate clone");
-    } catch (error) {
-      expect(error).toBeInstanceOf(AppFeatureCloneError);
-      if (!(error instanceof AppFeatureCloneError)) return;
-      expect(error.reason).toBe("duplicate-clone");
-      expect(error.service).toBe("timer");
-    }
+      }),
+    ).toThrow(expect.objectContaining({ _tag: "CloneError", reason: "duplicate-clone", service: "timer" }));
   });
 
   test("rejects a clone whose derived internal name is already claimed", () => {
     const derived = "web-schedule.clones.internal";
-    try {
+    expect(() =>
       materializeClonedServices({
         plannedServiceDrafts: [parentDraft()],
         clones: [request()],
@@ -408,15 +390,17 @@ describe("cloned services", () => {
             authored: true,
           },
         ],
-      });
-      throw new Error("expected a derived-name collision");
-    } catch (error) {
-      expect(error).toBeInstanceOf(AppFeatureCloneError);
-      if (!(error instanceof AppFeatureCloneError)) return;
-      expect(error.reason).toBe("name-collision");
-      expect(error.message).toContain(derived);
-      expect(error.remediation).toContain(derived);
-    }
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        _tag: "CloneError",
+        reason: "name-collision",
+        service: "web-schedule",
+        from: "web",
+        message: expect.stringContaining(derived),
+        remediation: expect.stringContaining(derived),
+      }),
+    );
   });
 
   test("fails when the clone name already exists", () => {

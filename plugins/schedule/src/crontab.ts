@@ -29,14 +29,12 @@ export const everyToSupercronicSchedule = (every: string): string | undefined =>
   return hours === 1 ? "0 * * * *" : `0 */${hours} * * *`;
 };
 
-/** One scheduled job as the sidecar image receives it. */
 export interface CrontabJob {
   readonly name: string;
   readonly every: string;
   readonly run: CommandSpec;
 }
 
-/** Image paths the crontab step writes; production passes the pinned constants. */
 export interface CrontabPaths {
   readonly crontab: string;
   readonly jobsDirectory: string;
@@ -113,7 +111,6 @@ export interface CrontabTimezone {
   readonly zone: string;
 }
 
-/** A zone name the scheduler can resolve from the image's zone database. */
 const ZONE_NAME = /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)*$/u;
 
 /**

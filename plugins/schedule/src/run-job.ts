@@ -1,21 +1,10 @@
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
-import { type CommandSpec as SchemaCommandSpec, ServiceName, clonedServiceParent } from "@lando/sdk/schema";
+import { ServiceName, clonedServiceParent } from "@lando/sdk/schema";
 import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "./errors.ts";
-import {
-  type ResolvedScheduleJob,
-  findScheduleJob,
-  jobsFromLandofile,
-  scheduleSidecarGroups,
-} from "./jobs.ts";
-
-const jobLabels = (jobs: ReadonlyArray<ResolvedScheduleJob>): ReadonlyArray<string> =>
-  jobs.map((job) => `${job.service}.${job.name}`);
-
-const argvFor = (run: SchemaCommandSpec): ReadonlyArray<string> =>
-  typeof run === "string" ? ["sh", "-c", run] : run;
+import { findScheduleJob, jobsFromLandofile, scheduleSidecarGroupName } from "./jobs.ts";
 
 const resolveScheduleJob = Effect.fn("Schedule.resolveJob")(function* (
   name: string,
@@ -27,6 +16,7 @@ const resolveScheduleJob = Effect.fn("Schedule.resolveJob")(function* (
   const matches = findScheduleJob(jobs, name, service);
   const job = matches[0];
   if (job === undefined) {
+    const available = jobs.map((entry) => `${entry.service}.${entry.name}`);
     return yield* Effect.fail(
       new ScheduleJobNotFoundError({
         message:
@@ -35,32 +25,33 @@ const resolveScheduleJob = Effect.fn("Schedule.resolveJob")(function* (
             : `No scheduled job named ${name} on service ${service}.`,
         name,
         ...(service === undefined ? {} : { service }),
-        available: jobLabels(jobs),
+        available,
         remediation:
           jobs.length === 0
             ? "Add a schedule: list on a service in the Landofile."
-            : `Choose one of: ${jobLabels(jobs).join(", ")}.`,
+            : `Choose one of: ${available.join(", ")}.`,
       }),
     );
   }
   if (matches.length > 1) {
+    const services = matches.map((entry) => entry.service);
     return yield* Effect.fail(
       new ScheduleJobAmbiguousError({
         message: `Job name ${name} is used on more than one service.`,
         name,
-        services: matches.map((entry) => entry.service),
-        remediation: `Pass --service with one of: ${matches.map((entry) => entry.service).join(", ")}.`,
+        services,
+        remediation: `Pass --service with one of: ${services.join(", ")}.`,
       }),
     );
   }
-  return { document: landofile.document, appRoot: landofile.context.appRoot, job, jobs };
+  return { document: landofile.document, appRoot: landofile.context.appRoot, job };
 });
 
 export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
   readonly name: string;
   readonly service?: string;
 }) {
-  const { document, appRoot, job, jobs } = yield* resolveScheduleJob(input.name, input.service);
+  const { document, appRoot, job } = yield* resolveScheduleJob(input.name, input.service);
   const registry = yield* RuntimeProviderRegistry;
   const planned = yield* registry.resolveAppliedPlan(appRoot);
   if (planned === undefined) {
@@ -77,20 +68,8 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
   const provider = yield* registry.select(planned);
   // The timer runs this job inside the sidecar for its user group, so run there
   // too: the sidecar already carries the job's user, home, cwd, and environment.
-  const serviceJobs = jobs.filter((entry) => entry.service === job.service);
-  const group = scheduleSidecarGroups(job.service, serviceJobs).find((entry) => entry.jobs.includes(job));
-  if (group === undefined) {
-    return yield* Effect.fail(
-      new PlanReplanRequiredError({
-        app: document.name ?? appRoot,
-        providerId: planned.provider,
-        operation: "schedule run",
-        message: `Scheduled job ${job.service}.${job.name} has no sidecar group.`,
-        remediation: "Run `lando restart` to apply the schedule, then retry.",
-      }),
-    );
-  }
-  const sidecar = planned.services[ServiceName.make(group.name)];
+  const sidecarName = ServiceName.make(scheduleSidecarGroupName(job.service, job.user));
+  const sidecar = planned.services[sidecarName];
   // A same-named authored service is not this job's timer: exec there would run
   // an unexpected image as the wrong user, so require the clone provenance.
   if (sidecar === undefined || clonedServiceParent(sidecar) !== job.service) {
@@ -99,14 +78,14 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
         app: document.name ?? appRoot,
         providerId: planned.provider,
         operation: "schedule run",
-        message: `Scheduled job ${job.service}.${job.name} runs in ${group.name}, but the applied plan has no such service cloned from ${job.service}.`,
+        message: `Scheduled job ${job.service}.${job.name} runs in ${sidecarName}, but the applied plan has no such service cloned from ${job.service}.`,
         remediation: "Run `lando restart` to apply the schedule, then retry.",
       }),
     );
   }
   const result = yield* provider.exec(
-    { app: planned.id, service: ServiceName.make(group.name), plan: planned },
-    { command: argvFor(job.run) },
+    { app: planned.id, service: sidecarName, plan: planned },
+    { command: typeof job.run === "string" ? ["sh", "-c", job.run] : job.run },
   );
   return {
     service: job.service,

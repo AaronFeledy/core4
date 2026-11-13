@@ -50,7 +50,6 @@ export interface AppFeatureRequires {
   readonly providerCapabilities: readonly (keyof ProviderCapabilities)[];
   readonly globalServices: readonly string[];
 }
-/** A clone request recorded with the feature that queued it. */
 export type RecordedClonedService = ClonedServiceRequest & { readonly feature: string };
 
 export interface ComposeAppFeaturesResult {

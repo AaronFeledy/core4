@@ -59,13 +59,12 @@ const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined =>
   return undefined;
 };
 
-/** Remove the engine-owned clone keys plus the feature's own config keys. */
 const cloneConfig = (
   config: ServiceConfig,
   requestKeys: ReadonlyArray<string> | undefined,
 ): ServiceConfig => {
   const omit = new Set<string>([...CLONE_OMITTED_CONFIG_KEYS, ...(requestKeys ?? [])]);
-  return Object.fromEntries(Object.entries(config).filter(([key]) => !omit.has(key))) as ServiceConfig;
+  return Object.fromEntries(Object.entries(config).filter(([key]) => !omit.has(key)));
 };
 
 const stripComposePublish = (extensions: ServicePlan["extensions"]): ServicePlan["extensions"] => {
@@ -76,15 +75,6 @@ const stripComposePublish = (extensions: ServicePlan["extensions"]): ServicePlan
   return { ...extensions, compose };
 };
 
-/**
- * The clone's container process is exactly its requested command. An entrypoint
- * with no command replaces the image ENTRYPOINT and suppresses its CMD; as a
- * command it would instead be appended to the parent's entrypoint.
- */
-const cloneEntrypoint = (command: RecordedClonedService["command"]): ReadonlyArray<string> =>
-  typeof command === "string" ? ["sh", "-c", command] : [...command];
-
-/** Inherited build steps, minus the parent's app phase, pinned when the clone runs as another user. */
 const inheritedBuildSteps = (
   parentDraft: PlannedServiceDraft["draft"],
   request: RecordedClonedService,
@@ -151,7 +141,9 @@ const clonePlannedDraft = (
       name,
       serviceName: request.name,
       primary: false,
-      entrypoint: cloneEntrypoint(request.command),
+      // An entrypoint without a command replaces the image ENTRYPOINT and
+      // suppresses its CMD instead of appending to the parent's entrypoint.
+      entrypoint: typeof request.command === "string" ? ["sh", "-c", request.command] : [...request.command],
       // A clone may inherit an image HEALTHCHECK aimed at the parent's server,
       // so disable it explicitly instead of leaving it absent.
       healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 },
@@ -182,18 +174,17 @@ const clonePlannedDraft = (
   };
 };
 
-/** Drop the parent's authored aliases while keeping its network membership. */
 const networksWithoutAliases = (
   networks: ServiceConfig["networks"] | undefined,
 ): ServiceConfig["networks"] | undefined =>
   networks === undefined
     ? undefined
-    : (Object.fromEntries(
+    : Object.fromEntries(
         Object.entries(networks).map(([key, attachment]) => {
           const { aliases: _aliases, ...membership } = attachment;
           return [key, membership];
         }),
-      ) as ServiceConfig["networks"]);
+      );
 
 const claimKind = (claim: DnsNameClaim): string => {
   // The claim kind is the service field that holds the name, never a segment

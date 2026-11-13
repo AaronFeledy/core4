@@ -118,11 +118,6 @@ export class MailpitMsmtpBaseFamilyError extends Schema.TaggedError<MailpitMsmtp
   },
 ) {}
 
-/**
- * An app-feature could not clone a resolved service draft: the parent is
- * missing, the clone name collides, the clone was requested twice, or the
- * parent image cannot run extra build steps (no shell).
- */
 export class AppFeatureCloneError extends Schema.TaggedError<AppFeatureCloneError>()("CloneError", {
   message: Schema.String,
   feature: Schema.String,

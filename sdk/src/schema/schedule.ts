@@ -20,7 +20,17 @@ const CRON_MACROS = {
   "@hourly": "0 * * * *",
 } as const;
 
-const GO_DURATION_PIECE = /^(?:(?:0|[1-9]\d*)(?:ns|us|µs|μs|ms|s|m|h))+$/u;
+const GO_DURATION_UNIT = "ns|us|µs|μs|ms|s|m|h";
+const GO_DURATION_PIECE = new RegExp(`^(?:(?:0|[1-9]\\d*)(?:${GO_DURATION_UNIT}))+$`, "u");
+const DURATION_NS_FACTORS = new Map<string, bigint>([
+  ["h", 3_600_000_000_000n],
+  ["m", 60_000_000_000n],
+  ["s", 1_000_000_000n],
+  ["ms", 1_000_000n],
+  ["us", 1_000n],
+  ["µs", 1_000n],
+  ["μs", 1_000n],
+]);
 const EVERY_PREFIX = /^@every\s+/u;
 const CRON_FIELD_COUNT = 5;
 
@@ -40,7 +50,7 @@ const everyStepMessage =
 export const parseEveryDurationMs = (value: string): number | undefined => {
   const body = value.trim().replace(EVERY_PREFIX, "");
   if (body.length === 0 || !GO_DURATION_PIECE.test(body)) return undefined;
-  const piece = /(\d+)(ns|us|µs|μs|ms|s|m|h)/gu;
+  const piece = new RegExp(`(\\d+)(${GO_DURATION_UNIT})`, "gu");
   let totalNs = 0n;
   let consumed = 0;
   for (const match of body.matchAll(piece)) {
@@ -48,18 +58,7 @@ export const parseEveryDurationMs = (value: string): number | undefined => {
     consumed += match[0].length;
     const amount = BigInt(match[1] ?? "0");
     const unit = match[2];
-    const factor =
-      unit === "h"
-        ? 3_600_000_000_000n
-        : unit === "m"
-          ? 60_000_000_000n
-          : unit === "s"
-            ? 1_000_000_000n
-            : unit === "ms"
-              ? 1_000_000n
-              : unit === "us" || unit === "µs" || unit === "μs"
-                ? 1_000n
-                : 1n;
+    const factor = DURATION_NS_FACTORS.get(unit ?? "ns") ?? 1n;
     totalNs += amount * factor;
   }
   if (consumed !== body.length || totalNs <= 0n || totalNs % 1_000_000n !== 0n) return undefined;
