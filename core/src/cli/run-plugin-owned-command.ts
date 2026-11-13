@@ -32,7 +32,11 @@ import {
 import { validateEventCommandInput } from "./event-command-input";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { tryPluginCommandHelp } from "./plugin-command-help";
-import { pluginOwnedCliFlagError, pluginOwnedCommandInputFromArgv } from "./plugin-owned-command-input";
+import {
+  pluginHelpRequested,
+  pluginOwnedCliFlagError,
+  pluginOwnedCommandInputFromArgv,
+} from "./plugin-owned-command-input";
 
 export { pluginFlagDefinitions } from "./plugin-flag-definitions";
 export {
@@ -290,7 +294,7 @@ const dispatchPluginOwnedCommand = async (
   resetActiveCommandInvocation(spec.id, argv, {
     ...(catalog.context === undefined ? {} : { context: catalog.context }),
   });
-  if (argv.includes("--help") || argv.includes("-h")) {
+  if (pluginHelpRequested(spec, argv)) {
     await tryPluginCommandHelp(commandId, catalog);
     return "dispatched";
   }

@@ -990,7 +990,7 @@ export const ToolingTaskShape = Schema.Struct({
   ...ToolingAuthoredInputFields,
   wrapper: Schema.optionalKey(Schema.Boolean).annotate({
     description:
-      "Mark this task as a thin wrapper around one CLI tool. -h, --help, and --version go to that tool instead of Lando. Requires one command and no declared flags or args.",
+      "Mark this task as a thin wrapper around one CLI tool. Every argument and flag after the task name goes to that tool, including --help, --version, and flags Lando also has; Lando's own flags go before the task name. Requires one command and no declared flags or args.",
   }),
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",

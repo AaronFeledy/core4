@@ -348,6 +348,39 @@ flags and positional arguments the module declares. JSON help puts them under
 `result.target.input`, with each input's type, description, choices, and whether
 it's required.
 
+### Hand the rest of the line to another program
+
+A command that runs another program, the way `lando exec` does, can take
+everything after its own flags as that program's command line. Set
+`strict: false` and declare a `command` argument:
+
+```ts
+strict: false,
+flags: {
+  target: { type: "string", description: "Where to run the command." },
+},
+args: {
+  command: { type: "string", multiple: true, description: "Command and its arguments." },
+},
+```
+
+The tail starts at the first word that isn't one of your flags, or right after
+`--`. Every token from there on arrives in `input.args.command` unchanged,
+including `--help`, `--format`, and a repeat of one of your own flags. With the
+spec above in a command named `fixture:run`:
+
+| Someone runs | `input.flags.target` | `input.args.command` |
+| --- | --- | --- |
+| `lando fixture:run --target=web ls --format=json --help` | `web` | `ls`, `--format=json`, `--help` |
+| `lando fixture:run --target web -- --help` | `web` | `--help` |
+
+`lando fixture:run --help` shows your command's help because nothing comes
+before it. An unknown flag in front of the tail, such as
+`lando fixture:run --bogus ls`, fails with `UnknownCliFlagError` before your
+code runs. Lando's own flags, such as `--format` and `--verbose`, go before the
+command name: `lando --format=json fixture:run ls --help` returns the result
+envelope and still hands `ls --help` to your command.
+
 ### Accept `-` for stdin or stdout
 
 A command that moves a data payload, like a dump, can let users pass `-` to use

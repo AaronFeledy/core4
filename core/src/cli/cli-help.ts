@@ -5,6 +5,7 @@ import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
 import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
+import { landoFlagForSpelling } from "./invocation";
 import { resolveTopLevelAliases } from "./spec/command-base";
 import { toolingRunHelp } from "./tooling-run-help";
 
@@ -92,6 +93,24 @@ const typeableFor = (
     implicitNamespaceStrip,
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
   });
+
+/**
+ * One line for a task or script that declares a flag Lando also has: after the
+ * name the spelling is the command's, so Lando's own goes before it.
+ */
+const sharedFlagHint = (input: ToolingInputDeclaration | undefined, name: string): string | undefined => {
+  const shared = (input?.flags ?? [])
+    .flatMap((flag) => [`--${flag.name}`, ...(flag.alias === undefined ? [] : [`-${flag.alias}`])])
+    .filter((spelling) => landoFlagForSpelling(spelling) !== undefined);
+  const first = shared[0];
+  if (first === undefined) return undefined;
+  const example = landoFlagForSpelling(first)?.takesValue ? `${first}=<value>` : first;
+  const subject =
+    shared.length === 1
+      ? `\`${first}\` after \`${name}\` is this command's flag`
+      : `${shared.map((spelling) => `\`${spelling}\``).join(", ")} after \`${name}\` are this command's flags`;
+  return `${subject}. Put Lando's own before the name, as in \`lando ${example} ${name}\`.`;
+};
 
 export const helpFlagToken = (name: string, definition: OclifFlagDefinition): string => {
   const short = definition.char === undefined ? "" : `, -${definition.char}`;
@@ -250,11 +269,13 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
     ...helpSection("ARGUMENTS", argRows, style),
   ];
   if (entry.runs !== undefined) lines.push("", toolingRunHelp(entry.runs));
+  const sharedFlags = sharedFlagHint(input, names.primary);
+  if (sharedFlags !== undefined) lines.push("", sharedFlags);
   if (input === undefined || (input.acceptsArguments && input.flags.length + input.args.length === 0))
     lines.push(
       "",
       entry.wrapper
-        ? `-h, --help, and --version go to the command. Run \`lando help ${names.primary}\` to see this page.`
+        ? `Arguments and flags after \`${names.primary}\` go to the command. Put Lando's own flags before it, as in \`lando --verbose ${names.primary}\`. Run \`lando help ${names.primary}\` to see this page.`
         : entry.source === "bun-script"
           ? `Run \`lando ${names.primary} -- --help\` to pass --help to the script.`
           : `Run \`lando ${names.primary} -- --help\` to pass --help to the command, or set wrapper: true if the task wraps a CLI tool.`,

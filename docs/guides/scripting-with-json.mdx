@@ -23,6 +23,15 @@ in one result frame carrying that envelope (see below). `--format=json` is equiv
 shorthand for that full envelope. Bare `--json` lists keys. `--json=key`
 projects that key inside `result`. `--jq` prints a raw jq selection.
 
+These flags, like Lando's other own flags (`--renderer`, `--verbose`, `--debug`,
+`--log-level`, `--trace`), always work before the command name, as in
+`lando --format=json version`. After the name they work too, unless the command
+owns the words after its name: a `wrapper: true` task, a task or script that
+declares a flag with the same name, `lando bun` and `lando x`, and the command
+line you hand to `lando exec` or `lando ssh`. In a script that calls commands
+you didn't write, put the flag first. See
+[Use a flag name Lando also has](./tooling/flags-and-args.mdx#use-a-flag-name-lando-also-has).
+
 On success the envelope wraps the command's typed result under `result` with
 `ok: true`. On failure it carries the tagged error JSON under `error` with
 `ok: false`. A process that finishes unsuccessfully also retains its typed
@@ -72,6 +81,10 @@ After adding the `stamp.bun.sh` example from that guide to your app, run this fr
 ```sh
 lando stamp abc1234 --format=json
 ```
+
+`stamp` declares no flags, so Lando reads `--format` after its name. For a
+script that declares its own `format` flag, or for a `wrapper: true` task such
+as `lando composer`, write `lando --format=json <name>` instead.
 
 ## Capture Bun-backed commands
 

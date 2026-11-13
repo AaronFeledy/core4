@@ -127,7 +127,7 @@ describe("CLI flag-value validation", () => {
         argv: ["appserver", "sh", "-c", "echo hi"],
         definitions: flags,
         allowUnknownFlags: true,
-        commandTail: true,
+        tailPolicy: { kind: "command", flags },
       }),
     ).toBeUndefined();
   });
@@ -141,7 +141,7 @@ describe("CLI flag-value validation", () => {
       argv,
       definitions: flags,
       allowUnknownFlags: true,
-      commandTail: true,
+      tailPolicy: { kind: "command", flags },
     });
     expect(error).toMatchObject({ _tag: "UnknownCliFlagError", flag });
     expect(JSON.stringify(error)).not.toContain("private");
@@ -159,7 +159,7 @@ describe("CLI flag-value validation", () => {
         argv,
         definitions: flags,
         allowUnknownFlags: true,
-        commandTail: true,
+        tailPolicy: { kind: "command", flags },
       }),
     ).toBeUndefined();
   });

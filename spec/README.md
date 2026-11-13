@@ -150,7 +150,7 @@ If you are looking for a public surface or policy:
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
-| `strict: false` command tails and unknown-flag rejection for exec/ssh/run | 08 | §8.3 |
+| Token ownership between the dispatcher and a command: command tails for exec/ssh/run, plugin commands, wrappers, and `bun`/`x`; declared tooling flags; unknown-flag rejection | 08 | §8.3, §8.5 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |

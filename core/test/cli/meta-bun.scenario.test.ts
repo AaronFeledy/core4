@@ -8,6 +8,7 @@ import { metaBunSpec } from "../../src/cli/command-specs/meta/bun.ts";
 import { metaXSpec } from "../../src/cli/command-specs/meta/x.ts";
 import { metaBun, metaX } from "../../src/cli/commands/bun.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 import { processRunnerFor } from "../_support/process-runner.ts";
 
@@ -223,4 +224,70 @@ describe("meta proxy completion", () => {
       expect(process.exitCode).toBe(0);
     },
   );
+});
+
+const runProxy = async (argv: ReadonlyArray<string>) => {
+  const child = Bun.spawn([process.execPath, cliEntry, ...argv], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { code, stdout, stderr };
+};
+
+test.each([
+  { name: "without leading --verbose", prefix: ["--renderer=plain"] },
+  { name: "with leading --verbose", prefix: ["--renderer=plain", "--verbose"] },
+])(
+  "bun receives every token after its name unchanged $name",
+  async ({ prefix }) => {
+    const result = await runProxy([
+      ...prefix,
+      "bun",
+      "-e",
+      "console.log(JSON.stringify(process.argv.slice(1)));",
+      "x",
+      "--format=csv",
+      "--json",
+      "--jq",
+      ".",
+    ]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(["x", "--format=csv", "--json", "--jq", "."]);
+  },
+  30_000,
+);
+
+test("a leading --format=json keeps Lando's envelope for bun", async () => {
+  const result = await runProxy(["--format=json", "bun", "-e", "console.log('envelope-child');"]);
+  expect(result.code, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    ok: true,
+    output: { chunks: [{ _tag: "stdout", chunk: "envelope-child\n" }] },
+  });
+}, 30_000);
+
+test("bun --help still shows Lando help", async () => {
+  const result = await runProxy(["bun", "--help"]);
+  expect(result.code).toBe(0);
+  expect(result.stdout).toContain("USAGE");
+  expect(result.stdout).toContain("meta:bun");
+}, 30_000);
+
+test("meta:x keeps an explicit -- in the package argv", () => {
+  const input = compiledCommandInputFromArgv("meta:x", ["prettier", "--", "--format=json"]);
+  expect(input.parsedArgv).toEqual(["prettier", "--", "--format=json"]);
+  expect(input.flags.format).toBe("text");
+});
+
+test("meta:bun passes the original tokens, including an explicit --", () => {
+  const argv = ["-e", "console.log(1)", "--", "--format=json"];
+  const input = compiledCommandInputFromArgv("meta:bun", argv);
+  expect(input.argv).toEqual(argv);
+  expect(input.parsedArgv).toEqual(argv);
+  expect(input.flags.format).toBe("text");
 });

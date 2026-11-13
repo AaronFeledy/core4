@@ -517,3 +517,56 @@ describe("command help color", () => {
     expect(help).not.toContain("\x1b[");
   });
 });
+
+describe("tooling ownership hints", () => {
+  const declaring = (
+    id: string,
+    flags: ReadonlyArray<{ readonly name: string; readonly alias?: string; readonly boolean: boolean }>,
+  ) =>
+    ({
+      id,
+      summary: "Hint fixture",
+      input: {
+        acceptsArguments: true,
+        revision: ToolingInputRevision.make("hint-fixture"),
+        flags: flags.map((flag) => ({ ...flag, required: false, sensitive: false })),
+        args: [],
+      },
+    }) satisfies ToolingHelpEntry;
+
+  test("a wrapper's hint shows where Lando's flags go and how to reach this page", () => {
+    const help = renderToolingHelp({ id: "app:wrap", summary: "Wrap a CLI", wrapper: true });
+    expect(help).toContain("`lando --verbose wrap`");
+    expect(help).toContain("`lando help wrap`");
+  });
+
+  test("a declared flag Lando also has gets the before-the-name placement", () => {
+    const help = renderToolingHelp(declaring("app:build", [{ name: "verbose", boolean: true }]));
+    expect(help.match(/`[^`]+`/g)).toEqual(["`--verbose`", "`build`", "`lando --verbose build`"]);
+  });
+
+  test("the placement example gives a value-taking Lando flag a value", () => {
+    const help = renderToolingHelp(
+      declaring("app:report", [
+        { name: "format", boolean: false },
+        { name: "jobs", alias: "j", boolean: false },
+      ]),
+    );
+    expect(help.match(/`[^`]+`/g)).toEqual([
+      "`--format`",
+      "`-j`",
+      "`report`",
+      "`lando --format=<value> report`",
+    ]);
+  });
+
+  test("a reserved renderer flag and an unrelated flag get no placement hint", () => {
+    const help = renderToolingHelp(
+      declaring("app:follow", [
+        { name: "tail", boolean: true },
+        { name: "loud", boolean: true },
+      ]),
+    );
+    expect(help.match(/`[^`]+`/g) ?? []).toEqual([]);
+  });
+});

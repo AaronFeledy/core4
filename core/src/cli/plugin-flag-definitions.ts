@@ -1,6 +1,7 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import type { OclifFlagDefinition } from "./compiled-argv";
 import { universalFormatFlagDefs } from "./format-flags";
+import type { TailPolicy } from "./invocation";
 import { yesFlag } from "./spec/confirmation-flag";
 
 // Code generators import this before the command registry and its generated
@@ -25,3 +26,11 @@ export const pluginFlagDefinitions = (
   }
   return flags;
 };
+
+/** A non-strict plugin command declaring a `command` arg owns its tail, like the built-in `exec`. */
+export const pluginTailPolicy = (
+  spec: Pick<ExecutableCommandSpec, "flags" | "args" | "strict">,
+): TailPolicy =>
+  spec.strict === false && spec.args?.command !== undefined
+    ? { kind: "command", flags: pluginFlagDefinitions(spec) }
+    : { kind: "none" };

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
+import { lastEnvelope as envelopeOf } from "./subprocess-support";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -136,3 +137,32 @@ describe("strict:false catalog passthrough", () => {
     expect(result.stdout).toContain("us583-bun-ok");
   }, 30_000);
 });
+
+test.each([
+  ["scratch run", ["--format=json", "scratch", "run", "ls", "--help"]],
+  ["--renderer=plain scratch run", ["--format=json", "--renderer=plain", "scratch", "run", "ls", "--help"]],
+  ["scratch --renderer=plain run", ["--format=json", "scratch", "--renderer=plain", "run", "ls", "--help"]],
+])(
+  "%s routes trailing --help to scratch execution",
+  async (_name, argv) => {
+    const result = await runSourceCli(argv);
+    expect(envelopeOf(result.stdout)).toMatchObject({ command: "apps:scratch:run", ok: false });
+  },
+  30_000,
+);
+
+test("exec accepts a --json projection before its command tail and reaches the missing-app error", async () => {
+  const result = await runSourceCli([
+    "--format=json",
+    "exec",
+    "--json",
+    "exitCode,service",
+    "printf",
+    "--help",
+  ]);
+  expect(envelopeOf(result.stdout)).toMatchObject({
+    command: "app:exec",
+    ok: false,
+    error: { _tag: "ToolingExecError" },
+  });
+}, 30_000);

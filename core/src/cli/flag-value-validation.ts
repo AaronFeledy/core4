@@ -1,6 +1,7 @@
 import { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
 import { commandTailIndex } from "./command-tail";
 import { flagDefinitionsByToken, normalizeCliFlagTokens } from "./flag-tokens";
+import type { TailPolicy } from "./invocation";
 
 type FlagValueIssue = MalformedCliFlagValueError["issue"];
 
@@ -129,19 +130,20 @@ export const validateCommandCliFlags = (input: {
   readonly argv: ReadonlyArray<string>;
   readonly definitions: Readonly<Record<string, unknown>>;
   readonly allowUnknownFlags: boolean;
-  readonly commandTail?: boolean;
+  /** How the command owns its tail; `all` validates nothing after the command name. */
+  readonly tailPolicy?: TailPolicy;
   /** The spelling remediation names; defaults to the canonical id. */
   readonly commandName?: string;
 }): MalformedCliFlagValueError | UnknownCliFlagError | undefined => {
-  const argv = input.commandTail
+  if (input.tailPolicy?.kind === "all") return undefined;
+  const commandTail = input.tailPolicy?.kind === "command";
+  const argv = commandTail
     ? input.argv.slice(0, commandTailIndex(input.argv, input.definitions))
     : input.argv;
   const unknown =
-    input.commandTail || !input.allowUnknownFlags
-      ? validateUnknownCliFlags(argv, input.definitions)
-      : undefined;
+    commandTail || !input.allowUnknownFlags ? validateUnknownCliFlags(argv, input.definitions) : undefined;
   if (unknown !== undefined) {
-    if (!input.commandTail) return unknown;
+    if (!commandTail) return unknown;
     const name = input.commandName ?? input.commandId;
     return new UnknownCliFlagError({
       message: unknown.message,

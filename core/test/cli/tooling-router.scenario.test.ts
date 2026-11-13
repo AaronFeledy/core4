@@ -337,22 +337,17 @@ test.each([true, false])(
       ]);
 
       // Then
-      expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(
-        wrapper ? 0 : 1,
-      );
-      expect(lastEnvelope(compiledResult.stdout)).toMatchObject(
-        wrapper
-          ? {
-              command: "app:inspect-argv",
-              ok: true,
-              result: { stdout: "dynamic-version-ok --version\n" },
-            }
-          : {
-              command: "app:inspect-argv",
-              ok: false,
-              error: { _tag: "ToolingInputError", field: "version", tool: "app:inspect-argv" },
-            },
-      );
+      if (wrapper) {
+        expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
+        expect(compiledResult.stdout).toBe("dynamic-version-ok --version --format=json\n");
+      } else {
+        expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(1);
+        expect(lastEnvelope(compiledResult.stdout)).toMatchObject({
+          command: "app:inspect-argv",
+          ok: false,
+          error: { _tag: "ToolingInputError", field: "version", tool: "app:inspect-argv" },
+        });
+      }
     } finally {
       await compiled.cleanup();
     }
@@ -575,3 +570,136 @@ test("Given a cached task that declares input, when help is in its tail, then bo
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }
 }, 30_000);
+
+const writeFlagOwnershipTasks = async (fixture: RouterFixture): Promise<void> => {
+  await writeFile(
+    join(fixture.root, ".lando.yml"),
+    [
+      "name: flag-ownership",
+      "tooling:",
+      "  build:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      verbose:",
+      "        boolean: true",
+      "  report:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      format:",
+      "        description: Task format",
+      "  wrap:",
+      '    service: ":host"',
+      "    cmd: echo WRAP",
+      "    wrapper: true",
+      "",
+    ].join("\n"),
+  );
+  const scripts = join(fixture.root, ".lando", "scripts");
+  await mkdir(scripts, { recursive: true });
+  await writeFile(
+    join(scripts, "probe.bun.sh"),
+    [
+      "# ---",
+      "# desc: Probe declared flags",
+      '# service: ":host"',
+      "# flags:",
+      "#   format:",
+      "#     description: Script format",
+      "# ---",
+      'echo "SCRIPT $1"',
+      "",
+    ].join("\n"),
+  );
+};
+
+test.each([
+  {
+    name: "a task-declared verbose flag reaches the task after its name",
+    argv: ["build", "--verbose"],
+    expected: { command: "app:build", result: { stdout: "ARGV --verbose\n" } },
+  },
+  {
+    name: "a verbose flag before the task name stays Lando's",
+    argv: ["--verbose", "build"],
+    expected: { command: "app:build", result: { stdout: "ARGV\n" } },
+  },
+  {
+    name: "a task-declared format flag reaches the task instead of Lando",
+    argv: ["report", "--format=csv"],
+    expected: { command: "app:report", result: { stdout: "ARGV --format=csv\n" } },
+  },
+  {
+    name: "a task flag and Lando's envelope apply when the task does not declare format",
+    argv: ["build", "--verbose", "--format=json"],
+    expected: { command: "app:build", result: { stdout: "ARGV --verbose\n" } },
+  },
+  {
+    name: "a wrapper task receives every token after its name",
+    argv: ["wrap", "status", "--format=csv", "--verbose"],
+    expected: { command: "app:wrap", result: { stdout: "WRAP status --format=csv --verbose\n" } },
+  },
+  {
+    name: "a leading -- is dropped once for a declared task",
+    argv: ["build", "--", "--verbose"],
+    expected: { command: "app:build", result: { stdout: "ARGV --verbose\n" } },
+  },
+  {
+    name: "a .bun.sh script owns a declared format flag",
+    argv: ["probe", "--format=csv"],
+    expected: { command: "app:probe", result: { stdout: "SCRIPT --format=csv\n" } },
+  },
+  {
+    name: "help for a declared-format task stays Lando's",
+    argv: ["help", "report", "--format=json"],
+    expected: {
+      command: "cli:help",
+      result: { target: { canonicalId: "app:report", source: "tooling" } },
+    },
+  },
+])(
+  "$name",
+  async ({ argv, expected }) => {
+    const fixture = await makeFixture("flag-ownership");
+    try {
+      await writeFlagOwnershipTasks(fixture);
+      const result = await runSource(fixture, ["--renderer=plain", "--format=json", ...argv]);
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(lastEnvelope(result.stdout)).toMatchObject({ ok: true, ...expected });
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+  60_000,
+);
+
+test("a declared value flag followed by a Lando flag is a missing value, not the next word", async () => {
+  const fixture = await makeFixture("flag-missing-value");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const result = await runSource(fixture, ["--format=json", "report", "--format", "--trace", "csv"]);
+    expect(result.exitCode).toBe(1);
+    expect(lastEnvelope(result.stdout)).toMatchObject({
+      ok: false,
+      command: "app:report",
+      error: { _tag: "ToolingInputError", field: "format" },
+    });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);
+
+test("an undeclared format flag still rejects an unsupported Lando result format", async () => {
+  const fixture = await makeFixture("flag-task-and-envelope");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const rejected = await runSource(fixture, ["build", "--verbose", "--format=csv"]);
+    expect(rejected.exitCode).toBe(2);
+    expect(`${rejected.stdout}\n${rejected.stderr}`).toContain(
+      'Unsupported result format value "csv" from flag',
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);

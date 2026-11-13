@@ -219,7 +219,7 @@ The Lando 3 translator emits `PersistedHome` for converted services that had an 
 
 `ConfigTranslator` names `id`, `summary`, `inputKinds`, `detect`, `translate`, and optional `encode`, returning `Effect` with `ConfigTranslateError` and `never` requirements. `ConfigTranslatorRegistry` is the Effect service selecting these contracts. Factories close over explicit SDK ports such as `RecipeDecomposer`; they MUST NOT import core or request dynamic services. The bundled translators are `lando4` (decode/encode), `recipe` (decode through `RecipeDecomposer`), and decode-only `lando3`. Translation registration is lazy at bootstrap level `plugins`; duplicate ids fail as a tagged producer collision with no precedence winner (§9.5).
 
-The Lando 3 converter MUST set `wrapper: true` on converted tooling that has exactly one command and no declared flags or args, so help forwarding matches Lando 3. Each such task gets a `generated` report entry at its task path that names the reason and advises removal when the command is a script that does not handle `--help`.
+The Lando 3 converter MUST set `wrapper: true` on converted tooling that has exactly one command and no declared flags or args, so every argument and flag after the task name reaches its command, as in Lando 3 (§8.5). Each such task gets a `generated` report entry at its task path that names the reason and advises removal when the command is a script that does not handle `--help`.
 
 Encoder round-trip law: `decodeAuthoring_T(T.encode(v).text)` MUST equal `canonicalAuthoring_T(v)`, including expression AST and expected types, but excluding formatting and the fixed provenance comment.
 
