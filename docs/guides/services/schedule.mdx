@@ -217,7 +217,7 @@ lando logs --service appserver-schedule-node
 
 The schedule zone for a service's jobs comes from `TZ` under that service's `environment:`, written there as a plain string. A leading `:` is ignored. Without it, jobs run on UTC. A `TZ` that arrives another way, such as an `env_file` or a value Lando computes, doesn't set the schedule zone. There is no app-wide timezone key; see [Set the timezone](./timezone.mdx).
 
-Each job starts with `TZ` set to the schedule zone. `lando schedule:list`, the timer, and `date` inside a job all agree.
+The schedule zone decides when jobs run, and `lando schedule:list` reports next runs in it. A job's own environment is the service's environment, unchanged, so with `TZ` set under `environment:` the timer and `date` inside a job agree.
 
 A zone other than UTC needs the image's timezone database. Debian-based images ship it. When the image has no data for the zone, `lando start` or `lando restart` fails while it builds the sidecar's image. The error is one line that names the service, the `TZ` value, and the fix: install the timezone database in the service's `build.artifact`, or remove `TZ`. On Alpine:
 
@@ -252,11 +252,7 @@ The image needs a shell. Lando rejects the empty `scratch` image and `gcr.io/dis
 
 Edit `schedule:`, then run `lando start` or `lando restart`. Lando rebuilds only the small layer that holds the job table. You don't need `lando rebuild`.
 
-Whole-app `start`, `stop`, `restart`, `rebuild`, and `destroy` include the sidecar. A command scoped to the parent leaves the sidecar alone, so `lando restart --service appserver` doesn't apply a schedule edit. Name both, or run the whole-app command:
-
-```sh
-lando restart --service appserver --service appserver-schedule
-```
+Whole-app `start`, `stop`, `restart`, `rebuild`, and `destroy` include the sidecar. A command scoped to the parent leaves the sidecar alone, so `lando restart --service appserver` doesn't apply a schedule edit. Run the whole-app `lando restart` for that.
 
 Delete the `schedule:` list and the next whole-app `start`, `restart`, or `rebuild` removes the sidecar. The result reports it under removed services.
 
