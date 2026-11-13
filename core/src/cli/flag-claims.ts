@@ -2,7 +2,7 @@ import type { ToolingInputDeclaration } from "@lando/sdk/schema";
 
 import { type FlagDefinition, flagDefinitionsByToken, normalizeCliFlagTokens } from "./flag-tokens";
 import type { CommandClaim, OwnerPolicy } from "./invocation";
-import { RESERVED_OUTPUT_SPELLINGS } from "./lando-flags";
+import { LANDO_FLAGS, RESERVED_OUTPUT_SPELLINGS } from "./lando-flags";
 
 /**
  * What a command's argv claims, independent of where its owner came from.
@@ -37,6 +37,10 @@ export interface SpecPolicyShape {
 /** A non-strict command declaring a `command` arg owns its tail, like `exec`. */
 export const specTailKind = (spec: SpecPolicyShape | undefined): "none" | "command" =>
   spec !== undefined && spec.strict === false && spec.args?.command !== undefined ? "command" : "none";
+
+/** The tail kind for a built-in or plugin spec: `bun`/`x` own every token after their name. */
+export const specTailFor = (spec: SpecPolicyShape | undefined): "none" | "command" | "all" =>
+  spec !== undefined && (spec.id === "meta:bun" || spec.id === "meta:x") ? "all" : specTailKind(spec);
 
 const bareValueFlags = (commandId: string | undefined): ReadonlySet<string> =>
   new Set(commandId === undefined ? [] : (BARE_VALUE_FLAGS_BY_COMMAND[commandId] ?? []));
@@ -96,6 +100,16 @@ export const toolingFlagClaims = (
   };
 };
 
+/** Tooling tasks and scripts: disabled owns nothing, wrapper owns everything, the rest claim declared flags. */
+export const toolingPolicy = (
+  declaration: ToolingInputDeclaration | undefined,
+  mode: { readonly disabled?: true; readonly wrapper?: true } = {},
+): OwnerPolicy => {
+  if (mode.disabled === true) return { tail: "none", claims: NO_CLAIMS, reservedOutput: [] };
+  if (mode.wrapper === true) return { tail: "all", claims: NO_CLAIMS, reservedOutput: [] };
+  return { tail: "none", claims: toolingFlagClaims(declaration), reservedOutput: [] };
+};
+
 /**
  * The owner policy for a built-in or plugin spec. `meta:bun` and `meta:x` own
  * every token after their name; other specs decide by tail kind.
@@ -104,10 +118,29 @@ export const specOwnerPolicy = (
   spec: SpecPolicyShape,
   definitions: Readonly<Record<string, unknown>>,
 ): OwnerPolicy => {
-  const tail = spec.id === "meta:bun" || spec.id === "meta:x" ? "all" : specTailKind(spec);
+  const tail = specTailFor(spec);
   return {
     tail,
     claims: tail === "all" ? NO_CLAIMS : specFlagClaims(definitions, spec.id),
     reservedOutput: RESERVED_OUTPUT_SPELLINGS,
   };
 };
+
+/** The Lando spellings a command reads itself after its name, in table order. */
+export const commandOwnedLandoFlags = (policy: OwnerPolicy): ReadonlyArray<string> => {
+  const reserved = new Set(policy.reservedOutput);
+  return LANDO_FLAGS.filter(
+    (flag) => !reserved.has(flag.spelling) && policy.claims(flag.spelling, undefined) !== undefined,
+  ).map((flag) => flag.spelling);
+};
+
+export interface LandoFlagsDescriptor {
+  readonly afterName: "until-separator" | "command-tail" | "none";
+  readonly commandOwned: ReadonlyArray<string>;
+}
+
+/** The machine-help placement of Lando's flags for one command policy. */
+export const landoFlagsForPolicy = (policy: OwnerPolicy): LandoFlagsDescriptor => ({
+  afterName: policy.tail === "none" ? "until-separator" : policy.tail === "command" ? "command-tail" : "none",
+  commandOwned: [...commandOwnedLandoFlags(policy)],
+});

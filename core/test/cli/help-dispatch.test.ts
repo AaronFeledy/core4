@@ -175,3 +175,27 @@ describe("help command flag legality", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain('Unknown command "bogus".');
   });
 });
+
+test("Given the machine catalog, when rendered, then rows carry no flag placement", async () => {
+  // Given / When
+  const result = await runCli(["help", "--format=json"]);
+  const envelope = JSON.parse(result.stdout) as {
+    result: {
+      sections: {
+        common: ReadonlyArray<Record<string, unknown>>;
+        more: ReadonlyArray<Record<string, unknown>>;
+      };
+      all: ReadonlyArray<Record<string, unknown>>;
+    };
+  };
+
+  // Then only help targets describe placement, not catalog rows
+  expect(result.exitCode, result.stderr).toBe(0);
+  for (const row of [
+    ...envelope.result.sections.common,
+    ...envelope.result.sections.more,
+    ...envelope.result.all,
+  ]) {
+    expect("landoFlags" in row).toBe(false);
+  }
+});

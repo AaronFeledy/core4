@@ -7,14 +7,14 @@ import {
   processInvocationContext,
 } from "../runtime/invocation-context";
 import { emitResultLine } from "./compiled-runtime";
-import { HelpCommandDescriptor } from "./help-command-descriptor";
+import { HelpCommandTargetDescriptor } from "./help-command-descriptor";
 import { helpRedactor } from "./help-redaction";
 
 export const HelpTargetResult = Schema.Struct({
   version: Schema.String,
   platform: Schema.String,
   arch: Schema.String,
-  target: HelpCommandDescriptor,
+  target: HelpCommandTargetDescriptor,
 });
 
 type HelpTarget = typeof HelpTargetResult.Type.target;

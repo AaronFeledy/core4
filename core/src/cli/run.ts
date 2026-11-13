@@ -15,6 +15,7 @@ import { type CliInvocationContext, processInvocationContext } from "../runtime/
 import { rejectCommandCliArgValues } from "./arg-value-validation";
 import { notImplementedErrorForCommand, resolveBuiltInCommand } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
+import { selectionOwnershipHint } from "./cli-help";
 import { isHelpTopic } from "./cold-path-output";
 import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
@@ -39,7 +40,11 @@ import {
   setActiveRendererMode,
   setActiveResultFormat,
 } from "./compiled-runtime";
-import { renderAliasResolutionFailure, routeResolvedTooling } from "./dynamic-tooling";
+import {
+  type ToolingSelectionOwnership,
+  renderAliasResolutionFailure,
+  routeResolvedTooling,
+} from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import {
   DEFAULT_RESULT_FORMAT,
@@ -62,7 +67,7 @@ import { runHostProxyCallProcess } from "./host-proxy/call-runtime";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { resolveInvocationHead, splitInvocation } from "./invocation";
 import { type InvocationOwner, ownerPolicy, resolveInvocationOwner } from "./invocation-owner";
-import { matchLandoFlag } from "./lando-flags";
+import { type LandoFlagMatch, failedLandoFlag, matchLandoFlag, scanLandoFlags } from "./lando-flags";
 import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
@@ -204,11 +209,42 @@ const applyFormatSelections = (
   }
 };
 
+/** Keep the tagged error and fields; only the remediation gains the ownership guidance. */
+const extendSelectionError = (
+  error: RendererSelectionError | LogLevelSelectionError | NotImplementedError,
+  hint: string,
+): RendererSelectionError | LogLevelSelectionError | NotImplementedError => {
+  if (error instanceof RendererSelectionError)
+    return new RendererSelectionError({
+      message: error.message,
+      value: error.value,
+      source: error.source,
+      remediation: `${error.remediation} ${hint}`,
+    });
+  if (error instanceof LogLevelSelectionError)
+    return new LogLevelSelectionError({
+      message: error.message,
+      value: error.value,
+      source: error.source,
+      remediation: `${error.remediation} ${hint}`,
+    });
+  return new NotImplementedError({
+    message: error.message,
+    commandId: error.commandId,
+    remediation: `${error.remediation} ${hint}`,
+  });
+};
+
 const applyInvocationSelections = async (
   globals: ReadonlyArray<string>,
   context: CliInvocationContext,
   configGlobals: Awaited<ReturnType<typeof readConfigCliGlobals>>,
-  selection: { readonly protocolStdout: boolean; readonly commandAbsent: boolean },
+  selection: {
+    readonly protocolStdout: boolean;
+    readonly commandAbsent: boolean;
+    /** Present only for an enabled, non-wrapper tooling owner. */
+    readonly ownership?: { readonly taskName: string };
+  },
 ): Promise<boolean> => {
   let rendererSelected = false;
   try {
@@ -234,11 +270,16 @@ const applyInvocationSelections = async (
       commandId =
         error instanceof LogLevelSelectionError ? "cli:log-level-selection" : "cli:renderer-selection";
     }
+    const match = failedLandoFlag(error);
+    const rendered =
+      selection.ownership !== undefined && match !== undefined
+        ? extendSelectionError(error, selectionOwnershipHint(match, selection.ownership.taskName))
+        : error;
     setActiveCommandId(commandId);
     await renderPreCommandFailure({
       context,
       commandId,
-      error,
+      error: rendered,
       ...preCommandOutputMode({ argv: globals, env: context.env }),
       usage: true,
     });
@@ -263,6 +304,17 @@ const hostProxyDenyToken = (argv: ReadonlyArray<string>): string => {
     return token;
   }
   return "cli:unknown";
+};
+
+/** The last `--format` occurrence in Lando's tokens: the one selection acted on. */
+const lastFormatFlag = (globals: ReadonlyArray<string>): LandoFlagMatch | undefined => {
+  let last: LandoFlagMatch | undefined;
+  scanLandoFlags(globals, {
+    "--format": (match) => {
+      last = match;
+    },
+  });
+  return last;
 };
 
 const runCompiledCli = async (
@@ -332,11 +384,28 @@ const runCompiledCli = async (
   const split = splitInvocation(rawArgv, head, policy);
   onLandoGlobals(split.globals);
   const tokens = split.command;
+  const toolingTaskName =
+    owner.kind === "tooling"
+      ? typeableName({
+          canonicalId: owner.route.commandId,
+          builtInAliases: [],
+          implicitNamespaceStrip: true,
+          ...(owner.route.aliasPolicy === undefined ? {} : { aliasPolicy: owner.route.aliasPolicy }),
+        }).primary
+      : undefined;
+  const toolingOwnership =
+    owner.kind === "tooling" &&
+    owner.route.disabled !== true &&
+    owner.route.wrapper !== true &&
+    toolingTaskName !== undefined
+      ? { taskName: toolingTaskName }
+      : undefined;
   const commandAbsent = owner.kind === "none" && tokens.argv.length === 0 && split.controls.length === 0;
   if (
     await applyInvocationSelections(split.globals, context, configGlobals, {
       protocolStdout: owner.kind === "built-in" && owner.entry.spec.id === "meta:mcp",
       commandAbsent,
+      ...(toolingOwnership === undefined ? {} : { ownership: toolingOwnership }),
     })
   )
     return;
@@ -544,12 +613,7 @@ const runCompiledCli = async (
         return;
       }
       if (toolingVersionRequested(route, tokens.argv)) {
-        const name = typeableName({
-          canonicalId: route.commandId,
-          builtInAliases: [],
-          implicitNamespaceStrip: true,
-          ...(route.aliasPolicy === undefined ? {} : { aliasPolicy: route.aliasPolicy }),
-        }).primary;
+        const name = toolingTaskName ?? route.commandId;
         await renderPreCommandFailure({
           context,
           commandId: route.commandId,
@@ -564,7 +628,15 @@ const runCompiledCli = async (
         });
         return;
       }
-      await routeResolvedTooling(route, tokens.argv, signal, context);
+      const format = lastFormatFlag(split.globalsAfterName);
+      const formatAfterName = format === undefined ? {} : { format };
+      const ownership: ToolingSelectionOwnership | undefined =
+        toolingOwnership === undefined ? undefined : { ...toolingOwnership, ...formatAfterName };
+      await routeResolvedTooling(route, tokens.argv, {
+        ...(signal === undefined ? {} : { signal }),
+        context,
+        ...(ownership === undefined ? {} : { ownership }),
+      });
       return;
     }
     case "plugin": {
@@ -603,7 +675,10 @@ const runCompiledCli = async (
           return;
         }
       }
-      await routeResolvedTooling(route, tokens.argv, signal, context);
+      await routeResolvedTooling(route, tokens.argv, {
+        ...(signal === undefined ? {} : { signal }),
+        context,
+      });
       return;
     }
     case "alias-disabled":

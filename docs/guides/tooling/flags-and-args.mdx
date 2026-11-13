@@ -227,7 +227,11 @@ tooling:
     cmd: npm run build
 ```
 
-Run `lando build -- --help` or `lando build -- --format=csv`. Lando consumes only the `--` right after the task name; everything after it, including another `--`, reaches the command unchanged. Without the `--`, `lando build --format=csv` fails with `RendererSelectionError` because Lando reads `--format` and `csv` is not one of its formats.
+Run `lando build -- --help` or `lando build -- --format=csv`. Lando consumes only the `--` right after the task name; everything after it, including another `--`, reaches the command unchanged. Without the `--`, `lando build --format=csv` fails with `RendererSelectionError` because Lando reads `--format` and `csv` is not one of its formats. The error names the task and your options:
+
+```
+`--format` after `build` is read by Lando. To pass it to the command, run `lando build -- --format=csv`, declare a `format` flag on the task, or set `wrapper: true` if the task wraps one CLI tool. Lando's own `--format` also works before the name: `lando --format=<value> build`.
+```
 
 A lone `lando build --version` fails with `ToolingInputError` before execution because a project task has no version of its own. Run `lando version` for Lando's version, or `lando build -- --version` to pass the option to the command. A declared flag named `version` owns that input instead. `--version` with other tokens is ordinary input. `.bun.sh` scripts follow the same help and lone-version rules; `wrapper` is not a front-matter key.
 
@@ -381,7 +385,7 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
       <Verify command="lando help wrapped" expect={{ stdout: { regex: "Arguments and flags after `wrapped` go to the command\\." } }} />
     </Step>
     <Step name="keep-lando-flags-on-an-undeclared-task">
-      <Verify command="lando plain --format=csv" expectExit={2} expect={{ stderr: { regex: "RendererSelectionError" } }} />
+      <Verify command="lando plain --format=csv" expectExit={2} expect={{ stderr: { regex: "`--format` after `plain` is read by Lando[\\s\\S]*`lando plain -- --format=csv`[\\s\\S]*`lando --format=<value> plain`[\\s\\S]*RendererSelectionError" } }} />
       <Verify command="lando check-marker --format=json" expect={{ stdout: { regex: "absent\\\\n" } }} />
       <Verify command="lando plain -- --format=csv" expect={{ stdout: "" }} />
       <Verify command="lando check-marker --format=json" expect={{ stdout: { regex: "present\\\\n" } }} />

@@ -16,7 +16,8 @@ import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./c
 import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
 import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
-import { isEnvelopeResultFormat } from "./format-flags";
+import { landoFlagsForPolicy, specOwnerPolicy, toolingPolicy } from "./flag-claims";
+import { formatFlagDefsForCommand, isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { HelpCommandDescriptor } from "./help-command-descriptor";
 import { commandHelpInput } from "./help-command-input";
@@ -231,6 +232,7 @@ export const printCommandHelp = (
         summary: entry.spec.summary,
         source: "built-in",
         input: commandHelpInput(entry.spec),
+        landoFlags: landoFlagsForPolicy(specOwnerPolicy(entry.spec, formatFlagDefsForCommand(entry.spec))),
       },
       activeResultFormat,
       context,
@@ -270,6 +272,9 @@ export const printToolingHelp = (
         ...(entry.input === undefined ? {} : { input: entry.input }),
         ...(entry.runs === undefined ? {} : { runs: entry.runs }),
         ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
+        landoFlags: landoFlagsForPolicy(
+          toolingPolicy(entry.input, entry.wrapper === true ? { wrapper: true } : {}),
+        ),
       },
       activeResultFormat,
       context,

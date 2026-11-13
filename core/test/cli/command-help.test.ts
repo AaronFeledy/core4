@@ -177,8 +177,49 @@ describe("renderCommandHelp", () => {
     expect(help).toContain("--json [fields]");
     expect(help).toContain("--jq");
     expect(help).toContain(
-      "Global flags (--format (text, json, yaml), --json [fields], --jq, --renderer, --verbose, --log-level, --debug, --trace) work on every command.",
+      "Global flags (--format (text, json, yaml), --json [fields], --jq, --renderer, --verbose, --log-level, --debug, --trace) work anywhere before `--`.",
     );
+  });
+
+  test("the footer names the command-tail placement for exec", () => {
+    // Given the strict-false exec command, which owns its command tail
+    const entry = requireBuiltIn("exec");
+
+    // When per-command help is rendered
+    const help = renderCommandHelp(entry);
+
+    // Then the footer places Lando's flags before the command to run
+    expect(help).toContain("go before the command to run");
+    expect(help).toContain("lando exec --format=json <command>");
+  });
+
+  test("the footer names the before-the-name placement for a passthrough command", () => {
+    // Given meta:bun, which owns every token after its name
+    const entry = requireBuiltIn("bun");
+
+    // When per-command help is rendered
+    const help = renderCommandHelp(entry);
+
+    // Then the footer places Lando's flags only before the command name
+    expect(help).toContain("go only before the command name");
+    expect(help).toContain("lando --format=json bun <args...>");
+  });
+
+  test("a reserved spelling a command authors gets no placement line", () => {
+    // Given logs, which authors --tail; Lando's own --tail is reserved, not a feature
+    const help = renderCommandHelp(requireBuiltIn("logs"));
+
+    // Then help lists the flag and says nothing about a Lando flag of that name
+    expect(help).toContain("--tail <integer>");
+    expect(help).not.toContain("is this command's flag");
+  });
+
+  test("the footer omits the shared-spelling line when nothing is shared", () => {
+    // Given info, which authors no Lando spelling
+    const help = renderCommandHelp(requireBuiltIn("info"));
+
+    // Then no command-owned line appears
+    expect(help).not.toContain("is this command's flag");
   });
 
   test("renders spec.examples when the command declares them", () => {

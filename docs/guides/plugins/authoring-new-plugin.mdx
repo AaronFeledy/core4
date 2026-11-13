@@ -348,6 +348,29 @@ flags and positional arguments the module declares. JSON help puts them under
 `result.target.input`, with each input's type, description, choices, and whether
 it's required.
 
+### Use a flag name Lando also has
+
+After your command's name, a flag you declare is yours, even when Lando has a
+flag with the same spelling. Say `db:export` declares a boolean `verbose` flag:
+
+| Someone runs | `input.flags.verbose` | Lando's log output |
+| --- | --- | --- |
+| `lando db:export --verbose` | `true` | Normal |
+| `lando --verbose db:export` | unset | Verbose |
+
+A flag that takes a value also owns the next word, so
+`lando db:export --renderer fancy` hands `fancy` to your `renderer` flag.
+`lando db:export --help` ends with a line that names the flags your command
+took over, and JSON help lists them under `result.target.landoFlags.commandOwned`.
+
+Two names stay Lando's on every plugin command: `--format` and `--json` (with
+its short form `-j`) always choose how Lando encodes the result. You can declare
+`format` to describe it or `json` as a boolean, and read them from
+`input.flags`, but you can't give them another meaning. A `json` flag that
+takes a value, or a boolean `format` flag, could never receive input, so the
+plugin fails to load with `PluginLoadError` and the message names the flag to
+rename.
+
 ### Hand the rest of the line to another program
 
 A command that runs another program, the way `lando exec` does, can take

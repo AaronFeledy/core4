@@ -599,6 +599,9 @@ const writeFlagOwnershipTasks = async (fixture: RouterFixture): Promise<void> =>
       '    service: ":host"',
       "    cmd: echo WRAP",
       "    wrapper: true",
+      "  plain:",
+      '    service: ":host"',
+      "    cmd: echo PLAIN",
       "",
     ].join("\n"),
   );
@@ -725,3 +728,114 @@ test("a declared string flag owns --help as its value slot", async () => {
     await fixture.cleanup();
   }
 }, 60_000);
+
+test("machine tooling help carries flag placement for ordinary, declaring, and wrapper tasks", async () => {
+  const fixture = await makeFixture("flag-placement");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const cases = [
+      { task: "plain", afterName: "until-separator", includes: ["--version", "-v"] },
+      { task: "report", afterName: "until-separator", includes: ["--format", "--version", "-v"] },
+      { task: "wrap", afterName: "none", includes: [] },
+    ] as const;
+    for (const entry of cases) {
+      const result = await runSource(fixture, ["--renderer=plain", "--format=json", "help", entry.task]);
+      expect(result.exitCode, result.stderr).toBe(0);
+      const target = (
+        lastEnvelope(result.stdout) as {
+          result: { target: { landoFlags: { afterName: string; commandOwned: ReadonlyArray<string> } } };
+        }
+      ).result.target;
+      expect(target.landoFlags.afterName).toBe(entry.afterName);
+      if (entry.task === "wrap") expect(target.landoFlags.commandOwned).toEqual([]);
+      for (const spelling of entry.includes) expect(target.landoFlags.commandOwned).toContain(spelling);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);
+
+test("a flag typed after a task name explains Lando's ownership", async () => {
+  const fixture = await makeFixture("flag-ownership-guidance");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const cases = [
+      {
+        argv: ["--format=json", "build", "--format=csv"],
+        tag: "RendererSelectionError",
+        typed: "--format=csv",
+        original: "Use --format=<value>",
+        machine: true,
+      },
+      {
+        argv: ["--format=json", "build", "--format=table"],
+        tag: "RendererSelectionError",
+        typed: "--format=table",
+        original: "does not support result format",
+        machine: false,
+      },
+      {
+        argv: ["--format=json", "build", "--renderer=bogus"],
+        tag: "RendererSelectionError",
+        typed: "--renderer=bogus",
+        original: "Use --renderer=<value>",
+        machine: true,
+      },
+      {
+        argv: ["--format=json", "build", "--log-level=bogus"],
+        tag: "LogLevelSelectionError",
+        typed: "--log-level=bogus",
+        original: "Use --log-level=<value>",
+        machine: true,
+      },
+    ] as const;
+    for (const entry of cases) {
+      const result = await runSource(fixture, entry.argv);
+      expect(result.exitCode, result.stderr).not.toBe(0);
+      const output = `${result.stdout}\n${result.stderr}`;
+      const remediation = entry.machine
+        ? String((lastEnvelope(result.stdout).error as { remediation?: unknown }).remediation)
+        : output;
+      if (entry.machine) expect(lastEnvelope(result.stdout).error).toMatchObject({ _tag: entry.tag });
+      else expect(output).toContain(entry.tag);
+      expect(remediation).toContain(entry.original);
+      expect(remediation).toContain(`\`${entry.typed.split("=")[0]}\` after \`build\``);
+      expect(remediation).toContain(`lando build -- ${entry.typed}`);
+      expect(remediation).toContain("wrapper: true");
+      expect(remediation).toContain(`lando ${entry.typed.split("=")[0]}=<value> build`);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120_000);
+
+test("a task's later selection flag wins attribution and env/config failures stay unexplained", async () => {
+  const fixture = await makeFixture("flag-ownership-attribution");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+
+    const both = await runSource(fixture, ["--format=json", "build", "--format=bogus", "--renderer=bogus"]);
+    const bothRemediation = String(
+      (lastEnvelope(both.stdout).error as { remediation?: unknown }).remediation,
+    );
+    expect(bothRemediation).toContain("`--renderer` after `build`");
+    expect(bothRemediation).not.toContain("`--format` after `build`");
+
+    fixture.env.LANDO_RENDERER = "bogus";
+    const viaEnv = await runSource(fixture, ["--format=json", "build", "--jq=x"]);
+    const envRemediation = String(
+      (lastEnvelope(viaEnv.stdout).error as { remediation?: unknown }).remediation,
+    );
+    expect(envRemediation).not.toContain("is read by Lando");
+    fixture.env.LANDO_RENDERER = "lando";
+
+    const beforeName = await runSource(fixture, ["--format=json", "--renderer=bogus", "build"]);
+    expect(`${beforeName.stdout}\n${beforeName.stderr}`).not.toContain("is read by Lando");
+
+    const wrapper = await runSource(fixture, ["--format=json", "wrap", "--renderer=bogus"]);
+    expect(wrapper.exitCode, wrapper.stderr).toBe(0);
+    expect(lastEnvelope(wrapper.stdout)).toMatchObject({ ok: true });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120_000);

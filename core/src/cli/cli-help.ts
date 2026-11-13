@@ -2,6 +2,7 @@ import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import type { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { argStdioDescription } from "./arg-stdio";
 import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
+import { commandOwnedLandoFlags, specOwnerPolicy } from "./flag-claims";
 import {
   type OptInResultFormat,
   UNIVERSAL_FORMAT_FLAG_NAMES,
@@ -10,20 +11,31 @@ import {
 } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
-import { LANDO_FLAGS, landoFlagFooterLabels } from "./lando-flags";
+import { LANDO_FLAGS, type LandoFlag, type LandoFlagMatch, landoFlagFooterLabels } from "./lando-flags";
 import { resolveTopLevelAliases } from "./spec/command-base";
 import { toolingRunHelp } from "./tooling-run-help";
 
-// The footer is the only place a reader learns which `--format` values exist,
-// so it names the resolved list for this command rather than the vocabulary.
+/** The last line of a command page: where Lando reads its own flags for this command's tail. */
 const FORMAT_FLAG_LABEL = "--format";
-const globalFlagsFooter = (command: {
-  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
-}): string => {
+const placementFooter = (
+  tail: "none" | "command" | "all",
+  command: { readonly resultFormats?: ReadonlyArray<OptInResultFormat> },
+  name: string,
+): string => {
   const labels = landoFlagFooterLabels().map((label) =>
     label === FORMAT_FLAG_LABEL ? `${label} (${commandResultFormats(command).join(", ")})` : label,
   );
-  return `Global flags (${labels.join(", ")}) work on every command.`;
+  const list = `Global flags (${labels.join(", ")})`;
+  switch (tail) {
+    case "none":
+      return `${list} work anywhere before \`--\`.`;
+    case "command":
+      return `${list} go before the command to run, which receives everything from there on. For example: \`lando ${name} --format=json <command>\`.`;
+    case "all":
+      return `${list} go only before the command name. For example: \`lando --format=json ${name} <args...>\`.`;
+    default:
+      return tail satisfies never;
+  }
 };
 
 export type CommandHelpStatus =
@@ -108,21 +120,55 @@ const typeableFor = (
  */
 const landoFlag = (spelling: string) => LANDO_FLAGS.find((flag) => flag.spelling === spelling);
 
-const sharedFlagHint = (input: ToolingInputDeclaration | undefined, name: string): string | undefined => {
-  const shared = (input?.flags ?? [])
-    .flatMap((flag) => [`--${flag.name}`, ...(flag.alias === undefined ? [] : [`-${flag.alias}`])])
-    .filter((spelling) => {
-      const flag = landoFlag(spelling);
-      return flag !== undefined && flag.role !== "reserved";
-    });
-  const first = shared[0];
-  if (first === undefined) return undefined;
-  const example = landoFlag(first)?.arity === "value" ? `${first}=<value>` : first;
+/** `--format=<value>` for a flag that takes a value, the bare spelling otherwise. */
+const landoFlagUsage = (flag: Pick<LandoFlag, "spelling" | "arity">): string =>
+  flag.arity === "value" ? `${flag.spelling}=<value>` : flag.spelling;
+
+/** Reserved spellings name no Lando feature, so only the rest are worth a placement line. */
+const sharedFlagLine = (spellings: ReadonlyArray<string>, name: string): string | undefined => {
+  const flags = spellings.flatMap((spelling) => {
+    const flag = landoFlag(spelling);
+    return flag === undefined || flag.role === "reserved" ? [] : [flag];
+  });
+  const shared = flags.map((flag) => flag.spelling);
+  const [firstFlag] = flags;
+  const first = firstFlag?.spelling;
+  if (firstFlag === undefined || first === undefined) return undefined;
+  const example = landoFlagUsage(firstFlag);
   const subject =
     shared.length === 1
       ? `\`${first}\` after \`${name}\` is this command's flag`
       : `${shared.map((spelling) => `\`${spelling}\``).join(", ")} after \`${name}\` are this command's flags`;
   return `${subject}. Put Lando's own before the name, as in \`lando ${example} ${name}\`.`;
+};
+
+const sharedFlagHint = (input: ToolingInputDeclaration | undefined, name: string): string | undefined =>
+  sharedFlagLine(
+    (input?.flags ?? []).flatMap((flag) => [
+      `--${flag.name}`,
+      ...(flag.alias === undefined ? [] : [`-${flag.alias}`]),
+    ]),
+    name,
+  );
+
+/**
+ * Ownership guidance appended to a selection error for a flag typed after a
+ * task name: how to pass it to the command, how to make the task read it, and
+ * where Lando's own goes.
+ */
+export const selectionOwnershipHint = (match: LandoFlagMatch, taskName: string): string => {
+  const { spelling } = match.flag;
+  const typed =
+    match.value === undefined
+      ? spelling
+      : match.attached
+        ? `${spelling}=${match.value}`
+        : `${spelling} ${match.value}`;
+  const landoPlacement =
+    match.flag.role === "selection"
+      ? ` Lando's own \`${spelling}\` also works before the name: \`lando ${landoFlagUsage(match.flag)} ${taskName}\`.`
+      : "";
+  return `\`${spelling}\` after \`${taskName}\` is read by Lando. To pass it to the command, run \`lando ${taskName} -- ${typed}\`, declare a \`${spelling.replace(/^-+/u, "")}\` flag on the task, or set \`wrapper: true\` if the task wraps one CLI tool.${landoPlacement}`;
 };
 
 export const helpFlagToken = (name: string, definition: OclifFlagDefinition): string => {
@@ -192,6 +238,8 @@ const exampleLines = (
 
 export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelpOptions): string => {
   const style = helpStyle(options?.styled === true);
+  const policy = specOwnerPolicy(entry.spec, formatFlagDefsForCommand(entry.spec));
+  const owned = commandOwnedLandoFlags(policy);
   const names = typeableFor(
     entry.spec.id,
     resolveTopLevelAliases({
@@ -206,6 +254,7 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
   const flagLines = renderCommandHelpFlags(entry.spec).map((line) =>
     line === "FLAGS" ? style.heading(line) : line,
   );
+  const sharedLine = sharedFlagLine(owned, names.primary);
   const argRows = Object.entries(entry.spec.args ?? {}).map(([name, arg]) => {
     const description = argStdioDescription(arg);
     return `  ${name}${helpItemMeta({
@@ -226,7 +275,8 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
     ...helpSection("ARGUMENTS", argRows, style),
     ...exampleLines(entry.spec.examples, style),
     "",
-    globalFlagsFooter(entry.spec),
+    placementFooter(policy.tail, entry.spec, names.primary),
+    ...(sharedLine === undefined ? [] : ["", sharedLine]),
   ].join("\n");
 };
 

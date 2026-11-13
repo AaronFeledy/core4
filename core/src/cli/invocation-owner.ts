@@ -17,7 +17,7 @@ import {
   resolveBuiltInCommand,
 } from "./built-in-command-registry";
 import { flagDefinitionsForCommand } from "./compiled-argv";
-import { NO_CLAIMS, specOwnerPolicy, toolingFlagClaims } from "./flag-claims";
+import { NO_CLAIMS, specOwnerPolicy, toolingPolicy } from "./flag-claims";
 import { hostProxyDenied } from "./host-proxy/call-context";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import type { InvocationHead, OwnerPolicy } from "./invocation";
@@ -78,12 +78,11 @@ export const ownerPolicy = (owner: InvocationOwner): OwnerPolicy => {
       return specOwnerPolicy(owner.row.spec, pluginFlagDefinitions(owner.row.spec));
     case "plugin-unloaded":
       return { tail: "all", claims: NO_CLAIMS, reservedOutput: [] };
-    case "tooling": {
-      const route = owner.route;
-      if (route.disabled === true) return { tail: "none", claims: NO_CLAIMS, reservedOutput: [] };
-      if (route.wrapper === true) return { tail: "all", claims: NO_CLAIMS, reservedOutput: [] };
-      return { tail: "none", claims: toolingFlagClaims(route.input), reservedOutput: [] };
-    }
+    case "tooling":
+      return toolingPolicy(owner.route.input, {
+        ...(owner.route.disabled === true ? { disabled: true as const } : {}),
+        ...(owner.route.wrapper === true ? { wrapper: true as const } : {}),
+      });
     case "none":
     case "cache-miss":
     case "alias-disabled":

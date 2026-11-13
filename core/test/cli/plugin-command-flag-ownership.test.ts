@@ -470,6 +470,8 @@ test("text and machine plugin help list authored flags", async () => {
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain("--verbose");
     expect(result.stdout).toContain("--renderer");
+    expect(result.stdout).toContain("after `fopts`");
+    expect(result.stdout).toContain("lando --renderer=<value> fopts");
   } finally {
     await text.cleanup();
   }
@@ -478,15 +480,44 @@ test("text and machine plugin help list authored flags", async () => {
     const result = await machine.invoke(["help", "fixture:opts", "--format=json"]);
     expect(result.code, result.stderr).toBe(0);
     const envelope = JSON.parse(result.stdout) as {
-      result: { target: { input: { flags: ReadonlyArray<{ name: string }> } } };
+      result: {
+        target: {
+          input: { flags: ReadonlyArray<{ name: string }> };
+          landoFlags: { afterName: string; commandOwned: ReadonlyArray<string> };
+        };
+      };
     };
     expect(envelope.result.target.input.flags.map((flag) => flag.name)).toEqual([
       "verbose",
       "renderer",
       "help",
     ]);
+    expect(envelope.result.target.landoFlags.afterName).toBe("until-separator");
+    expect(envelope.result.target.landoFlags.commandOwned).toContain("--verbose");
+    expect(envelope.result.target.landoFlags.commandOwned).not.toContain("--format");
   } finally {
     await machine.cleanup();
+  }
+}, 30_000);
+
+test("machine help marks a plugin tail command and an ordinary plugin command", async () => {
+  const f = await fixture();
+  try {
+    const tail = await f.invoke(["help", "fixture:run", "--format=json"]);
+    expect(tail.code, tail.stderr).toBe(0);
+    expect(JSON.parse(tail.stdout).result.target.landoFlags).toEqual({
+      afterName: "command-tail",
+      commandOwned: [],
+    });
+
+    const plain = await f.invoke(["help", "fixture:show", "--format=json"]);
+    expect(plain.code, plain.stderr).toBe(0);
+    expect(JSON.parse(plain.stdout).result.target.landoFlags).toEqual({
+      afterName: "until-separator",
+      commandOwned: [],
+    });
+  } finally {
+    await f.cleanup();
   }
 }, 30_000);
 

@@ -32,6 +32,17 @@ line you hand to `lando exec` or `lando ssh`. In a script that calls commands
 you didn't write, put the flag first. See
 [Use a flag name Lando also has](./tooling/flags-and-args.mdx#use-a-flag-name-lando-also-has).
 
+A script or agent that needs the exact rule for one command can ask for it.
+`lando help <command> --format=json` returns `result.target.landoFlags`:
+
+| Field | What it tells you |
+| --- | --- |
+| `afterName` | Where Lando still reads its own flags after the command name. `until-separator`: anywhere before the first `--`. `command-tail`: only before the command line you hand over, as with `lando exec`. `none`: nowhere, so put them before the name. |
+| `commandOwned` | Lando flag spellings the command reads itself after its name, such as `--tail` on `lando logs`. Empty when there are none. |
+
+`lando help exec --format=json` reports `"afterName":"command-tail"`, and
+`lando help bun --format=json` reports `"afterName":"none"`.
+
 On success the envelope wraps the command's typed result under `result` with
 `ok: true`. On failure it carries the tagged error JSON under `error` with
 `ok: false`. A process that finishes unsuccessfully also retains its typed
@@ -275,6 +286,14 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
     <Step name="json-jq-conflict">
       <Run command="lando version --json --jq ." expectExit={2} />
       <Verify errorTag="JsonJqConflictError" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="read-flag-placement-from-help" render={false} reason="Machine help reports where Lando reads its own flags">
+    <Step name="read-placement">
+      <Verify command="lando help exec --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"afterName\":\"command-tail\"" } }} />
+      <Verify command="lando help bun --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"afterName\":\"none\"" } }} />
+      <Verify command="lando help logs --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"commandOwned\":\\[\"--tail\"\\]" } }} />
     </Step>
   </Scenario>
 
