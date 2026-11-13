@@ -412,7 +412,11 @@ the same result envelope.
 
 Two more values exist, and a command offers them only when it produces them.
 `table` is a human rendering that the list, config, and recipe commands emit.
-`ndjson` is the per-check stream `lando doctor` emits. Ask a command for a
+`ndjson` is the per-check stream `lando doctor` emits: one `doctor.check` event
+for each check, one `doctor.skip` event for each skipped entry, then a result
+frame whose `result` holds the report's `version`, `provider`, and `summary`.
+That frame's `ok` and the exit code match what `--format=json` gives for the
+same report. Ask a command for a
 format it does not produce and it fails with `RendererSelectionError` naming
 the formats it does support, rather than quietly printing its text form at
 exit 0:
@@ -544,8 +548,12 @@ embedding host's `config` option) produces a `ConfigError` envelope at exit
 start`, and the resolved `lando config` views. Lando resolves config once at
 startup, so the error arrives before the command body runs. `lando config
 validate` checks the same layers and fails with the same `ConfigError`.
-`lando doctor` reports it inside its report under `result.globalConfig.error`
-and lists config-dependent sections under `result.skipped`.
+`lando doctor` is the exception: it treats the error as a diagnosis. Its
+envelope stays `ok: true` at exit `1`, and `result.checks` carries a failing
+check named `global-config` whose `details` is the `ConfigError`.
+Config-dependent sections are listed under `result.skipped`. Doctor sets
+`ok: false` only when one of its own checks could not finish, which shows up
+as a check named `doctor-self`.
 
 The error carries `error.path` (the `config.yml` location),
 `error.remediation`, and `error.issues`. Each issue is

@@ -1,14 +1,7 @@
 import type { ProviderStatus } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import type {
-  DoctorCheck,
-  DoctorSelectionRecord,
-  DoctorSeverity,
-  DoctorSolution,
-  DoctorStatus,
-} from "./doctor-contract";
-import { providerKindFor } from "./doctor-contract";
+import type { DoctorFinding, DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor-contract";
 import type { SetupReadinessRuntimeService } from "./setup-readiness";
 
 export interface RuntimeServiceStatusShape {
@@ -76,18 +69,13 @@ export const orphanRemediation = (orphanPids: ReadonlyArray<number>): DoctorSolu
 
 export const buildRuntimeServiceDoctorCheck = (
   status: RuntimeServiceStatusShape,
-  provider: { readonly id: string; readonly displayName: string; readonly version: string },
   runtimeVersion: string | undefined,
   readinessRuntimeService: SetupReadinessRuntimeService | undefined,
-  selection?: DoctorSelectionRecord,
-): DoctorCheck => {
+): DoctorFinding => {
   const hasOrphans = status.orphanPids !== undefined && status.orphanPids.length > 0;
   const checkStatus: DoctorStatus = (status.running || status.idle === true) && !hasOrphans ? "pass" : "warn";
   const severity: DoctorSeverity = checkStatus === "pass" ? "info" : "warn";
   const context: Record<string, string> = {
-    providerId: provider.id,
-    providerKind: providerKindFor(provider.id),
-    providerVersion: provider.version,
     runtimeRunning: String(status.running),
     socketReachable: String(status.socketReachable),
     ownedServiceProcess: String(status.ownedServiceProcess),
@@ -109,18 +97,12 @@ export const buildRuntimeServiceDoctorCheck = (
     name: "runtime-service",
     status: checkStatus,
     severity,
-    providerId: provider.id,
-    providerName: provider.displayName,
-    providerVersion: provider.version,
-    providerKind: providerKindFor(provider.id),
     runtimeStatus: status.idle === true ? "idle (starts on demand)" : status.running ? "running" : "stopped",
     runtime: {
       running: status.running,
       ...(runtimeVersion === undefined ? {} : { version: runtimeVersion }),
     },
-    capabilities: {},
     context,
     solutions: hasOrphans ? [orphanRemediation(status.orphanPids ?? [])] : [],
-    ...(selection === undefined ? {} : { selection }),
   };
 };

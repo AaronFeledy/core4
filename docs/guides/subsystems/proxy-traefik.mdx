@@ -81,7 +81,7 @@ lando info
 lando doctor --format=json
 ```
 
-`lando doctor --format=json` puts `preferred-host-ports` in `result.provider.checks`. That check is `warn` with `runtimeStatus: preferred-port-occupied` when something else owns 80 or 443. The `router` check in `result.subsystems.checks` sets `context.acquisitionMode` to `occupied-hop` and reports the selected `httpPort` and `httpsPort`. Use the URL from `lando info`. To move back to your preferred ports, free them, then run `lando setup`.
+`lando doctor --format=json` lists every check in `result.checks`. The `preferred-host-ports` check has `section: provider`. It is `warn` with `runtimeStatus: preferred-port-occupied` when something else owns 80 or 443. The `router` check has `section: subsystems`. It sets `context.acquisitionMode` to `occupied-hop` and reports the selected `httpPort` and `httpsPort`. Use the URL from `lando info`. To move back to your preferred ports, free them, then run `lando setup`.
 
 ## Prepare HTTPS
 

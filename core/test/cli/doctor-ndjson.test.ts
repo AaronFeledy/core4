@@ -1,30 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { makeRedactionService } from "@lando/redaction/service";
-
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
-import { type DoctorNdjsonCheck, renderDoctorChecksAsNdjson } from "../../src/cli/commands/doctor-ndjson.ts";
-
-interface LeakyCheck extends DoctorNdjsonCheck {
-  readonly detail: string;
-}
-
-const checkEventPayload = (check: LeakyCheck): Record<string, unknown> => ({
-  _tag: "doctor.check",
-  name: "leaky-check",
-  status: check.status,
-  severity: "error",
-  context: { detail: check.detail },
-});
-
-const secretsRedactor = (values: Record<string, string>) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const service = makeRedactionService();
-      yield* service.registerValues(Object.values(values));
-      return yield* service.forProfile("secrets");
-    }),
-  );
+import { Effect, Layer, Schema } from "effect";
+import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
+import { DoctorReportSchema, makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const eventLines = (ndjson: string): ReadonlyArray<StreamFrame> =>
   ndjson
@@ -33,43 +14,43 @@ const eventLines = (ndjson: string): ReadonlyArray<StreamFrame> =>
     .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)))
     .filter((frame) => frame._tag === "event");
 
-describe("renderDoctorChecksAsNdjson stream-frame seam", () => {
-  test("leaves the final newline to the renderer boundary", () => {
-    const ndjson = renderDoctorChecksAsNdjson({ checks: [], checkEventPayload });
-    expect(ndjson.endsWith("\n")).toBe(false);
-    expect(Schema.decodeUnknownSync(StreamFrame)(JSON.parse(ndjson))._tag).toBe("result");
-  });
-  test("default (no redactor) event lines are byte-identical to the central StreamFrame encoding", () => {
-    const check: LeakyCheck = { status: "fail", detail: "socket=/tmp/run.sock" };
-    const ndjson = renderDoctorChecksAsNdjson<LeakyCheck>({
-      checks: [check],
-      now: new Date("1970-01-01T00:00:00.000Z"),
-      checkEventPayload,
-    });
-
-    const firstLine = ndjson.split("\n")[0];
-    const expected = JSON.stringify(
-      Schema.encodeSync(StreamFrame)({
-        _tag: "event",
-        event: "doctor.check",
-        payload: checkEventPayload(check),
-      }),
-    );
-    expect(firstLine).toBe(expected);
-  });
-
+describe("renderDoctorReportAsNdjson redaction boundary", () => {
   test("an injected secrets redactor masks a registered secret in a doctor check result", async () => {
     const secret = "us383-doctor-secret-value";
-    const redactor = await secretsRedactor({ TOKEN: secret });
-    const check: LeakyCheck = { status: "fail", detail: `leaked ${secret}` };
+    const io = createBufferedRendererIO();
 
-    const ndjson = renderDoctorChecksAsNdjson<LeakyCheck>({
-      checks: [check],
-      now: new Date("1970-01-01T00:00:00.000Z"),
-      checkEventPayload,
-      redactor,
-    });
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const redaction = yield* RedactionService;
+        yield* redaction.registerValues([secret]);
+        return makeDoctorReport({
+          version: "4.0.0-test",
+          checks: [
+            {
+              section: "provider",
+              name: "leaky-check",
+              status: "fail",
+              severity: "error",
+              context: { detail: `leaked ${secret}` },
+              solutions: [],
+            },
+          ],
+          skipped: [],
+        });
+      }),
+      {
+        runtime: Layer.succeed(RedactionService, RedactionService.of(makeRedactionService())),
+        rendererMode: "plain",
+        resultFormat: "ndjson",
+        command: "meta:doctor",
+        resultSchema: DoctorReportSchema,
+        io,
+        render: (report) => renderDoctorReportAsNdjson(report),
+        formatError: ({ error }) => String(error),
+      },
+    );
 
+    const ndjson = io.stdout();
     expect(ndjson).not.toContain(secret);
     expect(ndjson).toContain("[redacted]");
 

@@ -14,7 +14,8 @@ import {
 } from "@lando/sdk/test";
 import { type Context, Effect, Layer } from "effect";
 
-import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
+import { doctor } from "../../src/cli/commands/doctor.ts";
+import type { DoctorFinding } from "../../src/cli/commands/doctor-contract.ts";
 
 /**
  * DoctorCheck built-in invocation.
@@ -63,14 +64,14 @@ const buildLayers = (
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
-const mapSeverity = (severity: DoctorCheck["severity"]): DoctorCheckIssue["severity"] =>
+const mapSeverity = (severity: DoctorFinding["severity"]): DoctorCheckIssue["severity"] =>
   severity === "warn" ? "warning" : severity;
 
 /**
  * Adapt a core `selected-provider` `DoctorCheck` into the SDK contract's
  * `DoctorCheckResult`. A check with no solutions is healthy (no issues).
  */
-const toDoctorCheckResult = (check: DoctorCheck): DoctorCheckResult => ({
+const toDoctorCheckResult = (check: DoctorFinding): DoctorCheckResult => ({
   id: check.name,
   issues: check.solutions.map(
     (solution): DoctorCheckIssue => ({
@@ -169,7 +170,7 @@ describe("DoctorCheck contract — built-in selected-provider check", () => {
     const harness: DoctorCheckContractHarness = {
       name: "selected-provider (unreachable)",
       check: selectedProviderCheck(unreachableProvider),
-      expectedIssue: { severity: "error", contextKey: "providerId", solutionKind: "manual" },
+      expectedIssue: { severity: "error", contextKey: "platform", solutionKind: "manual" },
     };
     const exit = await Effect.runPromiseExit(runDoctorCheckContractSuite(harness));
     if (exit._tag === "Failure") {

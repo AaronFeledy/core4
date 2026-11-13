@@ -1,14 +1,22 @@
 /**
  * Combined `lando doctor` report.
  *
- * Merges provider, subsystem, and global-app diagnostics into a single report
- * without requiring app bootstrap.
+ * One table drives collection, the live task tree, and report order. Producers
+ * are section-agnostic; this module stamps the section onto every finding and
+ * skip, builds the report once with the pure `makeDoctorReport`, and owns the
+ * single counting-by-completion policy.
  */
 import { join } from "node:path";
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
-import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
-import { type ConfigLintResult, MAILHOG_DEPRECATION_NOTICE } from "@lando/sdk/schema";
+import {
+  type ConfigLintResult,
+  type ConfigLintViolation,
+  DeprecationSeverity,
+  DeprecationSurfaceKind,
+  MAILHOG_DEPRECATION_NOTICE,
+  formatValidationIssuePath,
+} from "@lando/sdk/schema";
 import {
   type ConfigService,
   DeprecationService,
@@ -19,13 +27,21 @@ import {
   type RuntimeProviderRegistry,
   SshService,
 } from "@lando/sdk/services";
-import type { TaskTreeController } from "@lando/sdk/task-progress";
-import { DateTime, Effect, Layer, Option } from "effect";
+import { DateTime, Effect, Layer, Option, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
-import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
+import { type DoctorOptions, type DoctorSectionResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
-import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { type CertsDoctorStatus, certsDoctorStatus, certsSubsystemCheck } from "./doctor-certs-status";
+import type {
+  DoctorCheck,
+  DoctorFinding,
+  DoctorProvider,
+  DoctorReport,
+  DoctorSectionId,
+  DoctorSkip,
+  DoctorSkipInput,
+} from "./doctor-contract";
 import { debuggerHostDoctor } from "./doctor-debugger";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
@@ -34,44 +50,29 @@ import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs"
 import { listenerDoctorChecks } from "./doctor-listeners";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
-import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
+import { networkTrustDoctorStatus } from "./doctor-network-trust";
 import { orphanedSnapshotsDoctor } from "./doctor-orphaned-snapshots";
 import {
-  type DoctorSectionId,
   type DoctorSectionOutcome,
-  appConfigOutcome,
-  certsOutcome,
   checksOutcome,
-  deprecationsOutcome,
-  doctorSections,
   doctorTreeSummary,
   makeDoctorTree,
-  selfCheckOutcome,
   settleDoctorSection,
 } from "./doctor-progress";
-import type { DoctorDeprecationEntry, DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
-import { countDoctorChecks } from "./doctor-report-render";
-import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import {
-  type SubsystemDoctorOptions,
-  type SubsystemDoctorResult,
-  subsystemDoctor,
-} from "./doctor-subsystems";
+import { makeDoctorReport } from "./doctor-report-model";
+import { doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
+import { type SubsystemDoctorOptions, subsystemDoctor } from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
-export type {
-  DoctorDeprecationEntry,
-  DoctorDeprecationReport,
-  DoctorReport,
-} from "./doctor-report-contract";
-export { DoctorReportSchema } from "./doctor-report-contract";
+export type { DoctorReport } from "./doctor-contract";
+export { DoctorReportSchema } from "./doctor-contract";
+export { renderDoctorReportAsNdjson } from "./doctor-render-ndjson";
 export {
   type DoctorRenderOptions,
   buildDoctorReportSummary,
   renderDoctorReport,
-  renderDoctorReportAsNdjson,
-} from "./doctor-report-render";
+} from "./doctor-render-text";
 
 export const appConfigForReport = () =>
   appConfigLint().pipe(
@@ -108,6 +109,25 @@ export const appConfigForReport = () =>
       } satisfies ConfigLintResult),
     ),
   );
+
+export const DoctorDeprecationEntry = Schema.Struct({
+  kind: DeprecationSurfaceKind,
+  id: Schema.String,
+  severity: DeprecationSeverity,
+  since: Schema.String,
+  removeIn: Schema.optionalKey(Schema.String),
+  replacement: Schema.optionalKey(Schema.String),
+  note: Schema.String,
+  docsUrl: Schema.optionalKey(Schema.String),
+  source: Schema.String,
+  count: Schema.Number,
+});
+export type DoctorDeprecationEntry = typeof DoctorDeprecationEntry.Type;
+
+export const DoctorDeprecationReport = Schema.Struct({
+  entries: Schema.Array(DoctorDeprecationEntry),
+});
+export type DoctorDeprecationReport = typeof DoctorDeprecationReport.Type;
 
 const sourceForDeprecation = (entry: {
   readonly app?: string | undefined;
@@ -178,19 +198,139 @@ export const doctorDeprecations = Effect.fnUntraced(function* (): Effect.fn.Retu
   return { entries };
 });
 
-const EMPTY_CHECKS = { checks: [] } as const;
+/** Each deprecation entry counts once; occurrences stay in `context.count`. */
+export const deprecationFindings = (report: DoctorDeprecationReport): ReadonlyArray<DoctorFinding> =>
+  report.entries.map((entry) => ({
+    name: "deprecation",
+    status: ({ error: "fail", warn: "warn", info: "pass" } as const)[entry.severity],
+    severity: entry.severity,
+    context: {
+      kind: entry.kind,
+      id: entry.id,
+      since: entry.since,
+      ...(entry.removeIn === undefined ? {} : { removeIn: entry.removeIn }),
+      ...(entry.replacement === undefined ? {} : { replacement: entry.replacement }),
+      ...(entry.docsUrl === undefined ? {} : { docsUrl: entry.docsUrl }),
+      source: entry.source,
+      count: String(entry.count),
+    },
+    solutions: [{ kind: "manual", description: entry.note }],
+  }));
+
+const violationLocation = (violation: ConfigLintViolation): string => {
+  const formatted = formatValidationIssuePath(violation.path);
+  return formatted.length === 0 ? "(root)" : formatted;
+};
+
+export const appConfigFindings = (result: ConfigLintResult): ReadonlyArray<DoctorFinding> => {
+  if (result.violations.length === 0)
+    return [
+      {
+        name: "app-config-lint",
+        status: "pass",
+        severity: "info",
+        context: { file: result.file },
+        solutions: [],
+      },
+    ];
+  return result.violations.map((violation) => ({
+    name: violation.rule,
+    status: violation.severity === "error" ? "fail" : "warn",
+    severity: violation.severity === "error" ? "error" : "warn",
+    context: {
+      file: result.file,
+      location: violationLocation(violation),
+      message: violation.message,
+      ...(violation.reason === undefined ? {} : { reason: violation.reason }),
+      ...(violation.line === undefined ? {} : { line: String(violation.line) }),
+      ...(violation.column === undefined ? {} : { column: String(violation.column) }),
+      ...(violation.source === undefined ? {} : { source: violation.source.layer }),
+    },
+    solutions:
+      violation.suggestion === undefined ? [] : [{ kind: "manual", description: violation.suggestion }],
+    details: violation,
+  }));
+};
+
+export {
+  doctorCompletion,
+  makeDoctorReport,
+  summarizeDoctorChecks,
+} from "./doctor-report-model";
+
+interface DoctorSectionBase {
+  readonly id: DoctorSectionId;
+  readonly when?: (options: DoctorOptions) => boolean;
+}
 
 /**
- * Inputs for the section collector. Callers inject the runtime-dependent
- * sections so the same collection logic serves a provided runtime and the
- * self-provisioning CLI path that may have no runtime at all.
+ * One table entry. An isolated section may fail; the runner degrades it to a
+ * self finding. A section that owns its isolation must be infallible, so a user
+ * interrupt stays an interrupt instead of becoming a defect.
  */
+export type DoctorSectionSpec<R> =
+  | (DoctorSectionBase & {
+      readonly run: Effect.Effect<DoctorSectionResult, unknown, R>;
+      readonly isolate?: undefined;
+    })
+  | (DoctorSectionBase & {
+      readonly run: Effect.Effect<DoctorSectionResult, never, R>;
+      readonly isolate: false;
+    });
+
+export interface DoctorSectionOutput {
+  readonly checks: ReadonlyArray<DoctorCheck>;
+  readonly skipped: ReadonlyArray<DoctorSkip>;
+  readonly provider?: DoctorProvider;
+}
+
+const EMPTY_SECTION_RESULT: DoctorSectionResult = { checks: [] };
+
+const stampSection = (section: DoctorSectionId, result: DoctorSectionResult): DoctorSectionOutput => ({
+  checks: result.checks.map((finding) => ({ section, ...finding })),
+  skipped: (result.skipped ?? []).map((skip) => ({ section, ...skip })),
+  ...(result.provider === undefined ? {} : { provider: result.provider }),
+});
+
+/**
+ * Run one table entry, isolate it unless it owns isolation, and stamp its
+ * section onto every finding and skip. Generic over the entry's requirements so
+ * the config-failure path can reuse it without a runtime or a tree.
+ */
+export const runDoctorSection = <R>(
+  spec: DoctorSectionSpec<R>,
+  input: { readonly budgetMs: number; readonly redact: (value: string) => string },
+): Effect.Effect<DoctorSectionOutput, never, R> =>
+  spec.isolate === false
+    ? spec.run.pipe(Effect.map((result) => stampSection(spec.id, result)))
+    : isolateDoctorSection({
+        section: spec.id,
+        effect: spec.run,
+        fallback: EMPTY_SECTION_RESULT,
+        budgetMs: input.budgetMs,
+        redact: input.redact,
+      }).pipe(
+        Effect.map((isolated) => {
+          const output = stampSection(spec.id, isolated.value);
+          return isolated.self === undefined
+            ? output
+            : { ...output, checks: [...output.checks, isolated.self] };
+        }),
+      );
+
+const sectionSpec = <R>(
+  id: DoctorSectionId,
+  run: Effect.Effect<DoctorSectionResult, unknown, R>,
+  extra?: { readonly when?: (options: DoctorOptions) => boolean },
+): DoctorSectionSpec<R> => (extra?.when === undefined ? { id, run } : { id, run, when: extra.when });
+
 export interface CollectDoctorReportInput<R> {
   readonly options: DoctorOptions;
-  readonly provider: Effect.Effect<DoctorResult, never, R>;
-  readonly listeners?: (
-    input: Parameters<typeof listenerDoctorChecks>[0],
-  ) => Effect.Effect<DoctorResult, never, R>;
+  readonly provider: Effect.Effect<DoctorSectionResult, never, R>;
+  readonly listeners?: (input: {
+    readonly budgetMs: number;
+    readonly redact: (value: string) => string;
+  }) => Effect.Effect<DoctorSectionResult, never, R>;
   readonly deprecations: Effect.Effect<DoctorDeprecationReport, never, R>;
   readonly certs?: Effect.Effect<CertsDoctorStatus, never, R>;
   readonly appConfig?: Effect.Effect<
@@ -202,236 +342,164 @@ export interface CollectDoctorReportInput<R> {
    * Injected subsystem doctor. Callers that already built a provider runtime
    * provide the selected runtime services. Without them, the section is skipped.
    */
-  readonly subsystems?: (options: SubsystemDoctorOptions) => Effect.Effect<SubsystemDoctorResult, never, R>;
-  /** Self checks recorded before collection started (e.g. bootstrap failure). */
-  readonly initialSelfChecks?: ReadonlyArray<DoctorSelfCheck>;
-  readonly skipped?: DoctorReport["skipped"];
+  readonly subsystems?: (options: SubsystemDoctorOptions) => Effect.Effect<DoctorSectionResult, never, R>;
+  /** Findings recorded before collection started (global config, bootstrap). */
+  readonly initialChecks?: ReadonlyArray<DoctorCheck>;
+  readonly skipped?: ReadonlyArray<DoctorSkip>;
 }
 
 export const collectDoctorReport = Effect.fn("Doctor.collectReport")(
   <R>(input: CollectDoctorReportInput<R>): Effect.Effect<DoctorReport, never, R | ConfigService> =>
-    makeDoctorTree(input.options).pipe(
-      Effect.flatMap((tree) =>
-        collectWithTree(input, tree).pipe(
-          Effect.onInterrupt(() => tree.settleInterrupt("doctor · interrupted")),
-        ),
-      ),
-      (effect) => interruptOnAbort(effect, input.options.signal),
-    ),
+    collectWithTree(input).pipe((effect) => interruptOnAbort(effect, input.options.signal)),
 );
 
 const collectWithTree = Effect.fnUntraced(function* <R>(
   input: CollectDoctorReportInput<R>,
-  tree: TaskTreeController,
 ): Effect.fn.Return<DoctorReport, never, R | ConfigService> {
   const options = input.options;
   const sourceEnv = { ...(options.env ?? (yield* CliInvocation).env) };
   const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
   const budgetMs = doctorSectionBudgetMs(sourceEnv);
-  const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
-  const skipped: NonNullable<DoctorReport["skipped"]>[number][] = [...(input.skipped ?? [])];
+  const checks: DoctorCheck[] = [...(input.initialChecks ?? [])];
+  const skipped: DoctorSkip[] = [...(input.skipped ?? [])];
   if (input.subsystems === undefined && !skipped.some((entry) => entry.section === "subsystems")) {
     skipped.push({
       section: "subsystems",
-      status: "skipped",
       reason: "Runtime subsystem services were not provided; no subsystem inspection was performed.",
     });
   }
-  yield* tree.start;
-  for (const entry of skipped) {
-    if (!doctorSections(options).some(({ id }) => id === entry.section)) continue;
-    yield* tree.startTask(entry.section);
-    yield* tree.infoTask(entry.section, `${entry.section} · skipped · ${entry.reason}`);
-  }
 
-  // Each section is one task in the live tree: it spins while the section
-  // probes and settles as ✓ or ✗ from the section value, or as ✗ from the
-  // self check when doctor itself could not run the section.
-  const section = <A, E, SR>(
-    name: DoctorSectionId,
-    effect: Effect.Effect<A, E, SR>,
-    fallback: A,
-    outcome: (value: A) => DoctorSectionOutcome,
-  ): Effect.Effect<A, never, SR> => {
-    if (skipped.some((entry) => entry.section === name)) return Effect.succeed(fallback);
-    return tree.startTask(name).pipe(
-      Effect.andThen(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
-      Effect.flatMap((isolated) => {
-        if (isolated.self !== undefined) selfChecks.push(isolated.self);
-        const settled =
-          isolated.self === undefined ? outcome(isolated.value) : selfCheckOutcome(name, isolated.self);
-        return settleDoctorSection(tree, name, settled).pipe(Effect.as(isolated.value));
-      }),
-    );
-  };
+  const subsystemsRun: Effect.Effect<DoctorSectionResult, never, R> =
+    input.subsystems === undefined
+      ? Effect.succeed(EMPTY_SECTION_RESULT)
+      : input.subsystems({ fix: options.fix === true });
 
-  // A provider sub-probe doctor could not run (e.g. a status timeout) fails
-  // the row the same way a whole-section self check does.
-  const provider = yield* section("provider", input.provider, EMPTY_CHECKS, (result) => {
-    const [self] = result.selfChecks ?? [];
-    return self === undefined ? checksOutcome("provider", result.checks) : selfCheckOutcome("provider", self);
-  });
-  // Provider-section self checks are lifted here so the report has one home for them.
-  selfChecks.push(...(provider.selfChecks ?? []));
-  skipped.push(...(provider.skipped ?? []));
-  let appListeners: DoctorResult | undefined;
-  if (options.app === true && !skipped.some((entry) => entry.section === "app-listeners")) {
-    yield* tree.startTask("app-listeners");
-    // The listener collector owns its isolation; another deadline could race its non-fatal skip.
-    appListeners =
-      input.listeners === undefined
-        ? {
-            checks: [],
-            skipped: [
-              {
-                section: "app-listeners",
-                status: "skipped",
-                reason: "Runtime listener inspection was not provided.",
-              },
-            ],
-          }
-        : yield* input.listeners({ budgetMs, redact });
-    skipped.push(...(appListeners.skipped ?? []));
-    if (appListeners.checks.length === 0 && (appListeners.skipped?.length ?? 0) > 0)
-      yield* tree.infoTask("app-listeners", "app-listeners · skipped");
-    else
-      yield* settleDoctorSection(tree, "app-listeners", checksOutcome("app-listeners", appListeners.checks));
-  }
-  const certs = yield* section(
-    "certificate-authority",
-    input.certs ?? certsDoctorStatus(redact),
-    UNRESOLVED_CERTS_STATUS,
-    certsOutcome,
+  const certsRun = (input.certs ?? certsDoctorStatus(redact)).pipe(
+    Effect.flatMap((status) => certsSubsystemCheck(status, options.fix === true)),
+    Effect.map((check): DoctorSectionResult => ({ checks: check === undefined ? [] : [check] })),
   );
-  const networkTrust = yield* section<NetworkTrustDoctorStatus | undefined, unknown, ConfigService>(
-    "network-trust",
-    networkTrustDoctorStatus(sourceEnv),
-    undefined,
-    (status) => checksOutcome("network-trust", status === undefined ? [] : [status]),
-  );
-  const subsystemOptions: SubsystemDoctorOptions = {
-    fix: options.fix === true,
-    certs,
-  };
-  const subsystems = yield* section<SubsystemDoctorResult, never, R>(
-    "subsystems",
-    input.subsystems !== undefined ? input.subsystems(subsystemOptions) : Effect.succeed(EMPTY_CHECKS),
-    EMPTY_CHECKS,
-    (result) => checksOutcome("subsystems", result.checks),
-  );
-  skipped.push(...(subsystems.skipped ?? []));
-  const globalApp = yield* section(
-    "global-app",
-    globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer)),
-    EMPTY_CHECKS,
-    (result) => checksOutcome("global-app", result.checks),
-  );
-  const mcp = yield* section(
-    "mcp",
-    mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)),
-    EMPTY_CHECKS,
-    (result) => checksOutcome("mcp", result.checks),
-  );
-  const appVersionConstraints =
-    options.app === true
-      ? yield* section("app-version-constraints", appVersionConstraintsForReport(), EMPTY_CHECKS, (result) =>
-          checksOutcome("app-version-constraints", result?.checks ?? []),
-        )
-      : undefined;
-  const deprecations =
-    options.deprecations === true && !input.skipped?.some((entry) => entry.section === "deprecations")
-      ? yield* section("deprecations", input.deprecations, { entries: [] }, deprecationsOutcome)
-      : undefined;
-  const appConfig =
-    options.app === true && input.appConfig !== undefined
-      ? yield* section("app-config", input.appConfig, undefined, appConfigOutcome)
-      : undefined;
-  const accelerated = yield* isolateDoctorSection({
-    section: "accelerated-starts",
-    effect: acceleratedStartsDoctor(redact),
-    fallback: [],
-    budgetMs,
-    redact,
-  });
-  if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
-  const missingRoots = yield* isolateDoctorSection({
-    section: "missing-app-roots",
-    effect: input.skipped?.some((entry) => entry.section === "missing-app-roots")
-      ? Effect.succeed([])
-      : missingAppRootsDoctor(redact),
-    fallback: [],
-    budgetMs,
-    redact,
-  });
-  if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
-  const orphanedSnapshots = yield* isolateDoctorSection({
-    section: "orphaned-volume-snapshots",
-    effect: input.skipped?.some((entry) => entry.section === "orphaned-volume-snapshots")
-      ? Effect.succeed([])
-      : orphanedSnapshotsDoctor(redact),
-    fallback: [],
-    budgetMs,
-    redact,
-  });
-  if (orphanedSnapshots.self !== undefined) selfChecks.push(orphanedSnapshots.self);
-  const legacyCatalogs = yield* isolateDoctorSection({
-    section: "legacy-snapshot-catalogs",
-    effect: legacySnapshotCatalogsDoctor(redact),
-    fallback: [],
-    budgetMs,
-    redact,
-  });
-  if (legacyCatalogs.self !== undefined) selfChecks.push(legacyCatalogs.self);
-  const filesystemWatch = yield* isolateDoctorSection({
-    section: "filesystem-watch",
-    effect: filesystemWatchDoctor(redact, options.platform),
-    fallback: [],
-    budgetMs,
-    redact,
-  });
-  if (filesystemWatch.self !== undefined) selfChecks.push(filesystemWatch.self);
-  const debuggerHost = yield* isolateDoctorSection({
-    section: "debugger-host",
-    effect: debuggerHostDoctor(redact, budgetMs, options.platform),
-    fallback: { checks: [] },
-    budgetMs,
-    redact,
-  });
-  if (debuggerHost.self !== undefined) selfChecks.push(debuggerHost.self);
-  skipped.push(...(debuggerHost.value.skipped ?? []));
-  const report: DoctorReport = {
-    version: CORE_VERSION,
-    ...(skipped.length === 0 ? {} : { skipped }),
-    provider: { checks: provider.checks },
-    ...(appListeners === undefined ? {} : { appListeners: { checks: appListeners.checks } }),
-    subsystems: {
-      checks: [
-        ...subsystems.checks,
-        ...(networkTrust === undefined ? [] : [networkTrust]),
-        ...accelerated.value,
-        ...missingRoots.value,
-        ...orphanedSnapshots.value,
-        ...legacyCatalogs.value,
-        ...filesystemWatch.value,
-        ...debuggerHost.value.checks,
-      ],
+
+  const specs: ReadonlyArray<DoctorSectionSpec<R | ConfigService>> = [
+    sectionSpec("provider", input.provider),
+    {
+      id: "app-listeners",
+      when: (candidate) => candidate.app === true,
+      isolate: false,
+      run:
+        input.listeners === undefined
+          ? Effect.succeed({
+              checks: [],
+              skipped: [
+                { reason: "Runtime listener inspection was not provided." } satisfies DoctorSkipInput,
+              ],
+            })
+          : input.listeners({ budgetMs, redact }),
     },
-    globalApp,
-    mcp,
-    ...(appVersionConstraints === undefined ? {} : { appVersionConstraints }),
-    ...(deprecations === undefined ? {} : { deprecations }),
-    ...(appConfig === undefined ? {} : { appConfig }),
-    ...(selfChecks.length === 0 ? {} : { self: { checks: selfChecks } }),
-  };
-  yield* tree.close(doctorTreeSummary(countDoctorChecks(report)));
-  return report;
+    sectionSpec("certificate-authority", certsRun),
+    sectionSpec(
+      "network-trust",
+      networkTrustDoctorStatus(sourceEnv).pipe(
+        Effect.map((status): DoctorSectionResult => ({ checks: [status] })),
+      ),
+    ),
+    sectionSpec("subsystems", subsystemsRun),
+    sectionSpec("global-app", globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer))),
+    sectionSpec("mcp", mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer))),
+    sectionSpec(
+      "accelerated-starts",
+      acceleratedStartsDoctor(redact).pipe(
+        Effect.map((findings): DoctorSectionResult => ({ checks: findings })),
+      ),
+    ),
+    sectionSpec(
+      "missing-app-roots",
+      missingAppRootsDoctor(redact).pipe(
+        Effect.map((findings): DoctorSectionResult => ({ checks: findings })),
+      ),
+    ),
+    sectionSpec(
+      "orphaned-volume-snapshots",
+      orphanedSnapshotsDoctor(redact).pipe(
+        Effect.map((findings): DoctorSectionResult => ({ checks: findings })),
+      ),
+    ),
+    sectionSpec(
+      "legacy-snapshot-catalogs",
+      legacySnapshotCatalogsDoctor(redact).pipe(
+        Effect.map((findings): DoctorSectionResult => ({ checks: findings })),
+      ),
+    ),
+    sectionSpec(
+      "filesystem-watch",
+      filesystemWatchDoctor(redact, options.platform).pipe(
+        Effect.map((findings): DoctorSectionResult => ({ checks: findings })),
+      ),
+    ),
+    sectionSpec("debugger-host", debuggerHostDoctor(redact, budgetMs, options.platform)),
+    sectionSpec(
+      "app-version-constraints",
+      appVersionConstraintsForReport().pipe(Effect.map((result) => result ?? EMPTY_SECTION_RESULT)),
+      { when: (candidate) => candidate.app === true },
+    ),
+    sectionSpec(
+      "deprecations",
+      input.deprecations.pipe(
+        Effect.map((report): DoctorSectionResult => ({ checks: deprecationFindings(report) })),
+      ),
+      { when: (candidate) => candidate.deprecations === true },
+    ),
+    sectionSpec(
+      "app-config",
+      input.appConfig === undefined
+        ? Effect.succeed(EMPTY_SECTION_RESULT)
+        : input.appConfig.pipe(
+            Effect.map(
+              (result): DoctorSectionResult => ({
+                checks: result === undefined ? [] : appConfigFindings(result),
+              }),
+            ),
+          ),
+      { when: (candidate) => candidate.app === true },
+    ),
+  ];
+
+  const enabled = specs.filter((spec) => spec.when === undefined || spec.when(options));
+  const tree = yield* makeDoctorTree(enabled.map((spec) => spec.id));
+  return yield* Effect.gen(function* () {
+    yield* tree.start;
+    let provider: DoctorProvider | undefined;
+    for (const spec of enabled) {
+      const sectionSkips = skipped.filter((entry) => entry.section === spec.id && entry.check === undefined);
+      yield* tree.startTask(spec.id);
+      if (sectionSkips.length > 0) {
+        for (const skip of sectionSkips) {
+          yield* tree.infoTask(spec.id, `${spec.id} · skipped · ${skip.reason}`);
+        }
+        continue;
+      }
+      const output = yield* runDoctorSection(spec, { budgetMs, redact });
+      if (spec.id === "provider") provider = output.provider;
+      checks.push(...output.checks);
+      skipped.push(...output.skipped);
+      yield* settleDoctorSection(tree, spec.id, sectionOutcomeFor(spec.id, output));
+    }
+    const report = makeDoctorReport({ provider, checks, skipped });
+    yield* tree.close(doctorTreeSummary(report.summary));
+    return report;
+  }).pipe(Effect.onInterrupt(() => tree.settleInterrupt("doctor · interrupted")));
 });
+
+const sectionOutcomeFor = (id: DoctorSectionId, output: DoctorSectionOutput): DoctorSectionOutcome => {
+  if (output.checks.length === 0 && output.skipped.length > 0)
+    return { summary: `${id} · skipped`, skipped: true };
+  return checksOutcome(id, output.checks);
+};
 
 /**
  * Build the combined report against an already-provided runtime.
  *
  * The error channel is `never` by construction: a section that fails, dies, or
- * overruns its deadline degrades to a fallback and contributes a `self` check,
+ * overruns its deadline degrades to a fallback and contributes a self finding,
  * so `lando doctor` always answers with a structured report. Only a user
  * interrupt stops the run.
  */

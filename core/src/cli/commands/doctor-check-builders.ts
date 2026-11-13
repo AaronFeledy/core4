@@ -1,83 +1,31 @@
-import { Schema } from "effect";
-import { DOCTOR_SEVERITIES, DOCTOR_STATUSES, type DoctorSolution } from "./doctor-contract";
-import type { SubsystemRecovery } from "./doctor-subsystem-checks";
+import type { DoctorFinding, DoctorRecovery, DoctorSolution } from "./doctor-contract";
 
-export const DoctorStatusSchema = Schema.Literals(DOCTOR_STATUSES);
-export const DoctorSeveritySchema = Schema.Literals(DOCTOR_SEVERITIES);
-
-type CheckInput<Name extends string> = {
-  readonly name: Name;
+type CheckInput = {
+  readonly name: string;
   readonly context: Readonly<Record<string, string>>;
-  readonly recovery?: SubsystemRecovery;
+  readonly recovery?: DoctorRecovery;
 };
-type DegradedInput<Name extends string, Solution extends DoctorSolution> = CheckInput<Name> & {
-  readonly solutions: readonly Solution[];
-};
-type Recovery = { readonly recovery: SubsystemRecovery };
-type Check<
-  Name extends string,
-  Status extends string,
-  Severity extends string,
-  Solution,
-> = CheckInput<Name> & {
-  readonly status: Status;
-  readonly severity: Severity;
-  readonly solutions: readonly Solution[];
+type DegradedInput = CheckInput & {
+  readonly solutions: readonly DoctorSolution[];
 };
 
-export function warnCheck<Name extends string, Solution extends DoctorSolution>(
-  input: DegradedInput<Name, Solution> & Recovery,
-): Check<Name, "warn", "warn", Solution> & Recovery;
-export function warnCheck<Name extends string, Solution extends DoctorSolution>(
-  input: DegradedInput<Name, Solution>,
-): Check<Name, "warn", "warn", Solution>;
-export function warnCheck<Name extends string, Solution extends DoctorSolution>(
-  input: DegradedInput<Name, Solution>,
-): Check<Name, "warn", "warn", Solution> {
-  return {
-    name: input.name,
-    status: "warn",
-    severity: "warn",
-    ...(input.recovery === undefined ? {} : { recovery: input.recovery }),
-    context: input.context,
-    solutions: input.solutions,
-  };
-}
+const severityByStatus = { pass: "info", warn: "warn", fail: "error" } as const;
 
-export function failCheck<Name extends string, Solution extends DoctorSolution>(
-  input: DegradedInput<Name, Solution> & Recovery,
-): Check<Name, "fail", "error", Solution> & Recovery;
-export function failCheck<Name extends string, Solution extends DoctorSolution>(
-  input: DegradedInput<Name, Solution>,
-): Check<Name, "fail", "error", Solution>;
-export function failCheck<Name extends string, Solution extends DoctorSolution>(
-  input: DegradedInput<Name, Solution>,
-): Check<Name, "fail", "error", Solution> {
-  return {
-    name: input.name,
-    status: "fail",
-    severity: "error",
-    ...(input.recovery === undefined ? {} : { recovery: input.recovery }),
-    context: input.context,
-    solutions: input.solutions,
-  };
-}
+const buildCheck = (
+  input: CheckInput,
+  status: DoctorFinding["status"],
+  solutions: readonly DoctorSolution[],
+): DoctorFinding => ({
+  name: input.name,
+  status,
+  severity: severityByStatus[status],
+  ...(input.recovery === undefined ? {} : { recovery: input.recovery }),
+  context: input.context,
+  solutions,
+});
 
-export function passCheckNamed<Name extends string>(
-  input: CheckInput<Name> & Recovery,
-): Check<Name, "pass", "info", never> & Recovery;
-export function passCheckNamed<Name extends string>(
-  input: CheckInput<Name>,
-): Check<Name, "pass", "info", never>;
-export function passCheckNamed<Name extends string>(
-  input: CheckInput<Name>,
-): Check<Name, "pass", "info", never> {
-  return {
-    name: input.name,
-    status: "pass",
-    severity: "info",
-    ...(input.recovery === undefined ? {} : { recovery: input.recovery }),
-    context: input.context,
-    solutions: [],
-  };
-}
+export const warnCheck = (input: DegradedInput): DoctorFinding => buildCheck(input, "warn", input.solutions);
+
+export const failCheck = (input: DegradedInput): DoctorFinding => buildCheck(input, "fail", input.solutions);
+
+export const passCheckNamed = (input: CheckInput): DoctorFinding => buildCheck(input, "pass", []);

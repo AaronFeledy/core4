@@ -2,13 +2,13 @@ import { ProbeError, ProbeTimeoutError, runProbe } from "@lando/sdk/probe";
 import { PathsService } from "@lando/sdk/services";
 import { Duration, Effect, Option, absurd } from "effect";
 import { failCheck, passCheckNamed, warnCheck } from "./doctor-check-builders";
+import type { DoctorFinding } from "./doctor-contract";
 import {
   FilesystemWatchIO,
   type WatchAllocation,
   type WatchObservation,
   nativeWatchIO,
 } from "./doctor-filesystem-watch-io";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 const failureReason = (allocation: WatchAllocation): string => {
   switch (allocation.stage) {
@@ -147,7 +147,7 @@ const windowsRemediation = (allocation: WatchAllocation): readonly string[] => {
 export const filesystemWatchDoctor = Effect.fn("Doctor.filesystemWatch")(function* (
   redact: (text: string) => string,
   platform?: string,
-): Effect.fn.Return<readonly DoctorSubsystemCheck[], ProbeError> {
+): Effect.fn.Return<readonly DoctorFinding[], ProbeError> {
   const paths = yield* Effect.serviceOption(PathsService);
   const host = platform ?? (Option.isSome(paths) ? paths.value.platform : process.platform);
   const base = {

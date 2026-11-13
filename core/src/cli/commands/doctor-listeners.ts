@@ -3,54 +3,53 @@ import { expectedTcpListener, observeTcpListener } from "@lando/container-runtim
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { type DoctorCheck, type DoctorResult, providerKindFor } from "./doctor-contract";
+import type { DoctorFinding, DoctorSectionResult } from "./doctor-contract";
 import { isolateDoctorSection } from "./doctor-self";
 
-const skipped = (section: string, reason: string): DoctorResult => ({
+const skipped = (check: string | undefined, reason: string): DoctorSectionResult => ({
   checks: [],
-  skipped: [{ section, status: "skipped", reason }],
+  skipped: [{ ...(check === undefined ? {} : { check }), reason }],
 });
 
 const collectListeners = Effect.fnUntraced(function* (
   redact: (value: string) => string,
 ): Effect.fn.Return<
-  DoctorResult,
+  DoctorSectionResult,
   Effect.Error<typeof resolveAppliedStateTarget>,
   RuntimeProviderRegistry | Effect.Services<typeof resolveAppliedStateTarget>
 > {
   const target = yield* resolveAppliedStateTarget;
   if (target === undefined)
-    return skipped(
-      "app-listeners",
-      "No applied plan was found for the current app; no listeners were observed.",
-    );
+    return skipped(undefined, "No applied plan was found for the current app; no listeners were observed.");
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(target.plan);
   if ((yield* provider.getStatus).state === "idle")
     return skipped(
-      "app-listeners",
+      undefined,
       `Provider ${provider.id} holding the applied app is idle; no listeners were inspected.`,
     );
   const running = yield* provider.list({ app: target.plan.id });
   const results = yield* Effect.forEach(
     Object.values(target.plan.services),
-    (service): Effect.Effect<DoctorResult> => {
-      const section = `app-listener:${service.name}`;
+    (service): Effect.Effect<DoctorSectionResult> => {
+      const checkName = `app-listener:${service.name}`;
       const expected = expectedTcpListener(service);
       if (expected === undefined)
-        return Effect.succeed(skipped(section, "No expected TCP listener is recorded in the applied plan."));
+        return Effect.succeed(
+          skipped(checkName, "No expected TCP listener is recorded in the applied plan."),
+        );
       const observed = running.find((entry) => entry.service === service.name);
       if (observed === undefined || observed.status !== "running")
         return Effect.succeed(
-          skipped(section, "The service is not running; no listener observation was attempted."),
+          skipped(checkName, "The service is not running; no listener observation was attempted."),
         );
       return observeTcpListener(service, (command) =>
         provider.execStream({ app: target.plan.id, service: service.name, plan: target.plan }, command),
       ).pipe(
-        Effect.map((listener): DoctorResult => {
+        Effect.map((listener): DoctorSectionResult => {
           if (listener === undefined)
             return skipped(
-              section,
+              checkName,
               "TCP listener observation is unavailable; this is not evidence of an absent listener.",
             );
           const diagnostic: {
@@ -75,18 +74,12 @@ const collectListeners = Effect.fnUntraced(function* (
               return unreachable;
             }
           }
-          const check: DoctorCheck = {
+          const check: DoctorFinding = {
             name: "app-listener",
             status,
             severity: status === "pass" ? "info" : "warn",
-            providerId: provider.id,
-            providerName: provider.displayName,
-            providerVersion: provider.version,
-            providerKind: providerKindFor(provider.id),
-            runtimeStatus: "running",
-            runtime: { running: true },
-            capabilities: {},
             context: {
+              providerId: provider.id,
               app: String(target.plan.id),
               service: String(service.name),
               port: String(listener.port),
@@ -126,7 +119,7 @@ export const listenerDoctorChecks = Effect.fnUntraced(function* (input: {
     section: "app-listeners",
     effect: collectListeners(input.redact),
     fallback: skipped(
-      "app-listeners",
+      undefined,
       "Applied listener inspection could not complete within its budget or was unavailable; no listener verdict was made.",
     ),
     budgetMs: input.budgetMs,
@@ -134,5 +127,5 @@ export const listenerDoctorChecks = Effect.fnUntraced(function* (input: {
   });
   return outcome.self === undefined
     ? outcome.value
-    : skipped("app-listeners", `${outcome.self.reason}: ${outcome.self.context.message}`);
+    : skipped(undefined, `${outcome.self.context.reason}: ${outcome.self.context.message}`);
 });

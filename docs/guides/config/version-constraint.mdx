@@ -14,7 +14,7 @@ Set `lando:` at the top of `.lando.yml` to reject incompatible Lando binaries be
 lando: ">=4.1 <5"
 ```
 
-From your app directory, run `lando doctor --app --format=json` to check the declared ranges against your installed version. If they do not match, follow the repair steps below rather than bypassing the check by default.
+From your app directory, run `lando doctor --app --format=json` to check the declared ranges against your installed version. The result is in `result.checks`, in the entries whose `section` is `app-version-constraints`. If they do not match, follow the repair steps below rather than bypassing the check by default.
 
 The value supports the full npm-semver range grammar: comparators, unions
 (`||`), hyphen ranges, x-ranges, `^`, `~`, and exact versions. Prereleases
@@ -40,7 +40,8 @@ directly:
 warning for the current invocation only. The skip does not rewrite the
 Landofile, mutate the app-plan cache, or mark the constraint satisfied. It
 applies to the current process only. `lando doctor --app` reports when the
-skip env is active and includes the same source-layer context.
+skip env is active and includes the same source-layer context in its
+`app-version-constraints` checks.
 
 ## Repairing a mismatch
 

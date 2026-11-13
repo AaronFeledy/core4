@@ -6380,5 +6380,83 @@
     "changeKind": "enum-widened",
     "path": "$.site",
     "justification": "ExecutionSiteMatch publishes the same closed ExecutionSite set, so scheduled jobs add schedule-job here too. Existing matches keep their meaning and consumers must handle the additional site literal."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appConfig",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appListeners",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appVersionConstraints",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.deprecations",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.globalApp",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.globalConfig",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.mcp",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.provider.checks",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-optional",
+    "path": "$.provider",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.self",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "enum-changed",
+    "path": "$.skipped.items.section",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.skipped.items.status",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.subsystems",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
   }
 ]

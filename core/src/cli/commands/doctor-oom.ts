@@ -2,7 +2,7 @@ import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import type { HostPlatform } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import type { DoctorCheck, DoctorProviderKind, DoctorSolution } from "./doctor";
+import type { DoctorFinding, DoctorSolution } from "./doctor-contract";
 
 /**
  * Best-effort correlation of a Podman container died event to the affected
@@ -125,8 +125,6 @@ export const classifyDiedEvent = (payload: unknown): DiedEventClassification => 
 };
 
 export interface OomDoctorContext {
-  readonly provider: { readonly id: string; readonly displayName: string; readonly version: string };
-  readonly providerKind: DoctorProviderKind;
   readonly platform: HostPlatform;
 }
 
@@ -154,9 +152,9 @@ const podmanDesktopSolution = (): DoctorSolution => ({
  */
 export const buildOomDoctorCheck = (
   classification: DiedEventClassification,
-  { provider, providerKind, platform }: OomDoctorContext,
+  { platform }: OomDoctorContext,
   redactor: Redactor,
-): DoctorCheck | undefined => {
+): DoctorFinding | undefined => {
   if (classification.kind !== "oom") return undefined;
   const { correlation } = classification;
   const redact = (value: string) => redactor.redactString(value);
@@ -166,6 +164,7 @@ export const buildOomDoctorCheck = (
   if (correlation.exitCode !== undefined) context.exitCode = String(correlation.exitCode);
   if (correlation.app !== undefined) context.app = redact(correlation.app);
   if (correlation.service !== undefined) context.service = redact(correlation.service);
+  context.oomKilled = "true";
 
   const solutions =
     platform === "darwin" || platform === "win32"
@@ -176,13 +175,8 @@ export const buildOomDoctorCheck = (
     name: OOM_CHECK_NAME,
     status: "fail",
     severity: "error",
-    providerId: provider.id,
-    providerName: provider.displayName,
-    providerVersion: provider.version,
-    providerKind,
     runtimeStatus: "oom-killed",
-    runtime: { running: false, message: "oom-killed", oomKilled: true },
-    capabilities: {},
+    runtime: { running: false, message: "oom-killed" },
     context,
     solutions,
   };
@@ -196,7 +190,7 @@ export const collectOomDoctorChecks = (
   payloads: ReadonlyArray<unknown>,
   context: OomDoctorContext,
   redactor: Redactor,
-): ReadonlyArray<DoctorCheck> =>
+): ReadonlyArray<DoctorFinding> =>
   payloads.flatMap((payload) => {
     const check = buildOomDoctorCheck(classifyDiedEvent(payload), context, redactor);
     return check === undefined ? [] : [check];

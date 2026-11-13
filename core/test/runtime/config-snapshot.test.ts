@@ -95,7 +95,7 @@ test("doctor passes its validated snapshot to provider bootstrap without reacqui
         ),
       ),
     );
-    expect(report.globalConfig?.status).toBe("pass");
+    expect(report.checks.find((check) => check.section === "global-config")?.status).toBe("pass");
     expect(acquisition).toHaveBeenCalledTimes(1);
   } finally {
     acquisition.mockRestore();

@@ -118,9 +118,7 @@ test.each([false, true])(
         }).pipe(Effect.provideService(PathsService, paths), Effect.provide(configServiceLayer(config))),
       );
       // Then the registered check warns with manual recovery rather than starting a provider.
-      expect(
-        report.subsystems.checks.filter(({ name }) => name === "legacy-snapshot-catalogs"),
-      ).toMatchObject([
+      expect(report.checks.filter((check) => check.section === "legacy-snapshot-catalogs")).toMatchObject([
         { status: "warn", recovery: "manual", context: { count: "1", paths: join(directory, "index.bin") } },
       ]);
     } finally {

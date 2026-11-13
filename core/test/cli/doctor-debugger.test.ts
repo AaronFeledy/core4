@@ -6,7 +6,6 @@ import { ConfigService } from "@lando/sdk/services";
 import { Clock, Effect, Schema } from "effect";
 import { debuggerHostDoctor } from "../../src/cli/commands/doctor-debugger";
 import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report";
-import { countDoctorChecks } from "../../src/cli/commands/doctor-report-render";
 
 const config = (host?: string) => {
   const value = Schema.decodeUnknownSync(GlobalConfig)(host === undefined ? {} : { debugger: { host } });
@@ -44,7 +43,7 @@ test("non-WSL default is skipped without discovery", async () => {
     },
   });
   expect(result.checks).toEqual([]);
-  expect(result.skipped).toMatchObject([{ section: "debugger-host", status: "skipped" }]);
+  expect(result.skipped).toMatchObject([{ reason: expect.stringContaining("debugger.host is unset") }]);
 });
 
 test("WSL default remains the host gateway while Windows discovery is only an observation", async () => {
@@ -200,13 +199,10 @@ test("report includes debugger check without changing schema or summary counts",
     }).pipe(Effect.provideService(ConfigService, config("192.0.2.40"))),
   );
   expect(Schema.is(DoctorReportSchema)(report)).toBe(true);
-  expect(report.subsystems.checks.filter((check) => check.name === "debugger-host")).toHaveLength(1);
-  const counts = countDoctorChecks(report);
-  expect(counts.passed + counts.warned + counts.failed).toBe(
-    report.provider.checks.length +
-      report.subsystems.checks.length +
-      report.globalApp.checks.length +
-      report.mcp.checks.length +
-      (report.self?.checks.length ?? 0),
-  );
+  expect(
+    report.checks.filter((check) => check.section === "debugger-host" && check.name === "debugger-host"),
+  ).toHaveLength(1);
+  const { summary } = report;
+  expect(summary.passed + summary.warned + summary.failed).toBe(summary.checks);
+  expect(summary.checks).toBe(report.checks.length);
 });

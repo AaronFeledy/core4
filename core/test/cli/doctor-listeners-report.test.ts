@@ -32,15 +32,18 @@ test("preserves provider results and success when the app listener section exhau
       }).pipe(Effect.provide(healthyFilesystemWatch), Effect.provide(TestClock.layer())),
     );
     // Then the provider verdict survives and listener unavailability cannot fail completion.
-    expect(report.provider.checks).toContainEqual(expect.objectContaining({ name: "selected-provider" }));
-    expect(report).toMatchObject({ appListeners: { checks: [] } });
+    expect(report.checks.filter((check) => check.section === "provider")).toContainEqual(
+      expect.objectContaining({ name: "selected-provider" }),
+    );
+    expect(report.checks.filter((check) => check.section === "app-listeners")).toEqual([]);
     expect(report.skipped).toContainEqual({
       section: "app-listeners",
-      status: "skipped",
       reason: expect.stringMatching(/^timeout:/),
     });
-    expect(report.self).toBeUndefined();
-    expect(report.appConfig?.valid).toBe(true);
+    expect(report.checks.some((check) => check.name === "doctor-self")).toBe(false);
+    expect(report.checks.some((check) => check.section === "app-config" && check.status === "pass")).toBe(
+      true,
+    );
     expect(metaDoctorSpec.completion?.(report, {})).toEqual({ ok: true, exitCode: 0 });
   });
 });
