@@ -173,7 +173,6 @@ describe("supercronic build scripts", () => {
     const berlin = crontabInstallCommand(jobs, productionPaths, { service: "web", zone: "Europe/Berlin" });
     expect(berlin.startsWith("set -eu\nif [ ! -e '/usr/share/zoneinfo/Europe/Berlin' ]; then\n")).toBe(true);
     expect(berlin).toContain("use TZ=Europe/Berlin");
-    expect(berlin).toContain("run on UTC");
     expect(berlin).toContain("apk add --no-cache tzdata");
     expect(berlin).toContain("exit 1");
     expect(berlin).toContain(

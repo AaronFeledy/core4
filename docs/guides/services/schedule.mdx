@@ -195,7 +195,7 @@ Lando runs one sidecar for a service's jobs without `user:`, and one more for ea
 - `appserver-schedule` runs `heartbeat`. Jobs without `user:` always run in `<service>-schedule`.
 - `appserver-schedule-node` runs `report`. Jobs with `user:` run in `<service>-schedule-<user>`.
 
-To build that suffix, Lando lowercases the user, replaces each run of characters other than `a-z` and `0-9` with one `-`, and drops a `-` at either end:
+A user written with only lowercase letters, digits, and single hyphens is its own suffix. For any other spelling, Lando lowercases the user, replaces each run of other characters with one `-`, and adds a short code so two different users never share a sidecar:
 
 | `user` | Sidecar for a job on `appserver` |
 | --- | --- |
@@ -203,9 +203,9 @@ To build that suffix, Lando lowercases the user, replaces each run of characters
 | `node` | `appserver-schedule-node` |
 | `www-data` | `appserver-schedule-www-data` |
 | `1002` | `appserver-schedule-1002` |
-| `www-data:staff` | `appserver-schedule-www-data-staff` |
+| `www-data:staff` | `appserver-schedule-www-data-staff-95d9a1` |
 
-A sidecar's name depends only on `user:`, so reordering jobs never renames one. When every job on a service sets the same `user:`, the service has one sidecar, named with that user, and no plain `appserver-schedule`.
+`lando info` lists the exact names. A sidecar's name depends only on `user:`, so reordering jobs never renames one. When every job on a service sets the same `user:`, the service has one sidecar, named with that user, and no plain `appserver-schedule`.
 
 Read a job's log from the sidecar that runs it:
 

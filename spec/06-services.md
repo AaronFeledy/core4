@@ -87,7 +87,7 @@ Validation happens when the Landofile is decoded, so `app:config:lint` and plann
 | Group | Sidecar name |
 |---|---|
 | Jobs without `user` | `<service>-schedule` |
-| Jobs with `user` | `<service>-schedule-<suffix>`, where the suffix is the user lowercased, each run of characters outside `a-z` and `0-9` replaced by one `-`, and leading and trailing `-` removed (`www-data` yields `www-data`, `1002` yields `1002`, `www-data:staff` yields `www-data-staff`) |
+| Jobs with `user` | `<service>-schedule-<suffix>`. A user spelled only with `a-z`, `0-9`, and single interior `-` is its own suffix (`www-data`, `1002`). For any other spelling the suffix is the user lowercased, each run of characters outside `a-z` and `0-9` replaced by one `-`, leading and trailing `-` removed, followed by `-` and the first six hex digits of the SHA-256 of the exact user, so distinct users MUST NOT yield the same name (`www-data:staff` yields `www-data-staff-95d9a1`) |
 
 Job order MUST NOT affect a sidecar's name, and no `-default` name exists. A service whose jobs all declare the same `user` has exactly one sidecar, named with that user. A sidecar name is subject to the companion name rule (§6.11.5): a collision fails planning and is never resolved by renaming. A sidecar requires a shell in its artifact. Planning rejects, with `AppFeatureCloneError` reason `unsupported-image`, only an artifact reference known to have no shell: the empty `scratch` image and `gcr.io/distroless/*`. Any other artifact without a shell fails in the artifact build.
 
@@ -412,7 +412,7 @@ Activation and selection decisions MUST be captured once against the resolved fa
 |---|---|
 | `missing-parent` | `from` names no resolved service of the app. |
 | `name-collision` | `name` is not free in the namespace §6.11.5 defines. |
-| `duplicate-clone` | Two requests in one planning pass use the same `name`. |
+| `duplicate-clone` | Two requests in one planning pass use the same `name`, compared case-insensitively. |
 | `unsupported-image` | The parent's artifact reference is known to have no shell (§6.11.5). |
 
 Plugins register `serviceFeatures:`, `appFeatures:`, and `serviceTypes:`; all three MUST exist in `PluginManifest` and be consumed by loading and planning.
@@ -454,7 +454,7 @@ A generated companion service is a service the planner derives from a parent ser
 
 **Not inherited.** A companion MUST NOT inherit the parent's endpoints or listeners, host port publications, routes, `hostnames`, network aliases, native healthcheck or readiness policy, certificates, database connection identity (`creds` and connection facts, §6.10, §6.12.4), log sources (§6.14) and the build steps Lando derives from them, or app-phase build steps (§6.13.1). A companion's container process is exactly the requested `command`: neither the parent's planned entrypoint nor the artifact's `ENTRYPOINT` applies, and the parent's server process never runs. Its healthcheck MUST be explicitly disabled, which also disables a healthcheck the artifact declares. Keys named in `omitConfigKeys` are removed from its normalized configuration. A companion is never primary and is never a SQL target (§10.7).
 
-**Name.** A companion's name and its derived internal name (`<name>.<slug>.internal`) MUST both be free, compared case-insensitively, among the app's service keys, `hostnames`, network aliases, derived internal names, and the other requested companions (§6.6). A name that is not free fails planning with `AppFeatureCloneError` (§6.11.4) before provider action: reason `duplicate-clone` when two requests use the same `name`, otherwise `name-collision`. The planner MUST NOT rename a companion, add a suffix, or drop it to resolve a collision.
+**Name.** A companion's name and its derived internal name (`<name>.<slug>.internal`) MUST both be free, compared case-insensitively, among the app's service keys, `hostnames`, network aliases, derived internal names, and the other requested companions (§6.6). A name that is not free fails planning with `AppFeatureCloneError` (§6.11.4) before provider action: reason `duplicate-clone` when two requests use the same `name` compared case-insensitively, otherwise `name-collision`. The planner MUST NOT rename a companion, add a suffix, or drop it to resolve a collision.
 
 **Provenance and build identity.** The companion's `ServicePlan` carries `provenance.clonedBy = { feature, from }`, naming the requesting app feature and the parent. An inherited artifact-phase step that declares an explicit user keeps it, even when the companion overrides `user`. An inherited step without an explicit user runs as the parent's planned user, or as root when the parent plans no user; on an artifact whose default user is not root, that differs from the identity the step has in the parent's own build. Inherited steps MUST always precede the companion's `extraBuildSteps`, and only `extraBuildSteps` are attributed to the companion. A change that affects only `extraBuildSteps` MUST NOT invalidate the inherited steps' results (§6.13.5).
 

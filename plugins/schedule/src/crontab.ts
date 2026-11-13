@@ -132,7 +132,7 @@ const timezoneRefusal = ({ service, zone }: CrontabTimezone): string | undefined
  */
 const timezoneDataGuard = ({ service, zone }: CrontabTimezone): string | undefined => {
   if (zone === "UTC") return undefined;
-  const message = `Scheduled jobs for service ${service} use TZ=${zone}, but this image has no timezone data for it, so jobs would run on UTC. Install the image's timezone database in the service's build.artifact, for example apk add --no-cache tzdata on Alpine, or remove TZ.`;
+  const message = `Scheduled jobs for service ${service} use TZ=${zone}, but this image has no timezone data for it. Install the image's timezone database in the service's build.artifact, for example apk add --no-cache tzdata on Alpine, or remove TZ.`;
   return `if [ ! -e ${posixQuote(`/usr/share/zoneinfo/${zone}`)} ]; then
   echo ${posixQuote(message)} >&2
   exit 1

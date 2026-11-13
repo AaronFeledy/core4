@@ -60,18 +60,29 @@ describe("schedule sidecar groups", () => {
     ]);
     expect(groups.map((group) => [group.name, group.user, group.jobs.map((entry) => entry.name)])).toEqual([
       ["web-schedule-www-data", "www-data", ["a", "b"]],
-      ["web-schedule-www-data-staff", "www-data:staff", ["c"]],
+      ["web-schedule-www-data-staff-95d9a1", "www-data:staff", ["c"]],
       ["web-schedule-1001", "1001", ["d"]],
-      ["web-schedule-1001-1001", "1001:1001", ["e"]],
+      ["web-schedule-1001-1001-4b7eed", "1001:1001", ["e"]],
     ]);
   });
 
-  test("user slugs lowercase and collapse characters outside the allowlist", () => {
+  test("a user spelled with other characters is slugged and tagged with a digest of the exact user", () => {
     expect(groupNames([job("tick"), job("upper", "WWW Data@Example")])).toEqual([
       "web-schedule",
-      "web-schedule-www-data-example",
+      "web-schedule-www-data-example-e8dec4",
     ]);
     expect(groupNames([job("tick"), job("numeric", "1002")])).toEqual(["web-schedule", "web-schedule-1002"]);
+  });
+
+  test("users that slug to the same text never share a sidecar name", () => {
+    const names = groupNames([
+      job("a", "www-data-staff"),
+      job("b", "www-data:staff"),
+      job("c", "www_data.staff"),
+      job("d", "WWW-DATA-STAFF"),
+    ]);
+    expect(names[0]).toBe("web-schedule-www-data-staff");
+    expect(new Set(names).size).toBe(names.length);
   });
 
   test("the sidecar name helper stays the single derivation", () => {

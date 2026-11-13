@@ -1,3 +1,4 @@
+import { sha256Hex } from "@lando/sdk/digest";
 import type { CommandSpec, EnvironmentValue, LandofileShape } from "@lando/sdk/schema";
 
 export const SCHEDULE_SIDECAR_SUFFIX = "-schedule" as const;
@@ -62,16 +63,26 @@ export const findScheduleJob = (
 ): ReadonlyArray<ResolvedScheduleJob> =>
   jobs.filter((job) => job.name === name && (service === undefined || job.service === service));
 
-const scheduleUserSlug = (user: string): string =>
-  user
+const USER_SUFFIX_DIGEST_LENGTH = 6;
+
+/**
+ * Suffix that names one user. A user already spelled as lowercase letters,
+ * digits, and single hyphens is its own suffix. Any other spelling is slugged
+ * and tagged with a digest of the exact user, because slugging is lossy and
+ * `www-data:staff` and `www-data-staff` must not share a sidecar name.
+ */
+const scheduleUserSuffix = (user: string): string => {
+  const slug = user
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-")
     .replace(/^-+|-+$/gu, "");
+  return slug === user ? slug : `${slug}-${sha256Hex(user).slice(0, USER_SUFFIX_DIGEST_LENGTH)}`;
+};
 
 export const scheduleSidecarGroupName = (service: string, user: string | undefined): string =>
   user === undefined
     ? scheduleSidecarName(service)
-    : `${scheduleSidecarName(service)}-${scheduleUserSlug(user)}`;
+    : `${scheduleSidecarName(service)}-${scheduleUserSuffix(user)}`;
 
 /**
  * Group a service's jobs by the exact `user:` string each job runs as. Jobs
