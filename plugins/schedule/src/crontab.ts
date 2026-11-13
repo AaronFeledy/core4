@@ -1,11 +1,6 @@
-import {
-  type CommandSpec,
-  type ScheduleJob,
-  isMappableEveryDurationMs,
-  parseEveryDurationMs,
-} from "@lando/sdk/schema";
+import { type CommandSpec, isMappableEveryDurationMs, parseEveryDurationMs } from "@lando/sdk/schema";
 
-import { SUPERCRONIC_ARTIFACTS, SUPERCRONIC_BIN, SUPERCRONIC_CRONTAB } from "./supercronic.ts";
+import { SUPERCRONIC_ARTIFACTS, SUPERCRONIC_BIN } from "./supercronic.ts";
 
 export const posixQuote = (value: string): string => `'${value.replace(/'/gu, `'\\''`)}'`;
 
@@ -30,9 +25,36 @@ export const everyToSupercronicSchedule = (every: string): string | undefined =>
   return hours === 1 ? "0 * * * *" : `0 */${hours} * * *`;
 };
 
-export const crontabLine = (job: Pick<ScheduleJob, "every" | "run">): string => {
+/** One scheduled job as the sidecar image receives it. */
+export interface CrontabJob {
+  readonly name: string;
+  readonly every: string;
+  readonly run: CommandSpec;
+}
+
+/** Image paths the crontab step writes; production passes the pinned constants. */
+export interface CrontabPaths {
+  readonly crontab: string;
+  readonly jobsDirectory: string;
+}
+
+export const jobScriptPath = (jobsDirectory: string, name: string): string => `${jobsDirectory}/${name}`;
+
+/**
+ * A string command is the authored script verbatim, so a multi-line block
+ * scalar keeps its lines. An argv command becomes `exec <quoted argv>`, which
+ * keeps argument boundaries and embedded newlines intact under `sh`.
+ */
+export const jobScriptContent = (run: CommandSpec): string =>
+  typeof run === "string" ? `${run}\n` : `exec ${commandToShell(run)}\n`;
+
+/**
+ * A crontab is line-based, so a job's command never appears on it: the line
+ * names the job's script, and the script holds the command.
+ */
+export const crontabLine = (job: Pick<CrontabJob, "every" | "name">, jobsDirectory: string): string => {
   const schedule = everyToSupercronicSchedule(job.every);
-  return `${schedule ?? job.every} ${commandToShell(job.run)}`;
+  return `${schedule ?? job.every} sh ${jobScriptPath(jobsDirectory, job.name)}`;
 };
 
 /**
@@ -96,22 +118,34 @@ const timezoneGuard = ({ service, zone }: CrontabTimezone): string => {
   return `if [ ! -e ${posixQuote(`/usr/share/zoneinfo/${zone}`)} ]; then
   echo ${posixQuote(message)} >&2
   exit 1
-fi
-`;
+fi`;
 };
 
 /**
- * Shell script that writes the sidecar crontab. The file is world-readable so a
- * sidecar running as any job user can read the schedules it was started with.
+ * Shell script that writes one script per job, then the crontab that names
+ * them. The files are world-readable so a sidecar running as any job user can
+ * read the schedules it was started with.
  */
-export const crontabInstallCommand = (crontab: ReadonlyArray<string>, timezone?: CrontabTimezone): string => {
-  const directory = SUPERCRONIC_CRONTAB.slice(0, SUPERCRONIC_CRONTAB.lastIndexOf("/"));
-  const writeLines = crontab
-    .map((line) => `printf '%s\\n' ${posixQuote(line)} >> ${SUPERCRONIC_CRONTAB}`)
-    .join("\n");
-  return `set -eu
-${timezone === undefined ? "" : timezoneGuard(timezone)}mkdir -p ${directory}
-: > ${SUPERCRONIC_CRONTAB}
-${writeLines}
-chmod 0644 ${SUPERCRONIC_CRONTAB}`;
+export const crontabInstallCommand = (
+  jobs: ReadonlyArray<CrontabJob>,
+  paths: CrontabPaths,
+  timezone?: CrontabTimezone,
+): string => {
+  const crontabDirectory = paths.crontab.slice(0, paths.crontab.lastIndexOf("/"));
+  const writes = jobs.flatMap((job) => {
+    const script = posixQuote(jobScriptPath(paths.jobsDirectory, job.name));
+    return [`printf '%s' ${posixQuote(jobScriptContent(job.run))} > ${script}`, `chmod 0644 ${script}`];
+  });
+  const rows = jobs.map(
+    (job) => `printf '%s\\n' ${posixQuote(crontabLine(job, paths.jobsDirectory))} >> ${paths.crontab}`,
+  );
+  return [
+    "set -eu",
+    ...(timezone === undefined ? [] : [timezoneGuard(timezone)]),
+    `mkdir -p ${crontabDirectory} ${paths.jobsDirectory}`,
+    `: > ${paths.crontab}`,
+    ...writes,
+    ...rows,
+    `chmod 0644 ${paths.crontab}`,
+  ].join("\n");
 };

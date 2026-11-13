@@ -1,10 +1,12 @@
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { crontabInstallCommand, crontabLine, supercronicInstallCommand } from "./crontab.ts";
+import { crontabInstallCommand, everyToSupercronicSchedule, supercronicInstallCommand } from "./crontab.ts";
 import { scheduleSidecarGroups, scheduleTimezone } from "./jobs.ts";
 import {
+  SUPERCRONIC_CRONTAB,
   SUPERCRONIC_CRONTAB_STEP_ID,
+  SUPERCRONIC_JOBS_DIRECTORY,
   SUPERCRONIC_PINS,
   SUPERCRONIC_STEP_ID,
   supercronicCommand,
@@ -31,7 +33,6 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
       if (jobs.length === 0) continue;
       const timezone = zoneInfoZone(scheduleTimezone(service.normalizedConfig.environment));
       for (const group of scheduleSidecarGroups(service.serviceName, jobs)) {
-        const crontab = group.jobs.map((job) => crontabLine(job));
         ctx.addClonedService({
           from: service.serviceName,
           name: group.name,
@@ -53,11 +54,19 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
                 "sh",
                 "-c",
                 crontabInstallCommand(
-                  crontab,
+                  group.jobs,
+                  { crontab: SUPERCRONIC_CRONTAB, jobsDirectory: SUPERCRONIC_JOBS_DIRECTORY },
                   timezone === undefined ? undefined : { service: service.serviceName, zone: timezone },
                 ),
               ],
-              buildKeyInputs: { crontab, ...(timezone === undefined ? {} : { timezone }) },
+              buildKeyInputs: {
+                jobs: group.jobs.map((job) => ({
+                  name: job.name,
+                  schedule: everyToSupercronicSchedule(job.every) ?? job.every,
+                  run: job.run,
+                })),
+                ...(timezone === undefined ? {} : { timezone }),
+              },
             },
           ],
           omitConfigKeys: ["schedule"],

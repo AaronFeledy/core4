@@ -83,7 +83,7 @@ describe("schedule compile feature", () => {
     expect(JSON.stringify(binary?.command)).toContain(SUPERCRONIC_ARTIFACTS.amd64.sha256);
     expect(JSON.stringify(binary?.command)).not.toContain("setpriv");
     expect(crontab?.buildKeyInputs).toEqual({
-      crontab: ["* * * * * * * true"],
+      jobs: [{ name: "tick", schedule: "* * * * * * *", run: "true" }],
     });
     expect(JSON.stringify(crontab?.command)).not.toContain("@every");
     expect(JSON.stringify(crontab?.command)).not.toContain("aptible/supercronic");
@@ -127,7 +127,7 @@ describe("schedule compile feature", () => {
     const script = Array.isArray(crontab?.command) ? crontab.command.join("\n") : "";
     if (zone === undefined) {
       expect(script).not.toContain("zoneinfo");
-      expect(crontab?.buildKeyInputs).toEqual({ crontab: ["@hourly true"] });
+      expect(crontab?.buildKeyInputs).toEqual({ jobs: [{ name: "tick", schedule: "@hourly", run: "true" }] });
       if (tz !== undefined) expect(script).not.toContain(tz);
       return;
     }
@@ -135,7 +135,10 @@ describe("schedule compile feature", () => {
     expect(script).toContain("run on UTC");
     expect(script).toContain("apk add --no-cache tzdata");
     expect(script).toContain("service web");
-    expect(crontab?.buildKeyInputs).toEqual({ crontab: ["@hourly true"], timezone: zone });
+    expect(crontab?.buildKeyInputs).toEqual({
+      jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
+      timezone: zone,
+    });
   });
 
   test("does not pre-check image shells; the planner owns the unsupported-image error", async () => {

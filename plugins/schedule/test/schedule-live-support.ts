@@ -125,12 +125,15 @@ const identityProbe = (prefix: string): string =>
 const jobsFor = (mode: ScheduleMode, image: string): ReadonlyArray<string> => {
   if (mode === "none") return [];
   const touched = mode === "edited" ? "/app/restarted.txt" : "/app/scheduled.txt";
-  const tick = `touch ${touched} && ${identityProbe("scheduled")}`;
+  // A block scalar proves a multi-line job runs as one script: the second line
+  // produces the file this suite waits for after the restart.
+  const tick = [identityProbe("scheduled"), `touch ${touched}`];
   return [
     "    schedule:",
     "      - name: tick",
     '        every: "@every 1s"',
-    `        run: "${tick}"`,
+    "        run: |",
+    ...tick.map((line) => `          ${line}`),
     "      - name: vendor",
     '        every: "@every 1s"',
     '        run: "if [ -f /app/vendor/marker ] && [ ! -f /app/vendor-seen.txt ]; then cp /app/vendor/marker /app/vendor-seen.txt; fi"',

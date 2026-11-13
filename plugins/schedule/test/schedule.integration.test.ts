@@ -3,6 +3,7 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { SUPERCRONIC_JOBS_DIRECTORY } from "../src/supercronic.ts";
 import {
   RunEnvelope,
   cells,
@@ -171,29 +172,30 @@ for (const cell of cells) {
           );
           expect(failingEnvelope.error?.exitCode).toBe(3);
 
-          // 7. Editing a job updates the sidecar crontab after a restart.
+          // 7. Editing a job updates the sidecar script after a restart, and the
+          //    second line of the tick block scalar is what the wait observed.
           await writeFile(join(appRoot, ".lando.yml"), landofile({ appName, image, port, mode: "edited" }));
           expectSuccess(
             await runCli(cell, appRoot, ["restart"], 600_000),
             `lando restart after editing a job on ${cell.label}`,
           );
           await waitForText(join(appRoot, "restarted.txt"), 90_000, "the edited job to run");
-          const crontab = expectSuccess(
+          const script = expectSuccess(
             await runCli(cell, appRoot, [
               "exec",
               "web-schedule",
               "--",
               "cat",
-              "/usr/local/etc/supercronic/crontab",
+              `${SUPERCRONIC_JOBS_DIRECTORY}/tick`,
             ]),
-            `reading the restarted web-schedule crontab on ${cell.label} (${image})`,
+            `reading the restarted web-schedule tick script on ${cell.label} (${image})`,
           );
           expect(
-            crontab.stdout,
-            "the restarted sidecar crontab must contain the edited job command",
+            script.stdout,
+            "the restarted sidecar tick script must contain the edited job command",
           ).toContain("restarted.txt");
           expect(
-            crontab.stdout,
+            script.stdout,
             "the edited job command must replace the previous tick command",
           ).not.toContain("scheduled.txt");
 

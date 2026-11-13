@@ -10,6 +10,8 @@ export const SUPERCRONIC_VERSION = "0.2.51" as const;
 export const SUPERCRONIC_LICENSE = "MIT" as const;
 export const SUPERCRONIC_BIN = "/usr/local/bin/supercronic" as const;
 export const SUPERCRONIC_CRONTAB = "/usr/local/etc/supercronic/crontab" as const;
+/** One executable script per scheduled job; the crontab only names these files. */
+export const SUPERCRONIC_JOBS_DIRECTORY = "/usr/local/etc/supercronic/jobs" as const;
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 
