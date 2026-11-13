@@ -1960,8 +1960,6 @@
       "isActiveRunStatus",
       "isContainerUser",
       "isCoreServiceEnvKey",
-      "isCronExpression",
-      "isEveryCronExpression",
       "isHostEventContainerStep",
       "isIdleRunStatus",
       "isLifecycleCommandId",

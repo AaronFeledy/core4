@@ -24,7 +24,11 @@ const cronExpressionMessage =
 const everyStepMessage =
   "@every compiles to crontab */N, which only means every N when seconds and minutes divide 60 and hours divide 24. Use a 5-field cron expression instead.";
 
-/** Parse a Go duration used by `@every`, returning milliseconds when the spec is positive. */
+/**
+ * Parse a Go duration used by `@every`. Accepts a value with or without the
+ * `@every ` prefix and returns its positive length in milliseconds, or
+ * `undefined` when the text is not one positive Go duration.
+ */
 export const parseEveryDurationMs = (value: string): number | undefined => {
   const body = value.trim().replace(EVERY_PREFIX, "");
   if (body.length === 0 || !GO_DURATION_PIECE.test(body)) return undefined;
@@ -55,7 +59,11 @@ export const parseEveryDurationMs = (value: string): number | undefined => {
   return ms > 0n ? Number(ms) : 1;
 };
 
-/** True when `@every` is a crontab step that does not reset at the field boundary. */
+/**
+ * Decide whether a whole-second duration can be written as a crontab step.
+ * Takes milliseconds and returns true only when the seconds, minutes, or hours
+ * step divides its clock field (60 seconds, 60 minutes, or 24 hours).
+ */
 export const isMappableEveryDurationMs = (ms: number): boolean => {
   if (!Number.isInteger(ms) || ms < 1000) return false;
   const seconds = ms / 1000;
@@ -69,11 +77,6 @@ export const isMappableEveryDurationMs = (ms: number): boolean => {
   return Number.isInteger(hours) && hours >= 1 && hours < 24 && 24 % hours === 0;
 };
 
-export const isEveryCronExpression = (value: string): boolean => {
-  const ms = parseEveryDurationMs(value);
-  return ms !== undefined && isMappableEveryDurationMs(ms);
-};
-
 const cronExpressionCheck = (value: string): string | undefined => {
   const trimmed = value.trim();
   if (Object.hasOwn(CRON_MACROS, trimmed)) return undefined;
@@ -85,12 +88,15 @@ const cronExpressionCheck = (value: string): string | undefined => {
   return Result.isSuccess(Cron.parse(trimmed)) ? undefined : cronExpressionMessage;
 };
 
+/**
+ * Expand a named schedule (`@hourly`, `@daily`, `@weekly`, `@monthly`,
+ * `@yearly`, `@annually`, `@midnight`) into its 5-field cron expression. Any
+ * other input, including a raw cron expression, is returned trimmed unchanged.
+ */
 export const expandCronMacro = (value: string): string => {
   const trimmed = value.trim();
   return Object.hasOwn(CRON_MACROS, trimmed) ? CRON_MACROS[trimmed as keyof typeof CRON_MACROS] : trimmed;
 };
-
-export const isCronExpression = (value: string): boolean => cronExpressionCheck(value) === undefined;
 
 export const CronExpression = Schema.String.check(
   Schema.makeFilter((value: string) => cronExpressionCheck(value)),
