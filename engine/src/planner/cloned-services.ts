@@ -41,8 +41,12 @@ const CLONE_OMITTED_CONFIG_KEYS = [
 const imageLacksInstallShell = (image: string | undefined): boolean => {
   if (image === undefined || image.length === 0) return false;
   const reference = image.toLowerCase().split("@")[0] ?? image.toLowerCase();
-  if (/^scratch(?::[^/:@]+)?$/u.test(reference)) return true;
-  return /^gcr\.io\/distroless\/[^/:@]+(?::[^/:@]+)?$/u.test(reference);
+  const lastSlash = reference.lastIndexOf("/");
+  const repositoryPath = lastSlash === -1 ? reference : reference.slice(lastSlash + 1);
+  const tagSeparator = repositoryPath.indexOf(":");
+  const repository = tagSeparator === -1 ? repositoryPath : repositoryPath.slice(0, tagSeparator);
+  if (lastSlash === -1) return repository === "scratch";
+  return reference.slice(0, lastSlash) === "gcr.io/distroless" && repository.length > 0;
 };
 
 const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined => {
