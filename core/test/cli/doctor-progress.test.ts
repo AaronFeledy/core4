@@ -3,13 +3,16 @@ import { ConfigService } from "@lando/core/services";
 import { type ConfigLintResult, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 import { Effect, Layer, Queue, Stream } from "effect";
+import { appConfigFindings } from "../../src/cli/commands/doctor-app-config";
+import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
+import { type CertsDoctorStatus, certsSubsystemCheck } from "../../src/cli/commands/doctor-certs-status";
+import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract";
+import { deprecationFindings } from "../../src/cli/commands/doctor-deprecations";
 import { DOCTOR_TREE_ID, checksOutcome, doctorTreeSummary } from "../../src/cli/commands/doctor-progress.ts";
-import {
-  appConfigFindings,
-  collectDoctorReport,
-  deprecationFindings,
-} from "../../src/cli/commands/doctor-report.ts";
+import { collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { independentSection, runtimeSection } from "../../src/cli/commands/doctor-sections";
 import { doctorSelfCheck } from "../../src/cli/commands/doctor-self.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer";
 import { healthyFilesystemWatch } from "./doctor-watch-fixture.ts";
 
 const recordingEvents = () => {
@@ -67,6 +70,45 @@ const DEFAULT_SECTIONS = [
   "legacy-snapshot-catalogs",
   "filesystem-watch",
   "debugger-host",
+] as const;
+
+const progressTable = (
+  provider: Effect.Effect<DoctorSectionResult, never> = Effect.succeed({ checks: [] }),
+  certs: CertsDoctorStatus = { _tag: "unresolved" },
+) => [
+  independentSection({ id: "provider", run: provider }),
+  independentSection({
+    id: "app-listeners",
+    when: (options) => options.app === true,
+    run: Effect.succeed({ checks: [] }),
+    isolate: false,
+  }),
+  ...DEFAULT_SECTIONS.slice(1).map((id) =>
+    independentSection({
+      id,
+      run:
+        id === "certificate-authority"
+          ? certsSubsystemCheck(certs, false).pipe(
+              Effect.map((check): DoctorSectionResult => ({ checks: check === undefined ? [] : [check] })),
+            )
+          : Effect.succeed({ checks: [] }),
+    }),
+  ),
+  independentSection({
+    id: "app-version-constraints",
+    when: (options) => options.app === true,
+    run: Effect.succeed({ checks: [] }),
+  }),
+  independentSection({
+    id: "deprecations",
+    when: (options) => options.deprecations === true,
+    run: Effect.succeed({ checks: [] }),
+  }),
+  independentSection({
+    id: "app-config",
+    when: (options) => options.app === true,
+    run: Effect.succeed({ checks: [] }),
+  }),
 ];
 
 describe("doctor progress outcomes", () => {
@@ -90,9 +132,8 @@ describe("doctor progress outcomes", () => {
       await Effect.runPromise(
         collectDoctorReport({
           options: { app, deprecations, env: {} },
-          provider: Effect.succeed({ checks: [] }),
-          deprecations: Effect.succeed({ entries: [] }),
-          certs: Effect.succeed({ _tag: "unresolved" }),
+          contexts: {},
+          table: progressTable(),
         }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
       );
       expect(recorder.events[0]).toMatchObject({ _tag: "task.tree.start", children: expected });
@@ -130,24 +171,91 @@ describe("doctor progress outcomes", () => {
 });
 
 describe("doctor progress events", () => {
+  test("selected sections alone get rows, in table order", async () => {
+    const recorder = recordingEvents();
+    await Effect.runPromise(
+      collectDoctorReport({
+        options: { env: {}, sections: ["app-config", "mcp"] },
+        contexts: {},
+        table: progressTable(),
+      }).pipe(Effect.provide(recorder.layer)),
+    );
+    expect(recorder.events[0]).toMatchObject({ _tag: "task.tree.start", children: ["mcp", "app-config"] });
+    expect(
+      recorder.events.filter((event) => event._tag === "task.start").map((event) => event.taskId),
+    ).toEqual(["mcp", "app-config"]);
+  });
+
+  test("a provider-bootstrap self check fails the provider row instead of reporting it skipped", async () => {
+    const recorder = recordingEvents();
+    await Effect.runPromise(
+      collectDoctorReport({
+        options: { env: {} },
+        contexts: {},
+        table: [runtimeSection({ id: "provider", run: Effect.succeed({ checks: [] }) })],
+        initialChecks: [
+          {
+            section: "provider",
+            name: "doctor-self",
+            status: "fail",
+            severity: "error",
+            context: { probe: "provider-bootstrap", reason: "defect" },
+            solutions: [
+              { kind: "manual", description: "Validate config.", command: "lando config validate" },
+            ],
+          },
+        ],
+      }).pipe(Effect.provide(recorder.layer)),
+    );
+    expect(recorder.events.filter((event) => event._tag === "task.fail")).toMatchObject([
+      { taskId: "provider", summary: "provider · 1 failure", remediation: "lando config validate" },
+    ]);
+  });
+
+  test("config failure still paints independent and skipped section rows", async () => {
+    const recorder = recordingEvents();
+    const runtime = makeLandoRuntime({
+      bootstrap: "none",
+      configSources: { user: false, env: false },
+      config: { router: { httpPort: 99999 } },
+    });
+    const report = await Effect.runPromise(
+      resilientDoctorReport({ env: {}, platform: "darwin" }).pipe(
+        Effect.provide(runtime),
+        Effect.provide(recorder.layer),
+      ),
+    );
+    expect(report.checks.find((check) => check.section === "mcp")?.status).toBe("pass");
+    expect(report.checks.find((check) => check.section === "global-config")?.status).toBe("fail");
+    expect(recorder.events[0]).toMatchObject({ _tag: "task.tree.start", children: DEFAULT_SECTIONS });
+    expect(
+      recorder.events.filter((event) => event._tag === "task.start").map((event) => event.taskId),
+    ).toEqual([...DEFAULT_SECTIONS]);
+    expect(
+      recorder.events.find((event) => event._tag === "task.complete" && event.taskId === "provider"),
+    ).toMatchObject({ outcome: "info", summary: "provider · skipped" });
+  });
+
   test("publishes one task per section between tree start and tree complete", async () => {
     const recorder = recordingEvents();
     const report = await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.succeed({
-          checks: [
-            {
-              name: "selected-provider",
-              status: "warn",
-              severity: "warn",
-              context: {},
-              solutions: [{ kind: "manual", description: "Restart.", command: "lando restart" }],
-            },
-          ],
-        }),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "mkcert", trusted: true }),
+        contexts: {},
+        table: progressTable(
+          Effect.succeed({
+            checks: [
+              {
+                name: "selected-provider",
+                status: "warn",
+                severity: "warn",
+                context: {},
+                solutions: [{ kind: "manual", description: "Restart.", command: "lando restart" }],
+              },
+            ],
+          }),
+          { _tag: "selected", id: "mkcert", trusted: true },
+        ),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
 
@@ -162,7 +270,7 @@ describe("doctor progress events", () => {
     const starts = recorder.events
       .filter((event) => event._tag === "task.start")
       .map((event) => event.taskId);
-    expect(starts).toEqual(DEFAULT_SECTIONS);
+    expect(starts).toEqual([...DEFAULT_SECTIONS]);
     expect(recorder.events.filter((event) => event._tag === "task.fail")).toEqual([]);
     expect(
       recorder.events.find((event) => event._tag === "task.complete" && event.taskId === "provider"),
@@ -189,9 +297,12 @@ describe("doctor progress events", () => {
     await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.die(new Error("provider exploded")),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "unresolved" }),
+        contexts: {},
+        table: progressTable(Effect.die(new Error("provider exploded")), {
+          _tag: "selected",
+          id: "mkcert",
+          trusted: true,
+        }),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
     const failures = recorder.events.filter((event) => event._tag === "task.fail");
@@ -209,19 +320,21 @@ describe("doctor progress events", () => {
     await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.succeed({
-          checks: [
-            doctorSelfCheck({
-              section: "provider",
-              probe: "provider-status",
-              reason: "timeout",
-              message: "slow",
-              solutions: [{ kind: "manual", description: "Retry.", command: "lando doctor" }],
-            }),
-          ],
-        }),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "mkcert", trusted: true }),
+        contexts: {},
+        table: progressTable(
+          Effect.succeed({
+            checks: [
+              doctorSelfCheck({
+                section: "provider",
+                probe: "provider-status",
+                reason: "timeout",
+                message: "slow",
+                solutions: [{ kind: "manual", description: "Retry.", command: "lando doctor" }],
+              }),
+            ],
+          }),
+          { _tag: "selected", id: "mkcert", trusted: true },
+        ),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
     expect(recorder.events.filter((event) => event._tag === "task.fail")).toMatchObject([
@@ -237,9 +350,8 @@ describe("doctor progress events", () => {
     const report = await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "unresolved" }),
+        contexts: {},
+        table: progressTable(),
       }).pipe(Effect.provide(Layer.merge(configService, healthyFilesystemWatch))),
     );
     expect(report.checks.filter((check) => check.section === "provider")).toEqual([]);
@@ -252,9 +364,8 @@ describe("restored doctor progress outcomes", () => {
     await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "unresolved" }),
+        contexts: {},
+        table: progressTable(),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
     const unresolved = recorder.events.find(
@@ -266,9 +377,8 @@ describe("restored doctor progress outcomes", () => {
     await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "mkcert", trusted: true }),
+        contexts: {},
+        table: progressTable(undefined, { _tag: "selected", id: "mkcert", trusted: true }),
       }).pipe(Effect.provide(Layer.mergeAll(trusted.layer, configService, healthyFilesystemWatch))),
     );
     const selected = trusted.events.find(

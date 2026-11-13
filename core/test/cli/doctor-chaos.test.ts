@@ -15,13 +15,11 @@ import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 import { probeBudgetMs } from "../../src/cli/commands/doctor-plugin-checks.ts";
-import {
-  DoctorReportSchema,
-  collectDoctorReport,
-  doctorReport,
-} from "../../src/cli/commands/doctor-report.ts";
+import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer";
+import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
 
 /**
  * Chaos coverage for the doctor self-resilience contract: every service doctor
@@ -492,8 +490,13 @@ describe("doctor chaos: plugin-contributed checks", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options,
-            provider: doctor(options, [hanging, healthy]),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: doctor(options, [hanging, healthy]).pipe(Effect.provide(layers)),
+              }),
+            ],
           }),
         );
         yield* Deferred.await(hangStarted);
@@ -567,8 +570,13 @@ describe("doctor chaos: plugin-contributed checks", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options,
-            provider: doctor(options, [first, second]),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: doctor(options, [first, second]).pipe(Effect.provide(layers)),
+              }),
+            ],
           }),
         );
         yield* Deferred.await(firstStarted);
@@ -610,8 +618,13 @@ describe("doctor chaos: plugin-contributed checks", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options: reportOptions,
-            provider: doctor(doctorOptions, [hanging]),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: doctor(doctorOptions, [hanging]).pipe(Effect.provide(layers)),
+              }),
+            ],
           }),
         );
         yield* Deferred.await(pluginStarted);
@@ -646,8 +659,13 @@ describe("doctor chaos: whole report", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options: { signal: controller.signal },
-            provider: Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+              }),
+            ],
           }).pipe(Effect.provide(layers)),
         );
         yield* Deferred.await(started);

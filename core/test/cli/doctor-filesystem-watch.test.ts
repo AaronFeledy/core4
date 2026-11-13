@@ -217,10 +217,8 @@ test.each([false, true])(
     // When
     const report = await Effect.runPromise(
       collectDoctorReport({
-        options: { fix, env: {}, platform: "linux" },
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-        subsystems: () => Effect.succeed({ checks: [] }),
+        options: { fix, env: {}, platform: "linux", sections: ["filesystem-watch"] },
+        contexts: {},
       }).pipe(
         Effect.provideService(
           ConfigService,
@@ -244,10 +242,12 @@ test("collector reports unexpected watch probe defects instead of hiding them as
   // When
   const report = await Effect.runPromise(
     collectDoctorReport({
-      options: { env: { LANDO_TEST_SECRET: "private-probe-secret" }, platform: "linux" },
-      provider: Effect.succeed({ checks: [] }),
-      deprecations: Effect.succeed({ entries: [] }),
-      subsystems: () => Effect.succeed({ checks: [] }),
+      options: {
+        env: { LANDO_TEST_SECRET: "private-probe-secret" },
+        platform: "linux",
+        sections: ["filesystem-watch"],
+      },
+      contexts: {},
     }).pipe(
       Effect.provideService(
         ConfigService,

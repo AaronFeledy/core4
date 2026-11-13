@@ -19,17 +19,19 @@ import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 import { type Context, Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
+import { certsSubsystemCheck } from "../../src/cli/commands/doctor-certs-status";
 import {
   DoctorReportSchema,
   collectDoctorReport,
-  doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer";
 import { CORE_VERSION } from "../../src/version.ts";
+import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
@@ -106,10 +108,15 @@ describe("combined doctor certificate and network-trust wiring", () => {
     const report = await Effect.runPromise(
       collectDoctorReport({
         options: {},
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed({ _tag: "selected", id: "injected-ca", trusted: true }),
-        subsystems: (options) => subsystemDoctor(options).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+        contexts: {},
+        table: [
+          independentSection({
+            id: "certificate-authority",
+            run: certsSubsystemCheck({ _tag: "selected", id: "injected-ca", trusted: true }, false).pipe(
+              Effect.map((check) => ({ checks: check === undefined ? [] : [check] })),
+            ),
+          }),
+        ],
       }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
     );
 
@@ -251,10 +258,13 @@ describe("runtime-wired subsystem doctor", () => {
       const report = await Effect.runPromise(
         collectDoctorReport({
           options: {},
-          provider: Effect.succeed({ checks: [] }),
-          deprecations: Effect.succeed({ entries: [] }),
-          subsystems: (options) =>
-            subsystemDoctor(options).pipe(Effect.provide(wired), Effect.provide(DefaultSubsystemDoctorLayer)),
+          contexts: {},
+          table: [
+            independentSection({
+              id: "subsystems",
+              run: subsystemDoctor().pipe(Effect.provide(wired), Effect.provide(DefaultSubsystemDoctorLayer)),
+            }),
+          ],
         }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
       );
 
@@ -302,10 +312,16 @@ describe("runtime-wired subsystem doctor", () => {
     const report = await Effect.runPromise(
       collectDoctorReport({
         options: { fix: true },
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-        subsystems: (options) =>
-          subsystemDoctor(options).pipe(Effect.provide(wired), Effect.provide(DefaultSubsystemDoctorLayer)),
+        contexts: {},
+        table: [
+          independentSection({
+            id: "subsystems",
+            run: subsystemDoctor({ fix: true }).pipe(
+              Effect.provide(wired),
+              Effect.provide(DefaultSubsystemDoctorLayer),
+            ),
+          }),
+        ],
       }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
     );
 
