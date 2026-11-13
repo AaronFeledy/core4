@@ -19,6 +19,7 @@ const defaults = {
   composer: "2",
   webroot: "public",
   worker: false,
+  scheduler: false,
 };
 const alternate = {
   php: "8.1",
@@ -26,6 +27,7 @@ const alternate = {
   composer: "2.7.7",
   webroot: "/app/web",
   worker: true,
+  scheduler: true,
 };
 const validInput: RecipeDecomposeInput = { producer: laravelProducer, options: defaults, secrets: {} };
 const decomposer = laravelDecomposer({ redactor: createStandaloneRedactor("secrets") });
@@ -109,6 +111,14 @@ describe("Laravel deterministic decomposition", () => {
           ...expected.services.appserver,
           environment: { ...expected.services.appserver.environment, DB_CONNECTION: "pgsql" },
           appMount: { target: "/app", includes: ["vendor"] },
+          schedule: [
+            {
+              name: "laravel-scheduler",
+              every: "* * * * *",
+              run: ["php", "/app/artisan", "schedule:run"],
+              user: "www-data",
+            },
+          ],
         },
         worker: {
           type: "php:{{ recipe.php }}",
@@ -123,6 +133,27 @@ describe("Laravel deterministic decomposition", () => {
       },
     });
     expect(provenance.options).toEqual(alternate);
+  });
+
+  test("adds the scheduler job when enabled", () => {
+    // Given the scheduler answer; when decomposed; then appserver runs the job as the web user.
+    const { fragment } = Effect.runSync(
+      decomposer.decompose({ ...validInput, options: { ...defaults, scheduler: true } }),
+    );
+    expect<unknown>(fragment).toMatchObject({
+      services: {
+        appserver: {
+          schedule: [
+            {
+              name: "laravel-scheduler",
+              every: "* * * * *",
+              run: ["php", "/app/artisan", "schedule:run"],
+              user: "www-data",
+            },
+          ],
+        },
+      },
+    });
   });
 
   test("gives a MariaDB queue worker the same connection as the appserver", () => {
@@ -152,6 +183,7 @@ describe("Laravel deterministic decomposition", () => {
     ["webroot", ""],
     ["webroot", "/app/unsafe path"],
     ["worker", "true"],
+    ["scheduler", "true"],
   ] as const)("rejects invalid %s option %s with its typed path", (name, value) => {
     // Given one invalid option; when decomposed; then failure identifies that option without echoing it.
     const error = Effect.runSync(
@@ -179,6 +211,7 @@ describe("Laravel deterministic decomposition", () => {
       composer: { kind: "enum", values: ["2", "2.7.7"] },
       webroot: { kind: "string", pattern: "^[A-Za-z0-9._/-]+$" },
       worker: { kind: "boolean" },
+      scheduler: { kind: "boolean" },
     });
     expect<unknown>(await recompiledBundledDigest(manifest)).toBe(laravelProducer.contentDigest);
     expect(laravelSnapshot.identity.recipeId).toBe(manifest.id);
@@ -186,14 +219,17 @@ describe("Laravel deterministic decomposition", () => {
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 
-  test.each([defaults, alternate, { ...defaults, database: "sqlite" }, { ...alternate, database: "sqlite" }])(
-    "snapshot agrees with decomposition for %j",
-    (options) => {
-      // Given each structural selection; when the inert snapshot renders; then it matches decomposition.
-      const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
-      if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
-      const { recipe: _recipe, ...fragment } = result.fragment;
-      expect(Result.getOrThrow(renderRecipeSnapshot(laravelSnapshot, options))).toEqual(fragment);
-    },
-  );
+  test.each([
+    defaults,
+    alternate,
+    { ...defaults, database: "sqlite" },
+    { ...alternate, database: "sqlite" },
+    { ...defaults, scheduler: true },
+  ])("snapshot agrees with decomposition for %j", (options) => {
+    // Given each structural selection; when the inert snapshot renders; then it matches decomposition.
+    const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
+    if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
+    const { recipe: _recipe, ...fragment } = result.fragment;
+    expect(Result.getOrThrow(renderRecipeSnapshot(laravelSnapshot, options))).toEqual(fragment);
+  });
 });

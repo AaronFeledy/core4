@@ -24,7 +24,14 @@ test.each([
   {
     id: "laravel",
     decomposer: laravelDecomposer,
-    options: { php: "8.1", database: "postgres:16", composer: "2", webroot: "public", worker: true },
+    options: {
+      php: "8.1",
+      database: "postgres:16",
+      composer: "2",
+      webroot: "public",
+      worker: true,
+      scheduler: true,
+    },
     site: "services.worker.type",
   },
   {
@@ -76,6 +83,15 @@ test.each([
     expect(loaded.document.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.1");
     if (id === "drupal")
       expect(loaded.document.tooling?.["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand("10"));
+    if (id === "laravel")
+      expect(loaded.document.services?.[ServiceName.make("appserver")]?.schedule).toEqual([
+        {
+          name: "laravel-scheduler",
+          every: "* * * * *",
+          run: ["php", "/app/artisan", "schedule:run"],
+          user: "www-data",
+        },
+      ]);
     expect(
       loaded.pendingSites.some(
         (pending) => pending.path.join(".") === "services.appserver.routes.0.hostname",

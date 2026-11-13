@@ -63,7 +63,13 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   },
   {
     recipe: "laravel",
-    answers: { name: "laravel-app", php: "8.3", database: "postgres:16", worker: "true" },
+    answers: {
+      name: "laravel-app",
+      php: "8.3",
+      database: "postgres:16",
+      worker: "true",
+      scheduler: "true",
+    },
     expectedServices: [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "postgres:16" },

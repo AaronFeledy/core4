@@ -325,6 +325,7 @@ describe("recipe option parity", () => {
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
       expect(landofile.services?.[ServiceName.make("cache")]?.type).toBe("redis");
       expect(landofile.services?.[ServiceName.make("worker")]).toBeUndefined();
+      expect(landofile.services?.[ServiceName.make("appserver")]?.schedule).toBeUndefined();
       expect(landofile.tooling?.artisan).toBeDefined();
       expect(landofile.tooling?.composer).toBeDefined();
     });
@@ -396,6 +397,29 @@ describe("recipe option parity", () => {
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.1");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2.7.7");
+    });
+  });
+
+  test("laravel scheduler adds a timed job as the web user", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "laravel",
+        nonInteractive: true,
+        answers: { name: "laravel-scheduler", scheduler: "true" },
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+      const landofile = await discoverFrom(result.directory);
+      expect(landofile.services?.[ServiceName.make("appserver")]?.schedule).toEqual([
+        {
+          name: "laravel-scheduler",
+          every: "* * * * *",
+          run: ["php", "/app/artisan", "schedule:run"],
+          user: "www-data",
+        },
+      ]);
+      expect(landofile.services?.[ServiceName.make("worker")]).toBeUndefined();
     });
   });
 
