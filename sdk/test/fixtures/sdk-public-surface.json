@@ -1955,7 +1955,6 @@
       "hostEventsConfigIssues",
       "hostEventsSemanticIssues",
       "hostPlatformFamily",
-      "imageLacksInstallShell",
       "isAbsoluteContainerPath",
       "isActiveRunStatus",
       "isContainerUser",

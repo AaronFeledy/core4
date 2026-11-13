@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
-import { imageLacksInstallShell, materializeClonedServices } from "../../src/planner/cloned-services.ts";
+import { materializeClonedServices } from "../../src/planner/cloned-services.ts";
 import type { PlannedServiceDraft } from "../../src/planner/service-types.ts";
 import type { RecordedClonedService } from "../../src/services/app-feature-types.ts";
 
@@ -244,20 +244,30 @@ describe("cloned services", () => {
     },
   );
 
-  test("fails when extra build steps target a distroless parent image", () => {
-    expect(imageLacksInstallShell("gcr.io/distroless/static")).toBe(true);
-    expect(() =>
+  test.each([
+    ["scratch", "scratch"],
+    ["scratch tag", "scratch:latest"],
+    ["distroless", "gcr.io/distroless/static"],
+    ["registry scratch", "ghcr.io/example/scratch:latest"],
+  ])("fails when extra build steps target a %s parent image", (_label, image) => {
+    try {
       materializeClonedServices({
         plannedServiceDrafts: [
           parentDraft({
-            normalizedConfig: { image: "gcr.io/distroless/static" },
-            artifact: { kind: "ref", ref: "gcr.io/distroless/static" },
+            normalizedConfig: { image },
+            artifact: { kind: "ref", ref: image },
           }),
         ],
         clones: [request()],
         parentNetworksByName: new Map(),
-      }),
-    ).toThrow(AppFeatureCloneError);
+      });
+      throw new Error("expected an unsupported-image failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AppFeatureCloneError);
+      if (!(error instanceof AppFeatureCloneError)) return;
+      expect(error.reason).toBe("unsupported-image");
+      expect(error.image).toBe(image);
+    }
   });
 
   test("fails when the clone name already exists", () => {

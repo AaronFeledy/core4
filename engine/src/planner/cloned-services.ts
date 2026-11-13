@@ -4,7 +4,6 @@ import {
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
-  imageLacksInstallShell,
 } from "@lando/sdk/schema";
 import { Effect, Predicate } from "effect";
 
@@ -12,8 +11,6 @@ import type { RecordedClonedService } from "../services/app-feature-types.ts";
 import { appFeatureError } from "./app-feature-error.ts";
 import { type DnsNameClaim, dnsNameClaims } from "./dns-name-validation.ts";
 import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
-
-export { imageLacksInstallShell };
 
 const COMPOSE_PUBLISH_KEYS = ["ports", "expose", "healthcheck"] as const;
 
@@ -34,6 +31,15 @@ const CLONE_OMITTED_CONFIG_KEYS = [
   "readiness",
   "routes",
 ] as const;
+
+/** True when the image reference is scratch or distroless and cannot run install steps. */
+const imageLacksInstallShell = (image: string | undefined): boolean => {
+  if (image === undefined || image.length === 0) return false;
+  const withoutDigest = image.toLowerCase().split("@")[0] ?? image.toLowerCase();
+  if (withoutDigest === "scratch" || withoutDigest.startsWith("scratch:")) return true;
+  if (withoutDigest.endsWith("/scratch") || withoutDigest.includes("/scratch:")) return true;
+  return withoutDigest.includes("distroless");
+};
 
 const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined => {
   const image = draft.normalizedConfig.image;

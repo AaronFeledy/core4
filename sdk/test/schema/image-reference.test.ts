@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { canonicalImageReference, imageLacksInstallShell, sameImageReference } from "@lando/sdk/schema";
+import { canonicalImageReference, sameImageReference } from "@lando/sdk/schema";
 
 test.each([
   ["php", "docker.io/library/php:latest"],
@@ -29,15 +29,4 @@ test.each([
 ])("compares %s and %s by canonical image identity", (left, right, expected) => {
   const result = sameImageReference(left, right);
   expect(result).toBe(expected);
-});
-
-test.each([
-  [undefined, false],
-  ["alpine:3.22", false],
-  ["scratch", true],
-  ["scratch:latest", true],
-  ["gcr.io/distroless/static", true],
-  ["ghcr.io/example/scratch:latest", true],
-])("imageLacksInstallShell(%s)", (image, expected) => {
-  expect(imageLacksInstallShell(image)).toBe(expected);
 });
