@@ -38,22 +38,57 @@ For a structured report containing every record regardless of `--all`, run:
 lando doctor --format=json
 ```
 
-To inspect only the checks you need, repeat `--section` for each section:
+To run specific sections, repeat `--section`:
 
 ```sh
 lando doctor --section mcp --section filesystem-watch --format=json
 ```
 
-Selected sections run in report order. Selecting `app-config`, `app-listeners`,
-`app-version-constraints`, or `deprecations` enables that section without its usual
-`--app` or `--deprecations` flag. Unselected sections have no progress row, finding,
-or skipped entry. Global config is always checked and included in structured output.
-An unknown section produces a usage error listing the valid names.
+Sections run in report order. Selecting `app-config`, `app-listeners`,
+`app-version-constraints`, or `deprecations` enables it without `--app` or
+`--deprecations`. Unselected sections have no progress row, finding, or skipped
+entry. Doctor always checks global config and includes it in structured output.
+An unknown section produces a usage error listing valid names.
+
+## Read a bounded report
+
+To limit the response for a script or agent, select statuses and a page size:
+
+```sh
+lando doctor --format=json --status fail --status warn --limit 20
+```
+
+JSON and YAML contain every finding unless you use `--status` or `--limit`.
+Repeat `--status` to include multiple statuses. `--limit` accepts a whole number
+from 1 to 1000 and adds `result.page`; `page.matched` counts matching checks before
+paging. The summary, skipped entries, provider details, and exit status still
+describe the whole run. A page with no failures can therefore exit `1`.
+
+Each check's `id` combines its section, name, and subject when present. Collisions
+receive `#2`, `#3`, and so on in report order. Pages sort by section order, then
+by ID. When `page.next` is present, pass its exact value as `--after` with the
+same statuses and page size. In a POSIX shell with `jq`, save and use that cursor:
+
+```sh
+lando doctor --format=json --status fail --status warn --limit 20 > doctor.json
+cursor=$(jq -r .result.page.next doctor.json)
+lando doctor --format=json --status fail --status warn --limit 20 --after "$cursor"
+```
+
+Continue only while `page.next` exists. `--after` requires `--limit` and a valid
+section prefix, even if the check itself has disappeared. Each invocation checks
+the host again and resumes strictly after the cursor. Additions or removals
+before it do not shift later checks into or out of a page; a finding present in
+both selected runs appears once across the pages. Start again to see new
+findings before the cursor. Keep the same statuses while paging; findings that
+change to an excluded status leave the selection. Every view uses the complete
+report's redaction.
 
 Doctor builds the provider runtime only when a selected section needs it. For
 example, `lando doctor --section mcp` checks MCP without loading provider services.
-Selecting `subsystems` alone checks host DNS and reports the unavailable router
-and SSH services as skipped; include `--section provider` to inspect those services too.
+Selecting `subsystems` also builds the runtime so doctor can inspect the router
+and SSH services; if the runtime cannot start, those two checks appear under
+`skipped` and host DNS is still checked.
 
 A check passes only after doctor inspects it. Loading a healthcheck runner or an
 endpoint scanner does not prove either one works against your provider. Doctor
@@ -111,6 +146,25 @@ If doctor names a host prerequisite, fix it and rerun `lando setup`. If the mana
 Read the orphan report before deleting anything. Without `--prune`, this command only reports candidates:
 
 <Guide>
+  <Scenario id="bounded-doctor-json" render={false} reason="Verify bounded report structure without depending on installed host state.">
+    <Step name="read-one-check">
+      <Run runtime="library" displayCode="lando doctor --section mcp --format=json --limit 1" code={`const run = yield* context.runCli(["doctor", "--section", "mcp", "--format=json", "--limit", "1"]);
+const report = JSON.parse(run.stdout).result;
+expect(report.checks.length).toBeLessThanOrEqual(1);
+expect(report.page.limit).toBe(1);
+expect(report.page.matched).toBe(report.summary.checks);
+expect(report.checks.every((check: { readonly id: unknown }) => typeof check.id === "string")).toBe(true);`} />
+    </Step>
+  </Scenario>
+  <Scenario id="doctor-json-statuses" render={false} reason="Verify status selection against whole-run counts on any installed host.">
+    <Step name="read-non-passing-checks">
+      <Run runtime="library" displayCode="lando doctor --section mcp --format=json --status fail --status warn" code={`const run = yield* context.runCli(["doctor", "--section", "mcp", "--format=json", "--status", "fail", "--status", "warn"]);
+const report = JSON.parse(run.stdout).result;
+expect(report.checks.every((check: { readonly status: string }) => check.status === "fail" || check.status === "warn")).toBe(true);
+expect(report.checks.length).toBe(report.summary.failed + report.summary.warned);
+expect(report.page).toBeUndefined();`} />
+    </Step>
+  </Scenario>
   <Scenario id="selected-doctor-sections" render={false} reason="Assert the exact selected sections and absence of skips in structured output.">
     <Step name="inspect-mcp-only">
       <Run runtime="library" displayCode="lando doctor --section mcp --format=json" code={`const run = yield* context.runCli(["doctor", "--section", "mcp", "--format=json"]);
@@ -314,11 +368,11 @@ finding: No TCP listener was observed on planned port 8080 at this instant. If t
 
 The action also names what your application, command, or custom image must
 configure when it owns that listener. `--fix` does not change your server's
-configuration. Request `--app` or `--section app-listeners` to perform this listener check.
-JSON keeps observations in `result.checks` as entries whose `section` is
-`app-listeners`, with string context fields `service`, `port`, `listenerState`,
-`finding`, an array of strings in `context.bindings`, and `solutions`. The
-`subject` identifies the listener as `<app>/<service>:<port>`. Their `context.providerId` names the
+configuration. Use `--app` or `--section app-listeners` to run this check.
+JSON observations appear in `result.checks` with `section: app-listeners`.
+Each has string context fields `service`, `port`, `listenerState`, and `finding`,
+an array of strings in `context.bindings`, and a `solutions` list. Its `subject`
+identifies the listener as `<app>/<service>:<port>`. Its `context.providerId` names the
 applied plan's provider, which can differ from the provider in the report header.
 Unavailable observations go in `result.skipped`. A skipped service has
 `check: app-listener:<service>`; a skip of the whole section has no `check`.
@@ -340,11 +394,11 @@ The report is one flat list of checks, not one object per section:
 | `result.provider` | The selected provider, stated once: `id`, `kind` (`managed` or `user-installed`), and `selection`, which records how it was chosen. `name`, `version`, `runtimeStatus`, `runtime`, and `capabilities` appear when doctor could observe the provider. The field is absent when no provider was selected. |
 | `result.checks` | Every check doctor ran, in section order. |
 | `result.skipped` | What doctor did not inspect. Always present, possibly empty. Each entry is `{ section, reason }`, with `check` added when only that check was skipped. |
-| `result.summary` | Counts for the whole report: `checks`, `passed`, `warned`, and `failed`. Skipped entries are not counted. |
+| `result.summary` | Counts for the whole run: `checks`, `passed`, `warned`, `failed`, and `selfFailed` (doctor's own failures, also counted in `failed`). Skipped entries are not counted, and `--status`, `--limit`, and `--after` never change it. |
 
-Each check has a `section`, a `name`, a `status` (`pass`, `warn`, or `fail`), a `severity` (`info`, `warn`, or `error`), a `context` map whose values are strings or arrays of strings, and a `solutions` list. Lists such as `sessions`, `volumes`, `services`, and `dnsAddresses` are arrays; scalar facts such as `reason` and `providerId` stay strings. Some checks add `runtimeStatus` or `runtime` for a runtime fact of their own, `contributor` with the plugin contribution id when a plugin supplied the check, `recovery`, or `details` with the typed record behind the finding, such as a `ConfigError` or a Landofile lint violation.
+Each check has a `section`, a `name`, a `status` (`pass`, `warn`, or `fail`), a `severity` (`info`, `warn`, or `error`), a `context` map, and a `solutions` list. Context values are strings or arrays of strings: `sessions`, `volumes`, `services`, and `dnsAddresses` are arrays; `reason` and `providerId` stay strings. Optional fields include `runtimeStatus` or `runtime` for the check's own runtime observations, `contributor` for the plugin contribution id, `recovery`, and `details` for a typed record such as a `ConfigError` or Landofile lint violation.
 
-Findings that can repeat have a `subject` naming what they are about, such as an app root, journal path, or container name. Grouped text rows list up to three subjects and the number remaining. A group without subjects lists the finding names. Array context shows its first three items unless you use `--all`; scalar strings are never split at commas. JSON and YAML preserve the full arrays.
+Repeatable findings have a `subject`, such as an app root, journal path, or container name. Grouped text rows show up to three subjects and the number remaining, falling back to finding names when subjects are absent. Text shows the first three items of each context array unless you use `--all`, `--status`, or `--limit`, which print every record in full; it never splits scalar strings at commas. JSON and YAML preserve full arrays.
 
 The `section` is one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, or `app-config`. To read one section, filter on it:
 

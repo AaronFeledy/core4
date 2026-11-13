@@ -44,6 +44,7 @@ export const renderDoctorReportAsNdjson = (report: DoctorReport): string => {
     version: report.version,
     ...(report.provider === undefined ? {} : { provider: report.provider }),
     summary: report.summary,
+    ...(report.page === undefined ? {} : { page: report.page }),
   };
   lines.push(
     Effect.runSync(

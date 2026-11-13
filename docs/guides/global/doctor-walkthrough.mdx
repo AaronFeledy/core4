@@ -33,7 +33,7 @@ lando global:status --format=json
 
 ## When it is installed
 
-The check passes and reports the generated dist Landofile (`<userDataRoot>/global/.lando.dist.yml`), the overlay (`<userDataRoot>/global/.lando.yml`), the dist file mtime as `lastInstallTimestamp`, materialized service ids in `context.services`, and plugin names that declare `globalServices:` in `context.contributingPlugins`. Both lists are arrays of strings in JSON.
+The check passes and reports the generated dist Landofile (`<userDataRoot>/global/.lando.dist.yml`), the overlay (`<userDataRoot>/global/.lando.yml`), and the dist file's modification time as `lastInstallTimestamp`. In JSON, `context.services` lists materialized service ids and `context.contributingPlugins` lists plugins that declare `globalServices:`. Both are arrays of strings.
 
 <Guide>
   <Scenario id="global-context-lists" render={false} reason="Verify global doctor list values through the JSON command surface">

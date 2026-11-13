@@ -83,9 +83,9 @@ lando doctor --format=json
 
 `lando doctor --format=json` lists every check in `result.checks`. The `preferred-host-ports` check has `section: provider`. It is `warn` with `runtimeStatus: preferred-port-occupied` when something else owns 80 or 443. The `router` check has `section: subsystems`. It sets `context.acquisitionMode` to `occupied-hop` and reports the selected `httpPort` and `httpsPort`. Use the URL from `lando info`. To move back to your preferred ports, free them, then run `lando setup`.
 
-## Prepare HTTPS
+In doctor JSON, `preferred-host-ports`, `proxy-loopback-ports`, and `proxy-advertised-ports` report `context.ports` as an array of strings, such as `["80", "443"]`. The `legacy-route-files` check lists paths in `context.generatedFiles` and `context.unrecognizedFiles` when present. Check their counts and truncation flags for files omitted from large lists.
 
-In doctor JSON, the port checks (`preferred-host-ports`, `proxy-loopback-ports`, and `proxy-advertised-ports`) put port numbers in `context.ports` as an array of strings, such as `["80", "443"]`. The `legacy-route-files` check reports path arrays in `context.generatedFiles` and `context.unrecognizedFiles` when those classes are present. Read the matching counts and truncation flags when reviewing a large set of files.
+## Prepare HTTPS
 
 HTTPS routes need a certificate authority. Run `lando setup` first so mkcert can issue certs and trust the local CA:
 

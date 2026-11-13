@@ -263,4 +263,4 @@ them different ports, MailHog starts separate UI and API listeners, so choose
 strings on the same HTTP port are rejected; MailHog only shares the listener
 when the strings are identical. Neither HTTP listener may use the SMTP port.
 
-When reading doctor JSON, keep the deprecation's `context.kind` and `context.id` as scalar strings. Resource lists elsewhere in the report, such as listener `bindings` and global-app `services`, are arrays of strings.
+In doctor JSON, the deprecation's `context.kind` and `context.id` remain strings. Resource lists, such as listener `bindings` and global-app `services`, are arrays of strings.
