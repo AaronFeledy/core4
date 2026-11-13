@@ -3,12 +3,19 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import { GlobalConfigSources } from "@lando/engine/services/config";
+import { GlobalConfigSnapshot, GlobalConfigSources } from "@lando/engine/services/config";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ConfigError } from "@lando/sdk/errors";
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
-import { PathsService, StateStore } from "@lando/sdk/services";
+import { CommandResultEnvelope, GlobalConfig, ProviderId, StreamFrame } from "@lando/sdk/schema";
+import {
+  ConfigService,
+  PathsService,
+  PluginRegistry,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreService from "@lando/state-store/service";
 import { Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor";
@@ -24,6 +31,68 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { withCwd } from "../_support/temp-cwd";
 
 describe("doctor provider-bootstrap failure", () => {
+  test("counts a bad hostEvents config as a finding in completion and both summaries", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-doctor-host-events-"));
+    try {
+      const config = Schema.decodeUnknownSync(GlobalConfig)({
+        hostEvents: { "pre-start": ["echo ${TOKEN}"] },
+      });
+      const paths = makeLandoPaths({
+        userDataRoot: root,
+        userConfRoot: join(root, "conf"),
+        userCacheRoot: join(root, "cache"),
+        env: {},
+      });
+      const inputs = { env: {}, sources: { user: false, env: false }, rootOverrides: { userDataRoot: root } };
+      const snapshot = GlobalConfigSnapshot.of({
+        config,
+        paths,
+        inputs,
+        warnings: [],
+        takeWarnings: Effect.succeed([]),
+      });
+      const runtime = Layer.mergeAll(
+        Layer.succeed(ConfigService, {
+          load: Effect.succeed(config),
+          get: (key) => Effect.succeed(config[key]),
+        }),
+        Layer.succeed(PathsService, paths),
+        Layer.succeed(RuntimeProviderRegistry, {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
+          list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.succeed(TestRuntimeProvider),
+        }),
+        Layer.succeed(PluginRegistry, {
+          list: Effect.succeed([]),
+          load: () => Effect.die("unused"),
+          loadServiceType: () => Effect.die("unused"),
+          loadServiceFeature: () => Effect.die("unused"),
+          loadAppFeature: () => Effect.die("unused"),
+        }),
+      );
+      const report = await Effect.runPromise(
+        resilientDoctorReport({ env: {}, platform: "darwin", flagProviderId: TestRuntimeProvider.id }).pipe(
+          Effect.provideService(GlobalConfigSources, { ...inputs, snapshot }),
+          Effect.provideService(RuntimeLayerFactory, RuntimeLayerFactory.of({ make: () => runtime })),
+          Effect.provideService(HostDnsResolver, { lookup: () => Effect.succeed(["127.0.0.1"]) }),
+        ),
+      );
+      expect(report.globalConfig).toMatchObject({ status: "fail", error: { _tag: "ConfigError" } });
+      expect(report.self).toBeUndefined();
+      expect(metaDoctorSpec.completion?.(report, {})).toEqual({ ok: true, exitCode: 1 });
+      expect(buildDoctorReportSummary(report).title).toBe("Problems found");
+      expect(buildDoctorReportSummary(report).footer).toContain("1 failed");
+      const frame = Schema.decodeUnknownSync(StreamFrame)(
+        JSON.parse(renderDoctorReportAsNdjson(report).split("\n").at(-1) ?? "{}"),
+      );
+      expect(frame).toMatchObject({ _tag: "result", envelope: { ok: true, result: { failed: 1 } } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test.each([false, true])("preserves independent diagnostics when fix=%s", async (fix) => {
     // Given valid global config and an app, but a provider runtime that cannot build.
     const root = await mkdtemp(join(tmpdir(), "lando-doctor-provider-bootstrap-"));
