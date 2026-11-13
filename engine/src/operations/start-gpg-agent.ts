@@ -18,6 +18,7 @@ import { type GpgAgentDiscoveryOptions, discoverHostGpgAgent } from "../subsyste
 import type { GpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { exportPublicKeyring } from "../subsystems/gpg-agent/keyring.ts";
 import { gpgAgentEligibleServices, withGpgAgentOverlay } from "../subsystems/gpg-agent/overlay.ts";
+import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import {
   type DetachedAgentRelayWorkerOptions,
   startDetachedAgentRelayWorker,
@@ -65,6 +66,9 @@ export const validateGpgAgentSocketCapability = (capabilities: Capabilities) =>
         }),
       )
     : Effect.succeed(capabilities.agentSocket.delivery);
+
+const gpgAgentWorkerNeeded = (plan: AppPlan, intent: Pick<GpgAgentIntent, "forward">): boolean =>
+  intent.forward !== false && gpgAgentEligibleServices(plan).length > 0;
 
 export const startGpgAgentSession = Effect.fnUntraced(function* (
   plan: AppPlan,
@@ -164,12 +168,7 @@ export const withStartedGpgAgent = Effect.fnUntraced(function* <A, E, R>(
     readonly startSession?: () => Effect.Effect<GpgAgentSession, AgentError>;
   },
 ): Effect.fn.Return<A, E | AgentError, R | PathsService | PrivateFileAccessService> {
-  if (
-    app.kind === "global" ||
-    plan.id === "global" ||
-    intent.forward === false ||
-    gpgAgentEligibleServices(plan).length === 0
-  ) {
+  if (app.kind === "global" || plan.id === "global" || !gpgAgentWorkerNeeded(plan, intent)) {
     return yield* options.use(plan, Effect.void);
   }
   const { startSession } = options;
@@ -189,4 +188,15 @@ export const withStartedGpgAgent = Effect.fnUntraced(function* <A, E, R>(
     yield* withGpgAgentOverlay(plan, agent.session, agent.keyringDir),
     prepareGpgHome(plan, options.exec),
   );
+});
+
+/** Retires the recorded GPG agent relay when the whole desired plan no longer needs one. */
+export const retireUnusedGpgAgentWorker = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  app: AppRef,
+  intent: Pick<GpgAgentIntent, "forward">,
+) {
+  if (app.kind === "global" || plan.id === "global" || gpgAgentWorkerNeeded(plan, intent)) return;
+  const paths = yield* PathsService;
+  yield* cleanupAgentRelayState(app, { ...paths.roots, platform: paths.platform }, "gpg");
 });

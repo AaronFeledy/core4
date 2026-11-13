@@ -92,7 +92,6 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   execution: StopExecution,
 ): Effect.fn.Return<StoppedRuntime, SdkStopAppError, StopAppServices> {
-  const context = yield* Effect.context<StopAppServices>();
   const registry = yield* RuntimeProviderRegistry;
   const stateStore = yield* StateStore;
   let retired: RetirementReceipt | undefined;
@@ -203,7 +202,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
             execution.runInitEvents !== false,
             preflight,
           );
-        }, Effect.provide(context)),
+        }),
       });
   const removed = yield* cleanup;
   return {

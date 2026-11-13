@@ -65,6 +65,11 @@ const serviceAt = (root: AbsolutePath): ServiceRuntimeInfo => ({
   status: "running",
   publications: { status: "unknown" as const },
   containerId: "observed-container",
+  labels: {
+    "dev.lando.app": "global",
+    "dev.lando.app-root": root,
+    "dev.lando.service": "orphan",
+  },
 });
 
 const volumeAt = (root: AbsolutePath, scope: "app" | "global"): VolumeInfo => ({
@@ -210,10 +215,16 @@ for (const volumes of [false, true]) {
     await withRoot(async (dataRoot, root) => {
       // Given owned global orphans, a foreign-root container, and both volume scopes.
       const owned = serviceAt(root);
+      const foreignRoot = AbsolutePath.make(join(dataRoot, "foreign"));
       const foreign = {
         ...owned,
-        appRoot: AbsolutePath.make(join(dataRoot, "foreign")),
+        appRoot: foreignRoot,
         containerId: "foreign-container",
+        labels: {
+          "dev.lando.app": "global",
+          "dev.lando.app-root": foreignRoot,
+          "dev.lando.service": "orphan",
+        },
       };
       const harness = harnessAt(dataRoot, {
         services: [owned, foreign],

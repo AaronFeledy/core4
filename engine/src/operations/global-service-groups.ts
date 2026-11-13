@@ -53,7 +53,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
   apply: {
     readonly provider: PreparedRuntimeProvider;
     readonly services: ReadonlyArray<ServicePlan>;
-    readonly options: Pick<ApplyOptions, "reconcile" | "signal">;
+    readonly options: Pick<ApplyOptions, "complete" | "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
     readonly bindings?: ReadonlyArray<ReadonlyArray<string>>;

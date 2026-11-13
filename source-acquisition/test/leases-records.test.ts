@@ -108,7 +108,7 @@ test("stores sharing one StateStore use the same physical lock", async () => {
   const locks: string[] = [];
   const stateStore = {
     open: fixture.stateStore.open,
-    withLock: <A, E>(key: string, body: Effect.Effect<A, E>) => {
+    withLock: <A, E, R>(key: string, body: Effect.Effect<A, E, R>) => {
       locks.push(key);
       return fixture.stateStore.withLock(key, body);
     },
