@@ -30,13 +30,16 @@ import {
   setActiveCommandId,
 } from "./compiled-runtime";
 import { validateEventCommandInput } from "./event-command-input";
-import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
-import { tryPluginCommandHelp } from "./plugin-command-help";
+import { specOwnerPolicy } from "./flag-claims";
+import { type CommandTokens, splitCommandTokens } from "./invocation";
 import {
-  pluginHelpRequested,
-  pluginOwnedCliFlagError,
-  pluginOwnedCommandInputFromArgv,
-} from "./plugin-owned-command-input";
+  type PluginCommandCatalog,
+  type PluginCommandDiagnostic,
+  type PluginCommandRow,
+  createPluginCommandCatalog,
+} from "./plugin-command-catalog";
+import { pluginFlagDefinitions } from "./plugin-flag-definitions";
+import { pluginOwnedCliFlagError, pluginOwnedCommandInputFromArgv } from "./plugin-owned-command-input";
 
 export { pluginFlagDefinitions } from "./plugin-flag-definitions";
 export {
@@ -128,9 +131,10 @@ export const pluginOwnedCommandEffect = <A, E, R>(
   E | CommandInputValidationError | MalformedCliFlagValueError | UnknownCliFlagError | CommandStdioError,
   R | Renderer
 > => {
-  const flagError = pluginOwnedCliFlagError(spec, argv);
+  const tokens = splitCommandTokensForStandalone(spec, argv);
+  const flagError = pluginOwnedCliFlagError(spec, tokens);
   if (flagError !== undefined) return Effect.fail(flagError);
-  const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+  const parsed = pluginOwnedCommandInputFromArgv(spec, tokens);
   return validateEventCommandInput(spec, parsed).pipe(
     Effect.flatMap((input) =>
       withGrantedStdio(spec, input, options).pipe(
@@ -177,15 +181,15 @@ const renderPluginOwnedPreCommandFailure = async (
 
 const runPluginOwnedCommand = (
   spec: ExecutableCommandSpec,
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   options: RunPluginOwnedCommandOptions = {},
 ): Promise<void> =>
   runWithProcessAbortSignal(
     async (signal) => {
       await import("../runtime/bundled-plugins");
-      const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+      const parsed = pluginOwnedCommandInputFromArgv(spec, tokens);
       const request = commandStdioRequest(spec, parsed.args);
-      const flagError = pluginOwnedCliFlagError(spec, argv);
+      const flagError = pluginOwnedCliFlagError(spec, tokens);
       if (flagError !== undefined) {
         await renderPluginOwnedPreCommandFailure(
           flagError,
@@ -267,41 +271,23 @@ const runPluginOwnedCommand = (
   );
 
 const dispatchPluginOwnedCommand = async (
-  commandId: string,
-  argv: ReadonlyArray<string>,
+  row: PluginCommandRow,
+  token: string,
+  tokens: CommandTokens,
   signal?: AbortSignal,
   catalog: PluginCommandCatalog = createPluginCommandCatalog(signal),
 ): Promise<"dispatched" | "not-found"> => {
   if (signal?.aborted) return "dispatched";
-  const row = await catalog.resolve(commandId);
-  if (row === undefined) return "not-found";
-  // Failed discovery cannot claim a typo of a command that does not need plugins.
-  if ("unavailable" in row && (await catalog.hasCloseSpelling([commandId, ...argv]))) return "not-found";
-  if ("unavailable" in row || row.loadError !== undefined) {
-    // Without a loaded spec there is no stdio declaration, so stdout keeps its usual role.
-    await renderPluginOwnedPreCommandFailure(
-      "unavailable" in row ? row.unavailable : row.loadError,
-      catalog.context?.io,
-      false,
-      catalog.context,
-    );
-    return "dispatched";
-  }
-  if (signal?.aborted) return "dispatched";
   const spec = row.spec;
   if (spec === undefined) return "not-found";
   setActiveCommandId(spec.id);
-  resetActiveCommandInvocation(spec.id, argv, {
+  resetActiveCommandInvocation(spec.id, tokens.argv, {
     ...(catalog.context === undefined ? {} : { context: catalog.context }),
   });
-  if (pluginHelpRequested(spec, argv)) {
-    await tryPluginCommandHelp(commandId, catalog);
-    return "dispatched";
-  }
   // A plugin-owned command declares no opt-in format, so it honors exactly the
   // universal set. Refuse before --json key listing can report success.
   const payloadStdout =
-    commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, argv).args).stdout === true;
+    commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, tokens).args).stdout === true;
   if (
     await rejectUnsupportedResultFormat(spec.id, undefined, {
       payloadStdout,
@@ -309,7 +295,7 @@ const dispatchPluginOwnedCommand = async (
     })
   )
     return "dispatched";
-  const flagError = pluginOwnedCliFlagError(spec, argv);
+  const flagError = pluginOwnedCliFlagError(spec, tokens);
   if (flagError !== undefined) {
     await renderPluginOwnedPreCommandFailure(
       flagError,
@@ -321,18 +307,44 @@ const dispatchPluginOwnedCommand = async (
     return "dispatched";
   }
   if (await emitJsonListModeIfRequested(spec.resultSchema, catalog.context)) return "dispatched";
-  const notice = commandDescriptorNotice(row.descriptor, commandId);
-  await runPluginOwnedCommand(spec, argv, {
+  const notice = commandDescriptorNotice(row.descriptor, token);
+  await runPluginOwnedCommand(spec, tokens, {
     ...(catalog.context === undefined ? {} : { context: catalog.context, io: catalog.context.io }),
     ...(signal === undefined ? {} : { signal }),
-    ...(notice === undefined ? {} : { deprecation: { id: commandId, notice } }),
+    ...(notice === undefined ? {} : { deprecation: { id: token, notice } }),
   });
   return "dispatched";
 };
 
+/** Discovery unavailable or a failed load: report it, unless a close spelling belongs to a command. */
+export const dispatchPluginUnavailable = async (
+  token: string,
+  row: PluginCommandRow | { readonly unavailable: PluginCommandDiagnostic },
+  tokens: CommandTokens,
+  catalog: PluginCommandCatalog,
+): Promise<"unknown" | "dispatched"> => {
+  // Failed discovery cannot claim a typo of a command that does not need plugins.
+  if ("unavailable" in row && (await catalog.hasCloseSpelling([token, ...tokens.argv]))) return "unknown";
+  await renderPluginOwnedPreCommandFailure(
+    "unavailable" in row ? row.unavailable : row.loadError,
+    catalog.context?.io,
+    false,
+    catalog.context,
+  );
+  return "dispatched";
+};
+
+const splitCommandTokensForStandalone = (
+  spec: Pick<ExecutableCommandSpec, "id" | "flags" | "args" | "strict">,
+  argv: ReadonlyArray<string>,
+): CommandTokens =>
+  splitCommandTokens(argv, specOwnerPolicy(spec, pluginFlagDefinitions(spec)), "none").command;
+
 export const tryPluginOwnedCommand = async (
   token: string,
-  argv: ReadonlyArray<string>,
+  row: PluginCommandRow,
+  tokens: CommandTokens,
   signal?: AbortSignal,
   catalog: PluginCommandCatalog = createPluginCommandCatalog(signal),
-): Promise<boolean> => (await dispatchPluginOwnedCommand(token, argv, signal, catalog)) === "dispatched";
+): Promise<boolean> =>
+  (await dispatchPluginOwnedCommand(row, token, tokens, signal, catalog)) === "dispatched";

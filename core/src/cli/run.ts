@@ -10,30 +10,15 @@ import {
   RendererSelectionError,
   ToolingInputError,
 } from "@lando/sdk/errors";
-import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { Cause, Effect, Exit, Layer } from "effect";
-import {
-  CliInvocation,
-  type CliInvocationContext,
-  processInvocationContext,
-} from "../runtime/invocation-context";
+import { Cause, Effect, Layer } from "effect";
+import { type CliInvocationContext, processInvocationContext } from "../runtime/invocation-context";
 import { rejectCommandCliArgValues } from "./arg-value-validation";
-import {
-  type BuiltInCommandEntry,
-  isReservedNamespaceHead,
-  notImplementedErrorForCommand,
-  resolveBuiltInCommand,
-} from "./built-in-command-registry";
+import { notImplementedErrorForCommand, resolveBuiltInCommand } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
 import { isHelpTopic } from "./cold-path-output";
 import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
-import {
-  type CompiledCommand,
-  builtInTailPolicy,
-  findCommand,
-  flagDefinitionsForCommand,
-} from "./compiled-argv";
+import { flagDefinitionsForCommand } from "./compiled-argv";
 import { COMPILED_DECODER_ASTS } from "./compiled-decoder-targets";
 import { printToolingHelp } from "./compiled-help";
 import { compiledCommandInputFromArgv } from "./compiled-input";
@@ -75,13 +60,12 @@ import {
 } from "./host-proxy/call-context";
 import { runHostProxyCallProcess } from "./host-proxy/call-runtime";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
-import { interruptOnAbort } from "./interrupt-on-abort";
-import { type TailPolicy, resolveInvocationHead, splitInvocation } from "./invocation";
+import { resolveInvocationHead, splitInvocation } from "./invocation";
+import { type InvocationOwner, ownerPolicy, resolveInvocationOwner } from "./invocation-owner";
+import { matchLandoFlag } from "./lando-flags";
 import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
-import { pluginTailPolicy } from "./plugin-flag-definitions";
-import { pluginDispatcherArgv } from "./plugin-owned-command-input";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-resolution";
 import { setActiveLogLevel } from "./renderer-mode-state";
@@ -94,16 +78,10 @@ import {
   printRootHelpPage,
   rejectUnknownHelpFlags,
 } from "./run-help";
-import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
+import { dispatchPluginUnavailable, tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveTopLevelAliases } from "./spec/command-spec";
-import {
-  resolveToolingRoute,
-  toolingHelpRequested,
-  toolingRouteFailure,
-  toolingVersionRequested,
-  unavailableScriptError,
-} from "./tooling-router";
+import { toolingRouteFailure, toolingVersionRequested, unavailableScriptError } from "./tooling-router";
 import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
@@ -166,22 +144,6 @@ const rejectJsonControlConflicts = async (context: CliInvocationContext): Promis
     usage: true,
   });
   return true;
-};
-
-const resolveToolingRouteExit = async (
-  token: string | undefined,
-  catalog: PluginCommandCatalog,
-  options: { readonly signal?: AbortSignal; readonly rebuild: boolean; readonly rebuildNotice?: boolean },
-  context: CliInvocationContext,
-) => {
-  const { signal, ...routeOptions } = options;
-  const exit = await Effect.runPromiseExit(
-    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog, ...routeOptions })), signal).pipe(
-      Effect.provideService(CliInvocation, context),
-    ),
-  );
-  if (Exit.isFailure(exit)) throw exit.cause;
-  return exit.value;
 };
 
 const applyRendererSelections = async (
@@ -288,6 +250,21 @@ const applyInvocationSelections = async (
 // Help and listing paths stay free of bundled plugin modules; command dispatch registers them before building a runtime.
 const registerBundledPlugins = () => import("../runtime/bundled-plugins");
 
+/** The command id host-proxy denial names: the first token that is not one of Lando's selection flags. */
+const hostProxyDenyToken = (argv: ReadonlyArray<string>): string => {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === undefined) continue;
+    const match = matchLandoFlag(token, argv[index + 1]);
+    if (match !== undefined && match.flag.role === "selection") {
+      index += match.consumed;
+      continue;
+    }
+    return token;
+  }
+  return "cli:unknown";
+};
+
 const runCompiledCli = async (
   rawArgv: ReadonlyArray<string>,
   signal?: AbortSignal,
@@ -335,167 +312,34 @@ const runCompiledCli = async (
 
   setActiveTrace(undefined);
   const configGlobals = await readConfigCliGlobals(context.env);
-
   const head = resolveInvocationHead(rawArgv);
-  const commandToken = head.commandId;
-  const isHelpCommand = commandToken === "help";
-  let builtInCommand: BuiltInCommandEntry | undefined;
-  let routeResolution: Awaited<ReturnType<typeof resolveToolingRouteExit>> | undefined;
-  let routeSkipped = false;
-  const registered = commandToken === undefined ? undefined : resolveBuiltInCommand(commandToken);
-  if (registered !== undefined && registered.spec.id === commandToken) builtInCommand = registered;
-  if (commandToken !== undefined && !isHelpCommand && builtInCommand === undefined) {
-    // A lead that already selects an unusable mode fails before routing, which
-    // may import plugin modules to rebuild the command index.
-    if (
-      head.headGlobals.length > 0 &&
-      (await applyInvocationSelections(head.headGlobals, context, configGlobals, {
+  const owner = await resolveInvocationOwner({
+    head,
+    rawArgv,
+    catalog,
+    context,
+    hostProxy: hostProxy !== undefined,
+    ...(signal === undefined ? {} : { signal }),
+    precheckLeadingFlags: (globals) =>
+      applyInvocationSelections(globals, context, configGlobals, {
         protocolStdout: false,
         commandAbsent: false,
-      }))
-    )
-      return;
-    if (
-      !commandToken.startsWith("-") &&
-      (registered !== undefined || !isReservedNamespaceHead(commandToken))
-    ) {
-      routeResolution = await resolveToolingRouteExit(
-        commandToken,
-        catalog,
-        {
-          ...(signal === undefined ? {} : { signal }),
-          // A host-proxy child reads the app's alias policy but never rebuilds the index.
-          rebuild: hostProxy === undefined,
-          // Output modes are not resolved yet; machine-output argv/env still silences the notice.
-          rebuildNotice: preCommandOutputMode({ argv: rawArgv, env: context.env }).rendererMode !== "json",
-        },
-        context,
-      );
-    } else {
-      routeSkipped = true;
-    }
-  }
-  const route = routeResolution?._tag === "Success" ? routeResolution.success : undefined;
-  // Host-proxy admission: only a built-in may own the token, decided before any plugin code loads.
-  if (hostProxy !== undefined && route !== undefined && route._tag !== "built-in")
-    throw hostProxyDenied("cli:route");
-  if (route?._tag === "built-in") builtInCommand = route.entry;
-  // A route that does not claim the token leaves a built-in alias (bun, x, run)
-  // as the owner; a failed route still renders its own diagnostic.
-  if (
-    builtInCommand === undefined &&
-    routeResolution?._tag !== "Failure" &&
-    (route === undefined || route._tag === "not-tooling" || route._tag === "cache-miss")
-  ) {
-    builtInCommand = resolveBuiltInCommand(commandToken);
-  }
+      }),
+  });
+  if (owner === "handled") return;
 
-  let pluginToken: string | undefined;
-  if (
-    hostProxy === undefined &&
-    builtInCommand === undefined &&
-    !isHelpCommand &&
-    commandToken !== undefined
-  ) {
-    switch (route?._tag) {
-      case "plugin":
-        pluginToken = route.token;
-        break;
-      case "unknown-tooling":
-      case "not-tooling":
-        pluginToken = commandToken;
-        break;
-      case undefined:
-        if (routeSkipped) pluginToken = commandToken;
-        break;
-      case "built-in":
-      case "tooling":
-      case "bun-script":
-      case "cache-miss":
-      case "alias-disabled":
-        break;
-      default:
-        route satisfies never;
-    }
-  }
-  let pluginSpec: ExecutableCommandSpec | undefined;
-  let pluginSelectionFailed = false;
-  if (pluginToken !== undefined) {
-    const row = await catalog.resolve(pluginToken);
-    if (row !== undefined) {
-      if ("unavailable" in row || row.loadError !== undefined || row.spec === undefined)
-        pluginSelectionFailed = true;
-      else pluginSpec = row.spec;
-    }
-  }
-
-  let policy: TailPolicy;
-  if (builtInCommand !== undefined) policy = builtInTailPolicy(builtInCommand.spec);
-  else if (pluginSpec !== undefined) policy = pluginTailPolicy(pluginSpec);
-  else if (pluginSelectionFailed) policy = { kind: "all" };
-  else if (route?._tag === "tooling" || route?._tag === "bun-script") {
-    if (route.disabled) policy = { kind: "none" };
-    else if (route.wrapper) policy = { kind: "all" };
-    else policy = { kind: "declared", flags: route.input?.flags ?? [] };
-  } else policy = { kind: "none" };
-
+  const policy = ownerPolicy(owner);
   const split = splitInvocation(rawArgv, head, policy);
-  const globals = split.globals;
-  onLandoGlobals(globals);
-  let argv: ReadonlyArray<string> = split.argv;
-  const commandTail = split.tailLength === 0 ? [] : argv.slice(argv.length - split.tailLength);
-  const landoArgv = split.tailLength === 0 ? argv : argv.slice(0, argv.length - split.tailLength);
+  onLandoGlobals(split.globals);
+  const tokens = split.command;
+  const commandAbsent = owner.kind === "none" && tokens.argv.length === 0 && split.controls.length === 0;
   if (
-    await applyInvocationSelections(globals, context, configGlobals, {
-      protocolStdout: builtInCommand?.spec.id === "meta:mcp",
-      commandAbsent: split.argv.length === 0,
+    await applyInvocationSelections(split.globals, context, configGlobals, {
+      protocolStdout: owner.kind === "built-in" && owner.entry.spec.id === "meta:mcp",
+      commandAbsent,
     })
   )
     return;
-
-  if (argv[0] === "help") {
-    if (hostProxy !== undefined) {
-      const target = argv[1];
-      if (target === undefined || argv.includes("--all")) throw hostProxyDenied("cli:help");
-      await runCompiledCli(
-        [...globals, target, "--help", ...argv.slice(2)],
-        signal,
-        hostProxy,
-        context,
-        onLandoGlobals,
-      );
-      return;
-    }
-    const helpArgv = argv.slice(1);
-    if (await rejectUnknownHelpFlags(helpArgv, context)) return;
-    const target = helpArgv.find((arg) => !arg.startsWith("-"));
-    if (target !== undefined && !helpArgv.includes("--all")) {
-      await dispatchHelpTarget(target, catalog, signal);
-      return;
-    }
-    if (isEnvelopeResultFormat(activeResultFormat)) {
-      setActiveCommandId("cli:help");
-      await printHelpCatalogPage(catalog);
-      return;
-    }
-    if (helpArgv.includes("--all")) {
-      await printAllHelp(catalog);
-      return;
-    }
-    await printRootHelpPage(catalog);
-    return;
-  }
-
-  if (await rejectJsonControlConflicts(context)) return;
-
-  if (
-    hostProxy === undefined &&
-    isHelpTopic(argv[0] ?? "") &&
-    argv.slice(1).some((arg) => arg === "--help" || arg === "-h")
-  ) {
-    await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
-    return;
-  }
 
   const answerLandoVersion = async (): Promise<void> => {
     if (hostProxy !== undefined) throw hostProxyDenied("meta:version");
@@ -506,170 +350,116 @@ const runCompiledCli = async (
     await runMetaVersion(context);
   };
 
-  if (builtInCommand === undefined && routeResolution !== undefined) {
-    const argvTail = argv.slice(1);
-    if (routeResolution._tag === "Failure") {
-      await renderAliasResolutionFailure(routeResolution.failure, context);
+  if (owner.kind === "help") {
+    if (hostProxy !== undefined) {
+      const target = tokens.argv.find((arg) => !arg.startsWith("-"));
+      if (target === undefined || tokens.argv.includes("--all")) throw hostProxyDenied("cli:help");
+      const targetIndex = tokens.argv.indexOf(target);
+      await runCompiledCli(
+        [...split.globals, target, "--help", ...tokens.argv.slice(targetIndex + 1), ...split.controls],
+        signal,
+        hostProxy,
+        context,
+        onLandoGlobals,
+      );
       return;
     }
-    const resolvedRoute = routeResolution.success;
-    // Lando reads a plugin command's argv only before its tail; a plugin that failed to load owns all of it.
-    const pluginLead = pluginSelectionFailed ? [] : pluginDispatcherArgv(pluginSpec, argvTail);
-    const helpRequested = pluginLead.includes("--help") || pluginLead.includes("-h");
-    if (resolvedRoute._tag === "plugin") {
-      if (helpRequested) await dispatchHelpTarget(resolvedRoute.token, catalog, signal);
-      else if (pluginLead.includes("--version") || pluginLead.includes("-v")) await answerLandoVersion();
-      else await tryPluginOwnedCommand(resolvedRoute.token, argvTail, signal, catalog);
+    if (await rejectUnknownHelpFlags([...tokens.argv, ...split.controls], context)) return;
+    const target = tokens.argv.find((arg) => !arg.startsWith("-"));
+    if (target !== undefined && !tokens.argv.includes("--all")) {
+      await dispatchHelpTarget(target, catalog, signal);
       return;
     }
-    if (
-      resolvedRoute._tag === "unknown-tooling" ||
-      (resolvedRoute._tag === "cache-miss" && !argv[0]?.startsWith("app:"))
-    ) {
-      if (helpRequested) {
-        await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
-        return;
-      }
-      if (resolvedRoute._tag === "unknown-tooling") {
-        if (!(await tryPluginOwnedCommand(argv[0] ?? "", argvTail, signal, catalog)))
-          await failUnknownCommand(argv, catalog, true, context);
-        return;
-      }
-      const hint = await catalog.remediation(argv[0] ?? "");
-      if (hint !== undefined) {
-        return renderPreCommandFailure({
-          context,
-          commandId: resolvedRoute.commandId,
-          error: toolingRouteFailure(resolvedRoute, hint),
-          rendererMode: activeRendererMode,
-          resultFormat: activeResultFormat,
-        });
-      }
-    }
-    if (resolvedRoute._tag === "alias-disabled") {
-      await failUnknownCommand([resolvedRoute.token], catalog, false, context);
+    if (isEnvelopeResultFormat(activeResultFormat)) {
+      setActiveCommandId("cli:help");
+      await printHelpCatalogPage(catalog);
       return;
     }
-    if (
-      (resolvedRoute._tag === "tooling" || resolvedRoute._tag === "bun-script") &&
-      toolingHelpRequested(resolvedRoute, argvTail)
-    ) {
-      const unavailable = await Effect.runPromise(unavailableScriptError(resolvedRoute));
-      if (resolvedRoute.disabled) await dispatchHelpTarget(resolvedRoute.commandId, catalog, signal);
-      else if (unavailable !== undefined)
-        await renderAliasResolutionFailure(unavailable, context, resolvedRoute.commandId);
-      else
-        await printToolingHelp(
-          {
-            ...resolvedRoute,
-            id: resolvedRoute.commandId,
-            ...(resolvedRoute._tag === "bun-script" ? { source: resolvedRoute._tag } : {}),
-          },
-          resolvedRoute.aliasPolicy,
-          context,
-        );
+    if (tokens.argv.includes("--all")) {
+      await printAllHelp(catalog);
       return;
     }
-    if (
-      (resolvedRoute._tag === "tooling" || resolvedRoute._tag === "bun-script") &&
-      toolingVersionRequested(resolvedRoute, argvTail)
-    ) {
-      if (resolvedRoute.disabled) await routeResolvedTooling(resolvedRoute, argvTail, signal, context);
-      else {
-        const name = typeableName({
-          canonicalId: resolvedRoute.commandId,
-          builtInAliases: [],
-          implicitNamespaceStrip: true,
-          ...(resolvedRoute.aliasPolicy === undefined ? {} : { aliasPolicy: resolvedRoute.aliasPolicy }),
-        }).primary;
-        await renderPreCommandFailure({
-          context,
-          commandId: resolvedRoute.commandId,
-          error: new ToolingInputError({
-            tool: resolvedRoute.commandId,
-            field: "version",
-            message: `\`lando ${name}\` is a project task and has no version of its own.`,
-            remediation: `Run \`lando version\` for Lando's version, or \`lando ${name} -- --version\` to pass --version to the task.`,
-          }),
-          rendererMode: activeRendererMode,
-          resultFormat: activeResultFormat,
-        });
-      }
-      return;
-    }
-    if (await routeResolvedTooling(resolvedRoute, argvTail, signal, context)) return;
-    if (builtInCommand === undefined) builtInCommand = resolveBuiltInCommand(argv[0]);
+    await printRootHelpPage(catalog);
+    return;
   }
-  if (signal?.aborted) return;
-  const canonicalCommandId = builtInCommand?.spec.id ?? argv[0] ?? "cli:unknown";
+
+  if (await rejectJsonControlConflicts(context)) return;
+
+  if (hostProxy === undefined && split.help && isHelpTopic(head.commandId ?? "")) {
+    await dispatchHelpTarget(head.commandId ?? "", catalog, signal);
+    return;
+  }
+
+  if (owner.kind === "route-failure") {
+    await renderAliasResolutionFailure(owner.failure, context);
+    return;
+  }
+
+  // Host-proxy admission for everything else: only an allowlisted built-in may
+  // proceed, decided before help, version, or unknown-command handling.
   if (hostProxy !== undefined) {
-    if (builtInCommand === undefined || !HOST_PROXY_RUNLANDO_ALLOWLIST.includes(canonicalCommandId))
-      throw hostProxyDenied(canonicalCommandId);
+    const canonical = owner.kind === "built-in" ? owner.entry.spec.id : undefined;
+    if (canonical === undefined || !HOST_PROXY_RUNLANDO_ALLOWLIST.includes(canonical)) {
+      throw hostProxyDenied(canonical ?? hostProxyDenyToken(rawArgv));
+    }
     await assertHostProxyAppContext(hostProxy, context.cwd);
   }
-  if (builtInCommand !== undefined) argv = [canonicalCommandId, ...argv.slice(1)];
-  if (canonicalCommandId === "apps:scratch:start" && argv[0] !== undefined) {
-    argv = [argv[0], ...normalizeScratchStartArgv(argv.slice(1))];
-  }
-  setActiveCommandId(canonicalCommandId);
-  resetActiveCommandInvocation(canonicalCommandId, argv.slice(1), { context });
-  if (canonicalCommandId === "meta:mcp") {
-    const flags = argv.slice(1);
-    const terminator = flags.indexOf("--");
-    const beforeTerminator = terminator === -1 ? flags : flags.slice(0, terminator);
-    if (!beforeTerminator.includes("--list")) setActiveLogLevel("none");
-  }
 
-  const found: [string, CompiledCommand] | undefined =
-    builtInCommand === undefined ? findCommand(argv[0] ?? "") : [builtInCommand.spec.id, builtInCommand.spec];
-  const dashDashIndex = landoArgv.indexOf("--");
-  const dispatchArgv = dashDashIndex === -1 ? landoArgv : landoArgv.slice(0, dashDashIndex);
-  const separatorInTail = commandTail.indexOf("--");
-  const beforeTailSeparator = separatorInTail === -1 ? commandTail : commandTail.slice(0, separatorInTail);
-  const passthroughHelp =
-    policy.kind === "all" &&
-    beforeTailSeparator.length > 0 &&
-    beforeTailSeparator.every((arg) => arg === "--help" || arg === "-h");
+  if (signal?.aborted) return;
 
-  if (
-    passthroughHelp ||
-    (policy.kind !== "all" &&
-      (dispatchArgv.length === 0 || dispatchArgv.includes("--help") || dispatchArgv.includes("-h")))
-  ) {
-    const commandArg = dispatchArgv.find((arg) => !arg.startsWith("-"));
-    if (commandArg === undefined) {
-      if (dispatchArgv.includes("--all")) {
-        if (await rejectUnknownHelpFlags(dispatchArgv, context)) return;
-        await printAllHelp(catalog);
+  const failUnknown = (argv: ReadonlyArray<string>, suggest = true) =>
+    failUnknownCommand(argv, catalog, suggest, context);
+
+  const runBuiltInOwner = async (
+    entry: Extract<InvocationOwner, { kind: "built-in" }>["entry"],
+  ): Promise<void> => {
+    const command =
+      entry.spec.id === "apps:scratch:start"
+        ? { argv: normalizeScratchStartArgv(tokens.argv), tailStart: tokens.tailStart }
+        : tokens;
+    if (entry.spec.id === "meta:mcp") {
+      const terminator = command.argv.indexOf("--");
+      const beforeTerminator = terminator === -1 ? command.argv : command.argv.slice(0, terminator);
+      if (!beforeTerminator.includes("--list")) setActiveLogLevel("none");
+    }
+    // `bun` and `x` own their tail, so a lone help spelling there is Lando's.
+    if (policy.tail === "all") {
+      const tail = command.argv.slice(command.tailStart);
+      const separator = tail.indexOf("--");
+      const beforeSeparator = separator === -1 ? tail : tail.slice(0, separator);
+      if (beforeSeparator.length > 0 && beforeSeparator.every((arg) => arg === "-h" || arg === "--help")) {
+        await dispatchHelpTarget(entry.spec.id, catalog, signal);
         return;
       }
-      await printRootHelpPage(catalog);
+    }
+    if (split.help) {
+      await dispatchHelpTarget(entry.spec.id, catalog, signal);
       return;
     }
-
-    await dispatchHelpTarget(commandArg, catalog, signal);
-    return;
-  }
-
-  if (dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) {
-    await answerLandoVersion();
-    return;
-  }
-
-  if (found !== undefined) {
+    if (split.version) {
+      await answerLandoVersion();
+      return;
+    }
+    setActiveCommandId(entry.spec.id);
+    resetActiveCommandInvocation(entry.spec.id, command.argv, { context });
     // Before flag validation and before --json key listing: an unsupported
     // format must not be laundered into a successful listing.
-    if (await rejectUnsupportedResultFormat(canonicalCommandId, found[1], { context })) return;
+    if (await rejectUnsupportedResultFormat(entry.spec.id, entry.spec, { context })) return;
     const flagError = validateCommandCliFlags({
-      commandId: canonicalCommandId,
-      argv: argv.slice(1),
-      definitions: flagDefinitionsForCommand(found[1]),
-      allowUnknownFlags: found[1].strict === false,
-      tailPolicy: builtInTailPolicy(found[1]),
-      commandName: typeableName({
-        canonicalId: canonicalCommandId,
-        builtInAliases: builtInCommand === undefined ? [] : resolveTopLevelAliases(builtInCommand.spec),
-      }).primary,
+      commandId: entry.spec.id,
+      argv: command.argv.slice(0, command.tailStart),
+      definitions: flagDefinitionsForCommand(entry.spec),
+      allowUnknownFlags: entry.spec.strict === false,
+      ...(policy.tail === "command"
+        ? {
+            commandTail: {
+              commandName: typeableName({
+                canonicalId: entry.spec.id,
+                builtInAliases: resolveTopLevelAliases(entry.spec),
+              }).primary,
+            },
+          }
+        : {}),
     });
     if (flagError !== undefined) {
       await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
@@ -679,44 +469,157 @@ const runCompiledCli = async (
       });
       return;
     }
-    if (await rejectCommandCliArgValues(canonicalCommandId, argv.slice(1), context)) return;
-    if (await emitJsonListModeIfRequested(found[1].resultSchema, context)) return;
-  }
-
-  if (signal?.aborted) return;
-  if (builtInCommand?.status.kind === "deferred") {
-    const error = notImplementedErrorForCommand(builtInCommand.spec.id);
-    if (isEnvelopeResultFormat(activeResultFormat)) {
-      await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, { context });
+    if (await rejectCommandCliArgValues(entry.spec.id, command, context)) return;
+    if (await emitJsonListModeIfRequested(entry.spec.resultSchema, context)) return;
+    if (entry.status.kind === "deferred") {
+      const error = notImplementedErrorForCommand(entry.spec.id);
+      if (isEnvelopeResultFormat(activeResultFormat)) {
+        await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, { context });
+        return;
+      }
+      await emitDiagnosticLine(
+        commandErrorMessage({ error, additionalErrors: [] }, entry.spec.id, undefined, context.env),
+        context,
+      );
+      context.setExitCode(1);
       return;
     }
-    await emitDiagnosticLine(
-      commandErrorMessage({ error, additionalErrors: [] }, canonicalCommandId, undefined, context.env),
-      context,
-    );
-    context.setExitCode(1);
-    return;
-  }
-
-  if (found === undefined) {
-    const token = argv[0] ?? "";
-    if (await tryPluginOwnedCommand(token, argv.slice(1), signal, catalog)) return;
-    await failUnknownCommand(argv, catalog, true, context);
-    return;
-  }
-
-  if (builtInCommand?.status.kind === "embedding-exempt") {
     await registerBundledPlugins();
-    await runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal, context);
-    return;
-  }
-  if (builtInCommand !== undefined) {
-    await registerBundledPlugins();
-    await runBuiltInCommand(builtInCommand, argv.slice(1), signal, hostProxy, context);
-    return;
-  }
+    if (entry.status.kind === "embedding-exempt") {
+      await runNativeOnlyBuiltIn(entry, command, signal, context);
+      return;
+    }
+    await runBuiltInCommand(entry, command, signal, hostProxy, context);
+  };
 
-  throw new TypeError(`Implemented command ${found[0]} has no catalog entry.`);
+  switch (owner.kind) {
+    case "none": {
+      const separator = tokens.argv.indexOf("--");
+      const beforeSeparator = separator === -1 ? tokens.argv : tokens.argv.slice(0, separator);
+      if (split.help) {
+        const target = beforeSeparator.find((arg) => !arg.startsWith("-"));
+        if (target === undefined) {
+          if (beforeSeparator.includes("--all")) {
+            if (await rejectUnknownHelpFlags([...tokens.argv, ...split.controls], context)) return;
+            await printAllHelp(catalog);
+            return;
+          }
+          await printRootHelpPage(catalog);
+          return;
+        }
+        await dispatchHelpTarget(target, catalog, signal);
+        return;
+      }
+      if (split.version) {
+        await answerLandoVersion();
+        return;
+      }
+      if (beforeSeparator.length === 0) {
+        await printRootHelpPage(catalog);
+        return;
+      }
+      await failUnknown(tokens.argv);
+      return;
+    }
+    case "built-in":
+      await runBuiltInOwner(owner.entry);
+      return;
+    case "tooling": {
+      const route = owner.route;
+      if (split.help) {
+        const unavailable = await Effect.runPromise(unavailableScriptError(route));
+        if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
+        else if (unavailable !== undefined)
+          await renderAliasResolutionFailure(unavailable, context, route.commandId);
+        else
+          await printToolingHelp(
+            {
+              ...route,
+              id: route.commandId,
+              ...(route._tag === "bun-script" ? { source: route._tag } : {}),
+            },
+            route.aliasPolicy,
+            context,
+          );
+        return;
+      }
+      if (toolingVersionRequested(route, tokens.argv)) {
+        const name = typeableName({
+          canonicalId: route.commandId,
+          builtInAliases: [],
+          implicitNamespaceStrip: true,
+          ...(route.aliasPolicy === undefined ? {} : { aliasPolicy: route.aliasPolicy }),
+        }).primary;
+        await renderPreCommandFailure({
+          context,
+          commandId: route.commandId,
+          error: new ToolingInputError({
+            tool: route.commandId,
+            field: "version",
+            message: `\`lando ${name}\` is a project task and has no version of its own.`,
+            remediation: `Run \`lando version\` for Lando's version, or \`lando ${name} -- --version\` to pass --version to the task.`,
+          }),
+          rendererMode: activeRendererMode,
+          resultFormat: activeResultFormat,
+        });
+        return;
+      }
+      await routeResolvedTooling(route, tokens.argv, signal, context);
+      return;
+    }
+    case "plugin": {
+      if (split.help) {
+        await dispatchHelpTarget(owner.token, catalog, signal);
+        return;
+      }
+      if (split.version) {
+        await answerLandoVersion();
+        return;
+      }
+      await tryPluginOwnedCommand(owner.token, owner.row, tokens, signal, catalog);
+      return;
+    }
+    case "plugin-unloaded": {
+      const outcome = await dispatchPluginUnavailable(owner.token, owner.row, tokens, catalog);
+      if (outcome === "unknown") await failUnknown([owner.token, ...tokens.argv]);
+      return;
+    }
+    case "cache-miss": {
+      const route = owner.route;
+      if (!owner.token.startsWith("app:")) {
+        if (split.help) {
+          await dispatchHelpTarget(owner.token, catalog, signal);
+          return;
+        }
+        const hint = await catalog.remediation(owner.token);
+        if (hint !== undefined) {
+          await renderPreCommandFailure({
+            context,
+            commandId: route.commandId,
+            error: toolingRouteFailure(route, hint),
+            rendererMode: activeRendererMode,
+            resultFormat: activeResultFormat,
+          });
+          return;
+        }
+      }
+      await routeResolvedTooling(route, tokens.argv, signal, context);
+      return;
+    }
+    case "alias-disabled":
+      await failUnknown([owner.token], false);
+      return;
+    case "unknown": {
+      if (split.help) {
+        await dispatchHelpTarget(owner.token, catalog, signal);
+        return;
+      }
+      await failUnknown([owner.token, ...tokens.argv]);
+      return;
+    }
+    default:
+      return owner satisfies never;
+  }
 };
 
 export interface RunCliOptions {

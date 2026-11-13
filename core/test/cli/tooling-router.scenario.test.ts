@@ -589,6 +589,12 @@ const writeFlagOwnershipTasks = async (fixture: RouterFixture): Promise<void> =>
       "    flags:",
       "      format:",
       "        description: Task format",
+      "  release:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      label:",
+      "        description: Release label",
       "  wrap:",
       '    service: ":host"',
       "    cmd: echo WRAP",
@@ -699,6 +705,22 @@ test("an undeclared format flag still rejects an unsupported Lando result format
     expect(`${rejected.stdout}\n${rejected.stderr}`).toContain(
       'Unsupported result format value "csv" from flag',
     );
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);
+
+test("a declared string flag owns --help as its value slot", async () => {
+  const fixture = await makeFixture("flag-label-help");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const result = await runSource(fixture, ["--format=json", "release", "--label", "--help"]);
+    expect(result.exitCode).toBe(1);
+    expect(lastEnvelope(result.stdout)).toMatchObject({
+      ok: false,
+      command: "app:release",
+      error: { _tag: "ToolingInputError", field: "label" },
+    });
   } finally {
     await fixture.cleanup();
   }

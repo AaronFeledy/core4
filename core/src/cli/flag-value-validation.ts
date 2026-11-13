@@ -1,14 +1,9 @@
 import { MalformedCliFlagValueError, UnknownCliFlagError } from "@lando/sdk/errors";
-import { commandTailIndex } from "./command-tail";
+import { BARE_VALUE_FLAGS_BY_COMMAND } from "./flag-claims";
 import { flagDefinitionsByToken, normalizeCliFlagTokens } from "./flag-tokens";
-import type { TailPolicy } from "./invocation";
+import { matchLandoFlag } from "./lando-flags";
 
 type FlagValueIssue = MalformedCliFlagValueError["issue"];
-
-// Bare `--mount-cwd` normalizes to an empty value to select its default target.
-const EMPTY_VALUE_FLAGS_BY_COMMAND: Readonly<Record<string, ReadonlyArray<string>>> = {
-  "apps:scratch:start": ["mount-cwd"],
-};
 
 const flagToken = (arg: string): string => {
   const equalsIndex = arg.indexOf("=");
@@ -102,6 +97,11 @@ export const validateCliFlagValues = (
     if (equalsIndex === -1 && byToken.has(flagToken(value))) {
       return malformedFlagValue(definition.name, "missing");
     }
+    // A flag-shaped Lando occurrence in the value slot is a missing value: the
+    // walker gave the adjacent token to this flag, never to Lando.
+    if (equalsIndex === -1 && matchLandoFlag(value, undefined) !== undefined) {
+      return malformedFlagValue(definition.name, "missing");
+    }
     if (
       definition.integer &&
       (!/^-?\d+$/.test(value) ||
@@ -123,33 +123,29 @@ export const validateCommandFlagValues = (
   argv: ReadonlyArray<string>,
   definitions: Readonly<Record<string, unknown>>,
 ): MalformedCliFlagValueError | undefined =>
-  validateCliFlagValues(argv, definitions, EMPTY_VALUE_FLAGS_BY_COMMAND[commandId]);
+  validateCliFlagValues(argv, definitions, BARE_VALUE_FLAGS_BY_COMMAND[commandId]);
 
 export const validateCommandCliFlags = (input: {
   readonly commandId: string;
+  /** The command's lead only: every token before its verbatim tail or first `--`. */
   readonly argv: ReadonlyArray<string>;
   readonly definitions: Readonly<Record<string, unknown>>;
   readonly allowUnknownFlags: boolean;
-  /** How the command owns its tail; `all` validates nothing after the command name. */
-  readonly tailPolicy?: TailPolicy;
-  /** The spelling remediation names; defaults to the canonical id. */
-  readonly commandName?: string;
+  /** Present when the command owns a tail; the remediation names it. */
+  readonly commandTail?: { readonly commandName: string };
 }): MalformedCliFlagValueError | UnknownCliFlagError | undefined => {
-  if (input.tailPolicy?.kind === "all") return undefined;
-  const commandTail = input.tailPolicy?.kind === "command";
-  const argv = commandTail
-    ? input.argv.slice(0, commandTailIndex(input.argv, input.definitions))
-    : input.argv;
+  const commandTail = input.commandTail;
   const unknown =
-    commandTail || !input.allowUnknownFlags ? validateUnknownCliFlags(argv, input.definitions) : undefined;
+    commandTail !== undefined || !input.allowUnknownFlags
+      ? validateUnknownCliFlags(input.argv, input.definitions)
+      : undefined;
   if (unknown !== undefined) {
-    if (!commandTail) return unknown;
-    const name = input.commandName ?? input.commandId;
+    if (commandTail === undefined) return unknown;
     return new UnknownCliFlagError({
       message: unknown.message,
       flag: unknown.flag,
-      remediation: `Put the command after \`--\`: \`lando ${name} -- <command>\`. Run \`lando ${name} --help\` for its flags.`,
+      remediation: `Put the command after \`--\`: \`lando ${commandTail.commandName} -- <command>\`. Run \`lando ${commandTail.commandName} --help\` for its flags.`,
     });
   }
-  return validateCommandFlagValues(input.commandId, argv, input.definitions);
+  return validateCommandFlagValues(input.commandId, input.argv, input.definitions);
 };

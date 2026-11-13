@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   LANDO_FLAGS,
+  type LandoFlag,
+  type LandoFlagSpelling,
   failedLandoFlag,
   hasDiagnosticFlag,
   isSpaceFormJsonFieldList,
@@ -9,6 +11,8 @@ import {
   matchLandoFlag,
   scanLandoFlags,
 } from "../../src/cli/lando-flags.ts";
+
+const flags: ReadonlyArray<LandoFlag> = LANDO_FLAGS;
 
 const matchShape = (token: string, next?: string) => {
   const match = matchLandoFlag(token, next);
@@ -30,7 +34,7 @@ describe("LANDO_FLAGS", () => {
   });
 
   test("spellings are unique and cover the dispatcher surface", () => {
-    const spellings = LANDO_FLAGS.map((flag) => flag.spelling);
+    const spellings: ReadonlyArray<string> = LANDO_FLAGS.map((flag) => flag.spelling);
     expect(new Set(spellings).size).toBe(spellings.length);
     for (const spelling of [
       "--format",
@@ -53,7 +57,7 @@ describe("LANDO_FLAGS", () => {
   });
 
   test("only the result-encoding flags are marked output", () => {
-    const output = LANDO_FLAGS.filter((flag) => flag.output === true).map((flag) => flag.spelling);
+    const output = flags.filter((flag) => flag.output === true).map((flag) => flag.spelling);
     expect(output).toEqual(["--format", "--json", "-j", "--jq"]);
   });
 });
@@ -62,7 +66,7 @@ describe("matchLandoFlag", () => {
   type AcceptedMatch = {
     readonly token: string;
     readonly next?: string;
-    readonly spelling: string;
+    readonly spelling: LandoFlagSpelling;
     readonly value?: string;
     readonly attached?: boolean;
     readonly consumed: 0 | 1;
@@ -250,7 +254,7 @@ describe("scanLandoFlags", () => {
 
 describe("hasDiagnosticFlag", () => {
   test("is true for the flags marked diagnostic in the table", () => {
-    const diagnostic = LANDO_FLAGS.filter((flag) => flag.diagnostic === true).map((flag) => flag.spelling);
+    const diagnostic = flags.filter((flag) => flag.diagnostic === true).map((flag) => flag.spelling);
     expect(diagnostic).toEqual(["--verbose", "--log-level", "--debug"]);
     for (const spelling of diagnostic) {
       expect(hasDiagnosticFlag([spelling])).toBe(true);
@@ -286,7 +290,7 @@ describe("landoFlagFooterLabels", () => {
 
   test("is derived from the table rows that carry a footer", () => {
     expect(landoFlagFooterLabels()).toEqual(
-      LANDO_FLAGS.flatMap((flag) => (flag.footer === undefined ? [] : [flag.footer])),
+      flags.flatMap((flag) => (flag.footer === undefined ? [] : [flag.footer])),
     );
   });
 });

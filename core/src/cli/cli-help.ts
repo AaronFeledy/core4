@@ -10,8 +10,7 @@ import {
 } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
-import { landoFlagForSpelling } from "./invocation";
-import { landoFlagFooterLabels } from "./lando-flags";
+import { LANDO_FLAGS, landoFlagFooterLabels } from "./lando-flags";
 import { resolveTopLevelAliases } from "./spec/command-base";
 import { toolingRunHelp } from "./tooling-run-help";
 
@@ -107,13 +106,18 @@ const typeableFor = (
  * One line for a task or script that declares a flag Lando also has: after the
  * name the spelling is the command's, so Lando's own goes before it.
  */
+const landoFlag = (spelling: string) => LANDO_FLAGS.find((flag) => flag.spelling === spelling);
+
 const sharedFlagHint = (input: ToolingInputDeclaration | undefined, name: string): string | undefined => {
   const shared = (input?.flags ?? [])
     .flatMap((flag) => [`--${flag.name}`, ...(flag.alias === undefined ? [] : [`-${flag.alias}`])])
-    .filter((spelling) => landoFlagForSpelling(spelling) !== undefined);
+    .filter((spelling) => {
+      const flag = landoFlag(spelling);
+      return flag !== undefined && flag.role !== "reserved";
+    });
   const first = shared[0];
   if (first === undefined) return undefined;
-  const example = landoFlagForSpelling(first)?.takesValue ? `${first}=<value>` : first;
+  const example = landoFlag(first)?.arity === "value" ? `${first}=<value>` : first;
   const subject =
     shared.length === 1
       ? `\`${first}\` after \`${name}\` is this command's flag`

@@ -40,6 +40,8 @@ const fixture = async (loadFailure = false): Promise<Fixture> => {
           commands: [
             { id: "fixture:run", summary: "Run a fixture command.", topLevelAlias: "frun" },
             { id: "fixture:show", summary: "Show one value." },
+            { id: "fixture:opts", summary: "Inspect fixture flags.", topLevelAlias: "fopts" },
+            { id: "fixture:bad", summary: "Declare a reserved flag incompatibly." },
           ],
         },
       },
@@ -84,6 +86,31 @@ export const commands = new Map([["fixture:run", async () => ({
       writeFileSync(${JSON.stringify(join(root, "argv.json"))}, JSON.stringify([input.args.value ?? ""]));
       return "ok";
     }),
+})], ["fixture:opts", async () => ({
+  id: "fixture:opts",
+  namespace: "fixture",
+  summary: "Inspect fixture flags.",
+  bootstrap: "minimal",
+  flags: {
+    verbose: { type: "boolean" },
+    renderer: { type: "string" },
+    format: { type: "string" },
+    help: { type: "boolean" },
+  },
+  resultSchema: Schema.String,
+  run: (input: { flags: Record<string, unknown> }) =>
+    Effect.sync(() => {
+      writeFileSync(${JSON.stringify(join(root, "opts.json"))}, JSON.stringify(input.flags));
+      return "ok";
+    }),
+})], ["fixture:bad", async () => ({
+  id: "fixture:bad",
+  namespace: "fixture",
+  summary: "Declare a reserved flag incompatibly.",
+  bootstrap: "minimal",
+  flags: { json: { type: "option" } },
+  resultSchema: Schema.String,
+  run: () => Effect.succeed("ok"),
 })]]);`
 }`,
   );
@@ -120,6 +147,16 @@ const argvFile = async (f: Fixture): Promise<ReadonlyArray<string>> =>
   Schema.decodeUnknownSync(Schema.Array(Schema.String))(await Bun.file(join(f.root, "argv.json")).json());
 
 const imported = async (f: Fixture): Promise<boolean> => Bun.file(join(f.root, "imported.marker")).exists();
+
+const Opts = Schema.Struct({
+  verbose: Schema.optionalKey(Schema.Boolean),
+  renderer: Schema.optionalKey(Schema.String),
+  format: Schema.optionalKey(Schema.String),
+  help: Schema.optionalKey(Schema.Boolean),
+});
+
+const optsFile = async (f: Fixture): Promise<typeof Opts.Type> =>
+  Schema.decodeUnknownSync(Opts)(await Bun.file(join(f.root, "opts.json")).json());
 
 test("a plugin command owns its tail and receives exact argv", async () => {
   // Given
@@ -357,3 +394,110 @@ test("an interrupted plugin graph acquisition propagates", async () => {
     controller.abort();
   }
 }, 15_000);
+
+test("a plugin command receives an authored verbose flag after its name", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.invoke(["--format=json", "fixture:opts", "--verbose"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect((await optsFile(f)).verbose).toBe(true);
+  } finally {
+    await f.cleanup();
+  }
+}, 30_000);
+
+test("a leading Lando verbose flag stays Lando's for a plugin command", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.invoke(["--format=json", "--verbose", "fixture:opts"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect((await optsFile(f)).verbose).toBeUndefined();
+  } finally {
+    await f.cleanup();
+  }
+}, 30_000);
+
+test("a plugin command receives an authored renderer flag after its name", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.invoke(["--format=json", "fixture:opts", "--renderer", "plain"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect((await optsFile(f)).renderer).toBe("plain");
+  } finally {
+    await f.cleanup();
+  }
+}, 30_000);
+
+test("an authored format flag never claims Lando's --format", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.invoke(["--format=json", "fixture:opts", "--format=csv"]);
+    expect(result.code, result.stderr).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { _tag: "RendererSelectionError" },
+    });
+    expect(await Bun.file(join(f.root, "opts.json")).exists()).toBe(false);
+  } finally {
+    await f.cleanup();
+  }
+}, 30_000);
+
+test("an authored help flag owns --help but not -h", async () => {
+  const authored = await fixture();
+  try {
+    const result = await authored.invoke(["--format=json", "fixture:opts", "--help"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect((await optsFile(authored)).help).toBe(true);
+  } finally {
+    await authored.cleanup();
+  }
+  const lando = await fixture();
+  try {
+    const result = await lando.invoke(["fixture:opts", "-h"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain("USAGE");
+    expect(await Bun.file(join(lando.root, "opts.json")).exists()).toBe(false);
+  } finally {
+    await lando.cleanup();
+  }
+}, 30_000);
+
+test("text and machine plugin help list authored flags", async () => {
+  const text = await fixture();
+  try {
+    const result = await text.invoke(["fixture:opts", "-h"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain("--verbose");
+    expect(result.stdout).toContain("--renderer");
+  } finally {
+    await text.cleanup();
+  }
+  const machine = await fixture();
+  try {
+    const result = await machine.invoke(["help", "fixture:opts", "--format=json"]);
+    expect(result.code, result.stderr).toBe(0);
+    const envelope = JSON.parse(result.stdout) as {
+      result: { target: { input: { flags: ReadonlyArray<{ name: string }> } } };
+    };
+    expect(envelope.result.target.input.flags.map((flag) => flag.name)).toEqual([
+      "verbose",
+      "renderer",
+      "help",
+    ]);
+  } finally {
+    await machine.cleanup();
+  }
+}, 30_000);
+
+test("an incompatible reserved flag declaration fails the plugin load", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.invoke(["fixture:bad"]);
+    expect(result.code, result.stderr).toBe(2);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("reserved flag");
+    expect(`${result.stdout}\n${result.stderr}`).toContain("--format, --json, and -j");
+  } finally {
+    await f.cleanup();
+  }
+}, 30_000);

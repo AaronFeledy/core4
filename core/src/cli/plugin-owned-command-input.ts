@@ -5,53 +5,39 @@ import {
   type CommandHelpSpec,
   renderCommandHelp,
 } from "./cli-help";
-import { commandTailIndex, withCommandRemainderSeparator } from "./command-tail";
 import { parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
+import { specTailKind } from "./flag-claims";
 import { normalizeCliFlagTokens } from "./flag-tokens";
 import { validateCommandCliFlags } from "./flag-value-validation";
-import { pluginFlagDefinitions, pluginTailPolicy } from "./plugin-flag-definitions";
+import type { CommandTokens } from "./invocation";
+import { pluginFlagDefinitions } from "./plugin-flag-definitions";
+
+/** The lead only: everything before the plugin command's verbatim tail or first `--`. */
+const pluginLead = (tokens: CommandTokens): ReadonlyArray<string> => tokens.argv.slice(0, tokens.tailStart);
 
 export const pluginOwnedCliFlagError = (
   spec: Pick<ExecutableCommandSpec, "id" | "flags" | "strict" | "args">,
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
 ) =>
   validateCommandCliFlags({
     commandId: spec.id,
-    argv,
+    argv: pluginLead(tokens),
     definitions: pluginFlagDefinitions(spec),
     allowUnknownFlags: spec.strict === false,
-    tailPolicy: pluginTailPolicy(spec),
+    ...(specTailKind(spec) === "command" ? { commandTail: { commandName: spec.id } } : {}),
   });
-
-/** The tokens of a plugin command's argv Lando may read: those before its verbatim tail or first `--`. */
-export const pluginDispatcherArgv = (
-  spec: Pick<ExecutableCommandSpec, "flags" | "args" | "strict"> | undefined,
-  argv: ReadonlyArray<string>,
-): ReadonlyArray<string> => {
-  const policy = spec === undefined ? undefined : pluginTailPolicy(spec);
-  if (policy?.kind === "command") return argv.slice(0, commandTailIndex(argv, policy.flags));
-  const separator = argv.indexOf("--");
-  return separator === -1 ? argv : argv.slice(0, separator);
-};
-
-export const pluginHelpRequested = (
-  spec: Pick<ExecutableCommandSpec, "flags" | "args" | "strict"> | undefined,
-  argv: ReadonlyArray<string>,
-): boolean => pluginDispatcherArgv(spec, argv).some((token) => token === "--help" || token === "-h");
 
 export const pluginOwnedCommandInputFromArgv = (
   spec: Pick<ExecutableCommandSpec, "flags" | "args" | "strict">,
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
 ): {
   readonly flags: Readonly<Record<string, unknown>>;
   readonly args: Readonly<Record<string, unknown>>;
   readonly raw: ReadonlyArray<string>;
 } => {
   const flagDefinitions = pluginFlagDefinitions(spec);
-  const commandArgv =
-    pluginTailPolicy(spec).kind === "command" ? withCommandRemainderSeparator(argv, flagDefinitions) : argv;
-  const normalizedArgv = normalizeCliFlagTokens(commandArgv, flagDefinitions);
-  const { flags, positionals } = parseFlagsAndPositionals(normalizedArgv, flagDefinitions, {
+  const normalizedLead = normalizeCliFlagTokens(pluginLead(tokens), flagDefinitions);
+  const { flags, positionals: leadPositionals } = parseFlagsAndPositionals(normalizedLead, flagDefinitions, {
     strict: spec.strict !== false,
     storeValue: (target, flagName, value, definition) => {
       const specFlag = spec.flags?.[flagName];
@@ -63,6 +49,8 @@ export const pluginOwnedCommandInputFromArgv = (
       setParsedFlag(target, flagName, value, definition);
     },
   });
+  const tail = tokens.argv.slice(tokens.tailStart);
+  const positionals = [...leadPositionals, ...(tail[0] === "--" ? tail.slice(1) : tail)];
   const argNames = Object.keys(spec.args ?? {});
   const args: Record<string, unknown> = {};
   const raw: string[] = [];

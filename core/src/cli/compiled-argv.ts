@@ -1,7 +1,6 @@
 import { builtInCommandEntries, resolveBuiltInCommand } from "./built-in-command-registry";
 import { formatFlagDefsForCommand } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
-import type { TailPolicy } from "./invocation";
 import { type LandoCommandSpec, resolveTopLevelAliases } from "./spec/command-base";
 
 export type CompiledCommand = LandoCommandSpec;
@@ -200,28 +199,4 @@ export const parseStringFlag = (
     if (arg.startsWith(shortEq)) return { value: arg.slice(shortEq.length), consumed: 1 };
   }
   return undefined;
-};
-
-export const hasUniversalFormatFlag = (argv: ReadonlyArray<string>): boolean => {
-  for (const arg of argv) {
-    if (arg === "--") return false;
-    if (arg === "-j") return true;
-    if (arg === "--format" || arg.startsWith("--format=")) return true;
-    if (arg === "--json" || arg.startsWith("--json=")) return true;
-    if (arg === "--jq" || arg.startsWith("--jq=")) return true;
-  }
-  return false;
-};
-
-/**
- * The one tail policy for a built-in spec. `meta:bun` and `meta:x` own every
- * token after their name; a non-strict command declaring a `command` arg owns
- * the tail from its first `--` or positional.
- */
-export const builtInTailPolicy = (command: CompiledCommand | undefined): TailPolicy => {
-  if (command === undefined) return { kind: "none" };
-  if (command.id === "meta:bun" || command.id === "meta:x") return { kind: "all" };
-  if (command.strict === false && command.args?.command !== undefined)
-    return { kind: "command", flags: flagDefinitionsForCommand(command) };
-  return { kind: "none" };
 };

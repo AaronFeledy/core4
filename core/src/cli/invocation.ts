@@ -1,7 +1,10 @@
-import type { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { normalizeCompiledCommandArgv } from "./compiled-normalize";
-import { type FlagDefinition, flagDefinitionsByToken, normalizeCliFlagTokens } from "./flag-tokens";
-import { LANDO_FLAGS, type LandoFlagMatch, matchLandoFlag } from "./lando-flags";
+import {
+  type LandoFlagEntry,
+  type LandoFlagMatch,
+  type LandoFlagSpelling,
+  matchLandoFlag,
+} from "./lando-flags";
 
 /**
  * The one lexical contract for a CLI invocation.
@@ -15,50 +18,40 @@ import { LANDO_FLAGS, type LandoFlagMatch, matchLandoFlag } from "./lando-flags"
  * in what the user typed. Removing a flag never makes two tokens adjacent.
  */
 
-/**
- * Whether a match is Lando's to read: selection and reserved flags are
- * stripped into `globals`; help and version stay in argv for the help/version
- * logic.
- */
-const isLandoOwned = (match: LandoFlagMatch): boolean =>
-  match.flag.role === "selection" || match.flag.role === "reserved";
+export interface CommandClaim {
+  /** Whether the flag takes the adjacent token as its value. */
+  readonly takesNext: boolean;
+}
 
 /**
- * Whether `spelling` is a flag Lando acts on, and whether it takes a value.
- * Reserved task-tree flags are not features, so they do not count.
+ * How one owner reads the tokens after its command name. `reservedOutput` is
+ * data, not an owner-kind check: the built-in and plugin policies reserve the
+ * output spellings before any definition can claim them.
  */
-export const landoFlagForSpelling = (spelling: string): { readonly takesValue: boolean } | undefined => {
-  const flag = LANDO_FLAGS.find((entry) => entry.spelling === spelling);
-  if (flag === undefined || flag.role === "reserved") return undefined;
-  return { takesValue: flag.arity === "value" };
-};
+export interface OwnerPolicy {
+  readonly tail: "none" | "command" | "all";
+  /** Whether the command declares the flag `token` spells, and whether it takes the adjacent token. */
+  readonly claims: (token: string, next: string | undefined) => CommandClaim | undefined;
+  /** Table spellings the walker gives Lando before asking claims. */
+  readonly reservedOutput: ReadonlyArray<LandoFlagSpelling>;
+}
 
-/**
- * Whether a command's own flag token takes the adjacent token as its value: the
- * flag is declared, is not boolean, carries no `=` value, and the adjacent token
- * is not `--`. A bundle of short flags is judged by its last flag.
- */
-export const commandFlagTakesNext = (
-  token: string,
-  next: string | undefined,
-  definitions: Readonly<Record<string, unknown>>,
-  byToken: ReadonlyMap<string, FlagDefinition> = flagDefinitionsByToken(definitions),
-): boolean => {
-  const last = normalizeCliFlagTokens([token], definitions).at(-1);
-  if (last === undefined || last.includes("=")) return false;
-  const definition = byToken.get(last);
-  return definition !== undefined && !definition.boolean && next !== "--";
-};
+/** A command's own tokens, in typed order, with Lando's removed. */
+export interface CommandTokens {
+  readonly argv: ReadonlyArray<string>;
+  /** Index in `argv` where the verbatim tail starts, or the `--` that ends Lando's reading; `argv.length` when there is neither. */
+  readonly tailStart: number;
+}
 
-export type TailPolicy =
-  /** Rule 3: table-only classification until `--`. */
-  | { readonly kind: "none" }
-  /** Tail at the first `--`, else the first positional; table flags before it stay Lando's. */
-  | { readonly kind: "command"; readonly flags: Readonly<Record<string, unknown>> }
-  /** The tail is everything after the command name. */
-  | { readonly kind: "all" }
-  /** Tooling tasks and scripts: declared spellings own their tokens; everything else is table-classified until `--`. */
-  | { readonly kind: "declared"; readonly flags: ToolingInputDeclaration["flags"] };
+export interface TokenSplit {
+  /** Lando's selection tokens (flag plus value) in typed order. */
+  readonly globals: ReadonlyArray<string>;
+  /** Lando's own help and version flags as typed, in order. They are in neither `globals` nor `command`. */
+  readonly controls: ReadonlyArray<string>;
+  readonly help: boolean;
+  readonly version: boolean;
+  readonly command: CommandTokens;
+}
 
 export interface InvocationHead {
   /** Index of the last command-name token; unused when there is no owner. */
@@ -150,181 +143,191 @@ export const resolveInvocationHead = (argv: ReadonlyArray<string>): InvocationHe
   };
 };
 
-export interface InvocationSplit {
-  /** Lando-owned stripped tokens, in original typed order (flag plus its value). */
-  readonly globals: ReadonlyArray<string>;
-  /** Every other token in original order, with the normalized command id first when there is one. */
-  readonly argv: ReadonlyArray<string>;
-  /** How many trailing `argv` tokens are the command's verbatim tail. */
-  readonly tailLength: number;
+export interface InvocationSplit extends TokenSplit {
+  /** The subset of `globals` typed after the command name, for owner-aware errors. */
+  readonly globalsAfterName: ReadonlyArray<string>;
 }
 
-const declaredFlagFor = (
-  token: string,
-  flags: ToolingInputDeclaration["flags"],
-): ToolingInputDeclaration["flags"][number] | undefined => {
-  if (token === "-" || token === "--" || !token.startsWith("-")) return undefined;
-  const long = token.startsWith("--");
-  const option = token.slice(long ? 2 : 1);
-  const equalsIndex = option.indexOf("=");
-  const key = equalsIndex === -1 ? option : option.slice(0, equalsIndex);
-  return flags.find((flag) => (long ? flag.name === key : flag.alias === key));
+const isLandoOwned = (match: LandoFlagMatch): boolean =>
+  match.flag.role === "selection" || match.flag.role === "reserved";
+
+const inScope = (flag: LandoFlagEntry, lando: "all" | "output" | "none"): boolean =>
+  lando === "all" || (lando === "output" && flag.output === true);
+
+const collectTokens = (tokens: ReadonlyArray<string>): string[] => {
+  const collected: string[] = [];
+  for (const token of tokens) if (token !== undefined) collected.push(token);
+  return collected;
 };
 
+/**
+ * Classify the tokens typed after a command name. `lando` selects which table
+ * flags are read: "all" for the dispatcher, "output" (only output flags) and
+ * "none" for callers that have no dispatcher to act on the rest.
+ */
+export const splitCommandTokens = (
+  tokens: ReadonlyArray<string>,
+  policy: OwnerPolicy,
+  lando: "all" | "output" | "none" = "all",
+): TokenSplit => {
+  if (policy.tail === "all") {
+    return {
+      globals: [],
+      controls: [],
+      help: false,
+      version: false,
+      command: { argv: collectTokens(tokens), tailStart: 0 },
+    };
+  }
+
+  const hasSeparator = policy.tail === "command" && tokens.includes("--");
+  const reservedOutput = new Set(policy.reservedOutput);
+  const globals: string[] = [];
+  const controls: string[] = [];
+  const argv: string[] = [];
+  let tailStart = -1;
+
+  const takeTail = (from: number): void => {
+    tailStart = argv.length;
+    for (let index = from; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token !== undefined) argv.push(token);
+    }
+  };
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === undefined) continue;
+    if (token === "--") {
+      takeTail(index);
+      break;
+    }
+
+    const match = lando === "none" ? undefined : matchLandoFlag(token, tokens[index + 1]);
+    if (match !== undefined && reservedOutput.has(match.flag.spelling)) {
+      globals.push(token);
+      if (match.consumed === 1) {
+        const value = tokens[index + 1];
+        if (value !== undefined) globals.push(value);
+        index += 1;
+      }
+      continue;
+    }
+
+    const claim = policy.claims(token, tokens[index + 1]);
+    if (claim !== undefined) {
+      argv.push(token);
+      if (claim.takesNext) {
+        const value = tokens[index + 1];
+        if (value !== undefined) {
+          argv.push(value);
+          index += 1;
+        }
+      }
+      continue;
+    }
+
+    if (match !== undefined && inScope(match.flag, lando)) {
+      if (match.flag.role === "help" || match.flag.role === "version") controls.push(token);
+      else {
+        globals.push(token);
+        if (match.consumed === 1) {
+          const value = tokens[index + 1];
+          if (value !== undefined) globals.push(value);
+        }
+      }
+      index += match.consumed;
+      continue;
+    }
+
+    // A typed `--` wins over the first positional, so exec's
+    // service-before-the-separator form keeps its boundary.
+    if (policy.tail === "command" && !hasSeparator && (token === "-" || !token.startsWith("-"))) {
+      takeTail(index);
+      break;
+    }
+    argv.push(token);
+  }
+
+  return {
+    globals,
+    controls,
+    help: controls.some((control) => control === "--help" || control === "-h"),
+    version: controls.some((control) => control === "--version" || control === "-v"),
+    command: { argv, tailStart: tailStart === -1 ? argv.length : tailStart },
+  };
+};
+
+/**
+ * Split the whole invocation: the tokens up to and between command words are
+ * classified exactly as the dispatcher always has (table flags, `--`
+ * terminates, help and version end the head scan), and everything after the
+ * command name is delegated to `splitCommandTokens`.
+ */
 export const splitInvocation = (
   argv: ReadonlyArray<string>,
   head: InvocationHead,
-  policy: TailPolicy,
+  policy: OwnerPolicy,
 ): InvocationSplit => {
   const globals: string[] = [];
-  const command: string[] = [];
+  const controls: string[] = [];
+  const preCommand: string[] = [];
   const commandWords = new Set(head.commandWordIndices);
-  const commandFlags = policy.kind === "command" ? flagDefinitionsByToken(policy.flags) : undefined;
-  let emittedCommand = false;
   let landoReading = true;
-  let tailStarted = false;
-  let tailLength = 0;
-  // `commandTailIndex` prefers the first `--` anywhere over the first positional,
-  // so exec's service-before-the-separator form keeps its boundary.
-  let commandTailStart = -1;
-  if (policy.kind === "command") {
-    for (let cursor = head.commandEndIndex + 1; cursor < argv.length; cursor += 1) {
-      if (argv[cursor] === "--") {
-        commandTailStart = cursor;
-        break;
-      }
-    }
-  }
+  let index = 0;
 
-  const pushCommand = (token: string, isTail: boolean): void => {
-    command.push(token);
-    if (isTail) tailLength += 1;
-  };
-
-  const takeTableFlag = (token: string, next: string | undefined): number | undefined => {
-    const match = matchLandoFlag(token, next);
-    if (match === undefined) return undefined;
-    if (isLandoOwned(match)) {
-      globals.push(token);
-      if (match.consumed === 1 && next !== undefined) globals.push(next);
-    } else {
-      command.push(token);
-    }
-    return 1 + match.consumed;
-  };
-
-  for (let index = 0; index < argv.length; index += 1) {
+  while (index < argv.length && index <= head.commandEndIndex) {
     const token = argv[index];
-    if (token === undefined) continue;
-
+    if (token === undefined) {
+      index += 1;
+      continue;
+    }
     if (commandWords.has(index)) {
-      if (!emittedCommand && head.commandId !== undefined) {
-        command.push(head.commandId);
-        emittedCommand = true;
-      }
+      index += 1;
       continue;
     }
-
     if (!landoReading) {
-      pushCommand(token, tailStarted);
+      preCommand.push(token);
+      index += 1;
       continue;
     }
-
-    if (head.commandId === undefined || index <= head.commandEndIndex) {
-      if (token === "--") {
-        landoReading = false;
-        command.push(token);
-        continue;
-      }
-      const consumed = takeTableFlag(token, argv[index + 1]);
-      if (consumed !== undefined) {
-        index += consumed - 1;
-        continue;
-      }
-      command.push(token);
+    if (token === "--") {
+      landoReading = false;
+      preCommand.push(token);
+      index += 1;
       continue;
     }
-
-    if (tailStarted) {
-      pushCommand(token, true);
+    const match = matchLandoFlag(token, argv[index + 1]);
+    if (match !== undefined && isLandoOwned(match)) {
+      globals.push(token);
+      if (match.consumed === 1) {
+        const value = argv[index + 1];
+        if (value !== undefined) globals.push(value);
+        index += 1;
+      }
+      index += 1;
       continue;
     }
-
-    switch (policy.kind) {
-      case "none": {
-        if (token === "--") {
-          landoReading = false;
-          command.push(token);
-          continue;
-        }
-        const consumed = takeTableFlag(token, argv[index + 1]);
-        if (consumed !== undefined) {
-          index += consumed - 1;
-          continue;
-        }
-        command.push(token);
-        continue;
-      }
-      case "all": {
-        tailStarted = true;
-        pushCommand(token, true);
-        continue;
-      }
-      case "declared": {
-        if (token === "--") {
-          landoReading = false;
-          command.push(token);
-          continue;
-        }
-        const declared = declaredFlagFor(token, policy.flags);
-        if (declared !== undefined) {
-          command.push(token);
-          const value = argv[index + 1];
-          // The adjacent token is this flag's value slot. A flag-shaped token there is a
-          // missing value for the task's binder to report, never one of Lando's flags.
-          if (!declared.boolean && !token.includes("=") && value !== undefined && value !== "--") {
-            command.push(value);
-            index += 1;
-          }
-          continue;
-        }
-        const consumed = takeTableFlag(token, argv[index + 1]);
-        if (consumed !== undefined) {
-          index += consumed - 1;
-          continue;
-        }
-        command.push(token);
-        continue;
-      }
-      case "command": {
-        if (index === commandTailStart) {
-          tailStarted = true;
-          landoReading = false;
-          pushCommand(token, true);
-          continue;
-        }
-        const consumed = takeTableFlag(token, argv[index + 1]);
-        if (consumed !== undefined) {
-          index += consumed - 1;
-          continue;
-        }
-        if (commandTailStart === -1 && (!token.startsWith("-") || token === "-")) {
-          tailStarted = true;
-          pushCommand(token, true);
-          continue;
-        }
-        command.push(token);
-        const next = argv[index + 1];
-        if (next !== undefined && commandFlagTakesNext(token, next, policy.flags, commandFlags)) {
-          command.push(next);
-          index += 1;
-        }
-        continue;
-      }
-      default:
-        return policy satisfies never;
+    if (match !== undefined) {
+      controls.push(token);
+      index += 1;
+      continue;
     }
+    preCommand.push(token);
+    index += 1;
   }
 
-  return { globals, argv: command, tailLength };
+  const afterName = splitCommandTokens(argv.slice(index), policy);
+  const allControls = [...controls, ...afterName.controls];
+  return {
+    globals: [...globals, ...afterName.globals],
+    controls: allControls,
+    help: allControls.some((control) => control === "--help" || control === "-h"),
+    version: allControls.some((control) => control === "--version" || control === "-v"),
+    command: {
+      argv: [...preCommand, ...afterName.command.argv],
+      tailStart: preCommand.length + afterName.command.tailStart,
+    },
+    globalsAfterName: afterName.globals,
+  };
 };

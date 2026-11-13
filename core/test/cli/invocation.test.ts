@@ -1,20 +1,55 @@
 import { describe, expect, test } from "bun:test";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { NotImplementedError } from "@lando/sdk/errors";
-import { commandTailIndex } from "../../src/cli/command-tail.ts";
+import type { ToolingInputDeclaration } from "@lando/sdk/schema";
+import { Result } from "effect";
+import { specOwnerPolicy, toolingFlagClaims } from "../../src/cli/flag-claims.ts";
 import { extractFormatFlags, resolveJsonControl, resolveResultFormat } from "../../src/cli/format-flags.ts";
-import { type TailPolicy, resolveInvocationHead, splitInvocation } from "../../src/cli/invocation.ts";
+import {
+  type OwnerPolicy,
+  resolveInvocationHead,
+  splitCommandTokens,
+  splitInvocation,
+} from "../../src/cli/invocation.ts";
 import { resolveLogLevel } from "../../src/cli/log-level-selection.ts";
 import { resolveRendererMode } from "../../src/cli/renderer-selection.ts";
 import { resolveTrace } from "../../src/cli/trace-selection.ts";
 
-const split = (argv: ReadonlyArray<string>, policy: TailPolicy = { kind: "none" }) => {
-  const head = resolveInvocationHead(argv);
-  return splitInvocation(argv, head, policy);
-};
+const noClaims = () => undefined;
+const none: OwnerPolicy = { tail: "none", claims: noClaims, reservedOutput: [] };
 
-const commandPolicy = (
-  flags: Readonly<Record<string, unknown>> = {},
-): Extract<TailPolicy, { readonly kind: "command" }> => ({ kind: "command", flags });
+const split = (argv: ReadonlyArray<string>, policy: OwnerPolicy = none) =>
+  splitInvocation(argv, resolveInvocationHead(argv), policy);
+
+const commandPolicy = (flags: Readonly<Record<string, unknown>> = {}, id = "app:exec"): OwnerPolicy =>
+  specOwnerPolicy({ id, strict: false, args: { command: {} } }, flags);
+
+const flagsOnlyPolicy = (id: string, flags: Readonly<Record<string, unknown>> = {}): OwnerPolicy =>
+  specOwnerPolicy({ id }, flags);
+
+type ToolingFlagSpec = { readonly name: string; readonly alias?: string; readonly boolean?: boolean };
+
+const toolingDeclaration = (specs: ReadonlyArray<ToolingFlagSpec>): ToolingInputDeclaration =>
+  Result.getOrThrowWith(
+    normalizeToolingInput("test", {
+      flags: Object.fromEntries(
+        specs.map((spec) => [
+          spec.name,
+          {
+            ...(spec.alias === undefined ? {} : { alias: spec.alias }),
+            ...(spec.boolean === undefined ? {} : { boolean: spec.boolean }),
+          },
+        ]),
+      ),
+    }),
+    (error) => error,
+  );
+
+const toolingPolicy = (specs: ReadonlyArray<ToolingFlagSpec> = []): OwnerPolicy => ({
+  tail: "none",
+  claims: toolingFlagClaims(toolingDeclaration(specs)),
+  reservedOutput: [],
+});
 
 const execFlags = {
   service: { type: "option", char: "s" },
@@ -22,16 +57,6 @@ const execFlags = {
   cwd: { type: "option" },
   interactive: { type: "boolean", char: "i" },
 };
-
-const toolingFlags = (
-  flags: ReadonlyArray<{ readonly name: string; readonly alias?: string; readonly boolean?: boolean }>,
-) =>
-  flags.map((flag) => ({
-    boolean: false,
-    required: false,
-    sensitive: false as const,
-    ...flag,
-  }));
 
 describe("dispatcher table", () => {
   const accepted: ReadonlyArray<ReadonlyArray<string>> = [
@@ -60,11 +85,12 @@ describe("dispatcher table", () => {
   ];
 
   for (const tokens of accepted) {
-    test(`strips ${JSON.stringify(tokens)}`, () => {
+    test(`reads ${JSON.stringify(tokens)}`, () => {
       const result = split(["info", ...tokens]);
-      expect(result.argv).toEqual(["info"]);
       expect(result.globals).toEqual([...tokens]);
-      expect(result.tailLength).toBe(0);
+      expect(result.controls).toEqual([]);
+      expect(result.command.argv).toEqual([]);
+      expect(result.command.tailStart).toBe(0);
     });
   }
 
@@ -75,77 +101,105 @@ describe("dispatcher table", () => {
     { tokens: ["--debug=false"] },
   ] as const)("leaves $tokens to the command", ({ tokens }) => {
     const result = split(["info", ...tokens]);
-    expect(result.argv).toEqual(["info", ...tokens]);
     expect(result.globals).toEqual([]);
+    expect(result.command.argv).toEqual([...tokens]);
   });
 
   test.each([{ token: "--help" }, { token: "-h" }, { token: "--version" }, { token: "-v" }] as const)(
-    "keeps $token in argv for the help and version logic",
+    "records $token as a control",
     ({ token }) => {
       const result = split(["info", token]);
-      expect(result.argv).toEqual(["info", token]);
       expect(result.globals).toEqual([]);
+      expect(result.controls).toEqual([token]);
+      expect(result.command.argv).toEqual([]);
+      expect(result.help).toBe(token === "--help" || token === "-h");
+      expect(result.version).toBe(token === "--version" || token === "-v");
     },
   );
+
+  test("tooling claims keep version and a declared help spelling out of the controls", () => {
+    const declared = split(
+      ["task", "--help", "-h", "--version", "-v"],
+      toolingPolicy([{ name: "help", boolean: true }]),
+    );
+    expect(declared.controls).toEqual([]);
+    expect(declared.command.argv).toEqual(["--help", "-h", "--version", "-v"]);
+
+    const plain = split(["task", "--help", "--version"], toolingPolicy());
+    expect(plain.controls).toEqual(["--help"]);
+    expect(plain.command.argv).toEqual(["--version"]);
+  });
+
+  test("reserved output spellings beat a definition that claims them", () => {
+    const policy = commandPolicy({
+      format: { type: "option" },
+      json: { type: "boolean" },
+      j: { type: "boolean", char: "j" },
+    });
+    const result = split(["fixture:run", "--format=csv", "--json", "-j", "ls"], policy);
+    expect(result.globals).toEqual(["--format=csv", "--json", "-j"]);
+    expect(result.command.argv).toEqual(["ls"]);
+  });
 });
 
 describe("splitInvocation", () => {
   test("the first -- ends Lando reading, including as the first token", () => {
     const result = split(["--", "--format=json"]);
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["--", "--format=json"]);
+    expect(result.command.argv).toEqual(["--", "--format=json"]);
+    expect(result.command.tailStart).toBe(0);
   });
 
-  test("a bare - stays a positional", () => {
+  test("a bare - is a positional command word, not a Lando flag", () => {
     const result = split(["-", "--format=json"]);
-    expect(result.argv).toEqual(["-"]);
+    expect(result.command.argv).toEqual([]);
     expect(result.globals).toEqual(["--format=json"]);
+    expect(resolveInvocationHead(["-", "--format=json"]).commandId).toBe("-");
   });
 
   test("a declared non-boolean flag owns its space value and a lone - value", () => {
-    const policy: TailPolicy = {
-      kind: "declared",
-      flags: toolingFlags([{ name: "env", alias: "e" }, { name: "path" }]),
-    };
+    const policy = toolingPolicy([{ name: "env", alias: "e" }, { name: "path" }]);
     const result = split(["deploy", "--env", "prod", "-e", "dev", "--path", "-"], policy);
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["deploy", "--env", "prod", "-e", "dev", "--path", "-"]);
-    expect(result.tailLength).toBe(0);
+    expect(result.command.argv).toEqual(["--env", "prod", "-e", "dev", "--path", "-"]);
+    expect(result.command.tailStart).toBe(result.command.argv.length);
   });
 
-  test("a declared value flag keeps a flag-shaped neighbor instead of borrowing a later token", () => {
-    const policy: TailPolicy = { kind: "declared", flags: toolingFlags([{ name: "format" }]) };
-    const result = split(["summary", "--format", "--trace", "csv"], policy);
+  test("a declared value flag keeps a flag-shaped neighbor as its value slot", () => {
+    const result = split(["summary", "--format", "--trace", "csv"], toolingPolicy([{ name: "format" }]));
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["summary", "--format", "--trace", "csv"]);
+    expect(result.command.argv).toEqual(["--format", "--trace", "csv"]);
   });
 
   test("a declared alias claims a token that spells a Lando flag", () => {
-    const policy: TailPolicy = {
-      kind: "declared",
-      flags: toolingFlags([{ name: "jobs", alias: "j" }]),
-    };
-    const result = split(["deploy", "-j", "4"], policy);
+    const result = split(["deploy", "-j", "4"], toolingPolicy([{ name: "jobs", alias: "j" }]));
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["deploy", "-j", "4"]);
+    expect(result.command.argv).toEqual(["-j", "4"]);
   });
 
-  test("declared policy still reads undeclared Lando flags until --", () => {
-    const result = split(["deploy", "--format=json", "--", "--format=text"], {
-      kind: "declared",
-      flags: [],
-    });
+  test("an undeclared Lando flag is still read until --", () => {
+    const result = split(["deploy", "--format=json", "--", "--format=text"], toolingPolicy());
     expect(result.globals).toEqual(["--format=json"]);
-    expect(result.argv).toEqual(["deploy", "--", "--format=text"]);
+    expect(result.command.argv).toEqual(["--", "--format=text"]);
+    expect(result.command.tailStart).toBe(0);
+  });
+
+  test("a command flag declared under a Lando spelling wins before the tail", () => {
+    const result = split(["fixture:run", "--verbose", "ls"], commandPolicy({ verbose: { type: "boolean" } }));
+    expect(result.globals).toEqual([]);
+    expect(result.command.argv).toEqual(["--verbose", "ls"]);
+    expect(result.command.tailStart).toBe(1);
   });
 
   test("policy all owns every token after the command name", () => {
     const result = split(["bun", "-e", "x", "--format=csv", "--json", "--jq", "."], {
-      kind: "all",
+      tail: "all",
+      claims: noClaims,
+      reservedOutput: [],
     });
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["bun", "-e", "x", "--format=csv", "--json", "--jq", "."]);
-    expect(result.tailLength).toBe(6);
+    expect(result.command.argv).toEqual(["-e", "x", "--format=csv", "--json", "--jq", "."]);
+    expect(result.command.tailStart).toBe(0);
   });
 
   test("case H: universal output flags stay Lando's before an exec tail", () => {
@@ -154,60 +208,127 @@ describe("splitInvocation", () => {
       commandPolicy(execFlags),
     );
     expect(result.globals).toEqual(["--json", "exitCode,service"]);
-    expect(result.argv).toEqual(["exec", "printf", "--help"]);
-    expect(result.tailLength).toBe(2);
+    expect(result.command.argv).toEqual(["printf", "--help"]);
+    expect(result.command.tailStart).toBe(0);
   });
 
   test("a value-taking command flag owns an adjacent --trace token", () => {
     const result = split(["exec", "--user", "--trace", "ls"], commandPolicy(execFlags));
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["exec", "--user", "--trace", "ls"]);
-    expect(result.tailLength).toBe(1);
-  });
-
-  test("before a command tail a Lando flag stays Lando's even when the command declares the name", () => {
-    const flags = { verbose: { type: "boolean" } };
-    const result = split(["fixture:run", "--verbose", "ls"], commandPolicy(flags));
-    expect(result.globals).toEqual(["--verbose"]);
-    expect(result.argv).toEqual(["fixture:run", "ls"]);
-    expect(result.tailLength).toBe(1);
+    expect(result.command.argv).toEqual(["--user", "--trace", "ls"]);
+    expect(result.command.tailStart).toBe(2);
   });
 
   test("a bundle of short flags hands its last flag's value to the command, not the tail", () => {
     const result = split(["exec", "-is", "web", "--verbose", "ls", "--help"], commandPolicy(execFlags));
     expect(result.globals).toEqual(["--verbose"]);
-    expect(result.argv).toEqual(["exec", "-is", "web", "ls", "--help"]);
-    expect(result.tailLength).toBe(2);
+    expect(result.command.argv).toEqual(["-is", "web", "ls", "--help"]);
+    expect(result.command.tailStart).toBe(2);
   });
 
   test("a plugin command owns its tail from the first positional", () => {
     const result = split(["fixture:run", "ls", "--format=json", "--help"], commandPolicy({}));
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["fixture:run", "ls", "--format=json", "--help"]);
-    expect(result.tailLength).toBe(3);
+    expect(result.command.argv).toEqual(["ls", "--format=json", "--help"]);
+    expect(result.command.tailStart).toBe(0);
+  });
+
+  test("a value slot of --help before the tail is never read as Lando's", () => {
+    const result = split(["exec", "--user", "--help", "ls"], commandPolicy(execFlags));
+    expect(result.globals).toEqual([]);
+    expect(result.controls).toEqual([]);
+    expect(result.command.argv).toEqual(["--user", "--help", "ls"]);
+    expect(result.command.tailStart).toBe(2);
+  });
+
+  test("a bare-value flag has no value slot and keeps the next Lando flag Lando's", () => {
+    const result = split(["scratch", "--mount-cwd", "--format=json"], flagsOnlyPolicy("apps:scratch:start"));
+    expect(result.globals).toEqual(["--format=json"]);
+    expect(result.command.argv).toEqual(["--mount-cwd"]);
+    expect(result.command.tailStart).toBe(1);
   });
 
   test.each([
-    { argv: ["exec", "--json", "exitCode,service", "printf", "--help"] },
-    { argv: ["exec", "--user", "root", "ls", "-la"] },
-    { argv: ["exec", "--user", "--trace", "ls"] },
-    { argv: ["exec", "-is", "web", "--verbose", "ls"] },
-    { argv: ["exec", "-sweb", "ls", "-la"] },
-    { argv: ["ssh", "-c", "echo", "hi"] },
-    { argv: ["exec", "--help", "ls"] },
-    { argv: ["exec", "web", "--", "sh", "-c", "x"] },
-  ])("the command policy boundary agrees with commandTailIndex for $argv", ({ argv }) => {
-    const policy = commandPolicy(execFlags);
-    const result = split(argv, policy);
-    const boundary = result.argv.length - result.tailLength;
-    expect(boundary).toBe(1 + commandTailIndex(result.argv.slice(1), policy.flags));
+    { argv: ["exec", "--json", "exitCode,service", "printf", "--help"], tailStart: 0 },
+    { argv: ["exec", "--user", "root", "ls", "-la"], tailStart: 2 },
+    { argv: ["exec", "--user", "--trace", "ls"], tailStart: 2 },
+    { argv: ["exec", "-is", "web", "--verbose", "ls"], tailStart: 2 },
+    { argv: ["exec", "-sweb", "ls", "-la"], tailStart: 1 },
+    { argv: ["ssh", "-c", "echo", "hi"], tailStart: 1 },
+    { argv: ["exec", "--help", "ls"], tailStart: 0 },
+    { argv: ["exec", "web", "--", "sh", "-c", "x"], tailStart: 1 },
+  ])("tailStart follows the command boundary for $argv", ({ argv, tailStart }) => {
+    expect(split(argv, commandPolicy(execFlags)).command.tailStart).toBe(tailStart);
   });
 
-  test("help before a command tail stays in argv but does not start it", () => {
+  test("help before a command tail stays a control and does not start it", () => {
     const result = split(["exec", "--help", "ls"], commandPolicy(execFlags));
     expect(result.globals).toEqual([]);
-    expect(result.argv).toEqual(["exec", "--help", "ls"]);
-    expect(result.tailLength).toBe(1);
+    expect(result.controls).toEqual(["--help"]);
+    expect(result.command.argv).toEqual(["ls"]);
+    expect(result.command.tailStart).toBe(0);
+  });
+
+  test("tailStart for a none-tail command is the first --, or the end", () => {
+    expect(split(["info", "--path", "demo"]).command.tailStart).toBe(2);
+    expect(split(["info", "--", "--format=json"]).command.tailStart).toBe(0);
+  });
+
+  test("globalsAfterName is only what Lando read after the command name", () => {
+    const interleaved = split(["scratch", "--verbose", "run", "ls"], {
+      ...commandPolicy(),
+      reservedOutput: [],
+    });
+    expect(interleaved.globals).toEqual(["--verbose"]);
+    expect(interleaved.globalsAfterName).toEqual([]);
+    expect(interleaved.command.argv).toEqual(["ls"]);
+    expect(interleaved.command.tailStart).toBe(0);
+
+    const afterName = split(["task", "--format=json"], none);
+    expect(afterName.globals).toEqual(["--format=json"]);
+    expect(afterName.globalsAfterName).toEqual(["--format=json"]);
+  });
+
+  test("the walker is stable on the command's own tokens", () => {
+    for (const [argv, policy] of [
+      [["exec", "--json", "a,b", "printf", "--help"], commandPolicy(execFlags)],
+      [["exec", "web", "--", "sh"], commandPolicy(execFlags)],
+      [["bun", "-e", "x", "--help"], { tail: "all", claims: noClaims, reservedOutput: [] } as OwnerPolicy],
+      [["info", "--json", "a,b", "--renderer=plain"], none],
+    ] as const) {
+      const result = split(argv, policy);
+      const rerun = splitCommandTokens(result.command.argv, policy);
+      expect(rerun.globals).toEqual([]);
+      expect(rerun.controls).toEqual([]);
+      expect(rerun.command.tailStart).toBe(result.command.tailStart);
+    }
+  });
+});
+
+describe("splitCommandTokens scopes", () => {
+  test("output reads only result-encoding flags and leaves the rest to the command", () => {
+    const result = splitCommandTokens(
+      ["--format=json", "-j", "--verbose", "--jq", ".ok", "--help"],
+      none,
+      "output",
+    );
+    expect(result.globals).toEqual(["--format=json", "-j", "--jq", ".ok"]);
+    expect(result.controls).toEqual([]);
+    expect(result.command.argv).toEqual(["--verbose", "--help"]);
+  });
+
+  test("none reads no table flag at all", () => {
+    const result = splitCommandTokens(["--format=json", "--help", "ls"], none, "none");
+    expect(result.globals).toEqual([]);
+    expect(result.controls).toEqual([]);
+    expect(result.command.argv).toEqual(["--format=json", "--help", "ls"]);
+  });
+
+  test("all reads selection and control spellings", () => {
+    const result = splitCommandTokens(["--format=json", "--help", "--verbose", "ls"], none, "all");
+    expect(result.globals).toEqual(["--format=json", "--verbose"]);
+    expect(result.controls).toEqual(["--help"]);
+    expect(result.command.argv).toEqual(["ls"]);
   });
 });
 
@@ -231,8 +352,8 @@ describe("resolveInvocationHead", () => {
   test("an interleaved Lando flag is Lando's, not part of the head", () => {
     const result = split(["scratch", "--verbose", "run", "ls"], commandPolicy());
     expect(result.globals).toEqual(["--verbose"]);
-    expect(result.argv).toEqual(["apps:scratch:run", "ls"]);
-    expect(result.tailLength).toBe(1);
+    expect(result.command.argv).toEqual(["ls"]);
+    expect(result.command.tailStart).toBe(0);
   });
 
   test.each([
@@ -246,7 +367,7 @@ describe("resolveInvocationHead", () => {
 });
 
 describe("selection chain over the split", () => {
-  const chain = (argv: ReadonlyArray<string>, policy: TailPolicy = { kind: "none" }) => {
+  const chain = (argv: ReadonlyArray<string>, policy: OwnerPolicy = none) => {
     const { globals } = split(argv, policy);
     const trace = resolveTrace({ argv: globals, env: {} });
     const logLevel = resolveLogLevel({ argv: trace.remainingArgv, env: {} });
@@ -299,10 +420,7 @@ describe("selection chain over the split", () => {
   });
 
   test("a task flag named verbose is not a Lando log level", () => {
-    const result = chain(["build", "--verbose"], {
-      kind: "declared",
-      flags: toolingFlags([{ name: "verbose", boolean: true }]),
-    });
+    const result = chain(["build", "--verbose"], toolingPolicy([{ name: "verbose", boolean: true }]));
     expect(result.globals).toEqual([]);
     expect(result.logLevel.level).toBe("none");
     expect(result.logLevel.verbose).toBe(false);
@@ -326,12 +444,9 @@ describe("selection chain over the split", () => {
   });
 
   test("--log-level before a claimed flag stays a missing-value error", () => {
-    expect(() =>
-      chain(["deploy", "--log-level", "--env", "prod"], {
-        kind: "declared",
-        flags: toolingFlags([{ name: "env" }]),
-      }),
-    ).toThrow(expect.objectContaining({ _tag: "LogLevelSelectionError", source: "flag", value: "" }));
+    expect(() => chain(["deploy", "--log-level", "--env", "prod"], toolingPolicy([{ name: "env" }]))).toThrow(
+      expect.objectContaining({ _tag: "LogLevelSelectionError", source: "flag", value: "" }),
+    );
   });
 
   test("a deferred renderer flag in a none-policy command still reaches selection", () => {

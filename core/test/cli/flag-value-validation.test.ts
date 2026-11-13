@@ -120,47 +120,47 @@ describe("CLI flag-value validation", () => {
     expect(JSON.stringify(error)).not.toContain("private-value");
   });
 
+  const commandTail = { commandName: "app:exec" };
+
   test("allows forwarded flags for non-strict passthrough commands", () => {
     expect(
       validateCommandCliFlags({
         commandId: "app:exec",
-        argv: ["appserver", "sh", "-c", "echo hi"],
+        argv: [],
         definitions: flags,
         allowUnknownFlags: true,
-        tailPolicy: { kind: "command", flags },
+        commandTail,
       }),
     ).toBeUndefined();
   });
   test.each([
-    ["-c", ["-c", "echo hi"]],
-    ["--image", ["--image=private", "--", "sh"]],
-    ["--typo", ["--provider", "podman", "--typo", "sh"]],
+    ["-c", ["-c"]],
+    ["--image", ["--image=private"]],
+    ["--typo", ["--provider", "podman", "--typo"]],
   ])("rejects the unknown prefix flag %s before a command tail", (flag, argv) => {
     const error = validateCommandCliFlags({
       commandId: "app:exec",
       argv,
       definitions: flags,
       allowUnknownFlags: true,
-      tailPolicy: { kind: "command", flags },
+      commandTail,
     });
     expect(error).toMatchObject({ _tag: "UnknownCliFlagError", flag });
     expect(JSON.stringify(error)).not.toContain("private");
   });
 
-  test.each([
-    [["sh", "-s"]],
-    [["--", "sh", "-s"]],
-    [["--service", "web", "sh", "--tail=bad"]],
-    [["-fsweb", "sh", "-s"]],
-  ])("validates values only in the command prefix: %j", (argv) => {
-    expect(
-      validateCommandCliFlags({
-        commandId: "app:exec",
-        argv,
-        definitions: flags,
-        allowUnknownFlags: true,
-        tailPolicy: { kind: "command", flags },
-      }),
-    ).toBeUndefined();
-  });
+  test.each([[[]], [["--service", "web"]], [["-fsweb"]]])(
+    "validates values only in the command prefix: %j",
+    (argv) => {
+      expect(
+        validateCommandCliFlags({
+          commandId: "app:exec",
+          argv,
+          definitions: flags,
+          allowUnknownFlags: true,
+          commandTail,
+        }),
+      ).toBeUndefined();
+    },
+  );
 });

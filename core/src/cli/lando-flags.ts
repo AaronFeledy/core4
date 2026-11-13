@@ -30,7 +30,7 @@ export interface LandoFlag {
   readonly diagnostic?: true;
 }
 
-export const LANDO_FLAGS: ReadonlyArray<LandoFlag> = [
+export const LANDO_FLAGS = [
   { spelling: "--format", arity: "value", role: "selection", output: true, footer: "--format" },
   { spelling: "--json", arity: "json", role: "selection", output: true, footer: "--json [fields]" },
   { spelling: "-j", arity: "none", role: "selection", output: true },
@@ -51,9 +51,15 @@ export const LANDO_FLAGS: ReadonlyArray<LandoFlag> = [
   { spelling: "--no-collapse", arity: "reserved", role: "reserved" },
   { spelling: "--tail", arity: "reserved-tail", role: "reserved" },
   { spelling: "--no-tail", arity: "reserved", role: "reserved" },
-];
+] as const satisfies ReadonlyArray<LandoFlag>;
 
-const LANDO_FLAGS_BY_SPELLING: ReadonlyMap<string, LandoFlag> = new Map(
+export type LandoFlagSpelling = (typeof LANDO_FLAGS)[number]["spelling"];
+export type LandoFlagEntry = LandoFlag & { readonly spelling: LandoFlagSpelling };
+
+/** The output spellings a built-in or plugin definition can never claim. */
+export const RESERVED_OUTPUT_SPELLINGS: ReadonlyArray<LandoFlagSpelling> = ["--format", "--json", "-j"];
+
+const LANDO_FLAGS_BY_SPELLING: ReadonlyMap<string, LandoFlagEntry> = new Map<string, LandoFlagEntry>(
   LANDO_FLAGS.map((flag) => [flag.spelling, flag]),
 );
 
@@ -67,7 +73,7 @@ export const isSpaceFormJsonFieldList = (token: string): boolean =>
   !token.startsWith("-") && JSON_FIELD_LIST.test(token) && (token.includes(",") || token.includes("."));
 
 export interface LandoFlagMatch {
-  readonly flag: LandoFlag;
+  readonly flag: LandoFlagEntry;
   /** The value typed with the flag: the `=` part (may be empty) or the adjacent token. */
   readonly value?: string;
   /** Whether the value came from `=` (true) or from the adjacent token (false). */
@@ -84,7 +90,8 @@ export interface LandoFlagMatch {
 export const matchLandoFlag = (token: string, next: string | undefined): LandoFlagMatch | undefined => {
   const exact = LANDO_FLAGS_BY_SPELLING.get(token);
   if (exact !== undefined) {
-    switch (exact.arity) {
+    const { arity } = exact;
+    switch (arity) {
       case "none":
       case "reserved":
         return { flag: exact, attached: false, consumed: 0 };
@@ -101,7 +108,7 @@ export const matchLandoFlag = (token: string, next: string | undefined): LandoFl
           ? { flag: exact, attached: false, consumed: 0 }
           : undefined;
       default:
-        return exact.arity satisfies never;
+        return arity satisfies never;
     }
   }
 
@@ -109,7 +116,8 @@ export const matchLandoFlag = (token: string, next: string | undefined): LandoFl
   if (equalsIndex <= 0) return undefined;
   const flag = LANDO_FLAGS_BY_SPELLING.get(token.slice(0, equalsIndex));
   if (flag === undefined) return undefined;
-  switch (flag.arity) {
+  const { arity } = flag;
+  switch (arity) {
     case "none":
     case "reserved-tail":
       return undefined;
@@ -118,7 +126,7 @@ export const matchLandoFlag = (token: string, next: string | undefined): LandoFl
     case "reserved":
       return { flag, value: token.slice(equalsIndex + 1), attached: true, consumed: 0 };
     default:
-      return flag.arity satisfies never;
+      return arity satisfies never;
   }
 };
 
@@ -139,7 +147,7 @@ export const failedLandoFlag = (error: unknown): LandoFlagMatch | undefined =>
  */
 export const scanLandoFlags = (
   argv: ReadonlyArray<string>,
-  handlers: Readonly<Record<string, (match: LandoFlagMatch) => void>>,
+  handlers: Readonly<Partial<Record<LandoFlagSpelling, (match: LandoFlagMatch) => void>>>,
 ): string[] => {
   const remaining: string[] = [];
   let afterTerminator = false;
@@ -171,5 +179,7 @@ export const scanLandoFlags = (
 export const hasDiagnosticFlag = (tokens: ReadonlyArray<string>): boolean =>
   tokens.some((token) => matchLandoFlag(token, undefined)?.flag.diagnostic === true);
 
-export const landoFlagFooterLabels = (): ReadonlyArray<string> =>
-  LANDO_FLAGS.flatMap((flag) => (flag.footer === undefined ? [] : [flag.footer]));
+export const landoFlagFooterLabels = (): ReadonlyArray<string> => {
+  const flags: ReadonlyArray<LandoFlag> = LANDO_FLAGS;
+  return flags.flatMap((flag) => (flag.footer === undefined ? [] : [flag.footer]));
+};

@@ -106,6 +106,24 @@ export const loadPluginSpec = (
           remediation:
             "Declare stdio as stdin or stdout only on a non-multiple string/option positional arg with string values and no - default, at most once per stream. Remove command-level and flag stdio declarations.",
         });
+      // --format, --json, and -j are always Lando's on plugin commands, so a
+      // definition that cannot receive input is a load error rather than a
+      // flag that silently never arrives.
+      const jsonFlag = spec.flags?.json;
+      const formatFlag = spec.flags?.format;
+      const reservedIssue =
+        jsonFlag !== undefined && jsonFlag.type !== "boolean"
+          ? "`json` must be a boolean flag"
+          : formatFlag !== undefined && formatFlag.type === "boolean"
+            ? "`format` must not be a boolean flag"
+            : undefined;
+      if (reservedIssue !== undefined)
+        throw new PluginLoadError({
+          pluginName,
+          message: `Plugin ${pluginName} command ${id} declares a reserved flag that can never receive input: --format, --json, and -j are always Lando's. ${reservedIssue}.`,
+          remediation:
+            "Rename the flag, or declare `json` as a boolean flag and `format` as a value flag; `--format`, `--json`, and `-j` are always Lando's on plugin commands.",
+        });
       if (descriptor !== undefined && spec.summary !== undefined && spec.summary !== descriptor.summary)
         issues.push("module summary differs from the manifest summary");
       const summary = descriptor?.summary ?? spec.summary;
