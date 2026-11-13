@@ -210,6 +210,9 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     destroy: () => {
       destroyCount += 1;
     },
+    get isDestroyed() {
+      return destroyCount > 0;
+    },
     get closed() {
       return closed;
     },

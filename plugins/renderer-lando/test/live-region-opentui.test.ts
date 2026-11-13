@@ -193,6 +193,31 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
     await controller.dispose();
   });
 
+  test("a renderer that OpenTUI destroys on its own stops receiving paints and payloads", async () => {
+    // Given: full-tail is open, then OpenTUI tears its renderer down outside the controller
+    // (it does so when its output stream fails).
+    const { controller, setup, writes } = await createFullTailFixture();
+    await controller.enterFullTail();
+    controller.setFooter(["⠋ building"]);
+    setup.renderer.destroy();
+    await setup.renderer.closed;
+    const payload: string[] = [];
+
+    // When
+    controller.setFooter(["⠙ building"]);
+    controller.requestLive();
+    controller.resize(70, 20);
+    await controller.suspendOutput("payload\n", () => {
+      payload.push("payload");
+    });
+    await controller.exitFullTail();
+
+    // Then
+    expect(payload).toEqual(["payload"]);
+    expect(writes.join("")).toContain("⠙ building");
+    await controller.dispose();
+  });
+
   test("live requests use the real substrate counter and retain the 30 fps cap", async () => {
     const { clock, controller, setup } = await createFullTailFixture();
     await controller.enterFullTail();

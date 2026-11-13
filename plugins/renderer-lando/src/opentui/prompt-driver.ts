@@ -104,6 +104,9 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
             stdout: deps.noColor === true ? monochromePromptTerminal(terminal) : terminal,
             remote: false,
             exitOnCtrlC: false,
+            // Lando owns signals and settles the prompt itself; a renderer OpenTUI destroys on SIGINT
+            // would leave the prompt waiting forever.
+            exitSignals: [],
             screenMode: "main-screen",
             useMouse: false,
             targetFps: 30,

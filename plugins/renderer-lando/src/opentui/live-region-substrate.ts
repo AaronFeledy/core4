@@ -89,7 +89,11 @@ export async function acquireLiveRegionSubstrate(
         screenMode: "alternate-screen",
         clearOnShutdown: false,
         exitOnCtrlC: false,
+        // Lando owns signals and tears the renderer down through the controller; OpenTUI's own
+        // SIGINT handler would destroy it underneath a live paint.
+        exitSignals: [],
         externalOutputMode: "passthrough",
+        useMouse: false,
         stdout: options.noColor === true ? monochromePromptTerminal(options.stdout) : options.stdout,
         ...(options.noColor === true ? { backgroundColor: module.RGBA.defaultBackground() } : {}),
         remote: false,

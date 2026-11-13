@@ -174,9 +174,10 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.options.onResize?.(width, height);
   }
 
-  /** The full-tail renderer, unless it is being destroyed. */
+  /** The full-tail renderer, unless it is being destroyed or OpenTUI already destroyed it. */
   private liveFullTail(): FullTailSession<TRenderer> | undefined {
-    return this.leavingFullTail ? undefined : this.fullTail;
+    const session = this.fullTail;
+    return this.leavingFullTail || session?.renderer.isDestroyed === true ? undefined : session;
   }
 
   /** The full-tail renderer, when it owns the terminal and may paint. */
