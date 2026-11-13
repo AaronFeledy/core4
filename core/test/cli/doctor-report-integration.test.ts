@@ -79,22 +79,18 @@ describe("combined doctor certificate and network-trust wiring", () => {
     );
 
     // Then
-    expect(report.subsystems.checks.map((check) => check.name)).toEqual([
-      "router",
-      "certs",
-      "ssh",
-      "host-dns",
-      "network-trust",
-      "legacy-snapshot-catalogs",
-      "filesystem-watch",
-    ]);
-    expect(report.subsystems.checks.find((check) => check.name === "certs")).toMatchObject({
+    expect(
+      report.checks.filter((check) => check.section === "subsystems").map((check) => check.name),
+    ).toEqual(["router", "ssh", "host-dns"]);
+    expect(
+      report.checks.find((check) => check.section === "certificate-authority" && check.name === "certs"),
+    ).toMatchObject({
       name: "certs",
       status: "pass",
       context: { subsystemId: "mkcert-selected", ready: "true", certsTrusted: "true" },
     });
-    expect(report.skipped?.some((entry) => entry.section === "certs")).toBe(false);
-    expect(report.subsystems.checks[4]).toMatchObject({
+    expect(report.skipped.some((entry) => entry.check === "certs")).toBe(false);
+    expect(report.checks.find((check) => check.section === "network-trust")).toMatchObject({
       name: "network-trust",
       status: "pass",
       severity: "info",
@@ -120,12 +116,14 @@ describe("combined doctor certificate and network-trust wiring", () => {
     // Then
     expect(report.version).toBe(CORE_VERSION);
     expect(renderDoctorReport(report)).toContain(`version: ${CORE_VERSION}`);
-    expect(report.subsystems.checks.find((check) => check.name === "certs")).toMatchObject({
+    expect(
+      report.checks.find((check) => check.section === "certificate-authority" && check.name === "certs"),
+    ).toMatchObject({
       name: "certs",
       status: "pass",
       context: { subsystemId: "injected-ca", ready: "true", certsTrusted: "true" },
     });
-    expect(report.skipped?.some((entry) => entry.section === "certs")).toBe(false);
+    expect(report.skipped.some((entry) => entry.check === "certs")).toBe(false);
   });
 
   test("DoctorReportSchema requires version", () => {
@@ -152,7 +150,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
     );
 
     // Then
-    const networkTrust = report.subsystems.checks.find((check) => check.name === "network-trust");
+    const networkTrust = report.checks.find((check) => check.section === "network-trust");
     expect(networkTrust).toMatchObject({
       name: "network-trust",
       status: "warn",
@@ -175,9 +173,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
     const parsed = Schema.decodeUnknownSync(Schema.Struct({ result: DoctorReportSchema }))(
       Bun.YAML.parse(io.stdout()),
     );
-    expect(parsed.result.subsystems.checks.find((check) => check.name === "network-trust")).toEqual(
-      networkTrust,
-    );
+    expect(parsed.result.checks.find((check) => check.section === "network-trust")).toEqual(networkTrust);
     for (const output of [renderDoctorReport(report), io.stdout(), renderDoctorReportAsNdjson(report)]) {
       expect(output).toContain(redactedPath);
       expect(output).not.toContain(secret);
@@ -199,11 +195,12 @@ describe("combined doctor certificate and network-trust wiring", () => {
     const report = await Effect.runPromise(resilientDoctorReport().pipe(Effect.provide(layer)));
 
     // Then
-    expect(report.subsystems.checks.some((check) => check.name === "filesystem-watch")).toBe(true);
+    expect(report.checks.some((check) => check.section === "filesystem-watch")).toBe(true);
     expect(report.skipped?.map((entry) => entry.section)).toContain("network-trust");
-    expect(report.self?.checks).toContainEqual(
-      expect.objectContaining({ section: "global-config", reason: "failure" }),
-    );
+    expect(report.checks.find((check) => check.section === "global-config")).toMatchObject({
+      status: "fail",
+      details: { _tag: "ConfigError" },
+    });
   });
 });
 
@@ -262,8 +259,10 @@ describe("runtime-wired subsystem doctor", () => {
       );
 
       // Then
-      const proxyCheck = report.subsystems.checks.find((check) => check.name === "router");
-      const sshCheck = report.subsystems.checks.find((check) => check.name === "ssh");
+      const proxyCheck = report.checks.find(
+        (check) => check.section === "subsystems" && check.name === "router",
+      );
+      const sshCheck = report.checks.find((check) => check.section === "subsystems" && check.name === "ssh");
       expect(proxyCheck).toMatchObject({
         status: "pass",
         context: { subsystemId: "traefik", ready: "true", state: "running" },
@@ -272,7 +271,7 @@ describe("runtime-wired subsystem doctor", () => {
         status: "pass",
         context: { subsystemId: "sidecar", ready: "true" },
       });
-      expect(mentionsUnavailableStub(report.subsystems)).toBe(false);
+      expect(mentionsUnavailableStub(report)).toBe(false);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });
@@ -311,7 +310,9 @@ describe("runtime-wired subsystem doctor", () => {
     );
 
     // Then
-    const proxyCheck = report.subsystems.checks.find((check) => check.name === "router");
+    const proxyCheck = report.checks.find(
+      (check) => check.section === "subsystems" && check.name === "router",
+    );
     expect(setupCalls).toBe(1);
     expect(proxyCheck).toMatchObject({
       status: "pass",
@@ -319,6 +320,6 @@ describe("runtime-wired subsystem doctor", () => {
     });
     expect(proxyCheck?.context.state).not.toBe("stopped");
     expect(proxyCheck?.context.fixError).toBeUndefined();
-    expect(mentionsUnavailableStub(report.subsystems)).toBe(false);
+    expect(mentionsUnavailableStub(report)).toBe(false);
   });
 });

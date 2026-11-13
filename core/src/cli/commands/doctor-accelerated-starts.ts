@@ -2,7 +2,7 @@ import { acceleratedStartInventory } from "@lando/engine/operations/accelerated-
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { FileSystem, StateStore } from "@lando/sdk/services";
 import { Effect, Layer, Option } from "effect";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
 
 export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
   const store = yield* Effect.serviceOption(StateStore);
@@ -26,7 +26,7 @@ export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (tex
   );
   return [
     ...inventory.unreadable.map(
-      (journal): DoctorSubsystemCheck => ({
+      (journal): DoctorFinding => ({
         name: "accelerated-start-journal",
         status: "warn",
         severity: "warn",
@@ -40,7 +40,7 @@ export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (tex
       }),
     ),
     ...inventory.records.map(
-      (record): DoctorSubsystemCheck => ({
+      (record): DoctorFinding => ({
         name: "accelerated-start",
         status: "warn",
         severity: "warn",

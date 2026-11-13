@@ -9,7 +9,8 @@ import { DateTime, Effect, Option, Result } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 import { interruptOnAbort } from "./doctor-abort";
 import { collectArtifactRefreshDoctorCheck } from "./doctor-artifact-refresh";
-import type { DoctorCheck, DoctorResult } from "./doctor-contract";
+import type { DoctorFinding, DoctorProvider, DoctorSectionResult, DoctorSkipInput } from "./doctor-contract";
+import { providerKindFor } from "./doctor-contract";
 import {
   buildExecUmaskDoctorCheck,
   collectExecUmaskDoctorCheck,
@@ -46,35 +47,34 @@ import {
   runtimeServiceStatusFromProviderStatus,
 } from "./doctor-runtime-service";
 import { buildSelectionRecord, gatherSelectionInputs, resolveStateDir } from "./doctor-selection";
-import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
+import {
+  type DoctorSelfFailureReason,
+  type DoctorSelfFinding,
+  type IsolatedDoctorSection,
+  doctorSectionBudgetMs,
+  isolateDoctorSection,
+} from "./doctor-self";
 import { buildSetupReadinessDoctorCheck } from "./doctor-setup-readiness";
 import { resolveSecretsRedactor } from "./secrets-redactor";
-import { type SetupReadinessSummary, readSetupReadiness } from "./setup-readiness";
+import { readSetupReadiness } from "./setup-readiness";
 
-export type {
-  DoctorCheck,
-  DoctorProviderKind,
-  DoctorResult,
-  DoctorRuntime,
-  DoctorSelectionRecord,
-  DoctorSeverity,
-  DoctorSolution,
-  DoctorSolutionKind,
-  DoctorStatus,
-} from "./doctor-contract";
-export { providerKindFor } from "./doctor-contract";
+export type { DoctorSectionResult } from "./doctor-contract";
 export type { DoctorOptions } from "./doctor-options";
-export type { DoctorNdjsonOptions } from "./doctor-render-ndjson";
-export { renderDoctorResultAsNdjson } from "./doctor-render-ndjson";
-export { renderDoctorResult, renderSolution } from "./doctor-render-text";
 
 import type { DoctorOptions } from "./doctor-options";
+
+/** The probe's self finding carries the classified reason; nothing else reports it. */
+const selfFindingReason = (finding: DoctorSelfFinding | undefined): DoctorSelfFailureReason | undefined => {
+  if (finding === undefined) return undefined;
+  const reason = finding.context.reason;
+  return reason === "failure" || reason === "defect" || reason === "timeout" ? reason : undefined;
+};
 
 export const doctor = Effect.fn("Doctor.collect")(
   function* (
     options: DoctorOptions = {},
     modules?: ReadonlyArray<LandoPluginModule>,
-  ): Effect.fn.Return<DoctorResult, never, ConfigService | PathsService | RuntimeProviderRegistry> {
+  ): Effect.fn.Return<DoctorSectionResult, never, ConfigService | PathsService | RuntimeProviderRegistry> {
     const configService = yield* ConfigService;
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
@@ -82,35 +82,54 @@ export const doctor = Effect.fn("Doctor.collect")(
     const { redactor, redact } = yield* resolveSecretsRedactor({ sourceEnv });
     const sectionBudget = doctorSectionBudgetMs(sourceEnv);
     const probeBudget = probeBudgetMs(sectionBudget);
-    const selfChecks: DoctorSelfCheck[] = [];
+    const selfFindings: DoctorSelfFinding[] = [];
+
+    const probeOutcome = <A, E, SR>(
+      id: string,
+      effect: Effect.Effect<A, E, SR>,
+      fallback: A,
+      budgetMs = probeBudget,
+    ): Effect.Effect<IsolatedDoctorSection<A>, never, SR> =>
+      isolateDoctorSection({
+        section: "provider",
+        probe: id,
+        effect,
+        fallback,
+        budgetMs,
+        redact,
+      }).pipe(
+        Effect.map((outcome) => {
+          if (outcome.self !== undefined) selfFindings.push(outcome.self);
+          return outcome;
+        }),
+      );
+
+    const probe = <A, E, SR>(
+      id: string,
+      effect: Effect.Effect<A, E, SR>,
+      fallback: A,
+      budgetMs = probeBudget,
+    ): Effect.Effect<A, never, SR> =>
+      probeOutcome(id, effect, fallback, budgetMs).pipe(Effect.map((outcome) => outcome.value));
 
     const gathered = yield* gatherSelectionInputs(options);
     const resolution = resolveProviderSelection(gathered.inputs);
     const selection = buildSelectionRecord(resolution);
+    const providerId = String(resolution.providerId);
     const stateDir = yield* resolveStateDir(configService);
     const userDataRootRaw = yield* configService.get("userDataRoot");
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
     if (userDataRoot !== undefined) {
-      const metadataOutcome = yield* isolateDoctorSection({
-        section: "plugin-metadata",
-        effect: installedPluginMetadataSelfChecks(paths.pluginsDir, redact),
-        fallback: [],
-        budgetMs: probeBudget,
-        redact,
-      });
-      selfChecks.push(...metadataOutcome.value);
-      if (metadataOutcome.self !== undefined) selfChecks.push(metadataOutcome.self);
+      const metadataFindings = yield* probe(
+        "plugin-metadata",
+        installedPluginMetadataSelfChecks(paths.pluginsDir, redact),
+        [],
+      );
+      selfFindings.push(...metadataFindings);
     }
     const platform = options.platform ?? paths.platform;
-    const appOutcome = yield* isolateDoctorSection({
-      section: "plugin-app-identity",
-      effect: resolveDoctorAppIdentity(),
-      fallback: undefined,
-      budgetMs: probeBudget,
-      redact,
-    });
-    if (appOutcome.self !== undefined) selfChecks.push(appOutcome.self);
+    const app = yield* probe("plugin-app-identity", resolveDoctorAppIdentity(), undefined);
     const resources = makeDoctorResourceInspector({
       provider: Effect.suspend(() => registry.select({ provider: resolution.providerId } as never)),
       budgetMs: probeBudget,
@@ -141,8 +160,8 @@ export const doctor = Effect.fn("Doctor.collect")(
         return Result.match(index, { onFailure: Effect.fail, onSuccess: Effect.succeed });
       }),
       {
-        providerId: String(resolution.providerId),
-        app: appOutcome.value,
+        providerId,
+        app,
         resources,
         executables,
         platform,
@@ -154,23 +173,33 @@ export const doctor = Effect.fn("Doctor.collect")(
       redactor,
       probeBudget,
     );
-    selfChecks.push(...pluginSelfChecks);
-    const withSelfChecks = (checks: ReadonlyArray<DoctorCheck>): DoctorResult => ({
-      checks,
-      ...(selfChecks.length === 0 ? {} : { selfChecks: [...selfChecks] }),
+    selfFindings.push(...pluginSelfChecks);
+    const withSelfFindings = (
+      findings: ReadonlyArray<DoctorFinding>,
+      skipped?: ReadonlyArray<DoctorSkipInput>,
+    ) => ({
+      checks: [...findings, ...selfFindings],
+      ...(skipped === undefined || skipped.length === 0 ? {} : { skipped }),
     });
-    const preemptiveReports = reports
-      .map((entry) => entry.report)
-      .filter((report) => report.preempts === true);
+
+    const preemptiveReports = reports.filter((entry) => entry.report.preempts === true);
     if (preemptiveReports.length > 0) {
-      const providerId = String(resolution.providerId);
-      const provider = {
-        ...providerStubFor(providerId),
-        version: preemptiveReports[0]?.context.providerVersion ?? UNKNOWN_PROVIDER_VERSION,
+      const version = preemptiveReports[0]?.report.context.providerVersion ?? UNKNOWN_PROVIDER_VERSION;
+      const provider: DoctorProvider = {
+        id: providerId,
+        kind: providerKindFor(providerId),
+        selection,
+        name: providerStubFor(providerId).displayName,
+        version,
       };
-      return withSelfChecks(
-        preemptiveReports.map((report) => mapPluginDoctorCheck({ report, provider, selection })),
-      );
+      return {
+        ...withSelfFindings(
+          preemptiveReports.map((entry) =>
+            mapPluginDoctorCheck({ report: entry.report, contributor: entry.contributor }),
+          ),
+        ),
+        provider,
+      };
     }
 
     const selected = yield* Effect.result(
@@ -179,25 +208,31 @@ export const doctor = Effect.fn("Doctor.collect")(
       } as never),
     );
     if (Result.isFailure(selected)) {
-      const providerId = String(resolution.providerId);
       const stub = providerStubFor(providerId);
-      return withSelfChecks([
-        providerUnavailableCheck({ providerId, platform, selection, cause: selected.failure, redact }),
-        ...reports
-          .filter((entry) => entry.relevant === undefined)
-          .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider: stub, selection })),
-      ]);
+      return {
+        ...withSelfFindings([
+          providerUnavailableCheck({ providerId, platform, cause: selected.failure, redact }),
+          ...reports
+            .filter((entry) => entry.relevant === undefined)
+            .map((entry) => mapPluginDoctorCheck({ report: entry.report, contributor: entry.contributor })),
+        ]),
+        provider: {
+          id: providerId,
+          kind: providerKindFor(providerId),
+          selection,
+          name: stub.displayName,
+          version: stub.version,
+          runtimeStatus: "unavailable",
+        },
+      };
     }
 
     const provider = selected.success;
-    const statusOutcome = yield* isolateDoctorSection({
-      section: "provider-status",
-      effect: Effect.result(provider.getStatus),
-      fallback: undefined,
-      budgetMs: probeBudget,
-      redact,
-    });
-    if (statusOutcome.self !== undefined) selfChecks.push(statusOutcome.self);
+    const statusOutcome = yield* probeOutcome(
+      "provider-status",
+      Effect.result(provider.getStatus),
+      undefined,
+    );
     const statusResult = statusOutcome.value;
     const statusFailure = statusResult?._tag === "Failure" ? statusResult.failure : undefined;
     const status: ProviderStatusShape =
@@ -209,160 +244,127 @@ export const doctor = Effect.fn("Doctor.collect")(
     const diagnosis = diagnosePrimaryProvider({
       provider,
       status,
-      statusProbe: statusFailure === undefined ? statusOutcome.self?.reason : "failure",
+      statusProbe: statusFailure === undefined ? selfFindingReason(statusOutcome.self) : "failure",
       ...(statusFailure === undefined ? {} : { statusFailure }),
       runtimeVersion: versions?.runtime,
       bundleVersion: versions?.bundle,
-      selection,
     });
 
-    const fileSyncSelection = yield* isolateDoctorSection({
-      section: "file-sync-selection",
-      effect: selectedDoctorFileSyncEngine({
+    const fileSyncEngine = yield* probe(
+      "file-sync-selection",
+      selectedDoctorFileSyncEngine({
         modules: enabledModules,
         defaultEngine: yield* configService.get("defaultFileSyncEngine"),
         platform,
         capabilities: provider.capabilities,
       }),
-      fallback: undefined,
-      budgetMs: probeBudget,
-      redact,
-    });
-    if (fileSyncSelection.self !== undefined) selfChecks.push(fileSyncSelection.self);
+      undefined,
+    );
     const pluginChecks = reports
       .filter((entry) => isRelevantContribution(entry, provider.capabilities))
       .filter(
-        ({ report }) =>
-          report.context.engineId === undefined || report.context.engineId === fileSyncSelection.value,
+        ({ report }) => report.context.engineId === undefined || report.context.engineId === fileSyncEngine,
       )
-      .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider, selection }));
-    const setupReadinessOutcome = yield* isolateDoctorSection({
-      section: "setup-readiness",
-      effect: readSetupReadiness(userDataRoot),
-      fallback: undefined as SetupReadinessSummary | undefined,
-      redact,
-    });
-    if (setupReadinessOutcome.self !== undefined) selfChecks.push(setupReadinessOutcome.self);
-    const setupReadiness = setupReadinessOutcome.value;
+      .map((entry) => mapPluginDoctorCheck({ report: entry.report, contributor: entry.contributor }));
+    const setupReadiness = yield* probe(
+      "setup-readiness",
+      readSetupReadiness(userDataRoot),
+      undefined,
+      sectionBudget,
+    );
     const setupReadinessChecks =
-      setupReadiness === undefined
-        ? []
-        : [buildSetupReadinessDoctorCheck(setupReadiness, provider, selection)];
-    const runtimeServiceChecks: ReadonlyArray<DoctorCheck> =
+      setupReadiness === undefined ? [] : [buildSetupReadinessDoctorCheck(setupReadiness)];
+    const runtimeServiceChecks: ReadonlyArray<DoctorFinding> =
       diagnosis.statusKnown && diagnosis.providerKind === "managed"
-        ? yield* Effect.gen(function* () {
-            const outcome = yield* isolateDoctorSection({
-              section: "runtime-service-status",
-              effect: runtimeServiceStatusFor(provider, status),
-              fallback: runtimeServiceStatusFromProviderStatus(status),
-              budgetMs: probeBudget,
-              redact,
-            });
-            if (outcome.self !== undefined) selfChecks.push(outcome.self);
-            return [
-              buildRuntimeServiceDoctorCheck(
-                outcome.value,
-                provider,
-                versions?.runtime,
-                setupReadiness?.runtimeService,
-                selection,
+        ? [
+            buildRuntimeServiceDoctorCheck(
+              yield* probe(
+                "runtime-service-status",
+                runtimeServiceStatusFor(provider, status),
+                runtimeServiceStatusFromProviderStatus(status),
               ),
-            ];
-          })
+              versions?.runtime,
+              setupReadiness?.runtimeService,
+            ),
+          ]
         : [];
-    const execUmaskOutcome = yield* isolateDoctorSection({
-      section: "exec-umask",
-      effect: collectExecUmaskDoctorCheck({
+    const execUmaskCheck = yield* probe(
+      "exec-umask",
+      collectExecUmaskDoctorCheck({
         provider,
         engineVersion: versions?.runtime,
-        runtime: diagnosis.runtime,
-        runtimeStatus: diagnosis.runtimeMessage,
-        selection,
+        running: diagnosis.runtime.running,
       }),
-      fallback: buildExecUmaskDoctorCheck(
-        diagnoseExecUmask({ engineVersion: versions?.runtime, stdout: undefined }),
-        provider,
-        diagnosis.runtime,
-        diagnosis.runtimeMessage,
-        selection,
-      ),
-      budgetMs: probeBudget,
-      redact,
-    });
-    if (execUmaskOutcome.self !== undefined) selfChecks.push(execUmaskOutcome.self);
-    const diedEventsOutcome = yield* isolateDoctorSection({
-      section: "container-died-events",
-      effect: idle
+      buildExecUmaskDoctorCheck(diagnoseExecUmask({ engineVersion: versions?.runtime, stdout: undefined })),
+    );
+    const diedEventPayloads = yield* probe(
+      "container-died-events",
+      idle
         ? Effect.succeed([])
         : containerDiedEventPayloadsFor(
             provider as ContainerDiedEventCapableProvider,
             options.diedEventPayloads,
           ),
-      fallback: [] as ReadonlyArray<unknown>,
-      budgetMs: probeBudget,
-      redact,
-    });
-    if (diedEventsOutcome.self !== undefined) selfChecks.push(diedEventsOutcome.self);
+      [] as ReadonlyArray<unknown>,
+    );
     const oomChecks = collectOomDoctorChecks(
-      diedEventsOutcome.value,
-      {
-        provider,
-        providerKind: diagnosis.providerKind,
-        platform: options.platform ?? provider.platform,
-      },
+      diedEventPayloads,
+      { platform: options.platform ?? provider.platform },
       redactor,
     );
-    const hostProxyOutcome = yield* isolateDoctorSection({
-      section: "host-proxy",
-      effect: hostProxyTransportDoctorChecks({
+    const hostProxy = yield* probe(
+      "host-proxy",
+      hostProxyTransportDoctorChecks({
         runtimeIdle: idle,
         provider: {
           id: provider.id,
-          displayName: provider.displayName,
-          version: provider.version,
           ...(provider.capabilities.hostProxy?.tcpHostGateway === undefined
             ? {}
             : { tcpHostGateway: provider.capabilities.hostProxy.tcpHostGateway }),
           exec: provider.exec,
         },
-        providerKind: diagnosis.providerKind,
-        runtimeStatus: diagnosis.runtimeMessage,
-        runtime: diagnosis.runtime,
-        selection,
         sourceEnv,
       }).pipe(Effect.provide(HostProxyDoctorFileSystem.layer)),
-      fallback: { checks: [] } as DoctorResult,
-      redact,
-    });
-    if (hostProxyOutcome.self !== undefined) selfChecks.push(hostProxyOutcome.self);
+      { checks: [] },
+      sectionBudget,
+    );
 
     const artifactRefresh = yield* collectArtifactRefreshDoctorCheck({
       runtimeId: provider.runtimeIdentity ?? `${provider.id}:${provider.platform}`,
       now: DateTime.toEpochMillis(yield* DateTime.now),
-      provider,
-      selection,
     }).pipe(Effect.catch(() => Effect.succeed(undefined)));
     return {
-      ...withSelfChecks([
-        diagnosis.check,
-        ...(artifactRefresh === undefined ? [] : [artifactRefresh]),
-        ...pluginChecks,
-        ...setupReadinessChecks,
-        ...runtimeServiceChecks,
-        ...(idle ? [] : [execUmaskOutcome.value]),
-        ...hostProxyOutcome.value.checks,
-        ...oomChecks,
-      ]),
-      skipped: [
-        ...(hostProxyOutcome.value.skipped ?? []),
-        ...(idle
-          ? ["exec-umask", "container-died-events", "oom"].map((section) => ({
-              section,
-              status: "skipped" as const,
-              reason: `Provider ${provider.id} is idle; no live runtime was inspected.`,
-            }))
-          : []),
-      ],
+      ...withSelfFindings(
+        [
+          diagnosis.check,
+          ...(artifactRefresh === undefined ? [] : [artifactRefresh]),
+          ...pluginChecks,
+          ...setupReadinessChecks,
+          ...runtimeServiceChecks,
+          ...(idle ? [] : [execUmaskCheck]),
+          ...hostProxy.checks,
+          ...oomChecks,
+        ],
+        [
+          ...(hostProxy.skipped ?? []),
+          ...(idle
+            ? ["exec-umask", "container-died-events", "runtime-oom"].map((check) => ({
+                check,
+                reason: `Provider ${provider.id} is idle; no live runtime was inspected.`,
+              }))
+            : []),
+        ],
+      ),
+      provider: {
+        id: provider.id,
+        kind: diagnosis.providerKind,
+        selection,
+        name: provider.displayName,
+        version: provider.version,
+        runtimeStatus: diagnosis.runtimeMessage,
+        runtime: diagnosis.runtime,
+        capabilities: diagnosis.capabilities,
+      },
     };
   },
   (effect, options?: DoctorOptions, _modules?: ReadonlyArray<LandoPluginModule>) =>

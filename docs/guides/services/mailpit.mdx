@@ -56,8 +56,12 @@ expect(config.exitCode).toBe(0);
 expect(JSON.parse(config.stdout).result.landofile.services.inbox.type).toBe("mailhog");`} />
       <Run runtime="library" displayCode="lando doctor --deprecations --format=json" code={`const run = yield* context.runCli(["doctor", "--deprecations", "--format=json"]);
 const report = JSON.parse(run.stdout);
-expect(report.result.deprecations.entries).toContainEqual(
-  expect.objectContaining({ kind: "service-type", id: "mailhog" }),
+expect(report.result.checks).toContainEqual(
+  expect.objectContaining({
+    section: "deprecations",
+    name: "deprecation",
+    context: expect.objectContaining({ kind: "service-type", id: "mailhog" }),
+  }),
 );`} />
     </Step>
     <Step name="cleanup">
@@ -247,7 +251,7 @@ remains your responsibility and must use the declared listeners.
 
 `type: mailhog` still plans as a working SMTP + UI service, but it is
 deprecated since 4.2.0 and scheduled for removal in 5.0.0. Switch to
-`type: mailpit`. `lando doctor --deprecations` reports the old type.
+`type: mailpit`. `lando doctor --deprecations` reports the old type. In `--format=json`, it is a check named `deprecation` in section `deprecations`, with `context.kind` set to `service-type` and `context.id` set to `mailhog`. The same `context` carries `since`, `source`, and `count`, plus `removeIn`, `replacement`, and `docsUrl` when the deprecation declares them.
 
 For a MailHog app that must stay on the legacy image, `port:` still selects
 SMTP. To move its shared HTTP listener, set **both** `MH_UI_BIND_ADDR` and

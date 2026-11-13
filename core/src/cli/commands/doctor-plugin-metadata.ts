@@ -5,21 +5,16 @@ import {
   inspectInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
 import { Effect } from "effect";
-import {
-  type DoctorSelfCheck,
-  type DoctorSelfSolution,
-  describeDoctorFailure,
-  doctorSelfCheck,
-  redactDoctorMessage,
-} from "./doctor-self";
+import type { DoctorSelfFinding, DoctorSolution } from "./doctor-contract";
+import { describeDoctorFailure, doctorSelfCheck, redactDoctorMessage } from "./doctor-self";
 
-const PLUGIN_METADATA_REMEDIATION: DoctorSelfSolution = {
+const PLUGIN_METADATA_REMEDIATION: DoctorSolution = {
   kind: "manual",
   description:
     "Use the reported pluginId and pluginPath to identify the affected plugin. Remove it with `lando plugin:remove <name>` and reinstall it with `lando plugin:add <spec>` using its original source.",
 };
 
-const PLUGIN_REGISTRY_REMEDIATION: DoctorSelfSolution = {
+const PLUGIN_REGISTRY_REMEDIATION: DoctorSolution = {
   kind: "manual",
   description:
     "Repair the registry file at the reported metadataPath, correcting or removing the invalid entry. Re-run `lando doctor` after repairing the registry.",
@@ -28,7 +23,7 @@ const PLUGIN_REGISTRY_REMEDIATION: DoctorSelfSolution = {
 export const installedPluginMetadataSelfChecks = (
   pluginsRoot: string,
   redact: (value: string) => string,
-): Effect.Effect<ReadonlyArray<DoctorSelfCheck>> =>
+): Effect.Effect<ReadonlyArray<DoctorSelfFinding>> =>
   Effect.promise(async () => {
     const inspection = await inspectInstalledPluginRegistry(pluginsRoot);
     const failures: Array<{ failure: InstalledPluginRegistryFailure; registry: boolean }> =
@@ -51,7 +46,8 @@ export const installedPluginMetadataSelfChecks = (
     return failures.map(({ failure, registry }) => {
       const described = describeDoctorFailure(failure.cause);
       return doctorSelfCheck({
-        section: "plugin-metadata",
+        section: "provider",
+        probe: "plugin-metadata",
         reason: "failure",
         message: redactDoctorMessage(described.message, redact),
         ...(described.tag === undefined ? {} : { tag: described.tag }),

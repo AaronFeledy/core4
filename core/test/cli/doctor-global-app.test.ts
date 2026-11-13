@@ -7,11 +7,7 @@ import { AbsolutePath, PluginName } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 import { Context, Effect, Layer, Stream } from "effect";
 
-import {
-  DefaultGlobalAppDoctorLayer,
-  globalAppDoctor,
-  renderGlobalAppDoctorResult,
-} from "../../src/cli/commands/doctor-global-app.ts";
+import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "../../src/cli/commands/doctor-global-app.ts";
 
 const distLandofile = AbsolutePath.make("/tmp/lando-global/.lando.dist.yml");
 const userLandofile = AbsolutePath.make("/tmp/lando-global/.lando.yml");
@@ -135,10 +131,6 @@ describe("global-app doctor check", () => {
     expect(check?.context.installed).toBe("true");
     expect(check?.context.readError).toBe("permission denied");
     expect(check?.solutions[0]?.description).toContain("could not be read");
-
-    const text = renderGlobalAppDoctorResult(result);
-    expect(text).toContain("global-app: fail");
-    expect(text).toContain("readError: permission denied");
   });
 
   test("not-installed solution points at global:reconcile and auto-provision on start", async () => {

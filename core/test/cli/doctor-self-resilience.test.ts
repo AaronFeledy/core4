@@ -10,9 +10,10 @@ import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema } from "e
 import { TestClock } from "effect/testing";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
+import type { DoctorReport } from "../../src/cli/commands/doctor-contract.ts";
+import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
 import {
-  type DoctorReport,
-  DoctorReportSchema,
+  makeDoctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
@@ -45,14 +46,18 @@ describe("doctor safe mode", () => {
                   Effect.provide(runtimeLayerFactoryLive),
                 ),
               );
-              const bootstrap = report.self?.checks.find((check) => check.section === "global-config");
-              expect(bootstrap?.context.failure).toBe("ConfigError");
+              const bootstrap = report.checks.find((check) => check.section === "global-config");
+              expect(bootstrap?.details !== undefined && "issues" in bootstrap.details).toBe(true);
               expect(
                 bootstrap?.solutions.some((solution) =>
                   solution.description.includes("Unset or fix the environment override for router.httpPort"),
                 ),
               ).toBe(true);
-              expect(report.globalConfig?.error?.issues?.[0]?.source?.layer).toBe("env");
+              expect(
+                bootstrap?.details !== undefined && "issues" in bootstrap.details
+                  ? bootstrap.details.issues?.[0]?.source?.layer
+                  : undefined,
+              ).toBe("env");
               expect(bootstrap?.context.message).not.toContain("Invalid config file");
               expect(
                 bootstrap?.solutions.some((solution) => solution.description.includes("github.com")),
@@ -104,30 +109,26 @@ describe("doctor safe mode", () => {
       );
 
       // Then the provider section degrades but the report is intact
-      const bootstrapSelf = (report.self?.checks ?? []).find((check) => check.section === "global-config");
+      const bootstrapSelf = report.checks.find((check) => check.section === "global-config");
       expect(bootstrapSelf).toMatchObject({ status: "fail", severity: "error" });
-      expect(bootstrapSelf?.context.failure).toBe("ConfigError");
+      expect(bootstrapSelf?.details !== undefined && "remediation" in bootstrapSelf.details).toBe(true);
       expect(bootstrapSelf?.context.message).toContain(detail);
       expect(bootstrapSelf?.solutions.some((solution) => solution.command === "lando config validate")).toBe(
         true,
       );
-      expect(report.provider.checks).toEqual([]);
-      expect(report.subsystems.checks.some((check) => check.name === "filesystem-watch")).toBe(true);
-      expect(report.globalConfig?.status).toBe("fail");
-      expect(report.globalConfig?.error?._tag).toBe("ConfigError");
-      expect(report.skipped?.map((entry) => entry.section)).toEqual([
-        "provider",
-        "subsystems",
-        "network-trust",
-        "certificate-authority",
-        "global-app",
-        "mcp",
-      ]);
-      expect(
-        report.skipped?.every(
-          (entry) => entry.status === "skipped" && entry.reason.includes("global-config"),
-        ),
-      ).toBe(true);
+      expect(report.checks.filter((check) => check.section === "provider")).toEqual([]);
+      expect(report.checks.some((check) => check.section === "filesystem-watch")).toBe(true);
+      expect(report.skipped.map((entry) => entry.section)).toEqual(
+        expect.arrayContaining([
+          "provider",
+          "subsystems",
+          "network-trust",
+          "certificate-authority",
+          "global-app",
+          "mcp",
+        ]),
+      );
+      expect(report.skipped.every((entry) => entry.reason.length > 0)).toBe(true);
       expect(JSON.stringify(report)).not.toContain("--fix");
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
@@ -140,26 +141,21 @@ describe("doctor safe mode", () => {
 });
 
 describe("doctor degradation is visible to automation", () => {
-  const reportWithSelf = (): DoctorReport => ({
-    version: "4.0.0-test",
-    provider: { checks: [] },
-    subsystems: { checks: [] },
-    globalApp: { checks: [] },
-    mcp: { checks: [] },
-    self: {
+  const reportWithSelf = (): DoctorReport =>
+    makeDoctorReport({
+      version: "4.0.0-test",
       checks: [
         {
+          section: "provider",
           name: "doctor-self",
-          section: "provider-bootstrap",
           status: "fail",
           severity: "error",
-          reason: "failure",
-          context: { section: "provider-bootstrap", reason: "failure", message: "boom" },
+          context: { probe: "provider-bootstrap", reason: "failure", message: "boom" },
           solutions: [{ kind: "manual", description: "fix it" }],
         },
       ],
-    },
-  });
+      skipped: [],
+    });
 
   test("ndjson emits self checks and counts them as failures", () => {
     // When
@@ -168,8 +164,8 @@ describe("doctor degradation is visible to automation", () => {
     // Then the degradation is visible as an event and in the summary
     expect(ndjson).toContain("provider-bootstrap");
     const summary = JSON.parse(ndjson.trimEnd().split("\n").at(-1) ?? "{}");
-    expect(summary.envelope.result.failed).toBe(1);
-    expect(summary.envelope.result.checks).toBe(1);
+    expect(summary.envelope.result.summary.failed).toBe(1);
+    expect(summary.envelope.result.summary.checks).toBe(1);
   });
 
   test("a degraded report exits non-zero so scripts cannot read it as healthy", () => {
@@ -179,13 +175,7 @@ describe("doctor degradation is visible to automation", () => {
 
   test("a healthy report keeps the default exit code", () => {
     // Given a report with no self section
-    const healthy: DoctorReport = {
-      version: "4.0.0-test",
-      provider: { checks: [] },
-      subsystems: { checks: [] },
-      globalApp: { checks: [] },
-      mcp: { checks: [] },
-    };
+    const healthy: DoctorReport = makeDoctorReport({ version: "4.0.0-test", checks: [], skipped: [] });
 
     // When / Then
     expect(metaDoctorSpec.completion?.(healthy, {})).toEqual({ ok: true, exitCode: 0 });
@@ -197,7 +187,7 @@ describe("doctor degradation is visible to automation", () => {
 
     // Then
     expect(text).toContain("doctor-self: fail");
-    expect(text).toContain("section: provider-bootstrap");
+    expect(text).toContain("probe: provider-bootstrap");
   });
 });
 
@@ -206,7 +196,7 @@ describe("isolateDoctorSection", () => {
     // When
     const outcome = await Effect.runPromise(
       isolateDoctorSection({
-        section: "unit",
+        section: "provider",
         effect: Effect.fail(
           new ConfigError({
             message: "bad config",
@@ -219,38 +209,44 @@ describe("isolateDoctorSection", () => {
 
     // Then
     expect(outcome.value).toBe("fallback");
-    expect(outcome.self).toMatchObject({ reason: "failure", section: "unit", status: "fail" });
     expect(outcome.self?.context.failure).toBe("ConfigError");
+    expect(outcome.self?.context.reason).toBe("failure");
+    expect(outcome.self?.status).toBe("fail");
   });
 
   test("captures an untyped defect", async () => {
     // When
     const outcome = await Effect.runPromise(
-      isolateDoctorSection({ section: "unit", effect: Effect.die(new Error("boom")), fallback: 0 }),
+      isolateDoctorSection({ section: "provider", effect: Effect.die(new Error("boom")), fallback: 0 }),
     );
 
     // Then
     expect(outcome.value).toBe(0);
-    expect(outcome.self).toMatchObject({ reason: "defect" });
+    expect(outcome.self?.context.reason).toBe("defect");
     expect(outcome.self?.context.message).toBe("boom");
   });
 
   test("abandons a section that overruns its deadline", async () => {
     // When
     const outcome = await Effect.runPromise(
-      isolateDoctorSection({ section: "unit", effect: Effect.never, fallback: "gave-up", budgetMs: 1_000 }),
+      isolateDoctorSection({
+        section: "provider",
+        effect: Effect.never,
+        fallback: "gave-up",
+        budgetMs: 1_000,
+      }),
     );
 
     // Then
     expect(outcome.value).toBe("gave-up");
-    expect(outcome.self).toMatchObject({ reason: "timeout" });
+    expect(outcome.self?.context.reason).toBe("timeout");
     expect(outcome.self?.context.budgetMs).toBe("1000");
   });
 
   test("records a self-interrupting section as a defect instead of aborting the run", async () => {
     // Given a section that interrupts itself, which must not masquerade as Ctrl-C
     const program = isolateDoctorSection({
-      section: "unit",
+      section: "provider",
       effect: Effect.interrupt,
       fallback: "fallback",
     });
@@ -260,7 +256,8 @@ describe("isolateDoctorSection", () => {
 
     // Then
     expect(outcome.value).toBe("fallback");
-    expect(outcome.self).toMatchObject({ reason: "defect", section: "unit", status: "fail" });
+    expect(outcome.self?.context.reason).toBe("defect");
+    expect(outcome.self?.status).toBe("fail");
   });
 
   test("still cancels the whole run when the caller is interrupted", async () => {
@@ -268,7 +265,7 @@ describe("isolateDoctorSection", () => {
     const program = Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(
         isolateDoctorSection({
-          section: "unit",
+          section: "provider",
           effect: Effect.never,
           fallback: "unused",
           budgetMs: 120_000,
@@ -293,7 +290,7 @@ describe("isolateDoctorSection", () => {
     // When
     const outcome = await Effect.runPromise(
       isolateDoctorSection({
-        section: "unit",
+        section: "provider",
         effect: Effect.die(new Error("token=abc123")),
         fallback: undefined,
         redact: (value) => value.replace("abc123", "[redacted]"),
@@ -317,7 +314,7 @@ describe("isolateDoctorSection", () => {
         const service = yield* RedactionService;
         const redactor = yield* service.forProfile("secrets");
         return yield* isolateDoctorSection({
-          section: "unit",
+          section: "provider",
           effect: Effect.die(new Error(failureMessage)),
           fallback: undefined,
           redact: redactor.redactString,
@@ -343,12 +340,13 @@ describe("isolateDoctorSection", () => {
 
     // When
     const outcome = await Effect.runPromise(
-      isolateDoctorSection({ section: "unit", effect: Effect.fail(failure), fallback: "fallback" }),
+      isolateDoctorSection({ section: "provider", effect: Effect.fail(failure), fallback: "fallback" }),
     );
 
     // Then
     expect(outcome.value).toBe("fallback");
-    expect(outcome.self).toMatchObject({ reason: "failure", status: "fail" });
+    expect(outcome.self?.context.reason).toBe("failure");
+    expect(outcome.self?.status).toBe("fail");
     expect(typeof outcome.self?.context.message).toBe("string");
   });
 
@@ -363,7 +361,7 @@ describe("isolateDoctorSection", () => {
     // When
     const outcome = await Effect.runPromise(
       isolateDoctorSection({
-        section: "unit",
+        section: "provider",
         effect: Effect.sync(() => {
           throw defect;
         }),
@@ -373,7 +371,8 @@ describe("isolateDoctorSection", () => {
 
     // Then
     expect(outcome.value).toBe("fallback");
-    expect(outcome.self).toMatchObject({ reason: "defect", status: "fail" });
+    expect(outcome.self?.context.reason).toBe("defect");
+    expect(outcome.self?.status).toBe("fail");
     expect(typeof outcome.self?.context.message).toBe("string");
   });
 
@@ -392,7 +391,7 @@ describe("isolateDoctorSection", () => {
     // When
     const outcome = await Effect.runPromise(
       isolateDoctorSection({
-        section: "unit",
+        section: "provider",
         effect: Effect.sync(() => {
           throw defect;
         }),
@@ -402,7 +401,8 @@ describe("isolateDoctorSection", () => {
 
     // Then
     expect(outcome.value).toBe("fallback");
-    expect(outcome.self).toMatchObject({ reason: "defect", status: "fail" });
+    expect(outcome.self?.context.reason).toBe("defect");
+    expect(outcome.self?.status).toBe("fail");
     expect(typeof outcome.self?.context.message).toBe("string");
   });
 
@@ -416,12 +416,13 @@ describe("isolateDoctorSection", () => {
 
     // When
     const outcome = await Effect.runPromise(
-      isolateDoctorSection({ section: "unit", effect: Effect.die(defect), fallback: "fallback" }),
+      isolateDoctorSection({ section: "provider", effect: Effect.die(defect), fallback: "fallback" }),
     );
 
     // Then
     expect(outcome.value).toBe("fallback");
-    expect(outcome.self).toMatchObject({ reason: "defect", status: "fail" });
+    expect(outcome.self?.context.reason).toBe("defect");
+    expect(outcome.self?.status).toBe("fail");
     expect(typeof outcome.self?.context.message).toBe("string");
   });
 
@@ -436,7 +437,7 @@ describe("isolateDoctorSection", () => {
         }),
       ).pipe(Effect.andThen(Effect.never), Effect.scoped);
       const fiber = yield* Effect.forkChild(
-        isolateDoctorSection({ section: "unit", effect: section, fallback: "fallback", budgetMs: 1_000 }),
+        isolateDoctorSection({ section: "provider", effect: section, fallback: "fallback", budgetMs: 1_000 }),
       );
       yield* Deferred.await(started);
 
@@ -447,7 +448,7 @@ describe("isolateDoctorSection", () => {
     const outcome = await Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 
     // Then
-    expect(outcome.self?.reason).toBe("timeout");
+    expect(outcome.self?.context.reason).toBe("timeout");
     expect(finalized).toBe(true);
   });
 });

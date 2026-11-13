@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import type { DoctorReport } from "../../src/cli/commands/doctor-report-contract";
-import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-report-render";
+import type { DoctorReport } from "../../src/cli/commands/doctor-contract";
+import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-render-text";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report";
 import type { RenderContext } from "../../src/cli/renderer-boundary";
 
 const cases: ReadonlyArray<{
@@ -38,23 +39,22 @@ const cases: ReadonlyArray<{
 test.each(cases)(
   "identifies grouped $name records by the fields that distinguish them",
   ({ name, contexts, identities }) => {
-    const report: DoctorReport = {
+    const report: DoctorReport = makeDoctorReport({
       version: "4.2.0",
-      provider: { checks: [] },
-      globalApp: { checks: [] },
-      mcp: { checks: [] },
-      subsystems: {
-        checks: contexts.map((context) => ({
-          name,
-          context,
-          status: "warn",
-          severity: "warn",
-          recovery: "manual",
-          solutions: [],
-        })),
-      },
-    };
-    const rows = buildDoctorReportSummary(report).sections[0]?.rows;
+      checks: contexts.map((context) => ({
+        section: "subsystems" as const,
+        name,
+        context,
+        status: "warn" as const,
+        severity: "warn" as const,
+        recovery: "manual" as const,
+        solutions: [],
+      })),
+      skipped: [],
+    });
+    const rows = buildDoctorReportSummary(report).sections.find(
+      (section) => section.title === "subsystems",
+    )?.rows;
     expect(rows).toHaveLength(1);
     expect(rows?.[0]?.fields).toContainEqual({ label: "entries", value: identities });
     const tty: RenderContext = { mode: "lando", format: "text", isTTY: true, columns: 120, noColor: true };

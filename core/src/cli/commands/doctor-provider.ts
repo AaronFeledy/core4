@@ -6,9 +6,8 @@ import {
 
 import type { ProviderError, ProviderStatus } from "@lando/sdk/services";
 import type {
-  DoctorCheck,
+  DoctorFinding,
   DoctorRuntime,
-  DoctorSelectionRecord,
   DoctorSeverity,
   DoctorSolution,
   DoctorStatus,
@@ -22,11 +21,11 @@ export type ProviderStatusShape = ProviderStatus & {
   readonly orphanPids?: ReadonlyArray<number>;
 };
 
-export const DOCTOR_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
+const DOCTOR_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
   keyof ProviderCapabilitiesShape
 >;
 
-export const SETUP_REMEDIATION: DoctorSolution = {
+const SETUP_REMEDIATION: DoctorSolution = {
   kind: "manual",
   description:
     "Selected runtime provider is not running. Run `lando setup` to provision the managed runtime, then retry.",
@@ -38,7 +37,7 @@ const SYSTEM_RUNTIME_SETUP_PROVIDERS = new Set(["docker", "podman"]);
 export const setupCommandForProvider = (providerId: string): string =>
   SYSTEM_RUNTIME_SETUP_PROVIDERS.has(providerId) ? `lando setup --provider=${providerId}` : "lando setup";
 
-export const setupRemediationFor = (providerId: string): DoctorSolution => {
+const setupRemediationFor = (providerId: string): DoctorSolution => {
   if (!SYSTEM_RUNTIME_SETUP_PROVIDERS.has(providerId)) return SETUP_REMEDIATION;
   const command = setupCommandForProvider(providerId);
   return {
@@ -59,20 +58,14 @@ export const providerStubFor = (providerId: string): PluginDoctorProvider => ({
 export const providerUnavailableCheck = (input: {
   readonly providerId: string;
   readonly platform: HostPlatform;
-  readonly selection: DoctorSelectionRecord;
   readonly cause: unknown;
   readonly redact: (value: string) => string;
-}): DoctorCheck => {
-  const providerKind = providerKindFor(input.providerId);
+}): DoctorFinding => {
   const described = describeDoctorFailure(input.cause);
   const message = redactDoctorMessage(described.message, input.redact);
   const context: Record<string, string> = {
-    providerId: input.providerId,
-    providerKind,
-    providerVersion: UNKNOWN_PROVIDER_VERSION,
-    runtimeStatus: "unavailable",
     platform: input.platform,
-    selectionSource: input.selection.source,
+    runtimeStatus: "unavailable",
     message,
   };
   if (described.tag !== undefined) context.failure = described.tag;
@@ -80,25 +73,18 @@ export const providerUnavailableCheck = (input: {
     name: "selected-provider",
     status: "fail",
     severity: "error",
-    providerId: input.providerId,
-    providerName: providerStubFor(input.providerId).displayName,
-    providerVersion: UNKNOWN_PROVIDER_VERSION,
-    providerKind,
-    runtimeStatus: "unavailable",
-    runtime: { running: false, message },
-    capabilities: {},
     context,
     solutions: [setupRemediationFor(input.providerId)],
-    selection: input.selection,
   };
 };
 
-export interface PrimaryProviderDiagnosis {
-  readonly check: DoctorCheck;
+interface PrimaryProviderDiagnosis {
+  readonly check: DoctorFinding;
   readonly providerKind: ReturnType<typeof providerKindFor>;
   readonly runtime: DoctorRuntime;
   readonly runtimeMessage: string;
   readonly statusKnown: boolean;
+  readonly capabilities: Record<string, unknown>;
 }
 
 export const diagnosePrimaryProvider = (input: {
@@ -111,7 +97,6 @@ export const diagnosePrimaryProvider = (input: {
   readonly statusFailure?: ProviderError;
   readonly runtimeVersion: string | undefined;
   readonly bundleVersion: string | undefined;
-  readonly selection: DoctorSelectionRecord;
 }): PrimaryProviderDiagnosis => {
   const { provider, status, statusProbe } = input;
   const capabilities: Record<string, unknown> = {};
@@ -136,12 +121,7 @@ export const diagnosePrimaryProvider = (input: {
   };
   const providerKind = providerKindFor(provider.id);
   const context: Record<string, string> = {
-    providerId: provider.id,
-    providerKind,
-    providerVersion: provider.version,
-    runtimeStatus: runtimeMessage,
     platform: provider.platform,
-    selectionSource: input.selection.source,
   };
   if (input.runtimeVersion !== undefined) context.runtimeVersion = input.runtimeVersion;
   if (input.bundleVersion !== undefined) context.bundleVersion = input.bundleVersion;
@@ -159,12 +139,12 @@ export const diagnosePrimaryProvider = (input: {
   if (!statusKnown) {
     checkStatus = "fail";
     severity = "error";
-  } else if (!hasOrphans) {
-    checkStatus = "pass";
-    severity = "info";
-  } else {
+  } else if (hasOrphans) {
     checkStatus = "warn";
     severity = "warn";
+  } else {
+    checkStatus = "pass";
+    severity = "info";
   }
 
   const solutions: DoctorSolution[] = [];
@@ -185,20 +165,13 @@ export const diagnosePrimaryProvider = (input: {
       name: "selected-provider",
       status: checkStatus,
       severity,
-      providerId: provider.id,
-      providerName: provider.displayName,
-      providerVersion: provider.version,
-      providerKind,
-      runtimeStatus: runtimeMessage,
-      runtime,
-      capabilities,
       context,
       solutions,
-      selection: input.selection,
     },
     providerKind,
     runtime,
     runtimeMessage,
     statusKnown,
+    capabilities,
   };
 };

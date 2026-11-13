@@ -2,7 +2,7 @@ import { scanMissingAppRoots } from "@lando/engine/operations/missing-app-roots"
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { warnCheck } from "./doctor-check-builders";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
 
 export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
@@ -15,7 +15,7 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
   );
   if (Result.isFailure(inventory)) {
     const message = inventory.failure.message;
-    const check: DoctorSubsystemCheck = warnCheck({
+    const check: DoctorFinding = warnCheck({
       name: "missing-app-root-scan",
       recovery: "manual",
       context: { error: redact(message) },
@@ -30,7 +30,7 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
     });
     return [check];
   }
-  const scanChecks: DoctorSubsystemCheck[] = inventory.success.scans
+  const scanChecks: DoctorFinding[] = inventory.success.scans
     .filter((scan) => scan.errorTag !== undefined)
     .map((scan) =>
       warnCheck({
@@ -51,7 +51,7 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
   const command = `lando apps:gc --prune${copiesRemovable ? " --volumes" : ""}${inventory.success.candidates.some((root) => root.cacheVolumes.length > 0) ? " --purge-caches" : ""}`;
   return [
     ...scanChecks,
-    ...inventory.success.candidates.map((record): DoctorSubsystemCheck => {
+    ...inventory.success.candidates.map((record): DoctorFinding => {
       const runtimeGuidance = record.runtimeObserved
         ? ""
         : " Its runtime was not observed, so containers and volumes may be missing from this list.";

@@ -40,7 +40,7 @@ test.each([
   ]) {
     expect(check?.context).not.toHaveProperty(key);
   }
-  expect(result.skipped?.some((entry) => entry.section === "host-dns")).toBe(false);
+  expect((result.skipped ?? []).some((entry) => entry.check === "host-dns")).toBe(false);
   if (status === "warn") {
     expect(check?.solutions[0]?.description).toContain("DNS-rebinding protection");
     expect(check?.solutions[0]?.description).toContain("Add a local DNS rule");
@@ -54,8 +54,7 @@ test("skips host DNS when no resolver is provided", async () => {
   // Then it explains the missing inspection capability.
   expect(result.checks.some((entry) => entry.name === "host-dns")).toBe(false);
   expect(result.skipped).toContainEqual({
-    section: "host-dns",
-    status: "skipped",
+    check: "host-dns",
     reason: "Host DNS resolver was not provided; no host DNS inspection was performed.",
   });
 });

@@ -22,12 +22,12 @@ import {
 // allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
 import { Effect, Layer } from "effect";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
+import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
+import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import {
-  type SubsystemDoctorResult,
   classifySubsystemFailure,
-  renderSubsystemDoctorResult,
-  renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
@@ -63,7 +63,7 @@ test("doctor --fix skips idle global router and sidecar readiness", async () => 
     ),
   );
   expect(result.checks.find((check) => check.name === "router")).toBeUndefined();
-  expect(result.skipped?.map((entry) => entry.section)).toEqual(
+  expect(result.skipped?.map((entry) => entry.check)).toEqual(
     expect.arrayContaining(["router", "ssh-sidecar"]),
   );
   expect(result.checks.find((check) => check.name === "ssh")?.context.fixOutcome).toBeUndefined();
@@ -71,7 +71,7 @@ test("doctor --fix skips idle global router and sidecar readiness", async () => 
 
 for (const fix of [false, true])
   describe(`doctor on an idle global provider (fix: ${fix})`, () => {
-    const runIdle = (router: typeof RouterService.Service): Promise<SubsystemDoctorResult> => {
+    const runIdle = (router: typeof RouterService.Service): Promise<DoctorSectionResult> => {
       const provider = {
         ...TestRuntimeProvider,
         getStatus: Effect.succeed({ state: "idle" as const }),
@@ -116,7 +116,7 @@ for (const fix of [false, true])
         recovery: "manual",
         context: { routerId: "missing", ...(fix ? { fixOutcome: "skipped-manual" } : {}) },
       });
-      expect(result.skipped?.map((entry) => entry.section)).not.toContain("router");
+      expect(result.skipped?.map((entry) => entry.check)).not.toContain("router");
     });
 
     test("keeps live readiness of a selected router skipped", async () => {
@@ -132,17 +132,17 @@ for (const fix of [false, true])
 
       // Then
       expect(result.checks.find((entry) => entry.name === "router")).toBeUndefined();
-      expect(result.skipped?.map((entry) => entry.section)).toContain("router");
+      expect(result.skipped?.map((entry) => entry.check)).toContain("router");
     });
   });
 
 // The bundled stubs ship no router plugin, so the router is unselectable and only manually fixable.
 const AUTOMATIC_SUBSYSTEMS = ["ssh"] as const;
-const MANUAL_SUBSYSTEMS = ["router", "certs", "host-dns"] as const;
-const DEGRADED_MANUAL_SUBSYSTEMS = ["router", "certs", "host-dns"] as const;
+const MANUAL_SUBSYSTEMS = ["router", "host-dns"] as const;
+const DEGRADED_MANUAL_SUBSYSTEMS = ["router", "host-dns"] as const;
 const UNINSPECTED_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
 
-const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
+const runDefault = (fix: boolean): Promise<DoctorSectionResult> =>
   Effect.runPromise(
     subsystemDoctor({ fix }).pipe(
       Effect.provide(
@@ -195,7 +195,7 @@ describe("subsystem failure-recovery classification", () => {
       expect(check?.status).toBe("warn");
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
-      expect(solution?.command).toBe(name === "certs" ? "lando setup" : undefined);
+      expect(solution?.command).toBeUndefined();
     }
   });
 
@@ -204,7 +204,7 @@ describe("subsystem failure-recovery classification", () => {
     for (const name of UNINSPECTED_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
       expect(check).toBeUndefined();
-      expect(result.skipped).toContainEqual({ section: name, status: "skipped", reason: expect.any(String) });
+      expect(result.skipped).toContainEqual({ check: name, reason: expect.any(String) });
     }
   });
 
@@ -307,7 +307,7 @@ describe("doctor --fix recovery", () => {
     for (const name of UNINSPECTED_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
       expect(check).toBeUndefined();
-      expect(result.skipped).toContainEqual({ section: name, status: "skipped", reason: expect.any(String) });
+      expect(result.skipped).toContainEqual({ check: name, reason: expect.any(String) });
     }
   });
 
@@ -434,24 +434,10 @@ describe("doctor --fix recovery", () => {
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, secretErrorProxy);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
     const proxy = result.checks.find((c) => c.name === "router");
-    const text = renderSubsystemDoctorResult(result);
-    const ndjson = renderSubsystemDoctorResultAsNdjson(result, {
-      now: new Date("1970-01-01T00:00:00.000Z"),
-    });
-
     expect(proxy?.context.fixError).toContain("API_TOKEN=[redacted]");
     expect(proxy?.context.fixError).toContain("DATABASE_PASSWORD=[redacted]");
-    expect(text).toContain("API_TOKEN=[redacted]");
-    expect(text).not.toContain("abc123");
-    expect(ndjson).toContain("DATABASE_PASSWORD=[redacted]");
-    expect(ndjson).not.toContain("hunter2");
-  });
-
-  test("human renderer surfaces the fix outcome for degraded subsystems under --fix", async () => {
-    const result = await runDefault(true);
-    const text = renderSubsystemDoctorResult(result);
-    expect(text).toContain("fixOutcome: failed");
-    expect(text).toContain("fixOutcome: skipped-manual");
+    expect(JSON.stringify(result)).not.toContain("abc123");
+    expect(JSON.stringify(result)).not.toContain("hunter2");
   });
 
   test("native flag mapping forwards --fix into doctor options", () => {
@@ -462,5 +448,17 @@ describe("doctor --fix recovery", () => {
     });
     expect(inputDoctorOptions({ flags: { fix: false } })).toEqual({});
     expect(inputDoctorOptions({ flags: {} })).toEqual({});
+  });
+
+  test("human renderer surfaces the fix outcome for degraded subsystems under --fix", async () => {
+    const result = await runDefault(true);
+    const report = makeDoctorReport({
+      version: "4.0.0-test",
+      checks: result.checks.map((finding) => ({ section: "subsystems" as const, ...finding })),
+      skipped: [],
+    });
+    const text = renderDoctorReport(report);
+    expect(text).toContain("fixOutcome: failed");
+    expect(text).toContain("fixOutcome: skipped-manual");
   });
 });

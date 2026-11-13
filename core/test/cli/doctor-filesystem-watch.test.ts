@@ -230,8 +230,8 @@ test.each([false, true])(
       ),
     );
     // Then
-    expect(report.provider.checks).toEqual([]);
-    expect(report.subsystems.checks.filter(({ name }) => name === "filesystem-watch")).toMatchObject([
+    expect(report.checks.filter((check) => check.section === "provider")).toEqual([]);
+    expect(report.checks.filter((check) => check.section === "filesystem-watch")).toMatchObject([
       { status: "fail", recovery: "manual", solutions: [{ kind: "manual" }, { kind: "manual" }] },
     ]);
     expect(allocations).toBe(1);
@@ -260,10 +260,12 @@ test("collector reports unexpected watch probe defects instead of hiding them as
     ),
   );
   // Then
-  expect(report.self?.checks).toContainEqual(
+  expect(report.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
     expect.objectContaining({ section: "filesystem-watch", status: "fail" }),
   );
-  expect(report.subsystems.checks.some(({ name }) => name === "filesystem-watch")).toBe(false);
+  expect(
+    report.checks.some((check) => check.section === "filesystem-watch" && check.name !== "doctor-self"),
+  ).toBe(false);
   expect(JSON.stringify(report)).not.toContain("private-probe-secret");
 });
 

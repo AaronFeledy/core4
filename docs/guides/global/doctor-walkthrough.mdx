@@ -15,7 +15,7 @@ read any recorded router watcher failure. You do not need a project app running.
 lando doctor
 ```
 
-Doctor includes a `global-app` section without bootstrapping a project app. If the provider section degrades, this disk-backed check can still run.
+Doctor includes a `global-app` section without bootstrapping a project app. If the provider section degrades, this disk-backed check can still run. In `lando doctor --format=json`, its checks are the `result.checks` entries whose `section` is `global-app`.
 
 This check reads the local generated files under the global root; it doesn't
 inspect the provider's containers. Use `lando global:status --format=json` for

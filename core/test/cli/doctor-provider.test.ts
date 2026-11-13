@@ -26,16 +26,11 @@ describe("diagnosePrimaryProvider Docker API versions", () => {
       }),
       runtimeVersion: undefined,
       bundleVersion: undefined,
-      selection: {
-        providerId: "docker",
-        source: "flag",
-        inputs: { flag: "docker", capabilityDefault: "lando" },
-      },
     });
 
     expect(diagnosis.check.status).toBe("fail");
     expect(diagnosis.runtimeMessage).toContain("1.43-1.44");
     expect(diagnosis.runtimeMessage).toContain("1.50-1.55");
-    expect(diagnosis.check.runtime?.message).toBe(message);
+    expect(diagnosis.runtime.message).toBe(message);
   });
 });

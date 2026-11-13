@@ -4,10 +4,10 @@ import { resilientDoctorReport } from "../../commands/doctor-bootstrap";
 import {
   type DoctorReport,
   DoctorReportSchema,
+  doctorCompletion,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../commands/doctor-report";
-import { countDoctorChecks } from "../../commands/doctor-report-counts";
 import type { RenderContext } from "../../renderer-boundary";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
@@ -92,9 +92,6 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
   run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
   render: (result, input, ctx) => renderDoctorReportForInput(result, input, ctx),
   // Findings retain the completed report; self failures also fail command completion.
-  completion: (result) =>
-    result.self === undefined
-      ? { ok: true, exitCode: countDoctorChecks(result).failed > 0 ? 1 : 0 }
-      : { ok: false, exitCode: 1 },
+  completion: doctorCompletion,
   suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
 };

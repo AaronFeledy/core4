@@ -4,14 +4,7 @@ import { sanitizeAppName } from "@lando/paths";
 import { PathsService } from "@lando/sdk/services";
 import { Clock, Duration, Effect, Option } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
-import type {
-  DoctorCheck,
-  DoctorProviderKind,
-  DoctorResult,
-  DoctorRuntime,
-  DoctorSelectionRecord,
-  DoctorSolution,
-} from "./doctor";
+import type { DoctorFinding, DoctorSectionResult, DoctorSkipInput, DoctorSolution } from "./doctor-contract";
 import {
   buildHostProxyAllowlistDoctorCheck,
   currentHostProxyAllowlistFreshness,
@@ -33,10 +26,6 @@ const DEFAULT_LIMITS: HostProxyDoctorLimits = {
 
 export interface HostProxyTransportDoctorOptions {
   readonly provider: HostProxyDoctorProvider;
-  readonly providerKind: DoctorProviderKind;
-  readonly runtimeStatus: string;
-  readonly runtime: DoctorRuntime;
-  readonly selection: DoctorSelectionRecord;
   readonly sourceEnv?: Record<string, string | undefined>;
   readonly limits?: HostProxyDoctorLimits;
   readonly runtimeIdle?: boolean;
@@ -50,17 +39,17 @@ const HOST_PROXY_STATE_REMEDIATION: DoctorSolution = {
 
 export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
   options: HostProxyTransportDoctorOptions,
-): Effect.fn.Return<DoctorResult, never, HostProxyDoctorFileSystem | PathsService> {
+): Effect.fn.Return<DoctorSectionResult, never, HostProxyDoctorFileSystem | PathsService> {
   const fileSystem = yield* HostProxyDoctorFileSystem;
   const paths = yield* PathsService;
   const { redactor } = yield* resolveSecretsRedactor({
     sourceEnv: { ...(options.sourceEnv ?? (yield* CliInvocation).env) },
   });
   const freshness = currentHostProxyAllowlistFreshness();
-  const checks: DoctorCheck[] = [];
-  const skipped: NonNullable<DoctorResult["skipped"]>[number][] = [];
-  const result = (): DoctorResult => ({ checks, ...(skipped.length === 0 ? {} : { skipped }) });
-  const allowlistCheck = buildHostProxyAllowlistDoctorCheck(freshness, options);
+  const checks: DoctorFinding[] = [];
+  const skipped: DoctorSkipInput[] = [];
+  const result = (): DoctorSectionResult => ({ checks, ...(skipped.length === 0 ? {} : { skipped }) });
+  const allowlistCheck = buildHostProxyAllowlistDoctorCheck(freshness);
   if (allowlistCheck !== undefined) checks.push(allowlistCheck);
   const limits = options.limits ?? DEFAULT_LIMITS;
   const deadline = (yield* Clock.currentTimeMillis) + limits.budgetMs;
@@ -68,7 +57,7 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
     .readRoot(paths.hostProxyRunRoot)
     .pipe(Effect.timeoutOption(Duration.millis(Math.max(0, deadline - (yield* Clock.currentTimeMillis)))));
   if (Option.isNone(rootStateOption)) {
-    skipped.push({ section: "host-proxy", status: "skipped", reason: "worker-root-budget-exhausted" });
+    skipped.push({ reason: "worker-root-budget-exhausted" });
     return result();
   }
   const rootState = rootStateOption.value;
@@ -86,18 +75,10 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
         name: "host-proxy-state",
         status: "warn",
         severity: "warn",
-        providerId: options.provider.id,
-        providerName: options.provider.displayName,
-        providerVersion: options.provider.version,
-        providerKind: options.providerKind,
-        runtimeStatus: options.runtimeStatus,
-        runtime: options.runtime,
-        capabilities: {},
         context: Object.fromEntries(
           Object.entries(rawContext).map(([key, value]) => [key, redactor.redactString(value)]),
         ),
         solutions: [HOST_PROXY_STATE_REMEDIATION],
-        selection: options.selection,
       });
       return result();
     }
@@ -115,7 +96,7 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
   for (const entry of workerEntries) {
     const remainingMs = deadline - (yield* Clock.currentTimeMillis);
     if (remainingMs <= 0) {
-      skipped.push({ section: "host-proxy", status: "skipped", reason: "worker-budget-exhausted" });
+      skipped.push({ reason: "worker-budget-exhausted" });
       break;
     }
     const runDir = resolve(paths.hostProxyRunRoot, entry.name);
@@ -130,17 +111,9 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
             name: "host-proxy-state",
             status: "warn",
             severity: "warn",
-            providerId: options.provider.id,
-            providerName: options.provider.displayName,
-            providerVersion: options.provider.version,
-            providerKind: options.providerKind,
-            runtimeStatus: options.runtimeStatus,
-            runtime: options.runtime,
-            capabilities: {},
             context: { workerState: "malformed", statePath: recordPath },
             solutions: [HOST_PROXY_STATE_REMEDIATION],
-            selection: options.selection,
-          } satisfies DoctorCheck;
+          } satisfies DoctorFinding;
         case "current": {
           const ownedRunDir = resolve(paths.hostProxyRunDir(state.record.appId, state.record.appRoot));
           if (ownedRunDir !== runDir) return undefined;
@@ -173,24 +146,23 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
     });
     const bounded = yield* diagnoseEntry.pipe(Effect.timeoutOption(Duration.millis(remainingMs)));
     if (Option.isNone(bounded)) {
-      skipped.push({ section: "host-proxy", status: "skipped", reason: "worker-budget-exhausted" });
+      skipped.push({ reason: "worker-budget-exhausted" });
       break;
     }
     if (bounded.value === undefined) continue;
-    if (bounded.value.status !== "skipped" && bounded.value.context.reachability === "skipped")
-      skipped.push({
-        section: `host-proxy-transport:${redactor.redactString(bounded.value.context.appId ?? "unknown")}`,
-        status: "skipped",
-        reason: `Provider ${options.provider.id} is idle; host-proxy reachability was not probed.`,
-      });
-    if (bounded.value.status === "skipped") {
+    if (!("name" in bounded.value)) {
       skipped.push({
         ...bounded.value,
-        section: redactor.redactString(bounded.value.section),
+        ...(bounded.value.check === undefined ? {} : { check: redactor.redactString(bounded.value.check) }),
         reason: redactor.redactString(bounded.value.reason),
       });
       continue;
     }
+    if (bounded.value.context.reachability === "skipped")
+      skipped.push({
+        check: `host-proxy-transport:${redactor.redactString(bounded.value.context.appId ?? "unknown")}`,
+        reason: `Provider ${options.provider.id} is idle; host-proxy reachability was not probed.`,
+      });
     checks.push({
       ...bounded.value,
       context: Object.fromEntries(
@@ -199,6 +171,6 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
     });
   }
   if (rootState.entries.filter((entry) => entry.isDirectory).length > workerEntries.length)
-    skipped.push({ section: "host-proxy", status: "skipped", reason: "worker-cap-exhausted" });
+    skipped.push({ reason: "worker-cap-exhausted" });
   return result();
 });
