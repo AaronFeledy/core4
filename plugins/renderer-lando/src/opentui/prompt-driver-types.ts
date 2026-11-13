@@ -26,6 +26,8 @@ export interface KeyEventLike {
   name?: string;
   sequence?: string;
   ctrl?: boolean;
+  /** Kitty keyboard protocol: the code point of the same physical key on the US layout. */
+  baseCode?: number;
   defaultPrevented?: boolean;
   preventDefault?(): void;
 }
