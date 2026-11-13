@@ -10,6 +10,7 @@ import { execDataFrames, execEofFrame, execSignalFrame } from "./exec-control.ts
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
 import { serviceContainerName } from "./plan.ts";
 import { interruptOnSignal, execStream as transportExecStream } from "./podman/exec-transport.ts";
+import { runObservationFromInspectState } from "./run-observation.ts";
 
 export interface ExecSupervisionOptions {
   readonly api?: EngineHttpApi;
@@ -23,6 +24,14 @@ export interface ExecSupervisionOptions {
 
 const Container = Schema.Struct({
   Id: Schema.NonEmptyString,
+  State: Schema.optionalKey(
+    Schema.Struct({
+      Status: Schema.optionalKey(Schema.String),
+      Running: Schema.optionalKey(Schema.Boolean),
+      Paused: Schema.optionalKey(Schema.Boolean),
+      Restarting: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   Mounts: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -55,6 +64,15 @@ export const supervisedExecStream = (
               : "Check the service container and provider connection, then retry.",
           ...(cause === undefined ? {} : { cause }),
         });
+      const notRunning = (containerState: string) =>
+        new ServiceExecError({
+          providerId: options.ctx.providerId,
+          operation: "exec",
+          service: target.service,
+          message: `Service ${target.service} is not running.`,
+          details: { containerState },
+          remediation: "Run lando start, then retry.",
+        });
       const { api, resolveContainerHelper, helperTarget } = options;
       if (
         api?.request === undefined ||
@@ -69,11 +87,14 @@ export const supervisedExecStream = (
         method: "GET",
         path: `/containers/${encodeURIComponent(serviceContainerName(plan, target.service))}/json`,
       });
+      if (response.status === 404) return yield* Effect.fail(notRunning("absent"));
       if (response.status < 200 || response.status >= 300)
         return yield* Effect.fail(failure("container-inspect"));
       const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(
         response.body,
       ).pipe(mapFailures((cause) => failure("container-inspect", cause)));
+      const run = runObservationFromInspectState(container.State).status;
+      if (run === "created" || run === "exited" || run === "dead") return yield* Effect.fail(notRunning(run));
       const helper = yield* resolveContainerHelper(helperTarget).pipe(
         mapFailures(
           (cause) =>
