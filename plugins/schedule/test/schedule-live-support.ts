@@ -3,7 +3,17 @@ import { resolve } from "node:path";
 import { InfoAppResult } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
-import { ScheduleRunResult as ScheduleRunResultSchema } from "../src/schemas.ts";
+import { ScheduleListResult, ScheduleRunResult as ScheduleRunResultSchema } from "../src/schemas.ts";
+
+/**
+ * Debian with named users and a timezone database. Its image declares
+ * `STOPSIGNAL SIGWINCH` for Apache, which the scheduler ignores, so this cell
+ * also proves a sidecar is not stopped with its parent image's signal.
+ */
+export const DEBIAN_IMAGE = "php:8.3-apache";
+/** No timezone database, so this cell proves the sidecar build installs one. */
+export const ALPINE_IMAGE = "alpine:3.22";
+export const IMAGES = [DEBIAN_IMAGE, ALPINE_IMAGE] as const;
 
 export interface ProviderCell {
   readonly id: "lando" | "docker";
@@ -97,6 +107,25 @@ export const RunEnvelope = Schema.Struct({
   result: ScheduleRunResultSchema,
   error: Schema.optional(Schema.Struct({ exitCode: Schema.optional(Schema.Number) })),
 });
+export const ListEnvelope = Schema.Struct({ ok: Schema.Literal(true), result: ScheduleListResult });
+export const LogsEnvelope = Schema.Struct({
+  envelope: Schema.Struct({
+    ok: Schema.Literal(true),
+    result: Schema.Struct({
+      lines: Schema.Array(
+        Schema.Struct({ service: Schema.String, stream: Schema.String, line: Schema.String }),
+      ),
+    }),
+  }),
+});
+export const StopEnvelope = Schema.Struct({
+  ok: Schema.Literal(true),
+  result: Schema.Struct({
+    shutdownObservations: Schema.Array(
+      Schema.Struct({ service: Schema.String, exitCode: Schema.optional(Schema.Number) }),
+    ),
+  }),
+});
 
 export const waitForText = async (path: string, timeoutMs: number, what: string): Promise<string> => {
   const deadline = performance.now() + timeoutMs;
@@ -118,10 +147,6 @@ export const reserveLoopbackPort = (): number => {
 
 export type ScheduleMode = "full" | "edited" | "none";
 
-/**
- * The zone authored on the parent service. Debian's php image ships tzdata;
- * Alpine's bare image has none, so that cell proves the sidecar build installs it.
- */
 const SCHEDULE_ZONE = "America/Chicago";
 
 /** Every abbreviation `date +%Z` can report for that zone as seasons change. */
@@ -145,11 +170,23 @@ const jobsFor = (mode: ScheduleMode, image: string): ReadonlyArray<string> => {
     "      - name: vendor",
     '        every: "@every 1s"',
     '        run: "if [ -f /app/vendor/marker ] && [ ! -f /app/vendor-seen.txt ]; then cp /app/vendor/marker /app/vendor-seen.txt; fi"',
+    "      - name: chatty",
+    '        every: "@every 1s"',
+    '        run: "echo chatty-out; echo chatty-err >&2"',
+    // Outlasts its one-second interval. A run that finds the lock started while
+    // another was going, which the scheduler must never allow.
+    "      - name: slow",
+    '        every: "@every 1s"',
+    "        run: |",
+    "          mkdir /tmp/slow-lock 2>/dev/null || { touch /app/overlapped.txt; exit 0; }",
+    "          if [ -f /app/slow-first.txt ]; then touch /app/slow-second.txt; else touch /app/slow-first.txt; fi",
+    "          sleep 3",
+    "          rmdir /tmp/slow-lock",
     "      - name: second",
     '        every: "@every 1s"',
     '        user: "1002"',
     `        run: "touch /app/other.txt && ${identityProbe("other")}"`,
-    ...(image === "php:8.3"
+    ...(image === DEBIAN_IMAGE
       ? [
           "      - name: named",
           '        every: "@every 1s"',
@@ -165,6 +202,9 @@ const jobsFor = (mode: ScheduleMode, image: string): ReadonlyArray<string> => {
     '        run: "echo failing-stdout; exit 3"',
   ];
 };
+
+/** Idles until either image's stop signal arrives, so no authored service waits out the grace period. */
+const IDLE_COMMAND = `    command: ["sh", "-c", "trap 'exit 0' TERM WINCH; while :; do sleep 1; done"]`;
 
 export const landofile = (input: {
   readonly appName: string;
@@ -186,7 +226,7 @@ export const landofile = (input: {
     "  web:",
     "    type: compose",
     `    image: ${input.image}`,
-    '    command: ["sleep", "infinity"]',
+    IDLE_COMMAND,
     '    user: "1001"',
     "    home: false",
     "    appMount: /app",
@@ -200,14 +240,14 @@ export const landofile = (input: {
     "  db:",
     "    type: compose",
     `    image: ${input.image}`,
-    '    command: ["sleep", "infinity"]',
+    IDLE_COMMAND,
     "    home: false",
     "    appMount: false",
     "",
   ].join("\n");
 
 export const sidecarNames = (image: string): ReadonlyArray<string> =>
-  image === "php:8.3"
+  image === DEBIAN_IMAGE
     ? ["web-schedule", "web-schedule-1002", "web-schedule-nobody"]
     : ["web-schedule", "web-schedule-1002"];
 

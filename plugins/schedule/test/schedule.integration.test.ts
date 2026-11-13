@@ -5,8 +5,13 @@ import { join } from "node:path";
 
 import { SUPERCRONIC_JOBS_DIRECTORY } from "../src/supercronic.ts";
 import {
+  DEBIAN_IMAGE,
+  IMAGES,
+  ListEnvelope,
+  LogsEnvelope,
   RunEnvelope,
   SCHEDULE_ZONE_ABBREVIATIONS,
+  StopEnvelope,
   cells,
   decodeLastLine,
   expectSuccess,
@@ -19,7 +24,7 @@ import {
 } from "./schedule-live-support.ts";
 
 for (const cell of cells) {
-  for (const image of ["php:8.3", "alpine:3.22"] as const) {
+  for (const image of IMAGES) {
     const skip = cell.available ? "" : ` (SKIP: ${cell.missing} is not set)`;
     test.skipIf(!cell.available)(
       `scheduled jobs run with native identities and survive schedule edits on ${cell.label} (${image})${skip}`,
@@ -75,7 +80,7 @@ for (const cell of cells) {
             "schedule:run must report the identity the timer used for the 1002 job",
           ).toEqual(other);
 
-          if (image === "php:8.3") {
+          if (image === DEBIAN_IMAGE) {
             const nobody = await timerIdentity("named", "nobody");
             expect(nobody[0], "a named user with a different group must still run as 65534").toBe("65534");
             expect(nobody[1], "nobody must run in group nogroup (65534)").toBe("65534");
@@ -130,10 +135,47 @@ for (const cell of cells) {
           }
           expect(byName.get("web-schedule")?.user, "the first group must keep the parent user").toBe("1001");
           expect(byName.get("web-schedule-1002")?.user, "the 1002 group must keep its user").toBe("1002");
-          if (image === "php:8.3") {
+          if (image === DEBIAN_IMAGE) {
             expect(byName.get("web-schedule-nobody")?.user, "the nobody group must keep its user").toBe(
               "nobody",
             );
+          }
+
+          const listed = decodeLastLine(
+            ListEnvelope,
+            expectSuccess(
+              await runCli(cell, appRoot, ["schedule:list", "--format=json"]),
+              `lando schedule:list on ${cell.label} (${image})`,
+            ).stdout,
+            "schedule:list",
+          );
+          expect(
+            [...new Set(listed.result.jobs.map((job) => job.sidecar))].sort(),
+            "every listed sidecar must be a service lando info lists",
+          ).toEqual([...expectedSidecars].sort());
+
+          await waitForText(join(appRoot, "slow-second.txt"), 90_000, "the second run of the slow job");
+          expect(
+            await Bun.file(join(appRoot, "overlapped.txt")).exists(),
+            "a run must not start while the previous run of the same job is going",
+          ).toBe(false);
+
+          const logged = decodeLastLine(
+            LogsEnvelope,
+            expectSuccess(
+              await runCli(cell, appRoot, ["logs", "--service", "web-schedule", "--format=json"]),
+              `lando logs --service web-schedule on ${cell.label} (${image})`,
+            ).stdout,
+            "lando logs",
+          ).envelope.result.lines;
+          for (const [stream, line] of [
+            ["stdout", "chatty-out"],
+            ["stderr", "chatty-err"],
+          ] as const) {
+            expect(
+              logged.some((entry) => entry.stream === stream && entry.line === line),
+              `the sidecar log must carry job ${stream} as the job wrote it`,
+            ).toBe(true);
           }
 
           for (const name of expectedSidecars) {
@@ -198,6 +240,27 @@ for (const cell of cells) {
             script.stdout,
             "the edited job command must replace the previous tick command",
           ).not.toContain("scheduled.txt");
+
+          if (image === DEBIAN_IMAGE) {
+            const stopped = decodeLastLine(
+              StopEnvelope,
+              expectSuccess(
+                await runCli(cell, appRoot, ["stop", "--format=json"], 180_000),
+                `lando stop on ${cell.label} (${image})`,
+              ).stdout,
+              "lando stop",
+            ).result.shutdownObservations;
+            expect(
+              stopped
+                .filter((entry) => expectedSidecars.includes(entry.service))
+                .map((entry) => entry.exitCode),
+              "every sidecar must exit on the stop signal instead of being killed after the grace period",
+            ).toEqual(expectedSidecars.map(() => 0));
+            expectSuccess(
+              await runCli(cell, appRoot, ["start"], 600_000),
+              `lando start after a stop on ${cell.label} (${image})`,
+            );
+          }
 
           await writeFile(join(appRoot, ".lando.yml"), landofile({ appName, image, port, mode: "none" }));
           expectSuccess(
