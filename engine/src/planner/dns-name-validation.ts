@@ -97,7 +97,6 @@ export const dnsNameIssues = (input: {
   const containerNames = new Map<string, string>();
   for (const claim of dnsNameClaims({ services: landofile.services, appSlug: input.appSlug })) {
     if (!claim.concrete && isBlocked(claim.path)) continue;
-    if (claim.network !== "default" && !Object.hasOwn(landofile.networks ?? {}, claim.network)) continue;
     if (claim.authored && !claim.name.includes(".") && /^lando-.*--/iu.test(claim.name)) {
       issues.push({
         path: claim.path,
@@ -107,6 +106,7 @@ export const dnsNameIssues = (input: {
           "Rename this service or DNS alias to a name that does not start with lando- and contain --.",
       });
     }
+    if (claim.network !== "default" && !Object.hasOwn(landofile.networks ?? {}, claim.network)) continue;
     const names = dnsNamespaces.get(claim.network) ?? new Map<string, string>();
     dnsNamespaces.set(claim.network, names);
     const other = names.get(claim.name.toLowerCase());

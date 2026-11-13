@@ -76,6 +76,21 @@ test.each([
   expect(validate({ services })).toMatchObject([{ path, rule: "landofile.dns-name" }]);
 });
 
+test("reports the reserved container DNS shape on an undeclared network", () => {
+  // Given an authored alias with the reserved shape on a network the app never declares.
+  // Then the reserved-shape issue is still reported; only the collision check is skipped.
+  expect(
+    validate({
+      services: { web: { networks: { missing: { aliases: ["lando-shop--api"] } } } },
+    }),
+  ).toMatchObject([
+    {
+      path: ["services", "web", "networks", "missing", "aliases", 0],
+      rule: "landofile.dns-name",
+    },
+  ]);
+});
+
 test("skips blocked aliases without suppressing independent DNS collisions", () => {
   expect(
     validate(
