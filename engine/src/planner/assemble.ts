@@ -450,10 +450,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     }
   }
 
-  const plannedServiceDrafts = yield* planServiceDrafts({
-    resolvedServices,
-    appRoot,
-  });
+  const plannedServiceDrafts = yield* planServiceDrafts({ resolvedServices, appRoot });
   const appFeatureResult = yield* applyPreparedAppFeatures(
     {
       appName,
@@ -466,6 +463,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     clones: appFeatureResult.clones,
     resolvedServices,
     appRoot,
+    appSlug,
   });
   const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
   for (const capability of appFeatureResult.requires.providerCapabilities) {

@@ -182,8 +182,11 @@ const networksWithoutAliases = (
       ) as ServiceConfig["networks"]);
 
 const claimKind = (claim: DnsNameClaim): string => {
-  if (claim.path.includes("hostnames")) return "hostname";
-  if (claim.path.includes("networks")) return "network alias";
+  // The claim kind is the service field that holds the name, never a segment
+  // value: a service may itself be named hostnames or networks.
+  const field = claim.path[2];
+  if (field === "hostnames") return "hostname";
+  if (field === "networks") return "network alias";
   return "service name";
 };
 
@@ -196,21 +199,25 @@ export const materializeClonedServices = (input: {
   readonly plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>;
   readonly clones: ReadonlyArray<RecordedClonedService>;
   readonly parentNetworksByName: ReadonlyMap<string, ServiceConfig["networks"]>;
+  /** App slug used to derive each clone's internal DNS name. */
+  readonly appSlug?: string | undefined;
   /** Every DNS name the app already claims, for case-insensitive clone-name rejection. */
   readonly reservedDnsNames?: ReadonlyArray<DnsNameClaim>;
 }): MaterializedClones => {
   if (input.clones.length === 0) return { drafts: [], parentNetworks: new Map() };
   const byName = new Map(input.plannedServiceDrafts.map((entry) => [entry.name, entry]));
   const reserved = new Map<string, DnsNameClaim>();
-  for (const claim of input.reservedDnsNames ?? []) {
+  const reserve = (claim: DnsNameClaim) => {
     const key = claim.name.toLowerCase();
     if (!reserved.has(key)) reserved.set(key, claim);
-  }
+  };
+  for (const claim of input.reservedDnsNames ?? []) reserve(claim);
   const seenCloneNames = new Set<string>();
   const drafts: PlannedServiceDraft[] = [];
   const parentNetworks = new Map<string, ServiceConfig["networks"] | undefined>();
   for (const request of input.clones) {
-    if (seenCloneNames.has(request.name) || byName.has(request.name)) {
+    const derived = input.appSlug === undefined ? undefined : `${request.name}.${input.appSlug}.internal`;
+    if (seenCloneNames.has(request.name.toLowerCase()) || byName.has(request.name)) {
       throw new AppFeatureCloneError({
         feature: request.feature,
         service: request.name,
@@ -222,7 +229,9 @@ export const materializeClonedServices = (input: {
         remediation: `Choose a free service name for the clone, or remove the extra ${request.name} service.`,
       });
     }
-    const collision = reserved.get(request.name.toLowerCase());
+    const collision = [request.name, ...(derived === undefined ? [] : [derived])]
+      .map((name) => reserved.get(name.toLowerCase()))
+      .find((claim) => claim !== undefined);
     if (collision !== undefined) {
       throw new AppFeatureCloneError({
         feature: request.feature,
@@ -256,7 +265,24 @@ export const materializeClonedServices = (input: {
         remediation: `Use an image that includes a shell, not distroless or scratch, or omit extra build steps on the clone of ${request.from}.`,
       });
     }
-    seenCloneNames.add(request.name);
+    seenCloneNames.add(request.name.toLowerCase());
+    reserve({
+      network: "default",
+      name: request.name,
+      service: request.name,
+      path: ["services", request.name],
+      concrete: true,
+      authored: true,
+    });
+    if (derived !== undefined)
+      reserve({
+        network: "default",
+        name: derived,
+        service: request.name,
+        path: ["services", request.name],
+        concrete: true,
+        authored: false,
+      });
     drafts.push(clonePlannedDraft(parent, request));
     parentNetworks.set(request.name, networksWithoutAliases(input.parentNetworksByName.get(request.from)));
   }
@@ -269,10 +295,12 @@ export const materializeClonedServiceDrafts = Effect.fnUntraced(function* (
     clones,
     resolvedServices,
     appRoot,
+    appSlug,
   }: {
     readonly clones: ReadonlyArray<RecordedClonedService>;
     readonly resolvedServices: ReadonlyArray<Pick<ResolvedService, "name" | "service">>;
     readonly appRoot: string;
+    readonly appSlug: string;
   },
 ) {
   const cloned = yield* Effect.try({
@@ -281,8 +309,10 @@ export const materializeClonedServiceDrafts = Effect.fnUntraced(function* (
         plannedServiceDrafts,
         clones,
         parentNetworksByName: new Map(resolvedServices.map((entry) => [entry.name, entry.service.networks])),
+        appSlug,
         reservedDnsNames: dnsNameClaims({
           services: Object.fromEntries(resolvedServices.map((entry) => [entry.name, entry.service])),
+          appSlug,
         }),
       }),
     catch: (error) => appFeatureError(appRoot, error),

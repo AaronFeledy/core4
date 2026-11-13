@@ -253,6 +253,8 @@ describe("cloned services", () => {
     ["hostname", ["services", "api", "hostnames", 0], "hostname"],
     ["network alias", ["services", "api", "networks", "default", "aliases", 1], "network alias"],
     ["service name", ["services", "Taken"], "service name"],
+    ["service named hostnames", ["services", "hostnames"], "service name"],
+    ["service named networks", ["services", "networks"], "service name"],
   ] as const)(
     "rejects a clone name that collides case-insensitively with an existing %s",
     (_label, path, kind) => {
@@ -303,6 +305,51 @@ describe("cloned services", () => {
       if (!(error instanceof AppFeatureCloneError)) return;
       expect(error.reason).toBe("unsupported-image");
       expect(error.image).toBe(image);
+    }
+  });
+
+  test("rejects two clones whose names differ only by case", () => {
+    try {
+      materializeClonedServices({
+        plannedServiceDrafts: [parentDraft()],
+        clones: [request({ name: "Timer" }), request({ name: "timer" })],
+        parentNetworksByName: new Map(),
+      });
+      throw new Error("expected a duplicate clone");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AppFeatureCloneError);
+      if (!(error instanceof AppFeatureCloneError)) return;
+      expect(error.reason).toBe("duplicate-clone");
+      expect(error.service).toBe("timer");
+    }
+  });
+
+  test("rejects a clone whose derived internal name is already claimed", () => {
+    const derived = "web-schedule.clones.internal";
+    try {
+      materializeClonedServices({
+        plannedServiceDrafts: [parentDraft()],
+        clones: [request()],
+        parentNetworksByName: new Map(),
+        appSlug: "clones",
+        reservedDnsNames: [
+          {
+            network: "default",
+            name: derived,
+            service: "api",
+            path: ["services", "api", "hostnames", 0],
+            concrete: false,
+            authored: true,
+          },
+        ],
+      });
+      throw new Error("expected a derived-name collision");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AppFeatureCloneError);
+      if (!(error instanceof AppFeatureCloneError)) return;
+      expect(error.reason).toBe("name-collision");
+      expect(error.message).toContain(derived);
+      expect(error.remediation).toContain(derived);
     }
   });
 

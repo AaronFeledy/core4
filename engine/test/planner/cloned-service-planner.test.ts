@@ -343,4 +343,35 @@ describe("cloned services in a planned app", () => {
     expect(failure.value.message).toContain("taken");
     expect(failure.value.remediation).toContain("taken");
   });
+
+  test("rejects a clone whose derived internal name is already claimed", async () => {
+    // Given an authored hostname equal to the clone's derived internal name.
+    const derived = "web-schedule.clones.internal";
+    const result = await Effect.runPromiseExit(
+      planWithClone(
+        {
+          name: "clones",
+          services: {
+            web,
+            api: { type: "cloned:3.22", hostnames: [derived] },
+          },
+        },
+        cloneFeature(cloneRequest),
+      ),
+    );
+
+    // Then planning fails at the clone and names the derived colliding name.
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") return;
+    const failure = Cause.findErrorOption(result.cause);
+    expect(Option.isSome(failure)).toBe(true);
+    if (Option.isNone(failure)) return;
+    expect(failure.value).toBeInstanceOf(LandofileValidationError);
+    if (!(failure.value instanceof LandofileValidationError)) return;
+    expect(failure.value.cause).toBeInstanceOf(AppFeatureCloneError);
+    if (!(failure.value.cause instanceof AppFeatureCloneError)) return;
+    expect(failure.value.cause.reason).toBe("name-collision");
+    expect(failure.value.cause.message).toContain(derived);
+    expect(failure.value.cause.remediation).toContain(derived);
+  });
 });
