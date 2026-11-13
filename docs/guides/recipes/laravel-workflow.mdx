@@ -160,7 +160,7 @@ lando schedule:list
 lando schedule:run laravel-scheduler
 ```
 
-The job runs as the same user as `lando artisan`, in a sidecar that shares the code and environment of `appserver`. `lando schedule:run` runs it once right away and prints its output. See [Run scheduled jobs](../services/schedule.mdx) for users, timezones, and logs.
+The job has no `user:`, so it runs as `appserver` itself does, the same identity a tooling command without `user` uses. It runs in a sidecar that shares the code and environment of `appserver`. `lando schedule:run` runs it once right away in that sidecar and prints its output when the job ends. See [Run scheduled jobs](../services/schedule.mdx) for users, timezones, and logs.
 
 ## Connect Eloquent and Redis
 
