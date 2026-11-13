@@ -55,6 +55,7 @@ export type SqlPlanService = {
   readonly extensions: Readonly<Record<string, unknown>>;
   readonly nonSqlCreds?: NonNullable<ServicePlan["nonSqlCreds"]>;
   readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
+  readonly provenance?: ServicePlan["provenance"];
 };
 
 export type SqlPlan = {
@@ -219,6 +220,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
         ? {}
         : { nonSqlCreds: Schema.decodeUnknownSync(ServiceCreds)(service.nonSqlCreds) }),
       storage,
+      ...(objectOrArray(service.provenance) ? { provenance: service.provenance } : {}),
     };
   }
   const committedLiteralDigests =

@@ -9,6 +9,25 @@ const planOf = (services: ReadonlyArray<{ readonly name: string; readonly type: 
 });
 
 describe("sqlCandidates", () => {
+  test("ignores a cloned companion of a database service", () => {
+    const plan = {
+      services: {
+        database: { name: "database", type: "mysql:8.0" },
+        "database-schedule": {
+          name: "database-schedule",
+          type: "mysql:8.0",
+          provenance: { clonedBy: { feature: "schedule.compile", from: "database" } },
+        },
+      },
+    };
+
+    expect(sqlCandidates(plan)).toEqual([
+      { kind: "server", name: "database", type: "mysql:8.0", family: "mysql" },
+    ]);
+    const selected = resolveSqlTarget(plan);
+    expect(Result.isSuccess(selected) && selected.success.name).toBe("database");
+  });
+
   test("returns only services whose type maps to a family, sorted by name", () => {
     const plan = planOf([
       { name: "cache", type: "redis:7" },
