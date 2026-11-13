@@ -108,9 +108,10 @@ services:
       - name: wp-cron
         every: "@every 5m"
         run: "cd /app && wp cron event run --due-now"
+        user: www-data
 ```
 
-The job has no `user:`, so it runs as `appserver` itself does, the same identity a tooling command without `user` uses. `lando schedule:run wp-cron` runs the due events right away, in the sidecar that runs the timed job. See [Run scheduled jobs](../services/schedule.mdx).
+The job runs as `www-data`, the user the site's PHP runs as, so files cron writes stay writable by the site. `lando schedule:run wp-cron` runs the due events right away, in the sidecar that runs the timed job. See [Run scheduled jobs](../services/schedule.mdx).
 
 ## Start from an existing site
 

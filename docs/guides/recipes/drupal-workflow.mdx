@@ -133,9 +133,10 @@ services:
       - name: drupal-cron
         every: "@hourly"
         run: "cd /app && vendor/bin/drush cron"
+        user: www-data
 ```
 
-The job uses the project-local Drush. It has no `user:`, so it runs as `appserver` itself does, the same identity a tooling command without `user` uses. `lando schedule:run drupal-cron` runs it once right away, in the sidecar that runs the timed job. See [Run scheduled jobs](../services/schedule.mdx).
+The job uses the project-local Drush and runs as `www-data`, the user the site's PHP runs as, so files cron writes stay writable by the site. `lando schedule:run drupal-cron` runs it once right away, in the sidecar that runs the timed job. See [Run scheduled jobs](../services/schedule.mdx).
 
 ## Import, export, and snapshot the database
 
