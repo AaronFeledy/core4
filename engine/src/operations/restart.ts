@@ -57,6 +57,7 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { type StartManagedScope, startApp } from "./start.ts";
+import { mergeRemovedServices, publishRemovalNotice, servicesHaltWillRemove } from "./start-convergence.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import {
@@ -290,7 +291,6 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const initialTarget = target ?? (yield* resolveDesiredAppTarget);
-    const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
     return yield* withAppMutationLock(
       appLockTarget(initialTarget.plan),
@@ -314,18 +314,23 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         });
         return yield* withLaunchVolumeCoordination({
           plan,
+          additionalPlans: placement.plan === undefined ? [] : [placement.plan],
           provider,
           stateStore,
           body: Effect.fnUntraced(function* () {
+            const events = yield* EventService;
             yield* claimAppDataIdentity(resolvedTarget);
             const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
-            if (pending !== null)
-              yield* startApp(
-                options.signal === undefined ? {} : { signal: options.signal },
-                resolvedTarget,
-                managed?.resume ?? managed,
-                { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
-              );
+            const resumed =
+              pending === null
+                ? undefined
+                : yield* startApp(
+                    options.signal === undefined ? {} : { signal: options.signal },
+                    resolvedTarget,
+                    managed?.resume ?? managed,
+                    { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
+                  );
+            const resumedRemoved = resumed?.servicesRemoved ?? [];
             const stopPreflight = yield* preflightStopApp(resolvedTarget);
             yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
             if (!retired) yield* ensureStartTransactionConsistent(resolvedTarget);
@@ -338,6 +343,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
                   provider,
                   preparedOverlays,
                 }),
+                ...(resumedRemoved.length === 0 ? {} : { servicesRemoved: resumedRemoved }),
               };
             }
             const preRestart = PreRestartEvent.make({
@@ -351,7 +357,9 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
             yield* publishPlacementVolumeTransitionNotices(placement, plan);
             yield* markStartMutation(plan);
+            const removedByHalt = yield* servicesHaltWillRemove(placement.plan, plan, provider);
             yield* haltAppRuntime({}, resolvedTarget, { skipInitEvents: true });
+            yield* publishRemovalNotice(events, removedByHalt);
             yield* managed?.onStopped ?? Effect.void;
             const result = yield* startApp(
               {
@@ -374,8 +382,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
               timestamp: DateTime.nowUnsafe(),
             });
             yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
-            return result;
-          }, Effect.provide(context)),
+            return {
+              ...result,
+              servicesRemoved: mergeRemovedServices(resumedRemoved, removedByHalt, result.servicesRemoved),
+            };
+          }),
         });
       }),
     );

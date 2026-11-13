@@ -65,7 +65,10 @@ import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
+import { convergeRemovedServices } from "./start-convergence.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
+import { retireUnusedGpgAgentWorker } from "./start-gpg-agent.ts";
+import { retireUnusedHostProxyWorker } from "./start-host-proxy.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import {
   type PreparedStartOverlays,
@@ -74,6 +77,7 @@ import {
   withAcquiredStartOverlays,
 } from "./start-overlays.ts";
 import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
+import { retireUnusedSshAgentWorker } from "./start-ssh-agent.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -304,6 +308,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       const builtPlan = yield* withBuildProvider(builds.build(applyPlan, execution.buildOptions), provider);
       const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
       const serviceList = Object.values(runtimePlan.services);
+      const servicesRemoved: string[] = [];
       const readyServices = yield* withGlobalConsumerAdmission(
         {
           plan: builtPlan,
@@ -326,6 +331,15 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
           if (pendingStart !== undefined) yield* pendingStart.advance("record-sessions");
           const applyAndInspect = Effect.gen(function* () {
             yield* verifyActiveVolumeCoordination(provider);
+            // Whole-app start names every service, so containers of services the Landofile no
+            // longer defines are pruned here, after accelerated-start preparation.
+            servicesRemoved.push(
+              ...(yield* convergeRemovedServices(runtimePlan, provider, {
+                app: ref,
+                events,
+                verifyAdmission: verifyGlobalConsumerAdmission,
+              })),
+            );
             if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
             yield* Effect.scoped(
               applyWithResolvedEnvironment(
@@ -333,6 +347,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 runtimePlan,
                 {
                   reconcile: resolvedOptions.reconcile ?? false,
+                  complete: true,
                   onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
                   ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                 },
@@ -341,6 +356,11 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
             );
             if (pendingStart !== undefined) yield* pendingStart.complete;
             yield* prepareGpgHome;
+            // Retire only after the apply replaced the previous realization, so a failed start
+            // keeps every worker the still-running app may still use.
+            yield* retireUnusedSshAgentWorker(plan, ref);
+            yield* retireUnusedGpgAgentWorker(plan, ref, preparedOverlays.gpgIntent);
+            yield* retireUnusedHostProxyWorker(plan, ref, provider.capabilities);
             return yield* Effect.forEach(serviceList, (service) =>
               inspectAppliedService({ provider, plan: runtimePlan, service: service.name }).pipe(
                 Effect.map((runtime) => {
@@ -409,7 +429,12 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
           })
         : undefined;
 
-      return { app: plan.name, servicesStarted, ...(checks === undefined ? {} : { checks }) };
+      return {
+        app: plan.name,
+        servicesStarted,
+        servicesRemoved,
+        ...(checks === undefined ? {} : { checks }),
+      };
     }),
   });
 });

@@ -2,6 +2,7 @@ import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises
 import { dirname } from "node:path";
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import { Clock, DateTime, Effect, Option, Schema, Semaphore } from "effect";
+import { makeLockReentryGuard } from "./lock-reentry.ts";
 import type { PrivateFileAccess } from "./private-file-access.ts";
 
 const LOCK_STALE_MS = 30_000;
@@ -11,6 +12,7 @@ const LOCK_ATTEMPTS = 200;
 // The file lock serializes processes, while this guard closes the release-unlink
 // race between fibers in the same process.
 const inProcessGuards = new Map<string, Semaphore.Semaphore>();
+const withLockReentryGuard = makeLockReentryGuard();
 
 const canonicalLockTarget = (file: string): Effect.Effect<string> =>
   Effect.promise(() => realpath(file).catch(() => file));
@@ -73,6 +75,25 @@ const lockError = (operation: string, lockPath: string, cause?: unknown): StateS
     path: lockPath,
     ...(cause === undefined ? {} : { cause }),
     remediation: "Another process holds the advisory state lock; retry once it releases.",
+  });
+
+/** A timed-out wait names the live owner, so the caller can tell a busy command from a leftover lock. */
+const heldLockError = (operation: string, lockPath: string, now: number): Effect.Effect<StateStoreError> =>
+  Effect.promise(async () => {
+    try {
+      const owner = await readLockRecord(lockPath);
+      if (owner === null) return lockError(operation, lockPath);
+      const heldMs = Math.max(0, now - owner.createdAt);
+      return new StateStoreError({
+        reason: "lock",
+        operation,
+        path: lockPath,
+        cause: { ownerPid: owner.pid, heldMs },
+        remediation: `Process ${owner.pid} has held this lock for ${Math.round(heldMs / 1000)}s. Wait for that Lando command to finish, then retry. If process ${owner.pid} is not a Lando command, remove ${lockPath} and retry.`,
+      });
+    } catch (cause) {
+      return lockError(operation, lockPath, cause);
+    }
   });
 
 export const makeLockToken = (): string =>
@@ -191,8 +212,9 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
           remediation: `Lock path ${lockPath} is ${attempt.detail}, so Lando cannot use it. Make sure no Lando command is running, remove ${lockPath}, and retry.`,
         }),
       );
-    if ((yield* Clock.currentTimeMillis) >= deadline)
-      return yield* Effect.fail(lockError(options.operation, lockPath));
+    const current = yield* Clock.currentTimeMillis;
+    if (current >= deadline)
+      return yield* Effect.fail(yield* heldLockError(options.operation, lockPath, current));
     if (attempt === "held" && !announced && options.onWait !== undefined) {
       announced = true;
       yield* options.onWait;
@@ -254,27 +276,31 @@ export const acquireAdvisoryLockAt = (
  */
 export const withAdvisoryLockUsing =
   (privateFileAccess: PrivateFileAccess, options: AdvisoryLockWaitOptions = {}) =>
-  <A, E>(
+  <A, E, R>(
     file: string,
     operation: string,
-    body: Effect.Effect<A, E>,
+    body: Effect.Effect<A, E, R>,
     callOptions: AdvisoryLockWaitOptions = {},
-  ): Effect.Effect<A, E | StateStoreError> =>
+  ): Effect.Effect<A, E | StateStoreError, R> =>
     canonicalLockTarget(file).pipe(
       Effect.flatMap((canonicalFile) => {
         const lockPath = `${canonicalFile}.lock`;
         const token = makeLockToken();
-        const fileLocked = Effect.acquireUseRelease(
-          acquire(lockPath, token, {
-            operation,
-            privateFileAccess,
-            ...options,
-            ...callOptions,
-          }),
-          () => body,
-          () => release(lockPath, token, privateFileAccess),
+        return guardFor(canonicalFile).pipe(
+          Effect.flatMap((semaphore) =>
+            withLockReentryGuard(canonicalFile, body, {
+              semaphore,
+              path: lockPath,
+              acquire: acquire(lockPath, token, {
+                operation,
+                privateFileAccess,
+                ...options,
+                ...callOptions,
+              }),
+              release: release(lockPath, token, privateFileAccess),
+            }),
+          ),
         );
-        return guardFor(canonicalFile).pipe(Effect.flatMap((guard) => guard.withPermits(1)(fileLocked)));
       }),
     );
 

@@ -75,6 +75,8 @@ Bare `restart` stops then starts the app, removing and recreating its containers
 
 `lando stop` also withdraws the app's published hostnames, so the proxy stops sending requests to containers that no longer exist. `lando start` publishes them again. `lando restart` and `lando rebuild` keep the hostnames published while they stop and start the app, and they stay published if the start that follows fails. If no router is selected, `lando stop` warns that the routes were left in place and still stops the app.
 
+`lando start`, `lando restart`, and `lando rebuild` also remove the containers of services you deleted from the Landofile; see [Remove a service](../tutorial/app-lifecycle.mdx#remove-a-service).
+
 All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
 The `stopped:` and `destroyed:` lines repeat how the runtime said each container ended, such as `app (exit 143)` after SIGTERM, and `--format=json` carries the same facts under `result.shutdownObservations`. Lando reports the code; it does not decide whether the stop was clean. Exit `0` is not proof your app finished its cleanup, and `137` alone is not proof Lando killed it. Only an explicit `OOMKilled` report or a failed inspection adds a warning. See [Read what stop reports](../tutorial/app-lifecycle.mdx#read-what-stop-reports).

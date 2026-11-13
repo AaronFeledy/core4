@@ -94,35 +94,33 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
   );
   const events = yield* EventService;
   const stateStore = yield* StateStore;
-  const context = yield* Effect.context<Effect.Services<typeof disposal.dispose>>();
   yield* withLaunchVolumeCoordination({
     plan: old,
     provider: oldProvider,
     stateStore,
-    body: () =>
-      Effect.gen(function* () {
-        yield* events.publish(
-          MessageInfoEvent.make({
-            body:
-              desired.kind === "ordinary"
-                ? `File sync settings for ${old.name} changed. Lando is returning pending edits to your project before switching to direct mounts.`
-                : `File sync settings for ${old.name} changed. Lando is flushing the current sync sessions and recreating them.`,
-            timestamp: DateTime.nowUnsafe(),
-          }),
-        );
-        yield* markStartMutation(old);
-        yield* disposal.quiesceRetained;
-        yield* disposal.dispose;
-        // The completed disposal marker survives a failure here. Retry retires state without restarting writers.
-        yield* oldProvider.destroy(
-          { app: old.id, plan: old },
-          {
-            volumes: false,
-            purgeCaches: false,
-            removeState: true,
-          },
-        );
-        yield* disposal.complete;
-      }).pipe(Effect.provide(context), Effect.provideService(FileSyncEngine, oldEngine)),
-  });
+    body: Effect.fnUntraced(function* () {
+      yield* events.publish(
+        MessageInfoEvent.make({
+          body:
+            desired.kind === "ordinary"
+              ? `File sync settings for ${old.name} changed. Lando is returning pending edits to your project before switching to direct mounts.`
+              : `File sync settings for ${old.name} changed. Lando is flushing the current sync sessions and recreating them.`,
+          timestamp: DateTime.nowUnsafe(),
+        }),
+      );
+      yield* markStartMutation(old);
+      yield* disposal.quiesceRetained;
+      yield* disposal.dispose;
+      // The completed disposal marker survives a failure here. Retry retires state without restarting writers.
+      yield* oldProvider.destroy(
+        { app: old.id, plan: old },
+        {
+          volumes: false,
+          purgeCaches: false,
+          removeState: true,
+        },
+      );
+      yield* disposal.complete;
+    }),
+  }).pipe(Effect.provideService(FileSyncEngine, oldEngine));
 });

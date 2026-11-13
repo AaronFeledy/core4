@@ -166,6 +166,12 @@ export interface ArtifactPullSpec {
 }
 
 export interface ApplyOptions {
+  /**
+   * When true, the plan names every service of the app, so the provider persists it (or
+   * `recordedPlan` when given) as the whole applied record instead of carrying previous
+   * services it does not name. `reconcile` only forces container recreation.
+   */
+  readonly complete?: boolean;
   readonly reconcile: boolean;
   readonly recordedPlan?: AppPlan;
   /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */

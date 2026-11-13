@@ -60,7 +60,7 @@ const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: U
     request.provider,
   );
   yield* verifyGlobalConsumerAdmission;
-  const routes = applyAppRoutes(request.router, request.plan, request.landofileRouter);
+  const routes = applyAppRoutes(request.router, request.plan, request.events, request.landofileRouter);
   yield* request.plan.routes.length === 0
     ? routes
     : withRoutesStartProgress({ events: request.events, plan: request.plan, work: routes });

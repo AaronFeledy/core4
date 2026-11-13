@@ -18,6 +18,7 @@ import { Effect, type Scope } from "effect";
 import { resolveContainerHelper } from "../composition.ts";
 import {
   type HostProxyRunLandoSession,
+  cleanupHostProxyRunLandoState,
   hostProxyRunLandoFeature,
   isHostProxyRunLandoEnvName,
 } from "../subsystems/host-proxy/transport.ts";
@@ -167,6 +168,11 @@ export const validateHostProxyOverlay = Effect.fnUntraced(function* (
   }
 });
 
+const hostProxyWorkerNeeded = (plan: AppPlan, capabilities: ProviderCapabilities): boolean =>
+  capabilities.hostReachability !== "none" &&
+  hostProxyEligibleServices(plan).length > 0 &&
+  (capabilities.hostProxy?.containerTargets.length ?? 0) > 0;
+
 export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
@@ -179,9 +185,7 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   } = {},
 ) {
   yield* Effect.context<ShellRunner | EventService | RedactionService>();
-  const eligibleServices = hostProxyEligibleServices(plan);
-  if (capabilities.hostReachability === "none" || eligibleServices.length === 0) return undefined;
-  if ((capabilities.hostProxy?.containerTargets.length ?? 0) === 0) return undefined;
+  if (!hostProxyWorkerNeeded(plan, capabilities)) return undefined;
   const shimTarget = yield* hostProxyShimTargetFor(capabilities);
   const landoPaths = makeLandoPaths(options);
   const platform = landoPaths.platform;
@@ -265,4 +269,15 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
     ...(options.managed === undefined ? {} : { managed: options.managed }),
   });
   return yield* options.use(session === undefined ? plan : yield* withHostProxyRunLando(plan, session));
+});
+
+/** Retires the recorded host-proxy worker when the whole desired plan no longer needs one. */
+export const retireUnusedHostProxyWorker = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  app: AppRef,
+  capabilities: ProviderCapabilities,
+) {
+  if (app.kind === "global" || plan.id === "global" || hostProxyWorkerNeeded(plan, capabilities)) return;
+  const paths = yield* PathsService;
+  yield* cleanupHostProxyRunLandoState(app, { ...paths.roots, platform: paths.platform });
 });
