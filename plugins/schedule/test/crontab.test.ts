@@ -75,8 +75,11 @@ describe("schedule crontab lines", () => {
     expect(everyToSupercronicSchedule("@every 5m")).toBe("*/5 * * * *");
     expect(everyToSupercronicSchedule("@every 1h")).toBe("0 * * * *");
     expect(everyToSupercronicSchedule("@every 12h")).toBe("0 */12 * * *");
+    expect(everyToSupercronicSchedule("@every 24h")).toBe("0 0 * * *");
     expect(everyToSupercronicSchedule("@hourly")).toBe("@hourly");
     expect(everyToSupercronicSchedule("@every 1h30m")).toBeUndefined();
+    expect(everyToSupercronicSchedule("@every 1500ms")).toBeUndefined();
+    expect(everyToSupercronicSchedule("@every 1s1ns")).toBeUndefined();
   });
 
   test("generated schedules never contain @every", () => {

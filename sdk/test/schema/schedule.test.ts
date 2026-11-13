@@ -26,6 +26,14 @@ describe("schedule Landofile schema", () => {
     expect(result._tag).toBe("Failure");
   });
 
+  test("Given a raw cron expression that is not exactly five fields, when decoding ScheduleConfig, then it fails", () => {
+    for (const every of ["0 0 * * * *", "0 0 0 * * * *", "0 0 * *"]) {
+      const result = strictDecode(ScheduleConfig, [job({ every })]);
+      expect(result._tag, every).toBe("Failure");
+      expect(JSON.stringify(result), every).toContain("5-field cron expression");
+    }
+  });
+
   test("Given a duplicate job name, when decoding ScheduleConfig, then it fails", () => {
     const result = strictDecode(ScheduleConfig, [job(), job({ run: "echo again" })]);
     expect(result._tag).toBe("Failure");
@@ -47,9 +55,11 @@ describe("schedule Landofile schema", () => {
       "@every 1h",
       "@every 2h",
       "@every 12h",
+      "@every 24h",
       "0 0 * * *",
+      "0 0 31 2 *",
     ]) {
-      expect(strictDecode(ScheduleConfig, [job({ name: "n", every })])._tag).toBe("Success");
+      expect(strictDecode(ScheduleConfig, [job({ name: "n", every })])._tag, every).toBe("Success");
     }
   });
 
@@ -57,8 +67,15 @@ describe("schedule Landofile schema", () => {
     expect(strictDecode(ScheduleConfig, [job({ every: "@every 1h30m" })])._tag).toBe("Failure");
   });
 
+  test("Given an @every duration with a sub-second part, when decoding ScheduleConfig, then it fails", () => {
+    for (const every of ["@every 1s1ns", "@every 1500ms", "@every 500us"]) {
+      const result = strictDecode(ScheduleConfig, [job({ every })]);
+      expect(result._tag, every).toBe("Failure");
+    }
+  });
+
   test("Given @every steps that do not divide the clock field, when decoding ScheduleConfig, then it fails with a 5-field cron suggestion", () => {
-    for (const every of ["@every 7s", "@every 7m", "@every 7h", "@every 5h"]) {
+    for (const every of ["@every 7s", "@every 7m", "@every 7h", "@every 5h", "@every 1500ms"]) {
       const result = strictDecode(ScheduleConfig, [job({ every })]);
       expect(result._tag).toBe("Failure");
       expect(JSON.stringify(result)).toContain("5-field cron expression");

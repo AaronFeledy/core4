@@ -7,6 +7,8 @@ export const posixQuote = (value: string): string => `'${value.replace(/'/gu, `'
 export const commandToShell = (run: CommandSpec): string =>
   typeof run === "string" ? run : run.map(posixQuote).join(" ");
 
+const EVERY_PREFIX = /^@every\s+/u;
+
 /**
  * Map a Landofile `every:` value onto a crontab schedule the pinned supercronic
  * binary accepts. `@every` is not valid supercronic syntax; whole seconds
@@ -15,13 +17,15 @@ export const commandToShell = (run: CommandSpec): string =>
 export const everyToSupercronicSchedule = (every: string): string | undefined => {
   const trimmed = every.trim();
   const ms = parseEveryDurationMs(trimmed);
-  if (ms === undefined) return trimmed;
+  // A malformed @every is not a schedule the scheduler understands either.
+  if (ms === undefined) return EVERY_PREFIX.test(trimmed) ? undefined : trimmed;
   if (!isMappableEveryDurationMs(ms)) return undefined;
   const seconds = ms / 1000;
   if (seconds < 60) return seconds === 1 ? "* * * * * * *" : `*/${seconds} * * * * * *`;
   const minutes = seconds / 60;
   if (minutes < 60) return minutes === 1 ? "* * * * *" : `*/${minutes} * * * *`;
   const hours = minutes / 60;
+  if (hours === 24) return "0 0 * * *";
   return hours === 1 ? "0 * * * *" : `0 */${hours} * * *`;
 };
 

@@ -4,6 +4,10 @@ import { executionSiteKey } from "./execution-site.ts";
 import { layerMerge } from "./layer-merge.ts";
 import { CommandSpec, ContainerUser } from "./primitives.ts";
 
+// ============================================================================
+// Cron cadence: named schedules, clock-aligned @every steps, 5-field cron.
+// ============================================================================
+
 const REPLACE = { kind: "replace" } as const;
 
 const CRON_MACROS = {
@@ -18,6 +22,7 @@ const CRON_MACROS = {
 
 const GO_DURATION_PIECE = /^(?:(?:0|[1-9]\d*)(?:ns|us|µs|μs|ms|s|m|h))+$/u;
 const EVERY_PREFIX = /^@every\s+/u;
+const CRON_FIELD_COUNT = 5;
 
 const cronExpressionMessage =
   'Expected a 5-field cron expression, a named schedule (@hourly, @daily, @weekly, @monthly, @yearly, @annually, @midnight), or @every with seconds or minutes that divide 60, or hours that divide 24, such as "1s", "5m", or "1h".';
@@ -28,7 +33,9 @@ const everyStepMessage =
 /**
  * Parse a Go duration used by `@every`. Accepts a value with or without the
  * `@every ` prefix and returns its positive length in milliseconds, or
- * `undefined` when the text is not one positive Go duration.
+ * `undefined` when the text is not one positive Go duration with no
+ * sub-millisecond remainder: the crontab can only express whole seconds, so
+ * truncating `1s1ns` to `1s` would schedule something the author never wrote.
  */
 export const parseEveryDurationMs = (value: string): number | undefined => {
   const body = value.trim().replace(EVERY_PREFIX, "");
@@ -55,9 +62,8 @@ export const parseEveryDurationMs = (value: string): number | undefined => {
                 : 1n;
     totalNs += amount * factor;
   }
-  if (consumed !== body.length || totalNs <= 0n) return undefined;
-  const ms = totalNs / 1_000_000n;
-  return ms > 0n ? Number(ms) : 1;
+  if (consumed !== body.length || totalNs <= 0n || totalNs % 1_000_000n !== 0n) return undefined;
+  return Number(totalNs / 1_000_000n);
 };
 
 /**
@@ -75,8 +81,16 @@ export const isMappableEveryDurationMs = (ms: number): boolean => {
   if (minutes < 60) return 60 % minutes === 0;
   if (minutes % 60 !== 0) return false;
   const hours = minutes / 60;
-  return Number.isInteger(hours) && hours >= 1 && hours < 24 && 24 % hours === 0;
+  return Number.isInteger(hours) && hours >= 1 && hours <= 24 && 24 % hours === 0;
 };
+
+/**
+ * Effect's Cron parser also accepts a leading seconds field, but the pinned
+ * scheduler reads six fields as five plus a year, so a raw expression must be
+ * exactly five fields for validation to mean what the scheduler does.
+ */
+const hasFiveCronFields = (value: string): boolean =>
+  value.split(/\s+/u).filter((field) => field.length > 0).length === CRON_FIELD_COUNT;
 
 const cronExpressionCheck = (value: string): string | undefined => {
   const trimmed = value.trim();
@@ -86,7 +100,9 @@ const cronExpressionCheck = (value: string): string | undefined => {
     if (ms === undefined) return cronExpressionMessage;
     return isMappableEveryDurationMs(ms) ? undefined : everyStepMessage;
   }
-  return Result.isSuccess(Cron.parse(trimmed)) ? undefined : cronExpressionMessage;
+  return hasFiveCronFields(trimmed) && Result.isSuccess(Cron.parse(trimmed))
+    ? undefined
+    : cronExpressionMessage;
 };
 
 /**
@@ -110,6 +126,10 @@ export const CronExpression = Schema.String.check(
   message: cronExpressionMessage,
 });
 export type CronExpression = typeof CronExpression.Type;
+
+// ============================================================================
+// Job identity: the name, cadence, command, and optional container user.
+// ============================================================================
 
 const SCHEDULE_JOB_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/u;
 
@@ -141,6 +161,10 @@ export const ScheduleJob = Schema.Struct({
   description: "One scheduled command on a service, identified by a name unique within that service.",
 });
 export type ScheduleJob = typeof ScheduleJob.Type;
+
+// ============================================================================
+// Service schedule list: replacing array with unique job names.
+// ============================================================================
 
 const uniqueScheduleJobNames = Schema.makeFilter((jobs: ReadonlyArray<ScheduleJob>) => {
   const seen = new Set<string>();

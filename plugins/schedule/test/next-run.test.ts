@@ -29,6 +29,11 @@ describe("schedule next run", () => {
     expect(nextIso("@daily", "2026-11-03T23:30:00Z", "Europe/Berlin")).toBe("2026-11-04T23:00:00.000Z");
   });
 
+  test("@every 24h compiles to daily midnight in the job zone", () => {
+    expect(nextIso("@every 24h", "2026-11-03T12:02:00Z")).toBe("2026-11-04T00:00:00.000Z");
+    expect(nextIso("@every 24h", "2026-11-03T22:30:00Z", "America/Chicago")).toBe("2026-11-04T06:00:00.000Z");
+  });
+
   test("a POSIX TZ colon still resolves the next run in its zone", () => {
     expect(nextIso("@daily", "2026-11-03T23:30:00Z", scheduleTimezone({ TZ: ":America/Chicago" }))).toBe(
       "2026-11-04T06:00:00.000Z",
@@ -40,6 +45,7 @@ describe("schedule next run", () => {
 
   test("unrepresentable durations and invalid expressions have no next run", () => {
     expect(nextIso("@every 1h30m", "2026-11-03T12:00:00Z")).toBeUndefined();
+    expect(nextIso("@every 1500ms", "2026-11-03T12:00:00Z")).toBeUndefined();
     expect(nextIso("not a cron", "2026-11-03T12:00:00Z")).toBeUndefined();
     expect(formatNextRun(undefined)).toBeUndefined();
   });
