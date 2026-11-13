@@ -47,6 +47,11 @@ describe("schedule next run", () => {
     expect(nextIso("@every 1h30m", "2026-11-03T12:00:00Z")).toBeUndefined();
     expect(nextIso("@every 1500ms", "2026-11-03T12:00:00Z")).toBeUndefined();
     expect(nextIso("not a cron", "2026-11-03T12:00:00Z")).toBeUndefined();
+  });
+
+  test("a calendar the cron can never reach has no next run instead of failing the listing", () => {
+    expect(nextIso("0 0 31 2 *", "2026-11-03T12:00:00Z")).toBeUndefined();
+    expect(nextIso("0 0 31 2 *", "2026-11-03T12:00:00Z", "America/Chicago")).toBeUndefined();
     expect(formatNextRun(undefined)).toBeUndefined();
   });
 });
