@@ -534,7 +534,7 @@ lando stamp abc1234
       <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
     </Step>
     <Step name="refuse-lone-script-version">
-      <Verify command="lando wipe --version --format=json" expectExit={1} expect={{ stdout: { regex: "ToolingInputError[\\s\\S]*\"field\":\\s*\"version\"" } }} />
+      <Verify command="lando wipe --version --format=json" expectExit={2} expect={{ stdout: { regex: "ToolingInputError[\\s\\S]*\"field\":\\s*\"version\"" } }} />
       <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
     </Step>
     <Step name="forward-help-after-separator">

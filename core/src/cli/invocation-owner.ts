@@ -153,7 +153,7 @@ const pluginTokenFor = (
 };
 
 /**
- * Resolve the one owner of this invocation in today's routing order: canonical
+ * Resolve the one owner of this invocation in routing order: canonical
  * built-in, leading-flag pre-check, guarded routing, host-proxy admission
  * before any plugin row loads, then the built-in alias and plugin fallbacks.
  */

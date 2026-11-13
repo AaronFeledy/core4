@@ -341,7 +341,7 @@ test.each([true, false])(
         expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
         expect(compiledResult.stdout).toBe("dynamic-version-ok --version --format=json\n");
       } else {
-        expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(1);
+        expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(2);
         expect(lastEnvelope(compiledResult.stdout)).toMatchObject({
           command: "app:inspect-argv",
           ok: false,
@@ -595,6 +595,14 @@ const writeFlagOwnershipTasks = async (fixture: RouterFixture): Promise<void> =>
       "    flags:",
       "      label:",
       "        description: Release label",
+      "  stamp:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      version:",
+      "        description: Version to stamp",
+      "      help:",
+      "        description: Help topic",
       "  wrap:",
       '    service: ":host"',
       "    cmd: echo WRAP",
@@ -729,6 +737,29 @@ test("a declared string flag owns --help as its value slot", async () => {
   }
 }, 60_000);
 
+test.each([
+  { argv: ["stamp", "--version", "--renderer=bogus"], field: "version" },
+  { argv: ["stamp", "--help", "--format=csv"], field: "help" },
+])(
+  "a declared value flag named like a Lando control owns $argv.2 as its value slot",
+  async ({ argv, field }) => {
+    const fixture = await makeFixture(`flag-${field}-slot`);
+    try {
+      await writeFlagOwnershipTasks(fixture);
+      const result = await runSource(fixture, ["--format=json", ...argv]);
+      expect(result.exitCode).toBe(1);
+      expect(lastEnvelope(result.stdout)).toMatchObject({
+        ok: false,
+        command: "app:stamp",
+        error: { _tag: "ToolingInputError", field },
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+  60_000,
+);
+
 test("machine tooling help carries flag placement for ordinary, declaring, and wrapper tasks", async () => {
   const fixture = await makeFixture("flag-placement");
   try {
@@ -823,14 +854,18 @@ test("a task's later selection flag wins attribution and env/config failures sta
 
     fixture.env.LANDO_RENDERER = "bogus";
     const viaEnv = await runSource(fixture, ["--format=json", "build", "--jq=x"]);
+    expect(viaEnv.exitCode).toBe(2);
+    expect(lastEnvelope(viaEnv.stdout).error).toMatchObject({ _tag: "RendererSelectionError" });
     const envRemediation = String(
       (lastEnvelope(viaEnv.stdout).error as { remediation?: unknown }).remediation,
     );
-    expect(envRemediation).not.toContain("is read by Lando");
+    expect(envRemediation).not.toContain("wrapper: true");
     fixture.env.LANDO_RENDERER = "lando";
 
     const beforeName = await runSource(fixture, ["--format=json", "--renderer=bogus", "build"]);
-    expect(`${beforeName.stdout}\n${beforeName.stderr}`).not.toContain("is read by Lando");
+    expect(beforeName.exitCode).toBe(2);
+    expect(lastEnvelope(beforeName.stdout).error).toMatchObject({ _tag: "RendererSelectionError" });
+    expect(`${beforeName.stdout}\n${beforeName.stderr}`).not.toContain("wrapper: true");
 
     const wrapper = await runSource(fixture, ["--format=json", "wrap", "--renderer=bogus"]);
     expect(wrapper.exitCode, wrapper.stderr).toBe(0);

@@ -9,6 +9,7 @@ import { parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import { specTailKind } from "./flag-claims";
 import { normalizeCliFlagTokens } from "./flag-tokens";
 import { validateCommandCliFlags } from "./flag-value-validation";
+import type { ResultFormat } from "./format-flags";
 import type { CommandTokens } from "./invocation";
 import { pluginFlagDefinitions } from "./plugin-flag-definitions";
 
@@ -30,6 +31,8 @@ export const pluginOwnedCliFlagError = (
 export const pluginOwnedCommandInputFromArgv = (
   spec: Pick<ExecutableCommandSpec, "flags" | "args" | "strict">,
   tokens: CommandTokens,
+  /** Lando's selected result format; a spec that declares `format` or `json` reads it there. */
+  resultFormat?: ResultFormat,
 ): {
   readonly flags: Readonly<Record<string, unknown>>;
   readonly args: Readonly<Record<string, unknown>>;
@@ -49,6 +52,10 @@ export const pluginOwnedCommandInputFromArgv = (
       setParsedFlag(target, flagName, value, definition);
     },
   });
+  if (resultFormat !== undefined) {
+    if (spec.flags?.format !== undefined) flags.format = resultFormat;
+    if (spec.flags?.json !== undefined) flags.json = resultFormat === "json";
+  }
   const tail = tokens.argv.slice(tokens.tailStart);
   const positionals = [...leadPositionals, ...(tail[0] === "--" ? tail.slice(1) : tail)];
   const argNames = Object.keys(spec.args ?? {});

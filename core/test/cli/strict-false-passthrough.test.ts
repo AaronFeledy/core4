@@ -56,13 +56,6 @@ describe("strict:false catalog passthrough", () => {
     expect(compiledCommandInputFromArgv(commandId, argv).parsedArgv).toEqual(expected);
   });
 
-  const lastEnvelope = (stdout: string) => {
-    const lines = stdout.trim().split("\n");
-    const last = JSON.parse(lines[lines.length - 1] ?? "{}");
-    // Streaming commands end with a result frame that wraps the envelope.
-    return last._tag === "result" ? last.envelope : last;
-  };
-
   test.each([
     ["exec ls --help", ["--format=json", "exec", "ls", "--help"], "app:exec"],
     ["ssh ls --version", ["--format=json", "ssh", "ls", "--version"], "app:ssh"],
@@ -70,7 +63,7 @@ describe("strict:false catalog passthrough", () => {
   ])("Lando flags inside the command tail of %s belong to the command", async (_name, argv, commandId) => {
     const result = await runSourceCli(argv);
     // The command ran (and failed outside an app) instead of printing Lando help or version.
-    expect(lastEnvelope(result.stdout)).toMatchObject({ command: commandId, ok: false });
+    expect(envelopeOf(result.stdout)).toMatchObject({ command: commandId, ok: false });
   });
 
   test.each([

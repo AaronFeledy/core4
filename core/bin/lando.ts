@@ -14,7 +14,7 @@ import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/prox
 import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { resolveLandoRoots, updateHandoffDir } from "@lando/paths";
 
-import { hasDiagnosticFlag } from "../src/cli/lando-flags";
+import { hasDiagnosticFlag, landoControlRole } from "../src/cli/lando-flags";
 import { installProcessLifecycle } from "../src/cli/process-lifecycle";
 import { runWithProcessSignalReraise } from "../src/cli/process-signals";
 import { cliUserArgv } from "../src/cli/user-argv";
@@ -63,7 +63,9 @@ const main = async (): Promise<void> => {
     // Only single-token forms can be remapped by commandAliases; multi-token
     // registered paths such as `recipes list` stay on the cold path in-app.
     const appSensitiveAlias =
-      argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "");
+      argv.length === 1 &&
+      (["version", "shellenv", "recipes"].includes(argv[0] ?? "") ||
+        landoControlRole(argv[0] ?? "") === "help");
     const discovery = { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() };
     const hasAppContext = async (): Promise<boolean> =>
       (await discovery.resolver.resolve(discovery.cwd)).kind === "found";
@@ -73,9 +75,7 @@ const main = async (): Promise<void> => {
     // Every text form of the version command prints the bare embedded version.
     const versionRequest =
       argv.length === 1 &&
-      (argv[0] === "--version" ||
-        argv[0] === "-V" ||
-        argv[0] === "-v" ||
+      (landoControlRole(argv[0] ?? "") === "version" ||
         argv[0] === "meta:version" ||
         (argv[0] === "version" && !appAliasContext));
 
@@ -98,7 +98,7 @@ const main = async (): Promise<void> => {
     if (
       coldPathAllowed &&
       argv.length === 1 &&
-      (argv[0] === "--help" || argv[0] === "-h") &&
+      landoControlRole(argv[0] ?? "") === "help" &&
       !appAliasContext
     ) {
       const { renderColdRootHelp } = await import("../src/cli/cold-path-output");

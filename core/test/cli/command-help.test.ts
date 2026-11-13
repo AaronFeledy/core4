@@ -172,13 +172,20 @@ describe("renderCommandHelp", () => {
     // When per-command help is rendered
     const help = renderCommandHelp(entry);
 
-    // Then the locked footer documents --json [fields] and --jq as universal,
-    // and names the result formats this command actually honors.
-    expect(help).toContain("--json [fields]");
-    expect(help).toContain("--jq");
-    expect(help).toContain(
-      "Global flags (--format (text, json, yaml), --json [fields], --jq, --renderer, --verbose, --log-level, --debug, --trace) work anywhere before `--`.",
-    );
+    // Then the locked footer lists every Lando flag and this command's formats.
+    const footer = help.split("\n").at(-1) ?? "";
+    for (const token of [
+      "--format (text, json, yaml)",
+      "--json [fields]",
+      "--jq",
+      "--renderer",
+      "--verbose",
+      "--log-level",
+      "--debug",
+      "--trace",
+    ]) {
+      expect(footer).toContain(token);
+    }
   });
 
   test("the footer names the command-tail placement for exec", () => {
@@ -188,8 +195,7 @@ describe("renderCommandHelp", () => {
     // When per-command help is rendered
     const help = renderCommandHelp(entry);
 
-    // Then the footer places Lando's flags before the command to run
-    expect(help).toContain("go before the command to run");
+    // Then the footer's example places Lando's flags before the command to run
     expect(help).toContain("lando exec --format=json <command>");
   });
 
@@ -200,8 +206,7 @@ describe("renderCommandHelp", () => {
     // When per-command help is rendered
     const help = renderCommandHelp(entry);
 
-    // Then the footer places Lando's flags only before the command name
-    expect(help).toContain("go only before the command name");
+    // Then the footer's example places Lando's flags only before the command name
     expect(help).toContain("lando --format=json bun <args...>");
   });
 
@@ -209,9 +214,9 @@ describe("renderCommandHelp", () => {
     // Given logs, which authors --tail; Lando's own --tail is reserved, not a feature
     const help = renderCommandHelp(requireBuiltIn("logs"));
 
-    // Then help lists the flag and says nothing about a Lando flag of that name
+    // Then help lists the flag and emits no placement example for a Lando flag
     expect(help).toContain("--tail <integer>");
-    expect(help).not.toContain("is this command's flag");
+    expect(help).not.toContain("as in `lando");
   });
 
   test("the footer omits the shared-spelling line when nothing is shared", () => {
@@ -219,7 +224,7 @@ describe("renderCommandHelp", () => {
     const help = renderCommandHelp(requireBuiltIn("info"));
 
     // Then no command-owned line appears
-    expect(help).not.toContain("is this command's flag");
+    expect(help).not.toContain("as in `lando");
   });
 
   test("renders spec.examples when the command declares them", () => {

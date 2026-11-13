@@ -134,7 +134,7 @@ export const pluginOwnedCommandEffect = <A, E, R>(
   const tokens = splitCommandTokensForStandalone(spec, argv);
   const flagError = pluginOwnedCliFlagError(spec, tokens);
   if (flagError !== undefined) return Effect.fail(flagError);
-  const parsed = pluginOwnedCommandInputFromArgv(spec, tokens);
+  const parsed = pluginOwnedCommandInputFromArgv(spec, tokens, options.resultFormat);
   return validateEventCommandInput(spec, parsed).pipe(
     Effect.flatMap((input) =>
       withGrantedStdio(spec, input, options).pipe(
@@ -187,7 +187,7 @@ const runPluginOwnedCommand = (
   runWithProcessAbortSignal(
     async (signal) => {
       await import("../runtime/bundled-plugins");
-      const parsed = pluginOwnedCommandInputFromArgv(spec, tokens);
+      const parsed = pluginOwnedCommandInputFromArgv(spec, tokens, activeResultFormat);
       const request = commandStdioRequest(spec, parsed.args);
       const flagError = pluginOwnedCliFlagError(spec, tokens);
       if (flagError !== undefined) {

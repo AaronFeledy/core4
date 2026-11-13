@@ -2,7 +2,7 @@ import type { ToolingInputDeclaration } from "@lando/sdk/schema";
 
 import { type FlagDefinition, flagDefinitionsByToken, normalizeCliFlagTokens } from "./flag-tokens";
 import type { CommandClaim, OwnerPolicy } from "./invocation";
-import { LANDO_FLAGS, RESERVED_OUTPUT_SPELLINGS } from "./lando-flags";
+import { LANDO_FLAGS, RESERVED_OUTPUT_SPELLINGS, landoControlRole } from "./lando-flags";
 
 /**
  * What a command's argv claims, independent of where its owner came from.
@@ -83,7 +83,7 @@ const toolingFlagFor = (
 /**
  * Tooling tasks and scripts: a declared spelling owns its token and, when it
  * takes a value, the adjacent one. A declared `help` flag or `h` alias owns
- * both help spellings; `--version`/`-v` are always the task's.
+ * both help spellings; Lando's version spellings are always the task's.
  */
 export const toolingFlagClaims = (
   declaration: ToolingInputDeclaration | undefined,
@@ -91,12 +91,14 @@ export const toolingFlagClaims = (
   const flags = declaration?.flags ?? [];
   const declaresHelp = flags.some((flag) => flag.name === "help" || flag.alias === "h");
   return (token, next) => {
-    if (token === "--version" || token === "-v") return { takesNext: false };
-    if (declaresHelp && (token === "--help" || token === "-h")) return { takesNext: false };
     const declared = toolingFlagFor(token, flags);
-    if (declared === undefined) return undefined;
-    if (declared.boolean || token.includes("=")) return { takesNext: false };
-    return { takesNext: next !== undefined && next !== "--" };
+    if (declared !== undefined) {
+      if (declared.boolean || token.includes("=")) return { takesNext: false };
+      return { takesNext: next !== undefined && next !== "--" };
+    }
+    const control = landoControlRole(token);
+    if (control === "version" || (control === "help" && declaresHelp)) return { takesNext: false };
+    return undefined;
   };
 };
 

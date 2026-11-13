@@ -2,20 +2,12 @@ import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/w
 import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import { type DiscoveryOperation, runDiscoveryOperation } from "@lando/landofile/operation-scope";
 import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
-import {
-  JsonJqConflictError,
-  JsonProjectionError,
-  LogLevelSelectionError,
-  NotImplementedError,
-  RendererSelectionError,
-  ToolingInputError,
-} from "@lando/sdk/errors";
+import { ToolingInputError } from "@lando/sdk/errors";
 import { Cause, Effect, Layer } from "effect";
 import { type CliInvocationContext, processInvocationContext } from "../runtime/invocation-context";
 import { rejectCommandCliArgValues } from "./arg-value-validation";
 import { notImplementedErrorForCommand, resolveBuiltInCommand } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
-import { selectionOwnershipHint } from "./cli-help";
 import { isHelpTopic } from "./cold-path-output";
 import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
@@ -24,8 +16,6 @@ import { COMPILED_DECODER_ASTS } from "./compiled-decoder-targets";
 import { printToolingHelp } from "./compiled-help";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import {
-  activeJq,
-  activeJsonControl,
   activeRendererMode,
   activeResultFormat,
   commandErrorMessage,
@@ -34,9 +24,6 @@ import {
   resetActiveCommandInvocation,
   runCompiledCommand,
   setActiveCommandId,
-  setActiveDeprecationWarnings,
-  setActiveJq,
-  setActiveJsonControl,
   setActiveRendererMode,
   setActiveResultFormat,
 } from "./compiled-runtime";
@@ -46,13 +33,7 @@ import {
   routeResolvedTooling,
 } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
-import {
-  DEFAULT_RESULT_FORMAT,
-  extractFormatFlags,
-  isEnvelopeResultFormat,
-  resolveJsonControl,
-  resolveResultFormat,
-} from "./format-flags";
+import { isEnvelopeResultFormat } from "./format-flags";
 import { install as installCompiledDecoders } from "./generated/compiled-decoders.mjs";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./generated/host-proxy-allowlist";
 import { typeableName } from "./help-names";
@@ -67,12 +48,17 @@ import { runHostProxyCallProcess } from "./host-proxy/call-runtime";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { resolveInvocationHead, splitInvocation } from "./invocation";
 import { type InvocationOwner, ownerPolicy, resolveInvocationOwner } from "./invocation-owner";
-import { type LandoFlagMatch, failedLandoFlag, matchLandoFlag, scanLandoFlags } from "./lando-flags";
+import {
+  applyInvocationSelections,
+  lastFormatFlag,
+  rejectJsonControlConflicts,
+} from "./invocation-selections";
+import { matchLandoFlag } from "./lando-flags";
 import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
-import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
-import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-resolution";
+import { tryPluginCommandHelp } from "./plugin-command-help";
+import { readConfigCliGlobals } from "./renderer-mode-resolution";
 import { setActiveLogLevel } from "./renderer-mode-state";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { runBuiltInCommand } from "./run-built-in-command";
@@ -86,8 +72,9 @@ import {
 import { dispatchPluginUnavailable, tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveTopLevelAliases } from "./spec/command-spec";
+import { toolingTypeableName } from "./tooling-route";
 import { toolingRouteFailure, toolingVersionRequested, unavailableScriptError } from "./tooling-router";
-import { resolveTrace, setActiveTrace } from "./trace-selection";
+import { setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
@@ -114,180 +101,6 @@ const failUnknownCommand = async (
   });
 };
 
-const jsonControlConflict = (): JsonJqConflictError | JsonProjectionError | undefined => {
-  if (activeJsonControl.mode === "list" && activeJq !== undefined) {
-    return new JsonJqConflictError({
-      message: "Cannot combine --jq with bare --json.",
-      remediation: "cannot use --jq with bare --json; pass --json key1,key2 or omit --json",
-    });
-  }
-  if (
-    (activeJsonControl.mode === "keys" || activeJq !== undefined) &&
-    !isEnvelopeResultFormat(activeResultFormat)
-  ) {
-    return new JsonProjectionError({
-      message: "JSON projection requires an envelope format.",
-      keys: activeJsonControl.mode === "keys" ? [...activeJsonControl.keys] : [],
-      available: [],
-      reason: "format_conflict",
-      remediation: "Use --format=json or --format=yaml, or omit --format when projecting or using --jq.",
-    });
-  }
-  return undefined;
-};
-
-const rejectJsonControlConflicts = async (context: CliInvocationContext): Promise<boolean> => {
-  const error = jsonControlConflict();
-  if (error === undefined) return false;
-  setActiveCommandId("cli:json-control");
-  await renderPreCommandFailure({
-    context,
-    commandId: "cli:json-control",
-    error,
-    rendererMode: activeRendererMode,
-    resultFormat: "json",
-    usage: true,
-  });
-  return true;
-};
-
-const applyRendererSelections = async (
-  argv: ReadonlyArray<string>,
-  context: CliInvocationContext,
-  configGlobals: Awaited<ReturnType<typeof readConfigCliGlobals>>,
-  protocolStdout: boolean,
-): Promise<ReadonlyArray<string>> => {
-  const trace = resolveTrace({
-    argv,
-    env: context.env,
-    ...(configGlobals.tracing === undefined ? {} : { config: configGlobals.tracing }),
-  });
-  setActiveTrace(trace);
-  const logLevelResolution = resolveLogLevel({
-    argv: trace.remainingArgv,
-    env: context.env,
-    ...(configGlobals.logLevel === undefined ? {} : { configValue: configGlobals.logLevel }),
-  });
-  setActiveLogLevel(logLevelResolution.level);
-  const resolution = await resolveCliRendererMode({
-    argv: logLevelResolution.remainingArgv,
-    env: context.env,
-    loadConfigRenderer: async () => configGlobals.renderer,
-  });
-  const mode = protocolStdout
-    ? resolution.mode
-    : applyDebugRendererFlip({ verbose: logLevelResolution.verbose, renderer: resolution });
-  setActiveRendererMode(mode);
-  return resolution.remainingArgv;
-};
-
-const applyFormatSelections = (
-  argv: ReadonlyArray<string>,
-  context: CliInvocationContext,
-  commandAbsent: boolean,
-): void => {
-  const deprecationWarnings = resolveCliDeprecationWarnings({ argv, env: context.env });
-  setActiveDeprecationWarnings(deprecationWarnings.enabled);
-  const extracted = extractFormatFlags(deprecationWarnings.remainingArgv);
-  const formatResolution = resolveResultFormat({
-    argv: deprecationWarnings.remainingArgv,
-    rendererMode: activeRendererMode,
-  });
-  setActiveResultFormat(formatResolution.format);
-  // Bare --json lists command result keys; without a command, retain root text help.
-  if (formatResolution.source === "json" && extracted.jsonList && commandAbsent) {
-    setActiveResultFormat(DEFAULT_RESULT_FORMAT);
-  }
-  setActiveJsonControl(resolveJsonControl(extracted, formatResolution.format));
-  setActiveJq(extracted.jq);
-  if (
-    extracted.jq !== undefined &&
-    activeJsonControl.mode === "off" &&
-    formatResolution.source !== "format"
-  ) {
-    setActiveResultFormat("json");
-  }
-};
-
-/** Keep the tagged error and fields; only the remediation gains the ownership guidance. */
-const extendSelectionError = (
-  error: RendererSelectionError | LogLevelSelectionError | NotImplementedError,
-  hint: string,
-): RendererSelectionError | LogLevelSelectionError | NotImplementedError => {
-  if (error instanceof RendererSelectionError)
-    return new RendererSelectionError({
-      message: error.message,
-      value: error.value,
-      source: error.source,
-      remediation: `${error.remediation} ${hint}`,
-    });
-  if (error instanceof LogLevelSelectionError)
-    return new LogLevelSelectionError({
-      message: error.message,
-      value: error.value,
-      source: error.source,
-      remediation: `${error.remediation} ${hint}`,
-    });
-  return new NotImplementedError({
-    message: error.message,
-    commandId: error.commandId,
-    remediation: `${error.remediation} ${hint}`,
-  });
-};
-
-const applyInvocationSelections = async (
-  globals: ReadonlyArray<string>,
-  context: CliInvocationContext,
-  configGlobals: Awaited<ReturnType<typeof readConfigCliGlobals>>,
-  selection: {
-    readonly protocolStdout: boolean;
-    readonly commandAbsent: boolean;
-    /** Present only for an enabled, non-wrapper tooling owner. */
-    readonly ownership?: { readonly taskName: string };
-  },
-): Promise<boolean> => {
-  let rendererSelected = false;
-  try {
-    const remaining = await applyRendererSelections(
-      globals,
-      context,
-      configGlobals,
-      selection.protocolStdout,
-    );
-    rendererSelected = true;
-    applyFormatSelections(remaining, context, selection.commandAbsent);
-  } catch (error) {
-    if (
-      !(
-        error instanceof RendererSelectionError ||
-        (!rendererSelected &&
-          (error instanceof LogLevelSelectionError || error instanceof NotImplementedError))
-      )
-    )
-      throw error;
-    let commandId = "cli:format-selection";
-    if (!rendererSelected) {
-      commandId =
-        error instanceof LogLevelSelectionError ? "cli:log-level-selection" : "cli:renderer-selection";
-    }
-    const match = failedLandoFlag(error);
-    const rendered =
-      selection.ownership !== undefined && match !== undefined
-        ? extendSelectionError(error, selectionOwnershipHint(match, selection.ownership.taskName))
-        : error;
-    setActiveCommandId(commandId);
-    await renderPreCommandFailure({
-      context,
-      commandId,
-      error: rendered,
-      ...preCommandOutputMode({ argv: globals, env: context.env }),
-      usage: true,
-    });
-    return true;
-  }
-  return false;
-};
-
 // Help and listing paths stay free of bundled plugin modules; command dispatch registers them before building a runtime.
 const registerBundledPlugins = () => import("../runtime/bundled-plugins");
 
@@ -304,17 +117,6 @@ const hostProxyDenyToken = (argv: ReadonlyArray<string>): string => {
     return token;
   }
   return "cli:unknown";
-};
-
-/** The last `--format` occurrence in Lando's tokens: the one selection acted on. */
-const lastFormatFlag = (globals: ReadonlyArray<string>): LandoFlagMatch | undefined => {
-  let last: LandoFlagMatch | undefined;
-  scanLandoFlags(globals, {
-    "--format": (match) => {
-      last = match;
-    },
-  });
-  return last;
 };
 
 const runCompiledCli = async (
@@ -386,12 +188,7 @@ const runCompiledCli = async (
   const tokens = split.command;
   const toolingTaskName =
     owner.kind === "tooling"
-      ? typeableName({
-          canonicalId: owner.route.commandId,
-          builtInAliases: [],
-          implicitNamespaceStrip: true,
-          ...(owner.route.aliasPolicy === undefined ? {} : { aliasPolicy: owner.route.aliasPolicy }),
-        }).primary
+      ? toolingTypeableName(owner.route.commandId, owner.route.aliasPolicy).primary
       : undefined;
   const toolingOwnership =
     owner.kind === "tooling" &&
@@ -454,8 +251,8 @@ const runCompiledCli = async (
 
   if (await rejectJsonControlConflicts(context)) return;
 
-  if (hostProxy === undefined && split.help && isHelpTopic(head.commandId ?? "")) {
-    await dispatchHelpTarget(head.commandId ?? "", catalog, signal);
+  if (hostProxy === undefined && split.help && head.commandId !== undefined && isHelpTopic(head.commandId)) {
+    await dispatchHelpTarget(head.commandId, catalog, signal);
     return;
   }
 
@@ -625,6 +422,7 @@ const runCompiledCli = async (
           }),
           rendererMode: activeRendererMode,
           resultFormat: activeResultFormat,
+          usage: true,
         });
         return;
       }
@@ -641,7 +439,7 @@ const runCompiledCli = async (
     }
     case "plugin": {
       if (split.help) {
-        await dispatchHelpTarget(owner.token, catalog, signal);
+        await tryPluginCommandHelp(owner.token, catalog);
         return;
       }
       if (split.version) {
@@ -652,6 +450,15 @@ const runCompiledCli = async (
       return;
     }
     case "plugin-unloaded": {
+      // The command's tokens stay its own, but an envelope request after the
+      // name still chooses how the load failure is reported.
+      if (!isEnvelopeResultFormat(activeResultFormat)) {
+        const output = preCommandOutputMode({ argv: tokens.argv, env: context.env });
+        if (output.rendererMode === "json") {
+          setActiveRendererMode(output.rendererMode);
+          setActiveResultFormat(output.resultFormat);
+        }
+      }
       const outcome = await dispatchPluginUnavailable(owner.token, owner.row, tokens, catalog);
       if (outcome === "unknown") await failUnknown([owner.token, ...tokens.argv]);
       return;

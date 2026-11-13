@@ -3,6 +3,7 @@ import {
   type LandoFlagEntry,
   type LandoFlagMatch,
   type LandoFlagSpelling,
+  landoControlRole,
   matchLandoFlag,
 } from "./lando-flags";
 
@@ -73,8 +74,7 @@ const emptyHead = (commandIndex: number, headGlobals: ReadonlyArray<string>): In
 /**
  * Find the command name through interleaved dispatcher flags and normalize
  * multi-word heads. A leading token that is neither a dispatcher flag nor a
- * command word means there is no owner: the dispatcher keeps today's behavior
- * of failing on the first token.
+ * command word means there is no owner: the dispatcher fails on the first token.
  */
 export const resolveInvocationHead = (argv: ReadonlyArray<string>): InvocationHead => {
   const headGlobals: string[] = [];
@@ -154,6 +154,25 @@ const isLandoOwned = (match: LandoFlagMatch): boolean =>
 const inScope = (flag: LandoFlagEntry, lando: "all" | "output" | "none"): boolean =>
   lando === "all" || (lando === "output" && flag.output === true);
 
+/** Push a Lando-owned occurrence and, when it consumed one, its adjacent value. */
+const pushOwned = (
+  target: string[],
+  tokens: ReadonlyArray<string>,
+  index: number,
+  token: string,
+  consumed: 0 | 1,
+): void => {
+  target.push(token);
+  const value = tokens[index + 1];
+  if (consumed === 1 && value !== undefined) target.push(value);
+};
+
+const requestsHelp = (controls: ReadonlyArray<string>): boolean =>
+  controls.some((control) => landoControlRole(control) === "help");
+
+const requestsVersion = (controls: ReadonlyArray<string>): boolean =>
+  controls.some((control) => landoControlRole(control) === "version");
+
 const collectTokens = (tokens: ReadonlyArray<string>): string[] => {
   const collected: string[] = [];
   for (const token of tokens) if (token !== undefined) collected.push(token);
@@ -205,12 +224,8 @@ export const splitCommandTokens = (
 
     const match = lando === "none" ? undefined : matchLandoFlag(token, tokens[index + 1]);
     if (match !== undefined && reservedOutput.has(match.flag.spelling)) {
-      globals.push(token);
-      if (match.consumed === 1) {
-        const value = tokens[index + 1];
-        if (value !== undefined) globals.push(value);
-        index += 1;
-      }
+      pushOwned(globals, tokens, index, token, match.consumed);
+      index += match.consumed;
       continue;
     }
 
@@ -229,13 +244,7 @@ export const splitCommandTokens = (
 
     if (match !== undefined && inScope(match.flag, lando)) {
       if (match.flag.role === "help" || match.flag.role === "version") controls.push(token);
-      else {
-        globals.push(token);
-        if (match.consumed === 1) {
-          const value = tokens[index + 1];
-          if (value !== undefined) globals.push(value);
-        }
-      }
+      else pushOwned(globals, tokens, index, token, match.consumed);
       index += match.consumed;
       continue;
     }
@@ -252,17 +261,17 @@ export const splitCommandTokens = (
   return {
     globals,
     controls,
-    help: controls.some((control) => control === "--help" || control === "-h"),
-    version: controls.some((control) => control === "--version" || control === "-v"),
+    help: requestsHelp(controls),
+    version: requestsVersion(controls),
     command: { argv, tailStart: tailStart === -1 ? argv.length : tailStart },
   };
 };
 
 /**
  * Split the whole invocation: the tokens up to and between command words are
- * classified exactly as the dispatcher always has (table flags, `--`
- * terminates, help and version end the head scan), and everything after the
- * command name is delegated to `splitCommandTokens`.
+ * classified from the table (`--` terminates, help and version end the head
+ * scan), and everything after the command name is delegated to
+ * `splitCommandTokens`.
  */
 export const splitInvocation = (
   argv: ReadonlyArray<string>,
@@ -299,13 +308,8 @@ export const splitInvocation = (
     }
     const match = matchLandoFlag(token, argv[index + 1]);
     if (match !== undefined && isLandoOwned(match)) {
-      globals.push(token);
-      if (match.consumed === 1) {
-        const value = argv[index + 1];
-        if (value !== undefined) globals.push(value);
-        index += 1;
-      }
-      index += 1;
+      pushOwned(globals, argv, index, token, match.consumed);
+      index += 1 + match.consumed;
       continue;
     }
     if (match !== undefined) {
@@ -322,8 +326,8 @@ export const splitInvocation = (
   return {
     globals: [...globals, ...afterName.globals],
     controls: allControls,
-    help: allControls.some((control) => control === "--help" || control === "-h"),
-    version: allControls.some((control) => control === "--version" || control === "-v"),
+    help: requestsHelp(allControls),
+    version: requestsVersion(allControls),
     command: {
       argv: [...preCommand, ...afterName.command.argv],
       tailStart: preCommand.length + afterName.command.tailStart,

@@ -45,6 +45,7 @@ export const LANDO_FLAGS = [
   { spelling: "-h", arity: "none", role: "help" },
   { spelling: "--version", arity: "none", role: "version" },
   { spelling: "-v", arity: "none", role: "version" },
+  { spelling: "-V", arity: "none", role: "version" },
   { spelling: "--expand", arity: "reserved", role: "reserved" },
   { spelling: "--no-expand", arity: "reserved", role: "reserved" },
   { spelling: "--collapse", arity: "reserved", role: "reserved" },
@@ -182,4 +183,10 @@ export const hasDiagnosticFlag = (tokens: ReadonlyArray<string>): boolean =>
 export const landoFlagFooterLabels = (): ReadonlyArray<string> => {
   const flags: ReadonlyArray<LandoFlag> = LANDO_FLAGS;
   return flags.flatMap((flag) => (flag.footer === undefined ? [] : [flag.footer]));
+};
+
+/** `help` or `version` when `token` is exactly one of Lando's help or version spellings. */
+export const landoControlRole = (token: string): "help" | "version" | undefined => {
+  const role = LANDO_FLAGS_BY_SPELLING.get(token)?.role;
+  return role === "help" || role === "version" ? role : undefined;
 };

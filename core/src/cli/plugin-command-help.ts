@@ -42,6 +42,7 @@ export const tryPluginCommandHelp = async (
   if (spec === undefined) return false;
   const aliases = row.tokens?.filter((token) => token !== row.id) ?? [];
   const name = typeableName({ canonicalId: row.id, builtInAliases: aliases });
+  const definitions = pluginFlagDefinitions(spec);
   if (isEnvelopeResultFormat(activeResultFormat)) {
     await printMachineHelpTarget(
       {
@@ -53,8 +54,8 @@ export const tryPluginCommandHelp = async (
         plugin: row.pluginName,
         provenance: row.source,
         implementation: "validated",
-        input: commandHelpInput(spec, pluginFlagDefinitions(spec)),
-        landoFlags: landoFlagsForPolicy(specOwnerPolicy(spec, pluginFlagDefinitions(spec))),
+        input: commandHelpInput(spec, definitions),
+        landoFlags: landoFlagsForPolicy(specOwnerPolicy(spec, definitions)),
       },
       activeResultFormat,
       catalog.context,

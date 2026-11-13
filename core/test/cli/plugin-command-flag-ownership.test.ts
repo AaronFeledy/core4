@@ -131,6 +131,7 @@ export const commands = new Map([["fixture:run", async () => ({
         env,
         stdout: "pipe",
         stderr: "pipe",
+        timeout: 20_000,
       });
       const [code, stdout, stderr] = await Promise.all([
         child.exited,
@@ -261,6 +262,20 @@ test("a plugin load failure is reported even when followed by a Lando-sized flag
     // When
     const result = await f.invoke(["--format=json", "fixture:run", "--format=csv"]);
     // Then
+    expect(result.code, result.stderr).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("fixture load failure") },
+    });
+  } finally {
+    await f.cleanup();
+  }
+}, 30_000);
+
+test("a machine-output flag after a plugin that fails to load chooses the report's format", async () => {
+  const f = await fixture(true);
+  try {
+    const result = await f.invoke(["fixture:run", "--format=json"]);
     expect(result.code, result.stderr).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
@@ -443,6 +458,17 @@ test("an authored format flag never claims Lando's --format", async () => {
   }
 }, 30_000);
 
+test("an authored format flag reads Lando's selected format", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.invoke(["--format=json", "fopts"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(await optsFile(f)).toMatchObject({ format: "json" });
+  } finally {
+    await f.cleanup();
+  }
+}, 30_000);
+
 test("an authored help flag owns --help but not -h", async () => {
   const authored = await fixture();
   try {
@@ -470,7 +496,6 @@ test("text and machine plugin help list authored flags", async () => {
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain("--verbose");
     expect(result.stdout).toContain("--renderer");
-    expect(result.stdout).toContain("after `fopts`");
     expect(result.stdout).toContain("lando --renderer=<value> fopts");
   } finally {
     await text.cleanup();

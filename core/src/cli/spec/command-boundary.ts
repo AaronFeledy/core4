@@ -2,7 +2,6 @@ import type { RendererIO } from "@lando/renderer/io";
 import { Effect, Layer, Schema } from "effect";
 import type { CliInvocationContext } from "../../runtime/invocation-context";
 import { type RendererMode, formatBugReport } from "../bug-report";
-import { validateCommandCliFlags } from "../flag-value-validation";
 import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
 import { scanLandoFlags } from "../lando-flags";
 import { runWithRendererHandling } from "../renderer-boundary";
@@ -101,37 +100,4 @@ export const preCommandOutputMode = (input: {
     return { rendererMode: "json", resultFormat: "json" };
   }
   return { rendererMode: "plain", resultFormat: "text" };
-};
-
-interface CommandFlagValueValidationInput {
-  readonly commandId: string;
-  readonly argv: ReadonlyArray<string>;
-  readonly definitions: Readonly<Record<string, unknown>>;
-  readonly rendererMode: RendererMode;
-  readonly resultFormat: ResultFormat;
-  readonly resultSchema: Schema.Codec<unknown, unknown>;
-  readonly deprecationWarnings?: boolean;
-  readonly allowUnknownFlags?: boolean;
-}
-
-export const renderCommandFlagValueValidation = async (
-  input: CommandFlagValueValidationInput,
-): Promise<boolean> => {
-  const error = validateCommandCliFlags({
-    commandId: input.commandId,
-    argv: input.argv,
-    definitions: input.definitions,
-    allowUnknownFlags: input.allowUnknownFlags === true,
-  });
-  if (error === undefined) return false;
-  await renderPreCommandFailure({
-    commandId: input.commandId,
-    error,
-    rendererMode: input.rendererMode,
-    resultFormat: input.resultFormat,
-    resultSchema: input.resultSchema,
-    usage: true,
-    ...(input.deprecationWarnings === undefined ? {} : { deprecationWarnings: input.deprecationWarnings }),
-  });
-  return true;
 };

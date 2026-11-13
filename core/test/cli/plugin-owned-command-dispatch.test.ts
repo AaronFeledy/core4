@@ -569,7 +569,7 @@ test("pluginOwnedCommandEffect still rejects a --help it cannot answer", async (
     ),
   );
 
-  // Then it fails unknown-flag validation as before
+  // Then it fails unknown-flag validation
   expect(Result.isFailure(outcome) ? outcome.failure : undefined).toMatchObject({
     _tag: "UnknownCliFlagError",
     flag: "--help",

@@ -92,13 +92,13 @@ export const HelpLandoFlags = Schema.Struct({
       "Where Lando still reads its own flags after the command name: until-separator (up to the first --), command-tail (up to the command's tail), or none (only before the name).",
   }),
   commandOwned: Schema.Array(Schema.String).annotate({
-    description: "Lando flag spellings the command reads itself after its name.",
+    description:
+      "Lando flag spellings the command reads itself where Lando would otherwise read them; empty when afterName is none, because then every token after the name is the command's.",
   }),
 }).annotate({
   identifier: "HelpLandoFlags",
   description: "Placement of Lando's own flags for one help target.",
 });
-export type HelpLandoFlags = typeof HelpLandoFlags.Type;
 
 /** A help target: the catalog row plus the required flag-placement field. */
 export const HelpCommandTargetDescriptor = Schema.Union([

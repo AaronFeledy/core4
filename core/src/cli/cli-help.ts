@@ -114,10 +114,6 @@ const typeableFor = (
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
   });
 
-/**
- * One line for a task or script that declares a flag Lando also has: after the
- * name the spelling is the command's, so Lando's own goes before it.
- */
 const landoFlag = (spelling: string) => LANDO_FLAGS.find((flag) => flag.spelling === spelling);
 
 /** `--format=<value>` for a flag that takes a value, the bare spelling otherwise. */
@@ -132,8 +128,8 @@ const sharedFlagLine = (spellings: ReadonlyArray<string>, name: string): string 
   });
   const shared = flags.map((flag) => flag.spelling);
   const [firstFlag] = flags;
-  const first = firstFlag?.spelling;
-  if (firstFlag === undefined || first === undefined) return undefined;
+  if (firstFlag === undefined) return undefined;
+  const first = firstFlag.spelling;
   const example = landoFlagUsage(firstFlag);
   const subject =
     shared.length === 1
@@ -248,7 +244,6 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
       ...(entry.spec.aliases === undefined ? {} : { aliases: entry.spec.aliases }),
     }),
     options?.aliasPolicy,
-    false,
   );
   const usage = renderCommandUsage(names.primary, entry.spec);
   const flagLines = renderCommandHelpFlags(entry.spec).map((line) =>

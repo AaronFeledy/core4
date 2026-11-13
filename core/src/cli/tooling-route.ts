@@ -2,6 +2,7 @@ import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/ca
 import { canonicalIdFromRelativePath } from "@lando/landofile/bun-sh-discovery";
 import type { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import { type HelpAliasPolicy, type TypeableName, typeableName } from "./help-names";
 import type { ToolingRebuildFailure } from "./tooling-cache-status";
 
 interface ToolingRouteMetadata {
@@ -54,6 +55,15 @@ export type ToolingRoute =
     });
 
 export type NormalizedToolingRoute = Extract<ToolingRoute, { readonly _tag: "tooling" | "bun-script" }>;
+
+/** The name a user types for a tooling route: implicit namespace strip plus any alias policy. */
+export const toolingTypeableName = (canonicalId: string, aliasPolicy?: HelpAliasPolicy): TypeableName =>
+  typeableName({
+    canonicalId,
+    builtInAliases: [],
+    implicitNamespaceStrip: true,
+    ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+  });
 
 export const normalizedToolingRoute = (
   entry: CommandIndexEntry,

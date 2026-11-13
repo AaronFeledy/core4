@@ -111,12 +111,11 @@ export const loadPluginSpec = (
       // flag that silently never arrives.
       const jsonFlag = spec.flags?.json;
       const formatFlag = spec.flags?.format;
-      const reservedIssue =
-        jsonFlag !== undefined && jsonFlag.type !== "boolean"
-          ? "`json` must be a boolean flag"
-          : formatFlag !== undefined && formatFlag.type === "boolean"
-            ? "`format` must not be a boolean flag"
-            : undefined;
+      let reservedIssue: string | undefined;
+      if (jsonFlag !== undefined && jsonFlag.type !== "boolean")
+        reservedIssue = "`json` must be a boolean flag";
+      else if (formatFlag !== undefined && formatFlag.type === "boolean")
+        reservedIssue = "`format` must not be a boolean flag";
       if (reservedIssue !== undefined)
         throw new PluginLoadError({
           pluginName,

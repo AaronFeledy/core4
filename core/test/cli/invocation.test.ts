@@ -105,17 +105,20 @@ describe("dispatcher table", () => {
     expect(result.command.argv).toEqual([...tokens]);
   });
 
-  test.each([{ token: "--help" }, { token: "-h" }, { token: "--version" }, { token: "-v" }] as const)(
-    "records $token as a control",
-    ({ token }) => {
-      const result = split(["info", token]);
-      expect(result.globals).toEqual([]);
-      expect(result.controls).toEqual([token]);
-      expect(result.command.argv).toEqual([]);
-      expect(result.help).toBe(token === "--help" || token === "-h");
-      expect(result.version).toBe(token === "--version" || token === "-v");
-    },
-  );
+  test.each([
+    { token: "--help" },
+    { token: "-h" },
+    { token: "--version" },
+    { token: "-v" },
+    { token: "-V" },
+  ] as const)("records $token as a control", ({ token }) => {
+    const result = split(["info", token]);
+    expect(result.globals).toEqual([]);
+    expect(result.controls).toEqual([token]);
+    expect(result.command.argv).toEqual([]);
+    expect(result.help).toBe(token === "--help" || token === "-h");
+    expect(result.version).toBe(token === "--version" || token === "-v" || token === "-V");
+  });
 
   test("tooling claims keep version and a declared help spelling out of the controls", () => {
     const declared = split(
@@ -128,6 +131,16 @@ describe("dispatcher table", () => {
     const plain = split(["task", "--help", "--version"], toolingPolicy());
     expect(plain.controls).toEqual(["--help"]);
     expect(plain.command.argv).toEqual(["--version"]);
+  });
+
+  test("a declared value flag spelled like a control owns its value slot", () => {
+    const result = split(
+      ["task", "--version", "--renderer=bogus", "--help", "--format=csv"],
+      toolingPolicy([{ name: "version" }, { name: "help" }]),
+    );
+    expect(result.globals).toEqual([]);
+    expect(result.controls).toEqual([]);
+    expect(result.command.argv).toEqual(["--version", "--renderer=bogus", "--help", "--format=csv"]);
   });
 
   test("reserved output spellings beat a definition that claims them", () => {
@@ -242,7 +255,10 @@ describe("splitInvocation", () => {
   });
 
   test("a bare-value flag has no value slot and keeps the next Lando flag Lando's", () => {
-    const result = split(["scratch", "--mount-cwd", "--format=json"], flagsOnlyPolicy("apps:scratch:start"));
+    const result = split(
+      ["scratch", "--mount-cwd", "--format=json"],
+      flagsOnlyPolicy("apps:scratch:start", { "mount-cwd": { type: "option" } }),
+    );
     expect(result.globals).toEqual(["--format=json"]);
     expect(result.command.argv).toEqual(["--mount-cwd"]);
     expect(result.command.tailStart).toBe(1);

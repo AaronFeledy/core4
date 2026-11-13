@@ -35,7 +35,7 @@ test.each([
   { argv: ["-h"], marker: null, exit: 0 },
   { argv: ["value", "--help"], marker: null, exit: 0 },
   { argv: ["--", "--help"], marker: "first=--help\nsecond=\n", exit: 0 },
-  { argv: ["--version", "--format=json"], marker: null, exit: 1 },
+  { argv: ["--version", "--format=json"], marker: null, exit: 2 },
   { argv: ["--version", "2.0"], marker: "first=--version\nsecond=2.0\n", exit: 0 },
 ])(
   "answers raw script help without executing except after --: $argv",

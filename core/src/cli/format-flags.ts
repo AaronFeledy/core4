@@ -48,8 +48,6 @@ export const JSON_CONTROL_OFF: JsonControl = { mode: "off" };
 const ALLOWED_VALUES_DISPLAY = RESULT_FORMATS.join(", ");
 const REMEDIATION = `Use --format=<value> where <value> is one of: ${ALLOWED_VALUES_DISPLAY}. Use --json or -j as a shortcut for --format=json.`;
 
-export { JSON_FIELD_LIST, isSpaceFormJsonFieldList } from "./lando-flags";
-
 export const isResultFormat = (value: string): value is ResultFormat =>
   (RESULT_FORMATS as ReadonlyArray<string>).includes(value);
 
