@@ -93,6 +93,8 @@ const inheritedBuildSteps = (
       // default, which the planner cannot observe. Root is the default for
       // images whose unpinned steps install anything, so pin them here rather
       // than letting a clone user override silently change the parent's build.
+      // Known limit: with no parent user and a non-root image default user, an
+      // inherited unpinned step runs as root on a companion that overrides user.
       return { ...step, user: step.user ?? parentDraft.user ?? "root" };
     });
 

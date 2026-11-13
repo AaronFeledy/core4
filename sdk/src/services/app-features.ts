@@ -99,12 +99,14 @@ export interface AppFeatureServiceMutators {
  * same files and dependencies as the service it belongs to.
  *
  * A clone never inherits its parent's authored identity: listeners, published
- * ports, routes, hostnames, network aliases, healthcheck/readiness probes,
- * certificates, database credentials, storage-ownership claims, and
- * `phase: "app"` build steps stay with the parent. A `user` override runs the
- * clone natively as that user and pins its inherited build steps to the
- * parent's build identity, so the clone's image build is not silently rerun as
- * another user.
+ * ports, routes, hostnames, network aliases, probes, certificates, database
+ * credentials, storage-ownership claims, log sources, and `phase: "app"` build
+ * steps stay with the parent. Its process is exactly `command`; neither the
+ * parent's planned entrypoint nor the image entrypoint applies, and its
+ * healthcheck is disabled so an image HEALTHCHECK cannot probe the parent's
+ * server. A `user` override runs the clone natively as that user and pins its
+ * inherited build steps to the parent's build identity, so the clone's image
+ * build is not silently rerun as another user.
  *
  * Clones are materialized after the app-feature pass. One that leaves the plan
  * is removed by the ordinary removed-service convergence on whole-app start,
@@ -144,9 +146,10 @@ export interface AppFeatureContext {
    * Queue a companion service cloned from a resolved parent. Intended for
    * feature-created sidecars that must share the parent's image, mounts,
    * environment, and networks without becoming an authored Landofile service.
-   * A clone is materialized after the app-feature pass, and one that leaves the
-   * plan is removed by the ordinary removed-service convergence on whole-app
-   * start, restart, and rebuild.
+   * The companion runs exactly the requested `command`, with healthchecks
+   * disabled and no log sources. A clone is materialized after the app-feature
+   * pass, and one that leaves the plan is removed by the ordinary
+   * removed-service convergence on whole-app start, restart, and rebuild.
    */
   addClonedService(request: ClonedServiceRequest): void;
 }
