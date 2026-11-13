@@ -137,6 +137,7 @@ for (const operation of ["stop", "destroy"] as const) {
     };
     const harness = makeHarness({
       selectProvider: () => Effect.succeed(provider),
+      appliedPlans: [],
       resolveAppliedPlan: () => Effect.die("Non-teardown resolution must not be used for cleanup hints"),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "owned", ownership: [hints] }),
     });

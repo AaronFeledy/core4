@@ -3,34 +3,16 @@ import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { RouterService, ToolingEngine, physicalVolumeLockKey } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
+import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
 import { withAuthoredProjectEvents as withProjectEvents } from "./event-plan.ts";
+import { recordingEngine } from "./event-recording-engine.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 // Each event step interpolates its tag, which binds as one quoted shell word.
 const step = (tag: string) => `'${tag}'`;
-
-const recordingEngine = (executed: string[], failure?: string) => ({
-  id: "recording",
-  run: (invocation: {
-    readonly commands: ReadonlyArray<ReadonlyArray<string>>;
-    readonly tool: string;
-    readonly service?: string;
-  }) =>
-    Effect.sync(() => {
-      const name = invocation.commands[0]?.[2]?.replace(/ "[$]@"$/u, "") ?? invocation.tool;
-      executed.push(name);
-      return {
-        tool: invocation.tool,
-        service: invocation.service ?? ":lando",
-        exitCode: failure !== undefined && name === step(failure) ? 7 : 0,
-        stdout: "",
-        stderr: "",
-      };
-    }),
-});
 
 const eventPlan = () =>
   withProjectEvents(
@@ -56,6 +38,8 @@ const eventPlan = () =>
       "pre-start": ["{{ event._tag }}"],
       "post-start": ["{{ event._tag }}"],
       "post-restart": ["{{ event._tag }}"],
+      "pre-rebuild": ["{{ event._tag }}"],
+      "post-rebuild": ["{{ event._tag }}"],
     },
   );
 
@@ -203,6 +187,33 @@ describe("restart lifecycle brackets", () => {
       ["pre-init", "post-init", "pre-restart", "pre-stop", "post-stop", "pre-start"].map(step),
     );
     expect(harness.routeRemovals).toEqual([]);
+  });
+
+  test("rebuild brackets retain the inner stop and start event order", async () => {
+    const executed: string[] = [];
+    const harness = makeHarness({ plannedApp: eventPlan() });
+
+    await Effect.runPromise(
+      rebuildApp().pipe(
+        Effect.provideService(ToolingEngine, recordingEngine(executed)),
+        Effect.provide(harness.layer),
+      ),
+    );
+
+    expect(executed).toEqual(
+      [
+        "pre-init",
+        "post-init",
+        "pre-rebuild",
+        "pre-stop",
+        "post-stop",
+        "pre-start",
+        "post-start",
+        "post-rebuild",
+      ].map(step),
+    );
+    expect(byTag(harness.events, "pre-rebuild")).toHaveLength(1);
+    expect(byTag(harness.events, "post-rebuild")).toHaveLength(1);
   });
 
   test("restart of an idle runtime retains published routes", async () => {
