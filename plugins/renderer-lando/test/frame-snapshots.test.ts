@@ -121,7 +121,8 @@ describe("renderer frame snapshots — prompt chrome", () => {
 describe("renderer frame snapshots — driver-owned settlement", () => {
   test("a cancelled prompt removes the driver's keypress listener and destroys the renderer once", async () => {
     const clock = new ManualClock();
-    const setup = await createTestRenderer({ width: 60, height: 12, clock });
+    // Mirror the driver's renderer config: OpenTUI's own Ctrl+C exit would destroy the renderer too.
+    const setup = await createTestRenderer({ width: 60, height: 12, clock, exitOnCtrlC: false });
     let destroyCount = 0;
     const originalDestroy = setup.renderer.destroy.bind(setup.renderer);
     setup.renderer.destroy = () => {

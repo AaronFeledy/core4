@@ -124,34 +124,35 @@ describe("OpenTUI native stub catalog", () => {
 
     expect(() =>
       module.validatePinnedInputs({
-        installedVersion: "0.4.4",
+        installedVersion: "0.8.4",
         literalBranchRoots: nativeRoots,
-        rendererDependencyRange: "^0.4.3",
-        lockResolution: "0.4.3",
+        rendererDependencyRange: "0.8.0",
+        lockResolution: "0.8.0",
       }),
     ).toThrow(/installed @opentui\/core version/u);
     expect(() =>
       module.validatePinnedInputs({
-        installedVersion: "0.4.3",
+        installedVersion: "0.8.0",
         literalBranchRoots: nativeRoots.slice(1),
-        rendererDependencyRange: "^0.4.3",
-        lockResolution: "0.4.3",
+        rendererDependencyRange: "0.8.0",
+        lockResolution: "0.8.0",
       }),
     ).toThrow(/literal branch roots/u);
+    // A caret range on 0.x still resolves to later 0.8 patches, which link LGPL FFmpeg.
     expect(() =>
       module.validatePinnedInputs({
-        installedVersion: "0.4.3",
+        installedVersion: "0.8.0",
         literalBranchRoots: nativeRoots,
-        rendererDependencyRange: "~0.4.3",
-        lockResolution: "0.4.3",
+        rendererDependencyRange: "^0.8.0",
+        lockResolution: "0.8.0",
       }),
     ).toThrow(/renderer dependency range/u);
     expect(() =>
       module.validatePinnedInputs({
-        installedVersion: "0.4.3",
+        installedVersion: "0.8.0",
         literalBranchRoots: nativeRoots,
-        rendererDependencyRange: "^0.4.3",
-        lockResolution: "0.4.4",
+        rendererDependencyRange: "0.8.0",
+        lockResolution: "0.8.4",
       }),
     ).toThrow(/bun.lock resolution/u);
   });

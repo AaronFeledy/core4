@@ -25,9 +25,13 @@ export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProce
   readonly terminalHeight: number;
   on(event: "resize", listener: () => void): LiveRegionRendererLike;
   off(event: "resize", listener: () => void): LiveRegionRendererLike;
+  /** Restores the terminal asynchronously; await `closed` before writing to the terminal again. */
   destroy(): void;
-  suspend?(): void;
-  resume?(): void;
+  /** Settles after destruction writes the remaining output and restores the terminal. */
+  readonly closed: Promise<void>;
+  /** Hands the terminal back; OpenTUI rejects a transition while another one is pending. */
+  suspend(): Promise<void>;
+  resume(): Promise<void>;
 }
 
 interface RenderableConstructorLike {

@@ -94,6 +94,8 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
   let externalOutputMode: "capture-stdout" | "passthrough" = "capture-stdout";
   let width = 80;
   let height = 24;
+  // Destroy restores the terminal asynchronously; `holdClose` keeps `closed` pending.
+  let closed: Promise<void> = Promise.resolve();
   let capturedStdout: CapturingStdout | undefined;
   const resizeListeners = new Set<() => void>();
   const record = (call: string): void => {
@@ -169,6 +171,15 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     destroy: () => {
       destroyCount += 1;
     },
+    get closed() {
+      return closed;
+    },
+    suspend: async () => {
+      record("suspend");
+    },
+    resume: async () => {
+      record("resume");
+    },
   };
 
   const module = {
@@ -205,6 +216,14 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
       capturedStdout = value;
     },
     state: () => ({ destroyCount, liveRequestCount, maxFps, screenMode, targetFps }),
+    /** Keeps `renderer.closed` pending until the returned release runs. */
+    holdClose: (): (() => void) => {
+      let release: () => void = () => {};
+      closed = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return release;
+    },
     emitResize: (nextWidth = 42, nextHeight = 12) => {
       width = nextWidth;
       height = nextHeight;
@@ -216,6 +235,12 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
       }
     },
     resizeListenerCount: () => resizeListeners.size,
+    /** Rows of the footer currently mounted on the fake root. */
+    footerText: (): string => {
+      const footer = footers.at(-1);
+      if (footer === undefined || footer.destroyCount > 0) return "";
+      return footer.children.map((row) => row.content ?? "").join("|");
+    },
   };
   return fixture;
 };

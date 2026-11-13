@@ -11,8 +11,8 @@ describe("OpenTUI prompt driver", () => {
   const { basePrompt, cleanup, flushInput, makeDriver, makeSetup, openTui, waitForBuild } =
     createOpenTuiPromptTestKit();
 
-  afterEach(() => {
-    cleanup();
+  afterEach(async () => {
+    await cleanup();
     resetOpenTuiSubstrateAvailabilityForTests();
     resetLiveRegionModuleCacheForTests();
   });

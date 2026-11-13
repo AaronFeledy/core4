@@ -1,5 +1,5 @@
 import { ansiToNativeStyledText } from "./ansi-styled-text.ts";
-import { acquireLiveRegionSubstrate } from "./live-region-substrate.ts";
+import { acquireLiveRegionSubstrate, closeRenderer } from "./live-region-substrate.ts";
 import type {
   LiveRegionControllerDeps,
   LiveRegionControllerOptions,
@@ -40,7 +40,7 @@ export const acquireFullTail = async <TRenderer extends LiveRegionRendererLike>(
   } catch (cause) {
     try {
       renderer.off("resize", resizeListener);
-      renderer.destroy();
+      await closeRenderer(renderer);
     } catch (cleanupCause) {
       recordOpenTuiSubstrateFailure(cleanupCause);
     }
@@ -96,10 +96,11 @@ export const dropFullTailRegion = (renderer: LiveRegionRendererLike): void => {
   renderer.dropLive();
 };
 
-export const leaveFullTail = (session: FullTailSession): void => {
+/** Resolves once OpenTUI has restored the terminal, so later writes reach the main screen. */
+export const leaveFullTail = async (session: FullTailSession): Promise<void> => {
   session.renderer.off("resize", session.resizeListener);
   session.renderer.externalOutputMode = "passthrough";
   session.footer?.destroy?.();
   session.footer = undefined;
-  session.renderer.destroy();
+  await closeRenderer(session.renderer);
 };
