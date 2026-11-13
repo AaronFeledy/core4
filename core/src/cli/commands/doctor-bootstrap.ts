@@ -10,9 +10,9 @@ import { CliInvocation } from "../../runtime/invocation-context";
 import type { DoctorOptions } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import type {
-  DoctorCheck,
   DoctorFinding,
   DoctorReport,
+  DoctorSectionFinding,
   DoctorSectionId,
   DoctorSolution,
 } from "./doctor-contract";
@@ -58,7 +58,7 @@ const globalConfigFinding = (
   };
 };
 
-const withSection = (section: DoctorSectionId, finding: DoctorFinding): DoctorCheck => ({
+const withSection = (section: DoctorSectionId, finding: DoctorFinding): DoctorSectionFinding => ({
   section,
   ...finding,
 });
@@ -90,7 +90,7 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
     ],
   });
   let contexts: DoctorContexts = {};
-  const initialChecks: DoctorCheck[] = config.self === undefined ? [] : [config.self];
+  const initialChecks: DoctorSectionFinding[] = config.self === undefined ? [] : [config.self];
   const configResult = config.value;
   if (configResult !== undefined) {
     if (Result.isFailure(configResult)) {

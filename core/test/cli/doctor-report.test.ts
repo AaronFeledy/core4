@@ -26,7 +26,11 @@ import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema } from "effe
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import type { DoctorOptions } from "../../src/cli/commands/doctor.ts";
 import { appConfigFindings, appConfigForReport } from "../../src/cli/commands/doctor-app-config";
-import type { DoctorCheck, DoctorFinding, DoctorReport } from "../../src/cli/commands/doctor-contract.ts";
+import type {
+  DoctorFinding,
+  DoctorReport,
+  DoctorSectionFinding,
+} from "../../src/cli/commands/doctor-contract.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
 import { deprecationFindings, doctorDeprecations } from "../../src/cli/commands/doctor-deprecations";
 import { FilesystemWatchIO } from "../../src/cli/commands/doctor-filesystem-watch-io.ts";
@@ -122,7 +126,7 @@ const doctorReport = (options: DoctorOptions = {}) =>
 const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
   Effect.runPromise(doctorReport({ env: {} }).pipe(Effect.provide(buildLayers(provider))));
 
-const check = (section: DoctorCheck["section"], input: DoctorFinding): DoctorCheck => ({
+const check = (section: DoctorSectionFinding["section"], input: DoctorFinding): DoctorSectionFinding => ({
   section,
   ...input,
 });
@@ -160,7 +164,7 @@ describe("meta:doctor combined report", () => {
   test("doctor keeps multiline lint suggestions attributed in text and narrow or wide TTY reports", async () => {
     const base = await run({ ...TestRuntimeProvider, id: "lando" });
     const suggestion = "Rewrite:\nx-demo:\n  a: 日本語\n\n";
-    const report: DoctorReport = {
+    const report = makeDoctorReport({
       ...base,
       checks: [
         ...base.checks,
@@ -187,8 +191,7 @@ describe("meta:doctor combined report", () => {
           },
         }),
       ],
-      summary: { ...base.summary, checks: base.summary.checks + 1, failed: base.summary.failed + 1 },
-    };
+    });
     expect(renderDoctorReport(report, undefined, { all: true })).toContain("Rewrite:");
     for (const columns of [40, 120]) {
       const text = stripAnsi(

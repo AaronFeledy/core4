@@ -162,7 +162,7 @@ describe("doctor regressions", () => {
     ];
     const report: DoctorReport = makeDoctorReport({ version: "4.0.0-test", checks, skipped: [] });
 
-    expect(report.summary).toEqual({ checks: 3, passed: 0, warned: 2, failed: 1 });
+    expect(report.summary).toEqual({ checks: 3, passed: 0, warned: 2, failed: 1, selfFailed: 0 });
     const text = renderDoctorReport(report);
     expect(text).toContain("3 checks · 1 failed · 2 warnings");
     const ndjson = renderDoctorReportAsNdjson(report);

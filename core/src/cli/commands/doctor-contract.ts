@@ -144,9 +144,15 @@ export type DoctorFinding = typeof DoctorFinding.Type;
 export const DoctorSectionId = Schema.Literals(DOCTOR_SECTION_IDS);
 export type DoctorSectionId = typeof DoctorSectionId.Type;
 
-export const DoctorCheck = Schema.Struct({
+export const DoctorSectionFinding = Schema.Struct({
   section: DoctorSectionId,
   ...DoctorFinding.fields,
+});
+export type DoctorSectionFinding = typeof DoctorSectionFinding.Type;
+
+export const DoctorCheck = Schema.Struct({
+  id: Schema.String,
+  ...DoctorSectionFinding.fields,
 });
 export type DoctorCheck = typeof DoctorCheck.Type;
 
@@ -168,7 +174,7 @@ export type DoctorSelfFailureReason = typeof DoctorSelfFailureReason.Type;
 
 /** A doctor-machinery failure, already attributed to its report section. */
 export const DoctorSelfFinding = Schema.Struct({
-  ...DoctorCheck.fields,
+  ...DoctorSectionFinding.fields,
   name: Schema.Literal(DOCTOR_SELF_CHECK_NAME),
   status: Schema.Literal("fail"),
   severity: Schema.Literal("error"),
@@ -199,8 +205,17 @@ export const DoctorSummary = Schema.Struct({
   passed: Schema.Number,
   warned: Schema.Number,
   failed: Schema.Number,
+  /** `doctor-self` findings (already counted in `failed`); any fails command completion. */
+  selfFailed: Schema.Number,
 });
 export type DoctorSummary = typeof DoctorSummary.Type;
+
+export const DoctorPage = Schema.Struct({
+  limit: Schema.Int,
+  matched: Schema.Int,
+  next: Schema.optionalKey(Schema.String),
+});
+export type DoctorPage = typeof DoctorPage.Type;
 
 export const DoctorReportSchema = Schema.Struct({
   version: Schema.String,
@@ -208,6 +223,7 @@ export const DoctorReportSchema = Schema.Struct({
   checks: Schema.Array(DoctorCheck),
   skipped: Schema.Array(DoctorSkip),
   summary: DoctorSummary,
+  page: Schema.optionalKey(DoctorPage),
 });
 export type DoctorReport = typeof DoctorReportSchema.Type;
 
@@ -216,5 +232,6 @@ export const DoctorNdjsonResultSchema = Schema.Struct({
   version: Schema.String,
   provider: Schema.optionalKey(DoctorProvider),
   summary: DoctorSummary,
+  page: Schema.optionalKey(DoctorPage),
 });
 export type DoctorNdjsonResult = typeof DoctorNdjsonResultSchema.Type;

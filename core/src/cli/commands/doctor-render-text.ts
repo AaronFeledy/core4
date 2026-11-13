@@ -1,3 +1,4 @@
+import { shellArg } from "@lando/engine/services/shell-quote";
 import {
   type SummaryDocument,
   type SummaryField,
@@ -8,11 +9,14 @@ import {
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import type { DoctorCheck, DoctorProvider, DoctorReport, DoctorSolution } from "./doctor-contract";
+import type { DoctorCheck, DoctorReport, DoctorSolution } from "./doctor-contract";
 import { DOCTOR_SECTION_IDS, DOCTOR_SELF_CHECK_NAME } from "./doctor-contract";
+import { capabilitiesSection, providerHeader, skippedSection } from "./doctor-render-metadata";
 
 export interface DoctorRenderOptions {
   readonly all?: boolean | undefined;
+  /** CLI arguments that reproduce the run's selection, repeated in the paging continuation. */
+  readonly selection?: ReadonlyArray<string> | undefined;
 }
 
 const doctorContextValue = (value: string | ReadonlyArray<string>, all = false): string => {
@@ -37,14 +41,12 @@ export const renderSolution = (solution: DoctorSolution): string => {
   return `solution[${solution.kind}]: ${solution.description}${command}`;
 };
 
-const contributor = (check: DoctorCheck): string => check.contributor ?? check.section;
-
 const groupChecks = (
   checks: ReadonlyArray<DoctorCheck>,
 ): ReadonlyArray<readonly [DoctorCheck, ...DoctorCheck[]]> => {
   const groups = new Map<string, [DoctorCheck, ...DoctorCheck[]]>();
   for (const check of checks) {
-    const key = JSON.stringify([contributor(check), check.name, check.status]);
+    const key = JSON.stringify([check.contributor ?? check.section, check.name, check.status]);
     const group = groups.get(key);
     if (group === undefined) groups.set(key, [check]);
     else group.push(check);
@@ -166,24 +168,6 @@ const doctorNextSteps = (
   return [...commands];
 };
 
-const providerHeader = (provider: DoctorProvider | undefined): ReadonlyArray<string> => {
-  if (provider === undefined) return [];
-  const selection = provider.selection;
-  return [
-    `provider: ${provider.id}`,
-    ...(provider.name === undefined ? [] : [`providerName: ${provider.name}`]),
-    ...(provider.version === undefined ? [] : [`providerVersion: ${provider.version}`]),
-    `providerKind: ${provider.kind}`,
-    ...(provider.runtimeStatus === undefined ? [] : [`runtimeStatus: ${provider.runtimeStatus}`]),
-    ...(provider.runtime?.version === undefined ? [] : [`runtimeVersion: ${provider.runtime.version}`]),
-    `selectionSource: ${selection.source}`,
-    ...Object.entries(selection.inputs).map(
-      ([key, value]) =>
-        `selectionInput${key === "capabilityDefault" ? "Default" : key[0]?.toUpperCase() + key.slice(1)}: ${value}`,
-    ),
-  ];
-};
-
 const countsFooter = (report: DoctorReport, options: DoctorRenderOptions): string => {
   const { summary } = report;
   const totals =
@@ -204,34 +188,6 @@ const doctorTone = (report: DoctorReport): SummaryTone => {
   if (report.summary.warned > 0) return "warn";
   return report.summary.checks === 0 ? "info" : "ok";
 };
-
-const capabilitiesSection = (provider: DoctorProvider | undefined): SummarySection | undefined => {
-  const capabilities = provider?.capabilities;
-  if (capabilities === undefined || Object.keys(capabilities).length === 0) return undefined;
-  return {
-    title: "capabilities",
-    rows: Object.entries(capabilities).map(([label, value]) => ({
-      label,
-      value: typeof value === "object" && value !== null ? JSON.stringify(value) : String(value),
-    })),
-  };
-};
-
-const skippedSection = (report: DoctorReport): SummarySection | undefined =>
-  report.skipped.length === 0
-    ? undefined
-    : {
-        title: "skipped",
-        rows: report.skipped.map((entry) => ({
-          label: entry.check ?? entry.section,
-          value: "SKIPPED",
-          tone: "skipped",
-          fields: [
-            ...(entry.check === undefined ? [] : [{ label: "section", value: entry.section }]),
-            { label: "reason", value: entry.reason },
-          ],
-        })),
-      };
 
 export const buildDoctorReportSummary = (
   report: DoctorReport,
@@ -256,7 +212,18 @@ export const buildDoctorReportSummary = (
   }
   const tone = doctorTone(report);
   const header = [`version: ${report.version}`, ...providerHeader(report.provider)];
-  const steps = doctorNextSteps(report.checks, options);
+  const steps = [...doctorNextSteps(report.checks, options)];
+  if (report.page?.next !== undefined) {
+    const args = [
+      "--format=json",
+      ...(options.selection ?? []),
+      "--limit",
+      String(report.page.limit),
+      "--after",
+      report.page.next,
+    ];
+    steps.push(`lando doctor ${args.map((arg) => shellArg(arg)).join(" ")}`);
+  }
   return {
     title: tone === "error" ? "Problems found" : tone === "warn" ? "Needs attention" : "Healthy",
     tone,

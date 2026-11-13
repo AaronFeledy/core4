@@ -8,7 +8,7 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
-import type { DoctorCheck, DoctorReport } from "../../src/cli/commands/doctor-contract.ts";
+import type { DoctorReport, DoctorSectionFinding } from "../../src/cli/commands/doctor-contract.ts";
 import { doctorTreeSummary } from "../../src/cli/commands/doctor-progress.ts";
 import {
   buildDoctorReportSummary,
@@ -310,7 +310,7 @@ describe("doctor summary", () => {
     runtime: { running: false },
     capabilities: {},
   };
-  const check = (overrides: Partial<DoctorCheck> = {}): DoctorCheck => ({
+  const check = (overrides: Partial<DoctorSectionFinding> = {}): DoctorSectionFinding => ({
     section: "provider",
     name: "selected-provider",
     status: "pass",
@@ -319,7 +319,7 @@ describe("doctor summary", () => {
     solutions: [],
     ...overrides,
   });
-  const state = (checks: ReadonlyArray<DoctorCheck>, provider = providerHeader): DoctorReport =>
+  const state = (checks: ReadonlyArray<DoctorSectionFinding>, provider = providerHeader): DoctorReport =>
     makeDoctorReport({ version: "4.0.0-dev", provider, checks, skipped: [] });
 
   test("renders degraded doctor checks on the task-tree rail and preserves redaction markers", () => {
@@ -559,7 +559,7 @@ describe("doctor summary", () => {
   });
 
   test("distinguishes collapsed findings by app-config location and deprecation id", () => {
-    const appConfig = (location: string): DoctorCheck => ({
+    const appConfig = (location: string): DoctorSectionFinding => ({
       section: "app-config",
       name: "env-file.literal",
       subject: `/app/.lando.yml#${location}`,
@@ -582,7 +582,7 @@ describe("doctor summary", () => {
       value: "/app/.lando.yml#services.web.environment_file; /app/.lando.yml#services.db.environment_file",
     });
 
-    const deprecation = (id: string): DoctorCheck => ({
+    const deprecation = (id: string): DoctorSectionFinding => ({
       section: "deprecations",
       name: "deprecation",
       subject: `flag:${id}`,
@@ -593,7 +593,8 @@ describe("doctor summary", () => {
     });
     const deprecations = doctorCheckSection(
       "deprecations",
-      [deprecation("legacy-one"), deprecation("legacy-two")],
+      makeDoctorReport({ checks: [deprecation("legacy-one"), deprecation("legacy-two")], skipped: [] })
+        .checks,
       {},
     );
     expect(deprecations?.rows[0]?.fields).toContainEqual({

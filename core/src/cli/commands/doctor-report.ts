@@ -3,9 +3,9 @@ import { CliInvocation } from "../../runtime/invocation-context";
 import type { DoctorOptions, DoctorSectionResult } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import type {
-  DoctorCheck,
   DoctorProvider,
   DoctorReport,
+  DoctorSectionFinding,
   DoctorSectionId,
   DoctorSkip,
 } from "./doctor-contract";
@@ -34,7 +34,7 @@ export { type DoctorRenderOptions, buildDoctorReportSummary, renderDoctorReport 
 export { doctorCompletion, makeDoctorReport, summarizeDoctorChecks } from "./doctor-report-model";
 
 export interface DoctorSectionOutput {
-  readonly checks: ReadonlyArray<DoctorCheck>;
+  readonly checks: ReadonlyArray<DoctorSectionFinding>;
   readonly skipped: ReadonlyArray<DoctorSkip>;
   readonly provider?: DoctorProvider;
 }
@@ -69,7 +69,7 @@ const runDoctorSection = <R>(
 export interface CollectDoctorReportInput {
   readonly options: DoctorOptions;
   readonly contexts: DoctorContexts;
-  readonly initialChecks?: ReadonlyArray<DoctorCheck>;
+  readonly initialChecks?: ReadonlyArray<DoctorSectionFinding>;
   readonly table?: ReadonlyArray<DoctorSection>;
 }
 
@@ -122,7 +122,7 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
     Effect.provide(input.contexts.runtime ?? input.contexts.config ?? Context.empty()),
   );
   const budgetMs = doctorSectionBudgetMs(sourceEnv);
-  const checks: DoctorCheck[] = [...(input.initialChecks ?? [])];
+  const checks: DoctorSectionFinding[] = [...(input.initialChecks ?? [])];
   const skipped: DoctorSkip[] = [];
   const table = input.table ?? doctorSections({ options, sourceEnv, budgetMs, redact });
   const enabled = selectedDoctorSections(table, options);
