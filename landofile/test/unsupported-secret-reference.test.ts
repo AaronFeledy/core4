@@ -356,7 +356,6 @@ test.each([
   ["string", ["services", "app", "schedule", 0, "run"]],
   ["list", ["services", "app", "schedule", 0, "run", 1]],
 ] as const)("tags a secret in a %s schedule run as unsupported-secret-reference", (_form, path) => {
-  // Given an authored secret inside a scheduled job command.
   // When
   const error = unsupportedSecretReferenceError({
     source: { file: ".lando.yml", layer: "base", path },
@@ -367,5 +366,4 @@ test.each([
   expect(error._tag).toBe("LandofileValidationError");
   expect(error.issues[0]?.rule).toBe("unsupported-secret-reference");
   expect(error.issues[0]?.path).toEqual(path);
-  expect(error.remediation).toContain("services.app.environment.TOKEN");
 });

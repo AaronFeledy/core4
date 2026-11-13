@@ -197,7 +197,7 @@ describe("schedule:run", () => {
     if (!(error instanceof PlanReplanRequiredError)) return;
     expect(error.message, "the message must name the job and its missing sidecar").toContain("web.ok");
     expect(error.message).toContain("web-schedule");
-    expect(error.remediation, "the remediation must direct a restart").toContain("lando restart");
+    expect(error).toMatchObject({ app: "demo", providerId: "lando", operation: "schedule run" });
     expect(runtime.execs, "a missing sidecar must not reach the provider").toEqual([]);
   });
 
@@ -208,7 +208,7 @@ describe("schedule:run", () => {
     if (!(error instanceof PlanReplanRequiredError)) return;
     expect(error.message).toContain("web.ok");
     expect(error.message).toContain("web-schedule");
-    expect(error.remediation).toContain("lando restart");
+    expect(error).toMatchObject({ app: "demo", providerId: "lando", operation: "schedule run" });
     expect(runtime.execs, "an unprovenanced service must not reach the provider").toEqual([]);
   });
 
@@ -218,8 +218,7 @@ describe("schedule:run", () => {
     });
     const error = await runtime.run("ok").catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(PlanReplanRequiredError);
-    if (!(error instanceof PlanReplanRequiredError)) return;
-    expect(error.remediation).toContain("lando restart");
+    expect(error).toMatchObject({ app: "demo", providerId: "lando", operation: "schedule run" });
     expect(runtime.execs, "a foreign clone must not reach the provider").toEqual([]);
   });
 

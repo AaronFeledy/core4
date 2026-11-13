@@ -32,22 +32,18 @@ for (const cell of cells) {
           await chmod(appRoot, 0o777);
           await writeFile(join(appRoot, ".lando.yml"), landofile({ appName, image, port, mode: "full" }));
 
-          // 1. Start the app; the parent runs as 1001 and jobs split into sidecars by user.
           expectSuccess(
             await runCli(cell, appRoot, ["start", "--format=json"], 600_000),
             `lando start on ${cell.label} (${image})`,
           );
 
-          // 2. Jobs run natively as their own identity, and schedule:run reports the same
-          // identity the timer used: uid, gid, HOME, and cwd must match exactly.
           const timerIdentity = async (job: string, prefix: string) => {
-            const [uid, gid, home, cwd] = await Promise.all([
-              waitForText(join(appRoot, `${prefix}-uid.txt`), 90_000, `the ${job} job uid`),
-              waitForText(join(appRoot, `${prefix}-gid.txt`), 90_000, `the ${job} job gid`),
-              waitForText(join(appRoot, `${prefix}-home.txt`), 90_000, `the ${job} job HOME`),
-              waitForText(join(appRoot, `${prefix}-pwd.txt`), 90_000, `the ${job} job cwd`),
-            ]);
-            return [uid.trim(), gid.trim(), home.trim(), cwd.trim()];
+            const values = await Promise.all(
+              ["uid", "gid", "home", "pwd", "tz"].map((field) =>
+                waitForText(join(appRoot, `${prefix}-${field}.txt`), 90_000, `the ${job} job ${field}`),
+              ),
+            );
+            return values.map((value) => value.trim());
           };
 
           const runIdentity = async (job: string) => {
@@ -89,7 +85,6 @@ for (const cell of cells) {
             ).toEqual(nobody);
           }
 
-          // 3. A shadowed app path is shared with the sidecars.
           const marker = `vendor-${crypto.randomUUID()}`;
           expectSuccess(
             await runCli(cell, appRoot, [
@@ -107,7 +102,6 @@ for (const cell of cells) {
           const seen = await waitForText(join(appRoot, "vendor-seen.txt"), 120_000, "the vendor marker job");
           expect(seen, "the sidecar must see the parent's shadowed /app/vendor contents").toBe(marker);
 
-          // 4. Sidecars have no endpoints or host publications; only the parent holds the fixed port.
           const services = await infoFor(cell, appRoot);
           const byName = new Map(services.map((service) => [service.service, service]));
           const parent = byName.get("web");
@@ -142,7 +136,6 @@ for (const cell of cells) {
             );
           }
 
-          // 5. The pinned binary accepts the generated crontab in every sidecar.
           for (const name of expectedSidecars) {
             expectSuccess(
               await runCli(cell, appRoot, [
@@ -157,29 +150,30 @@ for (const cell of cells) {
             );
           }
 
-          // 6. schedule:run returns the completed result for success and for a nonzero exit.
           const yearly = expectSuccess(
             await runCli(cell, appRoot, ["schedule:run", "yearly", "--format=json"]),
             "lando schedule:run yearly",
           );
           const yearlyEnvelope = decodeLastLine(RunEnvelope, yearly.stdout, "schedule:run yearly");
-          expect(yearlyEnvelope.ok).toBe(true);
-          expect(yearlyEnvelope.result.service).toBe("web");
-          expect(yearlyEnvelope.result.exitCode).toBe(0);
-          expect(yearlyEnvelope.result.stdout).toContain("yearly-ran");
+          expect(yearlyEnvelope.ok, "schedule:run yearly must report success").toBe(true);
+          expect(yearlyEnvelope.result.service, "the yearly result must identify its parent service").toBe(
+            "web",
+          );
+          expect(yearlyEnvelope.result.exitCode, "the yearly job must exit successfully").toBe(0);
+          expect(yearlyEnvelope.result.stdout, "the yearly result must retain job stdout").toContain(
+            "yearly-ran",
+          );
 
           const failing = await runCli(cell, appRoot, ["schedule:run", "failing", "--format=json"]);
           expect(failing.exitCode, `failing job should exit 3\n${failing.stdout}\n${failing.stderr}`).toBe(3);
           const failingEnvelope = decodeLastLine(RunEnvelope, failing.stdout, "schedule:run failing");
-          expect(failingEnvelope.ok).toBe(false);
-          expect(failingEnvelope.result.exitCode).toBe(3);
+          expect(failingEnvelope.ok, "schedule:run failing must report failure").toBe(false);
+          expect(failingEnvelope.result.exitCode, "the failed result must retain exit code 3").toBe(3);
           expect(failingEnvelope.result.stdout, "the failed result must retain stdout").toContain(
             "failing-stdout",
           );
-          expect(failingEnvelope.error?.exitCode).toBe(3);
+          expect(failingEnvelope.error?.exitCode, "the error envelope must retain the job exit code").toBe(3);
 
-          // 7. Editing a job updates the sidecar script after a restart, and the
-          //    second line of the tick block scalar is what the wait observed.
           await writeFile(join(appRoot, ".lando.yml"), landofile({ appName, image, port, mode: "edited" }));
           expectSuccess(
             await runCli(cell, appRoot, ["restart"], 600_000),
@@ -205,7 +199,6 @@ for (const cell of cells) {
             "the edited job command must replace the previous tick command",
           ).not.toContain("scheduled.txt");
 
-          // 8. Removing schedule: removes every sidecar.
           await writeFile(join(appRoot, ".lando.yml"), landofile({ appName, image, port, mode: "none" }));
           expectSuccess(
             await runCli(cell, appRoot, ["restart"], 600_000),
@@ -217,7 +210,6 @@ for (const cell of cells) {
             "removing schedule: must remove every sidecar service",
           ).toEqual([]);
         } finally {
-          // 9. Always tear the app and its volumes down.
           await runCli(cell, appRoot, ["destroy", "-y", "--volumes"], 180_000);
           await rm(appRoot, { recursive: true, force: true });
         }

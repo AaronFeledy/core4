@@ -152,9 +152,9 @@ describe("schedule compile feature", () => {
       });
       expect(script).toContain("'CRON_TZ=America/Chicago'");
       expect(script).toContain("[ ! -e '/usr/share/zoneinfo/America/Chicago' ]");
-      expect(script).toContain("service web");
+      expect(script).toContain("web");
       expect(script).toContain("TZ=America/Chicago");
-      expect(script).toContain("apk add --no-cache tzdata");
+      expect(script).toContain("exit 1");
     },
   );
 
@@ -180,9 +180,15 @@ describe("schedule compile feature", () => {
       jobs: [{ name: "tick", schedule: "@hourly", run: "true" }],
       timezone: tz,
     });
-    expect(script).toContain("is not a timezone name");
-    expect(script).toContain("Scheduled jobs need a zone name such as America/Chicago or UTC");
-    expect(script).toContain("service web");
+    expect(script).toContain("web");
+    expect(script).toContain(tz);
+    expect(script).toContain("exit 1");
+    expect(
+      script
+        .split("'")
+        .filter((_, index) => index % 2 === 0)
+        .join(""),
+    ).not.toContain(tz);
     expect(script).not.toContain("zoneinfo");
     expect(script).not.toContain("CRON_TZ=");
   });

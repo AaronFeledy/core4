@@ -4,11 +4,8 @@ import { DateTime } from "effect";
 import { scheduleTimezone } from "../src/jobs.ts";
 import { formatNextRun, nextRunAt } from "../src/next-run.ts";
 
-const at = (iso: string) => DateTime.makeUnsafe(iso);
-
 const nextIso = (every: string, now: string, timezone = "UTC"): string | undefined => {
-  const next = nextRunAt(every, at(now), timezone);
-  return next === undefined ? undefined : formatNextRun(next);
+  return formatNextRun(nextRunAt(every, DateTime.makeUnsafe(now), timezone));
 };
 
 describe("schedule next run", () => {
@@ -38,9 +35,6 @@ describe("schedule next run", () => {
     expect(nextIso("@daily", "2026-11-03T23:30:00Z", scheduleTimezone({ TZ: ":America/Chicago" }))).toBe(
       "2026-11-04T06:00:00.000Z",
     );
-    expect(
-      nextRunAt("@daily", at("2026-11-03T23:30:00Z"), scheduleTimezone({ TZ: ":America/Chicago" })),
-    ).toBeDefined();
   });
 
   test("unrepresentable durations and invalid expressions have no next run", () => {

@@ -77,8 +77,6 @@ test.each([
 });
 
 test("reports the reserved container DNS shape on an undeclared network", () => {
-  // Given an authored alias with the reserved shape on a network the app never declares.
-  // Then the reserved-shape issue is still reported; only the collision check is skipped.
   expect(
     validate({
       services: { web: { networks: { missing: { aliases: ["lando-shop--api"] } } } },

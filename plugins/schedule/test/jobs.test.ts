@@ -23,10 +23,8 @@ const groupNames = (jobs: ReadonlyArray<{ readonly user?: string }>) =>
 describe("schedule sidecar groups", () => {
   test("a single job without a user keeps the plain sidecar name and no user override", () => {
     const groups = scheduleSidecarGroups("web", [job("tick")]);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.name).toBe("web-schedule");
-    expect(groups[0]?.jobs).toEqual([job("tick")]);
-    expect("user" in (groups[0] ?? {})).toBe(false);
+    expect(groups).toEqual([{ name: "web-schedule", jobs: [job("tick")] }]);
+    expect(groups[0]).not.toHaveProperty("user");
   });
 
   test("a group's sidecar name depends only on the service and its user", () => {

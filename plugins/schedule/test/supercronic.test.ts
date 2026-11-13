@@ -1,28 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-import { SUPERCRONIC_PINS, type SupercronicPins, validateSupercronicPins } from "../src/supercronic.ts";
+import { SUPERCRONIC_PINS, SUPERCRONIC_VERSION } from "../src/supercronic.ts";
 
 describe("supercronic pins", () => {
-  test("accepts the committed version and per-arch checksums", () => {
-    expect(() => validateSupercronicPins(SUPERCRONIC_PINS)).not.toThrow();
-    expect(SUPERCRONIC_PINS.version).toMatch(/^\d+\.\d+\.\d+$/u);
-    expect(SUPERCRONIC_PINS.artifacts.amd64.sha256).toMatch(/^[0-9a-f]{64}$/u);
-    expect(SUPERCRONIC_PINS.artifacts.arm64.sha256).toMatch(/^[0-9a-f]{64}$/u);
-  });
-
-  test("fails if the supercronic version pin is missing", () => {
-    const pins: SupercronicPins = { ...SUPERCRONIC_PINS, version: "" };
-    expect(() => validateSupercronicPins(pins)).toThrow("supercronic version pin is missing");
-  });
-
-  test("fails if a checksum pin is missing", () => {
-    const pins: SupercronicPins = {
-      ...SUPERCRONIC_PINS,
-      artifacts: {
-        ...SUPERCRONIC_PINS.artifacts,
-        amd64: { ...SUPERCRONIC_PINS.artifacts.amd64, sha256: "" },
-      },
-    };
-    expect(() => validateSupercronicPins(pins)).toThrow("supercronic amd64 checksum pin is missing");
+  test("pins distinct SHA-256 checksums and versioned GitHub release URLs for each architecture", () => {
+    for (const [arch, artifact] of Object.entries(SUPERCRONIC_PINS.artifacts)) {
+      expect(artifact.sha256).toMatch(/^[0-9a-f]{64}$/u);
+      const url = new URL(artifact.url);
+      expect(url.protocol).toBe("https:");
+      expect(url.hostname).toBe("github.com");
+      expect(url.pathname).toBe(
+        `/aptible/supercronic/releases/download/v${SUPERCRONIC_VERSION}/supercronic-linux-${arch}`,
+      );
+    }
+    expect(SUPERCRONIC_PINS.artifacts.amd64.sha256).not.toBe(SUPERCRONIC_PINS.artifacts.arm64.sha256);
   });
 });

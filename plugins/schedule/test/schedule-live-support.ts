@@ -129,7 +129,6 @@ export const scheduleZone = (image: string): string => (image === "php:8.3" ? "A
 export const scheduleZoneAbbreviations = (image: string): ReadonlyArray<string> =>
   image === "php:8.3" ? ["CST", "CDT"] : ["UTC"];
 
-/** Print the identity the timer used and record the same values for the assertions. */
 const identityProbe = (prefix: string): string =>
   `id -u; id -g; echo $HOME; pwd; date +%Z; mkdir -p /app; id -u > /app/${prefix}-uid.txt; id -g > /app/${prefix}-gid.txt; echo $HOME > /app/${prefix}-home.txt; pwd > /app/${prefix}-pwd.txt; date +%Z > /app/${prefix}-tz.txt`;
 
@@ -138,13 +137,13 @@ const jobsFor = (mode: ScheduleMode, image: string): ReadonlyArray<string> => {
   const touched = mode === "edited" ? "/app/restarted.txt" : "/app/scheduled.txt";
   // A block scalar proves a multi-line job runs as one script: the second line
   // produces the file this suite waits for after the restart.
-  const tick = [identityProbe("scheduled"), `touch ${touched}`];
   return [
     "    schedule:",
     "      - name: tick",
     '        every: "@every 1s"',
     "        run: |",
-    ...tick.map((line) => `          ${line}`),
+    `          ${identityProbe("scheduled")}`,
+    `          touch ${touched}`,
     "      - name: vendor",
     '        every: "@every 1s"',
     '        run: "if [ -f /app/vendor/marker ] && [ ! -f /app/vendor-seen.txt ]; then cp /app/vendor/marker /app/vendor-seen.txt; fi"',

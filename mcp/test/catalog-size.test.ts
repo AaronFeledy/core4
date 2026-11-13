@@ -88,11 +88,10 @@ test("keeps the real default tools/list within discovery budgets and accepts doc
   const tools = Schema.decodeUnknownSync(
     Schema.Array(Schema.Struct({ name: Schema.String, outputSchema: Schema.JsonObject })),
   )(catalog?.tools);
-  // Built-in defaults plus bundled plugin tools such as db:snapshots and schedule:list.
   expect(tools).toHaveLength(18);
   expect(tools.map((tool) => tool.name)).toContain("db:snapshots");
   expect(tools.map((tool) => tool.name)).toContain("schedule:list");
-  // The real catalog measures about 92 kB. Every tool advertises the per-call appPath selector
+  // Every tool advertises the per-call appPath selector
   // (about 130 bytes each), and start and restart results list the services removed from the
   // Landofile (about 220 bytes each).
   expect(Buffer.byteLength(JSON.stringify({ jsonrpc: "2.0", id: 2, result: catalog }))).toBeLessThan(93_000);

@@ -12,8 +12,6 @@ export const SUPERCRONIC_BIN = "/usr/local/bin/supercronic" as const;
 export const SUPERCRONIC_CRONTAB = "/usr/local/etc/supercronic/crontab" as const;
 export const SUPERCRONIC_JOBS_DIRECTORY = "/usr/local/etc/supercronic/jobs" as const;
 
-const SHA256 = /^[0-9a-f]{64}$/u;
-
 export const SUPERCRONIC_ARTIFACTS = {
   amd64: {
     url: `https://github.com/aptible/supercronic/releases/download/v${SUPERCRONIC_VERSION}/supercronic-linux-amd64`,
@@ -25,40 +23,11 @@ export const SUPERCRONIC_ARTIFACTS = {
   },
 } as const;
 
-export type SupercronicArch = keyof typeof SUPERCRONIC_ARTIFACTS;
-
-export interface SupercronicPins {
-  readonly version: string;
-  readonly license: string;
-  readonly artifacts: {
-    readonly amd64: { readonly url: string; readonly sha256: string };
-    readonly arm64: { readonly url: string; readonly sha256: string };
-  };
-}
-
-export const SUPERCRONIC_PINS: SupercronicPins = {
+export const SUPERCRONIC_PINS = {
   version: SUPERCRONIC_VERSION,
   license: SUPERCRONIC_LICENSE,
   artifacts: SUPERCRONIC_ARTIFACTS,
-};
-
-export const validateSupercronicPins = (pins: SupercronicPins): void => {
-  if (!/^\d+\.\d+\.\d+$/u.test(pins.version)) {
-    throw new Error("supercronic version pin is missing");
-  }
-  if (pins.license !== "MIT") {
-    throw new Error("supercronic license pin is missing");
-  }
-  for (const arch of ["amd64", "arm64"] as const) {
-    const artifact = pins.artifacts[arch];
-    if (artifact === undefined || artifact.url.length === 0) {
-      throw new Error(`supercronic ${arch} url pin is missing`);
-    }
-    if (!SHA256.test(artifact.sha256)) {
-      throw new Error(`supercronic ${arch} checksum pin is missing`);
-    }
-  }
-};
+} as const;
 
 export const SUPERCRONIC_STEP_ID = "schedule.supercronic" as const;
 export const SUPERCRONIC_CRONTAB_STEP_ID = "schedule.crontab" as const;

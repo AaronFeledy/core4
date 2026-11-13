@@ -22,5 +22,3 @@ export class ScheduleJobAmbiguousError extends Schema.TaggedError<ScheduleJobAmb
     remediation: Remediation,
   },
 ) {}
-
-export type ScheduleCommandError = ScheduleJobNotFoundError | ScheduleJobAmbiguousError;

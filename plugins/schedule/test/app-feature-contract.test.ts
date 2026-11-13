@@ -5,19 +5,14 @@ import { runAppFeatureContract } from "@lando/sdk/test";
 import { Effect } from "effect";
 
 import { scheduleCompileFeature } from "../src/app-feature.ts";
-import { scheduleSidecarGroups } from "../src/jobs.ts";
-
-const job = (name: string, every: string, run: string, user?: string): ScheduleJob => ({
-  name,
-  every,
-  run,
-  ...(user === undefined ? {} : { user }),
-});
 
 describe("schedule catalog × app-feature contract suite", () => {
   test("schedule.compile clones one sidecar per user group", async () => {
-    // Given a scheduled service with two user groups and an unscheduled service.
-    const jobs = [job("tick", "@hourly", "true"), job("other", "@daily", "true", "1002")];
+    // Given
+    const jobs: ScheduleJob[] = [
+      { name: "tick", every: "@hourly", run: "true" },
+      { name: "other", every: "@daily", run: "true", user: "1002" },
+    ];
     const recorded: Array<ClonedServiceRequest> = [];
 
     // When
@@ -32,11 +27,12 @@ describe("schedule catalog × app-feature contract suite", () => {
       }),
     );
 
-    // Then the recorded sidecars are exactly the compiled user groups.
+    // Then
     expect(result).toBeUndefined();
-    expect(recorded.map(({ from, name, user }) => ({ from, name, user }))).toEqual(
-      scheduleSidecarGroups("web", jobs).map(({ name, user }) => ({ from: "web", name, user })),
-    );
+    expect(recorded.map(({ from, name, user }) => ({ from, name, user }))).toEqual([
+      { from: "web", name: "web-schedule", user: undefined },
+      { from: "web", name: "web-schedule-1002", user: "1002" },
+    ]);
   });
 
   test("an app with no scheduled service queues no clone", async () => {
