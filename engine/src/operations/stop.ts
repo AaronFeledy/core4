@@ -258,7 +258,6 @@ const haltResolvedRuntime = (
 export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
   options: StopAppOptions = {},
   target?: ResolvedAppTarget,
-  execution: { readonly skipInitEvents?: boolean } = {},
 ): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   StopAppError,
@@ -270,7 +269,7 @@ export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
           haltResolvedRuntime(options, resolved, {
             revalidate: false,
             requireAppliedEvidence: true,
-            runInitEvents: execution.skipInitEvents !== true,
+            runInitEvents: false,
             cleanupOwnership: false,
           }),
         ),
@@ -278,7 +277,7 @@ export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
     : haltResolvedRuntime(options, target, {
         revalidate: true,
         requireAppliedEvidence: target.landofile !== undefined,
-        runInitEvents: execution.skipInitEvents !== true,
+        runInitEvents: false,
         cleanupOwnership: false,
       });
 });

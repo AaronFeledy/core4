@@ -2,8 +2,8 @@ import { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
+import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
-import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import {
@@ -82,7 +82,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
         );
         const result = yield* Effect.result(
           Effect.gen(function* () {
-            const builtPlan = yield* prepareServiceCertificates(
+            const { plan: builtPlan, certificates } = yield* prepareServiceCertificates(
               yield* build({
                 ...plan,
                 services: Object.fromEntries(
@@ -105,21 +105,21 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
             yield* withGlobalConsumerReservation(
               builtPlan,
               [...names],
-              Effect.gen(function* () {
-                if (apply.beforeApply !== undefined) yield* apply.beforeApply;
-                for (const removal of removals)
-                  yield* apply.provider.removeObservedService(removal.observation);
-                return yield* Effect.scoped(
-                  apply.provider.apply(runtimePlan, {
-                    ...apply.options,
-                    resolveServiceEnvironment: (service) => session.resolveEnvironment(service.environment),
-                    onVolumeCreated: yield* volumeCreationRecorder(apply.provider, runtimePlan),
-                    ...(apply.options.reconcile === true || apply.recordedPlan !== undefined
-                      ? { recordedPlan: candidateRecordedPlan }
-                      : {}),
-                    completionPlan: candidateRecordedPlan,
-                  }),
-                );
+              applyActivation({
+                provider: apply.provider,
+                plan: runtimePlan,
+                certificates,
+                ...apply.options,
+                environment: session,
+                ...(apply.options.reconcile === true || apply.recordedPlan !== undefined
+                  ? { recordedPlan: candidateRecordedPlan }
+                  : {}),
+                completionPlan: candidateRecordedPlan,
+                beforeApply: Effect.gen(function* () {
+                  if (apply.beforeApply !== undefined) yield* apply.beforeApply;
+                  for (const removal of removals)
+                    yield* apply.provider.removeObservedService(removal.observation);
+                }),
               }),
               [...(apply.exclusive ?? []).filter((id) => names.has(id)), ...removalIds],
             );
