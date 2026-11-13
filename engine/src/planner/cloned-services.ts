@@ -7,7 +7,7 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Predicate } from "effect";
 
-import type { RecordedClonedService } from "../services/app-feature-types.ts";
+import type { AppFeatureServiceDraft, RecordedClonedService } from "../services/app-feature-types.ts";
 import { appFeatureError } from "./app-feature-error.ts";
 import { type DnsNameClaim, dnsNameClaims } from "./dns-name-validation.ts";
 import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
@@ -92,6 +92,36 @@ const inheritedBuildSteps = (
       return { ...step, user: step.user ?? parentDraft.user ?? "root" };
     });
 
+/**
+ * One decision per cloned field: `inherit` copies the parent's value, `drop`
+ * leaves an optional key off the clone, and `replace` writes a clone-specific value.
+ */
+type CloneFieldRule<T, K extends keyof T> =
+  | "inherit"
+  | { readonly replace: T[K] }
+  | (Record<never, never> extends Pick<T, K> ? "drop" : never);
+
+/** Exhaustive over `keyof T`, so a field added to either shape fails typecheck here. */
+type CloneFieldRules<T> = { readonly [K in keyof T]-?: CloneFieldRule<T, K> };
+
+const cloneClassifiedFields = <T extends object>(parent: T, rules: CloneFieldRules<T>): T => {
+  const clone: Record<PropertyKey, unknown> = {};
+  for (const key of Object.keys(rules) as Array<keyof T>) {
+    const rule = rules[key];
+    if (rule === "drop") continue;
+    if (rule === "inherit") {
+      // Copy only a key the parent carries, so an absent optional field stays
+      // absent instead of becoming an explicit undefined.
+      if (Object.hasOwn(parent, key)) clone[key] = parent[key];
+      continue;
+    }
+    clone[key] = rule.replace;
+  }
+  // The mapped rule type proves the table covers every field; this assertion
+  // only bridges the record the loop builds, which TypeScript cannot type.
+  return clone as T;
+};
+
 const clonePlannedDraft = (
   parent: PlannedServiceDraft,
   request: RecordedClonedService,
@@ -100,78 +130,103 @@ const clonePlannedDraft = (
   const extraEnv = request.extraEnv ?? {};
   const extraBuildSteps = request.extraBuildSteps ?? [];
   const parentDraft = parent.draft;
-  const {
-    healthcheck: _healthcheck,
-    readiness: _readiness,
-    readinessSource: _readinessSource,
-    listenerAuthority: _listenerAuthority,
-    certs: _certs,
-    storageOwnership: _storageOwnership,
-    connection: _connection,
-    nonSqlCreds: _nonSqlCreds,
-    sqlite: _sqlite,
-    entrypoint: _entrypoint,
-    command: _command,
-    ...rest
-  } = parentDraft;
-  return {
-    name,
-    authoredStorage: parent.authoredStorage,
-    hostnames: [],
-    authoredArtifact: parent.authoredArtifact,
-    pullPolicy: parent.pullPolicy,
-    authored: parent.authored,
+  const draftRules = {
+    name: { replace: name },
+    type: "inherit",
+    serviceTypeId: "inherit",
+    provider: "inherit",
+    primary: { replace: false },
+    artifact: "inherit",
+    // The requested argv is the clone's whole process, so the parent's command
+    // does not carry over.
+    command: "drop",
+    // An entrypoint without a command replaces the image ENTRYPOINT and
+    // suppresses its CMD instead of appending to the parent's entrypoint.
+    entrypoint:
+      typeof request.command === "string"
+        ? { replace: ["sh", "-c", request.command] }
+        : { replace: [...request.command] },
+    init: "inherit",
+    environment: { replace: { ...parentDraft.environment, ...extraEnv } },
+    // Database identity and seeded ownership describe the parent's data.
+    connection: "drop",
+    nonSqlCreds: "drop",
+    sqlite: "drop",
+    user: request.user === undefined ? "inherit" : { replace: request.user },
+    workingDirectory: "inherit",
+    appMount: parentDraft.appMount === undefined ? "drop" : { replace: { ...parentDraft.appMount } },
+    mounts: { replace: parentDraft.mounts.map((mount) => ({ ...mount })) },
+    featureIds: "inherit",
+    buildSteps: {
+      replace: [
+        ...inheritedBuildSteps(parentDraft, request),
+        ...extraBuildSteps.map((step) => ({ ...step })),
+      ],
+    },
+    extensions: "inherit",
+    storage: { replace: parentDraft.storage.map((entry) => ({ ...entry })) },
+    // A clone seeds no data of its own, so it owns no mounted tree.
+    storageOwnership: "drop",
+    endpoints: { replace: [] },
+    dependsOn: {
+      replace: [
+        ...parentDraft.dependsOn.map((dependency) => ({ ...dependency })),
+        { service: ServiceName.make(parent.name), condition: "service_started", required: true },
+      ],
+    },
+    // A clone may inherit an image HEALTHCHECK aimed at the parent's server,
+    // so disable it explicitly instead of leaving it absent.
+    healthcheck: { replace: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 } },
+    // Listener, probe, route, and certificate intent describe the parent's
+    // network presence, which a companion does not repeat.
+    readiness: "drop",
+    readinessSource: "drop",
+    listenerAuthority: "drop",
+    certs: "drop",
+    hostAliases: { replace: parentDraft.hostAliases.map((alias) => ({ ...alias })) },
+    provenance: {
+      replace: {
+        ...(parentDraft.provenance ?? {}),
+        [CLONED_SERVICE_PROVENANCE_KEY]: { feature: request.feature, from: request.from },
+      },
+    },
+    serviceName: { replace: request.name },
+    serviceType: "inherit",
+    base: "inherit",
+    framework: "inherit",
+    normalizedConfig: {
+      replace: {
+        ...cloneConfig(parentDraft.normalizedConfig, request.omitConfigKeys),
+        ...(request.user === undefined ? {} : { user: request.user }),
+      },
+    },
+    resolutionMetadata: "inherit",
+  } satisfies CloneFieldRules<AppFeatureServiceDraft>;
+  const plannedRules = {
+    name: { replace: name },
+    authoredStorage: "inherit",
+    hostnames: { replace: [] },
+    authoredArtifact: "inherit",
+    pullPolicy: "inherit",
+    authored: "inherit",
     // A different principal cannot share the parent's home store, and preparing
     // a new one would insert a build step before the inherited layers.
     homeIntent:
       request.user === undefined
-        ? parent.homeIntent
-        : { serviceType: parent.homeIntent.serviceType, home: false },
+        ? "inherit"
+        : { replace: { serviceType: parent.homeIntent.serviceType, home: false } },
+    draft: { replace: cloneClassifiedFields(parentDraft, draftRules) },
     // Log files belong to the parent's process. Following them would also append
     // the parent's redirect build steps after the request's own extra steps.
-    logSources: [],
-    routes: undefined,
-    extensions: stripComposePublish(parent.extensions ?? {}),
+    logSources: { replace: [] },
+    routes: { replace: undefined },
+    extensions: { replace: stripComposePublish(parent.extensions ?? {}) },
     // The clone shares the parent's service-scoped stores: same files, same
     // dependencies. A user override drops home persistence, so it mounts no
     // home store here or in finalize.
-    storeOwner: parent.name,
-    draft: {
-      ...rest,
-      name,
-      serviceName: request.name,
-      primary: false,
-      // An entrypoint without a command replaces the image ENTRYPOINT and
-      // suppresses its CMD instead of appending to the parent's entrypoint.
-      entrypoint: typeof request.command === "string" ? ["sh", "-c", request.command] : [...request.command],
-      // A clone may inherit an image HEALTHCHECK aimed at the parent's server,
-      // so disable it explicitly instead of leaving it absent.
-      healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 },
-      ...(request.user === undefined ? {} : { user: request.user }),
-      environment: { ...parentDraft.environment, ...extraEnv },
-      mounts: parentDraft.mounts.map((mount) => ({ ...mount })),
-      buildSteps: [
-        ...inheritedBuildSteps(parentDraft, request),
-        ...extraBuildSteps.map((step) => ({ ...step })),
-      ],
-      storage: parentDraft.storage.map((entry) => ({ ...entry })),
-      endpoints: [],
-      dependsOn: [
-        ...parentDraft.dependsOn.map((dependency) => ({ ...dependency })),
-        { service: ServiceName.make(parent.name), condition: "service_started", required: true },
-      ],
-      hostAliases: parentDraft.hostAliases.map((alias) => ({ ...alias })),
-      normalizedConfig: {
-        ...cloneConfig(parentDraft.normalizedConfig, request.omitConfigKeys),
-        ...(request.user === undefined ? {} : { user: request.user }),
-      },
-      provenance: {
-        ...(parentDraft.provenance ?? {}),
-        [CLONED_SERVICE_PROVENANCE_KEY]: { feature: request.feature, from: request.from },
-      },
-      ...(parentDraft.appMount === undefined ? {} : { appMount: { ...parentDraft.appMount } }),
-    },
-  };
+    storeOwner: { replace: parent.name },
+  } satisfies CloneFieldRules<PlannedServiceDraft>;
+  return cloneClassifiedFields(parent, plannedRules);
 };
 
 const networksWithoutAliases = (
