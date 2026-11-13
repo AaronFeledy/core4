@@ -116,7 +116,7 @@ Command ids MUST be canonical and namespaced. Command descriptors carry no `name
 
 There are no legacy autoload directories; every contribution enters through the manifest.
 
-The bundled `@lando/schedule` plugin contributes the `schedule.compile` app feature (§6.2.2) and the `schedule:list` and `schedule:run` commands (§8.2.8). The feature activates only for a service whose `schedule` is non-empty; an app with no scheduled job receives no companion service, build step, or command side effect from it. It MUST NOT install or require a host scheduler or host daemon.
+The bundled `@lando/schedule` plugin contributes the `schedule.compile` app feature (§6.2.2) and the `schedule:list` and `schedule:run` commands (§8.2.8). The feature is evaluated for every app that has services and creates companions only for services whose `schedule` is non-empty; an app with no scheduled job receives no companion service and no build step from it. It MUST NOT install or require a host scheduler or host daemon.
 
 Trusted command/tooling Effects may consume `ExecutionSessionService` through declared SDK requirements (§22), not core or private engine imports. Manifest and trust rules remain unchanged.
 
