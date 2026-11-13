@@ -159,6 +159,8 @@ Guide MDX frontmatter is `GuideFrontmatter`: `id`, `provider` / layer, `timeout`
 - Supported Linux fallback after default setup fails: `lando setup --provider=docker` (working system Docker) or `LANDO_PROVIDER=docker`. Not "advanced users who prefer Docker."
 - Lando starts the proxy. Do not tell users to launch Traefik.
 - Installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
+- Before telling readers to install a PHP extension that a CMS requires, check whether the stock PHP image already ships or builds it (`PHP_COMMON_EXTENSIONS`, `PHP_EXTENSIONS_TO_BUILD`). Teach a `build.artifact` install, or link `docs/guides/services/php-customization.mdx`, only for extensions the image lacks.
+- Single-command CLI tooling tasks in guides (`drush`, `wp`, `typo3`) set `wrapper: true` so `--help` and `--version` reach the tool instead of Lando. Mirror the key in the fixture.
 - Recipe READMEs (`recipes/<id>/README.mdx`) are executable-guide-valid and feed scaffold README generation. Drupal's e2e smoke is richer than drupal-cms. Do not flatten it.
 
 ## Transcripts
@@ -197,6 +199,8 @@ Prose carries meaning. Components only execute: `<Run>`, `<Verify>`, `<Cleanup>`
 - A scenario must do something. Vars-only / documentation-only scenarios are banned.
 - `render={false}` is for real hidden tests, `reason` at least 8 chars.
 - Litmus: strip every JSX tag. What remains is still a guide.
+
+A guide has to document and demonstrate. Every step and claim on the page must run in an executable scenario. Planned config (`lando app:config`) does not prove a login, a request, or a seeded row; those need `layer="e2e"`, and `@smoke` when they should gate a pull request (Linux x64 CI runs only `@smoke` e2e). Steps that should still run but not appear to the reader go in `<Hidden reason="...">` (`reason` at least 8 characters). Hidden steps execute; they are excluded from public transcripts and the rendered page. `render={false}` hides an entire scenario the same way. If a claim cannot run in CI, do not put it on the page.
 
 Fixtures: `docs/guides/<guide-id>/fixtures/<name>/`. Every dir must be referenced by `<UseFixture>`.
 New fixture dir: record it in the golden corpus with `UPDATE_GOLDEN=1 bun test landofile/test/pipeline/golden-corpus.test.ts` and commit the digest change; guide gates do not run that test. A deliberately invalid fixture also carries `# lando-lint: expect-invalid <reason>` on line 1; no test keeps a hand-edited list. Steps: `docs/contributing/guide-authoring.md#register-a-new-fixture`.

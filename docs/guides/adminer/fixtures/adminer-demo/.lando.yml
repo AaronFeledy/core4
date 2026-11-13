@@ -1,0 +1,20 @@
+name: adminer-demo
+services:
+  db:
+    type: postgres
+    creds:
+      user: lando
+      database: adminer-demo
+      password: local-development-only
+  adminer:
+    type: compose
+    image: adminer:5
+    appMount: false
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    dependsOn:
+      db:
+        condition: service_healthy

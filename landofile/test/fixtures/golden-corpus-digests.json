@@ -1,6 +1,22 @@
 {
   "fixtures": [
     {
+      "fixture": "docs/guides/adminer/fixtures/adminer-demo",
+      "digest": "4c5fdcf2aed9e3c8bef83ee028e6a6cc034329113d19cb59986e314bfb3b2a10"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-mariadb",
+      "digest": "c5876f3ec0fc7b699bc2f73d1203fc73102c48b5426689fcaa1d65c901245913"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-remove",
+      "digest": "e67935a277a1ac61763e65196fd7d97fc641097ae73ed8a3e4965453e7f216c8"
+    },
+    {
+      "fixture": "docs/guides/adminer/fixtures/adminer-sqlite",
+      "digest": "eae0a8279fddbc1ff3e106819eec5d99684781079699c4b5be71a0d08c7ab063"
+    },
+    {
       "fixture": "docs/guides/apache/fixtures/apache-demo",
       "digest": "0570a254096a54de8402f0ed2aaa7458a8fb978e8f2d29607763bcf91626c3ae"
     },

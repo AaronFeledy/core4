@@ -1,0 +1,396 @@
+---
+id: adminer
+provider: test
+timeout: 600000
+tags: [docs, adminer, compose, service, database, postgres, mariadb, sqlite]
+---
+
+# Browse your database in Adminer
+
+`lando psql` is fine until you want to click through tables or eyeball a schema. The phpMyAdmin service only talks to MySQL and MariaDB. Adminer is a one-file database UI that also speaks PostgreSQL and SQLite, and its official image runs as a Compose service in your app.
+
+Run every command on this page from the app directory on your host.
+
+## Add Adminer next to Postgres
+
+Save this as `.lando.yml` in an empty directory:
+
+```yaml
+name: adminer-demo
+services:
+  db:
+    type: postgres
+    creds:
+      user: lando
+      database: adminer-demo
+      password: local-development-only
+  adminer:
+    type: compose
+    image: adminer:5
+    appMount: false
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    dependsOn:
+      db:
+        condition: service_healthy
+```
+
+- `creds:` sets a password you choose. Without it, the password is `lando`, and `lando info` prints that published default. Keep an authored password for local development only.
+- `adminer:5` is the official image on the Adminer 5 major. It serves the UI on port `8080`.
+- `appMount: false` keeps your source out of the Adminer container. It only needs the network.
+- You do not need `ADMINER_DEFAULT_SERVER` when the database service is named `db`, as in this Landofile. Set it only to preset the Server field to a different service name.
+- The `ui` endpoint tells Lando that port `8080` speaks HTTP, so the proxy gives `adminer` its own `*.lndo.site` URL. Without an endpoint, the service has no route.
+- `dependsOn` with `condition: service_healthy` holds Adminer until the Postgres healthcheck passes.
+
+Start the app and give Postgres something to show:
+
+```sh
+lando start
+lando psql -c "CREATE TABLE notes (id serial PRIMARY KEY, body text); INSERT INTO notes (body) VALUES ('hello from lando');"
+```
+
+`lando start` returns after Postgres accepts connections, so `lando psql` works right away.
+
+## Log in
+
+Run `lando info` and open the `adminer` URL, `https://adminer.adminer-demo.lndo.site`. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+Fill in the login form:
+
+| Field | Value |
+| --- | --- |
+| System | PostgreSQL |
+| Server | `db` |
+| Username | `lando` |
+| Password | `local-development-only` |
+| Database | `adminer-demo` |
+
+After login, the `public` schema lists the `notes` table. Open it and select its data to see the row you inserted. That proves Adminer reached Postgres over the app network with your credentials. It doesn't prove anything about your app's own connection settings.
+
+The Server field is only a default. Type another service name, such as a second database service, to connect to that one instead.
+
+If the URL doesn't load, check `lando logs -s adminer` for the PHP server's startup line, and see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx) when the hostname doesn't resolve.
+
+## Fix "password authentication failed"
+
+Postgres stores the password when it first creates the database volume. If you started `db` before adding `creds:`, or changed `creds.password` later, the volume still holds the old password and Adminer's login fails with `password authentication failed for user "lando"`.
+
+Keep the data and set the stored password to match the Landofile:
+
+```sh
+lando psql -c "ALTER USER lando WITH PASSWORD 'local-development-only';"
+```
+
+`lando psql` connects over the container's local socket, which the Postgres image trusts, so this works even while the passwords disagree. Log in to Adminer again.
+
+## Use MariaDB or MySQL instead
+
+Point the same Adminer service at a `mariadb` or `mysql` service. Their default username and password are both `lando`, so no `creds:` block is needed:
+
+```yaml
+name: adminer-mariadb
+services:
+  db:
+    type: mariadb
+  adminer:
+    type: compose
+    image: adminer:5
+    appMount: false
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    dependsOn:
+      db:
+        condition: service_healthy
+```
+
+Start the app and give MariaDB something to show:
+
+```sh
+lando start
+lando mariadb -e "CREATE TABLE notes (id INT AUTO_INCREMENT PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES ('hello from lando');"
+```
+
+`lando start` returns after MariaDB accepts connections, so `lando mariadb` works right away.
+
+Run `lando info` and open the `adminer` URL, `https://adminer.adminer-mariadb.lndo.site`. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+Fill in the login form:
+
+| Field | Value |
+| --- | --- |
+| System | MySQL / MariaDB |
+| Server | `db` |
+| Username | `lando` |
+| Password | `lando` |
+| Database | `adminer-mariadb` |
+
+After login, the table list shows `notes`. Open it and select its data to see the row you inserted. That proves Adminer reached MariaDB over the app network with the default credentials. It doesn't prove anything about your app's own connection settings.
+
+For MySQL and MariaDB alone, the typed [phpMyAdmin service](./phpmyadmin.mdx) finds your databases and gets its URL without an endpoint.
+
+## Browse a SQLite file
+
+Adminer can open a SQLite file you declare with `sqlite.path` on an app service. See [Use SQLite with db commands](../tooling/sqlite-database.mdx) for that key. Adminer 5 will not log in to SQLite without a password, and SQLite has none, so you mount the official `login-password-less` plugin that the `adminer:5` image already bundles.
+
+Save this as `.lando.yml` in an empty directory, and save the plugin wrapper next to it as `login-password-less.php`:
+
+```yaml
+name: adminer-sqlite
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    sqlite:
+      path: data/site.sqlite
+  adminer:
+    type: compose
+    image: adminer:5
+    volumes:
+      - ./login-password-less.php:/var/www/html/plugins-enabled/login-password-less.php
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+```
+
+```php
+<?php
+require_once('plugins/login-password-less.php');
+return new AdminerLoginPasswordLess(
+  password_hash("local-development-only", PASSWORD_DEFAULT)
+);
+```
+
+This Adminer service keeps the default app mount, so it sees the file at `/app/` plus your `sqlite.path`. The wrapper passes the bundled plugin a hash of the password you will type. The image loads that wrapper from `/var/www/html/plugins-enabled/`.
+
+Start the app, create a directory for the SQLite file, and give it a table to show:
+
+```sh
+lando start
+lando exec appserver -- mkdir -p data
+lando exec appserver -- php -r '$db = new PDO("sqlite:data/site.sqlite"); $db->exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES (\"hello from lando\");");'
+```
+
+`lando start` returns after the app service is ready and Adminer is running, so the `lando exec` commands and the login below work right away. If your app already created the file, skip the `php -r` command.
+
+Run `lando info` and open the `adminer` URL, `https://adminer.adminer-sqlite.lndo.site`. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+Fill in the login form:
+
+| Field | Value |
+| --- | --- |
+| System | SQLite |
+| Server | leave empty |
+| Username | leave empty |
+| Password | `local-development-only` |
+| Database | `/app/data/site.sqlite` |
+
+After login, the tables list shows `notes`. Open it and select its data to see the row you inserted. That proves Adminer opened the SQLite file on the app mount with the plugin password. It doesn't prove your application's own connection settings.
+
+If you already added Adminer next to Postgres, declare `sqlite.path` on the app service, remove `appMount: false` so Adminer can see `/app`, and add the plugin file and its `volumes:` entry.
+
+If the URL doesn't load, check `lando logs -s adminer` for the PHP server's startup line, and see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx) when the hostname doesn't resolve.
+
+## Remove it
+
+Delete the `adminer` service from `.lando.yml`, then run:
+
+```sh
+lando destroy -y
+lando start
+```
+
+`lando destroy -y` removes the containers and keeps the database volume, so the `notes` row is still there when the app comes back.
+
+## Check the plan
+
+The inspect scenarios check the planned config for each Landofile. The browse scenarios start each app, seed a `notes` row, confirm Adminer's `*.lndo.site` URL from `lando info`, and log in to select that row. The SQLite browse scenario also runs the documented `lando exec appserver -- mkdir -p data`. The `remove-it` scenario starts a Postgres app, seeds that same row, removes the Adminer service, and runs the documented `lando destroy -y` and `lando start` to prove Adminer is gone, the app is ready, and the seeded row is still in the database volume.
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"adminer:5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"protocol\":\\s*\"http\",\\s*\"port\":\\s*8080" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mariadb" render>
+    <Step name="scaffold-mariadb">
+      <UseFixture name="adminer-mariadb" />
+    </Step>
+    <Step name="inspect-mariadb">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"adminer:5\"" } }} />
+    </Step>
+    <Step name="cleanup-mariadb">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="sqlite" render>
+    <Step name="scaffold-sqlite">
+      <UseFixture name="adminer-sqlite" />
+    </Step>
+    <Step name="inspect-sqlite">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"data/site.sqlite\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"adminer:5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "plugins-enabled/login-password-less.php" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"protocol\":\\s*\"http\",\\s*\"port\":\\s*8080" } }} />
+    </Step>
+    <Step name="cleanup-sqlite">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="postgres-browse" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-demo" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-demo" } }} />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando psql -c "CREATE TABLE notes (id serial PRIMARY KEY, body text); INSERT INTO notes (body) VALUES ('hello from lando');"`} />
+    </Step>
+    <Step name="route">
+      <Verify command="lando info" expect={{ stdout: { regex: "adminer\\.adminer-demo\\.lndo\\.site" } }} />
+    </Step>
+    <Hidden reason="HTTP login and select prove Adminer reached Postgres and the seeded row">
+      <Step name="login-and-select">
+        <Verify command={`lando exec adminer -- php -r '$base=rtrim($argv[1],"/")."/"; $driver=$argv[2]; $server=$argv[3]; $user=$argv[4]; $pass=$argv[5]; $db=$argv[6]; $needle=$argv[7]; $table=$argv[8]??"notes"; $cookie=sys_get_temp_dir()."/ac-".getmypid(); @unlink($cookie); function H($method,$url,$cookie,$body=null){ $hf=tempnam(sys_get_temp_dir(),"h"); $of=tempnam(sys_get_temp_dir(),"o"); $cmd=["curl","-sS","-c",$cookie,"-b",$cookie,"-D",$hf,"-o",$of,"--max-time","20"]; if($method==="POST"){array_push($cmd,"-X","POST","-H","Content-Type: application/x-www-form-urlencoded","--data",$body??"");} $cmd[]=$url; $p=proc_open($cmd,[2=>["pipe","w"]],$pipes); $err=stream_get_contents($pipes[2]); fclose($pipes[2]); $st=proc_close($p); $hdr=(string)file_get_contents($hf); $out=(string)file_get_contents($of); @unlink($hf); @unlink($of); if($st!==0){fwrite(STDERR,"curl failed ($st): $err\\n"); exit(1);} return [$hdr,$out]; } function T($html){ return trim(html_entity_decode(preg_replace("/\\s+/"," ",strip_tags($html))??$html,ENT_QUOTES|ENT_HTML5)); } function resolve($base,$loc){ $loc=trim($loc); return str_starts_with($loc,"http")?$loc:$base.ltrim($loc,"/"); } function G($url,$cookie,$base){ $hdr=""; $body=""; for($i=0;$i<6;$i++){ [$hdr,$body]=H("GET",$url,$cookie); if(preg_match("/^HTTP\\/\\S+\\s+302\\b/mi",$hdr) && preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $url=resolve($base,$loc[1]); continue; } return [$hdr,$body]; } return [$hdr,$body]; } [$_,$login]=G($base,$cookie,$base); if(!preg_match("/name=.token. value=.([^\\x27]+)./",$login,$m) && !preg_match("/name=.token. value=.([^\\"]+)./",$login,$m)){echo T($login)."\\n"; fwrite(STDERR,"no login token\\n"); exit(1);} $post=http_build_query(["auth[driver]"=>$driver,"auth[server]"=>$server,"auth[username]"=>$user,"auth[password]"=>$pass,"auth[db]"=>$db,"token"=>$m[1]]); [$hdr,$body]=H("POST",$base,$cookie,$post); if(preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $next=resolve($base,$loc[1]); } else { $next=$base; } [$_,$page]=G($next,$cookie,$base); $pages=[$page]; $urls=[]; if(preg_match_all("/href=.([^\\"\\x27>]*select[^\\"\\x27>]*)/",$page,$hs)){ foreach($hs[1] as $h){ $urls[]=resolve($base,html_entity_decode($h,ENT_QUOTES|ENT_HTML5)); } } foreach([ http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"select"=>$table],"","&",PHP_QUERY_RFC3986), http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"ns"=>"public","select"=>$table],"","&",PHP_QUERY_RFC3986), ] as $q){ $urls[]=$base."?".$q; } foreach(array_unique($urls) as $u){ [$_,$p]=G($u,$cookie,$base); $pages[]=$p; } @unlink($cookie); foreach($pages as $p){ if(str_contains($p,$needle)){ echo "BROWSE_OK $needle\\n"; exit(0);} } echo T(implode("\\n",$pages))."\\n"; exit(1);' -- http://127.0.0.1:8080 pgsql db lando local-development-only adminer-demo "hello from lando" notes`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Break the stored Postgres password so the documented ALTER USER recovery can run">
+      <Step name="stale-password">
+        <Run command={`lando psql -c "ALTER USER lando WITH PASSWORD 'wrong-temporary';"`} />
+        <Verify command={`lando exec adminer -- php -r '$base=rtrim($argv[1],"/")."/"; $driver=$argv[2]; $server=$argv[3]; $user=$argv[4]; $pass=$argv[5]; $db=$argv[6]; $needle=$argv[7]; $table=$argv[8]??"notes"; $cookie=sys_get_temp_dir()."/ac-".getmypid(); @unlink($cookie); function H($method,$url,$cookie,$body=null){ $hf=tempnam(sys_get_temp_dir(),"h"); $of=tempnam(sys_get_temp_dir(),"o"); $cmd=["curl","-sS","-c",$cookie,"-b",$cookie,"-D",$hf,"-o",$of,"--max-time","20"]; if($method==="POST"){array_push($cmd,"-X","POST","-H","Content-Type: application/x-www-form-urlencoded","--data",$body??"");} $cmd[]=$url; $p=proc_open($cmd,[2=>["pipe","w"]],$pipes); $err=stream_get_contents($pipes[2]); fclose($pipes[2]); $st=proc_close($p); $hdr=(string)file_get_contents($hf); $out=(string)file_get_contents($of); @unlink($hf); @unlink($of); if($st!==0){fwrite(STDERR,"curl failed ($st): $err\\n"); exit(1);} return [$hdr,$out]; } function T($html){ return trim(html_entity_decode(preg_replace("/\\s+/"," ",strip_tags($html))??$html,ENT_QUOTES|ENT_HTML5)); } function resolve($base,$loc){ $loc=trim($loc); return str_starts_with($loc,"http")?$loc:$base.ltrim($loc,"/"); } function G($url,$cookie,$base){ $hdr=""; $body=""; for($i=0;$i<6;$i++){ [$hdr,$body]=H("GET",$url,$cookie); if(preg_match("/^HTTP\\/\\S+\\s+302\\b/mi",$hdr) && preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $url=resolve($base,$loc[1]); continue; } return [$hdr,$body]; } return [$hdr,$body]; } [$_,$login]=G($base,$cookie,$base); if(!preg_match("/name=.token. value=.([^\\x27]+)./",$login,$m) && !preg_match("/name=.token. value=.([^\\"]+)./",$login,$m)){echo T($login)."\\n"; fwrite(STDERR,"no login token\\n"); exit(1);} $post=http_build_query(["auth[driver]"=>$driver,"auth[server]"=>$server,"auth[username]"=>$user,"auth[password]"=>$pass,"auth[db]"=>$db,"token"=>$m[1]]); [$hdr,$body]=H("POST",$base,$cookie,$post); if(preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $next=resolve($base,$loc[1]); } else { $next=$base; } [$_,$page]=G($next,$cookie,$base); $pages=[$page]; $urls=[]; if(preg_match_all("/href=.([^\\"\\x27>]*select[^\\"\\x27>]*)/",$page,$hs)){ foreach($hs[1] as $h){ $urls[]=resolve($base,html_entity_decode($h,ENT_QUOTES|ENT_HTML5)); } } foreach([ http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"select"=>$table],"","&",PHP_QUERY_RFC3986), http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"ns"=>"public","select"=>$table],"","&",PHP_QUERY_RFC3986), ] as $q){ $urls[]=$base."?".$q; } foreach(array_unique($urls) as $u){ [$_,$p]=G($u,$cookie,$base); $pages[]=$p; } @unlink($cookie); foreach($pages as $p){ if(str_contains($p,$needle)){ echo "BROWSE_OK $needle\\n"; exit(0);} } echo T(implode("\\n",$pages))."\\n"; exit(1);' -- http://127.0.0.1:8080 pgsql db lando local-development-only adminer-demo "hello from lando" notes`} expectExit={1} expect={{ stdout: { regex: "password authentication failed" } }} />
+      </Step>
+    </Hidden>
+    <Step name="fix-password">
+      <Run command={`lando psql -c "ALTER USER lando WITH PASSWORD 'local-development-only';"`} />
+    </Step>
+    <Hidden reason="HTTP login after ALTER USER confirms the stored password matches the Landofile">
+      <Step name="login-after-alter">
+        <Verify command={`lando exec adminer -- php -r '$base=rtrim($argv[1],"/")."/"; $driver=$argv[2]; $server=$argv[3]; $user=$argv[4]; $pass=$argv[5]; $db=$argv[6]; $needle=$argv[7]; $table=$argv[8]??"notes"; $cookie=sys_get_temp_dir()."/ac-".getmypid(); @unlink($cookie); function H($method,$url,$cookie,$body=null){ $hf=tempnam(sys_get_temp_dir(),"h"); $of=tempnam(sys_get_temp_dir(),"o"); $cmd=["curl","-sS","-c",$cookie,"-b",$cookie,"-D",$hf,"-o",$of,"--max-time","20"]; if($method==="POST"){array_push($cmd,"-X","POST","-H","Content-Type: application/x-www-form-urlencoded","--data",$body??"");} $cmd[]=$url; $p=proc_open($cmd,[2=>["pipe","w"]],$pipes); $err=stream_get_contents($pipes[2]); fclose($pipes[2]); $st=proc_close($p); $hdr=(string)file_get_contents($hf); $out=(string)file_get_contents($of); @unlink($hf); @unlink($of); if($st!==0){fwrite(STDERR,"curl failed ($st): $err\\n"); exit(1);} return [$hdr,$out]; } function T($html){ return trim(html_entity_decode(preg_replace("/\\s+/"," ",strip_tags($html))??$html,ENT_QUOTES|ENT_HTML5)); } function resolve($base,$loc){ $loc=trim($loc); return str_starts_with($loc,"http")?$loc:$base.ltrim($loc,"/"); } function G($url,$cookie,$base){ $hdr=""; $body=""; for($i=0;$i<6;$i++){ [$hdr,$body]=H("GET",$url,$cookie); if(preg_match("/^HTTP\\/\\S+\\s+302\\b/mi",$hdr) && preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $url=resolve($base,$loc[1]); continue; } return [$hdr,$body]; } return [$hdr,$body]; } [$_,$login]=G($base,$cookie,$base); if(!preg_match("/name=.token. value=.([^\\x27]+)./",$login,$m) && !preg_match("/name=.token. value=.([^\\"]+)./",$login,$m)){echo T($login)."\\n"; fwrite(STDERR,"no login token\\n"); exit(1);} $post=http_build_query(["auth[driver]"=>$driver,"auth[server]"=>$server,"auth[username]"=>$user,"auth[password]"=>$pass,"auth[db]"=>$db,"token"=>$m[1]]); [$hdr,$body]=H("POST",$base,$cookie,$post); if(preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $next=resolve($base,$loc[1]); } else { $next=$base; } [$_,$page]=G($next,$cookie,$base); $pages=[$page]; $urls=[]; if(preg_match_all("/href=.([^\\"\\x27>]*select[^\\"\\x27>]*)/",$page,$hs)){ foreach($hs[1] as $h){ $urls[]=resolve($base,html_entity_decode($h,ENT_QUOTES|ENT_HTML5)); } } foreach([ http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"select"=>$table],"","&",PHP_QUERY_RFC3986), http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"ns"=>"public","select"=>$table],"","&",PHP_QUERY_RFC3986), ] as $q){ $urls[]=$base."?".$q; } foreach(array_unique($urls) as $u){ [$_,$p]=G($u,$cookie,$base); $pages[]=$p; } @unlink($cookie); foreach($pages as $p){ if(str_contains($p,$needle)){ echo "BROWSE_OK $needle\\n"; exit(0);} } echo T(implode("\\n",$pages))."\\n"; exit(1);' -- http://127.0.0.1:8080 pgsql db lando local-development-only adminer-demo "hello from lando" notes`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mariadb-browse" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-mariadb" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-mariadb" } }} />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando mariadb -e "CREATE TABLE notes (id INT AUTO_INCREMENT PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES ('hello from lando');"`} />
+    </Step>
+    <Step name="route">
+      <Verify command="lando info" expect={{ stdout: { regex: "adminer\\.adminer-mariadb\\.lndo\\.site" } }} />
+    </Step>
+    <Hidden reason="HTTP login and select prove Adminer reached MariaDB and the seeded row">
+      <Step name="login-and-select">
+        <Verify command={`lando exec adminer -- php -r '$base=rtrim($argv[1],"/")."/"; $driver=$argv[2]; $server=$argv[3]; $user=$argv[4]; $pass=$argv[5]; $db=$argv[6]; $needle=$argv[7]; $table=$argv[8]??"notes"; $cookie=sys_get_temp_dir()."/ac-".getmypid(); @unlink($cookie); function H($method,$url,$cookie,$body=null){ $hf=tempnam(sys_get_temp_dir(),"h"); $of=tempnam(sys_get_temp_dir(),"o"); $cmd=["curl","-sS","-c",$cookie,"-b",$cookie,"-D",$hf,"-o",$of,"--max-time","20"]; if($method==="POST"){array_push($cmd,"-X","POST","-H","Content-Type: application/x-www-form-urlencoded","--data",$body??"");} $cmd[]=$url; $p=proc_open($cmd,[2=>["pipe","w"]],$pipes); $err=stream_get_contents($pipes[2]); fclose($pipes[2]); $st=proc_close($p); $hdr=(string)file_get_contents($hf); $out=(string)file_get_contents($of); @unlink($hf); @unlink($of); if($st!==0){fwrite(STDERR,"curl failed ($st): $err\\n"); exit(1);} return [$hdr,$out]; } function T($html){ return trim(html_entity_decode(preg_replace("/\\s+/"," ",strip_tags($html))??$html,ENT_QUOTES|ENT_HTML5)); } function resolve($base,$loc){ $loc=trim($loc); return str_starts_with($loc,"http")?$loc:$base.ltrim($loc,"/"); } function G($url,$cookie,$base){ $hdr=""; $body=""; for($i=0;$i<6;$i++){ [$hdr,$body]=H("GET",$url,$cookie); if(preg_match("/^HTTP\\/\\S+\\s+302\\b/mi",$hdr) && preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $url=resolve($base,$loc[1]); continue; } return [$hdr,$body]; } return [$hdr,$body]; } [$_,$login]=G($base,$cookie,$base); if(!preg_match("/name=.token. value=.([^\\x27]+)./",$login,$m) && !preg_match("/name=.token. value=.([^\\"]+)./",$login,$m)){echo T($login)."\\n"; fwrite(STDERR,"no login token\\n"); exit(1);} $post=http_build_query(["auth[driver]"=>$driver,"auth[server]"=>$server,"auth[username]"=>$user,"auth[password]"=>$pass,"auth[db]"=>$db,"token"=>$m[1]]); [$hdr,$body]=H("POST",$base,$cookie,$post); if(preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $next=resolve($base,$loc[1]); } else { $next=$base; } [$_,$page]=G($next,$cookie,$base); $pages=[$page]; $urls=[]; if(preg_match_all("/href=.([^\\"\\x27>]*select[^\\"\\x27>]*)/",$page,$hs)){ foreach($hs[1] as $h){ $urls[]=resolve($base,html_entity_decode($h,ENT_QUOTES|ENT_HTML5)); } } foreach([ http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"select"=>$table],"","&",PHP_QUERY_RFC3986), http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"ns"=>"public","select"=>$table],"","&",PHP_QUERY_RFC3986), ] as $q){ $urls[]=$base."?".$q; } foreach(array_unique($urls) as $u){ [$_,$p]=G($u,$cookie,$base); $pages[]=$p; } @unlink($cookie); foreach($pages as $p){ if(str_contains($p,$needle)){ echo "BROWSE_OK $needle\\n"; exit(0);} } echo T(implode("\\n",$pages))."\\n"; exit(1);' -- http://127.0.0.1:8080 server db lando lando adminer-mariadb "hello from lando" notes`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="sqlite-browse" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-sqlite" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-sqlite" } }} />
+    </Step>
+    <Step name="mkdir">
+      <Run command="lando exec appserver -- mkdir -p data" />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando exec appserver -- php -r '$db = new PDO("sqlite:data/site.sqlite"); $db->exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES (\\"hello from lando\\");");'`} />
+    </Step>
+    <Step name="route">
+      <Verify command="lando info" expect={{ stdout: { regex: "adminer\\.adminer-sqlite\\.lndo\\.site" } }} />
+    </Step>
+    <Hidden reason="HTTP login and select prove Adminer opened the SQLite file and the seeded row">
+      <Step name="login-and-select">
+        <Verify command={`lando exec adminer -- php -r '$base=rtrim($argv[1],"/")."/"; $driver=$argv[2]; $server=$argv[3]; $user=$argv[4]; $pass=$argv[5]; $db=$argv[6]; $needle=$argv[7]; $table=$argv[8]??"notes"; $cookie=sys_get_temp_dir()."/ac-".getmypid(); @unlink($cookie); function H($method,$url,$cookie,$body=null){ $hf=tempnam(sys_get_temp_dir(),"h"); $of=tempnam(sys_get_temp_dir(),"o"); $cmd=["curl","-sS","-c",$cookie,"-b",$cookie,"-D",$hf,"-o",$of,"--max-time","20"]; if($method==="POST"){array_push($cmd,"-X","POST","-H","Content-Type: application/x-www-form-urlencoded","--data",$body??"");} $cmd[]=$url; $p=proc_open($cmd,[2=>["pipe","w"]],$pipes); $err=stream_get_contents($pipes[2]); fclose($pipes[2]); $st=proc_close($p); $hdr=(string)file_get_contents($hf); $out=(string)file_get_contents($of); @unlink($hf); @unlink($of); if($st!==0){fwrite(STDERR,"curl failed ($st): $err\\n"); exit(1);} return [$hdr,$out]; } function T($html){ return trim(html_entity_decode(preg_replace("/\\s+/"," ",strip_tags($html))??$html,ENT_QUOTES|ENT_HTML5)); } function resolve($base,$loc){ $loc=trim($loc); return str_starts_with($loc,"http")?$loc:$base.ltrim($loc,"/"); } function G($url,$cookie,$base){ $hdr=""; $body=""; for($i=0;$i<6;$i++){ [$hdr,$body]=H("GET",$url,$cookie); if(preg_match("/^HTTP\\/\\S+\\s+302\\b/mi",$hdr) && preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $url=resolve($base,$loc[1]); continue; } return [$hdr,$body]; } return [$hdr,$body]; } [$_,$login]=G($base,$cookie,$base); if(!preg_match("/name=.token. value=.([^\\x27]+)./",$login,$m) && !preg_match("/name=.token. value=.([^\\"]+)./",$login,$m)){echo T($login)."\\n"; fwrite(STDERR,"no login token\\n"); exit(1);} $post=http_build_query(["auth[driver]"=>$driver,"auth[server]"=>$server,"auth[username]"=>$user,"auth[password]"=>$pass,"auth[db]"=>$db,"token"=>$m[1]]); [$hdr,$body]=H("POST",$base,$cookie,$post); if(preg_match("/^Location:\\s*(.+)$/mi",$hdr,$loc)){ $next=resolve($base,$loc[1]); } else { $next=$base; } [$_,$page]=G($next,$cookie,$base); $pages=[$page]; $urls=[]; if(preg_match_all("/href=.([^\\"\\x27>]*select[^\\"\\x27>]*)/",$page,$hs)){ foreach($hs[1] as $h){ $urls[]=resolve($base,html_entity_decode($h,ENT_QUOTES|ENT_HTML5)); } } foreach([ http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"select"=>$table],"","&",PHP_QUERY_RFC3986), http_build_query([$driver=>$server,"username"=>$user,"db"=>$db,"ns"=>"public","select"=>$table],"","&",PHP_QUERY_RFC3986), ] as $q){ $urls[]=$base."?".$q; } foreach(array_unique($urls) as $u){ [$_,$p]=G($u,$cookie,$base); $pages[]=$p; } @unlink($cookie); foreach($pages as $p){ if(str_contains($p,$needle)){ echo "BROWSE_OK $needle\\n"; exit(0);} } echo T(implode("\\n",$pages))."\\n"; exit(1);' -- http://127.0.0.1:8080 sqlite '' '' local-development-only /app/data/site.sqlite "hello from lando" notes`} expect={{ stdout: { regex: "BROWSE_OK hello from lando" } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="remove-it" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="adminer-remove" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-remove" } }} />
+    </Step>
+    <Step name="seed">
+      <Run command={`lando psql -c "CREATE TABLE notes (id serial PRIMARY KEY, body text); INSERT INTO notes (body) VALUES ('hello from lando');"`} />
+    </Step>
+    <Hidden reason="Rewrite the Landofile without the Adminer service so the documented destroy and start can run">
+      <Step name="drop-adminer-service">
+        <Run command={`lando exec adminer --user=root -- php -r 'file_put_contents("/app/.lando.yml","name: adminer-remove\\nservices:\\n  db:\\n    type: postgres\\n    creds:\\n      user: lando\\n      database: adminer-remove\\n      password: local-development-only\\n");'`} />
+      </Step>
+    </Hidden>
+    <Step name="destroy">
+      <Verify command="lando destroy -y" expect={{ stdout: { regex: "destroyed: adminer-remove.*volumes preserved" } }} />
+    </Step>
+    <Step name="start-again">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-remove" } }} />
+    </Step>
+    <Step name="adminer-gone">
+      <Verify command="lando info" expect={{ stdout: { not: { regex: "adminer\\.adminer-remove\\.lndo\\.site" } } }} />
+      <Verify command="lando exec adminer -- true" expectExit={1} />
+    </Step>
+    <Step name="row-survived">
+      <Verify command={`lando psql -c "SELECT body FROM notes;"`} expect={{ stdout: { regex: "hello from lando" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Add PostgreSQL](./postgres.mdx) for ports, versions, and connection URLs
+- [Add a Compose service](./compose-passthrough.mdx) for the keys `type: compose` accepts
+- [Choose a catalog service's endpoints](../proxy/route-shorthand.mdx#choose-a-catalog-services-endpoints) to name your own hostname
+- [Use SQLite with db commands](../tooling/sqlite-database.mdx) to declare `sqlite.path` and import data first
+- [Import and export app databases](../tooling/db-import-export.mdx) to load real data first

@@ -1,0 +1,16 @@
+name: adminer-mariadb
+services:
+  db:
+    type: mariadb
+  adminer:
+    type: compose
+    image: adminer:5
+    appMount: false
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    dependsOn:
+      db:
+        condition: service_healthy

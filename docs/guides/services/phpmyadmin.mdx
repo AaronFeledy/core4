@@ -51,7 +51,8 @@ services:
 ## Point at several databases
 
 phpMyAdmin auto-discovers every `mysql` and `mariadb` service in the app
-and lists them in the UI. It does not wire PostgreSQL or SQL Server.
+and lists them in the UI. It does not wire PostgreSQL, SQLite, or SQL Server. For
+Postgres or SQLite, [browse your database in Adminer](./adminer.mdx).
 
 Each database connects on its planned port: Lando sets `PMA_PORTS` alongside `PMA_HOSTS`, one entry per host, so a sibling configured with `port: 3307` is reached on that port.
 
