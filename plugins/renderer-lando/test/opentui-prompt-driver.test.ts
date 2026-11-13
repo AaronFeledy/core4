@@ -227,3 +227,63 @@ describe("OpenTUI prompt driver", () => {
     expect(promptLoadAttempts).toBe(0);
   });
 });
+
+describe("OpenTUI prompt driver — keyboard layouts", () => {
+  const { basePrompt, cleanup, flushInput, makeDriver, makeSetup, waitForBuild } =
+    createOpenTuiPromptTestKit();
+
+  afterEach(async () => {
+    await cleanup();
+    resetOpenTuiSubstrateAvailabilityForTests();
+  });
+
+  // Kitty keyboard protocol: CSI <typed code point>::<US-layout code point> ; <1 + Ctrl> u
+  const kittyCtrl = (typed: string, physical: string): string =>
+    `\x1b[${typed.codePointAt(0)}::${physical.codePointAt(0)};5u`;
+
+  // A prompt that ignores the key never settles; bound the wait so a regression fails instead of hanging.
+  const settledWithin = <T>(answer: Promise<T>, ms: number): Promise<T> =>
+    Promise.race([
+      answer,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`the prompt did not settle within ${ms}ms`)), ms).unref();
+      }),
+    ]);
+
+  test("Ctrl+C typed on a Cyrillic layout cancels the prompt", async () => {
+    // Given
+    const testSetup = await makeSetup(60, 12, { kittyKeyboard: true });
+    const driver = await makeDriver(testSetup);
+    const abandon = new AbortController();
+    const answer = driver.readRaw({ prompt: basePrompt, mode: "normal" }, abandon.signal);
+    try {
+      await waitForBuild(testSetup);
+
+      // When
+      testSetup.renderer.stdin.emit("data", Buffer.from(kittyCtrl("с", "c")));
+      await flushInput(testSetup);
+
+      // Then
+      await expect(settledWithin(answer, 2000)).rejects.toMatchObject({ name: "PromptCancelledError" });
+    } finally {
+      abandon.abort();
+    }
+  });
+
+  test("a Latin Ctrl chord on the physical C key does not cancel the prompt", async () => {
+    // Given: Dvorak types `j` on the US-layout C key.
+    const testSetup = await makeSetup(60, 12, { kittyKeyboard: true });
+    const driver = await makeDriver(testSetup);
+    const answer = driver.readRaw({ prompt: basePrompt, mode: "normal" });
+    await waitForBuild(testSetup);
+
+    // When
+    testSetup.renderer.stdin.emit("data", Buffer.from(kittyCtrl("j", "c")));
+    await flushInput(testSetup);
+    testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
+
+    // Then
+    await expect(answer).resolves.toBe("");
+  });
+});

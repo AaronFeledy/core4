@@ -15,9 +15,17 @@ const openTui = openTuiModule satisfies OpenTuiModuleLike<CliRenderer>;
 export const createOpenTuiPromptTestKit = () => {
   const setups: TestSetup[] = [];
 
-  const makeSetup = async (width = 60, height = 12): Promise<TestSetup> => {
+  const makeSetup = async (
+    width = 60,
+    height = 12,
+    options: { readonly kittyKeyboard?: boolean } = {},
+  ): Promise<TestSetup> => {
     const clock = new ManualClock();
-    const setup = { ...(await createTestRenderer({ width, height, clock })), clock };
+    // The driver creates its renderer with `exitOnCtrlC: false`; OpenTUI's own Ctrl+C exit would mask it.
+    const setup = {
+      ...(await createTestRenderer({ width, height, clock, exitOnCtrlC: false, ...options })),
+      clock,
+    };
     setups.push(setup);
     return setup;
   };
