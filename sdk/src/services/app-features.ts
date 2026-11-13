@@ -92,18 +92,23 @@ export interface AppFeatureServiceMutators {
 }
 
 /**
- * The app-scoped context handed to an app-feature's `apply`. `selected` is the
- * ordered, name-deduplicated set of service drafts the feature's selectors
- * matched; `forEachSelected` and `select(name)` apply intent mutators to those
- * drafts. The context exposes no provider id, capabilities, or realization
- * decision — app-features emit provider-neutral intent only.
- */
-/**
  * Request to materialize a new service draft by cloning a resolved parent
- * after the app-feature pass. The clone copies the parent's image, build,
- * mounts, environment, user, and networks. Override `command` (required) and
- * optionally `user`, extra build steps, extra env, or omitted config keys.
- * Clones that later leave the plan are removed on start and rebuild.
+ * after the app-feature pass. A clone shares its parent's image, image-phase
+ * build steps, mounts (including the parent's service-scoped stores),
+ * environment, user, and networks, because a companion process must see the
+ * same files and dependencies as the service it belongs to.
+ *
+ * A clone never inherits its parent's authored identity: listeners, published
+ * ports, routes, hostnames, network aliases, healthcheck/readiness probes,
+ * certificates, database credentials, storage-ownership claims, and
+ * `phase: "app"` build steps stay with the parent. A `user` override runs the
+ * clone natively as that user and pins its inherited build steps to the
+ * parent's build identity, so the clone's image build is not silently rerun as
+ * another user.
+ *
+ * Clones are materialized after the app-feature pass. One that leaves the plan
+ * is removed by the ordinary removed-service convergence on whole-app start,
+ * restart, and rebuild; features do not remove clones themselves.
  */
 export interface ClonedServiceRequest {
   readonly from: string;
@@ -115,6 +120,13 @@ export interface ClonedServiceRequest {
   readonly omitConfigKeys?: ReadonlyArray<string>;
 }
 
+/**
+ * The app-scoped context handed to an app-feature's `apply`. `selected` is the
+ * ordered, name-deduplicated set of service drafts the feature's selectors
+ * matched; `forEachSelected` and `select(name)` apply intent mutators to those
+ * drafts. The context exposes no provider id, capabilities, or realization
+ * decision — app-features emit provider-neutral intent only.
+ */
 export interface AppFeatureContext {
   readonly featureId: string;
   readonly appName?: string | undefined;
@@ -127,8 +139,9 @@ export interface AppFeatureContext {
    * Queue a companion service cloned from a resolved parent. Intended for
    * feature-created sidecars that must share the parent's image, mounts,
    * environment, and networks without becoming an authored Landofile service.
-   * The planner materializes the clone after the app-feature pass; start and
-   * rebuild remove clones that are no longer requested.
+   * A clone is materialized after the app-feature pass, and one that leaves the
+   * plan is removed by the ordinary removed-service convergence on whole-app
+   * start, restart, and rebuild.
    */
   addClonedService(request: ClonedServiceRequest): void;
 }
