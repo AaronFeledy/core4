@@ -31,9 +31,17 @@ export const SUPERCRONIC_PINS = {
 
 export const SUPERCRONIC_STEP_ID = "schedule.supercronic" as const;
 export const SUPERCRONIC_CRONTAB_STEP_ID = "schedule.crontab" as const;
+export const SCHEDULE_TIMEZONE_STEP_ID = "schedule.timezone" as const;
 
+/**
+ * Without `-overlapping` the scheduler skips an occurrence while the previous
+ * run of the same job is still going. `-passthrough-logs` prints job output as
+ * the job wrote it, and `-split-logs` keeps the scheduler's own progress lines
+ * on stdout so stderr carries only job stderr and scheduler failures.
+ */
 export const supercronicCommand = (): readonly string[] => [
   SUPERCRONIC_BIN,
-  "-overlapping",
+  "-passthrough-logs",
+  "-split-logs",
   SUPERCRONIC_CRONTAB,
 ];

@@ -87,7 +87,11 @@ describe("schedule compile feature", () => {
 
     const inherit = clones[0];
     expect(inherit?.from).toBe("web");
-    expect(inherit?.command).toEqual([SUPERCRONIC_BIN, "-overlapping", SUPERCRONIC_CRONTAB]);
+    expect(inherit?.command[0]).toBe(SUPERCRONIC_BIN);
+    expect(inherit?.command.at(-1)).toBe(SUPERCRONIC_CRONTAB);
+    expect(inherit?.command, "a run must be skipped while the previous one is going").not.toContain(
+      "-overlapping",
+    );
     expect(inherit?.omitConfigKeys).toEqual(["schedule"]);
 
     const steps = inherit?.extraBuildSteps ?? [];
