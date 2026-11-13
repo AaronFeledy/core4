@@ -62,6 +62,49 @@ const providerReport = async (state: "running" | "idle" | "failure"): Promise<Do
 };
 
 describe("doctor command completion", () => {
+  test("matches JSON completion when a doctor section fails", async () => {
+    const report: DoctorReport = {
+      ...emptyReport,
+      self: {
+        checks: [
+          {
+            name: "doctor-self",
+            section: "provider-bootstrap",
+            status: "fail",
+            severity: "error",
+            reason: "failure",
+            context: {},
+            solutions: [],
+          },
+        ],
+      },
+    };
+    const envelopes = [];
+    for (const format of ["json", "ndjson"] as const) {
+      const input = { flags: { format } };
+      const io = createBufferedRendererIO();
+      const codes: number[] = [];
+      await runWithRendererHandling(Effect.succeed(report), {
+        ...compiledCommandOptionsFromSpec(metaDoctorSpec, input),
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        resultFormat: format,
+        command: metaDoctorSpec.id,
+        resultSchema: metaDoctorSpec.resultSchema,
+        io,
+        render: (value, ctx) => metaDoctorSpec.render?.(value, input, ctx),
+        setExitCode: (code) => codes.push(code),
+        formatError: () => "unexpected command failure",
+      });
+      const terminal = JSON.parse(io.stdout().trimEnd().split("\n").at(-1) ?? "{}");
+      envelopes.push(format === "json" ? terminal : terminal.envelope);
+      expect(codes).toEqual([1]);
+    }
+    expect(envelopes).toEqual([
+      expect.objectContaining({ ok: false, error: expect.objectContaining({ _tag: "LandoCommandError" }) }),
+      expect.objectContaining({ ok: false, error: expect.objectContaining({ _tag: "LandoCommandError" }) }),
+    ]);
+  });
   test.each(["text", "json", "yaml", "ndjson"] as const)(
     "returns a findings exit code for a real provider failure in %s",
     async (format) => {
