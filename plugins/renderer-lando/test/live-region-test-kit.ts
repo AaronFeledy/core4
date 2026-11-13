@@ -46,7 +46,6 @@ export interface FakeRenderer extends LiveRegionRendererLike {
   externalOutputMode: "capture-stdout" | "passthrough";
   readonly terminalWidth: number;
   readonly terminalHeight: number;
-  setCursorPosition(x: number, y: number, visible: boolean): void;
   on(event: "resize", listener: () => void): FakeRenderer;
   off(event: "resize", listener: () => void): FakeRenderer;
 }
@@ -83,7 +82,6 @@ export const createRecordingStdout = (
 
 export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {}) => {
   const calls: string[] = [];
-  const commits: string[] = [];
   const writes: string[] = [];
   const fpsAssignments: number[] = [];
   const footers: FakeRenderable[] = [];
@@ -92,9 +90,8 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
   let liveRequestCount = 0;
   let targetFps = 60;
   let maxFps = 60;
-  let screenMode: "split-footer" | "alternate-screen" | "main-screen" = "split-footer";
+  let screenMode: "split-footer" | "alternate-screen" | "main-screen" = "main-screen";
   let externalOutputMode: "capture-stdout" | "passthrough" = "capture-stdout";
-  let footerHeight = 1;
   let width = 80;
   let height = 24;
   let capturedStdout: CapturingStdout | undefined;
@@ -114,23 +111,11 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
         record(`footer:${lines.join("|")}`);
       },
     },
-    writeToScrollback: (writer) => {
-      const snapshot = writer({ width, renderContext: renderer });
-      if (!(snapshot.root instanceof FakeRenderable)) {
-        throw new TypeError("Expected a fake scrollback renderable.");
-      }
-      const text = snapshot.root.content ?? "";
-      commits.push(text);
-      record(`scrollback:${text}`);
-    },
     requestLive: () => {
       liveRequestCount += 1;
     },
     dropLive: () => {
       liveRequestCount -= 1;
-    },
-    get liveRequestCount() {
-      return liveRequestCount;
     },
     get targetFps() {
       return targetFps;
@@ -173,7 +158,6 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     get terminalHeight() {
       return height;
     },
-    setCursorPosition: (x, y, visible) => record(`cursor:${x},${y}:${String(visible)}`),
     on: (event, listener) => {
       if (event === "resize") resizeListeners.add(listener);
       return renderer;
@@ -182,13 +166,6 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
       if (event === "resize") resizeListeners.delete(listener);
       return renderer;
     },
-    get footerHeight() {
-      return footerHeight;
-    },
-    set footerHeight(value: number) {
-      footerHeight = value;
-    },
-    resetSplitFooterForReplay: ({ clearSavedLines }) => record(`reset:${String(clearSavedLines)}`),
     destroy: () => {
       destroyCount += 1;
     },
@@ -215,7 +192,6 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
 
   const fixture = {
     calls,
-    commits,
     writes,
     fpsAssignments,
     footers,
@@ -228,7 +204,7 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     set stdout(value: CapturingStdout | undefined) {
       capturedStdout = value;
     },
-    state: () => ({ destroyCount, footerHeight, liveRequestCount, maxFps, screenMode, targetFps }),
+    state: () => ({ destroyCount, liveRequestCount, maxFps, screenMode, targetFps }),
     emitResize: (nextWidth = 42, nextHeight = 12) => {
       width = nextWidth;
       height = nextHeight;

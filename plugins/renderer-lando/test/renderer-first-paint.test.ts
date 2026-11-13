@@ -363,7 +363,6 @@ describe("provisional first paint via the production TTY consumer", () => {
       const first = stripAnsi(written(fixture));
       expect(first).toContain(title);
       expect(first).not.toContain("╰─");
-      expect(fixture.commits).toEqual([]);
     }
   });
 
@@ -395,7 +394,6 @@ describe("provisional first paint via the production TTY consumer", () => {
     const text = stripAnsi(written(fixture));
     expect(text).toContain("╭─ start");
     expect(text).toContain("web service");
-    expect(fixture.commits).toEqual([]);
   });
 
   test("matching terminal without a tree clears the footer without scrollback", async () => {
@@ -421,7 +419,6 @@ describe("provisional first paint via the production TTY consumer", () => {
       ),
     );
     expect(stripAnsi(written(fixture))).toContain("╭─ start");
-    expect(fixture.commits).toEqual([]);
   });
 
   test("prompt-first and nested inits do not acquire or paint", async () => {

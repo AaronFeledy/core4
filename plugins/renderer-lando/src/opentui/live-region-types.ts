@@ -10,29 +10,12 @@ export interface LiveRegionRenderableLike {
   destroy?(): unknown;
 }
 
-interface ScrollbackRenderContextLike {
-  readonly width: number;
-  readonly renderContext: unknown;
-}
-
-interface ScrollbackSnapshotLike {
-  readonly root: LiveRegionRenderableLike;
-  readonly width?: number;
-  readonly height?: number;
-  readonly startOnNewLine?: boolean;
-  readonly trailingNewline?: boolean;
-}
-
-type ScrollbackWriterLike = (context: ScrollbackRenderContextLike) => ScrollbackSnapshotLike;
-
 export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProcessFn"> {
   readonly root: {
     add(child: LiveRegionRenderableLike): unknown;
   };
-  writeToScrollback(writer: ScrollbackWriterLike): void;
   requestLive(): void;
   dropLive(): void;
-  readonly liveRequestCount: number;
   targetFps: number;
   maxFps: number;
   resize(width: number, height: number): void;
@@ -40,11 +23,8 @@ export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProce
   externalOutputMode: LiveRegionExternalOutputMode;
   readonly terminalWidth: number;
   readonly terminalHeight: number;
-  setCursorPosition(x: number, y: number, visible: boolean): void;
   on(event: "resize", listener: () => void): LiveRegionRendererLike;
   off(event: "resize", listener: () => void): LiveRegionRendererLike;
-  footerHeight: number;
-  resetSplitFooterForReplay(options: { readonly clearSavedLines: boolean }): void;
   destroy(): void;
   suspend?(): void;
   resume?(): void;
@@ -80,7 +60,6 @@ export interface LiveRegionControllerOptions {
   readonly noColor?: boolean;
   readonly width: number;
   readonly height: number;
-  readonly footerHeight?: number;
   readonly onResize?: (width: number, height: number) => void;
 }
 

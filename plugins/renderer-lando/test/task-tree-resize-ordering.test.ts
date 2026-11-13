@@ -77,8 +77,6 @@ test("semantic footer reflow completes before resize replay through production c
         );
 
         // Then
-        expect(fixture.calls).not.toContain("reset:true");
-        expect(fixture.calls.some((call) => call.startsWith("cursor:"))).toBe(false);
         const painted = fixture.writes.join("");
         expect(painted).toContain("Building");
         const visibleLines = painted
