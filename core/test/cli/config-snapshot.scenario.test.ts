@@ -103,13 +103,15 @@ test("repair commands remain available under invalid config and notification pro
       "debugger-host",
       "global-app",
       "legacy-snapshot-catalogs",
-      "mcp",
       "missing-app-roots",
       "network-trust",
       "orphaned-volume-snapshots",
       "provider",
       "subsystems",
     ]);
+    expect(report.checks.find((check: { readonly section: string }) => check.section === "mcp")?.status).toBe(
+      "pass",
+    );
     expect(
       report.checks.some((check: { readonly section: string }) => check.section === "filesystem-watch"),
     ).toBe(true);
@@ -179,8 +181,13 @@ test("invalid presentation config cannot block doctor or config repair", async (
       report.checks.some((check: { readonly section: string }) => check.section === "filesystem-watch"),
     ).toBe(true);
     expect(report.skipped.map((entry: { readonly section: string }) => entry.section)).toEqual(
-      expect.arrayContaining(["app-config", "app-version-constraints", "deprecations"]),
+      expect.arrayContaining(["app-config", "deprecations"]),
     );
+    expect(
+      report.skipped.some(
+        (entry: { readonly section: string }) => entry.section === "app-version-constraints",
+      ),
+    ).toBe(false);
     expect(doctor.stdout).not.toContain("--fix");
     expect(repair.code).toBe(0);
     expect(JSON.parse(repair.stdout).warnings).toMatchObject([{ code: "LANDO_CONFIG_OTHER_SOURCE_INVALID" }]);

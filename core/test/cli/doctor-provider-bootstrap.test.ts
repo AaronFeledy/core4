@@ -24,6 +24,103 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { withCwd } from "../_support/temp-cwd";
 
 describe("doctor provider-bootstrap failure", () => {
+  test.each(["mcp", "network-trust"])(
+    "does not construct a provider runtime for --section %s",
+    async (section) => {
+      let builds = 0;
+      const factory = Layer.succeed(
+        RuntimeLayerFactory,
+        RuntimeLayerFactory.of({
+          make: <Services>(): Layer.Layer<Services, ConfigError> => {
+            builds += 1;
+            return Layer.effectContext(Effect.die("provider runtime must remain lazy"));
+          },
+        }),
+      );
+      const report = await Effect.runPromise(
+        resilientDoctorReport({ sections: [section], env: {} }).pipe(
+          Effect.provide(factory),
+          Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
+          Effect.provideService(
+            HostDnsResolver,
+            HostDnsResolver.of({ lookup: () => Effect.succeed(["127.0.0.1"]) }),
+          ),
+        ),
+      );
+      expect(builds).toBe(0);
+      expect(report.checks.map((check) => check.section)).toEqual(["global-config", section]);
+      expect(report.checks.some((check) => check.name === "doctor-self")).toBe(false);
+    },
+  );
+
+  test("--section subsystems builds the provider runtime and degrades when it cannot", async () => {
+    let builds = 0;
+    const factory = Layer.succeed(
+      RuntimeLayerFactory,
+      RuntimeLayerFactory.of({
+        make: <Services>(): Layer.Layer<Services, ConfigError> => {
+          builds += 1;
+          return Layer.effectContext(Effect.die("provider runtime unavailable"));
+        },
+      }),
+    );
+    const report = await Effect.runPromise(
+      resilientDoctorReport({ sections: ["subsystems"], env: {} }).pipe(
+        Effect.provide(factory),
+        Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
+        Effect.provideService(
+          HostDnsResolver,
+          HostDnsResolver.of({ lookup: () => Effect.succeed(["127.0.0.1"]) }),
+        ),
+      ),
+    );
+    expect(builds).toBe(1);
+    expect(report.checks.find((check) => check.name === "doctor-self")?.context.probe).toBe(
+      "provider-bootstrap",
+    );
+    expect(report.checks.some((check) => check.section === "subsystems" && check.name === "host-dns")).toBe(
+      true,
+    );
+    expect(
+      report.skipped.filter(
+        (skip) => skip.section === "subsystems" && skip.reason.includes("provider runtime"),
+      ),
+    ).toEqual([expect.objectContaining({ check: "router" }), expect.objectContaining({ check: "ssh" })]);
+  });
+
+  test("invalid global config still runs the requested app version check", async () => {
+    const root = await mkdtemp(join(tmpdir(), "doctor-config-independent-"));
+    try {
+      await writeFile(join(root, ".lando.yml"), "name: independent-app\nlando: '>=99'\n");
+      const factory = Layer.succeed(
+        RuntimeLayerFactory,
+        RuntimeLayerFactory.of({
+          make: <Services>(): Layer.Layer<Services> => Layer.effectContext(Effect.die("unused")),
+        }),
+      );
+      const report = await withCwd(root, () =>
+        Effect.runPromise(
+          resilientDoctorReport({ app: true, env: {}, platform: "darwin" }).pipe(
+            Effect.provide(factory),
+            Effect.provideService(GlobalConfigSources, {
+              env: {},
+              sources: { user: false, env: false },
+              host: { router: { httpPort: 99999 } },
+            }),
+          ),
+        ),
+      );
+      expect(report.checks.find((check) => check.section === "global-config")?.status).toBe("fail");
+      expect(report.checks.find((check) => check.section === "app-version-constraints")?.status).toBe("fail");
+      expect(report.checks.find((check) => check.section === "mcp")?.status).toBe("pass");
+      expect(
+        report.skipped.some((skip) => skip.section === "app-version-constraints" || skip.section === "mcp"),
+      ).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test.each([false, true])("preserves independent diagnostics when fix=%s", async (fix) => {
     // Given valid global config and an app, but a provider runtime that cannot build.
     const root = await mkdtemp(join(tmpdir(), "lando-doctor-provider-bootstrap-"));

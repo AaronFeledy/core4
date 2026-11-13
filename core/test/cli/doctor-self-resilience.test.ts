@@ -125,9 +125,9 @@ describe("doctor safe mode", () => {
           "network-trust",
           "certificate-authority",
           "global-app",
-          "mcp",
         ]),
       );
+      expect(report.checks.find((check) => check.section === "mcp")?.status).toBe("pass");
       expect(report.skipped.every((entry) => entry.reason.length > 0)).toBe(true);
       expect(JSON.stringify(report)).not.toContain("--fix");
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();

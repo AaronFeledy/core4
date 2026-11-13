@@ -24,25 +24,21 @@ import { DeprecationService } from "@lando/sdk/services";
 import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
-import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
-import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
+import type { DoctorOptions } from "../../src/cli/commands/doctor.ts";
+import { appConfigFindings, appConfigForReport } from "../../src/cli/commands/doctor-app-config";
 import type { DoctorCheck, DoctorFinding, DoctorReport } from "../../src/cli/commands/doctor-contract.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
+import { deprecationFindings, doctorDeprecations } from "../../src/cli/commands/doctor-deprecations";
 import { FilesystemWatchIO } from "../../src/cli/commands/doctor-filesystem-watch-io.ts";
 import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
-import {
-  appConfigFindings,
-  appConfigForReport,
-  collectDoctorReport,
-  deprecationFindings,
-  doctorDeprecations,
-  makeDoctorReport,
-} from "../../src/cli/commands/doctor-report.ts";
+import { collectDoctorReport, makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { appVersionConstraintsForReport } from "../../src/cli/commands/doctor-version-constraint.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
+import { collectRuntimeDoctor } from "./doctor-report-fixture";
 
 const isolatedUserDataRoot = mkdtempSync(join(tmpdir(), "lando-doctor-report-"));
 
@@ -121,12 +117,7 @@ const buildLayers = (
   );
 
 const doctorReport = (options: DoctorOptions = {}) =>
-  collectDoctorReport({
-    options,
-    provider: doctor(options, []),
-    deprecations: doctorDeprecations(),
-    appConfig: appConfigForReport().pipe(Effect.provide(PluginRegistryLayer.layer)),
-  });
+  collectRuntimeDoctor(options).pipe(Effect.provide(PluginRegistryLayer.layer));
 
 const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
   Effect.runPromise(doctorReport({ env: {} }).pipe(Effect.provide(buildLayers(provider))));
@@ -273,10 +264,7 @@ describe("meta:doctor combined report", () => {
         const report = await Effect.runPromise(
           collectDoctorReport({
             options: { app: true, env: {} },
-            provider: Effect.succeed({ checks: [] }),
-            deprecations: Effect.succeed({ entries: [] }),
-            certs: Effect.succeed(UNRESOLVED_CERTS_STATUS),
-            subsystems: () => Effect.succeed({ checks: [] }),
+            contexts: {},
           }).pipe(
             Effect.provideService(
               ConfigService,
@@ -308,7 +296,9 @@ describe("meta:doctor combined report", () => {
     const report = await run(provider);
 
     expect(report.checks.find((entry) => entry.section === "provider")?.name).toBe("selected-provider");
-    expect(report.checks.filter((entry) => entry.section === "subsystems")).toEqual([]);
+    expect(
+      report.checks.filter((entry) => entry.section === "subsystems").map((entry) => entry.name),
+    ).toEqual(["host-dns"]);
     expect(report.checks.map((entry) => entry.section)).toEqual(
       expect.arrayContaining([
         "certificate-authority",
@@ -321,6 +311,7 @@ describe("meta:doctor combined report", () => {
     );
     expect(report.skipped).toContainEqual({
       section: "subsystems",
+      check: "router",
       reason: expect.any(String),
     });
     expect(report.checks.find((entry) => entry.section === "global-app")?.name).toBe("global-app");
@@ -347,10 +338,14 @@ describe("meta:doctor combined report", () => {
     const report = await run(provider);
     expect(report.checks.map((entry) => [entry.section, entry.name])).toEqual([
       ["provider", "selected-provider"],
+      ["provider", "router-bind-address"],
+      ["provider", "lando3-leftovers"],
+      ["provider", "lando3-shadow"],
       ["provider", "runtime-service"],
       ["provider", "exec-umask"],
       ["certificate-authority", "certs"],
       ["network-trust", "network-trust"],
+      ["subsystems", "host-dns"],
       ["global-app", "global-app"],
       ["mcp", "mcp"],
       ["legacy-snapshot-catalogs", "legacy-snapshot-catalogs"],
@@ -514,10 +509,8 @@ describe("meta:doctor combined report", () => {
     const exit = await Effect.runPromiseExit(
       collectDoctorReport({
         options: { env: {}, app: true },
-        provider: Effect.succeed({ checks: [] }),
-        listeners: () => Effect.interrupt,
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed(UNRESOLVED_CERTS_STATUS),
+        contexts: {},
+        table: [independentSection({ id: "app-listeners", isolate: false, run: Effect.interrupt })],
       }).pipe(Effect.provide(buildLayers(TestRuntimeProvider))),
     );
 

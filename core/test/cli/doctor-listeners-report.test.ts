@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { Deferred, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
-import { doctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { listenerProvider, listenerReportLayers, withListenerApp } from "./doctor-listeners-fixture.ts";
+import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
 import { healthyFilesystemWatch } from "./doctor-watch-fixture.ts";
 
 test("preserves provider results and success when the app listener section exhausts its budget", async () => {

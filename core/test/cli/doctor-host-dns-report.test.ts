@@ -6,7 +6,7 @@ import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns";
-import { doctorReport } from "../../src/cli/commands/doctor-report";
+import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
 
 test.each([
   { addresses: ["127.0.0.1"], status: "pass" },

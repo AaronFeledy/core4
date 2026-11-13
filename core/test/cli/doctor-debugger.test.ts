@@ -6,6 +6,7 @@ import { ConfigService } from "@lando/sdk/services";
 import { Clock, Effect, Schema } from "effect";
 import { debuggerHostDoctor } from "../../src/cli/commands/doctor-debugger";
 import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
 
 const config = (host?: string) => {
   const value = Schema.decodeUnknownSync(GlobalConfig)(host === undefined ? {} : { debugger: { host } });
@@ -193,10 +194,17 @@ test("redacts all context and remediation", async () => {
 test("report includes debugger check without changing schema or summary counts", async () => {
   const report = await Effect.runPromise(
     collectDoctorReport({
-      options: { platform: "darwin" },
-      provider: Effect.succeed({ checks: [] }),
-      deprecations: Effect.succeed({ entries: [] }),
-    }).pipe(Effect.provideService(ConfigService, config("192.0.2.40"))),
+      options: { platform: "darwin", sections: ["debugger-host"] },
+      contexts: {},
+      table: [
+        independentSection({
+          id: "debugger-host",
+          run: debuggerHostDoctor((text) => text, 2000, "darwin").pipe(
+            Effect.provideService(ConfigService, config("192.0.2.40")),
+          ),
+        }),
+      ],
+    }),
   );
   expect(Schema.is(DoctorReportSchema)(report)).toBe(true);
   expect(

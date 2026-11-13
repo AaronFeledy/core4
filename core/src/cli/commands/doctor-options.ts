@@ -1,6 +1,7 @@
 import type { HostPlatform } from "@lando/sdk/schema";
 
 export interface DoctorOptions {
+  readonly sections?: ReadonlyArray<string> | undefined;
   readonly execPath?: string;
   readonly flagProviderId?: string | undefined;
   readonly landofileProviderId?: string | undefined;

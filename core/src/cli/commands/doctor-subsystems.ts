@@ -101,7 +101,7 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
           ? [
               {
                 check,
-                reason: "Runtime subsystem service was not provided; no inspection was performed.",
+                reason: "Requires the provider runtime; no subsystem inspection was performed.",
               },
             ]
           : [],

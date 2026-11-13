@@ -17,7 +17,6 @@ import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { type Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { doctor } from "../../src/cli/commands/doctor.ts";
-import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
 import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import {
   buildHostProxyAllowlistDoctorCheck,
@@ -25,6 +24,7 @@ import {
 } from "../../src/cli/commands/doctor-host-proxy-allowlist.ts";
 import { HostProxyDoctorFileSystem } from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
 import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];
@@ -1374,9 +1374,8 @@ describe("meta:doctor host-proxy transport reachability", () => {
     const report = await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.succeed(result),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed(UNRESOLVED_CERTS_STATUS),
+        contexts: {},
+        table: [independentSection({ id: "provider", run: Effect.succeed(result) })],
       }).pipe(Effect.provideService(ConfigService, buildConfigService(root))),
     );
     const encoded = Schema.encodeSync(DoctorReportSchema)(report);
