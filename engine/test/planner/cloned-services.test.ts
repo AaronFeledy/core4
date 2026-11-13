@@ -250,6 +250,34 @@ describe("cloned services", () => {
     expect(cloned.parentNetworks.get("web-schedule")).toEqual({ default: {}, backend: {} });
   });
 
+  test.each([
+    ["supports", true],
+    ["lacks", false],
+  ] as const)(
+    "replaces the parent's stop signal only when the provider %s stop_signal",
+    (_label, supported) => {
+      const parent = {
+        ...parentDraft({ normalizedConfig: { stop_signal: "SIGWINCH" } }),
+        extensions: { compose: { stop_signal: "SIGQUIT", restart: "unless-stopped" } },
+      };
+      const cloned = materializeClonedServices({
+        plannedServiceDrafts: [parent],
+        clones: [request()],
+        parentNetworksByName: new Map(),
+        capabilities: {
+          composeSpec: "native",
+          composeKnobs: { supported: supported ? ["stop_signal"] : [] },
+        },
+      }).drafts[0];
+      expect(cloned?.extensions.compose).toEqual({
+        restart: "unless-stopped",
+        ...(supported ? { stop_signal: "SIGTERM" } : {}),
+      });
+      expect(cloned?.draft.normalizedConfig).not.toHaveProperty("stop_signal");
+      expect(parent.extensions.compose.stop_signal).toBe("SIGQUIT");
+    },
+  );
+
   test("drops database identity and storage ownership from the clone", () => {
     const cloned = clone({
       parent: parentDraft({

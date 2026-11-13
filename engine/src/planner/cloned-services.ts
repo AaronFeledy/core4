@@ -1,6 +1,7 @@
 import { AppFeatureCloneError } from "@lando/sdk/errors";
 import {
   CLONED_SERVICE_PROVENANCE_KEY,
+  type ProviderCapabilities,
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
@@ -12,7 +13,7 @@ import { appFeatureError } from "./app-feature-error.ts";
 import { type DnsNameClaim, dnsNameClaims } from "./dns-name-validation.ts";
 import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
 
-const COMPOSE_PUBLISH_KEYS = ["ports", "expose", "healthcheck"] as const;
+const COMPOSE_PARENT_PROCESS_KEYS = ["ports", "expose", "healthcheck", "stop_signal"] as const;
 
 /**
  * Normalized-config inputs finalization can turn into a listener, host
@@ -30,6 +31,7 @@ const CLONE_OMITTED_CONFIG_KEYS = [
   "ports",
   "readiness",
   "routes",
+  "stop_signal",
 ] as const;
 
 /**
@@ -67,11 +69,17 @@ const cloneConfig = (
   return Object.fromEntries(Object.entries(config).filter(([key]) => !omit.has(key)));
 };
 
-const stripComposePublish = (extensions: ServicePlan["extensions"]): ServicePlan["extensions"] => {
+const companionExtensions = (
+  extensions: ServicePlan["extensions"],
+  resetStopSignal: boolean,
+): ServicePlan["extensions"] => {
   const composeExtension = extensions.compose;
-  if (!Predicate.isObject(composeExtension)) return { ...extensions };
-  const compose = { ...composeExtension };
-  for (const key of COMPOSE_PUBLISH_KEYS) delete compose[key];
+  if (!Predicate.isObject(composeExtension) && !resetStopSignal) return { ...extensions };
+  const compose = { ...(Predicate.isObject(composeExtension) ? composeExtension : {}) };
+  for (const key of COMPOSE_PARENT_PROCESS_KEYS) delete compose[key];
+  // An image's stop signal belongs to its server (Apache uses SIGWINCH).
+  // The companion replaces that process, so it needs the ordinary TERM signal.
+  if (resetStopSignal) compose.stop_signal = "SIGTERM";
   return { ...extensions, compose };
 };
 
@@ -125,6 +133,7 @@ const cloneClassifiedFields = <T extends object>(parent: T, rules: CloneFieldRul
 const clonePlannedDraft = (
   parent: PlannedServiceDraft,
   request: RecordedClonedService,
+  resetStopSignal: boolean,
 ): PlannedServiceDraft => {
   const name = ServiceName.make(request.name);
   const extraEnv = request.extraEnv ?? {};
@@ -220,7 +229,7 @@ const clonePlannedDraft = (
     // the parent's redirect build steps after the request's own extra steps.
     logSources: { replace: [] },
     routes: { replace: undefined },
-    extensions: { replace: stripComposePublish(parent.extensions ?? {}) },
+    extensions: { replace: companionExtensions(parent.extensions ?? {}, resetStopSignal) },
     // The clone shares the parent's service-scoped stores: same files, same
     // dependencies. A user override drops home persistence, so it mounts no
     // home store here or in finalize.
@@ -263,6 +272,7 @@ export const materializeClonedServices = (input: {
   readonly appSlug?: string | undefined;
   /** Every DNS name the app already claims, for case-insensitive clone-name rejection. */
   readonly reservedDnsNames?: ReadonlyArray<DnsNameClaim>;
+  readonly capabilities?: Pick<ProviderCapabilities, "composeSpec" | "composeKnobs">;
 }): MaterializedClones => {
   if (input.clones.length === 0) return { drafts: [], parentNetworks: new Map() };
   const byName = new Map(input.plannedServiceDrafts.map((entry) => [entry.name, entry]));
@@ -343,7 +353,14 @@ export const materializeClonedServices = (input: {
         concrete: true,
         authored: false,
       });
-    drafts.push(clonePlannedDraft(parent, request));
+    drafts.push(
+      clonePlannedDraft(
+        parent,
+        request,
+        input.capabilities?.composeSpec === "native" &&
+          input.capabilities.composeKnobs?.supported.includes("stop_signal") === true,
+      ),
+    );
     parentNetworks.set(request.name, networksWithoutAliases(input.parentNetworksByName.get(request.from)));
   }
   return { drafts, parentNetworks };
@@ -356,11 +373,13 @@ export const materializeClonedServiceDrafts = Effect.fnUntraced(function* (
     resolvedServices,
     appRoot,
     appSlug,
+    capabilities,
   }: {
     readonly clones: ReadonlyArray<RecordedClonedService>;
     readonly resolvedServices: ReadonlyArray<Pick<ResolvedService, "name" | "service">>;
     readonly appRoot: string;
     readonly appSlug: string;
+    readonly capabilities: ProviderCapabilities;
   },
 ) {
   const cloned = yield* Effect.try({
@@ -370,6 +389,7 @@ export const materializeClonedServiceDrafts = Effect.fnUntraced(function* (
         clones,
         parentNetworksByName: new Map(resolvedServices.map((entry) => [entry.name, entry.service.networks])),
         appSlug,
+        capabilities,
         reservedDnsNames: dnsNameClaims({
           services: Object.fromEntries(resolvedServices.map((entry) => [entry.name, entry.service])),
           appSlug,

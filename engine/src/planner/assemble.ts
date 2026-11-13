@@ -461,6 +461,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   ).pipe(mapFailures((error) => appFeatureError(appRoot, error)));
   const { cloned, plannedWithClones } = yield* materializeClonedServiceDrafts(plannedServiceDrafts, {
     clones: appFeatureResult.clones,
+    capabilities: providerCapabilities,
     resolvedServices,
     appRoot,
     appSlug,
