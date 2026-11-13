@@ -44,11 +44,11 @@ A service inherits the app provider. Per-service provider configuration is non-p
 
 Core normalizes an authored `image:` (including the artifact tag pinned by an explicitly versioned service type) to a reference artifact when no service or app feature supplied one. A feature-set artifact takes precedence over this image fallback. An authored Compose `build:` replaces the feature artifact with build intent. Lando build scripts add steps to a base artifact and do not supply one themselves. After feature application and authored normalization, every service sent to the provider's pull/build lifecycle MUST have an artifact; missing intent fails planning through `ServiceTypeError` wrapped in `LandofileValidationError` at `services.<name>.type`, before provider action. The error names the service, resolved type, and contributing plugin when known, and directs the author to set `image:` or Compose `build:`, or request a feature that calls `setArtifact`. An app with no services remains valid. These rules concern the planned artifact; the separately tracked authored `artifact:` grammar (#1483) is unchanged.
 
-Lando keys include `api`, `type`, `primary`, `artifact`, `appMount`, `mounts`, `storage`, `home`, `endpoints`, `routes`, `healthcheck`, `readiness`, `logs`, `certs`, `hostnames`, `security`, `build`, `packages`, and `providers`. Where a Compose spelling and a more specific Lando spelling conflict, the Lando value wins and `lando app config` SHOULD report the resolution.
+Lando keys include `api`, `type`, `primary`, `artifact`, `appMount`, `mounts`, `storage`, `home`, `endpoints`, `routes`, `healthcheck`, `readiness`, `logs`, `certs`, `hostnames`, `security`, `build`, `packages`, `schedule`, and `providers`. Where a Compose spelling and a more specific Lando spelling conflict, the Lando value wins and `lando app config` SHOULD report the resolution.
 
 `BuildScriptStep` is a command string or `{ run, user? }`; `BuildScript` is one step or an ordered list.
 
-The published boundary retains the named component contracts `ArtifactInput` (not yet published; see #1483), `CommandSpec`, `ContainerUser`, `PortablePath`, `AppMountInput`, `MountInput`, `StorageInput`, `EndpointInput`, `RouteInput`, `HealthcheckInput`, `LogSourceInput`, `CertsInput`, `CaInput`, and `ProviderId`.
+The published boundary retains the named component contracts `ArtifactInput` (not yet published; see #1483), `CommandSpec`, `ContainerUser`, `PortablePath`, `AppMountInput`, `MountInput`, `StorageInput`, `EndpointInput`, `RouteInput`, `HealthcheckInput`, `LogSourceInput`, `CertsInput`, `CaInput`, and `ProviderId`. The scheduled-job contracts `ScheduleConfig`, `ScheduleJob`, `ScheduleJobName`, and `CronExpression` are published with them (§6.2.2).
 
 #### 6.2.1 Native container init (`init`)
 
@@ -61,6 +61,36 @@ An effective `init: true` requires the `serviceInit` provider capability (§5.4)
 Native init is the container's PID 1. It forwards the stop signal to its immediate child, the planned `entrypoint`/`command` process, and reaps orphaned descendants. This avoids the kernel's special handling of default-disposition signals for PID 1; it does not guarantee completion before the stop grace period. A child that ignores the signal or exceeds that deadline may still be terminated through `SIGKILL`. This is not a promise about descendants: a shell or process manager that is the immediate child still decides whether to pass the signal on to its own children. Lando-owned keep-alive commands for `lando` language runtimes, `dotnet`, and PHP CLI mode run as direct argv so the idle process is init's immediate child; authored `command` and `entrypoint` values are never rewritten.
 
 Exec supervision (§5.3) is independent of native init: `init: false` or absence does not disable the helper mount or supervised non-TTY commands. The exec helper does not replace the service's entrypoint or become its PID 1.
+
+#### 6.2.2 Scheduled jobs (`schedule`)
+
+`services.<name>.schedule` is a `ScheduleConfig`: an ordered list of `ScheduleJob` values `{ name, every, run, user? }`. No top-level `schedule` key exists. Scheduled jobs are an app-runtime concern realized inside the app; Lando MUST NOT register them with a host scheduler.
+
+- `name` is a `ScheduleJobName`: a letter followed by letters, digits, `_`, or `-`. Names MUST be unique within one service; a duplicate fails validation at the service's `schedule` path. Different services MAY reuse a name.
+- `every` is a `CronExpression`: a 5-field cron expression; one of the named schedules `@hourly`, `@daily`, `@midnight`, `@weekly`, `@monthly`, `@yearly`, and `@annually`; or `@every <duration>`. `@every` accepts only clock-aligned steps: whole seconds or whole minutes that divide 60, or whole hours that divide 24. Any other duration, including a compound duration such as `1h30m`, MUST fail validation with a message that directs the author to a 5-field cron expression. No other form is accepted.
+- `run` is a `CommandSpec`. A string runs as `sh -c "<string>"`; an argv list runs exactly as written (§6.2).
+- `user` is an optional `ContainerUser`.
+- The list declares the replace layer-merge rule (§7.2): a higher layer's `schedule` replaces a lower layer's list wholesale, jobs never merge by name, and an empty list clears it.
+
+Validation happens when the Landofile is decoded, so `app:config:lint`, planning, and the published JSON Schema report an invalid job at its own Landofile path before provider action.
+
+**Cadence.** `@every` is clock-aligned and never counted from scheduler start or from the previous run: at 12:02, `@every 5m` next fires at 12:05. Runs of one job MAY overlap; the scheduler MUST NOT serialize, skip, or queue them, and a job that must not overlap owns its own locking. Occurrences that pass while the scheduler is not running, including host sleep and a stopped app, MUST NOT be replayed; the next run is the next occurrence after the scheduler is running again.
+
+**Timezone.** A service's jobs are evaluated in the timezone named by that service's resolved `environment.TZ`, and in UTC when it is absent or empty. No app-level timezone setting exists. Job listing (§8.2.8) and job execution MUST evaluate a job's `every` in the same timezone and under the same rules, so a listed next occurrence is an occurrence the scheduler honors. A zone the service's artifact cannot resolve, because it carries no timezone database, executes in UTC.
+
+**Identity.** A job without `user` MUST run with the parent service's effective identity: the service's `user` when one is planned, otherwise the artifact's default user. Lando MUST NOT substitute root or any other identity for an absent `user`. A job with `user` runs as that user, in any `ContainerUser` spelling (`name`, `uid`, `name:group`, `uid:gid`), with the home directory, primary group, and supplementary groups the container runtime resolves for it, the same resolution a provider exec with that user receives (§5.3). The job command MUST NOT be wrapped in an in-container privilege-switching tool to obtain that identity.
+
+**Sidecars.** The bundled `schedule.compile` app feature (§1.4, §9.5) realizes a service's jobs as generated companion services (§6.11.5) cloned from that service, called schedule sidecars. Jobs are grouped by `user`, with the jobs that declare none forming one group, and each group yields exactly one sidecar that runs as the group's identity and executes only the scheduler. Names are deterministic:
+
+| Group | Sidecar name |
+|---|---|
+| The group of the first job in list order | `<service>-schedule` |
+| Any other group with a `user` | `<service>-schedule-<user>`, the user lowercased and every character outside `a-z`, `0-9` replaced by `-` |
+| The group without `user`, when it is not first | `<service>-schedule-default` |
+
+A sidecar name is subject to the companion name rule (§6.11.5): a collision fails planning and is never resolved by renaming. A service whose artifact provides no shell cannot carry scheduled jobs; planning fails with `AppFeatureCloneError` reason `unsupported-image`.
+
+**Scheduler acquisition.** The scheduler binary is acquired as a step of the sidecar's artifact build, from a version and per-architecture SHA-256 pin reviewed in source, and MUST be verified against that digest before it is installed (§6.13.3). It MUST NOT be downloaded, verified, or installed at container start. The pin is a `buildKey` input. The job table is built separately from the binary: a `schedule` edit MUST NOT re-acquire the binary, MUST take effect on the next ordinary `start` or `restart` without `rebuild`, and MUST NOT rerun the parent's build steps.
 
 ### 6.3 Artifact build
 
@@ -375,6 +405,15 @@ Activation and selection decisions MUST be captured once against the resolved fa
 
 `AppFeatureServiceView.resolutionMetadata` is the optional read-only projection of `ServiceTypeResolution.metadata`, using the existing service provenance record value type. Preparation, endpoint declaration, and application MUST carry the same service-type-produced facts. These facts are not authored `x-*` fields, provider state, mutable draft extensions, or the final artifact after feature application. The engine MUST preserve plugin-owned keys without interpreting their private semantics. Consumers MUST validate required facts rather than reconstructing lost ownership from normalized config or a later artifact reference.
 
+`AppFeatureContext.addClonedService(ClonedServiceRequest)` queues one generated companion service (§6.11.5). The request carries `from` (the parent service name), `name` (the companion's service name), `command` (a `CommandSpec` that replaces the parent's command), and optional `user`, `extraBuildSteps`, `extraEnv`, and `omitConfigKeys`. The call records intent only. The planner materializes every queued clone from its parent's completed draft after all app features have applied and before ordinary finalization, so a clone reflects every service-feature and app-feature contribution to its parent regardless of feature priority. Clones do not take part in activation or selection: no feature, including the one that requested the clone, is activated by, selects, or applies to it. Clone failures are `AppFeatureCloneError` (`_tag: "CloneError"`), a member of `AppFeatureError`, with `feature`, `service`, optional `from` and `image`, remediation, and `reason`:
+
+| `reason` | Condition |
+|---|---|
+| `missing-parent` | `from` names no resolved service of the app. |
+| `name-collision` | `name` is not free in the namespace §6.11.5 defines. |
+| `duplicate-clone` | Two requests in one planning pass use the same `name`. |
+| `unsupported-image` | The parent's artifact cannot host the requested companion. |
+
 Plugins register `serviceFeatures:`, `appFeatures:`, and `serviceTypes:`; all three MUST exist in `PluginManifest` and be consumed by loading and planning.
 
 Activated `requires.globalServices` are ensured during `pre-start` before user-app build. Missing services fail with `GlobalServiceMissingError` and installation remediation (§20.6.3).
@@ -405,6 +444,20 @@ Activated `requires.globalServices` are ensured during `pre-start` before user-a
 | `lando.user` | 2000 |
 
 `lando.ssh-agent` mounts the per-app agent relay directory at `/run/lando/ssh-agent` and sets `SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock` in both sidecar and host modes (§10.4). `lando.gpg-agent` is opt-in through `gpgAgent.forward`, mounts the gpg relay directory at `/run/lando/gpg-agent`, and sets `GNUPGHOME` to it (§10.4.1). `lando.host-proxy` provides container-to-host RPC and `LANDO_HOST_PROXY_*`. `lando.bun-self` installs container-side Bun under `/usr/local/lib/lando/bun` and sets `BUN_INSTALL_GLOBAL_DIR`, `LANDO_BUN_VERSION`, and `LANDO_BUN_PATH`.
+
+#### 6.11.5 Generated companion services
+
+A generated companion service is a service the planner derives from a parent service through `addClonedService` (§6.11.4). It is never authored: it has no Landofile entry and MUST NOT appear in resolved-Landofile output or be written to any Landofile.
+
+**Shared with the parent.** A companion uses the parent's artifact build, including the parent's artifact-phase build steps; its app mount and mounts; its service-scoped stores; its resolved environment, with `extraEnv` applied on top; and its network memberships. A shared service-scoped store is the same physical store, not a copy. The parent remains its owner, and ownership seeding (§6.5) runs for the parent only. A companion depends on its parent and starts after it.
+
+**Not inherited.** A companion MUST NOT inherit the parent's endpoints or listeners, host port publications, routes, `hostnames`, network aliases, native healthcheck or readiness policy, certificates, database connection identity (`creds` and connection facts, §6.10, §6.12.4), or app-phase build steps (§6.13.1). It runs the requested `command`, never the parent's server process. Keys named in `omitConfigKeys` are removed from its normalized configuration. A companion is never primary and is never a SQL target (§10.7).
+
+**Name.** A companion's name MUST be a valid service name and MUST be free in the app's shared namespace of service keys, `hostnames`, default-network aliases, and derived internal names, compared case-insensitively (§6.6). A taken name fails planning with `AppFeatureCloneError` reason `name-collision` before provider action. The planner MUST NOT rename a companion, add a suffix, or drop it to resolve a collision.
+
+**Provenance and build identity.** The companion's `ServicePlan` carries `provenance.clonedBy = { feature, from }`, naming the requesting app feature and the parent. Build steps inherited from the parent keep the parent's build identity, including the parent's resolved user for each step, even when the companion overrides `user`; only `extraBuildSteps` are attributed to the companion. A change that affects only `extraBuildSteps` MUST NOT invalidate the inherited steps' results (§6.13.5).
+
+**Lifecycle.** A companion is an ordinary planned service. It appears in service info, is addressable by `lando logs --service` and `lando exec`, and is accepted by every explicit `--service` selection. Whole-app `start`, `stop`, `restart`, `rebuild`, and `destroy` include it. Selecting a parent MUST NOT select its companions, and selecting a companion MUST NOT select its parent; a service-scoped operation acts on exactly the services named. A companion that leaves the desired plan, because its request is no longer made or its parent is removed, is removed by ordinary removed-service convergence on the next whole-app `start`, `restart`, or `rebuild` and reported in `servicesRemoved` (§6.15, §5.3.1). Named data is kept. No companion-specific cleanup path exists.
 
 ### 6.12 Canonical service-type catalog
 
@@ -573,7 +626,7 @@ Ready predecessors are `complete` or `skip`. Interrupts propagate to in-flight p
 
 #### 6.13.3 Provider dispatch
 
-Full artifacts use `RuntimeProvider.buildArtifact`; pull-only artifacts use `RuntimeProvider.pullArtifact`; app scripts use `RuntimeProvider.execStream`. Every command retains its planned user, working directory, and environment. Providers MUST NOT re-resolve users at execution time. A dispatched artifact build passes an output sink (§5.3), so the orchestrator records and publishes build output as it arrives (§6.13.6).
+Full artifacts use `RuntimeProvider.buildArtifact`; pull-only artifacts use `RuntimeProvider.pullArtifact`; app scripts use `RuntimeProvider.execStream`. Every command retains its planned user, working directory, and environment. Providers MUST NOT re-resolve users at execution time. A Lando-contributed artifact-build step that fetches a third-party artifact from inside the build MUST pin its version and SHA-256, verify the digest before installing, and run only in the artifact phase, never at container start; §10.3.3 governs host-side acquisition and does not apply to bytes fetched by the build container. A dispatched artifact build passes an output sink (§5.3), so the orchestrator records and publishes build output as it arrives (§6.13.6).
 
 `BuildOrchestrator.build` defaults `BuildOptions.refresh` to false. With no explicit `ServicePlan.pullPolicy`, referenced artifacts use `missing`: reuse a provider-local copy and contact the source only when absent. App, scratch, and global start and acquisition-bearing restart flows, including global auto-start, use that default. A service extension `@lando/artifact-refresh` with a positive `afterMs`, and no explicit `pullPolicy`, changes that default when a local copy exists and the last successful registry check for that provider runtime, platform, and reference is older than `afterMs`, or has never been recorded: the orchestrator then uses `always`. Stock PHP floating tags set `afterMs` to seven days. A successful registry check records that time. A missing local image still pulls and does not treat the record as presence. A failed refresh that falls back to the local copy does not update the record. An older check must not overwrite a newer one. An explicit `pullPolicy` is unchanged by the extension. `app:rebuild` and `meta:global:rebuild` pass `{ refresh: true }`; absent an explicit policy, providers declaring `artifactPull` refresh referenced artifacts with `always`. A typed refresh failure then permits one local acquisition with `never`; success records command warning `LANDO_ARTIFACT_REFRESH_FAILED`, while failure preserves the original refresh error. Interrupts and defects propagate without fallback.
 
