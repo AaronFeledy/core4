@@ -97,6 +97,21 @@ lando wp cache flush
 
 `.gz` dumps gunzip on the way in, and `--yes` skips the confirmation prompt. To roll back, run `lando db:restore before-import --yes`. `lando db:export` writes `database.sql.gz` when you want a dump of your own.
 
+## Run WP-Cron on a schedule
+
+WordPress only runs due cron events when someone loads a page. To run them on a timer, add a `schedule:` job to `appserver` in `.lando.yml`, then run `lando restart`:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: wp-cron
+        every: "@every 5m"
+        run: "cd /app && wp cron event run --due-now"
+```
+
+The job runs as the same user as `lando wp`. `lando schedule:run wp-cron` runs the due events right away. See [Run scheduled jobs](../services/schedule.mdx).
+
 ## Start from an existing site
 
 Run init in the directory that holds `wp-config.php`. The `.` writes `.lando.yml` there instead of a new directory:

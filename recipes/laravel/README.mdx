@@ -58,6 +58,21 @@ The worker uses `restart: unless-stopped`. Before Laravel and its dependencies a
 lando logs --service=worker
 ```
 
+## Run the Laravel scheduler
+
+Laravel's task scheduler needs `php artisan schedule:run` once a minute. That's a timed job, not a worker. Add it to `appserver` in `.lando.yml`, then run `lando restart`:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: laravel-scheduler
+        every: "* * * * *"
+        run: [php, /app/artisan, "schedule:run"]
+```
+
+`lando schedule:list` shows the job and its next run. `lando schedule:run laravel-scheduler` runs it once right away. See [Run scheduled jobs](/guides/services/schedule/).
+
 ## Choose stack options
 
 `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.

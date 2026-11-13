@@ -164,6 +164,22 @@ lando typo3 cache:flush
 
 `extension:setup` creates the extension's tables. The flush clears cache files Composer's run left behind as root.
 
+## Run the TYPO3 scheduler
+
+Scheduler tasks need `scheduler:run` on a timer. The command comes from the `typo3/cms-scheduler` extension; if `lando typo3 list` doesn't show it, install that extension the way the section above does. Then add a `schedule:` job to `appserver` in `.lando.yml` and run `lando restart`:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: typo3-scheduler
+        every: "@every 5m"
+        run: [php, /app/vendor/bin/typo3, "scheduler:run"]
+        user: www-data
+```
+
+The job runs as `www-data`, like `lando typo3`. `lando schedule:run typo3-scheduler` runs it once right away. See [Run scheduled jobs](../services/schedule.mdx).
+
 ## Connect TYPO3 to MariaDB
 
 | Setting | Value |

@@ -13,6 +13,11 @@ services:
       - source: ./php.ini
         target: /usr/local/etc/php/conf.d/zz-magento.ini
         readOnly: true
+    schedule:
+      - name: magento-cron
+        every: "* * * * *"
+        run: [php, /app/bin/magento, "cron:run"]
+        user: www-data
   database:
     type: mariadb
     creds:

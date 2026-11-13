@@ -4,8 +4,11 @@ services:
     type: "node:22"
     primary: true
     environment:
-      TZ: "UTC"
+      TZ: "America/Chicago"
     schedule:
-      - name: tick
-        every: "@hourly"
-        run: "true"
+      - name: heartbeat
+        every: "@every 5m"
+        run: "echo heartbeat from $(hostname)"
+      - name: report
+        every: "0 6 * * 1-5"
+        run: ["node", "--version"]

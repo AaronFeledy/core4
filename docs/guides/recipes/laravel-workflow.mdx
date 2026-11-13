@@ -139,6 +139,29 @@ You don't need manual `appMount.includes` overrides. The worker runs
 lando logs --service=worker
 ```
 
+## Run the Laravel scheduler
+
+The worker handles queued jobs. Laravel's task scheduler is separate: it expects `php artisan schedule:run` once a minute. Add a `schedule:` job to `appserver` in `.lando.yml`:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: laravel-scheduler
+        every: "* * * * *"
+        run: [php, /app/artisan, "schedule:run"]
+```
+
+Keep the `recipe:` block and the other generated keys. Then apply the change and check the job:
+
+```sh
+lando restart
+lando schedule:list
+lando schedule:run laravel-scheduler
+```
+
+The job runs as the same user as `lando artisan`, in a sidecar that shares the code and environment of `appserver`. `lando schedule:run` runs it once right away and prints its output. See [Run scheduled jobs](../services/schedule.mdx) for users, timezones, and logs.
+
 ## Connect Eloquent and Redis
 
 Lando sets `DB_CONNECTION` to `mysql` for MariaDB or `pgsql` for PostgreSQL,
@@ -196,6 +219,7 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 
 - [Laravel recipe](/recipes/laravel/)
 - [Run Laravel Reverb websockets behind the Lando proxy](./laravel-reverb.mdx)
+- [Run scheduled jobs](../services/schedule.mdx)
 - [Add PHP](../services/php.mdx)
 - [Add MariaDB](../services/mariadb.mdx)
 - [Add Redis](../services/redis.mdx)
