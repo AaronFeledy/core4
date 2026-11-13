@@ -236,6 +236,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
 | - | - | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |
 | - | - | service timezone configuration | `docs/guides/services/timezone.mdx` | Shipped |
+| - | - | per-service scheduled jobs | `docs/guides/services/schedule.mdx` | Shipped |
 | - | - | switching database service types | `docs/guides/services/switching-databases.mdx` | Shipped |
 | - | - | Xdebug with PhpStorm | `docs/guides/tooling/xdebug-phpstorm.mdx` | Shipped |
 | - | - | VS Code integration | `docs/guides/tooling/vscode.mdx` | Shipped |

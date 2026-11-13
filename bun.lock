@@ -307,6 +307,14 @@
         "@lando/paths": "workspace:*",
       },
     },
+    "plugins/schedule": {
+      "name": "@lando/schedule",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+    },
     "plugins/secret-store-1password": {
       "name": "@lando/secret-store-1password",
       "version": "0.0.0",
@@ -694,6 +702,8 @@
     "@lando/renderer": ["@lando/renderer@workspace:renderer"],
 
     "@lando/renderer-lando": ["@lando/renderer-lando@workspace:plugins/renderer-lando"],
+
+    "@lando/schedule": ["@lando/schedule@workspace:plugins/schedule"],
 
     "@lando/sdk": ["@lando/sdk@workspace:sdk"],
 

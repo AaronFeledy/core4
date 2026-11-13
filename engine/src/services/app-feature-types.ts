@@ -1,6 +1,6 @@
 import type { AppFeatureError } from "@lando/sdk/errors";
 import type { ProviderCapabilities, ServiceConfig } from "@lando/sdk/schema";
-import type { AppFeatureDefinition, AppFeatureServiceView } from "@lando/sdk/services";
+import type { AppFeatureDefinition, AppFeatureServiceView, ClonedServiceRequest } from "@lando/sdk/services";
 import type { Effect } from "effect";
 import type { DraftServicePlan } from "./draft.ts";
 
@@ -50,9 +50,12 @@ export interface AppFeatureRequires {
   readonly providerCapabilities: readonly (keyof ProviderCapabilities)[];
   readonly globalServices: readonly string[];
 }
+export type RecordedClonedService = ClonedServiceRequest & { readonly feature: string };
+
 export interface ComposeAppFeaturesResult {
   readonly activatedFeatures: readonly ActivatedAppFeature[];
   readonly requires: AppFeatureRequires;
+  readonly clones: readonly RecordedClonedService[];
 }
 export interface OrderedAppFeature extends ComposeAppFeature {
   readonly index: number;

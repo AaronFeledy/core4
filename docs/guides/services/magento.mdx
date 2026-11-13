@@ -178,26 +178,42 @@ Check that the module is disabled, then open `<appserver-url>/admin` and log in 
 
 Keep 2FA enabled on shared or production stores. To restore it here, run `lando magento module:enable Magento_TwoFactorAuth`, `lando magento setup:upgrade`, and `lando magento cache:clean`, then [configure 2FA](https://experienceleague.adobe.com/en/docs/commerce-admin/systems/security/tfa/security-two-factor-authentication) before relying on Admin access.
 
-## Run background jobs while you work
+## Run Magento cron on a schedule
 
-A page loading doesn't mean Magento's scheduled work is running. Index updates, price rules, emails, and other jobs need cron. This Landofile doesn't start a cron daemon, and `cron:install` alone wouldn't start one.
+A page loading doesn't mean Magento's scheduled work is running. Index updates, price rules, emails, and other jobs need `cron:run` every minute. Add a `schedule:` job to `appserver` in `.lando.yml`, next to its existing keys:
 
-For a local development session, open a second host terminal in the project directory and leave this loop running. It uses the same `www-data` user as the Magento tooling task. Stop it with Ctrl+C before stopping the app:
-
-```sh
-while true; do
-  lando magento cron:run
-  sleep 60
-done
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: magento-cron
+        every: "* * * * *"
+        run: [php, /app/bin/magento, "cron:run"]
+        user: www-data
 ```
 
-The first run schedules work. Later runs execute jobs once their scheduled time arrives; running the command twice immediately isn't enough. After a few minutes, check the job history from your first terminal:
+The job runs the same `bin/magento` as `lando magento`, as the same `www-data` user. Apply it and check that Lando sees the job:
+
+```sh
+lando restart
+lando schedule:list
+```
+
+The list should show `magento-cron` on `appserver`, user `www-data`, with a next run time within the minute. Lando runs the job in a sidecar service named `appserver-schedule-www-data`, which shares the code, `vendor` volume, and environment of `appserver`. It starts and stops with the app, so there's nothing to launch by hand.
+
+To trigger a run without waiting, or to see its output in your terminal:
+
+```sh
+lando schedule:run magento-cron
+```
+
+The first run schedules work. Later runs execute jobs once their scheduled time arrives; running the command twice immediately isn't enough. After a few minutes, check the job history:
 
 ```sh
 lando mariadb -e 'SELECT status, COUNT(*) AS jobs FROM cron_schedule GROUP BY status'
 ```
 
-Look for completed jobs with `success` status. Pending future jobs are normal. For failed or missed jobs, inspect `var/log/cron.log` and `var/log/exception.log` inside `appserver`. This loop stops with your terminal and isn't a production scheduler. See [Configure and run cron jobs](https://experienceleague.adobe.com/en/docs/commerce-operations/configuration-guide/cli/configure-cron-jobs) for a persistent setup.
+Look for completed jobs with `success` status. Pending future jobs are normal. For failed or missed jobs, read the timed runs' output with `lando logs --service appserver-schedule-www-data`, then inspect `var/log/cron.log` and `var/log/exception.log` inside `appserver`. Runs missed while the app was stopped aren't replayed. See [Run scheduled jobs](./schedule.mdx) for the other `schedule:` options, and [Configure and run cron jobs](https://experienceleague.adobe.com/en/docs/commerce-operations/configuration-guide/cli/configure-cron-jobs) for a production setup.
 
 ## Reindex and check search
 
@@ -277,7 +293,7 @@ This command checks PHP style, not whether the module works or its XML is valid.
 
 ## Check the config
 
-`lando app:config:lint` validates the Landofile and `lando app:config` prints its resolved values without starting containers. The executable checks below cover configuration only. They don't build the PHP extensions, run Composer, install Magento, exercise cron, or prove that the storefront works.
+`lando app:config:lint` validates the Landofile and `lando app:config` prints its resolved values without starting containers. The executable checks below cover configuration only. They use the finished Landofile, with the `schedule:` job added. They don't build the PHP extensions, run Composer, install Magento, exercise cron, or prove that the storefront works.
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -296,19 +312,22 @@ This command checks PHP style, not whether the module works or its XML is valid.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"search\":\\s*\\{[^}]*\"type\":\\s*\"opensearch\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"www-data\",\\s*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"php\"\\s*,\\s*\"bin/magento\"\\s*\\]" } }} />
+      <Run command="lando schedule:list --format=json" />
+      <Verify command="lando schedule:list --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"appserver\",\\s*\"name\":\\s*\"magento-cron\"" } }} />
+      <Verify command="lando schedule:list --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"www-data\"" } }} />
     </Step>
   </Scenario>
 </Guide>
 
 ## Stop or remove the local app
 
-Stop the cron loop first. To pause the app without removing containers, run `lando stop`. To remove its containers and networks, run:
+To pause the app without removing containers, run `lando stop`. The cron sidecar stops with it. To remove its containers and networks, run:
 
 ```sh
 lando destroy -y
 ```
 
-By default, the database, OpenSearch, and `vendor` volumes remain. Run `lando start` when you want to use the store again, and restart the cron loop.
+By default, the database, OpenSearch, and `vendor` volumes remain. Run `lando start` when you want to use the store again; Magento cron starts with it.
 
 Adding `--volumes` permanently deletes those volumes. It doesn't remove the application files or `app/etc/env.php` from your project. Back up anything you need before deleting data; for a clean reinstall, use a new empty project directory rather than rerunning `setup:install` against leftover configuration.
 
@@ -317,4 +336,5 @@ Adding `--volumes` permanently deletes those volumes. It doesn't remove the appl
 - [Customize PHP](./php-customization.mdx) for build steps, PHP settings, and database clients
 - [Add OpenSearch](./opensearch.mdx) for the search service on its own
 - [Add MariaDB](./mariadb.mdx) for credentials and connection details
+- [Run scheduled jobs](./schedule.mdx) for more `schedule:` jobs, users, and timezones
 - [Run commands inside a service](../cli/exec.mdx) for `lando exec` and `--user`

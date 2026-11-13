@@ -10,6 +10,7 @@ import type { Effect, Schema } from "effect";
 
 import type { AppFeatureError } from "../errors/index.ts";
 import type {
+  CommandSpec,
   DatabaseConnection,
   EndpointPlan,
   EnvironmentValue,
@@ -91,6 +92,42 @@ export interface AppFeatureServiceMutators {
 }
 
 /**
+ * Request to materialize a new service draft by cloning a resolved parent
+ * after the app-feature pass. A clone shares its parent's image, image-phase
+ * build steps, mounts (including the parent's service-scoped stores),
+ * environment, user, and networks, because a companion process must see the
+ * same files and dependencies as the service it belongs to.
+ *
+ * A clone never inherits its parent's authored identity: listeners, published
+ * ports, routes, hostnames, network aliases, probes, certificates, database
+ * credentials, storage-ownership claims, log sources, and `phase: "app"` build
+ * steps stay with the parent. Its process is exactly `command`; neither the
+ * parent's planned entrypoint nor the image entrypoint applies, and its
+ * healthcheck is disabled so an image HEALTHCHECK cannot probe the parent's
+ * server. A `user` override runs the clone natively as that user and pins its
+ * inherited build steps to the parent's build identity, so the clone's image
+ * build is not silently rerun as another user.
+ *
+ * Clones are materialized after the app-feature pass. One that leaves the plan
+ * is removed by the ordinary removed-service convergence on whole-app start,
+ * restart, and rebuild; features do not remove clones themselves.
+ */
+export interface ClonedServiceRequest {
+  readonly from: string;
+  readonly name: string;
+  readonly command: CommandSpec;
+  /**
+   * Container user the clone runs as. Setting it disables home persistence and
+   * home preparation, so the image build stays the parent's steps plus
+   * `extraBuildSteps`. Omitted inherits the parent's user and home intent.
+   */
+  readonly user?: string;
+  readonly extraBuildSteps?: ReadonlyArray<ServiceBuildStepIntent>;
+  readonly extraEnv?: Readonly<Record<string, EnvironmentValue>>;
+  readonly omitConfigKeys?: ReadonlyArray<string>;
+}
+
+/**
  * The app-scoped context handed to an app-feature's `apply`. `selected` is the
  * ordered, name-deduplicated set of service drafts the feature's selectors
  * matched; `forEachSelected` and `select(name)` apply intent mutators to those
@@ -105,6 +142,16 @@ export interface AppFeatureContext {
   readonly selected: ReadonlyArray<AppFeatureServiceView>;
   forEachSelected(mutate: (service: AppFeatureServiceMutators) => void): void;
   select(name: string): AppFeatureServiceMutators | undefined;
+  /**
+   * Queue a companion service cloned from a resolved parent. Intended for
+   * feature-created sidecars that must share the parent's image, mounts,
+   * environment, and networks without becoming an authored Landofile service.
+   * The companion runs exactly the requested `command`, with healthchecks
+   * disabled and no log sources. A clone is materialized after the app-feature
+   * pass, and one that leaves the plan is removed by the ordinary
+   * removed-service convergence on whole-app start, restart, and rebuild.
+   */
+  addClonedService(request: ClonedServiceRequest): void;
 }
 
 /**

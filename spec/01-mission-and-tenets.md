@@ -89,6 +89,7 @@ Bundled plugins remain separate packages governed by the public plugin contract.
 | Whole-file templates | `@lando/template-handlebars`, `@lando/template-mustache` | Bundled optional |
 | File sync | `@lando/file-sync-mutagen` | Bundled; selected for slow bind mounts |
 | Global mail capture | `@lando/service-mailpit` | Bundled optional |
+| Scheduled jobs | `@lando/schedule` | Bundled. Contributes the `schedule.compile` AppFeature and the `schedule:list` and `schedule:run` commands (§6.2.2, §8.2.8). It creates schedule sidecars only for services with a non-empty `schedule` and MUST NOT add a host scheduler or host daemon. |
 
 The built-in `providerExec` and `host` ToolingEngines and the `lando` expression/template engine are always available; plugin selection remains replaceable where §4 permits it.
 

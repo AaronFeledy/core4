@@ -28,6 +28,7 @@ const reviewed = [
   "*",
   "8080:80",
   "every_1h",
+  "@hourly",
   "true",
   "1",
   "127.0.0.1",

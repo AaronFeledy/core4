@@ -118,12 +118,23 @@ export class MailpitMsmtpBaseFamilyError extends Schema.TaggedError<MailpitMsmtp
   },
 ) {}
 
+export class AppFeatureCloneError extends Schema.TaggedError<AppFeatureCloneError>()("CloneError", {
+  message: Schema.String,
+  feature: Schema.String,
+  service: Schema.String,
+  from: Schema.optionalKey(Schema.String),
+  reason: Schema.Literals(["name-collision", "missing-parent", "duplicate-clone", "unsupported-image"]),
+  image: Schema.optionalKey(Schema.String),
+  remediation: Remediation,
+}) {}
+
 export type AppFeatureError =
   | AppFeatureSelectorMatchedNothingError
   | AppFeatureMutationConflictError
   | AppFeatureCycleError
   | MailpitMsmtpBaseFamilyError
-  | PhpMyAdminHostsCredsError;
+  | PhpMyAdminHostsCredsError
+  | AppFeatureCloneError;
 
 /**
  * Raised before any provider action when a service mounts a data tree its

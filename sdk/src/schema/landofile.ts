@@ -44,6 +44,7 @@ import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
+import { ScheduleConfig } from "./schedule.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 import { SqliteTargetConfig } from "./sqlite.ts";
 import { ToolingAuthoredInputFields } from "./tooling-input.ts";
@@ -720,6 +721,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     xdebug: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.String])).annotate({
       description:
         'PHP Xdebug selection: true installs with mode "debug", a comma-separated Xdebug 3 mode string, or false to skip install.',
+    }),
+    schedule: Schema.optionalKey(ScheduleConfig).annotate({
+      description:
+        "Scheduled jobs for this service. Lando compiles them into one <service>-schedule sidecar cloned from this service image and build. Mounts, environment, user, and networks are copied onto that sidecar.",
     }),
     db_client: Schema.optionalKey(
       Schema.Union([Schema.Literal("auto"), Schema.Literal(false), Schema.String]),

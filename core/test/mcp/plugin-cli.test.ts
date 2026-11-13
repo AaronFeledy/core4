@@ -72,7 +72,7 @@ test.each([
   const envelope = Schema.decodeUnknownSync(
     Schema.Struct({ ok: Schema.Literal(true), result: McpListResultSchema }),
   )(JSON.parse(stdout));
-  const plugins = envelope.result.tools.filter((tool) => tool.plugin !== undefined);
+  const plugins = envelope.result.tools.filter((tool) => tool.plugin?.source === "external");
   expect(plugins.map((tool) => tool.id)).toEqual([...listed]);
   expect(envelope.result.tools.some((tool) => tool.id === "db:snapshots")).toBe(false);
   expect(envelope.result.diagnostics).toContainEqual(

@@ -1,8 +1,9 @@
 # Start a Laravel app
 
 Create a Laravel development stack with PHP, Composer, Node 22, MariaDB,
-PostgreSQL or SQLite, Redis, and an optional queue worker. The recipe adds Artisan and
-npm tooling, but writes a Landofile rather than a Laravel application.
+PostgreSQL or SQLite, Redis, an optional queue worker, and an optional scheduler job.
+The recipe adds Artisan and npm tooling, but writes a Landofile rather than a Laravel
+application.
 
 Before you begin, install Lando and complete provider setup. For a new app,
 run the initialization command from the directory that will contain it. If this
@@ -51,9 +52,33 @@ The worker uses `restart: unless-stopped`. Before Laravel and its dependencies a
 lando logs --service=worker
 ```
 
+## Run the Laravel scheduler
+
+Laravel's task scheduler needs `php artisan schedule:run` once a minute. That's a timed job, not a worker. Choose it at init with the same `--answer` flag the other options use:
+
+```sh
+lando init --recipe laravel --name=my-laravel-app --yes --answer=scheduler=true
+```
+
+That adds a `laravel-scheduler` job to `appserver` that runs every minute as `www-data`, the user your site's PHP runs as, so files the job writes stay writable by the site. `lando schedule:list` shows the job and its next run. `lando schedule:run laravel-scheduler` runs it once right away.
+
+To add the job to an existing app, keep the generated keys and add it to `appserver` in `.lando.yml`, then run `lando restart`:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: laravel-scheduler
+        every: "* * * * *"
+        run: [php, /app/artisan, "schedule:run"]
+        user: www-data
+```
+
+See [Run scheduled jobs](/guides/services/schedule/) for users, timezones, and logs.
+
 ## Choose stack options
 
-`--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, no worker, and no scheduler. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 | Option | Values | Default |
 | --- | --- | --- |
@@ -75,7 +100,8 @@ lando init --recipe laravel --name=my-laravel-app --yes \
   --answer=database=postgres:16 \
   --answer=composer=2.7.7 \
   --answer=webroot=public \
-  --answer=worker=true
+  --answer=worker=true \
+  --answer=scheduler=true
 ```
 
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
@@ -103,13 +129,17 @@ lando info
 ## 4. init
 
 ```bash
-lando init --recipe laravel --name=my-laravel-worker --yes --answer=php=8.1 --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=public --answer=worker=true
+lando init --recipe laravel --name=my-laravel-worker --yes --answer=php=8.1 --answer=database=postgres:16 --answer=composer=2.7.7 --answer=webroot=public --answer=worker=true --answer=scheduler=true
 ```
 
 ## 5. inspect
 
 ```bash
 lando app:config --format=json
+```
+
+```bash
+lando schedule:list --format=json
 ```
 
 ## 6. init

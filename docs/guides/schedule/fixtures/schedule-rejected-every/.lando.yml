@@ -1,0 +1,10 @@
+# lando-lint: expect-invalid @every 7m is not a clock-aligned step
+name: schedule-rejected-every
+services:
+  appserver:
+    type: "node:22"
+    primary: true
+    schedule:
+      - name: heartbeat
+        every: "@every 7m"
+        run: "echo heartbeat"
