@@ -720,7 +720,9 @@ describe("meta:doctor command", () => {
         expect(conflictCheck.severity).toBe("warn");
         expect(conflictCheck.context.conflictKind).toBe("provider-lando-podman-socket");
         expect(conflictCheck.context.socketPath).toBe(socket);
-        expect(normalize(conflictCheck.context.providerLandoStatePath ?? "")).toBe(normalize(statePath));
+        expect(normalize(String(conflictCheck.context.providerLandoStatePath ?? ""))).toBe(
+          normalize(statePath),
+        );
         const solution = conflictCheck.solutions[0];
         expect(solution?.kind).toBe("manual");
         expect(solution?.description).toContain("lando setup --provider=");

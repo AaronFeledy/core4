@@ -21,21 +21,21 @@ const readOptional = <A>(read: () => Promise<A>): Effect.Effect<A | undefined> =
     Effect.orDie,
   );
 
-/** A comma-joined list cut at a whole path so it fits a plugin doctor context value. */
+/** Keep whole paths within the existing evidence budget and the plugin array limit. */
 const fileClass = (
   key: "generated" | "unrecognized",
   files: ReadonlyArray<string>,
-): Record<string, string> => {
+): Record<string, string | ReadonlyArray<string>> => {
   if (files.length === 0) return {};
-  let listed = "";
-  let included = 0;
+  const listed: string[] = [];
+  let length = 0;
   for (const file of files) {
-    const next = included === 0 ? file : `${listed}, ${file}`;
-    if (next.length > CONTEXT_VALUE_MAX) break;
-    listed = next;
-    included++;
+    const nextLength = length + file.length + (listed.length === 0 ? 0 : 2);
+    if (nextLength > CONTEXT_VALUE_MAX || listed.length === 64) break;
+    listed.push(file);
+    length = nextLength;
   }
-  const truncated = included < files.length;
+  const truncated = listed.length < files.length;
   return {
     [`${key}Count`]: String(files.length),
     [`${key}Files`]: listed,

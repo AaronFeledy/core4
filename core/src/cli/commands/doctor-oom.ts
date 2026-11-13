@@ -173,6 +173,7 @@ export const buildOomDoctorCheck = (
 
   return {
     name: OOM_CHECK_NAME,
+    subject: context.containerName ?? `${context.app}/${context.service}`,
     status: "fail",
     severity: "error",
     runtimeStatus: "oom-killed",

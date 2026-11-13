@@ -111,6 +111,7 @@ test("idle report exposes host privacy and separately skips reachability without
     ).toMatchObject([
       {
         name: "host-proxy-privacy",
+        subject: "legacy-demo",
         status: "pass",
         context: { privateRunDirectory: "true", reachability: "skipped" },
       },

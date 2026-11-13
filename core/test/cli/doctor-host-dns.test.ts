@@ -27,7 +27,7 @@ test.each([
       baseDomain: "lndo.site",
       dnsHostname: "lando-doctor-probe.lndo.site",
       dnsResolved: String(status === "pass"),
-      ...(addresses.length === 0 ? {} : { dnsAddresses: addresses.join(",") }),
+      ...(addresses.length === 0 ? {} : { dnsAddresses: addresses }),
       loopback: "127.0.0.1",
     },
   });

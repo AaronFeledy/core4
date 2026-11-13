@@ -219,10 +219,10 @@ describe("audited services compose canonical redaction", () => {
     expect(diagnostic).toMatchObject({
       name: "host-dns",
       status: "warn",
-      context: { dnsAddresses: PATTERN_SOUP },
+      context: { dnsAddresses: [PATTERN_SOUP] },
     });
     const renderedDetails = JSON.stringify(redactDetails(diagnostic, patternRedactor()));
-    const renderedMessage = redactString(diagnostic.context.dnsAddresses ?? "", patternRedactor());
+    const renderedMessage = redactString(String(diagnostic.context.dnsAddresses ?? ""), patternRedactor());
 
     assertPatternSecretsGone(renderedDetails);
     assertPatternSecretsGone(renderedMessage);

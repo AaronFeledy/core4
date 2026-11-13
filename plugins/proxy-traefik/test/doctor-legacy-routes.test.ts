@@ -68,7 +68,7 @@ describe("legacy route files doctor check", () => {
       expect(report.context).toEqual({
         proxyId: "traefik",
         unrecognizedCount: "1",
-        unrecognizedFiles: join(directory, "routes-old-slug.yml"),
+        unrecognizedFiles: [join(directory, "routes-old-slug.yml")],
       });
       expect(report.solutions).toHaveLength(1);
       expect(report.solutions.every((solution) => solution.kind === "manual")).toBe(true);
@@ -91,9 +91,9 @@ describe("legacy route files doctor check", () => {
       expect(reports).toHaveLength(1);
       expect(reports[0]?.context.generatedCount).toBe("1");
       expect(reports[0]?.context.unrecognizedCount).toBe(mixed ? "1" : undefined);
-      expect(reports[0]?.context.generatedFiles).toBe(join(directory, legacyName));
-      expect(reports[0]?.context.unrecognizedFiles).toBe(
-        mixed ? join(directory, "routes-custom.yml") : undefined,
+      expect(reports[0]?.context.generatedFiles).toEqual([join(directory, legacyName)]);
+      expect(reports[0]?.context.unrecognizedFiles).toEqual(
+        mixed ? [join(directory, "routes-custom.yml")] : undefined,
       );
       expect(reports[0]?.severity).toBe(mixed ? "warn" : "info");
       expect(reports[0]?.solutions).toHaveLength(mixed ? 2 : 1);
@@ -112,7 +112,7 @@ describe("legacy route files doctor check", () => {
       const reports = await Effect.runPromise(legacyRouteFilesCheck.run(doctorInput(userDataRoot)));
 
       expect(reports).toHaveLength(1);
-      expect(reports[0]?.context.unrecognizedFiles).toBe(join(directory, `routes-${ownerKey}.yml`));
+      expect(reports[0]?.context.unrecognizedFiles).toEqual([join(directory, `routes-${ownerKey}.yml`)]);
       expect(reports[0]?.status).toBe("warn");
     });
   });
@@ -140,9 +140,10 @@ describe("legacy route files doctor check", () => {
 
       const reports = await Effect.runPromise(legacyRouteFilesCheck.run(doctorInput(userDataRoot)));
       expect(reports[0]?.context.unrecognizedCount).toBe("2");
-      expect(reports[0]?.context.unrecognizedFiles).toBe(
-        [join(directory, "routes-a.yml"), join(directory, "routes-b.yml")].join(", "),
-      );
+      expect(reports[0]?.context.unrecognizedFiles).toEqual([
+        join(directory, "routes-a.yml"),
+        join(directory, "routes-b.yml"),
+      ]);
     });
   });
 
@@ -213,7 +214,7 @@ describe("legacy route files doctor check", () => {
         if (first === undefined) throw new Error("legacy file fixture missing");
         const count = Math.floor((2_000 + 2) / (first.length + 2));
         const key = generated ? "generated" : "unrecognized";
-        expect(reports[0]?.context[`${key}Files`]?.split(", ")).toEqual(files.slice(0, count));
+        expect(reports[0]?.context[`${key}Files`]).toEqual(files.slice(0, count));
         expect(reports[0]?.context[`${key}FilesTruncated`]).toBe("true");
         expect(reports[0]?.context[`${key}Count`]).toBe("12");
         expect(reports[0]?.context[generated ? "unrecognizedCount" : "generatedCount"]).toBeUndefined();

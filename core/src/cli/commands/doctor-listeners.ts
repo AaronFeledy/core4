@@ -74,18 +74,21 @@ const collectListeners = Effect.fnUntraced(function* (
               return unreachable;
             }
           }
+          const app = redact(String(target.plan.id));
+          const serviceName = redact(String(service.name));
           const check: DoctorFinding = {
             name: "app-listener",
+            subject: `${app}/${serviceName}:${listener.port}`,
             status,
             severity: status === "pass" ? "info" : "warn",
             context: {
               providerId: provider.id,
-              app: String(target.plan.id),
-              service: String(service.name),
+              app,
+              service: serviceName,
               port: String(listener.port),
               listenerState: listener.state,
               finding: redact(finding),
-              bindings: listener.listening.map((binding) => `${binding.address}:${binding.port}`).join(", "),
+              bindings: listener.listening.map((binding) => redact(`${binding.address}:${binding.port}`)),
             },
             solutions:
               status === "pass"

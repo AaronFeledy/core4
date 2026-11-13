@@ -15,44 +15,9 @@ export interface DoctorRenderOptions {
   readonly all?: boolean | undefined;
 }
 
-const LIST_KEYS = new Set([
-  "containers",
-  "dataVolumes",
-  "cacheVolumes",
-  "volumes",
-  "sessions",
-  "apps",
-  "providers",
-  "files",
-  "services",
-  "bindings",
-  "contributingPlugins",
-  "attempts",
-  "phases",
-  "engines",
-  "targets",
-]);
-const IDENTITY_KEYS = [
-  "appRoot",
-  "root",
-  "appId",
-  "journalPath",
-  "statePath",
-  "endpoint",
-  "app",
-  "service",
-  "port",
-  "section",
-  "probe",
-  "pluginPath",
-  "pluginId",
-  "checkId",
-  "location",
-  "id",
-] as const;
-const doctorContextValue = (key: string, value: string, all = false): string => {
-  if (all) return value;
-  const items = LIST_KEYS.has(key) ? value.split(/,\s*/) : [value];
+const doctorContextValue = (value: string | ReadonlyArray<string>, all = false): string => {
+  const items = typeof value === "string" ? [value] : value;
+  if (all) return items.join(", ");
   const shown = items.slice(0, 3).map((item) => (item.length > 240 ? `${item.slice(0, 240)}...` : item));
   return `${shown.join(", ")}${items.length > 3 ? ` (+${items.length - 3} more)` : ""}`;
 };
@@ -72,13 +37,7 @@ export const renderSolution = (solution: DoctorSolution): string => {
   return `solution[${solution.kind}]: ${solution.description}${command}`;
 };
 
-const contributor = (check: DoctorCheck): string =>
-  check.contributor ??
-  check.context.contributor ??
-  check.context.pluginId ??
-  check.context.checkId ??
-  check.context.subsystemId ??
-  check.section;
+const contributor = (check: DoctorCheck): string => check.contributor ?? check.section;
 
 const groupChecks = (
   checks: ReadonlyArray<DoctorCheck>,
@@ -115,7 +74,6 @@ const groupFields = (
 ): ReadonlyArray<SummaryField> => {
   const head = group[0];
   const fields: SummaryField[] = [];
-  const identityKeys: string[] = [];
   if (all) {
     fields.push({ label: "severity", value: head.severity });
     if (head.runtimeStatus !== undefined) fields.push({ label: "runtimeStatus", value: head.runtimeStatus });
@@ -125,58 +83,38 @@ const groupFields = (
       fields.push({ label: "runtimeVersion", value: head.runtime.version });
   }
   if (group.length > 1) {
-    for (const key of IDENTITY_KEYS) {
-      const seen = new Map<string, string | undefined>();
-      const distinguishes = group.some((check) => {
-        const identity = JSON.stringify(identityKeys.map((candidate) => check.context[candidate]));
-        const value = check.context[key];
-        if (seen.has(identity) && seen.get(identity) !== value) return true;
-        seen.set(identity, value);
-        return false;
-      });
-      if (distinguishes) identityKeys.push(key);
-    }
-    if (identityKeys.length === 0) {
-      const key = IDENTITY_KEYS.find((candidate) =>
-        group.some((check) => check.context[candidate] !== undefined),
-      );
-      if (key !== undefined) identityKeys.push(key);
-    }
-    const identities = group
-      .slice(0, 3)
-      .map((check) =>
-        identityKeys.length === 0
-          ? check.name
-          : identityKeys
-              .map((key) => `${key}: ${doctorContextValue(key, check.context[key] ?? "-")}`)
-              .join(", "),
-      );
+    const identities = group.slice(0, 3).map((check) => doctorContextValue(check.subject ?? check.name));
     fields.push({ label: "entries", value: identities.join("; ") });
     if (group.length > 3)
       fields.push({ label: "remaining", value: `+${group.length - 3} more (lando doctor --all)` });
-  }
+  } else if (head.subject !== undefined)
+    fields.push({ label: "subject", value: doctorContextValue(head.subject, all) });
   for (const [label, value] of Object.entries(head.context)) {
     if (
       group.length > 1 &&
-      (identityKeys.includes(label) || !group.every((check) => check.context[label] === value))
+      !group.every((check) => JSON.stringify(check.context[label]) === JSON.stringify(value))
     )
       continue;
-    fields.push({ label, value: doctorContextValue(label, value, all) });
+    fields.push({ label, value: doctorContextValue(value, all) });
   }
   return fields;
 };
 
-const selfRow = (check: DoctorCheck): SummaryRow => ({
+const selfRow = (check: DoctorCheck, all: boolean): SummaryRow => ({
   label: check.name,
   tone: "error",
   value: check.status,
   fields: [
-    ...(check.context.probe === undefined ? [] : [{ label: "probe", value: check.context.probe }]),
-    ...(check.context.reason === undefined ? [] : [{ label: "reason", value: check.context.reason }]),
-    ...(check.context.message === undefined ? [] : [{ label: "message", value: check.context.message }]),
+    ...(check.subject === undefined
+      ? []
+      : [{ label: "subject", value: doctorContextValue(check.subject, all) }]),
+    ...["probe", "reason", "message"].flatMap((label) => {
+      const value = check.context[label];
+      return value === undefined ? [] : [{ label, value: doctorContextValue(value, all) }];
+    }),
     ...Object.entries(check.context)
       .filter(([label]) => label !== "probe" && label !== "reason" && label !== "message")
-      .map(([label, value]) => ({ label, value })),
+      .map(([label, value]) => ({ label, value: doctorContextValue(value, all) })),
   ],
   remedy: check.solutions.map(renderSolution).join("\n"),
 });
@@ -204,7 +142,7 @@ export const doctorCheckSection = (
       ...(remedy ? { remedy } : {}),
     };
   });
-  rows.push(...selfChecks.map(selfRow));
+  rows.push(...selfChecks.map((check) => selfRow(check, all)));
   if (rows.length === 0) return undefined;
   return { title, rows };
 };

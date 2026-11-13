@@ -373,10 +373,11 @@ describe("doctor summary", () => {
     expect(all.footer).toBe("1 checks passed");
   });
 
-  test("collapses repeated per-app findings into one row listing the varying key", () => {
+  test("collapses repeated per-app findings into one row listing subjects", () => {
     const transport = (appId: string, socketType: string) =>
       check({
         name: "host-proxy-transport",
+        subject: appId,
         status: "warn",
         severity: "warn",
         context: {
@@ -405,7 +406,7 @@ describe("doctor summary", () => {
       tone: "warn",
       value: "warn (4 checks)",
       fields: [
-        { label: "entries", value: "appId: alpha; appId: beta; appId: gamma" },
+        { label: "entries", value: "alpha; beta; gamma" },
         { label: "remaining", value: "+1 more (lando doctor --all)" },
         { label: "transport", value: "unix-socket" },
         { label: "failure", value: "control-probe-failed" },
@@ -498,7 +499,7 @@ describe("doctor summary", () => {
           severity: "warn",
           runtimeStatus: "running",
           runtime: { running: true },
-          context: { orphanPids: "9" },
+          context: { orphanPids: ["9"] },
           solutions: [{ kind: "manual", description: "kill leftover", command: "kill 9" }],
         }),
       ]),
@@ -561,6 +562,7 @@ describe("doctor summary", () => {
     const appConfig = (location: string): DoctorCheck => ({
       section: "app-config",
       name: "env-file.literal",
+      subject: `/app/.lando.yml#${location}`,
       status: "warn",
       severity: "warn",
       context: { file: "/app/.lando.yml", location, message: "Environment file is a literal path." },
@@ -577,12 +579,13 @@ describe("doctor summary", () => {
       summary.sections.find((section) => section.title === "app-config")?.rows[0]?.fields,
     ).toContainEqual({
       label: "entries",
-      value: "location: services.web.environment_file; location: services.db.environment_file",
+      value: "/app/.lando.yml#services.web.environment_file; /app/.lando.yml#services.db.environment_file",
     });
 
     const deprecation = (id: string): DoctorCheck => ({
       section: "deprecations",
       name: "deprecation",
+      subject: `flag:${id}`,
       status: "warn",
       severity: "warn",
       context: { kind: "flag", id, since: "4.2.0", source: "core", count: "1" },
@@ -595,7 +598,7 @@ describe("doctor summary", () => {
     );
     expect(deprecations?.rows[0]?.fields).toContainEqual({
       label: "entries",
-      value: "id: legacy-one; id: legacy-two",
+      value: "flag:legacy-one; flag:legacy-two",
     });
   });
 

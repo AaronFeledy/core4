@@ -63,7 +63,7 @@ export const providerUnavailableCheck = (input: {
 }): DoctorFinding => {
   const described = describeDoctorFailure(input.cause);
   const message = redactDoctorMessage(described.message, input.redact);
-  const context: Record<string, string> = {
+  const context: Record<string, string | ReadonlyArray<string>> = {
     platform: input.platform,
     runtimeStatus: "unavailable",
     message,
@@ -120,7 +120,7 @@ export const diagnosePrimaryProvider = (input: {
     ...(input.runtimeVersion === undefined ? {} : { version: input.runtimeVersion }),
   };
   const providerKind = providerKindFor(provider.id);
-  const context: Record<string, string> = {
+  const context: Record<string, string | ReadonlyArray<string>> = {
     platform: provider.platform,
   };
   if (input.runtimeVersion !== undefined) context.runtimeVersion = input.runtimeVersion;
@@ -131,7 +131,7 @@ export const diagnosePrimaryProvider = (input: {
       ? status.orphanPids
       : orphanPidsFromRuntimeMessage(status.message);
   const hasOrphans = orphanPids.length > 0;
-  if (hasOrphans) context.orphanPids = orphanPids.join(",");
+  if (hasOrphans) context.orphanPids = orphanPids.map(String);
 
   const statusKnown = statusProbe === undefined;
   let checkStatus: DoctorStatus;

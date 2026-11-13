@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:PluginDoctorReport",
+    "changeKind": "unsupported-keyword",
+    "path": "$.context.additionalProperties",
+    "justification": "Doctor Track S widens context values from strings to strings or arrays of strings. Every previous value remains accepted; array items retain the 2000-character bound, arrays have at most 64 items, and all items count toward the existing 16000-character total. SDK decode tests cover these limits and core tests cover array-item redaction. This additive change is not classified by the conservative checker."
+  },
+  {
     "surface": "schema:VolumeLocator",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",

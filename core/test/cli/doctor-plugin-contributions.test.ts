@@ -179,11 +179,12 @@ describe("doctor() contributed checks", () => {
         Effect.succeed([
           {
             name: "test-redaction",
+            subject: secret,
             status: "warn",
             severity: "warn",
             runtimeStatus: `Authorization: Bearer ${secret}`,
             runtime: { running: false, version: secret },
-            context: { [secret]: secret, password: "hunter2" },
+            context: { [secret]: [secret, "safe"], password: "hunter2" },
             solutions: [
               {
                 kind: "manual",
@@ -203,6 +204,8 @@ describe("doctor() contributed checks", () => {
     // Then
     const report = result.checks.find((check) => check.name === "test-redaction");
     expect(report).toBeDefined();
+    expect(report?.subject).toBe("[redacted]");
+    expect(report?.context["[redacted]"]).toEqual(["[redacted]", "safe"]);
     expect(JSON.stringify(report)).not.toContain(secret);
     expect(JSON.stringify(report)).not.toContain("hunter2");
     expect(JSON.stringify(report)).toContain("[redacted]");
@@ -232,6 +235,7 @@ describe("doctor() contributed checks", () => {
     expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
     expect(result.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
       expect.objectContaining({
+        subject: "plugin-check:test-oversized-context",
         context: expect.objectContaining({
           probe: "plugin-check:test-oversized-context",
           reason: "failure",
@@ -312,6 +316,7 @@ describe("doctor() contributed checks", () => {
         Effect.succeed([
           {
             name: "plugin-finding",
+            subject: "authored-subject",
             status: "warn",
             severity: "warn",
             context: { customKey: "authored", extra: "kept" },
@@ -324,6 +329,7 @@ describe("doctor() contributed checks", () => {
 
     const finding = result.checks.find((check) => check.name === "plugin-finding");
     expect(finding?.contributor).toBe("attributed");
+    expect(finding?.subject).toBe("authored-subject");
     expect(finding?.context).toEqual({ customKey: "authored", extra: "kept" });
   });
 

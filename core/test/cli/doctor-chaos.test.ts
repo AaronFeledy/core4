@@ -509,9 +509,9 @@ describe("doctor chaos: plugin-contributed checks", () => {
 
     // Then
     const sections = selfSections(report);
-    expect(sections.filter((section) => section.startsWith("plugin-check:"))).toEqual([
-      "plugin-check:chaos-report-hang",
-    ]);
+    expect(
+      sections.filter((section) => typeof section === "string" && section.startsWith("plugin-check:")),
+    ).toEqual(["plugin-check:chaos-report-hang"]);
     expect(sections).not.toContain("provider");
     expect(report.provider?.selection.providerId).toBe("lando");
     expect(

@@ -97,6 +97,7 @@ export const doctorDeprecations = Effect.fnUntraced(function* (): Effect.fn.Retu
 export const deprecationFindings = (report: DoctorDeprecationReport): ReadonlyArray<DoctorFinding> =>
   report.entries.map((entry) => ({
     name: "deprecation",
+    subject: `${entry.kind}:${entry.id}`,
     status: ({ error: "fail", warn: "warn", info: "pass" } as const)[entry.severity],
     severity: entry.severity,
     context: {

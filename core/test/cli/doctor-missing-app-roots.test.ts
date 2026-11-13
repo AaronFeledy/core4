@@ -115,6 +115,7 @@ test("returns one redacted manual warning when app state cannot be read", async 
   expect(checks).toEqual([
     {
       name: "missing-app-root-scan",
+      subject: "test",
       status: "warn",
       severity: "warn",
       recovery: "manual",
@@ -158,17 +159,18 @@ test("emits one manual warning per root and redacts every context value and solu
   expect(checks).toHaveLength(2);
   expect(checks[0]).toMatchObject({
     name: "missing-app-root",
+    subject: "redacted(/apps/gone)",
     status: "warn",
     severity: "warn",
     recovery: "manual",
     context: {
       appRoot: "redacted(/apps/gone)",
-      apps: "redacted(gone)",
-      providers: "redacted(test)",
+      apps: ["redacted(gone)"],
+      providers: ["redacted(test)"],
       appliedState: "redacted(false)",
       runtimeObserved: "redacted(true)",
-      containers: "redacted(gone/web)",
-      dataVolumes: "redacted(native-data)",
+      containers: ["redacted(gone/web)"],
+      dataVolumes: ["redacted(native-data)"],
     },
   });
   expect(checks[0]?.context).not.toHaveProperty("cacheVolumes");
@@ -276,11 +278,11 @@ test.each([false, true])(
     );
     expect(checks).toHaveLength(2);
     expect(checks[0]?.context).toMatchObject({
-      attempts: "attempt-1",
-      phases: "apply-intent",
-      engines: "mutagen",
-      sessions: "web/app-mount",
-      targets: "app-sync",
+      attempts: ["attempt-1"],
+      phases: ["apply-intent"],
+      engines: ["mutagen"],
+      sessions: ["web/app-mount"],
+      targets: ["app-sync"],
     });
     expect(checks.map((check) => check.solutions[0]?.command)).toEqual([
       `lando apps:gc --prune${prepared ? "" : " --volumes"} --purge-caches`,

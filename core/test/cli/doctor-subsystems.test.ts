@@ -141,7 +141,7 @@ describe("meta:doctor subsystem checks", () => {
     );
     const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
-    expect(hostProxy?.context.dnsAddresses).toBe("192.0.2.1");
+    expect(hostProxy?.context.dnsAddresses).toEqual(["192.0.2.1"]);
   });
 
   test("skips manual DNS recovery when fix is requested", async () => {
@@ -473,14 +473,14 @@ describe("certificate-authority check findings", () => {
   test("preserves tagged certificate resolution context for degraded statuses", async () => {
     const cases: ReadonlyArray<{
       readonly status: CertsDoctorStatus;
-      readonly context: Readonly<Record<string, string>>;
+      readonly context: Readonly<Record<string, string | ReadonlyArray<string>>>;
     }> = [
       { status: { _tag: "unresolved" }, context: {} },
       {
         status: { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
         context: {
           certsReason: "ambiguous",
-          certsCandidateIds: "first,second",
+          certsCandidateIds: ["first", "second"],
           certsDetail: "choose one",
         },
       },

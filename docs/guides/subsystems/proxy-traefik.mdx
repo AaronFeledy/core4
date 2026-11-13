@@ -85,6 +85,8 @@ lando doctor --format=json
 
 ## Prepare HTTPS
 
+In doctor JSON, the port checks (`preferred-host-ports`, `proxy-loopback-ports`, and `proxy-advertised-ports`) put port numbers in `context.ports` as an array of strings, such as `["80", "443"]`. The `legacy-route-files` check reports path arrays in `context.generatedFiles` and `context.unrecognizedFiles` when those classes are present. Read the matching counts and truncation flags when reviewing a large set of files.
+
 HTTPS routes need a certificate authority. Run `lando setup` first so mkcert can issue certs and trust the local CA:
 
 ```sh

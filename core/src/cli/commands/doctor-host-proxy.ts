@@ -73,6 +73,7 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
       };
       checks.push({
         name: "host-proxy-state",
+        subject: redactor.redactString(rawContext.statePath),
         status: "warn",
         severity: "warn",
         context: Object.fromEntries(
@@ -160,14 +161,20 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
     }
     if (bounded.value.context.reachability === "skipped")
       skipped.push({
-        check: `host-proxy-transport:${redactor.redactString(bounded.value.context.appId ?? "unknown")}`,
+        check: `host-proxy-transport:${redactor.redactString(typeof bounded.value.context.appId === "string" ? bounded.value.context.appId : "unknown")}`,
         reason: `Provider ${options.provider.id} is idle; host-proxy reachability was not probed.`,
       });
+    const context = Object.fromEntries(
+      Object.entries(bounded.value.context).map(([key, value]) => [
+        key,
+        typeof value === "string" ? redactor.redactString(value) : value.map(redactor.redactString),
+      ]),
+    );
+    const subject = bounded.value.name === "host-proxy-state" ? context.statePath : context.appId;
     checks.push({
       ...bounded.value,
-      context: Object.fromEntries(
-        Object.entries(bounded.value.context).map(([key, value]) => [key, redactor.redactString(value)]),
-      ),
+      ...(typeof subject === "string" ? { subject } : {}),
+      context,
     });
   }
   if (rootState.entries.filter((entry) => entry.isDirectory).length > workerEntries.length)

@@ -27,7 +27,7 @@ export const legacySnapshotCatalogsDoctor = Effect.fnUntraced(function* (redact:
     ];
   }
   const catalogs = found.success;
-  const context = { count: String(catalogs.length), paths: catalogs.map(redact).join("\n") };
+  const context = { count: String(catalogs.length), paths: catalogs.map(redact) };
   const check: DoctorFinding =
     catalogs.length === 0
       ? passCheckNamed({ name: "legacy-snapshot-catalogs", recovery: "manual", context })

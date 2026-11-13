@@ -164,7 +164,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     expect(buildHostProxyAllowlistDoctorCheck(freshness)).toMatchObject({
       name: "host-proxy-allowlist",
       status: "warn",
-      context: { freshness: "stale", missing: "app:info", unexpected: "removed:command" },
+      context: { freshness: "stale", missing: ["app:info"], unexpected: ["removed:command"] },
       solutions: [{ command: "bun run codegen:host-proxy-allowlist" }],
     });
   });
@@ -279,6 +279,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
 
     // Then
     expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      subject: appId,
       status: "pass",
       context: { appId, transport: "unix-socket", reachability: "reachable" },
     });
@@ -1175,12 +1176,12 @@ describe("meta:doctor host-proxy transport reachability", () => {
     );
 
     // Then
-    expect(
-      checks.filter((check) => check.name === "host-proxy-state").map((check) => check.context.statePath),
-    ).toEqual([
-      join(paths.hostProxyRunRoot, "worker-a", "worker.json"),
-      join(paths.hostProxyRunRoot, "worker-b", "worker.json"),
-    ]);
+    expect(checks.filter((check) => check.name === "host-proxy-state").map((check) => check.subject)).toEqual(
+      [
+        join(paths.hostProxyRunRoot, "worker-a", "worker.json"),
+        join(paths.hostProxyRunRoot, "worker-b", "worker.json"),
+      ],
+    );
   });
 
   test("caps workers using locale-independent code-point order", async () => {

@@ -13,7 +13,7 @@ import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Result, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 import { failCheck, passCheckNamed, warnCheck } from "./doctor-check-builders";
-import type { DoctorSectionResult, DoctorSolution } from "./doctor-contract";
+import type { DoctorFinding, DoctorSectionResult, DoctorSolution } from "./doctor-contract";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 const VERSION_CONSTRAINT_SOLUTION = {
@@ -35,7 +35,7 @@ const MALFORMED_LANDOFILE_SOLUTION = {
 } as const;
 
 const failedLoadResult = Effect.fnUntraced(function* (
-  context: Readonly<Record<string, string>>,
+  context: DoctorFinding["context"],
   solutions: ReadonlyArray<DoctorSolution>,
 ): Effect.fn.Return<DoctorSectionResult> {
   return {
@@ -101,7 +101,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
         {
           declared: "(Landofile load failures)",
           loadFailure: redact(resolved.failure.message),
-          includeResolution: failures.map((error) => redact(error.message)).join("\n"),
+          includeResolution: failures.map((error) => redact(error.message)),
         },
         failures.map((error) => ({ kind: "manual" as const, description: redact(error.remediation) })),
       );
@@ -132,7 +132,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
       return yield* failedLoadResult(
         {
           declared: "(unresolved includes)",
-          includeResolution: redact(resolved.failure.message),
+          includeResolution: [redact(resolved.failure.message)],
         },
         [INCLUDE_RESOLUTION_SOLUTION],
       );
@@ -147,13 +147,13 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   const invalid = evaluation.invalid.map((entry) => formatConstraintEntry(entry, appRoot, redact));
   const unsatisfied = evaluation.unsatisfied.map((entry) => formatConstraintEntry(entry, appRoot, redact));
-  const context: Record<string, string> = {
+  const context: Record<string, string | ReadonlyArray<string>> = {
     runningVersion: CORE_VERSION,
     skipped: String(skipped),
-    declared: entries.map((entry) => formatConstraintEntry(entry, appRoot, redact)).join(", ") || "(none)",
+    declared: entries.map((entry) => formatConstraintEntry(entry, appRoot, redact)),
   };
-  if (invalid.length > 0) context.invalid = invalid.join(", ");
-  if (unsatisfied.length > 0) context.unsatisfied = unsatisfied.join(", ");
+  if (invalid.length > 0) context.invalid = invalid;
+  if (unsatisfied.length > 0) context.unsatisfied = unsatisfied;
   if (skipped) context.skipEnv = `${VERSION_CONSTRAINT_SKIP_ENV_VAR}=1 is active`;
 
   if (invalid.length > 0 || (unsatisfied.length > 0 && !skipped)) {

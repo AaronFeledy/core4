@@ -260,7 +260,7 @@ describe("meta:doctor runtime-service check", () => {
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const selected = result.checks.find((entry) => entry.name === "selected-provider");
     expect(selected?.status).toBe("warn");
-    expect(selected?.context.orphanPids).toBe("4242");
+    expect(selected?.context.orphanPids).toEqual(["4242"]);
     expect(selected?.solutions[0]?.command).toBe("kill 4242");
     expect(selected?.solutions[0]?.description).not.toContain("before retrying");
   });

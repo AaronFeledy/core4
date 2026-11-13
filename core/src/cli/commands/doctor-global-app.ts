@@ -61,8 +61,7 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
   const contributingPlugins = manifests
     .filter((manifest) => (manifest.contributes?.globalServices ?? []).length > 0)
     .map((manifest) => manifest.name)
-    .sort()
-    .join(", ");
+    .sort();
 
   if (paths === undefined) {
     const check: DoctorFinding = warnCheck({
@@ -73,7 +72,7 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
     return { checks: [check] };
   }
 
-  const context: Record<string, string> = {
+  const context: Record<string, string | ReadonlyArray<string>> = {
     installed: "false",
     distLandofilePath: String(paths.distLandofile),
     userLandofilePath: String(paths.userLandofile),
@@ -122,7 +121,7 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
 
   const serviceIds = parseServiceIds(content.success);
 
-  context.services = serviceIds.length === 0 ? "(none)" : serviceIds.join(", ");
+  context.services = serviceIds;
 
   const check: DoctorFinding = passCheckNamed({
     name: "global-app",

@@ -317,7 +317,8 @@ configure when it owns that listener. `--fix` does not change your server's
 configuration. Request `--app` or `--section app-listeners` to perform this listener check.
 JSON keeps observations in `result.checks` as entries whose `section` is
 `app-listeners`, with string context fields `service`, `port`, `listenerState`,
-`finding`, and `bindings`, plus `solutions`. Their `context.providerId` names the
+`finding`, an array of strings in `context.bindings`, and `solutions`. The
+`subject` identifies the listener as `<app>/<service>:<port>`. Their `context.providerId` names the
 applied plan's provider, which can differ from the provider in the report header.
 Unavailable observations go in `result.skipped`. A skipped service has
 `check: app-listener:<service>`; a skip of the whole section has no `check`.
@@ -341,7 +342,9 @@ The report is one flat list of checks, not one object per section:
 | `result.skipped` | What doctor did not inspect. Always present, possibly empty. Each entry is `{ section, reason }`, with `check` added when only that check was skipped. |
 | `result.summary` | Counts for the whole report: `checks`, `passed`, `warned`, and `failed`. Skipped entries are not counted. |
 
-Each check has a `section`, a `name`, a `status` (`pass`, `warn`, or `fail`), a `severity` (`info`, `warn`, or `error`), a `context` map of strings, and a `solutions` list. Some checks add `runtimeStatus` or `runtime` for a runtime fact of their own, `contributor` with the plugin contribution id when a plugin supplied the check, `recovery`, or `details` with the typed record behind the finding, such as a `ConfigError` or a Landofile lint violation.
+Each check has a `section`, a `name`, a `status` (`pass`, `warn`, or `fail`), a `severity` (`info`, `warn`, or `error`), a `context` map whose values are strings or arrays of strings, and a `solutions` list. Lists such as `sessions`, `volumes`, `services`, and `dnsAddresses` are arrays; scalar facts such as `reason` and `providerId` stay strings. Some checks add `runtimeStatus` or `runtime` for a runtime fact of their own, `contributor` with the plugin contribution id when a plugin supplied the check, `recovery`, or `details` with the typed record behind the finding, such as a `ConfigError` or a Landofile lint violation.
+
+Findings that can repeat have a `subject` naming what they are about, such as an app root, journal path, or container name. Grouped text rows list up to three subjects and the number remaining. A group without subjects lists the finding names. Array context shows its first three items unless you use `--all`; scalar strings are never split at commas. JSON and YAML preserve the full arrays.
 
 The `section` is one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, or `app-config`. To read one section, filter on it:
 
