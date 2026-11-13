@@ -637,7 +637,7 @@ describe("ci workflow", () => {
     expect(deployDocs).toContain("      pages: write");
     expect(deployDocs).toContain("      id-token: write");
     expect(deployDocs).toContain("      name: github-pages");
-    expect(deployDocs).toContain("        uses: actions/deploy-pages@v4");
+    expect(deployDocs).toContain("        uses: actions/deploy-pages@v5");
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {
