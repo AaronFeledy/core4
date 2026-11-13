@@ -1,12 +1,10 @@
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
 import type { CommandSpec as SchemaCommandSpec } from "@lando/sdk/schema";
-import { AppId, ServiceName } from "@lando/sdk/schema";
-import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { LandofileService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { commandToShell } from "./crontab.ts";
-import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError, ScheduleRunFailedError } from "./errors.ts";
-import { type ResolvedScheduleJob, findScheduleJob, jobsFromLandofile, parentUserOf } from "./jobs.ts";
+import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "./errors.ts";
+import { type ResolvedScheduleJob, findScheduleJob, jobsFromLandofile } from "./jobs.ts";
 
 const jobLabels = (jobs: ReadonlyArray<ResolvedScheduleJob>): ReadonlyArray<string> =>
   jobs.map((job) => `${job.service}.${job.name}`);
@@ -72,28 +70,17 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
     );
   }
   const provider = yield* registry.select(planned);
-  const user = job.user ?? parentUserOf(document, job.service);
-  const result = yield* provider.exec(
+  const tooling = yield* ToolingEngine;
+  const result = yield* tooling.run(
     {
-      app: AppId.make(planned.id),
-      service: ServiceName.make(job.service),
-      plan: planned,
-      ...(user === undefined ? {} : { user }),
+      tool: "schedule:run",
+      service: job.service,
+      ...(job.user === undefined ? {} : { user: job.user }),
+      commands: [argvFor(job.run)],
     },
-    { command: [...argvFor(job.run)] },
+    planned,
+    provider,
   );
-  if (result.exitCode !== 0) {
-    return yield* Effect.fail(
-      new ScheduleRunFailedError({
-        message: `Scheduled job ${job.service}.${job.name} exited ${result.exitCode}.`,
-        name: job.name,
-        service: job.service,
-        exitCode: result.exitCode,
-        ...(result.stderr.length === 0 ? {} : { stderr: result.stderr }),
-        remediation: `Fix ${commandToShell(job.run)} so it succeeds when run in ${job.service}.`,
-      }),
-    );
-  }
   return {
     service: job.service,
     name: job.name,

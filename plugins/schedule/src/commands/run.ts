@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Renderer } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -29,5 +30,6 @@ export const spec = {
     const service = typeof input.flags.service === "string" ? input.flags.service : undefined;
     return yield* runScheduleJob({ name, ...(service === undefined ? {} : { service }) });
   }),
+  completion: (result: ScheduleRunResult) => commandCompletionFromExitCode(result.exitCode),
   render,
 } as const satisfies ExecutableCommandSpec<ScheduleRunResult>;

@@ -23,19 +23,4 @@ export class ScheduleJobAmbiguousError extends Schema.TaggedError<ScheduleJobAmb
   },
 ) {}
 
-export class ScheduleRunFailedError extends Schema.TaggedError<ScheduleRunFailedError>()(
-  "ScheduleRunFailedError",
-  {
-    message: Schema.String,
-    name: Schema.String,
-    service: Schema.String,
-    exitCode: Schema.Number,
-    stderr: Schema.optionalKey(Schema.String),
-    remediation: Remediation,
-  },
-) {}
-
-export type ScheduleCommandError =
-  | ScheduleJobNotFoundError
-  | ScheduleJobAmbiguousError
-  | ScheduleRunFailedError;
+export type ScheduleCommandError = ScheduleJobNotFoundError | ScheduleJobAmbiguousError;
