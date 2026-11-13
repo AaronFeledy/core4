@@ -168,7 +168,7 @@ ${matrixInclude}
         run: bun run scripts/assemble-runtime-bundle.ts --platform \${{ matrix.hostKey }}
 
       - name: Upload assembled bundle
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.uploadArtifact} # v6.0.0
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.uploadArtifact} # v7.0.2
         with:
           name: runtime-bundle-\${{ matrix.hostKey }}
           path: dist/cache/runtime-bundle/\${{ matrix.filename }}

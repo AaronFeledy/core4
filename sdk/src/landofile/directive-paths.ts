@@ -6,7 +6,7 @@ import { isPlainRecord } from "./record.ts";
 
 export type DirectivePath = ReadonlyArray<string | number>;
 
-const childAsts = (node: AST.AST, key: string | number): ReadonlyArray<AST.AST> => {
+export const childAsts = (node: AST.AST, key: string | number): ReadonlyArray<AST.AST> => {
   const ast = AST.toEncoded(node);
   switch (ast._tag) {
     case "Unknown":

@@ -128,7 +128,7 @@ const setup = () => {
     paths: { snapshotsDir: join(root, "catalog"), ownerSnapshotsDir: () => join(root, "catalog") },
     stateStore: {
       open: () => Effect.die("Offline pruning must not open a database or helper scratch state bucket"),
-      withLock: <A, E>(_key: string, body: Effect.Effect<A, E>) =>
+      withLock: <A, E, R>(_key: string, body: Effect.Effect<A, E, R>) =>
         Effect.acquireUseRelease(
           Effect.sync(() => {
             locked = true;

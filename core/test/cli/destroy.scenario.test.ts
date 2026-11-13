@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 
-import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
@@ -30,6 +30,7 @@ import {
 import { makeTestStateStore } from "@lando/core/testing";
 import * as BunDataMover from "@lando/data-mover/service";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import { openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -672,6 +673,40 @@ describe("lando destroy", () => {
       expect(harness.destroyCalls).toEqual([]);
     },
   );
+
+  test("an app that never applied loses its build output and app results on destroy", async () => {
+    await withTempCwd(async (dataRoot) => {
+      // Given a first build that failed before anything was applied.
+      const harness = makeDestroyLayer({ userDataRoot: dataRoot, absent: true });
+      const appDir = join(dataRoot, "builds", String(plan.id));
+      const transcript = join(appDir, "app", "web", "install.log");
+      await mkdir(join(appDir, "app", "web"), { recursive: true });
+      await writeFile(transcript, "install output\n");
+      const bucket = await Effect.runPromise(openAppBuildResults(harness.stateStore, String(plan.id)));
+      const entry = {
+        buildKey: "app-key",
+        service: web.name,
+        phase: "app" as const,
+        step: "web:app:install",
+        outcome: "complete" as const,
+        exitCode: 0,
+        durationMs: 1,
+        transcriptPath: AbsolutePath.make(transcript),
+      };
+      await Effect.runPromise(recordBuildResult(bucket, entry));
+
+      // When the desired plan is destroyed even though nothing was ever applied.
+      const result = await withCwd(testAppRoot, () =>
+        Effect.runPromise(destroyApp({ yes: true }).pipe(Effect.provide(harness.layer))),
+      );
+
+      // Then the app's build directory and app-step result are gone, so the next start builds again.
+      expect(result).toMatchObject({ outcome: "unchanged" });
+      await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Effect.runPromise(bucket.exists)).toBe(false);
+    });
+  });
 
   test.each([false, true])(
     "snapshot-only purge uses every recorded app id with deleted Landofile=%s",

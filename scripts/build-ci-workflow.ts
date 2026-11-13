@@ -279,7 +279,7 @@ ${renderSmokeCommands(platform)}
 
       - name: Upload ${platform.id} binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-${platform.id}
           path: |
@@ -337,7 +337,7 @@ ${timingNoticeStep("docs-build", 15)}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 `;
 
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
@@ -656,7 +656,7 @@ ${timingStartStep}
 ${restoreOrAssembleRuntimeBundleSteps(hostKey)}
 
       - name: Upload current-commit ${label} runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-${hostKey}-current
           path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
@@ -681,7 +681,7 @@ ${setupBunSteps}
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
       - name: Upload current-commit Windows runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
@@ -772,7 +772,7 @@ ${providerIntegrationSteps(platform)}
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${diagnosticsName}
           path: provider-diagnostics
@@ -830,7 +830,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload guide scenario transcripts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-scenario-transcripts-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
           path: dist/transcripts/guides/**/*.json
@@ -839,7 +839,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload guide e2e provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-e2e-provider-diagnostics-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
           path: guide-e2e-provider-diagnostics

@@ -185,7 +185,7 @@ describe("makeBuildTaskProgress", () => {
     // When
     await Effect.runPromise(progress.completeTask(web, `Built ${String(web.name)}`));
     await Effect.runPromise(progress.failTask(db));
-    await Effect.runPromise(progress.abortTask(cache, transcriptPath));
+    await Effect.runPromise(progress.abortTask(cache));
     await Effect.runPromise(progress.failTree);
 
     // Then
@@ -209,16 +209,17 @@ describe("makeBuildTaskProgress", () => {
     await Effect.runPromise(progress.startTree);
 
     // When
-    await Effect.runPromise(progress.abortTask(web, transcriptPath));
+    await Effect.runPromise(progress.abortTask(web));
 
     // Then
     expect(byTag(publisher.events, "task.start")).toHaveLength(1);
-    expect(byTag(publisher.events, "task.start")[0]).toMatchObject({
+    const start = byTag(publisher.events, "task.start")[0];
+    expect(start).toMatchObject({
       taskId: String(web.name),
       parentId,
       label: `Build ${String(web.name)}`,
-      transcriptPath,
     });
+    expect(start).not.toHaveProperty("transcriptPath");
     expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
       taskId: String(web.name),
       summary: `Build ${String(web.name)} aborted`,
@@ -234,7 +235,7 @@ describe("makeBuildTaskProgress", () => {
     await Effect.runPromise(progress.startTask(web, transcriptPath));
 
     // When
-    await Effect.runPromise(progress.abortTask(web, transcriptPath));
+    await Effect.runPromise(progress.abortTask(web));
 
     // Then
     expect(byTag(publisher.events, "task.start")).toHaveLength(1);
@@ -259,7 +260,7 @@ describe("makeBuildTaskProgress", () => {
     // Then
     expect(progress.unsettledServices().map((service) => String(service.name))).toEqual([String(web.name)]);
 
-    await Effect.runPromise(progress.abortTask(web, transcriptPath));
+    await Effect.runPromise(progress.abortTask(web));
     expect(progress.unsettledServices()).toEqual([]);
   });
 });

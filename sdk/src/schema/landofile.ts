@@ -16,6 +16,7 @@ import { ServiceCredsConfig } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
+import { executionSite, executionSiteKey } from "./execution-site.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
 
@@ -640,10 +641,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "Container image reference used by the service.",
     }),
     build: Schema.optionalKey(BuildBlock),
-    command: Schema.optionalKey(CommandSpec).annotate({
+    command: executionSiteKey(Schema.optionalKey(CommandSpec), "service-command").annotate({
       description: "Command executed when the service starts.",
     }),
-    entrypoint: Schema.optionalKey(CommandSpec).annotate({
+    entrypoint: executionSiteKey(Schema.optionalKey(CommandSpec), "service-entrypoint").annotate({
       description: "Entrypoint used to launch the service container.",
     }),
     user: Schema.optionalKey(ContainerUser).annotate({
@@ -792,8 +793,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Hostnames routed to service endpoints. An empty list disables the generated default route.",
     }),
 
-    healthcheck: Schema.optionalKey(HealthcheckInput),
-    readiness: Schema.optionalKey(HealthcheckInput).annotate({
+    healthcheck: executionSiteKey(Schema.optionalKey(HealthcheckInput), "healthcheck"),
+    readiness: executionSiteKey(Schema.optionalKey(HealthcheckInput), "healthcheck").annotate({
       description:
         "Lifecycle readiness probe, independent of native healthcheck; false explicitly disables command readiness, not process supervision.",
     }),
@@ -895,10 +896,14 @@ const ServiceConfigDecode = ServiceConfigInput.pipe(
  * command interpolations bind its output as escaped data; results are never cached.
  */
 export const ToolingVarSh = Schema.Struct({
-  sh: Schema.String,
+  sh: executionSiteKey(Schema.String, "tooling-var"),
   service: Schema.optionalKey(Schema.String).annotate({
     description:
       "Target for this var command: :host, a service name, or :<declared non-boolean flag>. An explicit target resets task user and dir; invocation overrides still apply.",
+  }),
+  env: Schema.optionalKey(ToolingEnvironment).annotate({
+    description:
+      "Environment applied only to this var command, after the task env ban; the var command receives no task env.",
   }),
   sensitive: Schema.optionalKey(Schema.Literal(true)).annotate({
     description:
@@ -975,11 +980,15 @@ export const ToolingTaskShape = Schema.Struct({
   summary: Schema.optionalKey(Schema.String).annotate({
     description: "Short task help, used when description is absent.",
   }),
-  cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])).annotate({
+  cmd: executionSiteKey(
+    Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+    "tooling-cmd",
+  ).annotate({
     description: "Single shell command or argv array run by the task.",
   }),
-  cmds: Schema.optionalKey(
-    layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE),
+  cmds: executionSiteKey(
+    Schema.optionalKey(layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE)),
+    "tooling-cmds",
   ).annotate({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
@@ -1007,7 +1016,7 @@ const TOOLING_TASK_FORMS = {
 };
 const ToolingTaskShorthand = Schema.Union([
   Schema.Literal(false),
-  Schema.String.check(
+  executionSite(Schema.String, "tooling-task").check(
     Schema.isMinLength(toolingTaskStringConstraints.minLength, {
       message: "Expected a non-empty command string; use false to disable a task",
     }),

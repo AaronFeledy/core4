@@ -145,7 +145,7 @@ ${landoRootlessPrereqSteps}
 
       - name: Upload workflow performance report and trend
         if: always() && steps.performance.outcome != 'skipped'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: workflow-performance-${cell.id}
           path: |

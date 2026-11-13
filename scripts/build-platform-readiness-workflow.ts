@@ -51,7 +51,7 @@ ${renderSetupStep(cell, binary)}
 
       - name: Upload platform-readiness evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: platform-readiness-${cell.id}
           path: \${{ runner.temp }}/platform-readiness-doctor.json

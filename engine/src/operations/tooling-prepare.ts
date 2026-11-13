@@ -63,7 +63,7 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
       canonicalId: `app:${name}`,
     },
   };
-  const task = yield* resolveToolingTaskShape(input.options.task, context, input.sites, {
+  const resolved = yield* resolveToolingTaskShape(input.options.task, context, input.sites, {
     name: input.options.lookupKey,
     evaluate: makeDynamicToolingVarResolver({
       plan: input.plan,
@@ -73,6 +73,10 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
     register,
     validate: (task) => validateToolingTargets(task, admitted.values, input.options.lookupKey),
   });
-  const compiled = yield* compileToolingInvocations({ ...input.options, task, admitted: preparedInput });
+  const compiled = yield* compileToolingInvocations({
+    ...input.options,
+    ...resolved,
+    admitted: preparedInput,
+  });
   return { ...compiled, admitted: preparedInput };
 });

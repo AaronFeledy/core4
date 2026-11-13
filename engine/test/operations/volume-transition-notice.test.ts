@@ -26,7 +26,6 @@ for (const path of paths) {
       expect(warnings[0]?.body).toContain(home.target);
     }
     expect(timeline.indexOf("warn")).toBeLessThan(timeline.indexOf("apply"));
-    // Selected restart resolves applied runtime state; start/rebuild leftover clone cleanup uses filesystem appliedPlansFor.
     expect(appliedReads).toBe(path === "selected restart" ? 1 : 0);
   });
 

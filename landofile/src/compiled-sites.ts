@@ -17,6 +17,7 @@ import {
 import { Effect, Result, Schema } from "effect";
 import { type InvocationProgram, evaluateInvocationSite, siteExpression } from "./invocation-sites.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import { eligibleBindingPath } from "./secret-reference.ts";
 
 export * from "./invocation-sites.ts";
 export { dynamicToolingNames, dynamicToolingReferenceIssues } from "./tooling-dynamic-references.ts";
@@ -124,6 +125,15 @@ export const consumeSites = (input: {
   let document = input.document;
   const pendingSites: ParsedPendingSite[] = [];
   for (const site of input.pendingSites) {
+    // Lowered shell sites keep their authored text: only binding sites materialize
+    // into deferred descriptors here, or an invocation would receive a SecretRef object.
+    if (
+      !eligibleBindingPath(site.path) &&
+      site.template.segments.some((segment) => segment.kind === "SecretRefSegment")
+    ) {
+      pendingSites.push(site);
+      continue;
+    }
     if (!expressionInterpolationsTouchOnlyScopes(site.template, [...input.scopes, "secrets"])) {
       pendingSites.push(site);
       continue;

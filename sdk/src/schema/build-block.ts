@@ -2,6 +2,7 @@ import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { BuildScript } from "./artifacts.ts";
 import { buildBlockJsonSchema } from "./build-block-json-schema.ts";
+import { executionSiteKey } from "./execution-site.ts";
 
 const COMPOSE_BUILD_NORMALIZED_KEYS = [
   "args",
@@ -61,18 +62,21 @@ const ComposeBuildBlock = Schema.Struct({
 const BuildBlockCanonical = Schema.Union([LandoBuildBlock, ComposeBuildBlock]);
 
 const BuildBlockObjectFields = {
-  artifact: Schema.optionalKey(BuildScript),
-  app: Schema.optionalKey(BuildScript),
+  artifact: executionSiteKey(Schema.optionalKey(BuildScript), "build-artifact"),
+  app: executionSiteKey(Schema.optionalKey(BuildScript), "build-app"),
   additional_contexts: Schema.optionalKey(Schema.Unknown),
   context: Schema.optionalKey(Schema.String),
   dockerfile: Schema.optionalKey(Schema.String),
-  dockerfile_inline: Schema.optionalKey(Schema.String),
-  dockerfileInline: Schema.optionalKey(Schema.String),
-  args: Schema.optionalKey(
-    Schema.Union([
-      Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Null])),
-      Schema.Array(Schema.String),
-    ]),
+  dockerfile_inline: executionSiteKey(Schema.optionalKey(Schema.String), "build-dockerfile"),
+  dockerfileInline: executionSiteKey(Schema.optionalKey(Schema.String), "build-dockerfile"),
+  args: executionSiteKey(
+    Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Null])),
+        Schema.Array(Schema.String),
+      ]),
+    ),
+    "build-arg",
   ),
   cache_from: Schema.optionalKey(Schema.Unknown),
   cache_to: Schema.optionalKey(Schema.Unknown),

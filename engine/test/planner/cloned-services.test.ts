@@ -7,7 +7,6 @@ import {
   CLONED_SERVICE_PROVENANCE_KEY,
   imageLacksInstallShell,
   materializeClonedServices,
-  staleClonedServices,
 } from "../../src/planner/cloned-services.ts";
 import type { PlannedServiceDraft } from "../../src/planner/service-types.ts";
 import type { RecordedClonedService } from "../../src/services/app-feature-types.ts";
@@ -120,18 +119,5 @@ describe("cloned services", () => {
         parentNetworksByName: new Map(),
       }),
     ).toThrow(AppFeatureCloneError);
-  });
-
-  test("selects applied clones that are no longer in the desired plan", () => {
-    const sidecar = ServiceName.make("web-schedule");
-    const clone = {
-      name: sidecar,
-      provenance: { [CLONED_SERVICE_PROVENANCE_KEY]: { feature: "schedule.compile", from: "web" } },
-    } as unknown as ServicePlan;
-    const authored = { name: ServiceName.make("web") } as unknown as ServicePlan;
-    const applied = { services: { [sidecar]: clone, [authored.name]: authored } } as unknown as AppPlan;
-    const desired = { services: { [authored.name]: authored } } as unknown as AppPlan;
-    expect(staleClonedServices(applied, desired).map((service) => service.name)).toEqual([sidecar]);
-    expect(staleClonedServices(applied, applied)).toEqual([]);
   });
 });

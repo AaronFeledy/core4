@@ -43,7 +43,7 @@ export const providerMemberPolicy = {
   matchingPublishPorts: ["metadata", "effect"],
   openHostProxyBridge: ["lifecycle", "effect"],
   openAgentSocketBridge: ["lifecycle", "effect"],
-  buildArtifact: ["lifecycle", "effect"],
+  buildArtifact: ["app-output", "effect"],
   pullArtifact: ["lifecycle", "effect"],
   removeArtifact: ["lifecycle", "effect"],
   inspectAppliedFileSync: ["metadata", "effect"],
@@ -110,6 +110,8 @@ export const withOutputRegistration = (
     logs: (target, options) =>
       Stream.unwrap(before(target).pipe(Effect.as(Stream.suspend(() => runtime.logs(target, options))))),
     run: (spec) => before(spec.owner).pipe(Effect.flatMap(() => runtime.run(spec))),
+    buildArtifact: (spec) =>
+      before({ app: spec.app, plan: spec.plan }).pipe(Effect.flatMap(() => runtime.buildArtifact(spec))),
     runStream: (spec) =>
       Stream.unwrap(before(spec.owner).pipe(Effect.as(Stream.suspend(() => runtime.runStream(spec))))),
     copyFromService: (target, spec) =>

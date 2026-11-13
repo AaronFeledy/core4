@@ -1,11 +1,5 @@
 import { AppFeatureCloneError } from "@lando/sdk/errors";
-import {
-  type AppPlan,
-  type ServiceConfig,
-  ServiceName,
-  type ServicePlan,
-  imageLacksInstallShell,
-} from "@lando/sdk/schema";
+import { type ServiceConfig, ServiceName, type ServicePlan, imageLacksInstallShell } from "@lando/sdk/schema";
 import { Effect, Predicate } from "effect";
 
 import type { RecordedClonedService } from "../services/app-feature-types.ts";
@@ -18,28 +12,6 @@ const COMPOSE_PUBLISH_KEYS = ["ports", "expose", "healthcheck"] as const;
 
 /** Provenance key stamped onto every service materialized by `addClonedService`. */
 export const CLONED_SERVICE_PROVENANCE_KEY = "clonedBy" as const;
-
-export interface ClonedServiceStamp {
-  readonly feature: string;
-  readonly from: string;
-}
-
-export const clonedServiceStamp = (
-  service: Pick<ServicePlan, "provenance">,
-): ClonedServiceStamp | undefined => {
-  const value = service.provenance?.[CLONED_SERVICE_PROVENANCE_KEY];
-  if (typeof value !== "object" || value === null) return undefined;
-  const feature = Reflect.get(value, "feature");
-  const from = Reflect.get(value, "from");
-  if (typeof feature !== "string" || typeof from !== "string") return undefined;
-  return { feature, from };
-};
-
-/** Feature-created clones present in applied state but absent from the desired plan. */
-export const staleClonedServices = (applied: AppPlan, desired: AppPlan): ReadonlyArray<ServicePlan> =>
-  Object.values(applied.services).filter(
-    (service) => clonedServiceStamp(service) !== undefined && desired.services[service.name] === undefined,
-  );
 
 const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined => {
   const image = draft.normalizedConfig.image;

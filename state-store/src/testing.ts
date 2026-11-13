@@ -10,6 +10,7 @@ import {
 import { Effect, Layer, Semaphore } from "effect";
 
 import { type StateBucketBackend, buildStateBucket } from "./bucket.ts";
+import { makeLockReentryGuard } from "./lock-reentry.ts";
 import { resolveStatePath } from "./paths.ts";
 import { validateCacheSpec } from "./spec.ts";
 
@@ -19,6 +20,7 @@ const toBytes = (bytes: Uint8Array | string): Uint8Array =>
   typeof bytes === "string" ? textEncoder.encode(bytes) : new Uint8Array(bytes);
 
 const inProcessGuards = new Map<string, Semaphore.Semaphore>();
+const withLockReentryGuard = makeLockReentryGuard();
 
 const guardFor = (file: string): Semaphore.Semaphore => {
   const existing = inProcessGuards.get(file);
@@ -28,8 +30,17 @@ const guardFor = (file: string): Semaphore.Semaphore => {
   return created;
 };
 
-const withInMemoryAdvisoryLock = <A, E>(file: string, body: Effect.Effect<A, E>): Effect.Effect<A, E> =>
-  guardFor(file).withPermits(1)(body);
+const withInMemoryAdvisoryLock = Effect.fnUntraced(function* <A, E, R>(
+  file: string,
+  body: Effect.Effect<A, E, R>,
+): Effect.fn.Return<A, E, R> {
+  return yield* withLockReentryGuard(file, body, {
+    semaphore: guardFor(file),
+    path: file,
+    acquire: Effect.void,
+    release: Effect.void,
+  });
+});
 
 const makeMemoryBucketBackend = (files: Map<string, Uint8Array>): StateBucketBackend => ({
   readBytes: (file) =>
@@ -62,7 +73,7 @@ const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape
           Effect.map((resolved) => buildStateBucket(spec, resolved.file, makeMemoryBucketBackend(files))),
         ),
     ),
-    withLock: Effect.fn("StateStore.withLock")(<A, E>(key: string, body: Effect.Effect<A, E>) =>
+    withLock: Effect.fn("StateStore.withLock")(<A, E, R>(key: string, body: Effect.Effect<A, E, R>) =>
       withInMemoryAdvisoryLock(`operation-locks/${key}`, body),
     ),
   });

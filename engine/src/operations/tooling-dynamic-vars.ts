@@ -23,6 +23,7 @@ export const makeDynamicToolingVarResolver = (input: {
     if (input.options.signal?.aborted) return yield* Effect.interrupt;
     const definition = variable.task.vars?.[variable.name];
     const explicitTarget = typeof definition === "object" ? definition.service : undefined;
+    const authoredEnv = typeof definition === "object" ? definition.env : undefined;
     const sensitive =
       isSecretEnvName(variable.name) || (typeof definition === "object" && definition.sensitive === true);
     const normalized = yield* Effect.fromResult(
@@ -41,6 +42,7 @@ export const makeDynamicToolingVarResolver = (input: {
             : { dir: variable.task.dir }),
           ...(variable.task.flags === undefined ? {} : { flags: variable.task.flags }),
           ...(variable.task.args === undefined ? {} : { args: variable.task.args }),
+          ...(authoredEnv === undefined ? {} : { env: authoredEnv }),
         },
         input.options.source,
       ),
@@ -66,6 +68,7 @@ export const makeDynamicToolingVarResolver = (input: {
           ? {}
           : { agentEnvAllowlist: input.options.agentEnvAllowlist }),
         tty: false,
+        ...(variable.bindings === undefined ? {} : { env: variable.bindings }),
       },
     );
     const site = `tooling.${input.options.lookupKey}.vars.${variable.name}.sh`;

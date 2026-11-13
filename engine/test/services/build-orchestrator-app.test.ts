@@ -13,7 +13,6 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import {
   type ArtifactBuildSpec,
   BuildOrchestrator,
@@ -108,22 +107,10 @@ const makeLayer = (provider: RuntimeProviderShape) => {
       select: () => Effect.succeed(provider),
     }),
   );
-  const redaction = Layer.succeed(
+  // Live registry: values registered by the build's own redaction scope must apply.
+  const redaction = Layer.effect(
     RedactionService,
-    RedactionService.of({
-      ...makeRedactionService(),
-      payloadValues: (options) =>
-        Effect.succeed(() => ({
-          substring: ["topsecret", ...(options?.redactionTokens ?? [])],
-          wholeToken: [],
-        })),
-      forProfile: (profile, options) =>
-        Effect.succeed(
-          createRedactor(profile, {
-            values: ["topsecret", ...(options?.redactionTokens ?? [])],
-          }),
-        ),
-    }),
+    Effect.sync(() => makeRedactionService()),
   );
   const dependencies = Layer.mergeAll(LandoEventService.layer, paths, registry, stateStoreLayer, redaction);
   return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
@@ -132,7 +119,7 @@ const makeLayer = (provider: RuntimeProviderShape) => {
 const outputStream = (name: string, delay: number, exitCode: number) =>
   Stream.make({
     kind: "stdout" as const,
-    chunk: new TextEncoder().encode(`${name} topsecret bare-db-password us-east-1\n`),
+    chunk: new TextEncoder().encode(`${name} bare-db-password us-east-1\n`),
   }).pipe(Stream.concat(Stream.fromEffect(Effect.sleep(`${delay} millis`).pipe(Effect.as({ exitCode })))));
 
 describe("BuildOrchestrator app phase", () => {
@@ -213,7 +200,7 @@ describe("BuildOrchestrator app phase", () => {
     ).toEqual(["appserver", "node"]);
   });
 
-  test("runs three services concurrently, streams redacted detail, writes raw transcripts, and caches", async () => {
+  test("runs three services concurrently, streams redacted detail, writes redacted transcripts, and caches", async () => {
     await withTempRoots(async () => {
       // Given
       let active = 0;
@@ -275,16 +262,16 @@ describe("BuildOrchestrator app phase", () => {
       expect(calls).toBe(3);
       const details = result.events.filter((event) => event._tag === "task.detail");
       expect(details).toHaveLength(3);
-      expect(JSON.stringify(details)).not.toContain("topsecret");
       expect(JSON.stringify(details)).not.toContain("bare-db-password");
       expect(JSON.stringify(details)).toContain("us-east-1");
       const starts = result.events.filter((event) => event._tag === "task.start");
       expect(starts).toHaveLength(6);
       for (const start of starts) {
         expect(start.transcriptPath).toContain(`/builds/${String(plan.id)}/app/`);
-        expect(await readFile(String(start.transcriptPath), "utf8")).toContain("topsecret");
-        expect(await readFile(String(start.transcriptPath), "utf8")).toContain("bare-db-password");
-        expect(await readFile(String(start.transcriptPath), "utf8")).toContain("us-east-1");
+        const transcript = await readFile(String(start.transcriptPath), "utf8");
+        expect(transcript).toContain("[redacted]");
+        expect(transcript).not.toContain("bare-db-password");
+        expect(transcript).toContain("us-east-1");
       }
       expect(result.events.filter((event) => event._tag === "task.complete")).toHaveLength(6);
       const skips = result.events.filter((event) => event._tag === "build-step-skip");
@@ -411,8 +398,13 @@ describe("BuildOrchestrator artifact phase", () => {
     );
 
     // Then
-    expect(result.error).toBe(failure);
-    expect(calls).toEqual(["appserver", "node"]);
+    // Every dispatched provider failure is reconstructed through the build redactor.
+    expect(result.error).toMatchObject({
+      _tag: "ProviderInternalError",
+      operation: "buildArtifact",
+      message: "synthetic artifact failure",
+    });
+    expect(calls.sort()).toEqual(["appserver", "node"]);
     expect(siblingInterrupted).toBe(true);
     expect(
       result.events

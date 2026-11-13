@@ -343,6 +343,52 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
   expect(failure.message).toContain("buildargs=[redacted]");
 });
 
+test("buildContainerArtifact keeps a build error readable when it contains an ordinary build arg", async () => {
+  // Given
+  const token = "npm-token-canary";
+  const context = await mkdtemp(join(tmpdir(), "lando-context-args-"));
+  await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+  const api = {
+    request: () =>
+      Effect.succeed({
+        status: 200,
+        body: JSON.stringify({
+          error: `building at STEP "RUN npm ci ${token}": BUILD_MODE=release; exit status 1`,
+        }),
+      }),
+  };
+
+  // When
+  const failure = await Effect.runPromise(
+    Effect.flip(
+      buildContainerArtifact(
+        {
+          app: appId,
+          service: serviceName,
+          plan: plan(
+            service({
+              artifact: {
+                kind: "build",
+                context: AbsolutePath.make(context),
+                spec: PortablePath.make("Dockerfile"),
+                args: { BUILD_MODE: "release", NPM_TOKEN: token },
+              },
+            }),
+          ),
+          buildKey: "ordinary-arg",
+        },
+        { providerId, api, sourceEnv: {} },
+      ),
+    ),
+  );
+
+  // Then
+  expect(failure._tag).toBe("ArtifactBuildError");
+  expect(failure.message).toContain("exit status 1");
+  expect(failure.message).toContain("BUILD_MODE=release");
+  expect(failure.message).not.toContain(token);
+});
+
 test("injects the inline Dockerfile into the packed context and preserves real context entries", async () => {
   // Given
   const context = await mkdtemp(join(tmpdir(), "lando-context-inline-"));

@@ -925,7 +925,9 @@ const assembleRuntimeProvider = (
             ? [...plans.values()]
             : yield* listObservedPlans(options.appliedPlanState);
 
-        const snapshots = yield* Effect.forEach(allPlans, (plan) =>
+        const inspected =
+          filter.app === undefined ? allPlans : allPlans.filter((plan) => plan.id === filter.app);
+        const snapshots = yield* Effect.forEach(inspected, (plan) =>
           Effect.forEach(Object.values(plan.services), (service) =>
             inspect(plan, { app: plan.id, service: service.name }, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
               Effect.map((snapshot) => ({

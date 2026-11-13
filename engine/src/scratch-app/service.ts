@@ -711,7 +711,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
           ),
         ),
     });
-    const certifiedPlan = yield* prepareServiceCertificates(builtPlan).pipe(
+    const { plan: certifiedPlan, certificates } = yield* prepareServiceCertificates(builtPlan).pipe(
       Effect.provide(context),
       mapFailures((cause) =>
         scratchAppError(
@@ -726,6 +726,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       {
         id: scratchId,
         plan: certifiedPlan,
+        certificates,
         preparedOverlays,
         ...(landofileRouter === undefined ? {} : { landofileRouter }),
       },

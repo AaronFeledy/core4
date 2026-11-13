@@ -1,4 +1,5 @@
 import type { ExpressionSegment } from "@lando/sdk/expressions";
+import type { ShellInsertion } from "./tooling-shell-insertion.ts";
 
 export const nextShellSegment = (
   segments: readonly ExpressionSegment[],
@@ -47,14 +48,36 @@ export const shellContext = (text: string) => {
   let comment = false;
   let escaped = false;
   let dollar = false;
+  const insertion = (): ShellInsertion => {
+    if (heredocs.length > 0) return "heredoc";
+    if (comment) return "comment";
+    const kinds = frames.map((frame) => frame.kind);
+    if (kinds.includes("backtick")) return "backtick";
+    if (kinds.includes("arithmetic")) return "arithmetic";
+    if (kinds.includes("parameter")) return "parameter";
+    if (escaped) return "escaped";
+    switch (frames.at(-1)?.quote) {
+      case "single":
+        return "single";
+      case "double":
+        return "double";
+      default:
+        return "unquoted";
+    }
+  };
+  // The shell removes a trailing backslash-newline before the next word, so a `$`
+  // just before one still glues to whatever is inserted after it.
+  let last = text.length - 1;
+  while (last > 0 && text[last] === "\n" && text[last - 1] === "\\") last -= 2;
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     const frame = frames.at(-1);
     if (frame === undefined) break;
-    if (i === text.length - 1) dollar = char === "$" && !escaped && frame.quote !== "single";
+    if (i === last) dollar = char === "$" && !escaped && frame.quote !== "single";
     if (inHeredoc) {
       const end = text.indexOf("\n", i);
-      if (end === -1) return { refused: true, quote: frame.quote, escaped: false };
+      if (end === -1)
+        return { refused: true, quote: frame.quote, escaped: false, insertion: "heredoc" as const };
       const here = heredocs[0];
       const line = text.slice(i, end);
       if (here !== undefined && (here.tabs ? line.replace(/^\t+/u, "") : line) === here.delimiter) {
@@ -92,7 +115,13 @@ export const shellContext = (text: string) => {
           /[\s;|&()]/u.test(text[i - 1] ?? " ") &&
           /^case(?:\s|$)/u.test(text.slice(i))))
     ) {
-      return { refused: true, quote: frame.quote, escaped: false };
+      const dollarQuote = char === "$";
+      return {
+        refused: true,
+        quote: frame.quote,
+        escaped: false,
+        insertion: dollarQuote ? ("dollar-quote" as const) : ("case" as const),
+      };
     }
     if (char === '"') {
       frame.word += "x";
@@ -194,6 +223,7 @@ export const shellContext = (text: string) => {
       heredocs.length > 0 ||
       comment ||
       frames.some((frame) => ["backtick", "parameter", "arithmetic"].includes(frame.kind)),
+    insertion: insertion(),
     quote: frames.at(-1)?.quote,
     escaped,
     dollar,

@@ -55,7 +55,7 @@ const execute = (plan: AppPlan, context: ExpressionContext) =>
           Effect.gen(function* () {
             const task = effectiveToolingForPlan(plan)?.[leaf.task];
             if (task === undefined) return yield* Effect.die("Missing fixture task");
-            const resolved = yield* resolveToolingTaskShape(
+            const { task: resolved } = yield* resolveToolingTaskShape(
               task,
               taskContext,
               sitesUnder(sites, ["tooling", leaf.task]),

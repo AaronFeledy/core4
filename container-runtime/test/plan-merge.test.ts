@@ -33,17 +33,14 @@ test("remaps carried route refs by canonical equality and drops absent routes", 
     services: { db: { ...service, name: ServiceName.make("db"), routes: [{ index: 0 }] } },
   };
 
-  expect(mergeAppliedPlan(previous, incoming, false).services[ServiceName.make("web")]?.routes).toEqual([
+  expect(mergeAppliedPlan(previous, incoming).services[ServiceName.make("web")]?.routes).toEqual([
     { index: 1 },
     { index: 0 },
   ]);
   expect(
-    mergeAppliedPlan(previous, { ...incoming, routes: [other] }, false).services[ServiceName.make("web")]
-      ?.routes,
+    mergeAppliedPlan(previous, { ...incoming, routes: [other] }).services[ServiceName.make("web")]?.routes,
   ).toEqual([{ index: 0 }]);
-  expect(mergeAppliedPlan(previous, incoming, false).services[ServiceName.make("db")]).toBe(
-    incoming.services.db,
-  );
+  expect(mergeAppliedPlan(previous, incoming).services[ServiceName.make("db")]).toBe(incoming.services.db);
 });
 
 test("carries only mounted previous stores while incoming store definitions win", () => {
@@ -71,11 +68,12 @@ test("carries only mounted previous stores while incoming store definitions win"
     stores: [{ name: "shared", scope: "global" as const, kind: "cache" as const }],
   };
 
-  const merged = mergeAppliedPlan(previous, incoming, false);
+  const merged = mergeAppliedPlan(previous, incoming);
 
   expect(merged.stores).toEqual([
     { name: "shared", scope: "global", kind: "cache" },
     { name: "data", scope: "app", kind: "data" },
   ]);
-  expect(mergeAppliedPlan(previous, incoming, true)).toBe(incoming);
+  expect(mergeAppliedPlan(previous, incoming, { complete: true })).toBe(incoming);
+  expect(mergeAppliedPlan(previous, incoming, { complete: false })).toEqual(merged);
 });
