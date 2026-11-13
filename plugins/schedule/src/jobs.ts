@@ -25,8 +25,8 @@ export interface ScheduleSidecarGroup<Job extends ScheduleJobIdentity = Schedule
 
 /**
  * The zone name a service's `TZ` selects. POSIX lets one leading `:` mean
- * "load this zone from the database"; the scheduler strips it, so listing and
- * the build-time zone check must read the same zone.
+ * "load this zone from the database"; the scheduler strips it, so listing, the
+ * crontab, and the build-time zone check must read the same zone.
  */
 export const scheduleTimezone = (
   environment: Readonly<Record<string, EnvironmentValue>> | undefined,
@@ -68,23 +68,16 @@ const scheduleUserSlug = (user: string): string =>
     .replace(/[^a-z0-9]+/gu, "-")
     .replace(/^-+|-+$/gu, "");
 
-const scheduleGroupSuffix = (user: string | undefined): string =>
-  user === undefined ? "default" : scheduleUserSlug(user);
-
-export const scheduleSidecarGroupName = (
-  service: string,
-  groupIndex: number,
-  user: string | undefined,
-): string =>
-  groupIndex === 0
+export const scheduleSidecarGroupName = (service: string, user: string | undefined): string =>
+  user === undefined
     ? scheduleSidecarName(service)
-    : `${scheduleSidecarName(service)}-${scheduleGroupSuffix(user)}`;
+    : `${scheduleSidecarName(service)}-${scheduleUserSlug(user)}`;
 
 /**
  * Group a service's jobs by the exact `user:` string each job runs as. Jobs
  * without `user:` form one inherit group that keeps the parent service identity.
- * The first-seen group gets the plain sidecar name; later groups are suffixed
- * by their user slug, or `default` for the inherit group.
+ * A sidecar's name derives only from the service and the group's user, so
+ * reordering jobs never renames a sidecar that `schedule:run` is resolving.
  */
 export const scheduleSidecarGroups = <Job extends ScheduleJobIdentity>(
   service: string,
@@ -96,8 +89,8 @@ export const scheduleSidecarGroups = <Job extends ScheduleJobIdentity>(
     if (entries === undefined) grouped.set(job.user, [job]);
     else entries.push(job);
   }
-  return [...grouped.entries()].map(([user, groupedJobs], index) => ({
-    name: scheduleSidecarGroupName(service, index, user),
+  return [...grouped.entries()].map(([user, groupedJobs]) => ({
+    name: scheduleSidecarGroupName(service, user),
     ...(user === undefined ? {} : { user }),
     jobs: groupedJobs,
   }));

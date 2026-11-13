@@ -91,14 +91,14 @@ describe("schedule compile feature", () => {
     expect(crontabScript).toContain(`chmod 0644 ${SUPERCRONIC_CRONTAB}`);
   });
 
-  test("a later group carries no user when the first group is an explicit user", async () => {
+  test("an inherit group keeps the plain sidecar name when an explicit user group comes first", async () => {
     const clones = await apply([
       view("web", {
         image: "alpine:3.22",
         schedule: [job("first", "@hourly", "true", "www-data"), job("inherit", "@daily", "true")],
       }),
     ]);
-    expect(clones.map((clone) => clone.name)).toEqual(["web-schedule", "web-schedule-default"]);
+    expect(clones.map((clone) => clone.name)).toEqual(["web-schedule-www-data", "web-schedule"]);
     expect(clones[0]?.user).toBe("www-data");
     expect("user" in (clones[1] ?? {})).toBe(false);
   });

@@ -5,6 +5,7 @@ import { ServiceName } from "@lando/sdk/schema";
 import {
   findScheduleJob,
   jobsFromLandofile,
+  scheduleSidecarGroupName,
   scheduleSidecarGroups,
   scheduleSidecarName,
 } from "../src/jobs.ts";
@@ -28,16 +29,25 @@ describe("schedule sidecar groups", () => {
     expect("user" in (groups[0] ?? {})).toBe(false);
   });
 
-  test("the first job's group wins the plain name; later inherit groups use default", () => {
+  test("a group's sidecar name depends only on the service and its user", () => {
     expect(groupNames([job("tick"), job("other", "www-data")])).toEqual([
       "web-schedule",
       "web-schedule-www-data",
     ]);
     expect(groupNames([job("first", "www-data"), job("tick"), job("root", "root")])).toEqual([
+      "web-schedule-www-data",
       "web-schedule",
-      "web-schedule-default",
       "web-schedule-root",
     ]);
+  });
+
+  test("reordering jobs keeps every sidecar name while groups stay in first-appearance order", () => {
+    const namesByUser = (jobs: ReadonlyArray<{ readonly user?: string }>) =>
+      Object.fromEntries(scheduleSidecarGroups("web", jobs).map((group) => [group.user, group.name]));
+    const before = namesByUser([job("a"), job("b", "1002"), job("c", "nobody")]);
+    const after = namesByUser([job("c", "nobody"), job("b", "1002"), job("a")]);
+    expect(after).toEqual(before);
+    expect(groupNames([job("c", "nobody"), job("a")])).toEqual(["web-schedule-nobody", "web-schedule"]);
   });
 
   test("jobs group by the exact authored user string", () => {
@@ -49,7 +59,7 @@ describe("schedule sidecar groups", () => {
       job("e", "1001:1001"),
     ]);
     expect(groups.map((group) => [group.name, group.user, group.jobs.map((entry) => entry.name)])).toEqual([
-      ["web-schedule", "www-data", ["a", "b"]],
+      ["web-schedule-www-data", "www-data", ["a", "b"]],
       ["web-schedule-www-data-staff", "www-data:staff", ["c"]],
       ["web-schedule-1001", "1001", ["d"]],
       ["web-schedule-1001-1001", "1001:1001", ["e"]],
@@ -64,8 +74,9 @@ describe("schedule sidecar groups", () => {
     expect(groupNames([job("tick"), job("numeric", "1002")])).toEqual(["web-schedule", "web-schedule-1002"]);
   });
 
-  test("the sidecar name helper stays the single derivation for the first group", () => {
+  test("the sidecar name helper stays the single derivation", () => {
     expect(scheduleSidecarName("web")).toBe("web-schedule");
+    expect(scheduleSidecarGroupName("web", undefined)).toBe(scheduleSidecarName("web"));
     expect(scheduleSidecarGroups("web", [job("tick")])[0]?.name).toBe(scheduleSidecarName("web"));
   });
 });
