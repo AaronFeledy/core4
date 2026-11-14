@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import type { CompiledTemplate, TemplateEngine } from "@lando/sdk/template";
 import { Effect } from "effect";
@@ -13,7 +13,6 @@ import {
   rememberLandofileEnvironmentDependencies,
 } from "../src/load-expression-provenance.ts";
 import { renderLandofileTemplate } from "../src/template-render.ts";
-import { loadLandofileTs } from "../src/ts-loader.ts";
 
 const envContext = (env: Record<string, string>): TemplateRenderContext => ({
   bootstrapLevel: "app",
@@ -136,6 +135,7 @@ describe("expression producer records deferred and resolved env members", () => 
 });
 
 describe("typescript producer records ctx.env reads", () => {
+  // Loading author code registers process-wide host modules, so it runs in a child process.
   test("factory reads through the recorder view", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-env-deps-"));
     const filePath = join(dir, ".lando.ts");
@@ -147,21 +147,37 @@ describe("typescript producer records ctx.env reads", () => {
 });
 `,
     );
-    const captured = { APP_NAME: "from-env", OTHER: "ignored" };
-    const recorder = recordEnvironment(captured);
-    const value = await Effect.runPromise(
-      loadLandofileTs({
+    const script = `
+      const { Effect } = await import("effect");
+      const { recordEnvironment } = await import(${JSON.stringify(resolve(import.meta.dirname, "../src/environment-dependencies.ts"))});
+      const { loadLandofileTs } = await import(${JSON.stringify(resolve(import.meta.dirname, "../src/ts-loader.ts"))});
+      const filePath = ${JSON.stringify(filePath)};
+      const captured = { APP_NAME: "from-env", OTHER: "ignored" };
+      const recorder = recordEnvironment(captured);
+      const value = await Effect.runPromise(loadLandofileTs({
         filePath,
-        appRoot: dir,
+        appRoot: ${JSON.stringify(dir)},
         content: await Bun.file(filePath).text(),
         env: captured,
         environmentRecorder: recorder,
-      }),
-    );
-    expect(value).toEqual({ name: "from-env", tag: undefined });
-    expect(recorder.dependencies()).toEqual({
-      _tag: "Names",
-      names: ["APP_NAME", "MISSING_TAG"],
+      }));
+      console.log(JSON.stringify({ value, hasTag: Object.hasOwn(value, "tag"), dependencies: recorder.dependencies() }));
+    `;
+    const child = Bun.spawn([process.execPath, "--eval", script], {
+      cwd: resolve(import.meta.dirname, ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exit, stdout, stderr] = await Promise.all([
+      child.exited,
+      child.stdout.text(),
+      child.stderr.text(),
+    ]);
+    expect(exit, stderr).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({
+      value: { name: "from-env" },
+      hasTag: true,
+      dependencies: { _tag: "Names", names: ["APP_NAME", "MISSING_TAG"] },
     });
   });
 });
