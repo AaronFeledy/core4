@@ -24,6 +24,7 @@ const expanded = createStandaloneRedactor("secrets", { authoritativeTokens: ["xy
 
 test("MCP tool error results use the result redactor when bounding tooling findings", async () => {
   const entry = {
+    kind: "command" as const,
     spec: { id: "app:run", summary: "Run", resultSchema: Schema.Void, run: () => Effect.fail(error) },
   };
   const result = await Effect.runPromise(
