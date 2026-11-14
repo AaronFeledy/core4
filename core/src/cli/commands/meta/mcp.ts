@@ -124,7 +124,9 @@ const resolveOptions = Effect.fnUntraced(function* (
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
   apps: McpAppGenerations,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
 ): McpRuntimeConfigShape => ({
+  sourceEnv: { ...sourceEnv },
   commandEntries: registry.commandEntries,
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
   ...(registry.toolingUnavailable === undefined ? {} : { toolingUnavailable: registry.toolingUnavailable }),
@@ -162,6 +164,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
       commandEntries: registry.commandEntries.filter((entry) => entry.plugin === undefined),
     },
     apps,
+    (yield* CliInvocation).env,
   );
   const catalogOptions = {
     allow: options.allow,

@@ -3,8 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { Context, Effect } from "effect";
+import { listMcpCatalog } from "../../src/cli/commands/meta/mcp-list-catalog";
 import { readMcpToolingCatalog } from "../../src/cli/commands/meta/mcp-tooling-catalog";
 import { CliInvocation } from "../../src/runtime/invocation-context";
 
@@ -57,4 +59,27 @@ test("retained tooling diagnostics reuse the session environment despite a diffe
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
+});
+
+test.each([true, false])("list diagnostics redact invocation-only secrets (service=%j)", async (service) => {
+  const secret = "list-captured-private-value";
+  const pending = `fixture:${secret}`;
+  const listing = listMcpCatalog({ commandEntries: [] }, { allow: [pending], deny: [], tooling: false }, [
+    pending,
+  ]).pipe(
+    Effect.provideService(CliInvocation, {
+      cwd: process.cwd(),
+      env: { SESSION_API_TOKEN: secret },
+      io: createBufferedRendererIO(),
+      setExitCode: () => undefined,
+    }),
+  );
+  const result = await Effect.runPromise(
+    service ? listing.pipe(Effect.provideService(RedactionService, makeRedactionService())) : listing,
+  );
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0]?._tag).toBe("McpPendingAllowance");
+  expect(result.diagnostics[0]?.message).toContain("fixture:[redacted]");
+  expect(result.diagnostics[0]?.remediation).toContain("fixture:[redacted]");
+  expect(JSON.stringify(result.diagnostics)).not.toContain(secret);
 });

@@ -39,6 +39,8 @@ export type { McpResourceEntry } from "./resources";
 export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 
 export interface McpRuntimeConfigShape {
+  /** Invocation environment; omitted embedding input is captured when the service layer is built. */
+  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry>;
   readonly toolingUnavailable?: readonly McpDiagnostic[];
@@ -101,6 +103,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
     this,
     Effect.gen(function* () {
       const config = yield* McpRuntimeConfig;
+      const sourceEnv = { ...(config.sourceEnv ?? process.env) };
       const redaction = yield* RedactionService;
       const executor = yield* McpCommandExecutor;
       const events = yield* Effect.serviceOption(EventService);
@@ -140,7 +143,6 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           closeIdleSockets: () => {},
         });
       const serve = Effect.fn("McpService.serve")(function* (options: McpServeOptions) {
-        const sourceEnv = { ...process.env };
         const resultRedactor = (tokens: ReadonlyArray<string>) =>
           redaction.forProfile("secrets", { sourceEnv, authoritativeTokens: tokens });
         const redactor = yield* resultRedactor([]);

@@ -152,9 +152,9 @@ test("diagnostics resource refreshes tooling and selected plugin failures with t
   }
 }, 60_000);
 
-test("stdio diagnostics bound authorized records after redaction and keep CLI list consistent", async () => {
+test("stdio diagnostics bound authorized records using captured invocation secrets and keep CLI list consistent", async () => {
   const root = await fixtureRoot("diagnostics-bounds");
-  const secret = "fixture-sensitive-token";
+  const secret = "captured-private-value-7319";
   const ids = Array.from({ length: 12 }, (_, index) => `fixture:${secret}-${"x".repeat(800)}-${index}`);
   const denied = "fixture:denied-source-metadata";
   const app = await writeFixtureApp(root, "bounds", {
@@ -175,19 +175,21 @@ test("stdio diagnostics bound authorized records after redaction and keep CLI li
   );
   await writeFile(
     app.entry,
-    `export const commands = new Map(${JSON.stringify([...ids, denied])}.map(id => [id, async () => undefined]));`,
+    `export const commands = new Map(${JSON.stringify([...ids, denied])}.map(id => [id, async () => { throw new Error("Lazy command failed"); }]));`,
   );
   const env = {
     ...process.env,
     LANDO_USER_DATA_ROOT: join(root, "data"),
     LANDO_USER_CACHE_ROOT: join(root, "cache"),
     LANDO_USER_CONF_ROOT: join(root, "conf"),
-    DIAGNOSTICS_API_TOKEN: secret,
+    SESSION_API_TOKEN: undefined,
     PATH: "/no-such-path",
     LANDO_PROVIDER: "podman",
   };
+  const invocationEnv = JSON.stringify({ ...env, SESSION_API_TOKEN: secret });
+  const command = [process.execPath, resolve(import.meta.dir, "captured-environment-cli.ts"), invocationEnv];
   const flags = [...ids, denied].flatMap((id) => ["--allow", id]).concat(["--deny", denied]);
-  const session = openStdioSession({ command: [process.execPath, cli, "mcp", ...flags], cwd: app.root, env });
+  const session = openStdioSession({ command: [...command, "mcp", ...flags], cwd: app.root, env });
   try {
     await session.initialize();
     const response = await session.request("resources/read", { uri: "lando://diagnostics" });
@@ -195,11 +197,13 @@ test("stdio diagnostics bound authorized records after redaction and keep CLI li
     expect(result.diagnostics.length + result.omittedDiagnosticCount).toBe(12);
     expect(result.omittedDiagnosticCount).toBeGreaterThan(0);
     expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(16 * 1024);
-    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(JSON.stringify(response)).not.toContain(secret);
     expect(JSON.stringify(result)).not.toContain(denied);
     expect(result.diagnostics.every((record) => record.commandId.includes("[redacted]"))).toBe(true);
+    expect(result.diagnostics.every((record) => record.message.includes("[redacted]"))).toBe(true);
+    expect(result.diagnostics.every((record) => record.remediation?.includes("[redacted]"))).toBe(true);
     expect(tools(await session.request("tools/list")).filter((id) => id.startsWith("fixture:"))).toEqual([]);
-    const listed = Bun.spawn([process.execPath, cli, "mcp", "--list", "--format=json", ...flags], {
+    const listed = Bun.spawn([...command, "mcp", "--list", "--format=json", ...flags], {
       cwd: app.root,
       env,
       stdout: "pipe",
@@ -211,6 +215,7 @@ test("stdio diagnostics bound authorized records after redaction and keep CLI li
       listed.exited,
     ]);
     expect(exit, stderr).toBe(0);
+    expect(stdout).not.toContain(secret);
     expect(JSON.parse(stdout)).toMatchObject({
       result: { diagnostics: result.diagnostics, omittedDiagnosticCount: result.omittedDiagnosticCount },
     });

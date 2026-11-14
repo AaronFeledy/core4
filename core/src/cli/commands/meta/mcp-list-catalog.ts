@@ -3,6 +3,7 @@ import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import { boundDiagnostics, pluginDiagnostics } from "@lando/mcp/service";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { Effect, Option } from "effect";
+import { CliInvocation } from "../../../runtime/invocation-context";
 import { buildMcpListResult } from "./mcp-list";
 import {
   type McpCommandRegistry,
@@ -17,9 +18,10 @@ export const listMcpCatalog = Effect.fnUntraced(function* (
   pending: readonly string[],
 ) {
   const redaction = yield* Effect.serviceOption(RedactionService);
+  const sourceEnv = (yield* CliInvocation).env;
   const redactor = Option.isSome(redaction)
-    ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
-    : createStandaloneRedactor("secrets", { sourceEnv: process.env });
+    ? yield* redaction.value.forProfile("secrets", { sourceEnv })
+    : createStandaloneRedactor("secrets", { sourceEnv });
   const policy = makeMcpAllowPolicy({
     defaults: MCP_DEFAULT_ALLOWLIST,
     allow: options.allow,
