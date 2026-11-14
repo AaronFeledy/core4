@@ -4,7 +4,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { type DataTransferError, SqlDumpCompressionError } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
 import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
-import { Effect, type Scope, Stream, absurd } from "effect";
+import { type Cause, Effect, type Scope, Stream, absurd } from "effect";
 import { dumpTransferError } from "./dump-transfer-error.ts";
 
 export type DumpCompression = "gzip" | "zstd" | "none";
@@ -97,15 +97,14 @@ const transformDumpStream = <E, R>(
 ): Stream.Stream<Uint8Array, E | SqlDumpCompressionError, Exclude<R, Scope.Scope>> =>
   Stream.unwrap(
     Effect.gen(function* () {
-      // Record failures before crossing the native codec, which otherwise merges both error origins.
-      let sourceFailure: { readonly error: E } | undefined;
+      // Web streams squash Causes; retain the original reasons and annotations before the codec.
+      let sourceFailure: Cause.Cause<E> | undefined;
       const readable = yield* Stream.toReadableStreamEffect(
         body.pipe(
-          Stream.tapError((error) =>
-            Effect.sync(() => {
-              sourceFailure = { error };
-            }),
-          ),
+          Stream.catchCause((cause) => {
+            sourceFailure = cause;
+            return Stream.failCause(cause);
+          }),
         ),
       );
       const transformed = yield* Effect.try({
@@ -114,9 +113,10 @@ const transformDumpStream = <E, R>(
       });
       return Stream.fromReadableStream({
         evaluate: () => transformed,
-        onError: (cause) =>
-          sourceFailure === undefined ? dumpCompressionError({ ...input, cause }) : sourceFailure.error,
-      });
+        onError: (cause) => dumpCompressionError({ ...input, cause }),
+      }).pipe(
+        Stream.catchCause((cause) => Stream.failCause<E | SqlDumpCompressionError>(sourceFailure ?? cause)),
+      );
     }),
   );
 
@@ -207,7 +207,7 @@ export const compressDumpStream = <E, R>(
   body: Stream.Stream<Uint8Array, E, R>,
   compression: Exclude<DumpCompression, "none">,
   level?: number,
-): Stream.Stream<Uint8Array, unknown, Exclude<R, Scope.Scope>> =>
+): Stream.Stream<Uint8Array, E | SqlDumpCompressionError, Exclude<R, Scope.Scope>> =>
   transformDumpStream(body, {
     path: "stdout",
     compression,
