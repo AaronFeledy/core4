@@ -519,10 +519,12 @@ describe("lando logs", () => {
     expect(rendered).toContain("database stdout: console line");
   });
 
-  test("an empty build result names lando rebuild instead of no log lines", () => {
+  test("reports empty build history without prescribing a forced rebuild", () => {
     const rendered = renderLogsAppResult({ app: "test-logs", lines: [] }, true);
 
-    expect(rendered).toContain("lando rebuild");
+    expect(rendered).toContain("test-logs");
+    expect(rendered).toContain("no recorded build output");
+    expect(rendered).not.toContain("lando rebuild");
     expect(rendered).not.toContain("no log lines");
   });
 
