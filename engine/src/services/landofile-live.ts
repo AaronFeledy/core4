@@ -82,7 +82,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
       context: {
         ...(inputs.templates.context ?? { bootstrapLevel: "app", scope: "landofile" }),
         env: Object.fromEntries(
-          Object.entries(host?.env ?? inputs.templates.context?.env ?? { ...process.env }).filter(
+          Object.entries(host?.env ?? inputs.templates.context?.env ?? process.env).filter(
             (entry): entry is [string, string] => entry[1] !== undefined,
           ),
         ),

@@ -57,10 +57,11 @@ export const snapshotAppFeatureEnv = (
     for (const segment of parsed.success.segments)
       if (segment.kind === "ShellParamSegment") names.add(segment.name);
   }
+  const sortedNames = [...names].sort();
   return {
     env: snapshot,
-    dependencies: { _tag: "Names", names: [...names].sort() },
-    bindings: Object.fromEntries([...names].sort().map((name) => [name, snapshot[name] ?? null])),
+    dependencies: { _tag: "Names", names: sortedNames },
+    bindings: Object.fromEntries(sortedNames.map((name) => [name, snapshot[name] ?? null])),
   };
 };
 
