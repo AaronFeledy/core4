@@ -3,8 +3,10 @@ import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-i
 import type { McpAppGeneration } from "@lando/mcp/apps";
 import type { McpDiagnostic, McpToolingCatalog } from "@lando/mcp/service";
 import { resolveLandoRoots } from "@lando/paths";
+import { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
+import { toolingCacheRecovery } from "../../tooling-cache-status";
 import { toolingSpecFromRegistered } from "./mcp-tooling";
 
 export const toolingCatalogFromCache = (
@@ -57,6 +59,7 @@ export const readMcpToolingCatalog = Effect.fnUntraced(function* (generation: Mc
   };
   let receipt = yield* readAppCommandCacheForCwdDetailed(options);
   if (receipt.status !== "fresh" && receipt.sourcePath !== undefined) {
+    const sourcePath = receipt.sourcePath;
     const { refreshAppCache } = yield* Effect.promise(() => import("../app-cache-refresh"));
     yield* refreshAppCache({
       cwd: invocation.cwd,
@@ -64,6 +67,18 @@ export const readMcpToolingCatalog = Effect.fnUntraced(function* (generation: Mc
       cacheRoot: options.roots.userCacheRoot,
     }).pipe(Effect.provide(generation.context));
     receipt = yield* readAppCommandCacheForCwdDetailed(options);
+    if (receipt.status !== "fresh") {
+      const recovery = toolingCacheRecovery(receipt);
+      return yield* Effect.fail(
+        new ToolingCommandUnavailableError({
+          message: `Tooling metadata is unavailable (${recovery.reason}${recovery.staleReason === undefined ? "" : `: ${recovery.staleReason}`}).`,
+          commandId: "meta:mcp",
+          tool: "tooling",
+          ...recovery,
+          sourcePath: recovery.sourcePath ?? sourcePath,
+        }),
+      );
+    }
   }
   return receipt.status === "fresh"
     ? toolingCatalogFromCache(
