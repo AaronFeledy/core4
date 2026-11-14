@@ -59,6 +59,16 @@ Foreground scratch apps have scoped cleanup; detached scratch apps have their
 own lifecycle. Do not assume every scratch app disappears when a command exits.
 The implementation lives in [`engine/src/scratch-app/`](../../engine/src/scratch-app/).
 
+### Change how builds record and reuse work
+
+`BuildOrchestrator` and its helpers live in [`engine/src/services/`](../../engine/src/services/), in the `build-*` modules. Three boundaries there are easy to cross by accident:
+
+- **Ownership.** Build results and saved step output belong to a build owner: the owner key of the app's canonical root, or the scratch id. Storage functions take that owner, never an app name, so two folders with the same `name:` can't read or delete each other's output. Derive the owner from a plan or from the root being torn down.
+- **Settlement.** One place in each app phase records a step's result and then publishes that step's single terminal task event. The step runner only captures output. Publish a terminal event anywhere else and a result that failed to save can still be announced as complete. The image phase settles its task tree on every exit as well: complete, failed, or interrupted. Neither phase invents an exit code for work that never reported one.
+- **Observation.** A `build.app` result is reusable only in the container that ran the step, and only while it is that step's most recent run there. During activation the phase receives the service observations that startup already made. A standalone build inspects each service once per phase. An observation without a container ID is a miss, not a reason to probe again.
+
+The agent-facing rules are in [`core/AGENTS.md`](../../core/AGENTS.md#engine-operations-tier).
+
 ### Work on the optional GitHub Actions package
 
 [`plugins/github-actions/`](../../plugins/github-actions/) is the optional
