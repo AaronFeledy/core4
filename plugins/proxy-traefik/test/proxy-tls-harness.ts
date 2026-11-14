@@ -5,6 +5,8 @@ import { Effect, Redacted } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
+import { issueFixturePair, observeFixtureTlsPeer, rootPem } from "./real-certificate-authority.ts";
 import { routeOwner } from "./route-owner-fixture.ts";
 
 export const app = routeOwner("demo/app");
@@ -32,20 +34,22 @@ export const makeHarness = (issueFailure?: CaError) => {
   const certificateAuthority: CertificateAuthorityShape = {
     id: "test-ca",
     setup: () => Effect.sync(() => void operations.push("ca:setup")),
-    root: Effect.succeed({ certificate: "issuer cert", trusted: true }),
+    root: Effect.succeed({ certificate: rootPem, trusted: true }),
     issueCert: (spec) => {
       calls.push(spec);
       if (issueFailure !== undefined) return Effect.fail(issueFailure);
-      const prefix = spec.cn.startsWith("*.") ? "default" : "app";
+      const pair = issueFixturePair(spec);
       return Effect.succeed({
-        certificate: `${prefix} cert`,
-        privateKey: Redacted.make(`${prefix} key`),
-        root: { certificate: "issuer cert", trusted: true },
+        certificate: pair.certificate,
+        privateKey: Redacted.make(pair.privateKey),
+        root: { certificate: rootPem, trusted: true },
       });
     },
   };
   const runtime = makeApplyRuntime(files);
   const dependencies: TraefikProxyDependencies = {
+    stateStore: makeAckStore([]),
+    observeTlsPeer: observeFixtureTlsPeer(files),
     readTraefikState: () => Effect.succeed("running"),
     httpClient: runtime.httpClient,
     certificateAuthority,

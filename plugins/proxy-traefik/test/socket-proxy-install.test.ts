@@ -38,6 +38,7 @@ import {
 } from "../src/socket-proxy-install.ts";
 import { resolveNeedsHelper } from "../src/socket-proxy-setup.ts";
 import { buildInstallScript } from "../src/socket-proxy-units.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, stdout: "", stderr });
@@ -604,6 +605,7 @@ describe("setup classification after helper install", () => {
     const files = new Map<string, string>();
     const privilege = makePrivilege(ok());
     const service = makeTraefikRouterService({
+      stateStore: makeAckStore([]),
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
@@ -662,6 +664,7 @@ describe("setup classification after helper install", () => {
     // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
     const service = makeTraefikRouterService({
+      stateStore: makeAckStore([]),
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {

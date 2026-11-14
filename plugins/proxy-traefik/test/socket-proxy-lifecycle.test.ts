@@ -18,6 +18,7 @@ import {
   socketProxyUnitHeader,
 } from "../src/socket-proxy-helper.ts";
 import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 
@@ -109,6 +110,7 @@ const makeLifecycleHarness = (input: {
     probeForward: () => Effect.succeed({ kind: "success" }),
   };
   const service = makeTraefikRouterService({
+    stateStore: makeAckStore([]),
     probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {

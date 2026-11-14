@@ -6,6 +6,7 @@ import type { AcquisitionFingerprint } from "../src/port-acquisition.ts";
 import { readAcquisitionState } from "../src/port-acquisition-state.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const paths = { platform: "win32" as const, globalAppRoot: "C:\\lando\\global" };
 
@@ -51,6 +52,7 @@ const makeFixture = (platform: "win32" | "linux" = "win32", fingerprint?: Acquis
       }),
   };
   const service = makeTraefikRouterService({
+    stateStore: makeAckStore([]),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem,
     paths: fixturePaths,

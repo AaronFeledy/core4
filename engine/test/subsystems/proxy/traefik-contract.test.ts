@@ -4,10 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeTraefikRouterService } from "@lando/proxy-traefik";
 import { AppId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
-import { type CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
-import { makeTestCertificateAuthority, runRouterServiceContractSuite } from "@lando/sdk/test";
-import { Effect, Redacted } from "effect";
+import { FileSystem } from "@lando/sdk/services";
+import { runRouterServiceContractSuite } from "@lando/sdk/test";
+import { Effect } from "effect";
 import * as BunFileSystem from "../../../src/services/file-system.ts";
+import {
+  makeRouterStateStore,
+  observeRouterTlsPeer,
+  routerCertificateAuthority,
+} from "./router-state-fixture.ts";
 import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
 
 test("bundled Traefik satisfies the RouterService contract suite", async () => {
@@ -25,10 +30,12 @@ test("bundled Traefik satisfies the RouterService contract suite", async () => {
     "/lando/global/proxy-traefik/dynamic",
   );
   const service = makeTraefikRouterService({
+    stateStore: makeRouterStateStore(),
     readTraefikState: () => Effect.succeed("running"),
     httpClient: runtime.httpClient,
     probeBind: () => Effect.succeed({ kind: "success" }),
-    certificateAuthority: makeTestCertificateAuthority(),
+    certificateAuthority: routerCertificateAuthority,
+    observeTlsPeer: observeRouterTlsPeer,
     fileSystem: {
       mkdir: () => Effect.void,
       exists: (path) =>
@@ -75,17 +82,7 @@ test("real filesystem status sees configured routing and stop removes route and 
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-proxy-lifecycle-"));
   try {
-    const certificateAuthority: CertificateAuthorityShape = {
-      id: "real-filesystem-ca",
-      setup: () => Effect.void,
-      root: Effect.succeed({ certificate: "root", trusted: true }),
-      issueCert: () =>
-        Effect.succeed({
-          certificate: "certificate",
-          privateKey: Redacted.make("private key"),
-          root: { certificate: "root", trusted: true },
-        }),
-    };
+    const certificateAuthority = routerCertificateAuthority;
     const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
     const proxyFileSystem = {
       mkdir: fileSystem.mkdir,
@@ -98,10 +95,12 @@ test("real filesystem status sees configured routing and stop removes route and 
     };
     const runtime = makeTraefikApiFixture(proxyFileSystem, join(root, "proxy-traefik", "dynamic"));
     const service = makeTraefikRouterService({
+      stateStore: makeRouterStateStore(),
       readTraefikState: () => Effect.succeed("running"),
       httpClient: runtime.httpClient,
       probeBind: () => Effect.succeed({ kind: "success" }),
       certificateAuthority,
+      observeTlsPeer: observeRouterTlsPeer,
       fileSystem: proxyFileSystem,
       paths: { platform: "linux", globalAppRoot: root },
       probeForward: () => Effect.succeed({ kind: "success" }),
@@ -139,6 +138,7 @@ test("real filesystem status sees configured routing and stop removes route and 
 
     // When
     const fresh = makeTraefikRouterService({
+      stateStore: makeRouterStateStore(),
       readTraefikState: () => Effect.succeed("running"),
       certificateAuthority,
       fileSystem: proxyFileSystem,

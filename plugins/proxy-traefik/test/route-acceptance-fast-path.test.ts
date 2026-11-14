@@ -84,6 +84,7 @@ test.each(["linux", "darwin", "wsl"] as const)(
     let restarts = 0;
     const service = makeTraefikRouterService({
       ...fixture.dependencies,
+      observeTlsPeer: () => Effect.succeed(certificatePem),
       certificateAuthority: {
         ...fixture.dependencies.certificateAuthority,
         root: Effect.succeed({ certificate: certificatePem, trusted: true }),

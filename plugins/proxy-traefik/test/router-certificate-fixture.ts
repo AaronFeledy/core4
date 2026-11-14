@@ -37,7 +37,7 @@ export const caFailure = new CaError({
   remediation: "Run lando setup.",
 });
 
-export const makeCertificateFixture = (platform: "linux" | "win32" = "linux") => {
+export const makeCertificateFixture = (platform: "linux" | "win32" | "darwin" | "wsl" = "linux") => {
   const fixture = makeAcceptanceFixture(platform);
   const paths = fixture.dependencies.paths;
   const appFiles = appCertificateFiles(paths, app);
@@ -57,6 +57,7 @@ export const makeCertificateFixture = (platform: "linux" | "win32" = "linux") =>
   const dependencies = {
     ...fixture.dependencies,
     stateStore: makeAckStore(events),
+    observeTlsPeer: () => Effect.sync(() => state.issued.certificate),
     certificateAuthority: {
       id: "fixture-ca",
       setup: () => Effect.die("CA setup is forbidden"),
