@@ -9,7 +9,7 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 - `src/errors/` contains Effect `TaggedError` classes.
 - `src/services/` contains `Context.Service` contracts and fiber references that are part of a service contract; implementation layers belong in their owning runtime packages, never the SDK.
 - `src/test/` is re-exported as `@lando/sdk/test` for contract helpers.
-- `src/certificates/` is `@lando/sdk/certificates`: `certificatePairIsCurrent`, the one check for whether a stored leaf pair can keep serving its names, and `LEAF_RENEWAL_MARGIN_MS`, the shared 30-day renewal margin (capped by the verifier at one third of leaf lifetime). Engine and router consumers supply the current signing root and this margin; authorities own issuance, not stored leaves or background renewal.
+- `src/certificates/` is `@lando/sdk/certificates`: `certificateIsCurrent` owns peer leaf currency; `certificatePairIsCurrent` adds matching-private-key validation to the same crypto owner. `prepareCertificatePair` reads Clock, reuses stored material under the supplied root and `LEAF_RENEWAL_MARGIN_MS` (30 days, capped at one third of leaf lifetime), or issues once and checks against the issuance root at a fresh clock reading. Its schema-backed result carries source, public certificate, redacted private key and signing root; callers own publication and write only issued material. Authorities own issuance, not stored leaves or background renewal.
 
 ## Effect service and operation idioms
 
