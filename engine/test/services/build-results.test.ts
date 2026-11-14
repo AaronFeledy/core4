@@ -37,7 +37,6 @@ function recorded(
 ): BuildResultEntry {
   if (overrides.phase === "app") {
     const { artifactRef: _, ...common } = requiredEntry;
-    if (overrides.step === undefined) throw new TypeError("App fixture requires a step");
     return { ...common, ...overrides, phase: "app", step: overrides.step };
   }
   return { ...requiredEntry, ...overrides };
