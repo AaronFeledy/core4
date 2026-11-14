@@ -11,7 +11,7 @@ export const dumpTransferError = (
     const cause = error.cause instanceof FileIoError ? error.cause : error;
     return new DataTransferError({
       message: error.message,
-      toEndpoint: "hostPath",
+      toEndpoint: cause instanceof FileIoError ? "hostPath" : `hostPath:${path}`,
       operation,
       remediation:
         cause instanceof FileIoError

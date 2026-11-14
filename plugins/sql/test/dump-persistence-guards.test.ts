@@ -26,7 +26,11 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): DataTransferError => {
 };
 
 const expectGuard = (error: DataTransferError, message: string) => {
-  expect(error).toMatchObject({ operation: "persist", toEndpoint: "hostPath", message });
+  expect(error).toMatchObject({
+    operation: "persist",
+    toEndpoint: expect.stringContaining(`hostPath:${root}`),
+    message,
+  });
   expect(error.cause).toBeInstanceOf(VerifiedStreamError);
   expect(error.cause).not.toBeInstanceOf(FileIoError);
   expect(error.cause).toMatchObject({ reason: "persist", message });
@@ -66,14 +70,19 @@ for (const flow of ["compression", "import"] as const) {
       const open = spyOn(fs, "open").mockImplementation(async (path, flags, mode) => {
         const handle = await originalOpen(path, flags, mode);
         if (String(path).startsWith(root) && String(path).includes(".tmp-")) {
-          spyOn(handle, "write").mockResolvedValue({ bytesWritten, buffer: new Uint8Array() });
+          spyOn(handle, "write").mockImplementation(
+            async <TBuffer extends NodeJS.ArrayBufferView | string>(buffer: TBuffer) => ({
+              bytesWritten,
+              buffer,
+            }),
+          );
         }
         return handle;
       });
       try {
         const effect =
           flow === "compression"
-            ? writeDumpTransform(source, destination, "gzip", "compress")
+            ? writeDumpTransform(source, destination, "gzip", "compress").pipe(Effect.asVoid)
             : Effect.scoped(
                 prepareImportDump({
                   file: "-",
@@ -83,7 +92,7 @@ for (const flow of ["compression", "import"] as const) {
                   completeness: undefined,
                   privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
                 }),
-              );
+              ).pipe(Effect.asVoid);
         const error = failureOf(await Effect.runPromiseExit(effect));
 
         expectGuard(error, "Failed to write artifact bytes.");
@@ -116,6 +125,7 @@ test.each(["persist", "size", "checksum"] as const)(
     const error = dumpTransferError("persist", join(root, "destination"), original);
 
     expect(error.cause).toBe(original);
+    expect(error.toEndpoint).toBe(`hostPath:${join(root, "destination")}`);
     expect(error.message).toBe("specific verification failure");
     expect(error.cause).toMatchObject({
       reason,
