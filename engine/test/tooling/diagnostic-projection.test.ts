@@ -1,9 +1,6 @@
 import { expect, test } from "bun:test";
-import { RedactionService, makeRedactionOwner } from "@lando/redaction";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect } from "effect";
-import { discloseToolingCompileError } from "../../src/tooling/diagnostic-disclosure.ts";
 import { projectToolingDiagnostic } from "../../src/tooling/diagnostics.ts";
 
 test("discloses at most eight findings and counts previously omitted findings", () => {
@@ -121,28 +118,4 @@ test("omits oversized source identities instead of fabricating shortened paths",
   expect(result.issues).toHaveLength(1);
   expect(result.omittedIssueCount).toBe(0);
   expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(16 * 1024);
-});
-
-test("runtime disclosure binds registrations made after the diagnostic was created", async () => {
-  const owner = makeRedactionOwner();
-  const error = new ToolingCompileError({
-    tool: "run",
-    message: "supplied-canary plan-canary",
-    cause: "raw-cause",
-  });
-  try {
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const service = yield* RedactionService;
-        yield* service.registerValues(["supplied-canary", "plan-canary"]);
-        return yield* discloseToolingCompileError(error);
-      }).pipe(Effect.provideService(RedactionService, owner.service)),
-    );
-    expect(result).toBeInstanceOf(ToolingCompileError);
-    expect(result.message).toBe("[redacted] [redacted]");
-    expect(result.cause).toBeUndefined();
-    expect(result.issues).toEqual([]);
-  } finally {
-    owner.dispose();
-  }
 });

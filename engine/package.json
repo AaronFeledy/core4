@@ -280,7 +280,6 @@
     "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",
     "./testing/output-provider": "./src/testing/output-provider.ts",
     "./testing/state-store": "./src/testing/state-store.ts",
-    "./tooling/diagnostic-disclosure": "./src/tooling/diagnostic-disclosure.ts",
     "./tooling/diagnostics": "./src/tooling/diagnostics.ts",
     "./version": "./src/version.ts"
   },
