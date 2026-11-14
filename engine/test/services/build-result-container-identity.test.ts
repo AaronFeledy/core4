@@ -62,6 +62,16 @@ test.each(["complete", "fail"] as const)(
   },
 );
 
+test.each(["complete", "fail"] as const)(
+  "a newer %s attempt under another key hides historical success on the same container",
+  (outcome) => {
+    const older = { ...entry, containerId: "web-1" };
+    const newer = { ...older, buildKey: "changed-key", outcome };
+
+    expect(findCompleteBuildResult([older, newer], { ...older, containerId: "web-1" })).toBeUndefined();
+  },
+);
+
 test("unknown app identity misses without discarding artifact evidence", () => {
   const { step: _, exitCode: _exit, ...artifactFields } = entry;
   const legacyArtifact = { ...artifactFields, phase: "artifact" as const, artifactRef: "web:built" };

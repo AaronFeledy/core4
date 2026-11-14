@@ -158,9 +158,11 @@ test("interrupted forced redispatch invalidates the old success but retains the 
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
-    expect(result.during?.filter((entry) => entry.outcome === "complete").map((entry) => entry.step)).toEqual(
-      ["web:app:first"],
-    );
+    expect(
+      result.during
+        ?.filter((entry) => entry.phase === "app" && entry.outcome === "complete" && !entry.invalidated)
+        .map((entry) => entry.step),
+    ).toEqual(["web:app:first"]);
     expect(calls).toEqual(["second"]);
     taskDispositions(result.events, { "web:app:first": "task.complete", "web:app:second": "task.complete" });
     expect(result.events.filter((e) => e._tag === "build-step-skip").map((e) => e.serviceName)).toEqual([

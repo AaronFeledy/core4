@@ -25,6 +25,7 @@ export const ArtifactBuildResult = Schema.Struct({
   phase: Schema.Literal("artifact"),
   step: Schema.optionalKey(Schema.Never),
   containerId: Schema.optionalKey(Schema.Never),
+  invalidated: Schema.optionalKey(Schema.Never),
   exitCode: Schema.optionalKey(Schema.Never),
   artifactRef: Schema.optionalKey(Schema.String),
   artifactDigest: Schema.optionalKey(Schema.String),
@@ -40,6 +41,7 @@ export const AppBuildResult = Schema.Struct({
   phase: Schema.Literal("app"),
   step: Schema.String,
   containerId: Schema.optionalKey(Schema.String),
+  invalidated: Schema.optionalKey(Schema.Literal(true)),
   exitCode: Schema.optionalKey(Schema.Number),
   artifactRef: Schema.optionalKey(Schema.Never),
   artifactDigest: Schema.optionalKey(Schema.Never),
@@ -96,15 +98,18 @@ export const invalidateAppBuildResult = (
 ): Effect.Effect<void, StateStoreError> =>
   bucket.mutate((current) => {
     const entries = current ?? [];
-    const kept = entries.filter(
-      (entry) =>
-        resultKeyOf(entry) !== resultKeyOf(input) || entry.outcome !== "complete" || !entry.containerId,
+    const updated = entries.map((entry) =>
+      entry.phase === "app" &&
+      identityOf(entry) === identityOf(input) &&
+      entry.outcome === "complete" &&
+      !entry.invalidated
+        ? { ...entry, invalidated: true as const }
+        : entry,
     );
-    if (kept.length === entries.length) return Effect.succeed({ _tag: "Keep" as const, result: undefined });
     return Effect.succeed(
-      kept.length === 0
-        ? { _tag: "Remove" as const, result: undefined }
-        : { _tag: "Set" as const, value: kept, result: undefined },
+      updated.every((entry, index) => entry === entries[index])
+        ? { _tag: "Keep" as const, result: undefined }
+        : { _tag: "Set" as const, value: updated, result: undefined },
     );
   });
 
@@ -124,19 +129,18 @@ export function findCompleteBuildResult(
     const entry = entries[index];
     if (
       entry !== undefined &&
-      entry.buildKey === input.buildKey &&
-      entry.phase === input.phase &&
-      entry.service === input.service &&
-      entry.step === (input.phase === "app" ? input.step : undefined)
+      (input.phase === "app" || entry.buildKey === input.buildKey) &&
+      identityOf(entry) === identityOf(input)
     ) {
       // Only the latest recorded attempt counts: a newer failure hides an older success.
-      if (entry.outcome !== "complete") return undefined;
+      if (entry.outcome !== "complete" || entry.buildKey !== input.buildKey) return undefined;
       switch (input.phase) {
         case "artifact":
           return entry;
         case "app":
-          return input.containerId !== undefined &&
-            input.containerId.length > 0 &&
+          return entry.phase === "app" &&
+            !entry.invalidated &&
+            input.containerId &&
             entry.containerId === input.containerId
             ? entry
             : undefined;
@@ -146,7 +150,6 @@ export function findCompleteBuildResult(
   return undefined;
 }
 
-/** Drop every app-phase entry; a build.app result only describes the container it ran in. */
 export const clearAppBuildResults = Effect.fnUntraced(function* (
   stateStore: StateStoreShape,
   owner: BuildOwner,

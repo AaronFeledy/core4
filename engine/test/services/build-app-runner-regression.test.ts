@@ -340,7 +340,7 @@ test("keeps unreferenced app transcripts when the phase fails", async () => {
   });
 });
 
-test("reusing an older app-step key moves it to the newest position", async () => {
+test("restoring older app inputs reruns the step and makes its fresh result newest", async () => {
   await withTempRoots(async () => {
     // Given an older recorded key for the step this plan runs, and a newer key of the same step.
     const calls: string[] = [];
@@ -411,9 +411,11 @@ test("reusing an older app-step key moves it to the newest position", async () =
       }).pipe(Effect.provide(makeLayer(provider))),
     );
 
-    // Then the reused step never dispatched and its entry is last.
-    expect(calls).toEqual([]);
+    // Then the old inputs ran again and their fresh entry is last, with both outputs retained.
+    expect(calls).toEqual(["dispatch"]);
     expect(entries.map((entry) => entry.buildKey)).toEqual(["newer-key", stepKey]);
+    expect(await readFile(olderPath, "utf8")).toBe("");
+    expect(await readFile(newerPath, "utf8")).toBe("version 7\n");
   });
 });
 

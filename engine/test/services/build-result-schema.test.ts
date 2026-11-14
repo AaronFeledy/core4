@@ -30,6 +30,7 @@ for (const fields of [
   { phase: "app", step: "install", exitCode: 0, artifactRef: "image:latest" },
   { phase: "artifact", step: "install" },
   { phase: "artifact", containerId: "native-1" },
+  { phase: "artifact", invalidated: true },
   { phase: "artifact", exitCode: 0 },
 ]) {
   test(`rejects contradictory phase evidence ${JSON.stringify(fields)}`, () => {
