@@ -1,3 +1,5 @@
+import { annotateFailureRole, mergeFailure } from "@lando/sdk/command-result";
+import { BuildPhaseFailedError } from "@lando/sdk/errors";
 import {
   TaskCompleteEvent,
   TaskFailEvent,
@@ -30,10 +32,12 @@ export const makeAppBuildSettlement = (input: AppBuildInput, steps: readonly App
   const began = performance.now();
   const ledger = new Map<string, TaskState>(steps.map(({ step }) => [step.id, { _tag: "pending" }]));
   const receipts = makeAppBuildReceipts(input);
+  // Delivery commits before subscribers run, so reserve dispositions before publishing them.
   const start = (appStep: AppStep, evidence: AppStepStarted) =>
     Effect.uninterruptible(
       Effect.gen(function* () {
         if (ledger.get(appStep.step.id)?._tag !== "pending") return;
+        ledger.set(appStep.step.id, { _tag: "started", evidence });
         yield* input.events.publish(
           TaskStartEvent.make({
             taskId: appStep.step.id,
@@ -43,7 +47,6 @@ export const makeAppBuildSettlement = (input: AppBuildInput, steps: readonly App
             timestamp: yield* DateTime.now,
           }),
         );
-        ledger.set(appStep.step.id, { _tag: "started", evidence });
       }),
     );
   const terminal = Effect.fnUntraced(function* (appStep: AppStep, disposition: AppStepDisposition) {
@@ -56,21 +59,47 @@ export const makeAppBuildSettlement = (input: AppBuildInput, steps: readonly App
       durationMs: disposition.durationMs,
       timestamp: yield* DateTime.now,
     };
-    yield* input.events.publish(
-      disposition.outcome === "succeeded"
-        ? TaskCompleteEvent.make(common)
-        : TaskFailEvent.make({
-            ...common,
-            ...(disposition.failure?.exitCode === undefined
-              ? {}
-              : { exitCode: disposition.failure.exitCode }),
-          }),
-    );
     ledger.set(appStep.step.id, {
       _tag: "settled",
       disposition,
       dispatched: state?._tag === "started" && state.evidence.attempt !== undefined,
     });
+    yield* input.events
+      .publish(
+        disposition.outcome === "succeeded"
+          ? TaskCompleteEvent.make(common)
+          : TaskFailEvent.make({
+              ...common,
+              ...(disposition.failure?.exitCode === undefined
+                ? {}
+                : { exitCode: disposition.failure.exitCode }),
+            }),
+      )
+      .pipe(
+        Effect.catchCause((cause) =>
+          disposition.failure === undefined
+            ? Effect.failCause(annotateFailureRole(cause, "cleanup"))
+            : Effect.failCause(
+                mergeFailure(
+                  Cause.fail(
+                    new BuildPhaseFailedError({
+                      app: {
+                        kind: isScratchPlan(input.plan) ? "scratch" : "user",
+                        id: input.plan.id,
+                        root: input.plan.root,
+                      },
+                      phase: "app",
+                      failures: [disposition.failure],
+                      message: `App build failed: step ${appStep.step.id} failed and its terminal event could not be published.`,
+                      remediation: "Fix the failed build step and event subscriber before retrying.",
+                    }),
+                  ),
+                  cause,
+                  "cleanup",
+                ),
+              ),
+        ),
+      );
   });
   const failedDisposition = (appStep: AppStep, cause: Cause.Cause<BuildAppError>) =>
     failedAppStepDisposition(appStep, cause, performance.now() - began);
