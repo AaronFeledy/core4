@@ -134,7 +134,7 @@ test("old reachable managed runtime serves rescue requests without repair or ext
     expect(requests.some((request) => request.includes("_ping") || request.endsWith("/info"))).toBe(false);
     expect(requests.some((request) => request.startsWith("DELETE "))).toBe(true);
     expect(await readdir(bin)).toEqual([".runtime-installed-version"]);
-    expect(await readdir(root)).toEqual(["api.sock", "bin"]);
+    expect((await readdir(root)).toSorted()).toEqual(["api.sock", "bin"]);
   } finally {
     await server.stop(true);
     await rm(root, { recursive: true, force: true });
