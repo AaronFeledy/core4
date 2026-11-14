@@ -15,7 +15,7 @@ lando start --trace
 LANDO_TRACE=1 lando start
 ```
 
-The flag is global, so it works on every dispatcher-routed command. In a POSIX shell, `LANDO_TRACE=1` enables it through the environment, as shown in the second command. A configured [export endpoint](./export-traces.mdx) also enables tracing; `--trace` controls whether the timing tree appears in your terminal.
+The flag is global, so it works on every dispatcher-routed command when you put it before the command name, as in `lando --trace start`. After the name it works too, unless the command owns the words after its name: a `wrapper: true` task such as `lando composer` passes `--trace` to Composer, so write `lando --trace composer install`. See [Use a flag name Lando also has](../tooling/flags-and-args.mdx#use-a-flag-name-lando-also-has). In a POSIX shell, `LANDO_TRACE=1` enables it through the environment, as shown in the second command. A configured [export endpoint](./export-traces.mdx) also enables tracing; `--trace` controls whether the timing tree appears in your terminal.
 
 ## Read the timing tree
 

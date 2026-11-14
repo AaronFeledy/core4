@@ -5,7 +5,6 @@ import { bold, cyan, dim, reset, shouldStyleHelp } from "../../src/cli/help-styl
 const styledOn = {
   isTTY: true,
   env: {} as Readonly<Record<string, string | undefined>>,
-  argv: [] as const,
   rendererMode: "lando",
 } as const;
 
@@ -37,38 +36,6 @@ describe("shouldStyleHelp", () => {
     const styled = shouldStyleHelp(input);
 
     // Then color is suppressed
-    expect(styled).toBe(false);
-  });
-
-  test("turns style off when argv has --format=json", () => {
-    // Given machine-output argv
-    const input = { ...styledOn, argv: ["help", "--format=json"] as const };
-
-    // When the style gate is evaluated
-    const styled = shouldStyleHelp(input);
-
-    // Then color is suppressed
-    expect(styled).toBe(false);
-  });
-
-  test("turns style off when argv has --format json", () => {
-    // Given the space-separated json format flag
-    const input = { ...styledOn, argv: ["help", "--format", "json"] as const };
-
-    // When the style gate is evaluated
-    const styled = shouldStyleHelp(input);
-
-    // Then color is suppressed
-    expect(styled).toBe(false);
-  });
-
-  test("turns style off when argv has --json", () => {
-    const styled = shouldStyleHelp({ ...styledOn, argv: ["help", "--json"] });
-    expect(styled).toBe(false);
-  });
-
-  test("turns style off when argv has -j", () => {
-    const styled = shouldStyleHelp({ ...styledOn, argv: ["help", "-j"] });
     expect(styled).toBe(false);
   });
 

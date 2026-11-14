@@ -8,11 +8,26 @@ import { discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { Effect, Result } from "effect";
 import { renderToolingHelp } from "../../src/cli/cli-help.ts";
-import {
-  type ToolingRoute,
-  resolveToolingRoute,
-  toolingHelpRequested,
-} from "../../src/cli/tooling-router.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
+import { ownerPolicy } from "../../src/cli/invocation-owner.ts";
+import { type ToolingRoute, resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+
+const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
+  switch (route._tag) {
+    case "tooling":
+    case "bun-script":
+      return splitCommandTokens(argv, ownerPolicy({ kind: "tooling", route })).help;
+    case "built-in":
+    case "plugin":
+    case "not-tooling":
+    case "alias-disabled":
+    case "cache-miss":
+    case "unknown-tooling":
+      return false;
+    default:
+      return route satisfies never;
+  }
+};
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
 test.each([
@@ -20,7 +35,7 @@ test.each([
   { argv: ["-h"], marker: null, exit: 0 },
   { argv: ["value", "--help"], marker: null, exit: 0 },
   { argv: ["--", "--help"], marker: "first=--help\nsecond=\n", exit: 0 },
-  { argv: ["--version", "--format=json"], marker: null, exit: 1 },
+  { argv: ["--version", "--format=json"], marker: null, exit: 2 },
   { argv: ["--version", "2.0"], marker: "first=--version\nsecond=2.0\n", exit: 0 },
 ])(
   "answers raw script help without executing except after --: $argv",
@@ -135,7 +150,7 @@ test.each([true, false])("carries normalized script help metadata when cached=%s
           args: [{ name: "target", order: 0, required: true }],
         },
       });
-      expect(toolingHelpRequested(route, ["--help"])).toBe(true);
+      expect(helpRequested(route, ["--help"])).toBe(true);
     }
   });
 });
@@ -249,7 +264,7 @@ test.each([
     ...(input === undefined ? {} : { input }),
   };
   // When
-  const requested = toolingHelpRequested(route, argv);
+  const requested = helpRequested(route, argv);
   // Then
   expect(requested).toBe(expected);
 });
@@ -265,6 +280,6 @@ test("retains a newly discovered disabled script route for typed runtime refusal
     const route = await Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot }));
     // Then
     expect(route).toMatchObject({ _tag: "bun-script", hidden: true, disabled: true });
-    expect(toolingHelpRequested(route, ["--help"])).toBe(true);
+    expect(helpRequested(route, ["--help"])).toBe(true);
   });
 });

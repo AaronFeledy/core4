@@ -1,0 +1,12 @@
+name: shared-flag-names
+tooling:
+  summary:
+    description: Summarize the last build
+    service: ":host"
+    flags:
+      verbose:
+        boolean: true
+        description: Include every step
+      format:
+        description: Summary format
+    cmd: echo "verbose={{ default(flags.verbose, false) }} format={{ default(flags.format, 'none') }}"
