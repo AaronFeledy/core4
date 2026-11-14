@@ -200,18 +200,18 @@ If the URL doesn't load, check `lando logs -s adminer` for the PHP server's star
 
 ## Remove it
 
-Delete the `adminer` service from `.lando.yml`, then run:
+Delete the `adminer` service from `.lando.yml`, or let Lando edit the file for you, then run `lando start`:
 
 ```sh
-lando destroy -y
+lando app:config:unset services.adminer
 lando start
 ```
 
-`lando destroy -y` removes the containers and keeps the database volume, so the `notes` row is still there when the app comes back.
+`lando start` removes the Adminer container, prints a notice that `adminer` is no longer defined in the Landofile, and stops routing its URL. The `db` service and its volume stay, so the `notes` row is still there. See [Remove a service](../tutorial/app-lifecycle.mdx#remove-a-service) for what `lando restart` and `lando rebuild` do after a removal.
 
 ## Check the plan
 
-The inspect scenarios check the planned config for each Landofile. The browse scenarios start each app, seed a `notes` row, confirm Adminer's `*.lndo.site` URL from `lando info`, and log in to select that row. The SQLite browse scenario also runs the documented `lando exec appserver -- mkdir -p data`. The `remove-it` scenario starts a Postgres app, seeds that same row, removes the Adminer service, and runs the documented `lando destroy -y` and `lando start` to prove Adminer is gone, the app is ready, and the seeded row is still in the database volume.
+The inspect scenarios check the planned config for each Landofile. The browse scenarios start each app, seed a `notes` row, confirm Adminer's `*.lndo.site` URL from `lando info`, and log in to select that row. The SQLite browse scenario also runs the documented `lando exec appserver -- mkdir -p data`. The `remove-it` scenario starts a Postgres app, seeds that same row, runs the documented `lando app:config:unset services.adminer` and `lando start`, and proves Adminer's container and URL are gone while the seeded row is still in the database volume.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -362,16 +362,11 @@ The inspect scenarios check the planned config for each Landofile. The browse sc
     <Step name="seed">
       <Run command={`lando psql -c "CREATE TABLE notes (id serial PRIMARY KEY, body text); INSERT INTO notes (body) VALUES ('hello from lando');"`} />
     </Step>
-    <Hidden reason="Rewrite the Landofile without the Adminer service so the documented destroy and start can run">
-      <Step name="drop-adminer-service">
-        <Run command={`lando exec adminer --user=root -- php -r 'file_put_contents("/app/.lando.yml","name: adminer-remove\\nservices:\\n  db:\\n    type: postgres\\n    creds:\\n      user: lando\\n      database: adminer-remove\\n      password: local-development-only\\n");'`} />
-      </Step>
-    </Hidden>
-    <Step name="destroy">
-      <Verify command="lando destroy -y" expect={{ stdout: { regex: "destroyed: adminer-remove.*volumes preserved" } }} />
+    <Step name="remove-adminer">
+      <Run command="lando app:config:unset services.adminer" />
     </Step>
-    <Step name="start-again">
-      <Verify command="lando start" expect={{ stdout: { regex: "ready: adminer-remove" } }} />
+    <Step name="converge">
+      <Verify command="lando start" expect={{ stderr: { regex: "adminer is no longer defined in the Landofile, so Lando removed its container" } }} />
     </Step>
     <Step name="adminer-gone">
       <Verify command="lando info" expect={{ stdout: { not: { regex: "adminer\\.adminer-remove\\.lndo\\.site" } } }} />

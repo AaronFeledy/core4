@@ -161,6 +161,7 @@ Guide MDX frontmatter is `GuideFrontmatter`: `id`, `provider` / layer, `timeout`
 - Installers, `get.lando.dev`, and signed multi-platform releases that are not up stay not up. Do not un-stub them.
 - Before telling readers to install a PHP extension that a CMS requires, check whether the stock PHP image already ships or builds it (`PHP_COMMON_EXTENSIONS`, `PHP_EXTENSIONS_TO_BUILD`). Teach a `build.artifact` install, or link `docs/guides/services/php-customization.mdx`, only for extensions the image lacks.
 - Single-command CLI tooling tasks in guides (`drush`, `wp`, `typo3`) set `wrapper: true` so `--help` and `--version` reach the tool instead of Lando. Mirror the key in the fixture.
+- Never hand file ownership back with host-expanded `chown $(id -u):$(id -g)` or run tools with `lando exec --user <host uid>`. On rootless Podman, container root already maps to the host user, so both break. Leave code root-owned, chown only the directories the web user writes, and run tools through `lando php` or tooling wrappers.
 - Recipe READMEs (`recipes/<id>/README.mdx`) are executable-guide-valid and feed scaffold README generation. Drupal's e2e smoke is richer than drupal-cms. Do not flatten it.
 
 ## Transcripts

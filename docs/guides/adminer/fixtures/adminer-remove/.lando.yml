@@ -9,6 +9,7 @@ services:
   adminer:
     type: compose
     image: adminer:5
+    appMount: false
     endpoints:
       - _tag: internal
         name: ui

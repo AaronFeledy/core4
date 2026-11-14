@@ -10,7 +10,7 @@
     },
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-remove",
-      "digest": "e67935a277a1ac61763e65196fd7d97fc641097ae73ed8a3e4965453e7f216c8"
+      "digest": "1428add89ce80c0dc8ffef13324951fa53714377f102ead3cc168538316902d8"
     },
     {
       "fixture": "docs/guides/adminer/fixtures/adminer-sqlite",
