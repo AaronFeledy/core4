@@ -1,3 +1,4 @@
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
@@ -87,6 +88,7 @@ export const makeObserveFixture = (payload: unknown = liveGraph()) => {
       mutations.push(name);
     });
   const dependencies: TraefikProxyDependencies = {
+    stateStore: makeAckStore(mutations),
     paths,
     httpClient,
     certificateAuthority: makeTestCertificateAuthority(),
@@ -129,11 +131,12 @@ export const makeObserveFixture = (payload: unknown = liveGraph()) => {
 
 export const makeAckStore = (mutations: string[]): PluginStateStore => {
   const values = new Map<string, unknown>();
+  const store = makeTestStateStore().service;
   return {
-    withLock: (_key, body) =>
+    withLock: (key, body) =>
       Effect.sync(() => {
         mutations.push("lock");
-      }).pipe(Effect.andThen(body)),
+      }).pipe(Effect.andThen(store.withLock(`traefik-fixture/${key}`, body))),
     open: (spec) => {
       const current = () =>
         values.has(spec.key)

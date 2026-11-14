@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { Result, Schema } from "effect";
+import { Redacted, Result, Schema } from "effect";
 
 import {
   JSON_SCHEMA_NAMES,
@@ -21,6 +21,9 @@ export type PublicSchemaContractFixture = {
 };
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
+  CertificateMaterial: "sdk/test/certificates/prepare-certificate-pair.test.ts",
+  CertificatePairPreparation: "sdk/test/certificates/prepare-certificate-pair.test.ts",
+  PreparedCertificatePair: "sdk/test/certificates/prepare-certificate-pair.test.ts",
   ConfigKeyDescription: "sdk/test/schema/config-key.test.ts",
   ExecutionSite: "sdk/test/schema/execution-site-contracts.test.ts",
   ExecutionSiteMatch: "sdk/test/schema/execution-site-contracts.test.ts",
@@ -731,6 +734,13 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     },
   },
   CronExpression: "@hourly",
+  CertificateMaterial: { certificate: "public PEM", privateKey: Redacted.make("private PEM") },
+  PreparedCertificatePair: {
+    source: "issued",
+    certificate: "public PEM",
+    privateKey: Redacted.make("private PEM"),
+    root: "root PEM",
+  },
   ScheduleJobName: "tick",
   ScheduleJob: { name: "tick", every: "@hourly", run: "true" },
   ScheduleConfig: [{ name: "tick", every: "@hourly", run: "true" }],

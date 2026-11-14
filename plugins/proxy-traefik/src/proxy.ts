@@ -286,11 +286,9 @@ export const makeTraefikRouterService = (
   let authorityPorts: AuthorityPorts | undefined;
   let defaultDomain: string | undefined;
   const guardRouterMutation = <A, E>(operation: Effect.Effect<A, E>) =>
-    dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
-      ? dependencies.stateStore.withLock(routeReloadLockKey(), operation, {
-          timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
-        })
-      : operation;
+    dependencies.stateStore.withLock(routeReloadLockKey(), operation, {
+      timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
+    });
 
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {
     yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
@@ -410,13 +408,7 @@ export const makeTraefikRouterService = (
               nextRoutes.length === 0 ? Effect.void : confirmRouterAcquisition(dependencies),
             ),
           );
-          const guarded =
-            dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
-              ? dependencies.stateStore.withLock(routeReloadLockKey(), apply, {
-                  timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
-                })
-              : apply;
-          return guarded;
+          return guardRouterMutation(apply);
         },
         (effect, _nextRoutes, owner) => effect.pipe(mapFailures((cause) => applyError(owner.id, cause))),
       ),
@@ -427,7 +419,7 @@ export const makeTraefikRouterService = (
             const appKey = owner.ownerKey;
             const file = routeFile(dependencies.paths, owner);
             const hadRouteFile = yield* dependencies.fileSystem.exists(file);
-            if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+            if (dependencies.paths.platform === "win32") {
               yield* invalidateAcknowledgement(dependencies.stateStore, appKey);
             }
             yield* Effect.uninterruptible(dependencies.fileSystem.remove(file));
@@ -436,13 +428,7 @@ export const makeTraefikRouterService = (
             if (hadRouteFile) pendingReload.add(appKey);
             if (pendingReload.has(appKey)) yield* reloadWindowsRouter(appKey);
           });
-          const guarded =
-            dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
-              ? dependencies.stateStore.withLock(routeReloadLockKey(), remove, {
-                  timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
-                })
-              : remove;
-          return guarded;
+          return guardRouterMutation(remove);
         },
         mapFailures((cause) => proxyError("route removal", cause)),
       ),
@@ -466,11 +452,7 @@ export const makeTraefikRouterService = (
                 (file) =>
                   Effect.gen(function* () {
                     const ownerKey = file.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length);
-                    if (
-                      dependencies.paths.platform === "win32" &&
-                      dependencies.stateStore !== undefined &&
-                      isOwnerRouteFileName(file)
-                    ) {
+                    if (dependencies.paths.platform === "win32" && isOwnerRouteFileName(file)) {
                       yield* invalidateAcknowledgement(dependencies.stateStore, ownerKey);
                     }
                     yield* dependencies.fileSystem.remove(joinFor(dependencies.paths)(directory, file));
@@ -488,13 +470,7 @@ export const makeTraefikRouterService = (
             yield* removeAllCertificates(dependencies);
             routes.clear();
           });
-          const guarded =
-            dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
-              ? dependencies.stateStore.withLock(routeReloadLockKey(), stop, {
-                  timeoutMs: ROUTE_RELOAD_LOCK_WAIT_MS,
-                })
-              : stop;
-          return guarded;
+          return guardRouterMutation(stop);
         },
         mapFailures((cause) => proxyError("stop", cause)),
       )(),

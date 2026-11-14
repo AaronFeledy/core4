@@ -23,7 +23,7 @@
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { certificatePairIsCurrent } from "@lando/sdk/certificates";
+import { prepareCertificatePair } from "@lando/sdk/certificates";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CaError, isErrnoCode } from "@lando/sdk/errors";
@@ -31,7 +31,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape } from "@lando/sdk/services";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Clock, Effect, Option, Redacted } from "effect";
+import { Effect, Option, Redacted } from "effect";
 
 import {
   CertificateAuthorityResolver,
@@ -40,9 +40,6 @@ import {
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { routeOwnerFromPlan } from "./route-owner.ts";
 import { resolveCertsDir, serviceCertificatePaths } from "./service-certificate-paths.ts";
-
-/** Reissue this long before expiry so a running service never reaches an expired leaf. */
-const RENEWAL_MARGIN_MS = 30 * 24 * 60 * 60 * 1000;
 
 type CertificateAuthorityResolutionError = Effect.Error<CertificateAuthorityResolverShape["resolve"]>;
 
@@ -196,7 +193,6 @@ export const prepareServiceCertificates = Effect.fn("ServiceCertificates.prepare
       });
     // Every service in this call is judged against one reading of the root.
     root ??= (yield* ca.root.pipe(mapFailures(issueError))).certificate;
-    const names = [...new Set([...certs.sans, certs.cn])];
     const [existingCertificate, existingKey] = yield* Effect.all([
       readText(paths.certPath),
       readText(paths.keyPath),
@@ -211,69 +207,62 @@ export const prepareServiceCertificates = Effect.fn("ServiceCertificates.prepare
           }),
       ),
     );
-    const isCurrent = (certificate: string, privateKey: string, againstRoot: string, now: number) =>
-      certificatePairIsCurrent(
-        { certificate, privateKey },
-        { names, now, renewalMarginMs: RENEWAL_MARGIN_MS, root: againstRoot },
-      );
-    let certificate: string;
-    if (
-      existingCertificate !== undefined &&
-      existingKey !== undefined &&
-      isCurrent(existingCertificate, existingKey, root, yield* Clock.currentTimeMillis)
-    ) {
-      certificate = existingCertificate;
-    } else {
-      const issued = yield* ca.issueCert({ cn: certs.cn, sans: certs.sans }).pipe(mapFailures(issueError));
-      const privateKey = Redacted.value(issued.privateKey);
-      // Read the clock again: a fresh leaf's notBefore is later than any timestamp taken before issuance.
-      if (
-        !isCurrent(issued.certificate, privateKey, issued.root.certificate, yield* Clock.currentTimeMillis)
-      ) {
-        return yield* Effect.fail(
-          new CaError({
-            message: `Certificate authority ${ca.id} issued a certificate for service ${name} that Lando cannot use: it does not cover the requested names, does not match its private key, is outside its validity window, or is not signed by the root the authority reports.`,
-            caId: ca.id,
-            remediation: `Repair or reinstall the ${ca.id} certificate authority with \`lando setup\`, then retry. If it keeps happening, report it to the plugin that provides the ${ca.id} certificate authority.`,
-          }),
-        );
-      }
-      const write = (target: string, content: string, mode: number) =>
-        Effect.tryPromise(() =>
-          writeFileAtomic(target, content, {
-            mode,
-            ...(mode === 0o600 && Option.isSome(privateFiles)
-              ? { privateFileAccess: privateFiles.value.enforce }
-              : { ownerOnly: "best-effort" as const }),
-          }),
-        );
-      // Key first, then certificate; an interrupt waits for both. A pair a failed write leaves
-      // mixed no longer verifies, so the next apply replaces it.
-      yield* Effect.gen(function* () {
-        yield* Effect.tryPromise(async () => {
-          await mkdir(dir, { recursive: true, mode: 0o700 });
-          await chmod(dir, 0o700);
-        });
-        yield* write(paths.keyPath, privateKey, 0o600);
-        yield* write(paths.certPath, issued.certificate, 0o644);
-      }).pipe(
-        Effect.uninterruptible,
-        mapFailures(
-          (cause) =>
-            new CaError({
-              message: `Unable to write the certificate for service ${name} to ${dir}.`,
-              caId: ca.id,
-              remediation: `Make sure ${dir} is writable by the current user, then retry.`,
-              cause,
+    const pair = yield* prepareCertificatePair(
+      { id: ca.id, issueCert: (spec) => ca.issueCert(spec).pipe(mapFailures(issueError)) },
+      {
+        spec: { cn: certs.cn, sans: certs.sans },
+        root,
+        subject: `service ${name}`,
+        ...(existingCertificate !== undefined && existingKey !== undefined
+          ? { existing: { certificate: existingCertificate, privateKey: Redacted.make(existingKey) } }
+          : {}),
+      },
+    );
+    switch (pair.source) {
+      case "reused":
+        break;
+      case "issued": {
+        const write = (target: string, content: string, mode: number) =>
+          Effect.tryPromise(() =>
+            writeFileAtomic(target, content, {
+              mode,
+              ...(mode === 0o600 && Option.isSome(privateFiles)
+                ? { privateFileAccess: privateFiles.value.enforce }
+                : { ownerOnly: "best-effort" as const }),
             }),
-        ),
-      );
-      certificate = issued.certificate;
+          );
+        // Key first, then certificate; an interrupt waits for both. A pair a failed write leaves
+        // mixed no longer verifies, so the next apply replaces it.
+        yield* Effect.gen(function* () {
+          yield* Effect.tryPromise(async () => {
+            await mkdir(dir, { recursive: true, mode: 0o700 });
+            await chmod(dir, 0o700);
+          });
+          yield* write(paths.keyPath, Redacted.value(pair.privateKey), 0o600);
+          yield* write(paths.certPath, pair.certificate, 0o644);
+        }).pipe(
+          Effect.uninterruptible,
+          mapFailures(
+            (cause) =>
+              new CaError({
+                message: `Unable to write the certificate for service ${name} to ${dir}.`,
+                caId: ca.id,
+                remediation: `Make sure ${dir} is writable by the current user, then retry.`,
+                cause,
+              }),
+          ),
+        );
+        break;
+      }
+      default: {
+        const unreachable: never = pair.source;
+        return unreachable;
+      }
     }
     prepared.set(service.name, {
       certs: { ...certs, sans: [...certs.sans] },
       ...paths,
-      identity: sha256Hex(certificate),
+      identity: sha256Hex(pair.certificate),
     });
   }
   const certificates = certificateProof(ownerKey, prepared);

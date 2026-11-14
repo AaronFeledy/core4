@@ -1,3 +1,4 @@
+import { prepareCertificatePair } from "@lando/sdk/certificates";
 import { type AppRouteOwner, type RoutePlan, certificateNameForHostname } from "@lando/sdk/schema";
 import { Effect, Redacted } from "effect";
 
@@ -12,7 +13,9 @@ import {
   joinFor,
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
-import { type TraefikTlsFiles, renderTraefikDefaultTlsConfig } from "./routing.ts";
+import type { RouteReloadSnapshot } from "./route-reload-snapshot.ts";
+import { routeReloadDigest } from "./route-reload-state.ts";
+import { renderTraefikDefaultTlsConfig } from "./routing.ts";
 
 export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<string> => {
   // HTTPS leaf SANs use certificate-coverable names: leftmost partial wildcards
@@ -35,6 +38,12 @@ export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<
 export const normalizeDefaultDomain = (defaultDomain: string): string =>
   defaultDomain.trim().toLowerCase().replace(/\.+$/, "");
 
+export const defaultCertificateHostnames = (domain: string): ReadonlyArray<string> => [
+  `*.${domain}`,
+  domain,
+  `traefik.${domain}`,
+];
+
 export const removeAppCertificates = (dependencies: TraefikProxyDependencies, owner: AppRouteOwner) => {
   const files = appCertificateFiles(dependencies.paths, owner);
   return Effect.all(
@@ -46,63 +55,58 @@ export const removeAppCertificates = (dependencies: TraefikProxyDependencies, ow
   );
 };
 
-export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function* (
+export const prepareTlsFiles = Effect.fn("TraefikRouter.prepareTlsFiles")(function* (
   dependencies: TraefikProxyDependencies,
   input: {
     readonly owner: AppRouteOwner;
     readonly defaultDomain: string;
     readonly hostnames: ReadonlyArray<string>;
-    readonly refreshAppCertificate: boolean;
-    readonly refreshDefaultCertificate: boolean;
+    readonly snapshot: RouteReloadSnapshot;
+    readonly root: string;
   },
 ) {
   const defaultFiles = defaultCertificateFiles(dependencies.paths, input.defaultDomain);
   const appFiles = appCertificateFiles(dependencies.paths, input.owner);
-  yield* dependencies.fileSystem.mkdir(certificateDir(dependencies.paths));
-
-  const hasDefaultCertificate =
-    (yield* dependencies.fileSystem.exists(defaultFiles.cert)) &&
-    (yield* dependencies.fileSystem.exists(defaultFiles.key)) &&
-    (yield* dependencies.fileSystem.exists(defaultIssuerFile(dependencies.paths, input.defaultDomain)));
-  if (input.refreshDefaultCertificate || !hasDefaultCertificate) {
-    const issued = yield* dependencies.certificateAuthority.issueCert({
+  const existingPair = (certificate: string | undefined, privateKey: string | undefined) =>
+    certificate === undefined || privateKey === undefined
+      ? {}
+      : { existing: { certificate, privateKey: Redacted.make(privateKey) } };
+  const defaultPair = yield* prepareCertificatePair(dependencies.certificateAuthority, {
+    spec: {
       cn: `*.${input.defaultDomain}`,
-      sans: [`*.${input.defaultDomain}`, input.defaultDomain, `traefik.${input.defaultDomain}`],
-    });
-    yield* dependencies.fileSystem.writeAtomic(defaultFiles.cert, issued.certificate);
-    yield* dependencies.fileSystem.writeSecretAtomic(defaultFiles.key, Redacted.value(issued.privateKey));
-    yield* dependencies.fileSystem.writeAtomic(
-      defaultIssuerFile(dependencies.paths, input.defaultDomain),
-      issued.root.certificate,
-    );
-  }
-
-  const defaultNames = defaultCertificateNames(input.defaultDomain);
-  yield* dependencies.fileSystem.writeAtomic(
-    defaultTlsFile(dependencies.paths),
-    renderTraefikDefaultTlsConfig({
-      certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
-      keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
-    }),
-  );
-
-  const hasAppCertificate =
-    (yield* dependencies.fileSystem.exists(appFiles.cert)) &&
-    (yield* dependencies.fileSystem.exists(appFiles.key));
-  if (input.refreshAppCertificate || !hasAppCertificate) {
-    const issued = yield* dependencies.certificateAuthority.issueCert({
+      sans: defaultCertificateHostnames(input.defaultDomain),
+    },
+    root: input.root,
+    subject: "router default certificate",
+    ...existingPair(input.snapshot.defaultCertificate, input.snapshot.defaultPrivateKey),
+  });
+  const appPair = yield* prepareCertificatePair(dependencies.certificateAuthority, {
+    spec: {
       cn: input.hostnames[0] ?? input.defaultDomain,
       sans: input.hostnames,
-    });
-    yield* dependencies.fileSystem.writeAtomic(appFiles.cert, issued.certificate);
-    yield* dependencies.fileSystem.writeSecretAtomic(appFiles.key, Redacted.value(issued.privateKey));
-  }
-
+    },
+    root: input.root,
+    subject: `router owner ${input.owner.id}`,
+    ...existingPair(input.snapshot.certificate, input.snapshot.privateKey),
+  });
+  const issuerFile = defaultIssuerFile(dependencies.paths, input.defaultDomain);
+  const issuer = defaultPair.root;
+  const defaultNames = defaultCertificateNames(input.defaultDomain);
+  const tlsFile = defaultTlsFile(dependencies.paths);
+  const config = renderTraefikDefaultTlsConfig({
+    certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
+    keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
+  });
   return {
-    certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${input.owner.ownerKey}.crt`,
-    keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${input.owner.ownerKey}.key`,
-  } satisfies TraefikTlsFiles;
+    app: { files: appFiles, pair: appPair },
+    defaults: { files: defaultFiles, pair: defaultPair },
+    issuer: { file: issuerFile, content: issuer },
+    config: { file: tlsFile, content: config },
+    generation: routeReloadDigest([appPair.certificate, defaultPair.certificate]),
+  };
 });
+
+export type PreparedRouterTls = Effect.Success<ReturnType<typeof prepareTlsFiles>>;
 
 export const removeAllCertificates = Effect.fnUntraced(function* (dependencies: TraefikProxyDependencies) {
   const directory = certificateDir(dependencies.paths);

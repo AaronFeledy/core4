@@ -1,3 +1,4 @@
+import type { observeTlsPeer } from "@lando/http-client/tls-peer";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { PortNumber, PublicationObservation, ServiceName, StartedService } from "@lando/sdk/schema";
 import type {
@@ -109,7 +110,8 @@ export interface TraefikProxyDependencies {
   readonly fileSystem: ProxyFileSystem;
   readonly paths: ProxyPaths;
   readonly globalApp: ProxyGlobalApp;
-  readonly stateStore?: PluginStateStore;
+  readonly stateStore: PluginStateStore;
+  readonly observeTlsPeer?: typeof observeTlsPeer;
   readonly socketProxy?: SocketProxyDependencies;
   readonly fingerprint?: AcquisitionFingerprint;
   readonly router?: TraefikRouterLists;

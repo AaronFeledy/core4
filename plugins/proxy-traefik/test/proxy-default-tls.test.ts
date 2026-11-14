@@ -109,7 +109,6 @@ test("preserves the established domain and publication when setup fails pin vali
   await Effect.runPromise(harness.makeService().applyRoutes(httpsRoutes, app));
   expect(harness.calls.filter((spec) => spec.cn.startsWith("*.")).map((spec) => spec.cn)).toEqual([
     "*.accepted.test",
-    "*.accepted.test",
   ]);
   expect(harness.files.get("/lando/global/proxy-traefik/dynamic/tls-default.yml")).toContain(
     "/etc/traefik/dynamic/certs/default-accepted.test.crt",

@@ -11,6 +11,7 @@ import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
+import { makeRouterStateStore } from "../subsystems/proxy/router-state-fixture.ts";
 
 test.each([false, true])(
   "global:stop withdraws only its owner and preserves router state with applied plan=%s",
@@ -40,6 +41,7 @@ test.each([false, true])(
       );
       const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
       const router = makeTraefikRouterService({
+        stateStore: makeRouterStateStore(),
         paths: { platform: "linux", globalAppRoot: root },
         certificateAuthority: makeTestCertificateAuthority(),
         fileSystem: { ...fileSystem, writeSecretAtomic: fileSystem.writeAtomic },
