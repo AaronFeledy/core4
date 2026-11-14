@@ -22,9 +22,11 @@ and path. Use distinct route identities for different backends; sharing a listen
 does not prevent hostname conflicts.
 
 Before `start` or `restart` reports success, Lando confirms that Traefik loaded
-the app's complete route configuration. Unchanged routes are checked immediately,
-without rewriting their files or reissuing current certificates. This confirms
-routing configuration, not the HTTP status your app returns. Routes belong to the
+the app's complete route configuration and, for HTTPS routes, that it serves a
+current certificate for each hostname. Unchanged routes are checked immediately,
+without rewriting their files, reissuing current certificates, or waiting a fixed
+time. This confirms routing and TLS, not the HTTP status your app returns: an app
+that answers 500 still passes. Routes belong to the
 app folder, so the check also waits until Traefik drops routes that folder
 published under an earlier `name:`. Before startup, Lando also removes route files
 it recognizes as output from development builds that named files after the app,
@@ -34,9 +36,10 @@ next routed app start or when you run `lando setup`. Files Lando cannot identify
 stay in place; `lando doctor` reports both classes as `legacy-route-files`. See
 [Change an app's name](../landofile/app-name-edge-cases.mdx#change-an-apps-name).
 
-If Traefik cannot confirm the routes within 30 seconds, the command fails with
-`ProxyApplyError` instead of claiming readiness. The app stays available for
-diagnosis. Inspect the router before retrying:
+If Traefik cannot confirm the routes and their certificates within 30 seconds,
+the command fails with `ProxyApplyError` instead of claiming readiness. The error
+says whether the routes or the served certificate fell short. The app stays
+available for diagnosis. Inspect the router before retrying:
 
 ```sh
 lando global:logs --service=traefik --tail=100
@@ -97,9 +100,11 @@ lando info
 
 HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTPS certificates](./certificates-mkcert.mdx).
 
-Each HTTPS route publication checks the app's certificate and the shared default certificate against the current CA root. Lando renews them within 30 days of expiry (capped at one third of their lifetime), or when their names, key, or signing root no longer match. It reloads replacement certificates even if the routes are unchanged; on Windows it handles the required shared-router restart. A missing or stale saved issuer alone is repaired without reissuing valid leaves or restarting an acknowledged router.
+Each HTTPS route publication checks the app's certificate and the shared default certificate against the current CA root. Lando renews them within 30 days of expiry (capped at one third of their lifetime), or when their names, key, or signing root no longer match. It reloads replacement certificates even if the routes are unchanged. On Windows it restarts the shared router only when the served certificates change. A missing or stale saved issuer alone is repaired without reissuing valid leaves or restarting the router.
 
-Renewal happens when routes are published, not in the background, and applies only to that app and the shared default certificate. Start or restart each app whose HTTPS routes need checking. If the CA root cannot be read or issuance fails, publication fails before changing files and preserves the authority's remediation in `ProxyApplyError`. HTTP-only publication and withdrawing routes work without the CA.
+Lando then connects to the router and confirms the certificate it serves for each HTTPS hostname and for the shared default before the command succeeds. A wildcard route is checked with one sample hostname that matches it. Apps started at the same time publish one after another, so they can't leave the shared default certificate mismatched.
+
+Renewal happens when routes are published, not in the background, and applies only to that app and the shared default certificate. Start or restart each app whose HTTPS routes need checking. If the CA root cannot be read or issuance fails, publication fails before changing files and preserves the authority's remediation in `ProxyApplyError`. HTTP-only publication and withdrawing routes work without the CA. You don't need to delete certificate files or restart the router to recover. Fix what the error or `lando doctor` names, run `lando start` again, and read the URLs with `lando info`.
 
 The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-dns.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
