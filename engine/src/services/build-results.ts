@@ -90,6 +90,24 @@ type AppLookup = Pick<AppBuildResult, "buildKey" | "service" | "phase" | "step">
   readonly containerId: string | undefined;
 };
 
+export const invalidateAppBuildResult = (
+  bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
+  input: AppLookup,
+): Effect.Effect<void, StateStoreError> =>
+  bucket.mutate((current) => {
+    const entries = current ?? [];
+    const kept = entries.filter(
+      (entry) =>
+        resultKeyOf(entry) !== resultKeyOf(input) || entry.outcome !== "complete" || !entry.containerId,
+    );
+    if (kept.length === entries.length) return Effect.succeed({ _tag: "Keep" as const, result: undefined });
+    return Effect.succeed(
+      kept.length === 0
+        ? { _tag: "Remove" as const, result: undefined }
+        : { _tag: "Set" as const, value: kept, result: undefined },
+    );
+  });
+
 export function findCompleteBuildResult(
   entries: ReadonlyArray<BuildResultEntry>,
   input: ArtifactLookup,
@@ -146,10 +164,11 @@ export const clearAppBuildResults = Effect.fnUntraced(function* (
   });
 });
 
-const identityOf = (entry: BuildResultEntry): string =>
+type BuildResultIdentity = Pick<BuildResultEntry, "service" | "phase" | "step" | "buildKey">;
+const identityOf = (entry: BuildResultIdentity): string =>
   `${entry.service}\u0000${entry.phase}\u0000${entry.step ?? ""}`;
 
-const resultKeyOf = (entry: BuildResultEntry): string => `${identityOf(entry)}\u0000${entry.buildKey}`;
+const resultKeyOf = (entry: BuildResultIdentity): string => `${identityOf(entry)}\u0000${entry.buildKey}`;
 
 /**
  * Apply the overall backstop without evicting a step's newest entry while it still has older keys:
@@ -223,11 +242,11 @@ export const recordBuildResult = Effect.fnUntraced(function* (
  * rotation keeps it and `logs --build` prints the output that is actually in use. A hit that is
  * already newest writes nothing.
  */
-export const markBuildResultUsed = Effect.fnUntraced(function* (
+export const markBuildResultUsed = (
   bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
   used: BuildResultEntry,
-): Effect.fn.Return<void, StateStoreError> {
-  yield* bucket.mutate((current) => {
+): Effect.Effect<void, StateStoreError> =>
+  bucket.mutate((current) => {
     const entries = current ?? [];
     const key = resultKeyOf(used);
     const index = entries.findIndex((entry) => resultKeyOf(entry) === key);
@@ -249,4 +268,3 @@ export const markBuildResultUsed = Effect.fnUntraced(function* (
       result: undefined,
     });
   });
-});
