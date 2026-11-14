@@ -199,7 +199,7 @@ const declaredInput = Result.getOrThrowWith(
 const declaredInputRoute = (
   overrides: Partial<Extract<ToolingRoute, { readonly _tag: "tooling" }>> = {},
 ): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
-  const route = {
+  return {
     _tag: "tooling" as const,
     commandId: "app:greet",
     name: "greet",
@@ -208,7 +208,6 @@ const declaredInputRoute = (
     availability: { _tag: "Ready" as const, input: declaredInput },
     ...overrides,
   };
-  return route;
 };
 
 test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {

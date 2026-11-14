@@ -180,7 +180,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
       return [
         {
           task,
-          ...("source" in diagnostic && diagnostic.source !== undefined ? { source: diagnostic.source } : {}),
+          ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
           message: diagnostic.message,
           remediation: diagnostic.remediation,
           issues: [...diagnostic.issues],
@@ -189,16 +189,16 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
       ];
     })
     .sort((left, right) => (left.task < right.task ? -1 : left.task > right.task ? 1 : 0));
-  const toolingWarnings = unavailableTasks.map((finding) => ({
-    code: "LANDO_TOOLING_INVALID",
-    message: finding.message,
-    remediation: finding.remediation,
-    context: {
-      path: finding.source?.path ?? plan.metadata.source,
-      task: finding.task,
-    },
-  }));
-  for (const warning of toolingWarnings) {
+  for (const finding of unavailableTasks) {
+    const warning = {
+      code: "LANDO_TOOLING_INVALID",
+      message: finding.message,
+      remediation: finding.remediation,
+      context: {
+        path: finding.source?.path ?? plan.metadata.source,
+        task: finding.task,
+      },
+    };
     yield* recordCommandWarning(warning);
     if (!machineOutput && events !== undefined)
       yield* events.publish(

@@ -40,7 +40,8 @@ test.each(["source", "include"] as const)(
       if (location === "include") await writeFile(join(fixture.root, "tooling.yml"), task);
       const refreshed = await run("bad", ["app:cache:refresh"]);
       expect(refreshed.exitCode, refreshed.stdout + refreshed.stderr).toBe(0);
-      expect(JSON.parse(refreshed.stdout)).toMatchObject({
+      const refreshedEnvelope = JSON.parse(refreshed.stdout);
+      expect(refreshedEnvelope).toMatchObject({
         result: {
           unavailableTasks: [
             {
@@ -56,7 +57,6 @@ test.each(["source", "include"] as const)(
           },
         ],
       });
-      const refreshedEnvelope = JSON.parse(refreshed.stdout);
       expect(refreshedEnvelope.warnings[0]?.issues).toBeUndefined();
       expect(refreshedEnvelope.warnings[0]?.omittedIssueCount).toBeUndefined();
 

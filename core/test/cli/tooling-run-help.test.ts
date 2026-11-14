@@ -3,6 +3,13 @@ import type { ToolingRunSummary, ToolingRunTarget } from "@lando/sdk/schema";
 import { ToolingInputRevision } from "@lando/sdk/schema";
 import { renderToolingHelp } from "../../src/cli/cli-help.ts";
 
+const input = {
+  acceptsArguments: true,
+  flags: [],
+  args: [],
+  revision: ToolingInputRevision.make("run-help"),
+};
+
 const targets: readonly { readonly target: ToolingRunTarget; readonly text: string }[] = [
   { target: { kind: "host" }, text: "on the host" },
   { target: { kind: "primary" }, text: "in the primary service" },
@@ -16,7 +23,7 @@ test.each(targets)("describes a single command $text before the ownership hint",
     summary: "Check",
     availability: {
       _tag: "Ready",
-      input: { acceptsArguments: true, flags: [], args: [], revision: ToolingInputRevision.make("run-help") },
+      input,
       runs: {
         kind: "commands",
         steps: 1,
@@ -80,12 +87,7 @@ test.each(cases)("renders $sentence", ({ runs, sentence }) => {
       summary: "Check",
       availability: {
         _tag: "Ready",
-        input: {
-          acceptsArguments: true,
-          flags: [],
-          args: [],
-          revision: ToolingInputRevision.make("run-help"),
-        },
+        input,
         runs,
       },
     }),
