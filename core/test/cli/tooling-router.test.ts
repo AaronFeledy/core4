@@ -230,7 +230,7 @@ test("Given a fresh app cache, when help options are command heads, then they ar
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
 
@@ -256,7 +256,7 @@ test("Given a fresh cached Bun script, when resolving it, then it selects the sc
         _tag: "Ready",
         sourceKind: "bun-script",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     const argv = ["quality", "--fix"] as const;
@@ -273,7 +273,7 @@ test("Given a fresh cached Bun script, when resolving it, then it selects the sc
       summary: "Run quality checks",
       appRoot: root,
       sourcePath: join(root, ".lando.yml"),
-      input: emptyToolingInput,
+      input: emptyToolingInput(),
     });
     expect(argv.slice(1)).toEqual(["--fix"]);
   });
@@ -289,7 +289,7 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     const argv = ["quality", "--fix"] as const;
@@ -329,7 +329,7 @@ test("Given a fresh cache that does not list a token, when resolving it, then it
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
 
@@ -351,7 +351,7 @@ test("Given a fresh cached app task, when resolving version, then the flag remai
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     const argv = ["quality", "--version"] as const;
@@ -378,7 +378,7 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     const argv = ["app:quality", "--fix"] as const;
@@ -402,7 +402,7 @@ test("Given an uncached Landofile task, when resolving it, then the router rebui
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     await writeFile(
@@ -428,7 +428,7 @@ test("Given a fresh app cache, when resolving an unknown task, then it returns t
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
 
@@ -469,7 +469,7 @@ test("Given another namespace or a directory outside an app, when resolving, the
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     const outside = await mkdtemp(join(tmpdir(), "lando-tooling-router-outside-"));
@@ -505,7 +505,7 @@ test("Given a stale version-policy cache, when resolving a task, then the rebuil
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     await writeFile(join(root, ".lando.yml"), "name: router-test\nlando: '>=99'\n");
@@ -572,7 +572,7 @@ test("Given rebuild is disabled, a stale cache reports remediation without a man
         _tag: "Ready",
         sourceKind: "tooling",
         visibility: "public",
-        input: emptyToolingInput,
+        input: emptyToolingInput(),
       },
     ]);
     await writeFile(
@@ -840,7 +840,4 @@ test("plugin alias routing reuses the invocation catalog", async () => {
   });
 });
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../_support/tooling-input.ts";

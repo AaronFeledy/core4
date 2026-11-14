@@ -20,7 +20,6 @@ interface CacheFixture {
   readonly cacheRoot: string;
 }
 
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
 const entries = [
   {
     id: "app:greet",
@@ -28,7 +27,7 @@ const entries = [
     _tag: "Ready",
     sourceKind: "bun-script",
     visibility: "public",
-    input: emptyToolingInput,
+    input: emptyToolingInput(),
   },
 ] as const;
 const programmaticSource = [
@@ -215,5 +214,4 @@ test("Given a static YAML Landofile cache, when the environment changes, then it
   });
 });
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
+import { emptyToolingInput } from "../_support/tooling-input.ts";

@@ -134,7 +134,9 @@ test.each(
     const structured = { flags: { loud, mode }, args: { second: "last", first: "--first" } };
     const registry = mcpRegistryWithToolingEntries(
       { commandEntries: [] },
-      compileToolingCommands(landofile, createRedactor("secrets").redactString),
+      compileToolingCommands(landofile, createRedactor("secrets").redactString, {
+        sourcePath: plan.metadata.source,
+      }),
     );
     const entry = registry.toolingEntries?.[0];
     if (entry === undefined) throw new Error("Missing tooling MCP projection");
@@ -219,7 +221,9 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
   const layer = harnessLayer({ landofile, plan, invocations, exitCode: 0 });
   const registry = mcpRegistryWithToolingEntries(
     { commandEntries: [] },
-    compileToolingCommands(landofile, createRedactor("secrets").redactString),
+    compileToolingCommands(landofile, createRedactor("secrets").redactString, {
+      sourcePath: plan.metadata.source,
+    }),
   );
   const entry = registry.toolingEntries?.[0];
   if (entry === undefined) throw new Error("Missing tooling MCP projection");

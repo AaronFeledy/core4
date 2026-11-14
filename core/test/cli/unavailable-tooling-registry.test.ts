@@ -31,7 +31,9 @@ test.each([false, true])(
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: compileToolingCommands(landofile, createRedactor("secrets").redactString),
+            entries: compileToolingCommands(landofile, createRedactor("secrets").redactString, {
+              sourcePath: root,
+            }),
             cwd: root,
             cacheRoot,
           }),
@@ -59,7 +61,9 @@ test.each([false, true])(
 );
 
 test("MCP projection excludes unavailable tooling while retaining healthy siblings (#2325)", () => {
-  const entries = compileToolingCommands(landofile, createRedactor("secrets").redactString);
+  const entries = compileToolingCommands(landofile, createRedactor("secrets").redactString, {
+    sourcePath: "unavailable-tooling-registry test",
+  });
   const registry = mcpRegistryWithToolingEntries({ commandEntries: [] }, entries);
   expect(registry.toolingEntries?.map((entry) => entry.spec.id)).toEqual(["app:healthy"]);
 });

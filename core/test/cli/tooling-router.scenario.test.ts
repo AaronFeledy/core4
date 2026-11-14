@@ -42,7 +42,7 @@ const writeFreshCache = async (fixture: RouterFixture, taskName: string): Promis
           _tag: "Ready",
           sourceKind: "bun-script",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
       cwd: fixture.root,
@@ -575,10 +575,8 @@ test("Given a cached task that declares input, when help is in its tail, then bo
   }
 }, 30_000);
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
+import { emptyToolingInput } from "../_support/tooling-input.ts";
 
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
 const writeFlagOwnershipTasks = async (fixture: RouterFixture): Promise<void> => {
   await writeFile(
     join(fixture.root, ".lando.yml"),

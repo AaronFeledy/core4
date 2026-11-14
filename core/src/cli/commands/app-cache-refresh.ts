@@ -133,6 +133,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const entries = yield* Effect.sync(() =>
     compileInspectedAppCommands({
       landofile: landofile.document,
+      sourcePath: plan.metadata.source,
       inspection,
       effectiveTooling: effectiveToolingForPlan(plan),
       toolingSource: toolingSourceResolverForPlan(plan),

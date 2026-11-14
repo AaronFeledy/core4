@@ -30,6 +30,7 @@ const withHelpApp = async (
         cacheRoot,
         landofile: { name: "machine-help" },
         entries: compileInspectedAppCommands({
+          sourcePath: root,
           landofile: { name: "machine-help" },
           inspection: scripts,
           redact: createRedactor("secrets").redactString,

@@ -61,7 +61,7 @@ const writeFreshCache = async (
           _tag: "Ready",
           sourceKind: "tooling",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
       cwd: fixture.root,
@@ -199,7 +199,4 @@ test("Given a remote include without a fragment path, command-not-found reports 
   }
 }, 30_000);
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../_support/tooling-input.ts";

@@ -105,7 +105,9 @@ describe("tooling include precedence", () => {
       },
       appRoot,
     );
-    const commands = compileToolingCommands(resolved.document, createRedactor("secrets").redactString);
+    const commands = compileToolingCommands(resolved.document, createRedactor("secrets").redactString, {
+      sourcePath: appRoot,
+    });
 
     // Then the root winner is not hidden by stale include provenance
     expect(resolved.document.tooling?.build?.cmd).toBe("root");

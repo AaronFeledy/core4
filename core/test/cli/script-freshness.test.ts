@@ -87,7 +87,7 @@ test("an indexed mixed-case script runs its edited body without refresh", async 
           _tag: "Ready",
           sourceKind: "bun-script",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
     });
@@ -110,7 +110,7 @@ test("a removed indexed script rebuilds the index and reports an unknown command
           _tag: "Ready",
           sourceKind: "bun-script",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
     });
@@ -125,7 +125,6 @@ test("a removed indexed script rebuilds the index and reports an unknown command
   });
 }, 30_000);
 
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
 test.each([
   {
     label: "disabled alias",
@@ -143,7 +142,7 @@ test.each([
           _tag: "Ready",
           sourceKind: "tooling",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
     },
@@ -160,7 +159,7 @@ test.each([
           _tag: "Ready",
           sourceKind: "tooling",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
     },
@@ -237,5 +236,4 @@ test("a malformed script reports its front matter instead of a cache refresh", a
   });
 }, 30_000);
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
+import { emptyToolingInput } from "../_support/tooling-input.ts";

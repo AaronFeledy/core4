@@ -31,7 +31,7 @@ const withAliasCache = async <T>(
             _tag: "Ready",
             sourceKind: "bun-script",
             visibility: "public",
-            input: emptyToolingInput,
+            input: emptyToolingInput(),
           },
         ],
         cwd: root,
@@ -313,7 +313,4 @@ test("explicit own custom key constructor resolves", async () => {
   });
 });
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../_support/tooling-input.ts";

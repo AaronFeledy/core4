@@ -37,7 +37,7 @@ test.each([
     await writeFile(join(scripts, "bad.bun.sh"), content);
     await writeFile(join(scripts, "good.bun.sh"), "# ---\n# ---\necho good\n");
     const inspection = await inspect(root);
-    const entries = compileInspectedAppCommands({ landofile: {}, inspection, redact });
+    const entries = compileInspectedAppCommands({ landofile: {}, inspection, redact, sourcePath: root });
     expect(entries.map((entry) => entry.id)).toEqual(["app:bad", "app:good"]);
     expect(entries[0]).toMatchObject({
       _tag: "Unavailable",
@@ -55,12 +55,13 @@ test("groups every collision before parsing, and lets a Landofile task win (#221
     for (const name of ["FOO", "Foo", "foo"])
       await writeFile(join(scripts, `${name}.bun.sh`), name === "foo" ? "broken" : "# ---\n# ---\necho ok");
     const inspection = await inspect(root);
-    const entries = compileInspectedAppCommands({ landofile: {}, inspection, redact });
+    const entries = compileInspectedAppCommands({ landofile: {}, inspection, redact, sourcePath: root });
     expect(inspection.scripts).toEqual([]);
     expect(entries).toHaveLength(1);
     for (const name of ["FOO", "Foo", "foo"])
       expect(entries[0]?.diagnostic?.message).toContain(`${name}.bun.sh`);
     const overridden = compileInspectedAppCommands({
+      sourcePath: root,
       landofile: { tooling: { foo: { cmd: "echo authored", service: ":host" } } },
       inspection,
       redact,
@@ -76,7 +77,7 @@ test("does not register a filename with no usable canonical id", async () => {
     await writeFile(join(scripts, "$.bun.sh"), "# ---\n# ---\necho unusable");
     const inspection = await inspect(root);
     expect(inspection.problems).toHaveLength(1);
-    expect(compileInspectedAppCommands({ landofile: {}, inspection, redact })).toEqual([]);
+    expect(compileInspectedAppCommands({ landofile: {}, inspection, redact, sourcePath: root })).toEqual([]);
   });
 });
 

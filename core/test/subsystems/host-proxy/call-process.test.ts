@@ -214,7 +214,7 @@ test.each([false, true])("child rejects an open alias routed to tooling (help=%s
           _tag: "Ready",
           sourceKind: "bun-script",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
       cwd: call.app.root,
@@ -298,7 +298,4 @@ test("child aborts active invocation when its worker stdin lease closes", async 
   }
 });
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../../_support/tooling-input.ts";

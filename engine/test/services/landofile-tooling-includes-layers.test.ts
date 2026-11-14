@@ -69,7 +69,9 @@ test("a higher Landofile layer removes internal provenance from its task winner"
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString, {
+      sourcePath: canonicalPath,
+    });
 
     // Then the higher-layer winner is visible and carries no stale internal provenance
     expect(resolved.tooling?.build?.cmd).toBe("canonical");
@@ -101,7 +103,9 @@ test("an authored internal fragment hides its compiled commands", async () => {
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString, {
+      sourcePath: canonicalPath,
+    });
 
     // Then the contributed command exists but is hidden from listings
     expect(resolved.tooling?.["docs:build"]?.cmd).toBe("make");
@@ -227,7 +231,9 @@ test("a higher layer overrides a canonical tooling declaration sharing its names
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString, {
+      sourcePath: canonicalPath,
+    });
 
     // Then the shadowed source is never read and the base layer's flags still apply
     expect(resolved.tooling?.["docs:build"]?.cmd).toBe("canonical");
@@ -261,7 +267,9 @@ test("resolves tooling includes only after Landofile layers merge", async () => 
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString, {
+      sourcePath: canonicalPath,
+    });
 
     // Then only the winning declaration is resolved
     expect(resolved.tooling?.["docs:build"]?.cmd).toBe("canonical");

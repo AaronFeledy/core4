@@ -49,7 +49,7 @@ describe("app command cache writer", () => {
               _tag: "Ready",
               sourceKind: "tooling",
               visibility: "public",
-              input: emptyToolingInput,
+              input: emptyToolingInput(),
               service: "app",
             },
           ],
@@ -88,7 +88,7 @@ describe("app command cache writer", () => {
               _tag: "Ready",
               sourceKind: "tooling",
               visibility: "public",
-              input: emptyToolingInput,
+              input: emptyToolingInput(),
               service: "app",
             },
           ],
@@ -128,7 +128,4 @@ describe("app command cache writer", () => {
   });
 });
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../_support/tooling-input.ts";

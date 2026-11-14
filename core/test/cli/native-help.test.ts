@@ -76,7 +76,7 @@ const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture
           _tag: "Ready",
           sourceKind: "bun-script",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
       cwd: fixture.root,
@@ -469,7 +469,4 @@ describe("native unknown-command failures", () => {
   });
 });
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../_support/tooling-input.ts";

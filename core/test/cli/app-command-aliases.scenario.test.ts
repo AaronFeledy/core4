@@ -73,7 +73,7 @@ const makeEntryFixture = async (commandAliases: {
           _tag: "Ready",
           sourceKind: "bun-script",
           visibility: "public",
-          input: emptyToolingInput,
+          input: emptyToolingInput(),
         },
       ],
       cwd: appRoot,
@@ -136,7 +136,7 @@ test("custom aliases preserve resolved canonical JSON identity in shipping and p
             _tag: "Ready",
             sourceKind: "bun-script",
             visibility: "public",
-            input: emptyToolingInput,
+            input: emptyToolingInput(),
           },
         ],
         cwd: appRoot,
@@ -330,7 +330,4 @@ test("alias policy failures use the pre-command identity", async () => {
   }
 }, 30_000);
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../_support/tooling-input.ts";

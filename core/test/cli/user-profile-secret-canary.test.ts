@@ -226,7 +226,7 @@ test.each([
                   _tag: "Ready",
                   sourceKind: "tooling",
                   visibility: "public",
-                  input: emptyToolingInput,
+                  input: emptyToolingInput(),
                   service: "web",
                 },
               ],
@@ -311,7 +311,4 @@ test.each([
   },
 );
 
-import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Result as FixtureResult } from "effect";
-
-const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+import { emptyToolingInput } from "../_support/tooling-input.ts";

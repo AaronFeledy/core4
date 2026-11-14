@@ -1,6 +1,7 @@
 import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -82,7 +83,9 @@ export const layerWith = (
             return toRegisteredCommands(cached.entries);
           }
 
-          const landofile = (yield* loadUserLandofile(landofileService)).document;
+          const loaded = yield* loadUserLandofile(landofileService);
+          const landofile = loaded.document;
+          const sourcePath = getLandofileValueSource(loaded, [])?.file ?? loaded.context.appRoot;
           const scripts = yield* discoverScriptsForCwd(yield* discoveryCwd());
           const hasServices = Object.keys(landofile.services ?? {}).length > 0;
           if (hasServices) {
@@ -95,6 +98,11 @@ export const layerWith = (
               : createRedactor("secrets", { values: collectSecretEnvValues(process.env) });
           const entries = compileInspectedAppCommands({
             landofile,
+            sourcePath,
+            toolingSource: (name) => ({
+              path: getLandofileValueSource(loaded, ["tooling", name])?.file ?? sourcePath,
+              locate: (path) => getLandofileValueSource(loaded, path),
+            }),
             inspection: scripts,
             redact: redactor.redactString,
           });

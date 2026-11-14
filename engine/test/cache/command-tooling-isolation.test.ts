@@ -1,18 +1,68 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import type { ToolingTaskShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
+import { Effect } from "effect";
 import { compileInspectedAppCommands } from "../../src/cache/command-compiler.ts";
 import { decodeAppCommandIndex, encodeAppCommandIndex } from "../../src/cache/command-index.ts";
+import { loadLandofileLayers } from "../../src/services/landofile-live.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { app } from "./fixtures/command-index-codec.ts";
 
 const redact = createRedactor("secrets").redactString;
+
+test("uses real TypeScript and include sources for disabled commands without inventing issue origins", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-command-source-"));
+  const file = join(root, ".lando.ts");
+  const included = join(root, "tasks.yml");
+  try {
+    await writeFile(
+      file,
+      'export default { name: "sources", tooling: { off: false }, toolingIncludes: { extra: { file: "./tasks.yml", flatten: true } } };',
+    );
+    await writeFile(included, "tooling:\n  included: false\n");
+    const loaded = await Effect.runPromise(
+      loadLandofileLayers(root, file).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
+    const entries = compileInspectedAppCommands({
+      landofile: loaded.document,
+      sourcePath: file,
+      inspection: { scripts: [], problems: [], files: [] },
+      redact,
+    });
+    expect(
+      entries.map((entry) => ({
+        id: entry.id,
+        source: entry._tag === "Disabled" ? entry.source : undefined,
+      })),
+    ).toEqual([
+      { id: "app:included", source: { path: included, task: "included" } },
+      { id: "app:off", source: { path: file, task: "off" } },
+    ]);
+    const [unknown] = compileInspectedAppCommands({
+      landofile: { tooling: { broken: { wrapper: true, flags: { value: {} } } } },
+      sourcePath: file,
+      inspection: { scripts: [], problems: [], files: [] },
+      redact,
+    });
+    expect(unknown?.diagnostic).toMatchObject({ source: { path: file, task: "broken" } });
+    const diagnostic = unknown?.diagnostic;
+    if (diagnostic === undefined || !("issues" in diagnostic)) throw new Error("Missing diagnostic");
+    expect(diagnostic.issues.map(({ source }) => source)).toEqual([undefined, undefined]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 const compile = (task: ToolingTaskShape) =>
   compileInspectedAppCommands({
     landofile: rememberInternalToolingTasks({ tooling: { broken: task, healthy: { cmd: "echo healthy" } } }, [
       "broken",
     ]),
     inspection: { scripts: [], problems: [], files: [] },
+    sourcePath: "command-tooling-isolation test",
     redact,
   });
 
@@ -45,7 +95,7 @@ test("disabled tasks skip invalid normalization and retain refusal metadata (#23
     visibility: "internal",
     sourceKind: "tooling",
     _tag: "Disabled",
-    source: { path: "<tooling>", task: "broken" },
+    source: { path: "command-tooling-isolation test", task: "broken" },
   });
 });
 
@@ -65,6 +115,7 @@ test("redacts normalization diagnostics before UTF-8 bounds (#2325)", () => {
       },
     },
     inspection: { scripts: [], problems: [], files: [] },
+    sourcePath: "command-tooling-isolation test",
     redact: createRedactor("secrets", { values: [secret] }).redactString,
   });
   expect(entry?.diagnostic?.message).toContain("[redacted]");
@@ -90,6 +141,7 @@ test("retains bounded structured issues, related sources and omitted counts thro
       },
     },
     inspection: { scripts: [], problems: [], files: [] },
+    sourcePath: "command-tooling-isolation test",
     toolingSource: () => ({
       path: `/app/${secret}/tasks.yml`,
       locate: (path) => ({ file: `/app/${secret}/tasks.yml`, layer: "local", path }),

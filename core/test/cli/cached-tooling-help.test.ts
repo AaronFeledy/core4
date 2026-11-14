@@ -38,6 +38,7 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
         cacheRoot,
         landofile,
         entries: compileToolingCommands(landofile, createRedactor("secrets").redactString, {
+          sourcePath: root,
           toolingSource: (name) => ({
             path: "/authored/tasks.yml",
             locate: (path) => ({

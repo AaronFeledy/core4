@@ -17,6 +17,7 @@ import { toolingRunSummary } from "./tooling-run-summary.ts";
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 interface ToolingCommandSources {
+  readonly sourcePath: string;
   readonly effectiveTooling?: EffectiveTooling | undefined;
   readonly toolingSource?: (name: string) => ToolingNormalizationSource;
 }
@@ -24,7 +25,7 @@ interface ToolingCommandSources {
 export const compileToolingCommands = (
   landofile: LandofileShape,
   redact: (text: string) => string,
-  options: ToolingCommandSources = {},
+  options: ToolingCommandSources,
 ): ReadonlyArray<CommandIndexEntry> => {
   const effectiveTooling = options.effectiveTooling ?? landofile.tooling;
   if (effectiveTooling === undefined) return [];
@@ -39,7 +40,7 @@ export const compileToolingCommands = (
         visibility: internal.has(name) ? ("internal" as const) : ("public" as const),
       };
       const source = options.toolingSource?.(name) ?? {
-        path: getLandofileValueSource(landofile, ["tooling", name])?.file ?? "<tooling>",
+        path: getLandofileValueSource(landofile, ["tooling", name])?.file ?? options.sourcePath,
         locate: (path: Parameters<typeof getLandofileValueSource>[1]) =>
           getLandofileValueSource(landofile, path),
       };
