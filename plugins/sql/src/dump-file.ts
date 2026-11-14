@@ -3,7 +3,7 @@ import { access, chmod, mkdir, mkdtemp, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import {
-  CommandStdioError,
+  type CommandStdioError,
   DataTransferError,
   SqlDumpCompressionError,
   type SqlDumpIncompleteError,
@@ -14,13 +14,9 @@ import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, type Scope, Stream } from "effect";
 
-import {
-  type DumpCompression,
-  collectDumpPrefix,
-  detectDumpCompression,
-  releaseStagedDump,
-} from "./compression.ts";
+import { type DumpCompression, releaseStagedDump } from "./compression.ts";
 import { type DumpCompletenessRule, trackDumpCompleteness } from "./dump-completeness.ts";
+import { openDumpSource } from "./dump-source.ts";
 import { dumpTransferError } from "./dump-transfer-error.ts";
 
 type DumpMiss = "missing" | "unreadable" | "directory";
@@ -69,56 +65,6 @@ const decompressError = (label: string, compression: Exclude<DumpCompression, "n
     remediation: `The ${compression} data is corrupt or cut short. Recreate the dump, then retry the import.`,
   });
 
-type DumpSourceReader = {
-  readonly read: () => Promise<
-    | { readonly done: true; readonly value?: Uint8Array | undefined }
-    | { readonly done: false; readonly value: Uint8Array }
-  >;
-  readonly cancel: (reason?: unknown) => Promise<void>;
-};
-
-type DumpReadError = CommandStdioError | DataTransferError;
-
-/**
- * Reads the first bytes for magic detection, then hands back a stream that still starts at byte 0.
- * `sourceFailure` remembers a read error so it isn't mistaken for corrupt compression after it
- * passes through a decompressor.
- */
-const peekCompression = async (reader: DumpSourceReader, onReadError: (cause: unknown) => DumpReadError) => {
-  let sourceFailure: { readonly cause: DumpReadError } | undefined;
-  const read = async () => {
-    try {
-      return await reader.read();
-    } catch (cause) {
-      const error = onReadError(cause);
-      sourceFailure = { cause: error };
-      throw error;
-    }
-  };
-  const pending: Uint8Array[] = [];
-  let prefix: Uint8Array = new Uint8Array();
-  while (prefix.byteLength < 4) {
-    const next = await read();
-    if (next.done) break;
-    pending.push(next.value);
-    prefix = collectDumpPrefix(next.value, prefix);
-  }
-  const body = new ReadableStream<Uint8Array>({
-    pull: async (controller) => {
-      const queued = pending.shift();
-      if (queued !== undefined) {
-        controller.enqueue(queued);
-        return;
-      }
-      const next = await read();
-      if (next.done) controller.close();
-      else controller.enqueue(next.value);
-    },
-    cancel: (reason) => reader.cancel(reason),
-  });
-  return { compression: detectDumpCompression(prefix), body, sourceFailure: () => sourceFailure };
-};
-
 export type PreparedDump = {
   /** Plaintext dump to import: the original file, or an owner-only staged copy. */
   readonly path: string;
@@ -161,38 +107,18 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
   };
   const fromStdin = input.stdin !== undefined;
   const label = fromStdin ? "stdin" : input.file;
-  const readFailure = (cause: unknown): DumpReadError => {
-    if (cause instanceof CommandStdioError || cause instanceof DataTransferError) return cause;
-    return dumpTransferError("read", label, cause);
-  };
   // The scope owns the source reader: interruption at any point, even mid-peek, waits for the
   // source to cancel (closing the file or releasing stdin) before the import moves on.
-  const reader = yield* Effect.acquireRelease(
-    Effect.try({
-      try: () =>
-        (input.stdin === undefined
-          ? Bun.file(input.file).stream()
-          : Stream.toReadableStream(input.stdin)
-        ).getReader(),
-      catch: readFailure,
-    }),
-    (owned) => Effect.promise(() => owned.cancel().catch(() => undefined)),
-  );
-  const opened = yield* Effect.tryPromise({
-    try: () => peekCompression(reader, readFailure),
-    catch: readFailure,
-  });
+  const opened = yield* openDumpSource(input);
   const tracker = trackDumpCompleteness(input.completeness);
 
   if (opened.compression === "none" && !fromStdin) {
     const hash = new Bun.CryptoHasher("sha256");
-    yield* Stream.runForEach(
-      Stream.fromReadableStream({ evaluate: () => opened.body, onError: readFailure }),
-      (chunk) =>
-        Effect.sync(() => {
-          hash.update(chunk);
-          tracker.push(chunk);
-        }),
+    yield* Stream.runForEach(opened.stream(opened.body, opened.readFailure), (chunk) =>
+      Effect.sync(() => {
+        hash.update(chunk);
+        tracker.push(chunk);
+      }),
     );
     yield* tracker.requireComplete(label, fromStdin);
     return { path: input.file, digest: hash.digest("hex") } satisfies PreparedDump;
@@ -227,22 +153,18 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
           catch: (cause) => decompressError(label, compression, cause),
         });
   const staged = yield* persistVerifiedStream({
-    body: Stream.fromReadableStream({
-      evaluate: () =>
-        plaintext.pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>({
-            transform: (chunk, controller) => {
-              tracker.push(chunk);
-              controller.enqueue(chunk);
-            },
-          }),
-        ),
-      onError: (cause) => {
-        const source = opened.sourceFailure();
-        if (source !== undefined) return source.cause;
-        return compression === "none" ? readFailure(cause) : decompressError(label, compression, cause);
-      },
-    }),
+    body: opened.stream(
+      plaintext.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform: (chunk, controller) => {
+            tracker.push(chunk);
+            controller.enqueue(chunk);
+          },
+        }),
+      ),
+      (cause) =>
+        compression === "none" ? opened.readFailure(cause) : decompressError(label, compression, cause),
+    ),
     destinationPath: path,
     mode: 0o600,
     beforeWrite: async (path) => {
