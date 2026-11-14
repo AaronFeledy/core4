@@ -1,7 +1,9 @@
+import { projectToolingDiagnostic } from "@lando/sdk/command-result";
 import { ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import type { McpAppGeneration } from "./apps";
+import { stringifyBoundedJson } from "./bounded-json";
 import { type McpAllowPolicy, isMcpEntryAuthorized } from "./catalog";
 import type { McpCommandEntry } from "./registry";
 
@@ -68,13 +70,34 @@ export const boundDiagnostics = (
 ): McpDiagnostics => {
   let result: McpDiagnostics = { revision, diagnostics: [], omittedDiagnosticCount: records.length };
   for (const record of records) {
-    const safe = Schema.decodeUnknownSync(McpDiagnostic)(redactor.redactValue(record));
+    let safe = Schema.decodeUnknownSync(McpDiagnostic)(redactor.redactValue(record));
+    if (record.kind === "tooling" && record._tag === "ToolingCompileError") {
+      const { source: _source, issues: _issues, omittedIssueCount: _omitted, ...metadata } = safe;
+      const {
+        tool: _tool,
+        source,
+        ...diagnostic
+      } = projectToolingDiagnostic(
+        {
+          _tag: "ToolingCompileError",
+          tool: record.source?.task ?? record.commandId,
+          ...(record.source === undefined ? {} : { source: record.source }),
+          message: record.message,
+          remediation: record.remediation ?? "Correct the tooling task definition and retry the command.",
+          issues: record.issues ?? [],
+          omittedIssueCount: record.omittedIssueCount ?? 0,
+        },
+        redactor,
+      );
+      safe = { ...metadata, ...diagnostic, ...(source === undefined ? {} : { source }) };
+    }
     const next = {
       ...result,
       diagnostics: [...result.diagnostics, safe],
       omittedDiagnosticCount: result.omittedDiagnosticCount - 1,
     };
-    if (Buffer.byteLength(JSON.stringify(next)) <= 16 * 1024) result = next;
+    const encoded = Effect.runSync(Effect.result(stringifyBoundedJson(next, "MCP diagnostics", redactor)));
+    if (Result.isSuccess(encoded) && Buffer.byteLength(encoded.success) <= 16 * 1024) result = next;
   }
   return result;
 };

@@ -96,10 +96,35 @@ test("diagnostics redact before the total UTF-8 bound and omit whole locations w
   expect(result).toEqual({
     revision: 3,
     diagnostics: [
-      { commandId: "app:redacted", kind: "tooling", _tag: "ToolingCompileError", message: "[redacted]" },
-      { commandId: "app:small", kind: "tooling", _tag: "ToolingCompileError", message: "Invalid flag" },
+      {
+        commandId: "app:redacted",
+        kind: "tooling",
+        _tag: "ToolingCompileError",
+        message: "[redacted]",
+        remediation: "Correct the tooling task definition and retry the command.",
+        issues: [],
+        omittedIssueCount: 0,
+      },
+      {
+        commandId: "app:oversized",
+        kind: "tooling",
+        _tag: "ToolingCompileError",
+        message: "Invalid input",
+        remediation: "Correct the tooling task definition and retry the command.",
+        issues: [],
+        omittedIssueCount: 1,
+      },
+      {
+        commandId: "app:small",
+        kind: "tooling",
+        _tag: "ToolingCompileError",
+        message: "Invalid flag",
+        remediation: "Correct the tooling task definition and retry the command.",
+        issues: [],
+        omittedIssueCount: 0,
+      },
     ],
-    omittedDiagnosticCount: 1,
+    omittedDiagnosticCount: 0,
   });
   expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(16 * 1024);
   expect(JSON.stringify(result)).not.toContain(secret);

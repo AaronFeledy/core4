@@ -9,7 +9,6 @@ import {
   type McpDiagnostic,
   type McpDiagnostics,
   type McpToolingCatalog,
-  boundDiagnostics,
   pluginDiagnostics,
 } from "./diagnostics";
 import type { McpCommandEntry } from "./registry";
@@ -66,7 +65,7 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
     },
     selected: undefined,
     advertised: new Map(),
-    diagnostics: boundDiagnostics(0, [], input.redactor),
+    diagnostics: { revision: 0, diagnostics: [], omittedDiagnosticCount: 0 },
   });
   const authorized = (entry: McpCommandEntry) => isMcpEntryAuthorized(input.policy, entry);
 
@@ -145,7 +144,11 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
         ? []
         : pluginDiagnostics(selected, input.policy).filter((record) => !toolingIds.has(record.commandId))),
     ];
-    const next = boundDiagnostics(snapshot.revision, records, input.redactor);
+    const next: McpDiagnostics = {
+      revision: snapshot.revision,
+      diagnostics: records,
+      omittedDiagnosticCount: 0,
+    };
     const revision =
       snapshot.revision +
       (announced.added.length > 0 ||
