@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { CaError, ProxyApplyError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 import { Cause, Effect, Exit, Option } from "effect";
-
 import { app, httpsRoutes, makeHarness } from "./proxy-tls-harness.ts";
+import { issueFixturePair, rootPem } from "./real-certificate-authority.ts";
 import { routeFileBasename } from "./route-owner-fixture.ts";
 
 describe("Traefik RouterService TLS", () => {
@@ -105,7 +105,16 @@ describe("Traefik RouterService TLS", () => {
         "default-lndo.site.key",
         "default-lndo.site.ca.crt",
       ].map((file) => harness.files.get(`${certs}/${file}`)),
-    ).toEqual(["app cert", "app key", "default cert", "default key", "issuer cert"]);
+    ).toEqual([
+      issueFixturePair({ cn: "a.demo.lndo.site", sans: ["a.demo.lndo.site", "z.demo.lndo.site"] })
+        .certificate,
+      issueFixturePair({ cn: "a.demo.lndo.site", sans: ["a.demo.lndo.site", "z.demo.lndo.site"] }).privateKey,
+      issueFixturePair({ cn: "*.lndo.site", sans: ["*.lndo.site", "lndo.site", "traefik.lndo.site"] })
+        .certificate,
+      issueFixturePair({ cn: "*.lndo.site", sans: ["*.lndo.site", "lndo.site", "traefik.lndo.site"] })
+        .privateKey,
+      rootPem,
+    ]);
     expect(harness.operations.indexOf(`write:${routePath}`)).toBeGreaterThan(
       harness.operations.indexOf(
         `write-secret:/lando/global/proxy-traefik/dynamic/certs/${app.ownerKey}.key`,

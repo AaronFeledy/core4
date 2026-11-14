@@ -4,6 +4,7 @@ import { AppId, RoutePlan, ServiceName, appIdentityKey } from "@lando/sdk/schema
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { prioritizeRoutes } from "../../../src/planner/route-identity.ts";
+import { makeRouterStateStore } from "./router-state-fixture.ts";
 import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
 
 const makeHarness = () => {
@@ -21,6 +22,7 @@ const makeHarness = () => {
     "/lando/global/proxy-traefik/dynamic",
   );
   const service = makeTraefikRouterService({
+    stateStore: makeRouterStateStore(),
     httpClient: runtime.httpClient,
     probeBind: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),

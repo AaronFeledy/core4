@@ -1,6 +1,6 @@
 import { RequestPolicy } from "@lando/http-client";
 import { NetworkTrust } from "@lando/http-client/network-trust";
-import { PortNumber, type RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { PortNumber, ServiceName } from "@lando/sdk/schema";
 import { Effect, Option } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
@@ -9,13 +9,12 @@ import { defaultDomainFile, defaultIssuerFile } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { decodeRouteSnapshot } from "./route-evidence-match.ts";
 import { advertisedRouterBindAddress, routerProbeHost } from "./router-bind-address.ts";
-import { routeSchemes } from "./routing.ts";
 import { normalizeDefaultDomain } from "./tls.ts";
 
 // Shared acquisition below the Windows acknowledgement gate. Each attempt owns
 // its HTTP resources; only decoded graph evidence escapes the request scope.
 export const readLiveRouteSnapshot = Effect.fn("TraefikRouter.readLiveRouteSnapshot")(
-  function* (dependencies: TraefikProxyDependencies, requestedRoutes: ReadonlyArray<RoutePlan>) {
+  function* (dependencies: TraefikProxyDependencies, ingressSchemes: ReadonlyArray<"http" | "https">) {
     const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
     if (
       acquisition === undefined ||
@@ -56,7 +55,7 @@ export const readLiveRouteSnapshot = Effect.fn("TraefikRouter.readLiveRouteSnaps
         ),
       );
     };
-    const schemes = [...new Set(requestedRoutes.flatMap(routeSchemes))];
+    const schemes = [...new Set(ingressSchemes)];
     const owned = yield* dependencies.globalApp.ownedPublishPorts(
       ServiceName.make("traefik"),
       [...new Set([physical.http, ...schemes.map((scheme) => physical[scheme])])].map((port) =>

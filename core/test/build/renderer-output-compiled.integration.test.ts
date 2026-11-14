@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { copyFile, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { StreamFrame } from "@lando/sdk/schema";
 import * as Schema from "effect/Schema";
 import { withFifoChild } from "../cli/stdio-file-status-support.ts";
 import { runCaptured } from "./fixtures/host-execution-process.ts";
+import { removeAcceptanceRoot } from "./fixtures/opentui-acceptance-cleanup.ts";
 
 const suppliedBinary = process.env.LANDO_TEST_COMPILED_CLI;
 const windows = process.platform === "win32";
@@ -91,7 +92,7 @@ describe.skipIf(suppliedBinary === undefined)("supplied compiled renderer output
   }, 40_000);
 
   afterAll(async () => {
-    if (root !== "") await rm(root, { recursive: true, force: true });
+    if (root !== "") await removeAcceptanceRoot(root);
   });
 
   // Bun terminal spawning is POSIX-only, matching the compiled host-execution harness.

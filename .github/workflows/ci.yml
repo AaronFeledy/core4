@@ -2324,6 +2324,7 @@ jobs:
               bun run test:selection providers-ephemeral-data 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log || status=$?
               bun run test:selection providers-host-reachability 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log || status=$?
               bun run test:selection providers-listener-observation 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log || status=$?
+              bun run test:selection proxy-traefik-certificate-live 2>&1 | tee /tmp/lando-provider-test-logs/proxy-traefik-certificate-live.log || status=$?
               bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
               bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
               bun run test:selection providers-schedule 2>&1 | tee /tmp/lando-provider-test-logs/schedule.log || status=$?

@@ -15,6 +15,7 @@ import {
 } from "../src/doctor-watcher.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { dynamicConfigDir, watcherDiagnosticFile } from "../src/proxy-paths.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 type DoctorRunInput = {
   readonly providerId: string;
@@ -81,6 +82,7 @@ const makeDiskHarness = async (userDataRoot: string, text: string) => {
     JSON.stringify(matchingRecord({ failureClass: "permission", detail: "Previous file watcher failure" })),
   );
   const service = makeTraefikRouterService({
+    stateStore: makeAckStore([]),
     readTraefikState: () => Effect.succeed("running"),
     probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),

@@ -1,6 +1,11 @@
 import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import {
+  CertificateMaterial,
+  CertificatePairPreparation,
+  PreparedCertificatePair,
+} from "../certificates/schema.ts";
+import {
   AxisToken,
   CleanupProps,
   ComponentId,
@@ -748,6 +753,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   CertificatePlan,
   CertificateSpec,
   ListenerAuthority,
+  CertificateMaterial,
+  CertificatePairPreparation,
+  PreparedCertificatePair,
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,
