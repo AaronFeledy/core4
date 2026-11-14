@@ -58,8 +58,8 @@ export const layer = Layer.effect(
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const redaction = yield* registerBuildRedaction(plan);
         const progress = makeBuildTaskProgress(events, plan);
-        yield* progress.startTree;
         return yield* Effect.gen(function* () {
+          yield* progress.startTree;
           const buildBatch = (batch: ReadonlyArray<ServicePlan>) =>
             Effect.forEach(
               batch,
