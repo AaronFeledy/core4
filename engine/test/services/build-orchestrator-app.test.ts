@@ -209,6 +209,15 @@ describe("BuildOrchestrator app phase", () => {
       let detailDuringWork = false;
       const provider = {
         ...TestRuntimeProvider,
+        inspect: (target) =>
+          Effect.succeed({
+            app: target.app,
+            service: target.service,
+            providerId,
+            publications: { status: "unknown" },
+            status: "running",
+            containerId: `${target.service}-1`,
+          }),
         execStream: (
           target: { readonly service: ServiceName },
           command: { readonly command: ReadonlyArray<string> },

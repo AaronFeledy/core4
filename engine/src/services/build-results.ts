@@ -16,6 +16,8 @@ export const BuildResultEntry = Schema.Struct({
   phase: Schema.Literals(["artifact", "app"]),
   /** `BuildStep.id` for an app step; absent for an artifact step. */
   step: Schema.optionalKey(Schema.String),
+  /** Container observed before app-step dispatch; legacy entries without one cannot be reused. */
+  containerId: Schema.optionalKey(Schema.String),
   outcome: Schema.Literals(["complete", "fail"]),
   exitCode: Schema.Number,
   durationMs: Schema.Number,
@@ -66,7 +68,11 @@ export const openAppBuildResults = (
 
 export const findCompleteBuildResult = (
   entries: ReadonlyArray<BuildResultEntry>,
-  input: Pick<BuildResultEntry, "buildKey" | "phase" | "service"> & { readonly step?: string },
+  input: Pick<BuildResultEntry, "buildKey" | "service"> &
+    (
+      | { readonly phase: "artifact"; readonly step?: string }
+      | { readonly phase: "app"; readonly step: string; readonly containerId: string | undefined }
+    ),
 ): BuildResultEntry | undefined => {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
@@ -78,7 +84,17 @@ export const findCompleteBuildResult = (
       entry.step === input.step
     ) {
       // Only the latest recorded attempt counts: a newer failure hides an older success.
-      return entry.outcome === "complete" ? entry : undefined;
+      if (entry.outcome !== "complete") return undefined;
+      switch (input.phase) {
+        case "artifact":
+          return entry;
+        case "app":
+          return input.containerId !== undefined &&
+            input.containerId.length > 0 &&
+            entry.containerId === input.containerId
+            ? entry
+            : undefined;
+      }
     }
   }
   return undefined;

@@ -333,6 +333,15 @@ test("reusing an older app-step key moves it to the newest position", async () =
     const calls: string[] = [];
     const provider = {
       ...TestRuntimeProvider,
+      inspect: (target) =>
+        Effect.succeed({
+          app: target.app,
+          service: target.service,
+          providerId,
+          publications: { status: "unknown" },
+          status: "running",
+          containerId: "web-1",
+        }),
       execStream: () => {
         calls.push("dispatch");
         return Stream.make({ exitCode: 0 });
@@ -357,6 +366,7 @@ test("reusing an older app-step key moves it to the newest position", async () =
         const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
         yield* recordBuildResult(bucket, {
           buildKey: stepKey,
+          containerId: "web-1",
           service: ServiceName.make("web"),
           phase: "app",
           step: "web:app:install",
@@ -367,6 +377,7 @@ test("reusing an older app-step key moves it to the newest position", async () =
         });
         yield* recordBuildResult(bucket, {
           buildKey: "newer-key",
+          containerId: "web-1",
           service: ServiceName.make("web"),
           phase: "app",
           step: "web:app:install",

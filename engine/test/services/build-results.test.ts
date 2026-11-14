@@ -99,6 +99,7 @@ describe("BuildResultEntry", () => {
       ...requiredEntry,
       phase: "app" as const,
       step: "web:app:install",
+      containerId: "web-1",
     };
     const migrate = { ...install, step: "web:app:migrate" };
 
@@ -108,6 +109,7 @@ describe("BuildResultEntry", () => {
         service: requiredEntry.service,
         phase: "app",
         step: "web:app:migrate",
+        containerId: "web-1",
       }),
     ).toBeUndefined();
     expect(
@@ -116,6 +118,7 @@ describe("BuildResultEntry", () => {
         service: requiredEntry.service,
         phase: "app",
         step: "web:app:install",
+        containerId: "web-1",
       }),
     ).toEqual(install);
   });
