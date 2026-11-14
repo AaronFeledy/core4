@@ -5,7 +5,7 @@
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import type { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { type Context, Effect, Layer, type Result } from "effect";
-
+import { CliInvocation } from "../../../runtime/invocation-context";
 import type { GenerationHostServices, LandoGenerationRuntime } from "../../../runtime/layer";
 import { type McpAppGenerations, makeMcpAppGenerations } from "./mcp-app-generations";
 import { eligibleMcpEntries } from "./mcp-plugins";
@@ -34,7 +34,7 @@ export const sessionAppRegistry = Effect.fnUntraced(function* (
   session: McpSession,
   tooling: boolean,
 ) {
-  const cwd = process.cwd();
+  const { cwd } = yield* CliInvocation;
   return yield* withAppDiscovery(
     cwd,
     Effect.scoped(
