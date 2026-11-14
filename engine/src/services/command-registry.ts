@@ -74,7 +74,8 @@ export const layerWith = (
       const cacheOptions = paths._tag === "Some" ? { cacheRoot: paths.value.roots.userCacheRoot } : {};
       return CommandRegistry.of({
         list: Effect.gen(function* () {
-          const env = (yield* HostExecutionDefaults)?.env ?? process.env;
+          // Direct embedders without host defaults retain ambient discovery at this boundary.
+          const env = (yield* HostExecutionDefaults)?.env ?? { ...process.env };
           const cached = yield* readFreshAppCommandCacheForCwd({
             env,
             ...cacheOptions,
@@ -86,7 +87,7 @@ export const layerWith = (
             return toRegisteredCommands(cached.entries);
           }
 
-          const loaded = yield* loadUserLandofile(landofileService);
+          const loaded = yield* loadUserLandofile(landofileService, { env });
           const landofile = loaded.document;
           const sourcePath = getLandofileValueSource(loaded, [])?.file ?? loaded.context.appRoot;
           const scripts = yield* discoverScriptsForCwd(yield* discoveryCwd());

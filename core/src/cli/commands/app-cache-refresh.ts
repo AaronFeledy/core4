@@ -115,7 +115,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const planner = yield* AppPlanner;
   const env = options.env ?? (yield* CliInvocation).env;
 
-  const landofile = yield* loadUserLandofile(landofileService);
+  const landofile = yield* loadUserLandofile(landofileService, { env });
   const capabilities = yield* registry.capabilities;
   const dataIdentityFingerprint = yield* readDataIdentityFingerprint(landofile.context.appRoot);
   const plan = yield* planner.plan(landofile, capabilities);

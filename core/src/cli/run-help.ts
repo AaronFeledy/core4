@@ -1,10 +1,6 @@
 import { ToolingDisabledError } from "@lando/sdk/errors";
 import { Effect, Exit, Layer } from "effect";
-import {
-  CliInvocation,
-  type CliInvocationContext,
-  processInvocationDefaults,
-} from "../runtime/invocation-context";
+import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 import { resolveBuiltInCommand } from "./built-in-command-registry";
 import {
   type HelpTopic,
@@ -189,10 +185,13 @@ export const dispatchHelpTarget = async (
   if (isHelpTopic(token)) return printTopicHelp(token, catalog);
   const helpCommand = resolveBuiltInCommand(token);
   if (helpCommand?.spec.id === token) return printCommandHelp(helpCommand, catalog.context);
+  // Honor catalog context when present; otherwise the CliInvocation Reference default
+  // (live getters) remains the direct-embedder fallback — never re-read ambient host env here.
+  const resolve = interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal);
   const resolutionExit = await Effect.runPromiseExit(
-    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal).pipe(
-      Effect.provideService(CliInvocation, catalog.context ?? processInvocationDefaults),
-    ),
+    catalog.context === undefined
+      ? resolve
+      : resolve.pipe(Effect.provideService(CliInvocation, catalog.context)),
   );
   if (Exit.isFailure(resolutionExit)) throw resolutionExit.cause;
   const resolution = resolutionExit.value;
