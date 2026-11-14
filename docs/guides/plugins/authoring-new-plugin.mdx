@@ -243,7 +243,7 @@ import { prepareCertificatePair } from "@lando/sdk/certificates";
 const prepared = yield* prepareCertificatePair(authority, {
   spec, // CertificateSpec: the cn and sans the leaf must cover
   root, // PEM of the authority's current root
-  existing, // optional { certificate, privateKey }, privateKey wrapped in Redacted
+  ...(existing === undefined ? {} : { existing }), // privateKey is wrapped in Redacted
   subject: "service web", // names the leaf in a failure message
 });
 ```

@@ -100,7 +100,7 @@ lando info
 
 HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTPS certificates](./certificates-mkcert.mdx).
 
-Each HTTPS route publication checks the app's certificate and the shared default certificate against the current CA root. Lando renews them within 30 days of expiry (capped at one third of their lifetime), or when their names, key, or signing root no longer match. It reloads replacement certificates even if the routes are unchanged. On Windows it restarts the shared router only when the served certificates change. A missing or stale saved issuer alone is repaired without reissuing valid leaves or restarting the router.
+Each HTTPS route publication checks the app's certificate and the shared default certificate against the current CA root. Lando renews them within 30 days of expiry (capped at one third of their lifetime), or when their names, key, or signing root no longer match. It reloads replacement certificates even if the routes are unchanged. On Windows, Lando handles the restart needed to load changed routes or certificates, or confirm a previously unfinished reload. Repairing a missing or stale saved issuer keeps valid leaves and does not restart the router when nothing else needs to be loaded or confirmed.
 
 Lando then connects to the router and confirms the certificate it serves for each HTTPS hostname and for the shared default before the command succeeds. A wildcard route is checked with one sample hostname that matches it. Apps started at the same time publish one after another, so they can't leave the shared default certificate mismatched.
 
