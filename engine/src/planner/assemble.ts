@@ -81,7 +81,7 @@ import { validateConnectionValues } from "./connection-values.ts";
 import { compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
-import { environmentCacheInput } from "./environment-cache-input.ts";
+import { environmentCacheInput, rememberAppFeatureEnvironment } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
 import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { hostEventsShellIssues } from "./host-shell-issues.ts";
@@ -235,6 +235,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     identity: input.identity,
   });
   const preparedApp = endpointProjection.preparedApp;
+  rememberAppFeatureEnvironment(authoredLandofile, preparedApp.environment.dependencies);
   const appFeatures = preparedApp.features;
 
   const composeConfigFileInputs = yield* loadComposeConfigFiles({
@@ -430,6 +431,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       appName: appSlug,
       appRoot,
       key: cacheKey,
+      env: authoredLandofile.context.env,
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null && hasServiceArtifacts(cached)) {

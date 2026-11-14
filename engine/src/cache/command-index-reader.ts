@@ -17,8 +17,8 @@ import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { CORE_VERSION } from "../version.ts";
 import {
   type AppCommandIndexPayload,
+  commandEnvironmentHash,
   decodeAppCommandIndex,
-  deriveAppCommandEnvironmentHash,
 } from "./command-index.ts";
 import {
   type AppCommandCacheSource,
@@ -66,7 +66,7 @@ const readDetailed = async (
   if (payload === null) return { status: "invalid", sourcePath };
   if (payload.landoVersion !== CORE_VERSION)
     return { status: "stale", staleReason: "lando-version", sourcePath };
-  if (payload.sourceEnvironmentHash !== deriveAppCommandEnvironmentHash(options.env))
+  if (payload.sourceEnvironment.hash !== commandEnvironmentHash(payload.sourceEnvironment, options.env))
     return { status: "stale", staleReason: "environment", sourcePath };
   if (payload.sourceFile !== sourcePath || !Array.isArray(payload.sourceLocalIncludePaths))
     return { status: "stale", staleReason: "source", sourcePath };

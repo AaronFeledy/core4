@@ -186,6 +186,26 @@ const isScript = (value: unknown): boolean =>
     ? isString(value.invalid) && !Object.hasOwn(value, "sha256")
     : isString(own(value, "sha256")));
 
+const isEnvironment = (value: unknown): boolean => {
+  if (!isCacheMapping(value)) return false;
+  const hash = own(value, "hash");
+  if (!isString(hash) || !/^[a-f0-9]{64}$/u.test(hash)) return false;
+  switch (own(value, "_tag")) {
+    case "Complete":
+      return exactCacheKeys(value, ["_tag", "hash"]);
+    case "Names": {
+      const names = own(value, "names");
+      return (
+        exactCacheKeys(value, ["_tag", "names", "hash"]) &&
+        isStrings(names) &&
+        names.every((name, index) => index === 0 || (names[index - 1] ?? "") < name)
+      );
+    }
+    default:
+      return false;
+  }
+};
+
 const isVersionConstraint = (value: unknown): boolean => {
   if (!isCacheMapping(value) || !isString(own(value, "range")) || !isString(own(value, "source")))
     return false;
@@ -224,9 +244,7 @@ export const isAppCommandIndexPayload = (value: unknown): value is AppCommandInd
   hasCommonFields(value) &&
   isString(own(value, "appName")) &&
   isString(own(value, "sourceFile")) &&
-  Object.hasOwn(value, "sourceEnvironmentHash") &&
-  isString(value.sourceEnvironmentHash) &&
-  /^[a-f0-9]{64}$/u.test(value.sourceEnvironmentHash) &&
+  isEnvironment(own(value, "sourceEnvironment")) &&
   isFiniteNumber(own(value, "sourceMtimeMs")) &&
   isFiniteNumber(own(value, "sourceSize")) &&
   (!Object.hasOwn(value, "sourceContentHash") || isString(value.sourceContentHash)) &&

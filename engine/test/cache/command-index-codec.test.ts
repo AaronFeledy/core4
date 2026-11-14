@@ -114,7 +114,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         expect(decode(currentAbiBytes(magic, value))).toBeNull();
       },
     );
-    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n, 11n])(
+    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n, 11n, 12n])(
       "rejects old header %s with a current body",
       (version) => {
         // Given
@@ -130,7 +130,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       // When / Then
       expect(decode(bytes)).toBeNull();
     });
-    test.each(["schemaVersion", "landoVersion", "generatedAtMs", "entries", "sourceEnvironmentHash"])(
+    test.each(["schemaVersion", "landoVersion", "generatedAtMs", "entries", "sourceEnvironment"])(
       "rejects missing required field %s",
       (key) => {
         // Given
@@ -142,9 +142,17 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
     test.each([
       { schemaVersion: 5 },
       { landoVersion: null },
-      { sourceEnvironmentHash: null },
-      { sourceEnvironmentHash: "" },
-      { sourceEnvironmentHash: "not-a-digest" },
+      { sourceEnvironment: null },
+      { sourceEnvironment: "" },
+      { sourceEnvironment: { _tag: "Complete", hash: "not-a-digest" } },
+      { sourceEnvironment: { _tag: "Complete", hash: "" } },
+      { sourceEnvironment: { _tag: "Complete" } },
+      { sourceEnvironment: { _tag: "Names", names: ["B", "A"], hash: "a".repeat(64) } },
+      { sourceEnvironment: { _tag: "Names", names: ["A", "A"], hash: "a".repeat(64) } },
+      { sourceEnvironment: { _tag: "Names", names: ["A"], hash: "not-a-digest" } },
+      { sourceEnvironment: { _tag: "Names", names: "A", hash: "a".repeat(64) } },
+      { sourceEnvironment: { _tag: "Names", hash: "a".repeat(64) } },
+      { sourceEnvironment: { _tag: "Other", hash: "a".repeat(64) } },
       { generatedAtMs: Number.NaN },
       { generatedAtMs: Number.POSITIVE_INFINITY },
       { entries: null },
@@ -280,6 +288,29 @@ test("roundtrips complete app metadata through the typed encoder", () => {
   // Then
   expect(decoded).toEqual(app);
 });
+
+test.each([
+  { _tag: "Complete" as const, hash: "b".repeat(64) },
+  { _tag: "Names" as const, names: ["A", "Z"], hash: "c".repeat(64) },
+  { _tag: "Names" as const, names: [], hash: "d".repeat(64) },
+])("roundtrips sourceEnvironment arm %#", (sourceEnvironment) => {
+  const expected = { ...app, sourceEnvironment };
+  expect(decodeAppCommandIndex(encodeAppCommandIndex(expected))).toEqual(expected);
+});
+
+test.each([{ names: ["B", "A"] }, { names: ["A", "A"] }, { names: ["A", "A", "B"] }, { names: [1] }])(
+  "rejects malformed Names sourceEnvironment %#",
+  (patch) => {
+    expect(
+      decodeAppCommandIndex(
+        currentAbiBytes("LCAC", {
+          ...app,
+          sourceEnvironment: { _tag: "Names", hash: "e".repeat(64), ...patch },
+        }),
+      ),
+    ).toBeNull();
+  },
+);
 
 test.each([
   ...["appName", "sourceFile", "sourceMtimeMs", "sourceSize"].map((key) => without(app, key)),

@@ -310,11 +310,13 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
     });
   });
 
-  test("keeps the last full TypeScript decode when only the environment changes", async () => {
-    await withTempCacheRoot(async () => {
+  test("rebuilds TypeScript tooling when a read environment variable changes", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const envKey = "LANDO_TEST_TOOLING_COMMAND";
         const previousCommand = process.env[envKey];
+        const previousOldPwd = process.env.OLDPWD;
+        const previousRenderer = process.env.LANDO_RENDERER;
         try {
           await writeFile(
             join(dir, ".lando.ts"),
@@ -333,12 +335,28 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
           expect(cold.map((command) => command.id)).toEqual(["app:first"]);
 
           process.env[envKey] = "second";
-          const warm = await listFromLive();
+          const rebuilt = await listFromLive();
+          expect(rebuilt.map((command) => command.id)).toEqual(["app:second"]);
 
-          expect(warm.map((command) => command.id)).toEqual(["app:first"]);
+          const freshAfterRead = await Effect.runPromise(
+            readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }),
+          );
+          expect(freshAfterRead).not.toBeNull();
+          const generatedAtMs = freshAfterRead?.generatedAtMs;
+
+          process.env.OLDPWD = "/tmp/unrelated-typescript-cache";
+          process.env.LANDO_RENDERER = "json";
+          const stillFresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+          expect(stillFresh).not.toBeNull();
+          expect(stillFresh?.generatedAtMs).toBe(generatedAtMs);
+          expect(stillFresh?.entries.map((entry) => entry.id)).toEqual(["app:second"]);
         } finally {
           if (previousCommand === undefined) Reflect.deleteProperty(process.env, envKey);
           else process.env[envKey] = previousCommand;
+          if (previousOldPwd === undefined) Reflect.deleteProperty(process.env, "OLDPWD");
+          else process.env.OLDPWD = previousOldPwd;
+          if (previousRenderer === undefined) Reflect.deleteProperty(process.env, "LANDO_RENDERER");
+          else process.env.LANDO_RENDERER = previousRenderer;
         }
       });
     });
@@ -492,10 +510,12 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
     });
   });
 
-  test("keeps the last full decode when only a template input changes", async () => {
+  test("marks the template-include cache stale when the read include changes", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const previousInclude = process.env.LANDO_TEMPLATE_INCLUDE;
+        const previousOldPwd = process.env.OLDPWD;
+        const previousRenderer = process.env.LANDO_RENDERER;
         try {
           process.env.LANDO_TEMPLATE_INCLUDE = "fragment-ok.yml";
           await writeFile(join(dir, "fragment-ok.yml"), "lando: >=0\n");
@@ -520,18 +540,27 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
 
           const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
           expect(fresh).not.toBeNull();
+          const generatedAtMs = fresh?.generatedAtMs;
+
+          process.env.OLDPWD = "/tmp/unrelated-template-cache";
+          process.env.LANDO_RENDERER = "json";
+          const unrelated = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+          expect(unrelated).not.toBeNull();
+          expect(unrelated?.generatedAtMs).toBe(generatedAtMs);
 
           process.env.LANDO_TEMPLATE_INCLUDE = "fragment-bad.yml";
           const stale = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
-
-          expect(stale).not.toBeNull();
+          expect(stale).toBeNull();
 
           const commands = await listFromLive();
-
-          expect(commands.map((command) => command.id)).toEqual(["app:build"]);
+          expect(commands.map((command) => command.id)).toEqual([]);
         } finally {
           if (previousInclude === undefined) Reflect.deleteProperty(process.env, "LANDO_TEMPLATE_INCLUDE");
           else process.env.LANDO_TEMPLATE_INCLUDE = previousInclude;
+          if (previousOldPwd === undefined) Reflect.deleteProperty(process.env, "OLDPWD");
+          else process.env.OLDPWD = previousOldPwd;
+          if (previousRenderer === undefined) Reflect.deleteProperty(process.env, "LANDO_RENDERER");
+          else process.env.LANDO_RENDERER = previousRenderer;
         }
       });
     });

@@ -245,6 +245,27 @@ export default defineLandofile({
 lando app:config --format=json
 ```
 
+A factory default export receives `LandofileContext`. Read host environment values from `ctx.env`, not `process.env`:
+
+```ts
+import { defineLandofile } from "@lando/sdk";
+
+export default defineLandofile((ctx) => ({
+  name: "typescript-env-demo",
+  services: {
+    web: {
+      type: "node:22",
+      primary: true,
+      environment: {
+        NODE_ENV: ctx.env.NODE_ENV ?? "development",
+      },
+    },
+  },
+}));
+```
+
+`ctx.env` is a read-only snapshot of the environment Lando captured for that load. Property reads on it are tracked, so when a variable you read changes, the next host tooling command or help rebuilds the command index on its own. An unrelated variable does not force a rebuild. Direct `process.env` reads inside a TypeScript Landofile stay untracked, so a change there can leave tooling metadata stale until something else invalidates the index.
+
 Lando supplies `@lando/sdk` and `effect` to every `.lando.*.ts` layer when it loads the file, from the compiled binary too, so the app needs no `node_modules` and no install step. That covers the `@lando/sdk` root and its public subpaths (`@lando/sdk/schema`, `@lando/sdk/landofile`, and the rest; `@lando/sdk/test` and `@lando/sdk/docs/components` are not provided), plus `effect`, `effect/http`, and the module subpaths those two entrypoints export, such as `effect/Effect`, `effect/Schema`, and `effect/http/HttpClient`. Other Effect subpaths are not supplied. Lando's own copies always win at load time, so a locally installed `@lando/sdk` or `effect` only helps your editor with types. Any other bare import resolves from a `node_modules` directory at or above the file; a package that isn't there fails the load with a remediation naming the package.
 
 Where they go:

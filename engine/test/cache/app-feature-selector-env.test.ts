@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getLandofileEnvironmentDependencies } from "@lando/landofile/load-expression-provenance";
 import { definePlugin } from "@lando/sdk/plugins";
 import { type LandofileShape, PluginManifest, ServiceName } from "@lando/sdk/schema";
 import {
@@ -119,6 +120,15 @@ for (const scenario of [
                         cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
                     }),
                   ),
+                ).pipe(
+                  Effect.tap(() =>
+                    Effect.sync(() => {
+                      expect(getLandofileEnvironmentDependencies(compiled.document)).toEqual({
+                        _tag: "Names",
+                        names: ["LANDO_QA_SEL"],
+                      });
+                    }),
+                  ),
                 ),
               ),
             ),
@@ -159,6 +169,7 @@ for (const expression of ["{{ env[env.LOOKUP] }}", "{{ keys(env) }}", '{{ get(en
     const snapshot = snapshotAppFeatureEnv([{ id: "test", definition: featureFor(expression) }], env);
     // Then
     expect(snapshot.bindings).toEqual(env);
+    expect(snapshot.dependencies).toEqual({ _tag: "Complete" });
     expect(Object.keys(snapshot.bindings)).toEqual(["LOOKUP", "TARGET", "UNRELATED"]);
   });
 }
@@ -175,6 +186,10 @@ test("selector cache unions static env reads with absent values and shell parame
   // Then
   expect(snapshot.bindings).toEqual({ MISSING: null, PAREN: null, SHELL_TARGET: null, TARGET: "web", Z: "" });
   expect(Object.keys(snapshot.bindings)).toEqual(["MISSING", "PAREN", "SHELL_TARGET", "TARGET", "Z"]);
+  expect(snapshot.dependencies).toEqual({
+    _tag: "Names",
+    names: ["MISSING", "PAREN", "SHELL_TARGET", "TARGET", "Z"],
+  });
 });
 
 import { compileTestLandofile } from "../compiled-landofile.ts";

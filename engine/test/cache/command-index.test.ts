@@ -6,16 +6,16 @@ import {
   APP_COMMAND_MAGIC,
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
+  commandEnvironmentHash,
   decodeAppCommandIndex,
-  deriveAppCommandEnvironmentHash,
   deriveAppCommandToolingFingerprint,
   encodeAppCommandIndex,
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version twelve for captured environment freshness", () => {
+  test("uses version thirteen for dependency-keyed environment freshness", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(12n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(13n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(
@@ -27,7 +27,11 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
         landoVersion: "0.0.0",
         appName: "old",
         sourceFile: "/app/.lando.yml",
-        sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
+        sourceEnvironment: {
+          _tag: "Names" as const,
+          names: [],
+          hash: commandEnvironmentHash({ _tag: "Names", names: [] }, {}),
+        },
         sourceMtimeMs: 0,
         sourceSize: 0,
         generatedAtMs: 0,
@@ -47,7 +51,11 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "myapp",
       sourceFile: "/tmp/test/.lando.yml",
-      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
+      sourceEnvironment: {
+        _tag: "Names" as const,
+        names: [],
+        hash: commandEnvironmentHash({ _tag: "Names", names: [] }, {}),
+      },
       sourceMtimeMs: 1_700_000_000_000,
       sourceSize: 256,
       versionConstraints: [],
@@ -98,7 +106,11 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
-      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
+      sourceEnvironment: {
+        _tag: "Names" as const,
+        names: [],
+        hash: commandEnvironmentHash({ _tag: "Names", names: [] }, {}),
+      },
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],
@@ -121,7 +133,11 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
-      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
+      sourceEnvironment: {
+        _tag: "Names" as const,
+        names: [],
+        hash: commandEnvironmentHash({ _tag: "Names", names: [] }, {}),
+      },
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],
@@ -146,7 +162,11 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
-      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
+      sourceEnvironment: {
+        _tag: "Names" as const,
+        names: [],
+        hash: commandEnvironmentHash({ _tag: "Names", names: [] }, {}),
+      },
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],

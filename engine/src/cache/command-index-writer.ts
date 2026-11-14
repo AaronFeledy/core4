@@ -1,7 +1,11 @@
 import { readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
-import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
+import {
+  getLandofileEnvironmentDependencies,
+  getLandofileReferencedFiles,
+  hasLandofileEnvironmentDependencies,
+} from "@lando/landofile/load-expression-provenance";
 import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
@@ -16,9 +20,9 @@ import {
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
   type CommandIndexEntry,
+  commandEnvironmentHash,
   decodeAppCommandIndex,
   deriveAppCommandEntriesFingerprint,
-  deriveAppCommandEnvironmentHash,
   deriveAppCommandToolingFingerprint,
   encodeAppCommandIndex,
   normalizeAppCommandAliasPolicy,
@@ -96,7 +100,8 @@ const readAppCommandCacheTask = async (
     const payload = decodeAppCommandIndex(new Uint8Array(await readFile(cachePath)));
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION) return null;
-    if (payload.sourceEnvironmentHash !== deriveAppCommandEnvironmentHash(options.env)) return null;
+    if (payload.sourceEnvironment.hash !== commandEnvironmentHash(payload.sourceEnvironment, options.env))
+      return null;
     if (payload.sourceFile !== filePath) return null;
     const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
     if (JSON.stringify(payload.sourceLocalIncludePaths) !== JSON.stringify(sourceLocalIncludePaths))
@@ -149,7 +154,10 @@ const writeAppCommandCacheTask = async (
   const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
   const toolingCompilationCachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
-  const sourceEnvironmentHash = deriveAppCommandEnvironmentHash(options.env);
+  const dependencies = hasLandofileEnvironmentDependencies(options.landofile)
+    ? getLandofileEnvironmentDependencies(options.landofile)
+    : { _tag: "Complete" as const };
+  const sourceEnvironment = { ...dependencies, hash: commandEnvironmentHash(dependencies, options.env) };
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
   const aliasPolicy = normalizeAppCommandAliasPolicy(options.landofile);
   const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
@@ -172,6 +180,7 @@ const writeAppCommandCacheTask = async (
   if (cached !== null) {
     const payload: AppCommandIndexPayload = {
       ...cached,
+      sourceEnvironment,
       sourceFile: filePath,
       sourceContentHash: contentHash,
       sourceLocalIncludePaths,
@@ -192,7 +201,7 @@ const writeAppCommandCacheTask = async (
     landoVersion: CORE_VERSION,
     appName,
     sourceFile: filePath,
-    sourceEnvironmentHash,
+    sourceEnvironment,
     sourceContentHash: contentHash,
     sourceLocalIncludePaths,
     sourceReferencedFiles,
