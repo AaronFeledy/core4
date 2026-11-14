@@ -1,10 +1,11 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-import { SqlDumpCompressionError, errnoCode } from "@lando/sdk/errors";
+import { type DataTransferError, SqlDumpCompressionError } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
 import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
 import { Effect, type Scope, Stream, absurd } from "effect";
+import { dumpTransferError } from "./dump-transfer-error.ts";
 
 export type DumpCompression = "gzip" | "zstd" | "none";
 
@@ -67,24 +68,6 @@ const streamThrough = (
   }
 };
 
-const filesystemRemediation = (cause: unknown): string | undefined => {
-  switch (errnoCode(cause instanceof VerifiedStreamError ? cause.cause : cause)) {
-    case "EACCES":
-    case "EPERM":
-    case "EROFS":
-      return "Verify the destination directory is writable, then retry.";
-    case "ENOSPC":
-    case "EDQUOT":
-      return "Check host disk space and storage quota, then retry.";
-    case "ENOENT":
-    case "ENOTDIR":
-    case "EEXIST":
-      return "Verify the dump path and its parent directory are valid, then retry.";
-    default:
-      return undefined;
-  }
-};
-
 const dumpCompressionError = (input: {
   readonly path: string;
   readonly compression: Exclude<DumpCompression, "none">;
@@ -98,11 +81,44 @@ const dumpCompressionError = (input: {
         ? `Failed to compress dump file: ${input.path}`
         : `Failed to decompress dump file: ${input.path}`,
     remediation:
-      filesystemRemediation(input.cause) ??
-      (input.operation === "compress"
+      input.operation === "compress"
         ? "Check the underlying error and the dump source and destination paths, then retry the export. Dump compression runs on the host process, not inside the database service."
-        : "Confirm the dump starts with gzip or zstd magic bytes, then retry the import."),
+        : "Confirm the dump starts with gzip or zstd magic bytes, then retry the import.",
   });
+
+const transformDumpStream = <E, R>(
+  body: Stream.Stream<Uint8Array, E, R>,
+  input: {
+    readonly path: string;
+    readonly compression: Exclude<DumpCompression, "none">;
+    readonly operation: "compress" | "decompress";
+    readonly level?: number;
+  },
+): Stream.Stream<Uint8Array, E | SqlDumpCompressionError, Exclude<R, Scope.Scope>> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      // Record failures before crossing the native codec, which otherwise merges both error origins.
+      let sourceFailure: { readonly error: E } | undefined;
+      const readable = yield* Stream.toReadableStreamEffect(
+        body.pipe(
+          Stream.tapError((error) =>
+            Effect.sync(() => {
+              sourceFailure = { error };
+            }),
+          ),
+        ),
+      );
+      const transformed = yield* Effect.try({
+        try: () => streamThrough(readable, input.compression, input.operation, input.level),
+        catch: (cause) => dumpCompressionError({ ...input, cause }),
+      });
+      return Stream.fromReadableStream({
+        evaluate: () => transformed,
+        onError: (cause) =>
+          sourceFailure === undefined ? dumpCompressionError({ ...input, cause }) : sourceFailure.error,
+      });
+    }),
+  );
 
 export const writeDumpTransform = (
   sourcePath: string,
@@ -110,58 +126,48 @@ export const writeDumpTransform = (
   compression: Exclude<DumpCompression, "none">,
   operation: "compress" | "decompress",
   level?: number,
-): Effect.Effect<{ readonly digest: string; readonly sizeBytes: number }, SqlDumpCompressionError> =>
+): Effect.Effect<
+  { readonly digest: string; readonly sizeBytes: number },
+  SqlDumpCompressionError | DataTransferError
+> =>
   Effect.scoped(
     Effect.gen(function* () {
       const result = yield* persistVerifiedStream({
-        body: Stream.unwrap(
-          Effect.try({
-            try: () => streamThrough(Bun.file(sourcePath).stream(), compression, operation, level),
-            catch: (cause) => dumpCompressionError({ path: sourcePath, compression, operation, cause }),
-          }).pipe(
-            Effect.map((transformed) =>
-              Stream.fromReadableStream({
-                evaluate: () => transformed,
-                onError: (cause) => dumpCompressionError({ path: sourcePath, compression, operation, cause }),
-                releaseLockOnEnd: true,
-              }),
-            ),
+        body: transformDumpStream(
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const readFailure = (cause: unknown) => dumpTransferError("read", sourcePath, cause);
+              const reader = yield* Effect.acquireRelease(
+                Effect.try({ try: () => Bun.file(sourcePath).stream().getReader(), catch: readFailure }),
+                (owned) => Effect.promise(() => owned.cancel().catch(() => undefined)),
+              );
+              return Stream.unfold(undefined, () =>
+                Effect.tryPromise({ try: () => reader.read(), catch: readFailure }).pipe(
+                  Effect.map((next) => (next.done ? undefined : ([next.value, undefined] as const))),
+                ),
+              );
+            }),
           ),
+          { path: sourcePath, compression, operation, ...(level === undefined ? {} : { level }) },
         ),
         destinationPath: destPath,
         mode: 0o600,
       }).pipe(
         mapFailures((cause) =>
-          cause instanceof SqlDumpCompressionError
-            ? cause
-            : dumpCompressionError({ path: destPath, compression, operation, cause }),
+          cause instanceof VerifiedStreamError ? dumpTransferError("persist", destPath, cause.cause) : cause,
         ),
       );
       return { digest: result.sha256, sizeBytes: result.sizeBytes };
     }),
   );
 
-export const acquireStagedDump = (
-  parent: string,
-  compression: Exclude<DumpCompression, "none">,
-  operation: "compress" | "decompress",
-): Effect.Effect<string, SqlDumpCompressionError> =>
+export const acquireStagedDump = (parent: string): Effect.Effect<string, DataTransferError> =>
   Effect.tryPromise({
     try: async () => {
       await mkdir(parent, { recursive: true });
       return mkdtemp(join(parent, ".lando-dump-"));
     },
-    catch: (cause) =>
-      new SqlDumpCompressionError({
-        message: `Failed to create a dump staging directory in ${parent}`,
-        path: parent,
-        compression,
-        operation,
-        cause,
-        remediation:
-          filesystemRemediation(cause) ??
-          "Check the underlying error and the destination directory, then retry the export.",
-      }),
+    catch: (cause) => dumpTransferError("stage", parent, cause),
   });
 
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>
@@ -173,13 +179,13 @@ export const withHostDumpCompression = <E, R>(input: {
   readonly compression: DumpCompression;
   readonly compressionLevel?: number;
   readonly transfer: (workingPath: string) => Effect.Effect<DataTransferResult, E, R>;
-}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError, R> => {
+}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError | DataTransferError, R> => {
   const compression = input.compression;
   if (compression === "none") return input.transfer(input.path);
   return Effect.scoped(
     Effect.gen(function* () {
       const directory = yield* Effect.acquireRelease(
-        acquireStagedDump(dirname(input.path), compression, "compress"),
+        acquireStagedDump(dirname(input.path)),
         releaseStagedDump,
       );
       const staged = join(directory, "dump");
@@ -202,11 +208,9 @@ export const compressDumpStream = <E, R>(
   compression: Exclude<DumpCompression, "none">,
   level?: number,
 ): Stream.Stream<Uint8Array, unknown, Exclude<R, Scope.Scope>> =>
-  Stream.unwrap(
-    Effect.map(Stream.toReadableStreamEffect(body), (readable) =>
-      Stream.fromReadableStream({
-        evaluate: () => streamThrough(readable, compression, "compress", level),
-        onError: (cause) => cause,
-      }),
-    ),
-  );
+  transformDumpStream(body, {
+    path: "stdout",
+    compression,
+    operation: "compress",
+    ...(level === undefined ? {} : { level }),
+  });
