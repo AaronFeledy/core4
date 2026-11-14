@@ -42,6 +42,9 @@ for (const compression of ["gzip", "zstd"] as const) {
       expect(error).toMatchObject({ compression, operation: "compress", path: "stdout", cause });
       if (!(error instanceof SqlDumpCompressionError)) throw new Error("expected codec failure");
       expect(error.remediation).not.toMatch(/Free space|quota/u);
+      expect(error.remediation).toMatch(/retry.*export/iu);
+      expect(error.remediation).toContain("--debug --trace");
+      expect(error.remediation).not.toMatch(/underlying error/iu);
     } finally {
       globalThis.CompressionStream = codec;
     }

@@ -82,7 +82,7 @@ const dumpCompressionError = (input: {
         : `Failed to decompress dump file: ${input.path}`,
     remediation:
       input.operation === "compress"
-        ? "Check the underlying error and the dump source and destination paths, then retry the export. Dump compression runs on the host process, not inside the database service."
+        ? "Retry the export. If compression fails again, rerun with --debug --trace and report the failure with those diagnostics."
         : "Confirm the dump starts with gzip or zstd magic bytes, then retry the import.",
   });
 
