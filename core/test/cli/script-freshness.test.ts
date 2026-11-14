@@ -7,9 +7,24 @@ import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-wr
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { CliInvocation, processInvocationDefaults } from "../../src/runtime/invocation-context";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
 const script = "# ---\n# desc: Freshness probe\n# ---\necho -n probe-output\n";
+const invocationEnv = (root: string, cacheRoot: string) => ({
+  ...process.env,
+  LANDO_USER_CACHE_ROOT: cacheRoot,
+  LANDO_USER_DATA_ROOT: join(root, "data"),
+  LANDO_USER_CONF_ROOT: join(root, "conf"),
+});
+const fixtureRoute = (root: string, cacheRoot: string, name: string) =>
+  resolveToolingRoute(name, { cwd: root, cacheRoot }).pipe(
+    Effect.provideService(CliInvocation, {
+      ...processInvocationDefaults,
+      cwd: root,
+      env: invocationEnv(root, cacheRoot),
+    }),
+  );
 
 const withApp = async (run: (root: string, cacheRoot: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-cli-script-freshness-"));
@@ -34,6 +49,7 @@ const cache = (
     writeAppCommandCacheStrict({
       cwd: root,
       cacheRoot,
+      env: invocationEnv(root, cacheRoot),
       landofile: {
         name: "freshness",
         ...(policy.commandAliases === undefined ? {} : { commandAliases: policy.commandAliases }),
@@ -45,12 +61,7 @@ const cache = (
 const invoke = async (root: string, cacheRoot: string, name: string) => {
   const child = Bun.spawn([process.execPath, cli, name, "-j"], {
     cwd: root,
-    env: {
-      ...process.env,
-      LANDO_USER_CACHE_ROOT: cacheRoot,
-      LANDO_USER_DATA_ROOT: join(root, "data"),
-      LANDO_USER_CONF_ROOT: join(root, "conf"),
-    },
+    env: invocationEnv(root, cacheRoot),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -80,7 +91,16 @@ test("an indexed mixed-case script runs its edited body without refresh", async 
     const path = join(root, ".lando/scripts/Probe.bun.sh");
     await writeFile(path, script);
     await cache(root, cacheRoot, {
-      entries: [{ id: "app:probe", summary: "Freshness probe", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:probe",
+          summary: "Freshness probe",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
     });
     await writeFile(path, script.replace("probe-output", "edited-output"));
     const result = await invoke(root, cacheRoot, "probe");
@@ -94,7 +114,16 @@ test("a removed indexed script rebuilds the index and reports an unknown command
     const path = join(root, ".lando/scripts/probe.bun.sh");
     await writeFile(path, script);
     await cache(root, cacheRoot, {
-      entries: [{ id: "app:probe", summary: "Probe", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:probe",
+          summary: "Probe",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
     });
     await rm(path);
     const result = await invoke(root, cacheRoot, "probe");
@@ -117,7 +146,16 @@ test.each([
     label: "disabled alias system",
     policy: {
       commandAliases: { enabled: false, custom: { blocked: "app:known" } },
-      entries: [{ id: "app:known", summary: "Known", hidden: false }],
+      entries: [
+        {
+          id: "app:known",
+          summary: "Known",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
     },
     expected: "alias-disabled",
   },
@@ -125,13 +163,33 @@ test.each([
     label: "custom alias precedence",
     policy: {
       commandAliases: { custom: { blocked: "app:known" } },
-      entries: [{ id: "app:known", summary: "Known", hidden: false }],
+      entries: [
+        {
+          id: "app:known",
+          summary: "Known",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
     },
     expected: "tooling",
   },
   {
     label: "disabled task precedence",
-    policy: { entries: [{ id: "app:blocked", summary: "Disabled", hidden: true }] },
+    policy: {
+      entries: [
+        {
+          id: "app:blocked",
+          summary: "Disabled",
+          _tag: "Disabled",
+          sourceKind: "tooling",
+          visibility: "public",
+          source: { path: ".lando.yml", task: "blocked" },
+        },
+      ],
+    },
     expected: "tooling",
   },
 ] satisfies readonly { label: string; policy: Parameters<typeof cache>[2]; expected: string }[])(
@@ -142,13 +200,12 @@ test.each([
       await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
       await writeFile(join(root, ".lando/scripts/blocked.bun.sh"), script);
       const routes = await Promise.all(
-        ["probe", "blocked"].map((name) =>
-          Effect.runPromise(resolveToolingRoute(name, { cwd: root, cacheRoot })),
-        ),
+        ["probe", "blocked"].map((name) => Effect.runPromise(fixtureRoute(root, cacheRoot, name))),
       );
       expect(routes[0]).toMatchObject({ _tag: "bun-script", commandId: "app:probe" });
       expect(routes[1]).toMatchObject({ _tag: expected });
-      if (policy?.entries?.some((entry) => entry.hidden)) expect(routes[1]).toMatchObject({ hidden: true });
+      if (policy?.entries?.some((entry) => entry._tag === "Disabled"))
+        expect(routes[1]).toMatchObject({ hidden: true });
     });
   },
 );
@@ -157,7 +214,7 @@ test("a new script still runs after the Landofile changes", async () => {
   await withApp(async (root, cacheRoot) => {
     await cache(root, cacheRoot);
     await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
-    expect(await Effect.runPromise(resolveToolingRoute("probe", { cwd: root, cacheRoot }))).toMatchObject({
+    expect(await Effect.runPromise(fixtureRoute(root, cacheRoot, "probe"))).toMatchObject({
       _tag: "bun-script",
     });
     await writeFile(join(root, ".lando.yml"), "name: freshness\n# changed\n");
@@ -187,3 +244,5 @@ test("a malformed script reports its front matter instead of a cache refresh", a
     expect(JSON.stringify(body.error)).not.toContain("app:cache:refresh");
   });
 }, 30_000);
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

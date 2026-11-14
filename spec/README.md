@@ -152,12 +152,14 @@ If you are looking for a public surface or policy:
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
-| Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Single native dispatch, help projection, unavailable rows, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Structured tooling diagnostics, disclosure bounds, and tooling source provenance | 08 + 12 | §8.7 + §12.1 |
 | Token ownership between the dispatcher and a command: command tails for exec/ssh/run, plugin commands, wrappers, and `bun`/`x`; declared tooling flags; unknown-flag rejection | 08 | §8.3, §8.5 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
 | Automatic tooling metadata rebuild, failure reporting, and help recovery | 08 | §8.7 |
+| Strict load failures versus per-task normalization errors, unavailable tasks, and `LANDO_TOOLING_INVALID` | 07 + 08 + 12 | §7.8 + §8.2.1 + §8.5 + §8.7 + §12.2 |
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
@@ -206,6 +208,7 @@ If you are looking for a public surface or policy:
 | Scope-owned per-service environment overrides | 06 | §6.9 |
 | Managed-file ownership, ledger, and errors | 11 | §10.13 |
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
+| MCP `lando://diagnostics` resource, authorization filtering, and repair without reconnecting | 11 | §10.14 |
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |

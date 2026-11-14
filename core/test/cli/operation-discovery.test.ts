@@ -17,9 +17,16 @@ test("one walk spans the cold check, alias routing, bootstrap, and command execu
   const repo = resolve(import.meta.dir, "../..");
   const preload = join(root, "count-walks.ts");
   const receipt = join(root, "walks.json");
+  const env = {
+    ...process.env,
+    LANDO_USER_CONF_ROOT: join(root, "conf"),
+    LANDO_USER_DATA_ROOT: join(root, "data"),
+    LANDO_USER_CACHE_ROOT: join(root, "cache"),
+  };
   await writeFile(receipt, "0");
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env,
       cwd,
       cacheRoot: join(root, "cache"),
       landofile: { name: "discovery-once", commandAliases: { custom: { version: "app:config" } } },
@@ -44,12 +51,7 @@ Bun.plugin({ name: "count-app-walks", setup(build) {
   try {
     const child = Bun.spawn([process.execPath, "--preload", preload, join(repo, "bin/lando.ts"), "version"], {
       cwd,
-      env: {
-        ...process.env,
-        LANDO_USER_CONF_ROOT: join(root, "conf"),
-        LANDO_USER_DATA_ROOT: join(root, "data"),
-        LANDO_USER_CACHE_ROOT: join(root, "cache"),
-      },
+      env,
       stdout: "pipe",
       stderr: "pipe",
     });

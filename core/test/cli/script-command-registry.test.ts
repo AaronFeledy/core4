@@ -28,7 +28,16 @@ test.each([false, true])(
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile: { name: "script-conflict" },
-            entries: [{ id: "app:info", summary: "Shadow info", hidden: false, source: "bun-script" }],
+            entries: [
+              {
+                id: "app:info",
+                summary: "Shadow info",
+                _tag: "Ready",
+                sourceKind: "bun-script",
+                visibility: "public",
+                input: emptyToolingInput(),
+              },
+            ],
             cwd: root,
             cacheRoot,
           }),
@@ -64,3 +73,5 @@ test.each([false, true])(
     }
   },
 );
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

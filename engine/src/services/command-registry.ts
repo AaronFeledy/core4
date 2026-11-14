@@ -1,6 +1,7 @@
 import { inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -31,11 +32,12 @@ import { CommandRegistry, LandofileService, PathsService, type RegisteredCommand
  */
 import { Effect, Layer } from "effect";
 import { compileInspectedAppCommands } from "../cache/command-compiler.ts";
-import type { CommandIndexEntry } from "../cache/command-index.ts";
+import { type CommandIndexEntry, commandIndexPresentation } from "../cache/command-index.ts";
 import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
 import { fingerprintsFromInspection } from "../cache/command-script-freshness.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
 import { PluginContributionGraph } from "../plugins/contribution-graph.ts";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
   const appRoot = yield* findAppRoot(cwd);
@@ -45,7 +47,8 @@ const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
 
 const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): ReadonlyArray<RegisteredCommand> =>
   entries
-    .filter((entry) => entry.loadError === undefined)
+    .filter((entry) => entry._tag !== "Unavailable")
+    .map(commandIndexPresentation)
     .map((entry) => ({
       id: entry.id,
       summary: entry.summary,
@@ -71,7 +74,9 @@ export const layerWith = (
       const cacheOptions = paths._tag === "Some" ? { cacheRoot: paths.value.roots.userCacheRoot } : {};
       return CommandRegistry.of({
         list: Effect.gen(function* () {
+          const env = (yield* HostExecutionDefaults)?.env ?? process.env;
           const cached = yield* readFreshAppCommandCacheForCwd({
+            env,
             ...cacheOptions,
             includeScriptInventory: true,
           }).pipe(Effect.catch(() => Effect.succeed(null)));
@@ -81,7 +86,9 @@ export const layerWith = (
             return toRegisteredCommands(cached.entries);
           }
 
-          const landofile = (yield* loadUserLandofile(landofileService)).document;
+          const loaded = yield* loadUserLandofile(landofileService);
+          const landofile = loaded.document;
+          const sourcePath = getLandofileValueSource(loaded, [])?.file ?? loaded.context.appRoot;
           const scripts = yield* discoverScriptsForCwd(yield* discoveryCwd());
           const hasServices = Object.keys(landofile.services ?? {}).length > 0;
           if (hasServices) {
@@ -90,16 +97,22 @@ export const layerWith = (
           const redaction = yield* Effect.serviceOption(RedactionService);
           const redactor =
             redaction._tag === "Some"
-              ? yield* redaction.value.forProfile("secrets")
-              : createRedactor("secrets", { values: collectSecretEnvValues(process.env) });
+              ? yield* redaction.value.forProfile("secrets", { sourceEnv: env })
+              : createRedactor("secrets", { values: collectSecretEnvValues(env) });
           const entries = compileInspectedAppCommands({
             landofile,
+            sourcePath,
+            toolingSource: (name) => ({
+              path: getLandofileValueSource(loaded, ["tooling", name])?.file ?? sourcePath,
+              locate: (path) => getLandofileValueSource(loaded, path),
+            }),
             inspection: scripts,
             redact: redactor.redactString,
           });
           const error = registrationError(landofile.commandAliases, entries, pluginCommandIds);
           if (error !== undefined) return yield* Effect.fail(error);
           yield* writeAppCommandCache({
+            env,
             sourceScripts: fingerprintsFromInspection(scripts),
             landofile,
             entries,

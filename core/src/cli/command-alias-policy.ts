@@ -47,7 +47,7 @@ export const commandAliasRegistrationError = (
     .map((entry) => entry.id),
 ): CommandAliasConflictError | CommandAliasTargetError | undefined => {
   for (const entry of entries) {
-    if (entry.source !== "bun-script") continue;
+    if (entry.sourceKind !== "bun-script") continue;
     const name = entry.id.slice("app:".length);
     const canonicalOwner = BUILT_IN_COMMANDS.find((command) => command.spec.id === entry.id);
     const aliasOwner =

@@ -132,7 +132,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     services: seeds,
     effectiveTooling,
     connectionClients,
-    disabledToolingSources,
+    toolingProvenance,
     invocationSites,
     appRoot,
     appName,
@@ -443,7 +443,10 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeFieldsSupported(capabilityContext, cached);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
-        attachEffectiveTooling(proven, effectiveTooling, connectionClients, disabledToolingSources),
+        attachEffectiveTooling(proven, effectiveTooling, {
+          connectionClients,
+          provenance: toolingProvenance,
+        }),
         executableSites,
         effectiveEventsFor(planServices(cached.services)),
       );
@@ -569,8 +572,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         Effect.map((decoded) => withCommittedLiteralDigests(decoded, authoredLandofile)),
       ),
       effectiveTooling,
-      connectionClients,
-      disabledToolingSources,
+      { connectionClients, provenance: toolingProvenance },
     ),
     executableSites,
     effectiveEventsFor(planServices(finalized.services)),

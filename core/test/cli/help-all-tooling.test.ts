@@ -67,12 +67,41 @@ test.each([...policies])(
       await writeFile(landofile, "name: all-help\n");
       const cachePath = await Effect.runPromise(
         writeAppCommandCacheStrict({
+          env,
           landofile: { name: "all-help", commandAliases: policy },
           entries: [
-            { id: "app:known", summary: "Known task", hidden: false, source: "bun-script" },
-            { id: "app:other", summary: "Other task", hidden: false },
-            { id: "app:secret", summary: "Hidden task", hidden: true },
-            { id: "app:start", summary: "Built-in duplicate", hidden: false },
+            {
+              id: "app:known",
+              summary: "Known task",
+              _tag: "Ready",
+              sourceKind: "bun-script",
+              visibility: "public",
+              input: emptyToolingInput(),
+            },
+            {
+              id: "app:other",
+              summary: "Other task",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput(),
+            },
+            {
+              id: "app:secret",
+              summary: "Hidden task",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "internal",
+              input: emptyToolingInput(),
+            },
+            {
+              id: "app:start",
+              summary: "Built-in duplicate",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput(),
+            },
           ],
           cwd: root,
           cacheRoot,
@@ -139,3 +168,5 @@ test.each([...policies])(
     }
   },
 );
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

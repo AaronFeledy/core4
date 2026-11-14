@@ -2,12 +2,14 @@ import { expect, test } from "bun:test";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { parseExpressionEither } from "@lando/sdk/expressions";
 import { Result } from "effect";
+import { resolveEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { hostShellIssues, planningHostShellIssues } from "../../src/planner/host-shell-issues.ts";
 
 const resolution = (landofile: Parameters<typeof hostShellIssues>[0]["landofile"]) => ({
   landofile,
   pendingSites: [],
   services: [],
+  toolingResolution: resolveEffectiveTooling({ landofile, services: [] }),
 });
 
 test.each([":host", "web"])("checks vars.sh only for host task targets (%s)", (service) => {

@@ -42,7 +42,17 @@ describe("app command cache writer", () => {
       await Effect.runPromise(
         writeAppCommandCacheStrict({
           landofile,
-          entries: [{ id: "app:test", summary: "Test", hidden: false, service: "app" }],
+          entries: [
+            {
+              id: "app:test",
+              summary: "Test",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput(),
+              service: "app",
+            },
+          ],
           cwd: appRoot,
           cacheRoot,
         }),
@@ -71,7 +81,17 @@ describe("app command cache writer", () => {
             name: "service-app",
             services: { [ServiceName.make("app")]: { type: "node" } },
           },
-          entries: [{ id: "app:node", summary: "Node tooling", hidden: false, service: "app" }],
+          entries: [
+            {
+              id: "app:node",
+              summary: "Node tooling",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput(),
+              service: "app",
+            },
+          ],
           cwd: appRoot,
           cacheRoot,
         }),
@@ -107,3 +127,5 @@ describe("app command cache writer", () => {
     });
   });
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

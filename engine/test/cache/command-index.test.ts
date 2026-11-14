@@ -7,14 +7,15 @@ import {
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
   decodeAppCommandIndex,
+  deriveAppCommandEnvironmentHash,
   deriveAppCommandToolingFingerprint,
   encodeAppCommandIndex,
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version nine for unavailable script metadata", () => {
+  test("uses version twelve for captured environment freshness", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(9n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(12n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(
@@ -26,6 +27,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
         landoVersion: "0.0.0",
         appName: "old",
         sourceFile: "/app/.lando.yml",
+        sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
         sourceMtimeMs: 0,
         sourceSize: 0,
         generatedAtMs: 0,
@@ -45,16 +47,27 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "myapp",
       sourceFile: "/tmp/test/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 1_700_000_000_000,
       sourceSize: 256,
       versionConstraints: [],
       generatedAtMs: 1_700_000_100_000,
       entries: [
-        { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
+        {
+          id: "app:composer",
+          summary: "Run Composer",
+          _tag: "Ready" as const,
+          sourceKind: "tooling" as const,
+          visibility: "public" as const,
+          input: emptyToolingInput,
+          service: "appserver",
+        },
         {
           id: "app:test",
           summary: "Run tests",
-          hidden: false,
+          _tag: "Ready" as const,
+          sourceKind: "tooling" as const,
+          visibility: "public" as const,
           input: {
             flags: [
               {
@@ -85,6 +98,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],
@@ -107,6 +121,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],
@@ -131,6 +146,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],
@@ -190,3 +206,8 @@ describe("deriveAppCommandToolingFingerprint", () => {
     expect(deriveAppCommandToolingFingerprint(first)).toBe(deriveAppCommandToolingFingerprint(second));
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

@@ -18,7 +18,6 @@ test("projects declared script inputs in normalized order when compiling the ind
   const discovered = script({
     flags: { loud: { boolean: true }, name: { alias: "n", default: "world" } },
     args: { suffix: { order: 1 }, target: { order: 0, required: true } },
-    disabled: true,
   });
   // When
   const entries = compileBunShellScriptCommands([discovered]);
@@ -28,8 +27,9 @@ test("projects declared script inputs in normalized order when compiling the ind
       id: "app:probe",
       summary: "Probe inputs",
       service: ":host",
-      source: "bun-script",
-      hidden: true,
+      sourceKind: "bun-script",
+      _tag: "Ready",
+      visibility: "public",
       input: {
         flags: [
           { name: "loud", boolean: true, required: false },
@@ -58,6 +58,19 @@ test.each([{}, { flags: {}, args: {} }])(
     });
   },
 );
+
+test("disabled scripts retain refusal context without executable metadata", () => {
+  expect(compileBunShellScriptCommands([script({ disabled: true })])).toEqual([
+    {
+      id: "app:probe",
+      summary: "Probe inputs",
+      _tag: "Disabled",
+      sourceKind: "bun-script",
+      visibility: "public",
+      source: { path: "/app/.lando/scripts/probe.bun.sh", task: "probe" },
+    },
+  ]);
+});
 
 test("preserves the adapter's typed error when script declarations are semantically invalid", () => {
   // Given

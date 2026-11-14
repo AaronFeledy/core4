@@ -169,10 +169,13 @@ types, defaults, choices, requiredness, sensitivity, or raw-argument policy reje
 the call with `ToolingInputError` before the body runs. Script-body and
 description-only edits keep the revision compatible.
 
-After changing metadata, reconnect the client and inspect `tools/list` again.
-A running session keeps the catalog it started with; the next session reads the
-current commands on its own, so no refresh command is needed. Rejected calls are
-not automatically replayed. Review the new declaration before retrying.
+After changing metadata, read `lando://diagnostics` and inspect `tools/list`
+again. The read reloads the session app's tasks and replaces every changed tool
+contract, as described in
+[Find out why a tool is missing](#find-out-why-a-tool-is-missing). A session that
+doesn't read it keeps the tooling catalog it started with. Reconnecting also
+picks up the current commands, so no refresh command is needed. Rejected calls
+are not automatically replayed. Review the new declaration before retrying.
 
 If discovery reports `ToolingCommandUnavailableError`, its `reason` is
 `missing-cache`, `stale-cache`, or `invalid-cache`. Those appear only in a rare
@@ -307,7 +310,8 @@ lando mcp --list --allow db:export --format=json
 Each plugin tool in that list carries `plugin.name`, `plugin.source` (`bundled`
 or `external`), and `destructive`. The `diagnostics` array names plugin commands
 the catalog left out and why: a module that failed to load, a descriptor or
-alias conflict, or a destructive command that tried to self-allow. An unknown id
+alias conflict, or a destructive command that tried to self-allow. A connected
+client reads the same records from `lando://diagnostics`. An unknown id
 passed to `--allow` that no plugin provides yet stays pending: `--list` reports
 it in `diagnostics` with `_tag: "McpPendingAllowance"`, and the tool appears once
 an app that provides it is selected, as described in the next section. A malformed
@@ -377,6 +381,112 @@ of its service types reports the same error. Built-in tools and other plugins'
 tools keep working. After you fix the file, the next call loads it again. If files keep changing during loading, finish the
 edit and retry the call.
 
+## Find out why a tool is missing
+
+A command you expected can be absent from `tools/list` because Lando could not
+build it: a tooling task whose declaration contradicts itself, or a plugin
+command whose module fails to load. Read `lando://diagnostics` to see those
+commands and what to change:
+
+```json
+{"jsonrpc":"2.0","id":8,"method":"resources/read","params":{"uri":"lando://diagnostics"}}
+```
+
+The resource is always listed in `resources/list`. Its JSON payload has three
+fields:
+
+| Field | What it holds |
+| --- | --- |
+| `revision` | A number that rises when the published tools or these records change |
+| `diagnostics` | One record per unavailable command |
+| `omittedDiagnosticCount` | Records left out to keep the payload within 16 KiB |
+
+Every record has `commandId`, `kind` (`tooling` or `plugin`), `_tag`, and
+`message`, usually with a `remediation`. A plugin record adds `plugin.name` and
+`plugin.source`. A tooling record adds `sourceKind`: `landofile` for a task,
+`bun-script` for a `.bun.sh` script. Landofile task declaration failures
+(`ToolingCompileError`) also carry `issues` and `omittedIssueCount`, plus
+`source` (the file and task) when known and within the disclosure budget.
+These are the same fields a failed call reports under `error`.
+[Fix an unavailable task](../tooling/flags-and-args.mdx#fix-an-unavailable-task)
+explains how to read an `issues` entry.
+
+This record is from an app whose `dup` task gives two flags the same alias. It
+is one read of the resource, reindented, with the app directory shortened to
+`/home/you/app`:
+
+```json
+{
+  "commandId": "app:dup",
+  "kind": "tooling",
+  "_tag": "ToolingCompileError",
+  "message": "tooling.dup.flags.note.alias: Flag alias collides with another flag name or alias.",
+  "remediation": "Choose an alias that is not used by another flag name or alias.",
+  "sourceKind": "landofile",
+  "source": {
+    "path": "/home/you/app/.lando.yml",
+    "task": "dup"
+  },
+  "issues": [
+    {
+      "reason": "alias-collision",
+      "path": ["tooling", "dup", "flags", "note", "alias"],
+      "message": "Flag alias collides with another flag name or alias.",
+      "suggestion": "Choose an alias that is not used by another flag name or alias.",
+      "source": {
+        "file": "/home/you/app/.lando.yml",
+        "layer": "canonical",
+        "path": ["tooling", "dup", "flags", "note", "alias"]
+      },
+      "related": [
+        {
+          "path": ["tooling", "dup", "flags", "name", "alias"],
+          "source": {
+            "file": "/home/you/app/.lando.yml",
+            "layer": "canonical",
+            "path": ["tooling", "dup", "flags", "name", "alias"]
+          }
+        }
+      ]
+    }
+  ],
+  "omittedIssueCount": 0
+}
+```
+
+Reading the resource is also how a running session catches up with your edits.
+Each read checks the app's tasks and selected plugin commands again and
+republishes the tool catalog from that one snapshot. Fix the file a record
+names, read the resource again, and the record is gone and the tool is in
+`tools/list`. You don't restart the server or reconnect. The reverse holds too:
+break a working task, read the resource, and the tool leaves the list and gains
+a record. When a read changes the catalog, the server sends
+`notifications/tools/list_changed`.
+
+The session keeps the environment it started with. Editing a source file can
+take effect through a resource read, but changing a variable in your shell
+does not change a running server's environment. Start a new MCP session when
+you need it to use a different environment.
+
+The records cover only commands this session is allowed to expose:
+
+- Tooling records need `lando mcp --tooling`.
+- Tasks hidden with `internal: true`, disabled tasks, and ids you deny never
+  appear, and they aren't counted in `omittedDiagnosticCount` either.
+- A failing plugin command appears when its id is allowed. A command from a
+  plugin you installed needs its own `--allow` entry even when it replaces a
+  bundled command that is on by default.
+
+The resource describes the app in the directory `lando mcp` was started in and
+takes no `appPath`. It reports commands that fail on their own. With
+`--tooling`, a Landofile that cannot load at all, for example because of a YAML
+syntax error, makes the read fail instead: the JSON-RPC error's `data` carries
+the tagged error, such as `LandofileParseError`, and its remediation. Fix the
+file and read again.
+
+`lando mcp --list --format=json` prints the same records under
+`result.diagnostics`, with `result.omittedDiagnosticCount`, before you connect.
+
 ## Read resources and complete schema names
 
 The server also publishes read-only resources. App and diagnostic payloads use
@@ -390,6 +500,7 @@ Schema resources return full public JSON Schema documents on demand.
 | `lando://app/info` | Services and connections for that app |
 | `lando://apps` | Known apps and their services |
 | `lando://doctor` | Host-safe diagnostics, no fixes applied |
+| `lando://diagnostics` | Commands this session could not publish as tools, and why |
 | `lando://schemas/{name}` | A public Lando JSON schema by name |
 
 App-scoped resources resolve the app from the directory `lando mcp` was started
@@ -870,9 +981,10 @@ const observed = yield* Effect.gen(function* () {
     ref: { type: "ref/resource", uri: "lando://schemas/{name}" },
     argument: { name: "name", value: "CommandResult" },
   });
+  const diagnostics = yield* client.request("resources/read", { uri: "lando://diagnostics" });
   yield* client.close;
   yield* Fiber.join(fiber);
-  return { list, templates, complete };
+  return { list, templates, complete, diagnostics };
 }).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("5 seconds"));
 const listed = Schema.decodeUnknownSync(Schema.Struct({
   resources: Schema.Array(Schema.Struct({ uri: Schema.String, mimeType: Schema.String })),
@@ -882,8 +994,18 @@ expect(listed.resources.map((resource) => resource.uri)).toEqual([
   "lando://app/info",
   "lando://apps",
   "lando://doctor",
+  "lando://diagnostics",
 ]);
 expect(listed.resources.every((resource) => resource.mimeType === "application/json")).toBe(true);
+const read = Schema.decodeUnknownSync(Schema.Struct({
+  contents: Schema.Array(Schema.Struct({ uri: Schema.String, text: Schema.String })),
+}))(observed.diagnostics.result);
+expect(read.contents.map((content) => content.uri)).toEqual(["lando://diagnostics"]);
+expect(JSON.parse(read.contents[0]?.text ?? "null")).toEqual({
+  revision: expect.any(Number),
+  diagnostics: [],
+  omittedDiagnosticCount: 0,
+});
 expect(observed.templates).toMatchObject({
   result: { resourceTemplates: [{ uriTemplate: "lando://schemas/{name}", mimeType: "application/json" }] },
 });
@@ -892,8 +1014,9 @@ expect(expected.length).toBeGreaterThan(0);
 expect(observed.complete).toMatchObject({
   result: { completion: { values: expected, hasMore: false } },
 });`}
-        displayCode={`// With an initialized child whose stdin is still open, list resources
-// and complete a schema name. Wait for ids 4, 5, and 6 before closing stdin.
+        displayCode={`// With an initialized child whose stdin is still open, list resources,
+// complete a schema name, and read the command diagnostics.
+// Wait for ids 4, 5, 6, and 7 before closing stdin.
 const frames = [
   { jsonrpc: "2.0", id: 4, method: "resources/list", params: {} },
   { jsonrpc: "2.0", id: 5, method: "resources/templates/list", params: {} },
@@ -906,12 +1029,16 @@ const frames = [
       argument: { name: "name", value: "CommandResult" },
     },
   },
+  { jsonrpc: "2.0", id: 7, method: "resources/read", params: { uri: "lando://diagnostics" } },
 ];
 for (const frame of frames) await child.stdin.write(JSON.stringify(frame) + "\\n");
 await child.stdin.flush();
-// id 4 lists lando://app/config, lando://app/info, lando://apps, lando://doctor.
+// id 4 lists lando://app/config, lando://app/info, lando://apps, lando://doctor,
+// and lando://diagnostics.
 // id 5 lists the lando://schemas/{name} template.
 // id 6 returns every public schema name starting with "CommandResult".
+// id 7 returns { revision, diagnostics: [], omittedDiagnosticCount: 0 } when
+// every allowed command is available.
 // Read one with: { method: "resources/read", params: { uri: "lando://schemas/CommandResultEnvelope" } }`}
       />
     </Step>

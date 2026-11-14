@@ -1,7 +1,22 @@
-import { ToolingCompileError } from "@lando/sdk/errors";
-import type { Environment, ToolingInputDeclaration, ToolingTaskShape } from "@lando/sdk/schema";
+import type { ToolingCompileError } from "@lando/sdk/errors";
+import type {
+  Environment,
+  ToolingInputDeclaration,
+  ToolingTaskShape,
+  ValidationIssue,
+  ValidationIssuePath,
+} from "@lando/sdk/schema";
 import { Result } from "effect";
-import { normalizeToolingInput } from "./tooling-input-normalize.ts";
+import { inspectToolingInput } from "./tooling-input-normalize.ts";
+import {
+  type ToolingInspection,
+  type ToolingNormalizationSource,
+  toolingCompileResult,
+} from "./tooling-inspection.ts";
+import { toolingIssue } from "./tooling-issues.ts";
+
+export type { ToolingInspection, ToolingNormalizationSource } from "./tooling-inspection.ts";
+export { toolingCompileResult } from "./tooling-inspection.ts";
 
 export type ToolingServiceRef =
   | { readonly kind: "service"; readonly name: string }
@@ -32,85 +47,77 @@ export interface NormalizedToolingTask {
   readonly source?: { readonly path: string; readonly task: string };
 }
 
-export const normalizeToolingTask = (
+export const inspectToolingTask = (
   name: string,
   task: ToolingTaskShape,
   source?: { readonly path: string },
-): Result.Result<NormalizedToolingTask, ToolingCompileError> => {
+): ToolingInspection<NormalizedToolingTask> => {
   const provenance = source === undefined ? {} : { source: { path: source.path, task: name } };
-  const fail = (message: string) =>
-    Result.fail(
-      new ToolingCompileError({
-        message,
-        tool: name,
-        ...provenance,
-        remediation: `Correct the tooling declaration for ${name}: ${message}`,
-      }),
-    );
-  const authoredEnvironments = [
-    task.env,
-    ...(task.cmds ?? []).map((step) => (typeof step === "string" ? undefined : step.env)),
-    ...Object.values(task.vars ?? {}).map((variable) =>
-      typeof variable === "object" ? variable.env : undefined,
-    ),
-  ];
-  const reserved = authoredEnvironments.flatMap((env) =>
-    Object.keys(env ?? {}).filter((key) => key === "LANDO" || key.startsWith("LANDO_")),
-  );
-  if (reserved.length > 0)
-    return fail(`Tooling env must not override reserved runtime keys: ${reserved.join(", ")}.`);
-  const input = normalizeToolingInput(name, task, source);
-  if (Result.isFailure(input)) return Result.fail(input.failure);
+  const input = inspectToolingInput(task);
+  const issues: ValidationIssue[] = Result.isFailure(input) ? [...input.failure] : [];
+  const report = (...args: Parameters<typeof toolingIssue>) => {
+    issues.push(toolingIssue(...args));
+  };
+  const inspectEnv = (env: Environment | undefined, path: ValidationIssuePath) => {
+    for (const key of Object.keys(env ?? {})) {
+      if (key === "LANDO" || key.startsWith("LANDO_")) report([...path, key], "reserved-env");
+    }
+  };
+  inspectEnv(task.env, ["env"]);
   if (task.wrapper === true) {
-    if (input.success.flags.length > 0 || input.success.args.length > 0)
-      return fail("A wrapper task declares no flags or args; remove those declarations or remove wrapper.");
-    if (!input.success.acceptsArguments)
-      return fail("A wrapper task accepts arguments; remove arguments: false or remove wrapper.");
+    if (Object.keys(task.flags ?? {}).length > 0 || Object.keys(task.args ?? {}).length > 0)
+      report(["wrapper"], "wrapper-inputs");
+    if (task.arguments === false) report(["wrapper"], "wrapper-arguments");
   }
   const serviceRef = (
     value: string | undefined,
-  ): Result.Result<ToolingServiceRef | undefined, ToolingCompileError> => {
-    if (value === undefined) return Result.succeed(undefined);
-    if (value === ":host") return Result.succeed({ kind: "host" });
-    if (!value.startsWith(":")) return Result.succeed({ kind: "service", name: value });
+    path: ValidationIssuePath,
+  ): ToolingServiceRef | undefined => {
+    if (value === undefined) return undefined;
+    if (value === ":host") return { kind: "host" };
+    if (!value.startsWith(":")) return { kind: "service", name: value };
     const key = value.slice(1);
-    const flag = input.success.flags.find((candidate) => candidate.name === key);
-    if (flag === undefined || flag.boolean)
-      return fail(`Service reference ${value} requires a declared non-boolean flag.`);
-    return Result.succeed({ kind: "flag", flag: key });
+    const flag = Object.hasOwn(task.flags ?? {}, key) ? task.flags?.[key] : undefined;
+    if (flag === undefined || flag.boolean === true) {
+      report(path, "service-flag");
+      return undefined;
+    }
+    return { kind: "flag", flag: key };
   };
-  const service = serviceRef(task.service);
-  if (Result.isFailure(service)) return Result.fail(service.failure);
+  const service = serviceRef(task.service, ["service"]);
   for (const [key, variable] of Object.entries(task.vars ?? {})) {
     if (typeof variable !== "object") continue;
-    const target = serviceRef(variable.service);
-    if (Result.isFailure(target))
-      return fail(`tooling.${name}.vars.${key}.service: ${target.failure.message}`);
+    serviceRef(variable.service, ["vars", key, "service"]);
+    inspectEnv(variable.env, ["vars", key, "env"]);
   }
   const env = { ...task.env };
-  if (task.cmd !== undefined && task.cmds !== undefined) return fail("Use cmd or cmds, not both.");
+  const conflictingCommands = task.cmd !== undefined && task.cmds !== undefined;
+  if (conflictingCommands) report(["cmds"], "command-conflict");
   const steps: NormalizedToolingStep[] = [];
   if (task.cmd !== undefined) {
     steps.push({
       cmd: typeof task.cmd === "string" ? task.cmd : task.cmd.join(" "),
       ...(typeof task.cmd === "string" ? {} : { argv: [...task.cmd] }),
-      ...(service.success === undefined ? {} : { service: service.success }),
+      ...(service === undefined ? {} : { service }),
       ...(task.dir === undefined ? {} : { dir: task.dir }),
       ...(task.user === undefined ? {} : { user: task.user }),
       env: { ...env },
     });
   }
-  for (const entry of task.cmds ?? []) {
+  for (const [index, entry] of (task.cmds ?? []).entries()) {
     const step = typeof entry === "string" ? { cmd: entry } : entry;
-    if (typeof step.cmd !== "string" || step.cmd.trim().length === 0)
-      return fail("Each command step needs a non-empty cmd.");
-    const target = serviceRef(step.service ?? task.service);
-    if (Result.isFailure(target)) return Result.fail(target.failure);
+    const path = ["cmds", index];
+    inspectEnv(step.env, [...path, "env"]);
+    const target = step.service === undefined ? service : serviceRef(step.service, [...path, "service"]);
+    if (typeof step.cmd !== "string" || step.cmd.trim().length === 0) {
+      report(typeof entry === "string" ? path : [...path, "cmd"], "empty-command");
+      continue;
+    }
     const dir = step.dir ?? task.dir;
     const user = step.user ?? task.user;
     steps.push({
       cmd: step.cmd,
-      ...(target.success === undefined ? {} : { service: target.success }),
+      ...(target === undefined ? {} : { service: target }),
       ...(dir === undefined ? {} : { dir }),
       ...(user === undefined ? {} : { user }),
       env: {
@@ -120,12 +127,19 @@ export const normalizeToolingTask = (
     });
   }
   const summary = task.description ?? task.summary;
-  if (task.wrapper === true && steps.length !== 1)
-    return fail("A wrapper task runs exactly one command; move setup into its own task or remove wrapper.");
+  if (
+    task.wrapper === true &&
+    !conflictingCommands &&
+    (task.cmd === undefined ? (task.cmds?.length ?? 0) : 1) !== 1
+  )
+    report(["wrapper"], "wrapper-command-count");
+  const [first, ...rest] = issues;
+  if (first !== undefined) return Result.fail([first, ...rest]);
+  if (Result.isFailure(input)) return Result.fail(input.failure);
   return Result.succeed({
     name,
     ...(summary === undefined ? {} : { summary }),
-    ...(service.success === undefined ? {} : { service: service.success }),
+    ...(service === undefined ? {} : { service }),
     ...(task.user === undefined ? {} : { user: task.user }),
     ...(task.dir === undefined ? {} : { dir: task.dir }),
     env,
@@ -136,6 +150,13 @@ export const normalizeToolingTask = (
     ...provenance,
   });
 };
+
+export const normalizeToolingTask = (
+  name: string,
+  task: ToolingTaskShape,
+  source?: ToolingNormalizationSource,
+): Result.Result<NormalizedToolingTask, ToolingCompileError> =>
+  toolingCompileResult(name, inspectToolingTask(name, task, source), source);
 
 export const requiresProvider = (task: NormalizedToolingTask): boolean =>
   !task.steps.every((step) => (step.service ?? task.service)?.kind === "host");

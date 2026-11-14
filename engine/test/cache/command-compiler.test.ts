@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
-import { ToolingCompileError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Schema } from "effect";
 import {
   compileAppCommands,
@@ -13,6 +13,8 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
   name: "myapp",
   ...(tooling === undefined ? {} : { tooling }),
 });
+const redact = createRedactor("secrets").redactString;
+const context = { sourcePath: "command-compiler test" };
 
 describe("compileToolingCommands", () => {
   test.each(
@@ -22,7 +24,7 @@ describe("compileToolingCommands", () => {
       Array.from({ length: 33 }, (_, index) => ({ cmd: "echo hi", service: `service${index}` })),
     ].map((cmds) => ({ cmds })),
   )("keeps tasks outside summary bounds routable without retaining partial metadata %#", ({ cmds }) => {
-    const [entry] = compileToolingCommands(landofile({ check: { cmds } }));
+    const [entry] = compileToolingCommands(landofile({ check: { cmds } }), redact, context);
     expect(entry?.id).toBe("app:check");
     expect(entry).not.toHaveProperty("runs");
   });
@@ -52,7 +54,7 @@ describe("compileToolingCommands", () => {
     ["echo $(x)", undefined],
     ["x".repeat(65), undefined],
   ] as const)("extracts only a conservative program for %j", (cmd, program) => {
-    const [entry] = compileToolingCommands(landofile({ check: { cmd, service: ":host" } }));
+    const [entry] = compileToolingCommands(landofile({ check: { cmd, service: ":host" } }), redact, context);
     expect(entry?.runs).toEqual({
       kind: "commands",
       steps: 1,
@@ -62,17 +64,20 @@ describe("compileToolingCommands", () => {
   });
 
   test("summarizes effective task steps with distinct targets in authored order", () => {
-    const [entry] = compileToolingCommands(landofile(undefined), {
-      contributed: {
-        cmds: [
-          { cmd: "a", service: "web" },
-          { cmd: "b", service: ":host" },
-          { cmd: "c", service: "web" },
-          { cmd: "d", service: ":service" },
-          { cmd: "e", service: "{{ flags.target }}" },
-          "f",
-        ],
-        flags: { service: {} },
+    const [entry] = compileToolingCommands(landofile(undefined), redact, {
+      ...context,
+      effectiveTooling: {
+        contributed: {
+          cmds: [
+            { cmd: "a", service: "web" },
+            { cmd: "b", service: ":host" },
+            { cmd: "c", service: "web" },
+            { cmd: "d", service: ":service" },
+            { cmd: "e", service: "{{ flags.target }}" },
+            "f",
+          ],
+          flags: { service: {} },
+        },
       },
     });
     expect(entry?.runs).toEqual({
@@ -96,7 +101,7 @@ describe("compileToolingCommands", () => {
       owned: { cmd: "wp", wrapper: false },
     });
     // When
-    const entries = compileToolingCommands(source);
+    const entries = compileToolingCommands(source, redact, context);
     // Then
     expect(entries.map(({ id, wrapper }) => [id, wrapper])).toEqual([
       ["app:auto", undefined],
@@ -113,15 +118,15 @@ describe("compileToolingCommands", () => {
       // Given
       const source = Schema.decodeUnknownSync(LandofileShape)({ tooling: { retired: task } });
       // When
-      const entries = compileAppCommands(source, []);
+      const entries = compileAppCommands(source, [], { redact, ...context });
       // Then
       expect(entries).toMatchObject([
         {
           id: "app:retired",
           summary: "",
-          hidden: true,
-          disabled: true,
-          input: { flags: [], args: [], acceptsArguments: true },
+          _tag: "Disabled",
+          visibility: "public",
+          sourceKind: "tooling",
         },
       ]);
     },
@@ -144,7 +149,7 @@ describe("compileToolingCommands", () => {
       },
     });
     // When
-    const [entry] = compileToolingCommands(source);
+    const [entry] = compileToolingCommands(source, redact, context);
     // Then
     expect(entry?.input).toMatchObject({
       flags: [
@@ -163,7 +168,7 @@ describe("compileToolingCommands", () => {
     // Given
     const source = landofile({ plain: { cmd: "echo plain" } });
     // When
-    const [entry] = compileToolingCommands(source);
+    const [entry] = compileToolingCommands(source, redact, context);
     // Then
     expect(entry?.input).toMatchObject({
       flags: [],
@@ -177,7 +182,7 @@ describe("compileToolingCommands", () => {
     // Given
     const source = landofile({ run: { cmd: "echo run", service, flags: { target: {} } } });
     // When
-    const [entry] = compileToolingCommands(source);
+    const [entry] = compileToolingCommands(source, redact, context);
     // Then
     expect(entry).not.toHaveProperty("service");
   });
@@ -186,20 +191,22 @@ describe("compileToolingCommands", () => {
     // Given
     const source = landofile({ run: { cmd: "echo run", service: "web" } });
     // When
-    const [entry] = compileToolingCommands(source);
+    const [entry] = compileToolingCommands(source, redact, context);
     // Then
     expect(entry?.service).toBe("web");
   });
 
-  test("propagates a compile error when a task has conflicting input metadata", () => {
+  test("retains a compile error when a task has conflicting input metadata", () => {
     // Given
     const source = landofile({ invalid: { cmd: "echo", flags: { name: { required: true, default: "x" } } } });
     // When / Then
-    expect(() => compileAppCommands(source, [])).toThrow(ToolingCompileError);
+    expect(compileAppCommands(source, [], { redact, ...context })).toMatchObject([
+      { id: "app:invalid", _tag: "Unavailable", diagnostic: { _tag: "ToolingCompileError" } },
+    ]);
   });
 
   test("returns an empty list when the Landofile has no tooling section", () => {
-    expect(compileToolingCommands(landofile(undefined))).toEqual([]);
+    expect(compileToolingCommands(landofile(undefined), redact, context)).toEqual([]);
   });
 
   test("maps tooling.<name> entries to app:<name> command index entries sorted by id", () => {
@@ -209,12 +216,20 @@ describe("compileToolingCommands", () => {
         composer: { service: "appserver", description: "Run Composer", cmd: "composer" },
         test: { service: "appserver", summary: "Tests", cmds: ["composer install", "phpunit"] },
       }),
+      redact,
+      context,
     );
 
     expect(entries).toMatchObject([
-      { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
-      { id: "app:test", summary: "Tests", hidden: false, service: "appserver" },
-      { id: "app:zoo", summary: "Z thing", hidden: false, service: "appserver" },
+      {
+        id: "app:composer",
+        summary: "Run Composer",
+        _tag: "Ready",
+        visibility: "public",
+        service: "appserver",
+      },
+      { id: "app:test", summary: "Tests", _tag: "Ready", visibility: "public", service: "appserver" },
+      { id: "app:zoo", summary: "Z thing", _tag: "Ready", visibility: "public", service: "appserver" },
     ]);
   });
 
@@ -223,7 +238,7 @@ describe("compileToolingCommands", () => {
     const source = landofile({ alpha: { cmd: "a" }, Zulu: { cmd: "z" } });
 
     // When
-    const entries = compileAppCommands(source, []);
+    const entries = compileAppCommands(source, [], { redact, ...context });
 
     // Then
     expect(entries.map((entry) => entry.id)).toEqual(["app:Zulu", "app:alpha"]);
@@ -236,6 +251,8 @@ describe("compileToolingCommands", () => {
         build: { service: "appserver", summary: "summary only", cmd: "x" },
         plain: { service: "appserver", cmd: "x" },
       }),
+      redact,
+      context,
     );
     const byId = (id: string) => entries.find((entry) => entry.id === id);
     expect(byId("app:composer")?.summary).toBe("desc");
@@ -244,8 +261,8 @@ describe("compileToolingCommands", () => {
   });
 
   test("omits the service field when the tooling task has no service binding", () => {
-    const [entry] = compileToolingCommands(landofile({ build: { cmd: "make" } }));
-    expect(entry).toMatchObject({ id: "app:build", summary: "", hidden: false });
+    const [entry] = compileToolingCommands(landofile({ build: { cmd: "make" } }), redact, context);
+    expect(entry).toMatchObject({ id: "app:build", summary: "", _tag: "Ready", visibility: "public" });
     expect(entry).not.toHaveProperty("service");
   });
 
@@ -257,12 +274,12 @@ describe("compileToolingCommands", () => {
     );
 
     // When
-    const entries = compileToolingCommands(resolved);
+    const entries = compileToolingCommands(resolved, redact, context);
 
     // Then only the included tasks are hidden
-    expect(entries.find((entry) => entry.id === "app:docs:build")?.hidden).toBe(true);
+    expect(entries.find((entry) => entry.id === "app:docs:build")?.visibility).toBe("internal");
     expect(entries.find((entry) => entry.id === "app:docs:build")).not.toHaveProperty("disabled");
-    expect(entries.find((entry) => entry.id === "app:build")?.hidden).toBe(false);
+    expect(entries.find((entry) => entry.id === "app:build")?.visibility).toBe("public");
   });
 });
 
@@ -290,9 +307,10 @@ describe("compileBunShellScriptCommands", () => {
       {
         id: "app:quality",
         summary: "Run quality checks",
-        hidden: false,
+        _tag: "Ready",
+        visibility: "public",
         service: ":host",
-        source: "bun-script",
+        sourceKind: "bun-script",
         runs: { kind: "script", path: ".lando/scripts/quality.bun.sh" },
       },
     ]);
@@ -313,8 +331,10 @@ describe("compileBunShellScriptCommands", () => {
       },
     ];
     // When
-    const entries = compileAppCommands(source, scripts);
+    const entries = compileAppCommands(source, scripts, { redact, ...context });
     // Then
-    expect(entries).toMatchObject([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
+    expect(entries).toMatchObject([
+      { id: "app:quality", summary: "Tooling wins", _tag: "Ready", visibility: "public" },
+    ]);
   });
 });

@@ -89,7 +89,16 @@ test("fresh command reader rejects revision-3 artifacts without recomputing fing
     const appRoot = join(cacheRoot, "app");
     await mkdir(appRoot);
     await writeFile(join(appRoot, ".lando.yml"), "name: app\n");
-    const entries = [{ id: "app:hello", summary: "Hello", hidden: false }];
+    const entries = [
+      {
+        id: "app:hello",
+        summary: "Hello",
+        _tag: "Ready" as const,
+        sourceKind: "tooling" as const,
+        visibility: "public" as const,
+        input: emptyToolingInput,
+      },
+    ];
     await Effect.runPromise(
       writeAppCommandCacheStrict({ cwd: appRoot, cacheRoot, landofile: { name: "app" }, entries }),
     );
@@ -108,3 +117,8 @@ test("fresh command reader rejects revision-3 artifacts without recomputing fing
     await rm(cacheRoot, { recursive: true, force: true });
   }
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

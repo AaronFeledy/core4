@@ -111,19 +111,30 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
     test("route app command overrides through the compiled dispatcher", async () => {
       const cwd = await mkdtemp(join(tmpdir(), "lando-compiled-app-alias-"));
       const cacheRoot = join(cwd, "cache");
+      const env = { ...process.env, LANDO_USER_CACHE_ROOT: cacheRoot };
       try {
         await mkdir(join(cwd, ".lando", "scripts"), { recursive: true });
         await writeFile(join(cwd, ".lando.yml"), "name: compiled-alias\n");
         await writeFile(join(cwd, ".lando", "scripts", "greet.bun.sh"), "echo -n compiled-alias-ok\n");
         await Effect.runPromise(
           writeAppCommandCacheStrict({
+            env,
             landofile: {
               name: "compiled-alias",
               commandAliases: {
                 custom: { start: "app:greet", bun: "app:greet", x: "app:greet" },
               },
             },
-            entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+            entries: [
+              {
+                id: "app:greet",
+                summary: "Greet",
+                _tag: "Ready",
+                sourceKind: "bun-script",
+                visibility: "public",
+                input: emptyToolingInput(),
+              },
+            ],
             cwd,
             cacheRoot,
           }),
@@ -137,7 +148,6 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
           if (payload === null) throw new Error(`Could not decode app command cache at ${path}`);
           await writeFile(path, encodeAppCommandIndex({ ...payload, landoVersion: compiledVersion }));
         }
-        const env = { ...process.env, LANDO_USER_CACHE_ROOT: cacheRoot };
 
         const results = await Promise.all(
           ["start", "bun", "x"].map((alias) => runCommand([binaryPath, alias, "--format=json"], cwd, env)),
@@ -150,3 +160,5 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
     }, 120_000);
   },
 );
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

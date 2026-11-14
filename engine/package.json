@@ -219,6 +219,7 @@
     "./services/host-opener": "./src/services/host-opener.ts",
     "./services/json-fetch": "./src/services/json-fetch.ts",
     "./services/landofile-live": "./src/services/landofile-live.ts",
+    "./services/plan-redaction": "./src/services/plan-redaction.ts",
     "./services/planner": "./src/services/planner.ts",
     "./services/privilege": "./src/services/privilege.ts",
     "./services/process-runner": "./src/services/process-runner.ts",
@@ -279,6 +280,7 @@
     "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",
     "./testing/output-provider": "./src/testing/output-provider.ts",
     "./testing/state-store": "./src/testing/state-store.ts",
+    "./tooling/diagnostics": "./src/tooling/diagnostics.ts",
     "./version": "./src/version.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

@@ -72,8 +72,10 @@ import {
 import { dispatchPluginUnavailable, tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveTopLevelAliases } from "./spec/command-spec";
+import { refuseToolingInvocation } from "./tooling-refusal";
 import { toolingTypeableName } from "./tooling-route";
-import { toolingRouteFailure, toolingVersionRequested, unavailableScriptError } from "./tooling-router";
+import { toolingRouteFailure, toolingVersionRequested } from "./tooling-router";
+import { unavailableToolingError } from "./tooling-unavailable";
 import { setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
@@ -186,6 +188,18 @@ const runCompiledCli = async (
   const split = splitInvocation(rawArgv, head, policy);
   onLandoGlobals(split.globals);
   const tokens = split.command;
+  if (owner.kind === "tooling" && owner.refusal !== undefined) {
+    await refuseToolingInvocation({
+      route: owner.route,
+      refusal: owner.refusal,
+      split,
+      head,
+      rawArgv,
+      context,
+      configGlobals,
+    });
+    return;
+  }
   const toolingTaskName =
     owner.kind === "tooling"
       ? toolingTypeableName(owner.route.commandId, owner.route.aliasPolicy).primary
@@ -393,7 +407,7 @@ const runCompiledCli = async (
     case "tooling": {
       const route = owner.route;
       if (split.help) {
-        const unavailable = await Effect.runPromise(unavailableScriptError(route));
+        const unavailable = await Effect.runPromise(unavailableToolingError(route));
         if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
         else if (unavailable !== undefined)
           await renderAliasResolutionFailure(unavailable, context, route.commandId);
@@ -410,6 +424,18 @@ const runCompiledCli = async (
         return;
       }
       if (toolingVersionRequested(route, tokens.argv)) {
+        if (route.disabled) {
+          await routeResolvedTooling(route, tokens.argv, {
+            ...(signal === undefined ? {} : { signal }),
+            context,
+          });
+          return;
+        }
+        const unavailable = await Effect.runPromise(unavailableToolingError(route));
+        if (unavailable !== undefined) {
+          await renderAliasResolutionFailure(unavailable, context, route.commandId);
+          return;
+        }
         const name = toolingTaskName ?? route.commandId;
         await renderPreCommandFailure({
           context,

@@ -16,7 +16,7 @@
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import type { RedactionService } from "@lando/redaction/service";
 import * as RendererStdio from "@lando/renderer/stdio";
 import type {
   ConfigError,
@@ -26,7 +26,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
-import { Effect, Exit, type Layer, Option, type Result } from "effect";
+import { Effect, Exit, type Layer, type Result } from "effect";
 import { serviceLayer } from "../../../mcp-command-executor";
 import { resources } from "../../../mcp-resources";
 import {
@@ -41,17 +41,17 @@ import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import type { ResultFormat } from "../../format-flags";
 import { runWithRendererHandling } from "../../renderer-boundary";
 import type { McpAppGenerations } from "./mcp-app-generations";
-import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
+import { type McpListResult, McpListResultSchema, renderMcpListResult } from "./mcp-list";
+import { listMcpCatalog } from "./mcp-list-catalog";
 import {
   type McpCommandRegistry,
   type ResolvedMcpOptions,
-  defaultIdsOf,
   knownIdsOf,
   mcpRegistryFromBuiltIns,
-  pendingAllowanceDiagnostics,
   validateMcpAllowlistIds,
 } from "./mcp-registry";
 import { openMcpSession, sessionAppRegistry } from "./mcp-session";
+import { readMcpToolingCatalog } from "./mcp-tooling-catalog";
 
 export {
   type McpCommandRegistry,
@@ -124,9 +124,13 @@ const resolveOptions = Effect.fnUntraced(function* (
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
   apps: McpAppGenerations,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
 ): McpRuntimeConfigShape => ({
+  sourceEnv: { ...sourceEnv },
   commandEntries: registry.commandEntries,
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
+  ...(registry.toolingUnavailable === undefined ? {} : { toolingUnavailable: registry.toolingUnavailable }),
+  toolingCatalog: readMcpToolingCatalog,
   // Per-app owners are authorized against the reviewed defaults by their own provenance.
   defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
   resources,
@@ -138,19 +142,7 @@ export const mcpListResult = Effect.fn("Mcp.list")(function* (
   flags: McpCommandFlags,
 ): Effect.fn.Return<McpListResult, McpToolInputError, ConfigService> {
   const { options, pending } = yield* resolveOptions(registry, flags);
-  const redaction = yield* Effect.serviceOption(RedactionService);
-  const redactor = Option.isSome(redaction)
-    ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
-    : createStandaloneRedactor("secrets", { sourceEnv: process.env });
-  return buildMcpListResult({
-    defaultAllowlist: defaultIdsOf(registry),
-    commandEntries: registry.commandEntries,
-    ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
-    allow: options.allow,
-    deny: options.deny,
-    tooling: options.tooling,
-    diagnostics: [...(registry.diagnostics ?? []), ...pendingAllowanceDiagnostics(pending, redactor)],
-  });
+  return yield* listMcpCatalog(registry, options, pending);
 });
 
 /**
@@ -172,6 +164,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
       commandEntries: registry.commandEntries.filter((entry) => entry.plugin === undefined),
     },
     apps,
+    (yield* CliInvocation).env,
   );
   const catalogOptions = {
     allow: options.allow,
@@ -205,8 +198,6 @@ export const dispatchMcpCommand = async (params: {
   >;
   /** The retained host runtime and the per-app generation factory every tool call builds from. */
   readonly sessionRuntime: Result.Result<LandoGenerationRuntime, LandoRuntimeBootstrapError>;
-  /** Runs before the tooling catalog is listed; the host rebuilds a non-fresh command index here. */
-  readonly prepareTooling?: Effect.Effect<void>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
@@ -220,13 +211,12 @@ export const dispatchMcpCommand = async (params: {
     exitCode = code;
     (params.context?.setExitCode ?? processInvocationDefaults.setExitCode)(code);
   };
-  const prepareTooling = params.prepareTooling ?? Effect.void;
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
       const catalog = yield* BuiltInCommandCatalog;
       const builtIns = mcpRegistryFromBuiltIns(catalog.entries);
       const tooling = yield* toolingEnabled(params.flags);
-      const session = yield* openMcpSession(params.sessionRuntime, builtIns, prepareTooling);
+      const session = yield* openMcpSession(params.sessionRuntime, builtIns);
       const registry = yield* sessionAppRegistry(builtIns, session, tooling);
       return yield* mcpListResult(registry, params.flags);
     }).pipe(Effect.scoped);
@@ -258,7 +248,7 @@ export const dispatchMcpCommand = async (params: {
           const catalog = yield* BuiltInCommandCatalog;
           const builtIns = mcpRegistryFromBuiltIns(catalog.entries);
           const tooling = yield* toolingEnabled(params.flags);
-          const session = yield* openMcpSession(params.sessionRuntime, builtIns, prepareTooling);
+          const session = yield* openMcpSession(params.sessionRuntime, builtIns);
           // A session app that cannot build still serves built-ins; its calls report the failure.
           const sessionApp = yield* Effect.exit(sessionAppRegistry(builtIns, session, tooling));
           const registry = Exit.isSuccess(sessionApp) ? sessionApp.value : builtIns;

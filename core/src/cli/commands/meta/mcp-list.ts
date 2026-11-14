@@ -1,6 +1,7 @@
 import { isMcpDestructiveCommand } from "@lando/mcp/allowlist";
 import { computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import type { McpCommandEntry } from "@lando/mcp/registry";
+import { McpDiagnostic } from "@lando/mcp/service";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import { Schema } from "effect";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
@@ -25,11 +26,12 @@ export const McpListResultSchema = Schema.Struct({
   tools: Schema.Array(McpListToolSchema),
   diagnostics: Schema.Array(
     Schema.Struct({
-      _tag: Schema.String,
-      message: Schema.String,
-      remediation: Schema.optionalKey(Schema.String),
+      ...McpDiagnostic.fields,
+      commandId: Schema.optionalKey(Schema.String),
+      kind: Schema.optionalKey(Schema.Literals(["tooling", "plugin"])),
     }),
   ),
+  omittedDiagnosticCount: Schema.optionalKey(Schema.Number),
 });
 
 export type McpListTool = typeof McpListToolSchema.Type;
@@ -55,6 +57,7 @@ export interface BuildMcpListResultInput {
   readonly deny?: ReadonlyArray<string> | undefined;
   readonly tooling?: boolean | undefined;
   readonly diagnostics?: McpListResult["diagnostics"];
+  readonly omittedDiagnosticCount?: number;
 }
 
 const sourceFor = (id: string, input: BuildMcpListResultInput, toolingIds: ReadonlySet<string>): string => {
@@ -92,6 +95,9 @@ export const buildMcpListResult = (input: BuildMcpListResultInput): McpListResul
   return {
     tools: [...toolsById.values()].sort((left, right) => left.id.localeCompare(right.id)),
     diagnostics: input.diagnostics ?? [],
+    ...(input.omittedDiagnosticCount === undefined
+      ? {}
+      : { omittedDiagnosticCount: input.omittedDiagnosticCount }),
   };
 };
 

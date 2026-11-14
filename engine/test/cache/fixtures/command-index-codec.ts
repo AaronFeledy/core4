@@ -23,12 +23,21 @@ export const input = Result.getOrThrowWith(
   (error) => error,
 );
 export const encodedInput = Schema.encodeSync(ToolingInputDeclaration)(input);
-export const entry = { id: "app:deploy", summary: "Deploy", hidden: false, service: "appserver", input };
+export const entry = {
+  id: "app:deploy",
+  summary: "Deploy",
+  _tag: "Ready" as const,
+  sourceKind: "tooling" as const,
+  visibility: "public" as const,
+  service: "appserver",
+  input,
+};
 export const app = {
   schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
   landoVersion: "4.0.0",
   appName: "codec",
   sourceFile: "/app/.lando.yml",
+  sourceEnvironmentHash: sha256Hex("environment"),
   sourceContentHash: sha256Hex("name: codec\n"),
   sourceLocalIncludePaths: ["/app/.lando.local.yml"],
   sourceReferencedFiles: [
@@ -42,7 +51,17 @@ export const app = {
   entriesFingerprint: sha256Hex("entries"),
   aliasPolicy: { enabled: true, disabled: ["deploy"], custom: { ship: "deploy" } },
   generatedAtMs: 20,
-  entries: [entry, { id: "app:check", summary: "Check", hidden: true, source: "bun-script" }],
+  entries: [
+    entry,
+    {
+      id: "app:check",
+      summary: "Check",
+      _tag: "Ready",
+      sourceKind: "bun-script",
+      visibility: "internal",
+      input: Result.getOrThrowWith(normalizeToolingInput("check", {}), (error) => error),
+    },
+  ],
 } satisfies AppCommandIndexPayload;
 
 // Deliberately bypass the typed encoder to model untrusted persisted v8 objects.

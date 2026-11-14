@@ -45,7 +45,9 @@ const cache = (fixture: Fixture) =>
         {
           id: "app:known",
           summary: "Known",
-          hidden: false,
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
           input: Result.getOrThrowWith(normalizeToolingInput("known", {}), (error) => error),
         },
       ],

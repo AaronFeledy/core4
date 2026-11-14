@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
-import { getLandofileValueSource } from "@lando/landofile/validation";
 import { RedactionService } from "@lando/redaction/service";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
@@ -44,6 +43,7 @@ import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-auth
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
+import { projectToolingDiagnostic } from "../tooling/diagnostics.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
 import { runBracketedInvocations } from "./tooling-bracket.ts";
@@ -71,6 +71,7 @@ export interface RunToolingOptions {
 export type RunToolingResult = ToolingResult & {
   readonly redactionTokens?: ReadonlyArray<string>;
 };
+export { protectSuppliedValues } from "./tooling-input-admission.ts";
 export type { ToolingResult };
 
 export const runToolingRedactionTokens = (result: RunToolingResult): ReadonlyArray<string> =>
@@ -147,7 +148,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     plan,
   );
   const landofile = serviceScoped.document;
-  const { tooling, sites } = yield* invocationToolingForPlan(
+  const { tooling, sites, toolingSource } = yield* invocationToolingForPlan(
     serviceScoped,
     plan,
     readProxyDefaultDomain(globalConfig),
@@ -164,19 +165,30 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       const scriptResult = yield* runBunShellTooling(options, appRoot);
       if (scriptResult !== undefined) return scriptResult;
     }
+    const planValues = yield* registerPlanRedaction(plan);
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactor = Option.isSome(redaction)
+      ? yield* redaction.value.forProfile("secrets")
+      : createRedactor("secrets", { values: planValues.substring, wholeTokenValues: planValues.wholeToken });
     return yield* Effect.fail(
-      new ToolingCompileError({
-        message: `Unknown tooling command: ${options.name}.`,
-        tool: options.name,
-        remediation: "Check the task name with `lando help`.",
-      }),
+      new ToolingCompileError(
+        projectToolingDiagnostic(
+          {
+            _tag: "ToolingCompileError",
+            message: `Unknown tooling command: ${options.name}.`,
+            tool: options.name,
+            remediation: "Check the task name with `lando help`.",
+            issues: [],
+            omittedIssueCount: 0,
+          },
+          redactor,
+        ),
+      ),
     );
   }
 
   const source = {
-    path:
-      getLandofileValueSource(loadedLandofile.document, ["tooling", toolingLookupKey, "disabled"])?.file ??
-      join(appRoot ?? target?.root ?? String(plan.root), LANDOFILE_NAME),
+    ...toolingSource(toolingLookupKey),
     task: toolingLookupKey,
   };
   const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(

@@ -48,6 +48,12 @@ export const CommandOutput = Schema.Struct({
 export type CommandOutput = typeof CommandOutput.Type;
 
 export const CommandWarning = Schema.Struct({
+  issues: Schema.optionalKey(Schema.Array(ValidationIssue)).annotate({
+    description: "Bounded structured tooling findings, when this warning describes an unavailable task.",
+  }),
+  omittedIssueCount: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))).annotate({
+    description: "Number of tooling findings omitted from this warning's diagnostic budget.",
+  }),
   code: Schema.String,
   message: Schema.String,
   remediation: Schema.optionalKey(Schema.String),

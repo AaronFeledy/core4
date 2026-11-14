@@ -394,6 +394,66 @@ test.each([false, { disabled: true }])(
   },
 );
 
+test("fresh authored declaration errors retain both winning sources over cached tooling", async () => {
+  const root = process.cwd();
+  const f = fixture({ cmd: "echo stale" });
+  f.setTooling({ custom: { cmd: "echo stale" } });
+  f.setLandofile(
+    await Effect.runPromise(
+      loadAuthoredDocuments(
+        [
+          {
+            file: `${root}/.lando.yml`,
+            value: {
+              name: "tooling-test",
+              tooling: { custom: { cmd: "echo", flags: { first: { alias: "q" } } } },
+            },
+          },
+          {
+            file: `${root}/.lando.local.yml`,
+            value: { tooling: { custom: { flags: { second: { alias: "q" } } } } },
+          },
+          {
+            file: `${root}/.lando.user.yml`,
+            value: { tooling: { custom: { description: "new task root" } } },
+          },
+        ],
+        { appRoot: root, file: `${root}/.lando.yml` },
+      ),
+    ),
+  );
+  const result = await f.run();
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ToolingCompileError",
+      omittedIssueCount: 0,
+      issues: [
+        {
+          reason: "alias-collision",
+          path: ["tooling", "custom", "flags", "second", "alias"],
+          source: {
+            file: `${root}/.lando.local.yml`,
+            layer: "local",
+            path: ["tooling", "custom", "flags", "second", "alias"],
+          },
+          related: [
+            {
+              path: ["tooling", "custom", "flags", "first", "alias"],
+              source: {
+                file: `${root}/.lando.yml`,
+                layer: "canonical",
+                path: ["tooling", "custom", "flags", "first", "alias"],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+  expect(f.selections).toHaveLength(0);
+});
+
 test("resolves app and proxy expressions in a freshly authored task", async () => {
   // Given a fresh declaration carrying deferred-scope expressions
   const f = fixture({

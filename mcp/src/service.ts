@@ -20,18 +20,31 @@ import {
   makeMcpAllowPolicy,
   toDescriptor,
 } from "./catalog";
+import type { McpDiagnostic, McpToolingCatalog } from "./diagnostics";
 import { type MemoryPressureLevel, handleMemoryPressure } from "./memory-pressure";
 import { McpCommandExecutor } from "./port";
 import type { McpCommandEntry } from "./registry";
 import type { McpResourceEntry } from "./resources";
 import { serveSession } from "./session";
 
+export {
+  McpDiagnostic,
+  McpDiagnostics,
+  type McpToolingCatalog,
+  boundDiagnostics,
+  pluginDiagnostics,
+} from "./diagnostics";
+
 export type { McpResourceEntry } from "./resources";
 export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 
 export interface McpRuntimeConfigShape {
+  /** Invocation environment; omitted embedding input is captured when the service layer is built. */
+  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry>;
+  readonly toolingUnavailable?: readonly McpDiagnostic[];
+  readonly toolingCatalog?: (generation: McpAppGeneration) => Effect.Effect<McpToolingCatalog, unknown>;
   readonly defaultAllowlist: ReadonlyArray<string>;
   readonly resources?: ReadonlyArray<McpResourceEntry>;
   readonly version?: string;
@@ -52,20 +65,19 @@ const sessionEntries = (
   options: McpCatalogOptions | undefined,
 ): ReadonlyArray<McpCommandEntry> =>
   options?.tooling === true
-    ? [...config.commandEntries, ...(config.toolingEntries ?? [])]
+    ? [
+        ...config.commandEntries,
+        ...(config.toolingEntries ?? []).map((entry) => ({ ...entry, tooling: true })),
+      ]
     : config.commandEntries;
 
-/** The session allow policy; tooling ids join `allow` when tooling is on. */
 const sessionAllowPolicy = (
   config: McpRuntimeConfigShape,
   options: McpCatalogOptions | undefined,
 ): McpAllowPolicy =>
   makeMcpAllowPolicy({
     defaults: config.defaultAllowlist,
-    allow:
-      options?.tooling === true
-        ? [...(options.allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
-        : options?.allow,
+    allow: options?.allow,
     deny: options?.deny,
   });
 
@@ -94,6 +106,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
     this,
     Effect.gen(function* () {
       const config = yield* McpRuntimeConfig;
+      const sourceEnv = { ...(config.sourceEnv ?? process.env) };
       const redaction = yield* RedactionService;
       const executor = yield* McpCommandExecutor;
       const events = yield* Effect.serviceOption(EventService);
@@ -133,7 +146,6 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           closeIdleSockets: () => {},
         });
       const serve = Effect.fn("McpService.serve")(function* (options: McpServeOptions) {
-        const sourceEnv = { ...process.env };
         const resultRedactor = (tokens: ReadonlyArray<string>) =>
           redaction.forProfile("secrets", { sourceEnv, authoritativeTokens: tokens });
         const redactor = yield* resultRedactor([]);

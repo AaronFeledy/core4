@@ -1,6 +1,6 @@
 /** Cold-path help adapters avoid loading OCLIF. */
 
-import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
+import { type AppCommandIndexPayload, commandIndexPresentation } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import { encodeCommandResult } from "@lando/sdk/command-result";
@@ -74,6 +74,7 @@ const isBuiltInRegistryId = (id: string): boolean => Object.hasOwn(COMMAND_REGIS
 export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonly ThisAppHelpRow[] => {
   const aliasPolicy = cache.aliasPolicy;
   return cache.entries
+    .map(commandIndexPresentation)
     .filter((entry) => !entry.hidden && !isBuiltInRegistryId(entry.id))
     .map((entry) => {
       const name = typeableName({

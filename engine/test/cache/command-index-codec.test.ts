@@ -16,35 +16,92 @@ const withArg = (patch: object) => ({
 const unavailable = {
   id: "app:broken",
   summary: "Unavailable script",
-  hidden: false,
-  source: "bun-script",
-  loadError: {
+  _tag: "Unavailable",
+  visibility: "public",
+  sourceKind: "bun-script",
+  diagnostic: {
     _tag: "BunShellScriptFrontMatterError",
     message: "Missing front matter",
     remediation: "Run lando app:config:lint.",
   },
 } as const;
-test("roundtrips an unavailable script without an executable input declaration", () => {
+const disabled = {
+  _tag: "Disabled",
+  id: "app:retired",
+  summary: "Retired",
+  sourceKind: "tooling",
+  visibility: "public",
+  source: { path: "/app/.lando.local.yml", task: "retired" },
+} as const;
+test.each([
+  ...["source", "diagnostic", "hidden", "disabled", "loadError", "extra"].map((key) => ({ row: entry, key })),
+  ...["input", "service", "wrapper", "runs", "diagnostic", "hidden", "disabled", "loadError", "extra"].map(
+    (key) => ({ row: disabled, key }),
+  ),
+  ...["input", "service", "wrapper", "runs", "source", "hidden", "disabled", "loadError", "extra"].map(
+    (key) => ({ row: unavailable, key }),
+  ),
+])("rejects forbidden $key on availability arm %#", ({ row, key }) => {
+  expect(
+    decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [{ ...row, [key]: undefined }] })),
+  ).toBeNull();
+});
+test.each(["source", "_tag", "visibility", "sourceKind"])("requires disabled %s", (key) => {
+  expect(
+    decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [without(disabled, key)] })),
+  ).toBeNull();
+});
+test("rejects cyclic unallowlisted diagnostic content without throwing", () => {
+  const cause: { cause?: object } = {};
+  cause.cause = cause;
   expect(
     decodeAppCommandIndex(
       currentAbiBytes("LCAC", {
         ...app,
-        entries: [unavailable],
-        sourceScripts: [{ relativePath: "broken.bun.sh", invalid: "digest" }],
+        entries: [{ ...unavailable, diagnostic: { ...unavailable.diagnostic, cause } }],
       }),
-    )?.entries,
-  ).toEqual([unavailable]);
+    ),
+  ).toBeNull();
 });
+test.each(["bun-script", "tooling"] as const)(
+  "roundtrips unavailable source %s without executable metadata",
+  (source) => {
+    const row = { ...unavailable, sourceKind: source };
+    expect(
+      decodeAppCommandIndex(
+        currentAbiBytes("LCAC", {
+          ...app,
+          entries: [row],
+          sourceScripts: [{ relativePath: "broken.bun.sh", invalid: "digest" }],
+        }),
+      )?.entries,
+    ).toEqual([row]);
+  },
+);
 test.each([
   { input: encodedInput },
   { wrapper: true },
-  { source: undefined },
-  { loadError: null },
-  { loadError: { _tag: "Error", message: "x".repeat(1025) } },
-  { loadError: { _tag: "Error", message: "broken", remediation: "x".repeat(1025) } },
+  { disabled: true, hidden: true },
+  { service: "web" },
+  { runs: { kind: "script", path: ".lando/scripts/test.bun.sh" } },
+  { diagnostic: null },
+  { diagnostic: { _tag: "Error", message: "x".repeat(1025) } },
+  { diagnostic: { _tag: "Error", message: "broken", remediation: "x".repeat(1025) } },
 ])("rejects an executable or malformed unavailable script %#", (patch) => {
   expect(
     decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [{ ...unavailable, ...patch }] })),
+  ).toBeNull();
+});
+
+test("rejects a disabled unavailable tooling row", () => {
+  const toolingUnavailable = { ...unavailable, sourceKind: "tooling" };
+  expect(
+    decodeAppCommandIndex(
+      currentAbiBytes("LCAC", {
+        ...app,
+        entries: [{ ...toolingUnavailable, disabled: true, hidden: true }],
+      }),
+    ),
   ).toBeNull();
 });
 
@@ -57,20 +114,23 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         expect(decode(currentAbiBytes(magic, value))).toBeNull();
       },
     );
-    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n])("rejects old header %s with a current body", (version) => {
-      // Given
-      const bytes = currentAbiBytes(magic, payload);
-      new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, version, true);
-      // When / Then
-      expect(decode(bytes)).toBeNull();
-    });
+    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n, 11n])(
+      "rejects old header %s with a current body",
+      (version) => {
+        // Given
+        const bytes = currentAbiBytes(magic, payload);
+        new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, version, true);
+        // When / Then
+        expect(decode(bytes)).toBeNull();
+      },
+    );
     test("rejects a truncated v8 body under the current header", () => {
       // Given
       const bytes = currentAbiBytes(magic, payload).subarray(0, 15);
       // When / Then
       expect(decode(bytes)).toBeNull();
     });
-    test.each(["schemaVersion", "landoVersion", "generatedAtMs", "entries"])(
+    test.each(["schemaVersion", "landoVersion", "generatedAtMs", "entries", "sourceEnvironmentHash"])(
       "rejects missing required field %s",
       (key) => {
         // Given
@@ -82,13 +142,18 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
     test.each([
       { schemaVersion: 5 },
       { landoVersion: null },
+      { sourceEnvironmentHash: null },
+      { sourceEnvironmentHash: "" },
+      { sourceEnvironmentHash: "not-a-digest" },
       { generatedAtMs: Number.NaN },
       { generatedAtMs: Number.POSITIVE_INFINITY },
       { entries: null },
       { entries: {} },
       { entries: [null] },
       { entries: new Array(1) },
-      ...["id", "summary", "hidden"].map((key) => ({ entries: [without(entry, key)] })),
+      ...["_tag", "id", "summary", "sourceKind", "visibility", "input"].map((key) => ({
+        entries: [without(entry, key)],
+      })),
       ...[{ id: 1 }, { summary: false }, { hidden: "false" }, { service: null }, { source: "shell" }].map(
         (patch) => ({ entries: [{ ...entry, ...patch }] }),
       ),
@@ -182,8 +247,15 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       const expected = {
         ...payload,
         entries: [
-          { ...entry, hidden: true },
-          { ...entry, hidden: true, disabled: true as const },
+          { ...entry, visibility: "internal" as const },
+          {
+            id: entry.id,
+            summary: entry.summary,
+            sourceKind: "tooling" as const,
+            visibility: "public" as const,
+            _tag: "Disabled" as const,
+            source: { path: ".lando.yml", task: "deploy" },
+          },
         ],
       };
       // When / Then

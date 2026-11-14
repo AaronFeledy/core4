@@ -1,3 +1,4 @@
+import { ToolingCompileError } from "@lando/sdk/errors";
 import { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { PluginCommandDiagnostic } from "./plugin-command-catalog";
@@ -56,6 +57,15 @@ const fields = {
   extras: Schema.Array(Schema.String),
   summary: Schema.String,
 };
+const toolingDiagnostic = Schema.Struct({
+  _tag: ToolingCompileError.fields._tag,
+  tool: ToolingCompileError.fields.tool,
+  source: ToolingCompileError.fields.source,
+  message: ToolingCompileError.fields.message,
+  remediation: ToolingCompileError.fields.remediation,
+  issues: ToolingCompileError.fields.issues,
+  omittedIssueCount: ToolingCompileError.fields.omittedIssueCount,
+});
 
 const builtInDescriptor = Schema.Struct({
   ...fields,
@@ -66,7 +76,7 @@ const builtInDescriptor = Schema.Struct({
 const toolingDescriptor = Schema.Struct({
   ...fields,
   source: Schema.Literal("tooling"),
-  loadError: Schema.optionalKey(PluginCommandDiagnostic),
+  loadError: Schema.optionalKey(Schema.Union([toolingDiagnostic, PluginCommandDiagnostic])),
   input: Schema.optionalKey(ToolingInputDeclaration),
   runs: Schema.optionalKey(ToolingRunSummary).annotate({
     description: "Bounded summary of what this task runs.",

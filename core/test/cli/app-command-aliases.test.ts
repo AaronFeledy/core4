@@ -24,7 +24,16 @@ const withAliasCache = async <T>(
     await Effect.runPromise(
       writeAppCommandCacheStrict({
         landofile: { name: "alias-app", commandAliases },
-        entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+        entries: [
+          {
+            id: "app:greet",
+            summary: "Greet",
+            _tag: "Ready",
+            sourceKind: "bun-script",
+            visibility: "public",
+            input: emptyToolingInput(),
+          },
+        ],
         cwd: root,
         cacheRoot,
       }),
@@ -303,3 +312,5 @@ test("explicit own custom key constructor resolves", async () => {
     });
   });
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

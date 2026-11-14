@@ -1,0 +1,63 @@
+name: lint-tooling-declarations
+toolingIncludes:
+  ops:
+    file: ./ops/.lando.tasks.yml
+    internal: true
+tooling:
+  ok:
+    description: A healthy task
+    service: ":host"
+    cmd: echo ok
+  dup:
+    description: Two flags share one alias
+    service: ":host"
+    flags:
+      name:
+        alias: n
+      note:
+        alias: n
+    cmd: echo dup
+  wrapped:
+    description: A wrapper with two commands
+    service: ":host"
+    wrapper: true
+    cmds:
+      - echo first
+      - echo second
+  ordered:
+    description: Two arguments share one position
+    service: ":host"
+    args:
+      first:
+        order: 0
+      second:
+        order: 0
+    cmd: echo ordered
+  picky:
+    description: A default outside its choices
+    service: ":host"
+    flags:
+      stage:
+        choices:
+          - dev
+          - prod
+        default: staging
+    cmd: echo picky
+  routed:
+    description: A service picked from an undeclared flag
+    service: ":target"
+    cmd: echo routed
+  reserved:
+    description: An env key Lando owns
+    service: ":host"
+    env:
+      LANDO_MODE: ci
+    cmd: echo reserved
+  retired:
+    description: A disabled task with the same wrapper mistake
+    disabled: true
+    service: ":host"
+    wrapper: true
+    cmds:
+      - echo first
+      - echo second

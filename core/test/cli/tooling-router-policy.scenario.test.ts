@@ -53,8 +53,18 @@ const writeFreshCache = async (
 ): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: fixture.env,
       landofile,
-      entries: [{ id: `app:${taskName}`, summary: `Policy test ${taskName}`, hidden: false }],
+      entries: [
+        {
+          id: `app:${taskName}`,
+          summary: `Policy test ${taskName}`,
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
       now: () => 100,
@@ -189,3 +199,5 @@ test("Given a remote include without a fragment path, command-not-found reports 
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }
 }, 30_000);
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

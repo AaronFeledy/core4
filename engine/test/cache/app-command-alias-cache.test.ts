@@ -51,7 +51,16 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
       await Effect.runPromise(
         writeAppCommandCacheStrict({
           landofile,
-          entries: [{ id: "app:known", summary: "Known task", hidden: false }],
+          entries: [
+            {
+              id: "app:known",
+              summary: "Known task",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput,
+            },
+          ],
           cwd: appRoot,
           cacheRoot,
         }),
@@ -84,7 +93,16 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
       await Effect.runPromise(
         writeAppCommandCacheStrict({
           landofile,
-          entries: [{ id: "app:known", summary: "Known task", hidden: false }],
+          entries: [
+            {
+              id: "app:known",
+              summary: "Known task",
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
+              input: emptyToolingInput,
+            },
+          ],
           cwd: appRoot,
           cacheRoot,
         }),
@@ -108,7 +126,16 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
         name: "alias-reuse-app",
         commandAliases: { enabled: false, custom: { hi: "app:known" } },
       };
-      const entries = [{ id: "app:known", summary: "Known task", hidden: false }] as const;
+      const entries = [
+        {
+          id: "app:known",
+          summary: "Known task",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ] as const;
       await Effect.runPromise(
         writeAppCommandCacheStrict({ landofile, entries, cwd: appRoot, cacheRoot, now: () => 41 }),
       );
@@ -166,3 +193,8 @@ describe("writeAppCommandCacheStrict command alias policy", () => {
     });
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

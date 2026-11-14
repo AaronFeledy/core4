@@ -1,34 +1,21 @@
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
-import { getLandofileValueSource } from "@lando/landofile/validation";
 import { suggestionForUnknownKey } from "@lando/sdk/schema";
 import { reservedToolingNameConflict } from "../operations/reserved-aliases.ts";
-import { compareOrdinal, compileEffectiveTooling } from "./effective-tooling.ts";
 import { reservedEventCollisions, validEventNames } from "./event-names.ts";
 import type { ResolvedLandofile } from "./event-set.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
+import { enabledToolingEntries } from "./tooling-composition.ts";
+import { toolingIssueSource } from "./tooling-provenance.ts";
 
 export const toolingAndEventIssues = (resolution: ResolvedLandofile): ReadonlyArray<PlannerIssue> => {
   const { landofile } = resolution;
-  const services = resolution.services.map((entry) => ({
-    name: entry.name,
-    serviceTypeId: entry.serviceType.id,
-    ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
-  }));
-  const effectiveTooling = compileEffectiveTooling({ landofile, services });
+  const { tasks: effectiveTooling, provenance } = resolution.toolingResolution;
   const internal = new Set(getInternalToolingTasks(effectiveTooling));
-  const contributors = [...services].sort((left, right) => compareOrdinal(left.name, right.name));
   const issues: PlannerIssue[] = [];
-  for (const [name, task] of Object.entries(effectiveTooling)) {
-    if (internal.has(name) || task.disabled === true) continue;
-    let serviceTypeId: string | undefined;
-    let sourcePath = ["tooling", name];
-    if (!Object.hasOwn(landofile.tooling ?? {}, name)) {
-      const contributor = contributors.find((service) => Object.hasOwn(service.tooling ?? {}, name));
-      if (contributor === undefined) continue;
-      serviceTypeId = contributor.serviceTypeId;
-      sourcePath = ["services", contributor.name, "type"];
-    }
-    const source = getLandofileValueSource(landofile, sourcePath);
+  for (const [name] of enabledToolingEntries(effectiveTooling)) {
+    if (internal.has(name)) continue;
+    const serviceTypeId = provenance[name]?.serviceTypeId;
+    const source = toolingIssueSource(provenance, name, []);
     const issue = (message: string, suggestion: string): PlannerIssue => ({
       rule: "landofile.tooling",
       path: ["tooling", name],

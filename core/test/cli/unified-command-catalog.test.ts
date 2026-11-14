@@ -34,7 +34,16 @@ test("plugin aliases yield to built-ins, core topics, canonical ids and tooling"
       },
     ],
     {
-      entries: [{ id: "app:inspect", summary: "Tooling inspect.", hidden: false }],
+      entries: [
+        {
+          id: "app:inspect",
+          summary: "Tooling inspect.",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
     },
   );
   expect(catalog.resolve("start")?.id).toBe("app:start");
@@ -147,3 +156,5 @@ test("manifest summary enriches omitted module summary and mismatch stays comman
   });
   expect((await catalog.list()).rows).toHaveLength(2);
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

@@ -51,6 +51,7 @@ test.each([
   { flags: ["--allow", "fixture:inspect"], listed: ["fixture:inspect"] },
   { flags: ["--allow", "fixture:mutate"], listed: ["fixture:mutate"] },
   { flags: ["--allow", "fixture:inspect", "--deny", "fixture:inspect"], listed: [] },
+  { flags: ["--allow", "fixture:mutate", "--deny", "fixture:mutate"], listed: [] },
 ])("source --list honors external eligibility and deny for $flags", async ({ flags, listed }) => {
   const child = Bun.spawn([process.execPath, cli, "mcp", "--list", "--format", "json", ...flags], {
     cwd: root,
@@ -75,8 +76,15 @@ test.each([
   const plugins = envelope.result.tools.filter((tool) => tool.plugin?.source === "external");
   expect(plugins.map((tool) => tool.id)).toEqual([...listed]);
   expect(envelope.result.tools.some((tool) => tool.id === "db:snapshots")).toBe(false);
-  expect(envelope.result.diagnostics).toContainEqual(
-    expect.objectContaining({ _tag: "McpAllowlistConflictError" }),
+  expect(
+    envelope.result.diagnostics.map((diagnostic) => ({
+      commandId: diagnostic.commandId,
+      _tag: diagnostic._tag,
+    })),
+  ).toEqual(
+    listed.some((id) => id === "fixture:mutate")
+      ? [{ commandId: "fixture:mutate", _tag: "McpAllowlistConflictError" }]
+      : [],
   );
   // The app-local replacement stays external for authorization but keeps its discovery tier.
   for (const tool of plugins)

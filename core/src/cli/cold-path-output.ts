@@ -1,4 +1,4 @@
-import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
+import type { CommandLoadError } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 import { getRecipeCatalog } from "../recipes/catalog";
 import { renderRecipeCatalog } from "../recipes/catalog-render";
@@ -14,7 +14,7 @@ export type ThisAppHelpRow = {
   readonly primary: string;
   readonly extras: ReadonlyArray<string>;
   readonly summary: string;
-  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
+  readonly loadError?: CommandLoadError;
 };
 
 export type ColdHelpStyle = {

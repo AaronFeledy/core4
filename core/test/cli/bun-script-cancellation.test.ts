@@ -25,6 +25,13 @@ for (const execution of ["source", "compiled"] as const)
           const binary = join(bin, "lando");
           if (compiled !== undefined) await copyFile(compiled, binary);
           const launch = compiled === undefined ? [process.execPath, sourceCli] : [binary];
+          const env = {
+            ...process.env,
+            ...(compiled === undefined ? {} : { PATH: bin }),
+            LANDO_USER_CACHE_ROOT: cacheRoot,
+            LANDO_USER_DATA_ROOT: join(root, "data"),
+            LANDO_USER_CONF_ROOT: join(root, "conf"),
+          };
           await mkdir(join(root, ".lando/scripts"), { recursive: true });
           await writeFile(join(root, ".lando.yml"), "name: cancellation\n");
           await writeFile(
@@ -33,21 +40,22 @@ for (const execution of ["source", "compiled"] as const)
           );
           await Effect.runPromise(
             writeAppCommandCacheStrict({
+              env,
               landofile: { name: "cancellation" },
               entries: [
-                { id: "app:slow", summary: "Cancellation probe", hidden: false, source: "bun-script" },
+                {
+                  id: "app:slow",
+                  summary: "Cancellation probe",
+                  _tag: "Ready",
+                  sourceKind: "bun-script",
+                  visibility: "public",
+                  input: emptyToolingInput(),
+                },
               ],
               cwd: root,
               cacheRoot,
             }),
           );
-          const env = {
-            ...process.env,
-            ...(compiled === undefined ? {} : { PATH: bin }),
-            LANDO_USER_CACHE_ROOT: cacheRoot,
-            LANDO_USER_DATA_ROOT: join(root, "data"),
-            LANDO_USER_CONF_ROOT: join(root, "conf"),
-          };
           const versionChild = Bun.spawn([...launch, "--version"], {
             cwd: root,
             env,
@@ -108,3 +116,5 @@ for (const execution of ["source", "compiled"] as const)
       },
       120_000,
     );
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

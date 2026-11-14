@@ -1,24 +1,30 @@
-import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
+import {
+  type AppCommandIndexPayload,
+  type CommandIndexEntry,
+  type CommandIndexPresentation,
+  commandIndexPresentation,
+} from "@lando/engine/cache/command-index";
 import { canonicalIdFromRelativePath } from "@lando/landofile/bun-sh-discovery";
 import type { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { type HelpAliasPolicy, type TypeableName, typeableName } from "./help-names";
 import type { ToolingRebuildFailure } from "./tooling-cache-status";
 
-interface ToolingRouteMetadata {
+type ToolingRouteMetadata = {
   readonly commandId: string;
   readonly name: string;
   readonly summary: string;
   readonly hidden: boolean;
-  readonly disabled?: true;
-  readonly sourcePath?: string;
   readonly service?: string;
-  readonly input?: NonNullable<CommandIndexEntry["input"]>;
+  readonly input?: NonNullable<CommandIndexPresentation["input"]>;
   readonly wrapper?: true;
-  readonly runs?: NonNullable<CommandIndexEntry["runs"]>;
-  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
+  readonly runs?: NonNullable<CommandIndexPresentation["runs"]>;
+  readonly loadError?: NonNullable<CommandIndexPresentation["loadError"]>;
   readonly aliasPolicy?: NonNullable<AppCommandIndexPayload["aliasPolicy"]>;
-}
+} & (
+  | { readonly disabled: true; readonly sourcePath: string }
+  | { readonly disabled?: never; readonly sourcePath?: string }
+);
 
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }
@@ -69,21 +75,19 @@ export const normalizedToolingRoute = (
   entry: CommandIndexEntry,
   aliasPolicy: AppCommandIndexPayload["aliasPolicy"],
   sourcePath?: string,
-): Extract<ToolingRoute, { readonly _tag: "tooling" }> => ({
-  _tag: "tooling",
-  commandId: entry.id,
-  name: entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id,
-  summary: entry.summary,
-  hidden: entry.hidden,
-  ...(entry.disabled === undefined ? {} : { disabled: entry.disabled }),
-  ...(entry.hidden && sourcePath !== undefined ? { sourcePath } : {}),
-  ...(entry.service === undefined ? {} : { service: entry.service }),
-  ...(entry.input === undefined ? {} : { input: entry.input }),
-  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
-  ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
-  ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
-});
+): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
+  const { id: _id, source: _source, disabled: _disabled, ...metadata } = commandIndexPresentation(entry);
+  const route = {
+    ...metadata,
+    _tag: "tooling" as const,
+    commandId: entry.id,
+    name: entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id,
+    summary: entry.summary,
+    ...(sourcePath === undefined ? {} : { sourcePath }),
+    ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+  };
+  return entry._tag === "Disabled" ? { ...route, disabled: true, sourcePath: entry.source.path } : route;
+};
 
 export const bunScriptRoute = (
   entry: CommandIndexEntry,

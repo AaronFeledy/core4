@@ -121,7 +121,7 @@ export const appliedClientFixture = (
   const desiredPlan =
     input.inherited?.plan ??
     attachEffectiveTooling(withProjectEvents(base, { "pre-start": [{ task: "psql" }] }), generated, {
-      psql: service.name,
+      connectionClients: { psql: service.name },
     });
   const plan =
     input.desiredServiceTypeId === undefined

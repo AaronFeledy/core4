@@ -1,131 +1,136 @@
-import { join } from "node:path";
-import { LANDOFILE_NAME } from "@lando/landofile/discovery";
-import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
 } from "@lando/landofile/tooling-include-provenance";
-import { getLandofileValueSource } from "@lando/landofile/validation";
-import { type AppPlan, type LandofileShape, ServiceName, ToolingTaskShape } from "@lando/sdk/schema";
+import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normalize";
+import { type AppPlan, ServiceName, ToolingTaskShape, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import type { EffectiveTooling } from "./tooling-composition.ts";
+import { ToolingProvenance, UNKNOWN_TOOLING_ORIGIN, toolingIssueSource } from "./tooling-provenance.ts";
 
-export type EffectiveTooling = Readonly<Record<string, ToolingTaskShape>>;
-
-interface ToolingServiceContribution {
-  readonly name: string;
-  readonly serviceTypeId?: string;
-  readonly tooling?: EffectiveTooling;
-  readonly connectionClientNames?: readonly string[];
-}
+export {
+  type EffectiveTooling,
+  compareOrdinal,
+  compileEffectiveTooling,
+  connectionClientOwners,
+  toolingBeforeDefaults,
+  toolingContributors,
+} from "./tooling-composition.ts";
+export {
+  type EffectiveToolingResolution,
+  type ToolingProvenance,
+  resolveEffectiveTooling,
+  toolingIssueLocations,
+  toolingIssueSource,
+  toolingOriginAt,
+} from "./tooling-provenance.ts";
 
 const TOOLING_PLAN_KEY = "@lando/core/effective-tooling";
 const ToolingPlan = Schema.Struct({
+  version: Schema.Literal(2),
+  tasks: Schema.Record(Schema.String, ToolingTaskShape),
+  internalNames: Schema.Array(Schema.String),
+  connectionClients: Schema.Record(Schema.String, ServiceName),
+  provenance: ToolingProvenance,
+}).check(
+  Schema.makeFilter(
+    (value) => Object.keys(value.tasks).every((name) => Object.hasOwn(value.provenance, name)),
+    { expected: "provenance for every effective tooling task" },
+  ),
+);
+// Applied plans are durable intent: read their historical shape without rewriting or replanning it.
+// Derived plan caches reject the previous revision before reaching this decoder.
+const LegacyAppliedToolingPlan = Schema.Struct({
+  version: Schema.optionalKey(Schema.Never),
   tasks: Schema.Record(Schema.String, ToolingTaskShape),
   internalNames: Schema.Array(Schema.String),
   connectionClients: Schema.optionalKey(Schema.Record(Schema.String, ServiceName)),
   disabledSources: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
-
-export const compareOrdinal = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
-
-const sortedTooling = (tooling: EffectiveTooling): EffectiveTooling =>
-  Object.fromEntries(Object.entries(tooling).sort(([left], [right]) => compareOrdinal(left, right)));
-
-export const toolingBeforeDefaults = (input: {
-  readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults">;
-  readonly services: ReadonlyArray<ToolingServiceContribution>;
-}): EffectiveTooling => {
-  const contributed: Record<string, ToolingTaskShape> = {};
-  for (const service of [...input.services].sort((left, right) => compareOrdinal(left.name, right.name))) {
-    for (const [name, task] of Object.entries(service.tooling ?? {}).sort(([left], [right]) =>
-      compareOrdinal(left, right),
-    )) {
-      if (contributed[name] !== undefined) continue;
-      contributed[name] = { service: service.name, ...task };
-    }
-  }
-
-  return { ...contributed, ...input.landofile.tooling };
-};
-
-export const compileEffectiveTooling = (input: {
-  readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults">;
-  readonly services: ReadonlyArray<ToolingServiceContribution>;
-}): EffectiveTooling =>
-  rememberInternalToolingTasks(
-    sortedTooling(applyToolingDefaults(toolingBeforeDefaults(input), input.landofile.toolingDefaults) ?? {}),
-    getInternalToolingTasks(input.landofile),
-  );
-
-/** Authored file that set `disabled` on each disabled task, for refusal remediation. */
-export const disabledToolingSources = (
-  landofile: Pick<LandofileShape, "tooling">,
-  tooling: EffectiveTooling,
-): Readonly<Record<string, string>> =>
-  Object.fromEntries(
-    Object.entries(tooling).flatMap(([name, task]) => {
-      const source = task.disabled
-        ? getLandofileValueSource(landofile, ["tooling", name, "disabled"])
-        : undefined;
-      return source === undefined ? [] : [[name, source.file]];
-    }),
-  );
-
-export const connectionClientOwners = (input: {
-  readonly landofile: Pick<LandofileShape, "tooling">;
-  readonly services: ReadonlyArray<ToolingServiceContribution>;
-}): Readonly<Record<string, ServiceName>> => {
-  const owners: Record<string, ServiceName> = {};
-  const claimed = new Set(Object.keys(input.landofile.tooling ?? {}));
-  for (const service of [...input.services].sort((a, b) => compareOrdinal(a.name, b.name))) {
-    for (const name of Object.keys(service.tooling ?? {})) {
-      if (claimed.has(name)) continue;
-      claimed.add(name);
-      if (service.connectionClientNames?.includes(name)) owners[name] = ServiceName.make(service.name);
-    }
-  }
-  return owners;
-};
-
-export const connectionClientsForPlan = (plan: AppPlan): Readonly<Record<string, ServiceName>> => {
+const decodeToolingPlan = Schema.decodeUnknownSync(Schema.Union([ToolingPlan, LegacyAppliedToolingPlan]));
+const toolingPlanFor = (plan: AppPlan) => {
   const value = plan.extensions[TOOLING_PLAN_KEY];
-  return value === undefined ? {} : (Schema.decodeUnknownSync(ToolingPlan)(value).connectionClients ?? {});
+  return value === undefined ? undefined : decodeToolingPlan(value);
 };
+const provenanceForPlan = (plan: AppPlan): ToolingProvenance => {
+  const value = toolingPlanFor(plan);
+  return value?.version === 2 ? value.provenance : {};
+};
+
+export const toolingSourceResolverForResolution = (
+  resolution: { readonly tasks: EffectiveTooling; readonly provenance: ToolingProvenance },
+  sourcePath: string,
+) => {
+  return (name: string): ToolingNormalizationSource => {
+    const source = toolingIssueSource(
+      resolution.provenance,
+      name,
+      resolution.tasks[name]?.disabled === true ? ["disabled"] : [],
+    );
+    return {
+      path: source !== undefined && "file" in source ? source.file : sourcePath,
+      locate: (path) => toolingIssueSource(resolution.provenance, name, path.slice(2)),
+    };
+  };
+};
+
+/** Capture the extension once for a batch of normalization and source lookups. */
+export const toolingSourceResolverForPlan = (plan: AppPlan) => {
+  const value = toolingPlanFor(plan);
+  return toolingSourceResolverForResolution(
+    { tasks: value?.tasks ?? {}, provenance: value?.version === 2 ? value.provenance : {} },
+    plan.metadata.source,
+  );
+};
+
+export const connectionClientsForPlan = (plan: AppPlan): Readonly<Record<string, ServiceName>> =>
+  toolingPlanFor(plan)?.connectionClients ?? {};
+
+export interface ToolingPlanOptions {
+  readonly connectionClients?: Readonly<Record<string, ServiceName>>;
+  readonly provenance?: ToolingProvenance;
+}
 
 export const attachEffectiveTooling = <Plan extends AppPlan>(
   plan: Plan,
   tooling: EffectiveTooling,
-  connectionClients: Readonly<Record<string, ServiceName>> = {},
-  disabledSources: Readonly<Record<string, string>> = {},
-): Plan => {
-  return {
-    ...plan,
-    extensions: {
-      ...plan.extensions,
-      [TOOLING_PLAN_KEY]: {
-        tasks: tooling,
-        internalNames: [...getInternalToolingTasks(tooling)],
-        connectionClients,
-        disabledSources,
-      },
+  options: ToolingPlanOptions = {},
+): Plan => ({
+  ...plan,
+  extensions: {
+    ...plan.extensions,
+    [TOOLING_PLAN_KEY]: {
+      version: 2,
+      tasks: tooling,
+      internalNames: [...getInternalToolingTasks(tooling)],
+      connectionClients: options.connectionClients ?? {},
+      provenance: Object.fromEntries(
+        Object.keys(tooling).map((name) => [
+          name,
+          options.provenance?.[name] ?? { origin: UNKNOWN_TOOLING_ORIGIN, overrides: [] },
+        ]),
+      ),
     },
-  };
-};
+  },
+});
 
 export const effectiveToolingForPlan = (plan: AppPlan): EffectiveTooling | undefined => {
-  const value = plan.extensions[TOOLING_PLAN_KEY];
-  if (value === undefined) return undefined;
-  const decoded = Schema.decodeUnknownSync(ToolingPlan)(value);
-  return rememberInternalToolingTasks(decoded.tasks, decoded.internalNames);
-};
-
-export const disabledToolingSourceForPlan = (plan: AppPlan, name: string): string | undefined => {
-  const value = plan.extensions[TOOLING_PLAN_KEY];
-  return value === undefined
+  const decoded = toolingPlanFor(plan);
+  return decoded === undefined
     ? undefined
-    : Schema.decodeUnknownSync(ToolingPlan)(value).disabledSources?.[name];
+    : rememberInternalToolingTasks(decoded.tasks, decoded.internalNames);
 };
 
-export const toolingSourcePathForPlan = (plan: AppPlan, name: string): string =>
-  disabledToolingSourceForPlan(plan, name) ?? join(String(plan.root), LANDOFILE_NAME);
+export const toolingIssueSourceForPlan = (plan: AppPlan, name: string, relativePath: ValidationIssuePath) =>
+  toolingIssueSource(provenanceForPlan(plan), name, relativePath);
+
+/** Recorded metadata is overall invocation context, not proof of an authored issue location. */
+export const toolingSourcePathForPlan = (plan: AppPlan, name: string): string => {
+  const value = toolingPlanFor(plan);
+  const source = toolingIssueSource(
+    value?.version === 2 ? value.provenance : {},
+    name,
+    value?.tasks[name]?.disabled === true ? ["disabled"] : [],
+  );
+  return source !== undefined && "file" in source ? source.file : plan.metadata.source;
+};

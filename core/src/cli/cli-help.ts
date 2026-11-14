@@ -1,4 +1,4 @@
-import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
+import type { CommandLoadError } from "@lando/engine/cache/command-index";
 import type { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { argStdioDescription } from "./arg-stdio";
 import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
@@ -83,7 +83,7 @@ export type ToolingHelpEntry = {
   readonly wrapper?: true;
   readonly source?: "bun-script";
   readonly runs?: ToolingRunSummary;
-  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
+  readonly loadError?: CommandLoadError;
 };
 
 type HelpStyle = {

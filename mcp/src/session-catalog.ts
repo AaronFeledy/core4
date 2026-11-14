@@ -1,18 +1,17 @@
-/**
- * The session's published tool catalog.
- *
- * One catalog per session holds the authorized owner variants of every tool id from every
- * discovered app; there is no mutable "current app". A generation built for a new app root is
- * projected once: its authorized plugin owners replace that app's previous variants, and every
- * tool whose union contract changed is upserted on the server, which announces
- * `notifications/tools/list_changed`. Tools are never removed here (whole-catalog replacement is
- * a separate concern).
- */
+import type { Redactor } from "@lando/sdk/secrets";
 import { Context, Effect, Semaphore } from "effect";
+import * as McpSchema from "effect/ai/McpSchema";
 import type * as McpServer from "effect/ai/McpServer";
 
 import { type McpAppGeneration, generationEntries } from "./apps";
-import { type McpAllowPolicy, isMcpEntryAuthorized } from "./catalog";
+import { type McpAllowPolicy, isMcpEntryAuthorized, isMcpToolingAuthorized } from "./catalog";
+import {
+  type McpDiagnostic,
+  type McpDiagnostics,
+  type McpToolingCatalog,
+  boundDiagnostics,
+  pluginDiagnostics,
+} from "./diagnostics";
 import type { McpCommandEntry } from "./registry";
 import { type McpToolVariant, makeToolVariant, unionTool } from "./tool-variants";
 
@@ -27,6 +26,14 @@ export interface McpToolPublication {
   readonly changed: readonly string[];
 }
 
+interface McpCatalogSnapshot {
+  readonly revision: number;
+  readonly tooling: McpToolingCatalog;
+  readonly selected: McpAppGeneration | undefined;
+  readonly advertised: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly diagnostics: McpDiagnostics;
+}
+
 const sameSignatures = (left: ReadonlySet<string> | undefined, right: ReadonlySet<string>): boolean =>
   left !== undefined && left.size === right.size && [...right].every((signature) => left.has(signature));
 
@@ -37,14 +44,31 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
   readonly policy: McpAllowPolicy;
   /** Session-wide owners (built-ins and, with tooling on, tooling tasks). */
   readonly entries: ReadonlyArray<McpCommandEntry>;
+  readonly unavailable: readonly McpDiagnostic[];
   readonly handle: (toolId: string) => ToolHandler;
+  readonly sessionKey?: string;
+  readonly redactor: Redactor;
 }) {
-  const sessionIds = new Set(input.entries.map((entry) => entry.spec.id));
+  const sessionIds = new Set(
+    input.entries.filter((entry) => entry.tooling !== true).map((entry) => entry.spec.id),
+  );
   const variants = new Map<string, Map<string, McpToolVariant>>();
   const published = new Map<string, ReadonlySet<string>>();
   const projected = new WeakSet<McpAppGeneration>();
   const signatures = new WeakMap<McpCommandEntry, string>();
   const publication = yield* Semaphore.make(1);
+  let snapshot: McpCatalogSnapshot = Object.freeze({
+    revision: 0,
+    tooling: {
+      revision: "initial",
+      entries: input.entries.filter((entry) => entry.tooling === true),
+      unavailable: input.unavailable,
+    },
+    selected: undefined,
+    advertised: new Map(),
+    diagnostics: boundDiagnostics(0, [], input.redactor),
+  });
+  const authorized = (entry: McpCommandEntry) => isMcpEntryAuthorized(input.policy, entry);
 
   const setVariant = (toolId: string, slot: string, variant: McpToolVariant) => {
     const slots = variants.get(toolId) ?? new Map<string, McpToolVariant>();
@@ -55,14 +79,18 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
 
   const publishTool = Effect.fnUntraced(function* (toolId: string) {
     const [first, ...rest] = [...(variants.get(toolId)?.values() ?? [])];
-    if (first === undefined) return undefined;
+    if (first === undefined) {
+      const previous = published.get(toolId);
+      published.delete(toolId);
+      return previous === undefined ? undefined : ("changed" as const);
+    }
     const union = unionTool(toolId, [first, ...rest]);
     const previous = published.get(toolId);
     if (sameSignatures(previous, union.signatures)) return undefined;
     // Upsert by name; the server announces notifications/tools/list_changed.
     yield* input.server.addTool({
       tool: union.tool,
-      annotations: Context.empty(),
+      annotations: Context.make(McpSchema.EnabledWhen, () => snapshot.advertised.has(toolId)),
       handle: input.handle(toolId),
     });
     published.set(toolId, union.signatures);
@@ -70,12 +98,91 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
   });
 
   for (const entry of input.entries)
-    if (isMcpEntryAuthorized(input.policy, entry))
-      setVariant(entry.spec.id, SESSION_VARIANT, makeToolVariant(entry, undefined));
+    if (authorized(entry)) setVariant(entry.spec.id, SESSION_VARIANT, makeToolVariant(entry, undefined));
+
+  const update = Effect.fnUntraced(function* (value: {
+    readonly generation: McpAppGeneration;
+    readonly tooling?: McpToolingCatalog;
+    readonly session?: true;
+  }) {
+    const generation = value.generation;
+    const tooling = value.tooling ?? snapshot.tooling;
+    const selected =
+      value.session === true || generation.key === input.sessionKey ? generation : snapshot.selected;
+    const announced: { added: string[]; changed: string[] } = { added: [], changed: [] };
+    const changed = new Set<string>();
+    const toolingIds = new Set([
+      ...tooling.entries.map((entry) => entry.spec.id),
+      ...tooling.unavailable.map((entry) => entry.commandId),
+    ]);
+    if (!projected.has(generation) || tooling.revision !== snapshot.tooling.revision) {
+      projected.add(generation);
+      for (const [toolId, slots] of variants) if (slots.delete(generation.key)) changed.add(toolId);
+      for (const entry of generationEntries(generation, new Set([...sessionIds, ...toolingIds]))) {
+        if (!authorized(entry)) continue;
+        setVariant(entry.spec.id, generation.key, makeToolVariant(entry, generation.key));
+        changed.add(entry.spec.id);
+      }
+    }
+    if (tooling.revision !== snapshot.tooling.revision) {
+      for (const entry of snapshot.tooling.entries) {
+        variants.get(entry.spec.id)?.delete(SESSION_VARIANT);
+        changed.add(entry.spec.id);
+      }
+      for (const entry of tooling.entries) {
+        if (!authorized(entry)) continue;
+        setVariant(entry.spec.id, SESSION_VARIANT, makeToolVariant(entry, undefined));
+        changed.add(entry.spec.id);
+      }
+    }
+    for (const toolId of [...changed].sort(byId)) {
+      const kind = yield* publishTool(toolId);
+      if (kind !== undefined) announced[kind].push(toolId);
+    }
+    const records = [
+      ...tooling.unavailable.filter((record) => isMcpToolingAuthorized(input.policy, record.commandId)),
+      ...(selected === undefined
+        ? []
+        : pluginDiagnostics(selected, input.policy).filter((record) => !toolingIds.has(record.commandId))),
+    ];
+    const next = boundDiagnostics(snapshot.revision, records, input.redactor);
+    const revision =
+      snapshot.revision +
+      (announced.added.length > 0 ||
+      announced.changed.length > 0 ||
+      JSON.stringify(next) !== JSON.stringify(snapshot.diagnostics)
+        ? 1
+        : 0);
+    snapshot = Object.freeze({
+      revision,
+      tooling,
+      selected,
+      advertised: new Map(published),
+      diagnostics: Object.freeze({ ...next, revision }),
+    });
+    if (announced.added.length > 0 || announced.changed.length > 0)
+      yield* input.server.notifications["notifications/tools/list_changed"]({});
+    return { ...value, publication: announced, diagnostics: snapshot.diagnostics };
+  });
+
+  const refresh = <E, R>(
+    load: Effect.Effect<
+      {
+        readonly generation: McpAppGeneration;
+        readonly tooling?: McpToolingCatalog;
+        readonly session?: true;
+      },
+      E,
+      R
+    >,
+  ) =>
+    publication.withPermits(1)(Effect.flatMap(load, (value) => update(value).pipe(Effect.uninterruptible)));
 
   return {
     /** Contracts currently advertised for `toolId`. */
-    advertised: (toolId: string): ReadonlySet<string> => published.get(toolId) ?? new Set<string>(),
+    advertised: (toolId: string): ReadonlySet<string> => snapshot.advertised.get(toolId) ?? new Set<string>(),
+    refresh,
+    toolingOwner: (toolId: string) => snapshot.tooling.entries.find((entry) => entry.spec.id === toolId),
     /** Identity of the contract a selected owner would advertise. */
     signatureOf: (entry: McpCommandEntry, appKey: string): string => {
       const known = signatures.get(entry);
@@ -86,28 +193,18 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
     },
     /** Publish every tool whose contract is not yet advertised. */
     publishAll: publication.withPermits(1)(
-      Effect.forEach([...variants.keys()].sort(byId), publishTool, { discard: true }),
-    ),
-    /** Add a newly built generation's authorized owners to the catalog, once per generation. */
-    project: (generation: McpAppGeneration) =>
-      publication.withPermits(1)(
-        Effect.gen(function* () {
-          const announced: { added: string[]; changed: string[] } = { added: [], changed: [] };
-          if (projected.has(generation)) return announced;
-          projected.add(generation);
-          const changed = new Set<string>();
-          for (const [toolId, slots] of variants) if (slots.delete(generation.key)) changed.add(toolId);
-          for (const entry of generationEntries(generation, sessionIds)) {
-            if (!isMcpEntryAuthorized(input.policy, entry)) continue;
-            setVariant(entry.spec.id, generation.key, makeToolVariant(entry, generation.key));
-            changed.add(entry.spec.id);
-          }
-          for (const toolId of [...changed].sort(byId)) {
-            const kind = yield* publishTool(toolId);
-            if (kind !== undefined) announced[kind].push(toolId);
-          }
-          return announced satisfies McpToolPublication;
-        }),
+      Effect.forEach([...variants.keys()].sort(byId), publishTool, { discard: true }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            snapshot = Object.freeze({
+              ...snapshot,
+              advertised: new Map(published),
+            });
+          }),
+        ),
       ),
+    ),
+    project: (generation: McpAppGeneration) =>
+      refresh(Effect.succeed({ generation })).pipe(Effect.map((value) => value.publication)),
   };
 });

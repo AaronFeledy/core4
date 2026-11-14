@@ -22,7 +22,16 @@ const withCache = async (run: (root: string, cacheRoot: string, path: string) =>
         cwd: root,
         cacheRoot,
         landofile: { name: "freshness" },
-        entries: [{ id: "app:probe", summary: "Probe", hidden: false, source: "bun-script" }],
+        entries: [
+          {
+            id: "app:probe",
+            summary: "Probe",
+            _tag: "Ready",
+            sourceKind: "bun-script",
+            visibility: "public",
+            input: emptyToolingInput,
+          },
+        ],
       }),
     );
     await run(root, cacheRoot, path);
@@ -116,7 +125,16 @@ test("one malformed script does not fail the command cache write", async () => {
         cwd: root,
         cacheRoot,
         landofile: { name: "freshness" },
-        entries: [{ id: "app:probe", summary: "Probe", hidden: false, source: "bun-script" }],
+        entries: [
+          {
+            id: "app:probe",
+            summary: "Probe",
+            _tag: "Ready",
+            sourceKind: "bun-script",
+            visibility: "public",
+            input: emptyToolingInput,
+          },
+        ],
       }),
     );
     const cache = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: root, cacheRoot }));
@@ -125,3 +143,8 @@ test("one malformed script does not fail the command cache write", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

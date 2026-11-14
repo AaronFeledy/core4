@@ -42,6 +42,8 @@ const slowRebuildNotice = (receipt: PendingReceipt): string => {
           return "Updating this app's commands (Landofile changed)...";
         case "referenced-file":
           return "Updating this app's commands (a file the Landofile loads changed)...";
+        case "environment":
+          return "Updating this app's commands (environment changed)...";
         case "script-metadata":
         case "script-inventory":
           return "Updating this app's commands (scripts changed)...";
@@ -99,7 +101,10 @@ export const rebuildToolingCache = Effect.fnUntraced(function* (
   const cwd = dirname(receipt.sourcePath);
   const cacheRoot = options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot };
   yield* Effect.promise(() => import("../runtime/bundled-plugins"));
-  const rebuild = withDiscoveryCwd(cwd, refreshAppCache({ cwd, ...cacheRoot })).pipe(
+  const rebuild = withDiscoveryCwd(
+    cwd,
+    refreshAppCache({ cwd, env: options.env ?? (yield* CliInvocation).env, ...cacheRoot }),
+  ).pipe(
     Effect.provide(
       makeLandoRuntime({
         bootstrap: "app",

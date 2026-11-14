@@ -53,9 +53,18 @@ export const selectCallOwner = Effect.fnUntraced(function* (
 ): Effect.fn.Return<McpToolSelection, McpToolInputError | McpToolNotAllowedError, OperationDiscovery> {
   const { toolId } = call;
   // No owner of a denied or never-allowed id can run, so its app is never built.
-  if (!isMcpIdAuthorizable(session.policy, toolId))
+  const toolingOwner = session.catalog.toolingOwner(toolId);
+  if (
+    !(toolingOwner === undefined
+      ? isMcpIdAuthorizable(session.policy, toolId)
+      : isMcpEntryAuthorized(session.policy, toolingOwner))
+  )
     return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));
-  const leased = yield* Effect.exit(Scope.provide(session.apps.acquire(call.cwd), call.scope));
+  const leased = yield* Effect.exit(
+    session.catalog.refresh(
+      Effect.map(Scope.provide(session.apps.acquire(call.cwd), call.scope), (generation) => ({ generation })),
+    ),
+  );
   if (leased._tag === "Failure") {
     if (Cause.hasInterruptsOnly(leased.cause)) return yield* Effect.interrupt;
     return {
@@ -64,10 +73,9 @@ export const selectCallOwner = Effect.fnUntraced(function* (
       outcome: failureOutcomeFromCause(leased.cause, normalizeDefect),
     };
   }
-  const generation = leased.value;
-  const publication = yield* session.catalog.project(generation);
+  const { generation, publication } = leased.value;
   call.published(generation.key, publication);
-  const sessionOwner = session.sessionOwners.get(toolId);
+  const sessionOwner = session.sessionOwners.get(toolId) ?? session.catalog.toolingOwner(toolId);
   const owner =
     sessionOwner === undefined
       ? generation.commands.get(toolId)
@@ -79,12 +87,15 @@ export const selectCallOwner = Effect.fnUntraced(function* (
       message: `Tool ${toolId} is unavailable in the selected app (${generation.key}).`,
       remediation: `Pass an appPath whose app provides ${toolId}, or call a tool the selected app provides.`,
     });
-  if (owner._tag === "Failed")
+  if (owner._tag === "Failed") {
+    if (owner.owner === undefined || !isMcpEntryAuthorized(session.policy, owner.owner))
+      return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));
     return {
       _tag: "OwnerFailed",
       commandId: owner.commandId,
       outcome: failureOutcomeFromCause(Cause.fail(owner.error), normalizeDefect),
     };
+  }
   const entry = owner.entry;
   if (!isMcpEntryAuthorized(session.policy, entry))
     return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));

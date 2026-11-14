@@ -5,20 +5,13 @@ import type {
   ToolingRunSummary,
   ToolingRunTarget,
 } from "@lando/sdk/schema";
-import * as Predicate from "effect/Predicate";
+import {
+  exactCacheKeys,
+  cacheMapping as isCacheMapping,
+  isCommandLoadError,
+  denseArray as isDenseArray,
+} from "./command-diagnostic-validation.ts";
 import type { AppCommandIndexPayload, CommandIndexEntry } from "./command-index.ts";
-
-// v8 preserves sparse arrays and non-record objects; neither is canonical cache metadata.
-const isCacheMapping = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  Predicate.isObject(value) && Object.getPrototypeOf(value) === Object.prototype;
-
-const isDenseArray = (value: unknown): value is readonly unknown[] => {
-  if (!Array.isArray(value)) return false;
-  for (let index = 0; index < value.length; index++) {
-    if (!Object.hasOwn(value, index)) return false;
-  }
-  return true;
-};
 
 const own = (value: Readonly<Record<string, unknown>>, key: string): unknown =>
   Object.hasOwn(value, key) ? value[key] : undefined;
@@ -132,28 +125,41 @@ const isRuns = (value: unknown): value is ToolingRunSummary => {
   }
 };
 
-const isEntry = (value: unknown): value is CommandIndexEntry =>
-  isCacheMapping(value) &&
-  isString(own(value, "id")) &&
-  isString(own(value, "summary")) &&
-  typeof own(value, "hidden") === "boolean" &&
-  (!Object.hasOwn(value, "disabled") || (value.disabled === true && value.hidden === true)) &&
-  (!Object.hasOwn(value, "service") || isString(value.service)) &&
-  (!Object.hasOwn(value, "source") || value.source === "bun-script") &&
-  (!Object.hasOwn(value, "wrapper") || value.wrapper === true) &&
-  (!Object.hasOwn(value, "runs") || isRuns(value.runs)) &&
-  (!Object.hasOwn(value, "loadError") ||
-    (value.source === "bun-script" &&
-      !Object.hasOwn(value, "input") &&
-      !Object.hasOwn(value, "wrapper") &&
-      isCacheMapping(value.loadError) &&
-      isString(value.loadError._tag) &&
-      isString(value.loadError.message) &&
-      Buffer.byteLength(value.loadError.message) <= 1024 &&
-      (!Object.hasOwn(value.loadError, "remediation") ||
-        (isString(value.loadError.remediation) &&
-          Buffer.byteLength(value.loadError.remediation) <= 1024)))) &&
-  (!Object.hasOwn(value, "input") || isInput(value.input));
+const isEntry = (value: unknown): value is CommandIndexEntry => {
+  if (
+    !isCacheMapping(value) ||
+    !isString(own(value, "id")) ||
+    !isString(own(value, "summary")) ||
+    !(own(value, "visibility") === "public" || own(value, "visibility") === "internal") ||
+    !(own(value, "sourceKind") === "tooling" || own(value, "sourceKind") === "bun-script")
+  )
+    return false;
+  const common = ["_tag", "id", "summary", "visibility", "sourceKind"];
+  switch (own(value, "_tag")) {
+    case "Ready":
+      return (
+        exactCacheKeys(value, [...common, "input", "service", "wrapper", "runs"]) &&
+        isInput(own(value, "input")) &&
+        (!Object.hasOwn(value, "service") || isString(value.service)) &&
+        (!Object.hasOwn(value, "wrapper") || value.wrapper === true) &&
+        (!Object.hasOwn(value, "runs") || isRuns(value.runs))
+      );
+    case "Disabled": {
+      const source = own(value, "source");
+      return (
+        exactCacheKeys(value, [...common, "source"]) &&
+        isCacheMapping(source) &&
+        exactCacheKeys(source, ["path", "task"]) &&
+        isString(own(source, "path")) &&
+        isString(own(source, "task"))
+      );
+    }
+    case "Unavailable":
+      return exactCacheKeys(value, [...common, "diagnostic"]) && isCommandLoadError(own(value, "diagnostic"));
+    default:
+      return false;
+  }
+};
 
 const isAliasPolicy = (value: unknown): boolean => {
   if (!isCacheMapping(value)) return false;
@@ -218,6 +224,9 @@ export const isAppCommandIndexPayload = (value: unknown): value is AppCommandInd
   hasCommonFields(value) &&
   isString(own(value, "appName")) &&
   isString(own(value, "sourceFile")) &&
+  Object.hasOwn(value, "sourceEnvironmentHash") &&
+  isString(value.sourceEnvironmentHash) &&
+  /^[a-f0-9]{64}$/u.test(value.sourceEnvironmentHash) &&
   isFiniteNumber(own(value, "sourceMtimeMs")) &&
   isFiniteNumber(own(value, "sourceSize")) &&
   (!Object.hasOwn(value, "sourceContentHash") || isString(value.sourceContentHash)) &&

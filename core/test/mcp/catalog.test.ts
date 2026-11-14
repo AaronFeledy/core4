@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import {
   type McpCommandEntry,
@@ -8,7 +9,7 @@ import {
 } from "@lando/mcp/registry";
 import { McpToolInputError } from "@lando/sdk/errors";
 import { ToolingInputRevision } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { appConfigDescribeSpec } from "../../src/cli/command-specs/app/config/describe.ts";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
@@ -247,7 +248,9 @@ describe("buildCatalog", () => {
       {
         id: "app:greet",
         summary: "Greet",
-        hidden: false,
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
         input: {
           flags: [{ name: "loud", boolean: true, required: false, sensitive: false }],
           args: [{ name: "target", order: 0, required: true, sensitive: false }],
@@ -311,7 +314,10 @@ describe("buildCatalog", () => {
       {
         id: "app:composer",
         summary: "Run composer",
-        hidden: false,
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: Result.getOrThrow(normalizeToolingInput("composer", {})),
         runs: {
           kind: "commands",
           steps: 1,
@@ -322,10 +328,20 @@ describe("buildCatalog", () => {
       {
         id: "app:deploy",
         summary: "",
-        hidden: false,
+        _tag: "Ready",
+        sourceKind: "bun-script",
+        visibility: "public",
+        input: Result.getOrThrow(normalizeToolingInput("deploy", {})),
         runs: { kind: "script", path: ".lando/scripts/deploy.bun.sh" },
       },
-      { id: "app:plain", summary: "Plain", hidden: false },
+      {
+        id: "app:plain",
+        summary: "Plain",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: Result.getOrThrow(normalizeToolingInput("plain", {})),
+      },
     ]);
     const catalog = buildCatalog({
       ...projected,

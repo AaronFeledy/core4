@@ -11,6 +11,7 @@ import { renderToolingHelp } from "../../src/cli/cli-help.ts";
 import { splitCommandTokens } from "../../src/cli/invocation.ts";
 import { ownerPolicy } from "../../src/cli/invocation-owner.ts";
 import { type ToolingRoute, resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { CliInvocation, processInvocationDefaults } from "../../src/runtime/invocation-context";
 
 const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
   switch (route._tag) {
@@ -30,6 +31,21 @@ const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolea
 };
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
+const invocationEnv = (root: string, cacheRoot: string) => ({
+  ...process.env,
+  NO_COLOR: "1",
+  LANDO_USER_CACHE_ROOT: cacheRoot,
+  LANDO_USER_DATA_ROOT: join(root, "data"),
+  LANDO_USER_CONF_ROOT: join(root, "conf"),
+});
+const fixtureRoute = (root: string, cacheRoot: string, token: string) =>
+  resolveToolingRoute(token, { cwd: root, cacheRoot }).pipe(
+    Effect.provideService(CliInvocation, {
+      ...processInvocationDefaults,
+      cwd: root,
+      env: invocationEnv(root, cacheRoot),
+    }),
+  );
 test.each([
   { argv: ["--help"], marker: null, exit: 0 },
   { argv: ["-h"], marker: null, exit: 0 },
@@ -114,6 +130,7 @@ const withScript = async (cached: boolean, run: (root: string, cacheRoot: string
       writeAppCommandCacheStrict({
         cwd: root,
         cacheRoot,
+        env: invocationEnv(root, cacheRoot),
         landofile: { name: "help", ...(cached ? { commandAliases: { custom: { hi: "app:greet" } } } : {}) },
         entries: compileBunShellScriptCommands(scripts),
       }),
@@ -131,7 +148,7 @@ test.each([true, false])("carries normalized script help metadata when cached=%s
     const tokens = cached ? ["greet", "app:greet", "hi"] : ["greet", "app:greet"];
     // When
     const routes = await Promise.all(
-      tokens.map((token) => Effect.runPromise(resolveToolingRoute(token, { cwd: root, cacheRoot }))),
+      tokens.map((token) => Effect.runPromise(fixtureRoute(root, cacheRoot, token))),
     );
     // Then
     for (const route of routes) {
@@ -165,7 +182,7 @@ test.each([
     // Given: invalid Landofile and unrelated script rule out planning or full inventory discovery.
     await withScript(cached, async (root, cacheRoot) => {
       await writeFile(join(root, ".lando/scripts/unrelated.bun.sh"), "invalid front matter");
-      const route = await Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot }));
+      const route = await Effect.runPromise(fixtureRoute(root, cacheRoot, "greet"));
       if (route._tag !== "bun-script") throw new Error(`Expected script, got ${route._tag}`);
       const expected = renderToolingHelp(
         { ...route, id: route.commandId, source: "bun-script" },
@@ -179,13 +196,7 @@ test.each([
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
-        env: {
-          ...process.env,
-          NO_COLOR: "1",
-          LANDO_USER_CACHE_ROOT: cacheRoot,
-          LANDO_USER_DATA_ROOT: join(root, "data"),
-          LANDO_USER_CONF_ROOT: join(root, "conf"),
-        },
+        env: invocationEnv(root, cacheRoot),
       });
       const [code, stdout, stderr] = await Promise.all([
         child.exited,
@@ -253,16 +264,18 @@ test.each([
           normalizeToolingInput("greet", { args: { target: { required: true } } }),
           (error) => error,
         );
-  const route: ToolingRoute = {
-    _tag: "bun-script",
+  const metadata = {
+    _tag: "bun-script" as const,
     commandId: "app:greet",
     name: "greet",
     summary: "Greet",
     hidden: overrides.hidden ?? false,
-    ...(overrides.disabled ? { disabled: true as const } : {}),
     appRoot: "/app",
     ...(input === undefined ? {} : { input }),
   };
+  const route: ToolingRoute = overrides.disabled
+    ? { ...metadata, disabled: true, sourcePath: "/app/.lando/scripts/greet.bun.sh" }
+    : metadata;
   // When
   const requested = helpRequested(route, argv);
   // Then
@@ -277,7 +290,7 @@ test("retains a newly discovered disabled script route for typed runtime refusal
       declared.replace("# desc:", "# disabled: true\n# desc:"),
     );
     // When
-    const route = await Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot }));
+    const route = await Effect.runPromise(fixtureRoute(root, cacheRoot, "greet"));
     // Then
     expect(route).toMatchObject({ _tag: "bun-script", hidden: true, disabled: true });
     expect(helpRequested(route, ["--help"])).toBe(true);
