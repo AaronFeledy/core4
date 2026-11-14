@@ -125,7 +125,7 @@ If you are looking for a public surface or policy:
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
-| `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
+| `BuildOrchestrator`, `BuildPlan`, owner-scoped results and transcripts, app-step settlement, container-bound app-step reuse, and errors | 06 + 05 + 12 | §6.13 + §5.3 + §12.1 |
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
 | User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |

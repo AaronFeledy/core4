@@ -121,7 +121,7 @@ The forms ship from the same source at the same version and MUST NOT drift.
 
 No product decisions are open.
 
-Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher; telemetry has an event inventory gate, allowlisted redaction, a retention policy, and a `telemetry.enabled` switch; command output routes through `Renderer` with renderer config and an enforced output boundary.
+Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher; telemetry has an event inventory gate, allowlisted redaction, a retention policy, and a `telemetry.enabled` switch; command output routes through `Renderer` with renderer config and an enforced output boundary; an app-step build result is reusable only in the container that ran the step, so stop and bare restart rerun app steps in the new containers (§6.13.5).
 
 The following extension constraints apply without committing to an implementation schedule:
 

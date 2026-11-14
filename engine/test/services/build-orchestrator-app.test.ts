@@ -24,6 +24,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { DateTime, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -209,6 +210,15 @@ describe("BuildOrchestrator app phase", () => {
       let detailDuringWork = false;
       const provider = {
         ...TestRuntimeProvider,
+        inspect: (target) =>
+          Effect.succeed({
+            app: target.app,
+            service: target.service,
+            providerId,
+            publications: { status: "unknown" },
+            status: "running",
+            containerId: `${target.service}-1`,
+          }),
         execStream: (
           target: { readonly service: ServiceName },
           command: { readonly command: ReadonlyArray<string> },
@@ -267,7 +277,7 @@ describe("BuildOrchestrator app phase", () => {
       const starts = result.events.filter((event) => event._tag === "task.start");
       expect(starts).toHaveLength(6);
       for (const start of starts) {
-        expect(start.transcriptPath).toContain(`/builds/${String(plan.id)}/app/`);
+        expect(start.transcriptPath).toContain(`/builds/owners/${BuildOwner.fromPlan(plan).key}/app/`);
         const transcript = await readFile(String(start.transcriptPath), "utf8");
         expect(transcript).toContain("[redacted]");
         expect(transcript).not.toContain("bare-db-password");

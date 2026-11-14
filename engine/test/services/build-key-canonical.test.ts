@@ -216,7 +216,6 @@ test("does not skip the provider when a version-1 persisted build result has the
           service: service.name,
           phase: "artifact",
           outcome: "complete",
-          exitCode: 0,
           durationMs: 1,
           artifactRef: "web:old",
           transcriptPath: AbsolutePath.make(join(root, "old.log")),

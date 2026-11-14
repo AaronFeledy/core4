@@ -2,10 +2,11 @@ import type { Stats } from "node:fs";
 import { lstat, readdir, realpath, rm, rmdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { ProviderInternalError } from "@lando/sdk/errors";
-import type { StateStoreShape } from "@lando/sdk/services";
+import { PathsService, StateStore, type StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { recordCommandWarning } from "../landofile/command-warnings.ts";
-import { openAppBuildResults, openScratchBuildResults } from "./build-results.ts";
+import type { BuildOwner } from "./build-owner.ts";
+import { clearAppBuildResults, openAppBuildResults, openScratchBuildResults } from "./build-results.ts";
 import {
   buildTranscriptError,
   isMissing,
@@ -16,11 +17,17 @@ import {
 
 export interface RemoveBuildTranscriptsInput {
   readonly userDataRoot: string;
-  readonly appId: string;
-  readonly scratch: boolean;
+  readonly owner: BuildOwner;
   /** Label only: it names the owner in a cleanup failure. */
   readonly providerId?: string;
 }
+
+export const removeAppBuildOutput = Effect.fnUntraced(function* (owner: BuildOwner, providerId: string) {
+  const stateStore = yield* StateStore;
+  const paths = yield* PathsService;
+  yield* clearAppBuildResults(stateStore, owner);
+  yield* removeBuildTranscripts({ owner, providerId, userDataRoot: paths.roots.userDataRoot });
+});
 
 interface SweepBuildTranscriptsInput extends RemoveBuildTranscriptsInput {
   readonly phase: "artifact" | "app";
@@ -181,9 +188,9 @@ export const sweepAppBuildTranscripts = (input: SweepAppBuildTranscriptsInput): 
     // Only a scratch plan's image phase shares its index; every app phase uses the per-app index.
     const entries =
       (yield* (
-        input.phase === "artifact" && input.scratch
+        input.phase === "artifact" && input.owner.kind === "scratch"
           ? openScratchBuildResults(input.stateStore)
-          : openAppBuildResults(input.stateStore, input.appId)
+          : openAppBuildResults(input.stateStore, input.owner)
       ).pipe(Effect.flatMap((bucket) => bucket.get))) ?? [];
     yield* sweepBuildTranscripts({ ...input, entries });
   }).pipe(

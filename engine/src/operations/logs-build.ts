@@ -4,6 +4,7 @@ import { Effect } from "effect";
 
 import { planDesiredApp } from "../landofile/app-resolution.ts";
 import { appSteps } from "../services/build-app-plan.ts";
+import { BuildOwner } from "../services/build-owner.ts";
 import { type BuildResultEntry, openAppBuildResults } from "../services/build-results.ts";
 import { makeBuildTranscriptAppDir, readBuildTranscriptLines } from "../services/build-transcript.ts";
 import { type LogsAppError, type LogsAppLine, type LogsAppResult, selectLogServices } from "./logs.ts";
@@ -53,12 +54,12 @@ export const buildLogsApp = Effect.fn("AppOperation.buildLogs")(function* (
   const stateStore = yield* StateStore;
   const services = yield* selectLogServices(plan, options.service);
   // `lando logs` plans the app in the current directory, which is never a scratch app.
-  const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+  const owner = BuildOwner.fromPlan(plan);
+  const bucket = yield* openAppBuildResults(stateStore, owner);
   const entries = (yield* bucket.get) ?? [];
   const appDir = makeBuildTranscriptAppDir({
     userDataRoot: paths.roots.userDataRoot,
-    appId: String(plan.id),
-    scratch: false,
+    owner,
   });
   const lines: LogsAppLine[] = [];
   const steps = appSteps(plan);

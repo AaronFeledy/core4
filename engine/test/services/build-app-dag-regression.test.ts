@@ -5,7 +5,7 @@ import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Queue, Stream } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
-import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";
+import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
 
 test("fails a cyclic app build through the tagged provider error boundary", async () => {
   await withTempRoots(async () => {
@@ -158,6 +158,15 @@ test("labels scratch app build-step-skip events with the scratch identity namesp
     // Given
     const provider = {
       ...TestRuntimeProvider,
+      inspect: (target) =>
+        Effect.succeed({
+          app: target.app,
+          service: target.service,
+          providerId,
+          publications: { status: "unknown" },
+          status: "running",
+          containerId: "web-1",
+        }),
       execStream: () => Stream.make({ exitCode: 0 }),
     } satisfies RuntimeProviderShape;
     const plan = {

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { DateTime, Effect, Schema } from "effect";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import {
+  type AppBuildResult,
+  type ArtifactBuildResult,
   BuildResultEntry,
   clearAppBuildResults,
   findCompleteBuildResult,
@@ -18,17 +21,26 @@ const requiredEntry = {
   service: ServiceName.make("web"),
   phase: "artifact",
   outcome: "complete",
-  exitCode: 0,
   durationMs: 12,
   artifactRef: "web:test",
   transcriptPath: AbsolutePath.make("/tmp/lando/builds/web.log"),
   completedAt,
 } as const;
 
-const recorded = (overrides: Partial<Omit<BuildResultEntry, "completedAt">>) => ({
-  ...requiredEntry,
-  ...overrides,
-});
+const owner = BuildOwner.root(AbsolutePath.make("/tmp/myapp"));
+function recorded(overrides: Partial<AppBuildResult> & { phase: "app"; step: string }): AppBuildResult;
+function recorded(overrides: Partial<ArtifactBuildResult> & { phase?: "artifact" }): ArtifactBuildResult;
+function recorded(
+  overrides:
+    | (Partial<AppBuildResult> & { phase: "app"; step: string })
+    | (Partial<ArtifactBuildResult> & { phase?: "artifact" }),
+): BuildResultEntry {
+  if (overrides.phase === "app") {
+    const { artifactRef: _, ...common } = requiredEntry;
+    return { ...common, ...overrides, phase: "app", step: overrides.step };
+  }
+  return { ...requiredEntry, ...overrides };
+}
 
 const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(effect);
 
@@ -45,9 +57,9 @@ describe("BuildResultEntry", () => {
     ).toBe(false);
   });
 
-  test("accepts an app step identity alongside an artifact entry without one", () => {
+  test("rejects an app step identity on an artifact entry", () => {
     expect(Schema.is(BuildResultEntry)(requiredEntry)).toBe(true);
-    expect(Schema.is(BuildResultEntry)({ ...requiredEntry, step: "web:app:install" })).toBe(true);
+    expect(Schema.is(BuildResultEntry)({ ...requiredEntry, step: "web:app:install" })).toBe(false);
   });
 
   test("returns the newest matching complete result", () => {
@@ -65,7 +77,7 @@ describe("BuildResultEntry", () => {
   test("returns nothing when a newer matching attempt failed", () => {
     // Given
     const success = requiredEntry;
-    const failure = { ...requiredEntry, outcome: "fail" as const, exitCode: 1 };
+    const failure = { ...requiredEntry, outcome: "fail" as const };
 
     // When
     const found = findCompleteBuildResult([success, failure], {
@@ -80,7 +92,7 @@ describe("BuildResultEntry", () => {
 
   test("returns a newer success recorded after a failure", () => {
     // Given
-    const failure = { ...requiredEntry, outcome: "fail" as const, exitCode: 1 };
+    const failure = { ...requiredEntry, outcome: "fail" as const };
     const success = { ...requiredEntry, artifactRef: "web:newer" };
 
     // When
@@ -95,11 +107,11 @@ describe("BuildResultEntry", () => {
   });
 
   test("matches an app step only for its own step id", () => {
-    const install = {
-      ...requiredEntry,
-      phase: "app" as const,
+    const install = recorded({
+      phase: "app",
       step: "web:app:install",
-    };
+      containerId: "web-1",
+    });
     const migrate = { ...install, step: "web:app:migrate" };
 
     expect(
@@ -108,6 +120,7 @@ describe("BuildResultEntry", () => {
         service: requiredEntry.service,
         phase: "app",
         step: "web:app:migrate",
+        containerId: "web-1",
       }),
     ).toBeUndefined();
     expect(
@@ -116,6 +129,7 @@ describe("BuildResultEntry", () => {
         service: requiredEntry.service,
         phase: "app",
         step: "web:app:install",
+        containerId: "web-1",
       }),
     ).toEqual(install);
   });
@@ -123,7 +137,7 @@ describe("BuildResultEntry", () => {
   test("replaces the earlier attempt for the same step identity and build key", async () => {
     // Given one app step that succeeds and then fails under the same build key.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     const entry = recorded({
       phase: "app",
       step: "web:app:install",
@@ -143,7 +157,7 @@ describe("BuildResultEntry", () => {
   test("keeps five build keys per step identity", async () => {
     // Given six recorded keys for one app step.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     for (let index = 1; index <= 6; index += 1) {
       await run(
         recordBuildResult(
@@ -167,7 +181,7 @@ describe("BuildResultEntry", () => {
   test("keeps the current key of every app step of one service", async () => {
     // Given six app steps that each recorded one key.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     for (let index = 1; index <= 6; index += 1) {
       await run(
         recordBuildResult(
@@ -263,14 +277,14 @@ describe("clearAppBuildResults", () => {
   test("keeps artifact results and removes app-phase results", async () => {
     // Given an app index with one artifact and one app result.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     await run(recordBuildResult(bucket, recorded({})));
     await run(
       recordBuildResult(bucket, recorded({ phase: "app", step: "web:app:install", buildKey: "app-key" })),
     );
 
     // When
-    await run(clearAppBuildResults(store.service, "myapp"));
+    await run(clearAppBuildResults(store.service, owner));
 
     // Then only the image result that survives destroy is left.
     const entries = await run(bucket.get);
@@ -281,13 +295,13 @@ describe("clearAppBuildResults", () => {
   test("removes the bucket when only app-phase results remain", async () => {
     // Given an app index with only app results.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     await run(
       recordBuildResult(bucket, recorded({ phase: "app", step: "web:app:install", buildKey: "app-key" })),
     );
 
     // When
-    await run(clearAppBuildResults(store.service, "myapp"));
+    await run(clearAppBuildResults(store.service, owner));
 
     // Then the file is gone instead of holding an empty tombstone.
     expect(await run(bucket.exists)).toBe(false);
@@ -306,7 +320,7 @@ describe("markBuildResultUsed", () => {
   test("moves a reused entry to the newest position of its step identity", async () => {
     // Given an older key that precedes a newer key of the same app step.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     await run(recordBuildResult(bucket, appEntry("older")));
     await run(recordBuildResult(bucket, appEntry("newer")));
     const before = await run(bucket.get);
@@ -325,7 +339,7 @@ describe("markBuildResultUsed", () => {
   test("keeps a reused key through the later recordings that would otherwise evict it", async () => {
     // Given five keys where the oldest is the one in use.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     for (const key of ["k1", "k2", "k3", "k4", "k5"]) {
       await run(recordBuildResult(bucket, appEntry(key)));
     }
@@ -347,7 +361,7 @@ describe("markBuildResultUsed", () => {
   test("does not write when the reused entry is already newest", async () => {
     // Given a bucket whose newest entry of the identity is the one being reused.
     const store = makeTestStateStore();
-    const bucket = await run(openAppBuildResults(store.service, "myapp"));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     await run(recordBuildResult(bucket, appEntry("older")));
     await run(recordBuildResult(bucket, appEntry("newest")));
     const entries = await run(bucket.get);

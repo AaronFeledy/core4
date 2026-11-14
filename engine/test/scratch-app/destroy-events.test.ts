@@ -5,7 +5,7 @@ import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { ScratchAppService } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
-import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
+import { BuildOwner, openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 import { runDestroy, seedScratchPlan, withDestroyFixture } from "./destroy-fixture.ts";
 
@@ -58,12 +58,15 @@ test("scratch destroy removes its build output and per-app index and leaves the 
     await writeFile(transcript, "output\n");
     const shared = join(cacheRoot, "scratch-build-results.bin");
     await writeFile(shared, "shared-index");
-    const bucket = await Effect.runPromise(openAppBuildResults(f.stateStore, f.id));
+    const bucket = await Effect.runPromise(
+      openAppBuildResults(f.stateStore, BuildOwner.scratch(AppId.make(f.id))),
+    );
     await Effect.runPromise(
       recordBuildResult(bucket, {
         buildKey: "app-key",
         service: ServiceName.make("web"),
         phase: "app",
+        step: "web:app:install",
         outcome: "complete",
         exitCode: 0,
         durationMs: 1,

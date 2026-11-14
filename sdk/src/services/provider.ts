@@ -307,6 +307,8 @@ export interface ServiceRuntimeFields {
   readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
+  /** Native container identity: stable across in-place restarts, different after replacement.
+   * Omission means consumers cannot prove that container-local work can be reused. */
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
