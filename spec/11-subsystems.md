@@ -801,7 +801,7 @@ The sole tagged error is `ManagedFileError`, with reasons `io`, `decode`, `confl
 
 ### 10.14 MCP server (`McpService`)
 
-`McpCommandEntry` has one required ownership discriminant, `kind: "command" | "tooling"`. Runtime `commandEntries` accepts only command entries; `toolingEntries` and `McpToolingCatalog.entries` accept only tooling entries. Placement MUST NOT restamp ownership. Authorization and dispatch use the selected entry's kind.
+`McpCommandEntry` has one required ownership discriminant, `kind: "command" | "tooling"`. Runtime `commandEntries` accepts only command entries; `toolingEntries` and `McpToolingCatalog.entries` accept only tooling entries. Placement MUST NOT restamp ownership. Authorization and dispatch use the selected entry's kind. Runtime configuration requires the invocation's captured `env` and `cwd`; catalog discovery, retained sessions, execution, and redaction MUST use that context even if the process environment or working directory changes after command construction.
 
 `McpService` is the in-process Model Context Protocol server behind `lando mcp` (§8.2.6). MCP is a projection of canonical command, result, resource, and event registries, not a parallel command surface. It exposes scoped `serve` and `catalog` over `McpServeOptions`, `McpCatalogOptions`, and `McpCatalog`.
 

@@ -283,6 +283,8 @@ test("actual MCP session rejects unknown tooling top-level names without retaini
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(McpRuntimeConfig, {
+                cwd: process.cwd(),
+                env: { ...process.env },
                 toolingEntries: [entry],
                 commandEntries: [],
                 defaultAllowlist: [command.id],

@@ -64,6 +64,8 @@ for (const shutdown of ["EOF", "interrupt"] as const) {
           const service = yield* McpService.pipe(
             Effect.provide(
               serverLayer({
+                cwd: process.cwd(),
+                env: { ...process.env },
                 commandEntries: [{ kind: "command" as const, spec }],
                 defaultAllowlist: [spec.id],
                 apps: testAppGenerations(

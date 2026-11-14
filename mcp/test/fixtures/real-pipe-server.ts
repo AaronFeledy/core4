@@ -28,6 +28,8 @@ const services = McpService.layer.pipe(
       TestMcpCommandExecutor,
       Layer.succeed(RedactionService, makeRedactionService()),
       Layer.succeed(McpRuntimeConfig, {
+        cwd: process.cwd(),
+        env: { ...process.env },
         commandEntries: [
           {
             kind: "command" as const,

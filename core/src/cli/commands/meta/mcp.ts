@@ -29,11 +29,7 @@ import { ConfigService } from "@lando/sdk/services";
 import { Effect, Exit, type Layer, type Result } from "effect";
 import { serviceLayer } from "../../../mcp-command-executor";
 import { resources } from "../../../mcp-resources";
-import {
-  CliInvocation,
-  type CliInvocationContext,
-  processInvocationDefaults,
-} from "../../../runtime/invocation-context";
+import { CliInvocation, type CliInvocationContext } from "../../../runtime/invocation-context";
 import type { LandoGenerationRuntime } from "../../../runtime/layer";
 import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
@@ -124,9 +120,10 @@ const resolveOptions = Effect.fnUntraced(function* (
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
   apps: McpAppGenerations,
-  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
+  invocation: Pick<CliInvocationContext, "env" | "cwd">,
 ): McpRuntimeConfigShape => ({
-  sourceEnv: { ...sourceEnv },
+  env: { ...invocation.env },
+  cwd: invocation.cwd,
   commandEntries: registry.commandEntries,
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
   ...(registry.toolingUnavailable === undefined ? {} : { toolingUnavailable: registry.toolingUnavailable }),
@@ -164,7 +161,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
       commandEntries: registry.commandEntries.filter((entry) => entry.plugin === undefined),
     },
     apps,
-    (yield* CliInvocation).env,
+    yield* CliInvocation,
   );
   const catalogOptions = {
     allow: options.allow,
@@ -189,7 +186,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
 });
 
 export const dispatchMcpCommand = async (params: {
-  readonly context?: CliInvocationContext;
+  readonly context: CliInvocationContext;
   readonly flags: McpCommandFlags;
   readonly signal?: AbortSignal;
   readonly commandRuntime: Layer.Layer<
@@ -206,10 +203,10 @@ export const dispatchMcpCommand = async (params: {
     redactor: import("@lando/sdk/secrets").Redactor,
   ) => string;
 }): Promise<void> => {
-  let exitCode = params.context === undefined ? process.exitCode : undefined;
+  let exitCode: number | undefined;
   const setExitCode = (code: number): void => {
     exitCode = code;
-    (params.context?.setExitCode ?? processInvocationDefaults.setExitCode)(code);
+    params.context.setExitCode(code);
   };
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
@@ -227,7 +224,7 @@ export const dispatchMcpCommand = async (params: {
     const jqExpression = activeJq;
     return runWithRendererHandling(listEffect, {
       setExitCode,
-      ...(params.context === undefined ? {} : { context: params.context }),
+      context: params.context,
       runtime: params.commandRuntime,
       rendererMode: params.rendererMode,
       resultFormat: params.resultFormat,
@@ -270,7 +267,7 @@ export const dispatchMcpCommand = async (params: {
         });
   await runWithRendererHandling(Effect.raceFirst(interrupted, serveEffect), {
     setExitCode,
-    ...(params.context === undefined ? {} : { context: params.context }),
+    context: params.context,
     runtime: params.commandRuntime,
     rendererMode: params.rendererMode,
     resultFormat: "text",

@@ -48,6 +48,8 @@ describe("bounded final output capture", () => {
           Effect.provide(
             serverLayer(
               {
+                cwd: process.cwd(),
+                env: { ...process.env },
                 commandEntries: [{ kind: "command" as const, spec }],
                 defaultAllowlist: [spec.id],
                 apps: testAppGenerations(Layer.succeed(RedactionService, redaction)),
@@ -121,6 +123,8 @@ describe("bounded final output capture", () => {
           Effect.provide(
             serverLayer(
               {
+                cwd: process.cwd(),
+                env: { ...process.env },
                 commandEntries: [{ kind: "command" as const, spec }],
                 defaultAllowlist: [spec.id],
                 apps: testAppGenerations(Layer.succeed(RedactionService, redaction)),

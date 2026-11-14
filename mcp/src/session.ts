@@ -44,7 +44,7 @@ export const serveSession = Effect.fnUntraced(
   function* (session: McpSession) {
     return yield* withStdioConnection((stdio) =>
       Effect.gen(function* () {
-        const sessionCwd = session.options.cwd ?? process.cwd();
+        const sessionCwd = session.options.cwd ?? session.config.cwd;
         const apps = yield* session.config.apps;
         // Build the session app's generation before the server reads stdin, so the first
         // tools/list already holds its plugin tools. A session app whose plugins fail to build

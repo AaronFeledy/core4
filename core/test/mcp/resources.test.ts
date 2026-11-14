@@ -98,6 +98,8 @@ const withResourceSession = async <A, E>(
               RuntimeLayerFactory.of({ make: () => Layer.succeedContext(runtime) }),
             );
             const config = McpRuntimeConfig.of({
+              cwd: process.cwd(),
+              env: { ...process.env },
               commandEntries: [],
               defaultAllowlist: [],
               resources,

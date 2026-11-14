@@ -303,6 +303,8 @@ describe("MCP contract suite — cancellation mid-call", () => {
       ),
     );
     const config: McpRuntimeConfigShape = {
+      cwd: process.cwd(),
+      env: { ...process.env },
       commandEntries: [{ kind: "command" as const, spec: blocking }],
       defaultAllowlist: ["app:exec"],
       apps: testAppGenerations(),
@@ -348,6 +350,8 @@ describe("MCP contract suite — concurrency cap", () => {
       }),
     );
     const config: McpRuntimeConfigShape = {
+      cwd: process.cwd(),
+      env: { ...process.env },
       commandEntries: [{ kind: "command" as const, spec: blocking }],
       defaultAllowlist: ["app:exec"],
       apps: testAppGenerations(),

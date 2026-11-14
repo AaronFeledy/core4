@@ -46,8 +46,7 @@ export const makeNestedExecute = (
       );
       if (bound._tag === "Failure") return yield* outcomeFromExit(Exit.failCause(bound.cause));
       const input = bound.value;
-      const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
-      const cwd = runInput.appPath ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
+      const cwd = runInput.appPath ?? (yield* RuntimeCwd);
       const completion = entry.spec.completion;
       const command = entry.spec.run(input);
       const rootAwareCommand =

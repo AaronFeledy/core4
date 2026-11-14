@@ -39,7 +39,8 @@ export type { McpResourceEntry } from "./resources";
 export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 
 export interface McpRuntimeConfigShape {
-  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly cwd: string;
   readonly commandEntries: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>>;
   readonly toolingEntries?: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "tooling" }>>;
   readonly toolingUnavailable?: readonly McpDiagnostic[];
@@ -102,7 +103,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
     this,
     Effect.gen(function* () {
       const config = yield* McpRuntimeConfig;
-      const sourceEnv = { ...(config.sourceEnv ?? process.env) };
+      const sourceEnv = { ...config.env };
       const redaction = yield* RedactionService;
       const executor = yield* McpCommandExecutor;
       const events = yield* Effect.serviceOption(EventService);
@@ -118,7 +119,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
         const key = JSON.stringify(options);
         const entries = sessionEntries(config, options);
         const policy = sessionAllowPolicy(config, options);
-        const directory = cwd ?? process.cwd();
+        const directory = cwd ?? config.cwd;
         const generation = yield* withAppDiscovery(
           directory,
           Effect.scoped(Effect.flatMap(config.apps, (apps) => apps.acquire(directory))),

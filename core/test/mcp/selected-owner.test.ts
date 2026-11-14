@@ -84,6 +84,8 @@ const session = <A>(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(McpRuntimeConfig, {
+                cwd: process.cwd(),
+                env: { ...process.env },
                 commandEntries: [],
                 defaultAllowlist: options.defaults ?? [],
                 apps: Effect.succeed({
