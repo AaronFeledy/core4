@@ -6,13 +6,7 @@ import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normal
 import { type AppPlan, ServiceName, ToolingTaskShape, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import type { EffectiveTooling } from "./tooling-composition.ts";
-import {
-  ToolingProvenance,
-  UNKNOWN_TOOLING_ORIGIN,
-  toolingIssueLocations,
-  toolingIssueSource,
-  toolingOriginAt,
-} from "./tooling-provenance.ts";
+import { ToolingProvenance, UNKNOWN_TOOLING_ORIGIN, toolingIssueSource } from "./tooling-provenance.ts";
 
 export {
   type EffectiveTooling,
@@ -129,20 +123,6 @@ export const effectiveToolingForPlan = (plan: AppPlan): EffectiveTooling | undef
 
 export const toolingIssueSourceForPlan = (plan: AppPlan, name: string, relativePath: ValidationIssuePath) =>
   toolingIssueSource(provenanceForPlan(plan), name, relativePath);
-
-export const toolingOriginForPlan = (plan: AppPlan, name: string, relativePath: ValidationIssuePath) =>
-  toolingOriginAt(provenanceForPlan(plan), name, relativePath);
-
-export const toolingRelatedLocationsForPlan = (
-  plan: AppPlan,
-  name: string,
-  relativePaths: readonly ValidationIssuePath[],
-) => toolingIssueLocations(provenanceForPlan(plan), name, relativePaths);
-
-export const disabledToolingSourceForPlan = (plan: AppPlan, name: string): string | undefined => {
-  const source = toolingIssueSourceForPlan(plan, name, ["disabled"]);
-  return source !== undefined && "file" in source ? source.file : undefined;
-};
 
 /** Recorded metadata is overall invocation context, not proof of an authored issue location. */
 export const toolingSourcePathForPlan = (plan: AppPlan, name: string): string => {

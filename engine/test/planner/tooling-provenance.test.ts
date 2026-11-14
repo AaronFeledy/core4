@@ -6,15 +6,14 @@ import { DateTime, Effect, Schema } from "effect";
 import {
   attachEffectiveTooling,
   connectionClientsForPlan,
-  disabledToolingSourceForPlan,
   effectiveToolingForPlan,
   resolveEffectiveTooling,
   toolingIssueSourceForPlan,
   toolingOriginAt,
-  toolingOriginForPlan,
-  toolingRelatedLocationsForPlan,
   toolingSourcePathForPlan,
+  toolingSourceResolverForPlan,
 } from "../../src/planner/effective-tooling.ts";
+import { ToolingProvenance } from "../../src/planner/tooling-provenance.ts";
 
 const base: AppPlan = {
   id: AppId.make("provenance"),
@@ -90,7 +89,13 @@ test("persisted tooling resolves field prefixes to winning defaults, local field
     });
   }
   expect(connectionClientsForPlan(plan)).toEqual({ php: ServiceName.make("web") });
-  expect(toolingRelatedLocationsForPlan(plan, "inspect", [["cmd"], ["env", "DEFAULT"]])).toEqual([
+  const source = toolingSourceResolverForPlan(plan)("inspect");
+  expect(
+    [["cmd"], ["env", "DEFAULT"]].map((relative) => {
+      const path = ["tooling", "inspect", ...relative];
+      return { path, source: source.locate?.(path) };
+    }),
+  ).toEqual([
     {
       path: ["tooling", "inspect", "cmd"],
       source: {
@@ -126,9 +131,13 @@ test("unversioned applied tooling retains executable intent and internal/client 
   expect(getInternalToolingTasks(tasks ?? {})).toEqual(["psql"]);
   expect(connectionClientsForPlan(plan)).toEqual({ psql: ServiceName.make("database") });
   expect(toolingIssueSourceForPlan(plan, "psql", ["cmd"])).toBeUndefined();
-  expect(disabledToolingSourceForPlan(plan, "off")).toBeUndefined();
+  expect(toolingSourceResolverForPlan(plan)("off").locate?.(["tooling", "off", "disabled"])).toBeUndefined();
   expect(toolingSourcePathForPlan(plan, "off")).toBe("/recorded/application/.lando.yml");
-  expect(toolingOriginForPlan(plan, "off", ["disabled"])).toEqual({ _tag: "Unknown" });
+  expect(toolingSourceResolverForPlan(plan)("off").path).toBe("/recorded/application/.lando.yml");
+  const persisted = Schema.decodeUnknownSync(
+    Schema.Struct({ provenance: Schema.optionalKey(ToolingProvenance) }),
+  )(plan.extensions["@lando/core/effective-tooling"]);
+  expect(toolingOriginAt(persisted.provenance ?? {}, "off", ["disabled"])).toEqual({ _tag: "Unknown" });
   expect(plan.extensions["@lando/core/effective-tooling"]).toEqual(legacy);
 });
 
@@ -141,7 +150,13 @@ test("missing composition sources remain explicitly Unknown through attachment",
   expect(toolingOriginAt(resolution.provenance, "inspect", ["cmd"])).toEqual({ _tag: "Unknown" });
   expect(toolingIssueSourceForPlan(plan, "inspect", ["cmd"])).toBeUndefined();
   expect(toolingSourcePathForPlan(plan, "inspect")).toBe("/recorded/application/.lando.yml");
-  expect(toolingOriginForPlan(plan, "inspect", ["cmd"])).toEqual({ _tag: "Unknown" });
+  expect(
+    toolingSourceResolverForPlan(plan)("inspect").locate?.(["tooling", "inspect", "cmd"]),
+  ).toBeUndefined();
+  const persisted = Schema.decodeUnknownSync(Schema.Struct({ provenance: ToolingProvenance }))(
+    plan.extensions["@lando/core/effective-tooling"],
+  );
+  expect(toolingOriginAt(persisted.provenance, "inspect", ["cmd"])).toEqual({ _tag: "Unknown" });
 });
 
 test.each([

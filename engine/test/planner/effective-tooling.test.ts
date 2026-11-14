@@ -48,7 +48,7 @@ describe("compileEffectiveTooling", () => {
       });
       const roundTrip = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(plan));
       expect(toolingForPlan.effectiveToolingForPlan(roundTrip)?.inspect).toEqual({ disabled: true });
-      expect(toolingForPlan.disabledToolingSourceForPlan(roundTrip, "inspect")).toBe(file);
+      expect(toolingForPlan.toolingSourceResolverForPlan(roundTrip)("inspect").path).toBe(file);
     },
   );
   test("false drops a service-type task definition wholesale", () => {
