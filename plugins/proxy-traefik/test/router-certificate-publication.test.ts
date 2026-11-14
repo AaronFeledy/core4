@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Redacted } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { defaultTlsFile } from "../src/proxy-paths.ts";
 import { app } from "./proxy-tls-harness.ts";
@@ -12,6 +12,39 @@ import {
   pem,
   route,
 } from "./router-certificate-fixture.ts";
+
+test.each(["wrong-key", "wrong-name", "wrong-root"] as const)(
+  "rejects %s app issuance before publishing the already prepared default pair",
+  async (kind) => {
+    const f = makeCertificateFixture();
+    f.seed(pem.expiring);
+    const before = new Map(f.files);
+    const invalid = kind === "wrong-name" ? pem.exactOnly : pem.current;
+    const service = makeTraefikRouterService({
+      ...f.dependencies,
+      certificateAuthority: {
+        ...f.dependencies.certificateAuthority,
+        issueCert: (spec) =>
+          spec.cn.startsWith("*.")
+            ? f.dependencies.certificateAuthority.issueCert(spec)
+            : Effect.succeed({
+                certificate: invalid.certificate,
+                privateKey: Redacted.make(
+                  kind === "wrong-key" ? pem.expiring.privateKey : invalid.privateKey,
+                ),
+                root: { certificate: kind === "wrong-root" ? pem.rootB : pem.rootA, trusted: true },
+              }),
+      },
+    });
+    const result = await f.run(service.applyRoutes([route], app).pipe(Effect.result), expiry - 15 * DAY_MS);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ProxyApplyError", cause: { _tag: "CaError" } },
+    });
+    expect(f.files).toEqual(before);
+    expect(f.operations).toEqual([]);
+  },
+);
 
 test.each(["root", "first-issue", "second-issue"] as const)(
   "%s failure preserves published files and Windows acknowledgement",
@@ -65,6 +98,19 @@ test.each(["http", "empty", "remove", "stop", "observe"] as const)(
     expect(f.calls).toEqual([]);
   },
 );
+
+test("removes leftover owner certificates even when HTTP route YAML already matches", async () => {
+  const f = makeCertificateFixture();
+  const routes = [{ ...route, scheme: "http" as const }];
+  await f.run(f.makeService().applyRoutes(routes, app));
+  f.files.set(f.appFiles.cert, pem.current.certificate);
+  f.files.set(f.appFiles.key, pem.current.privateKey);
+  f.state.rootFailure = true;
+  await f.run(f.makeService().applyRoutes(routes, app));
+  expect(f.files.has(f.appFiles.cert)).toBe(false);
+  expect(f.files.has(f.appFiles.key)).toBe(false);
+  expect(f.calls).toEqual([]);
+});
 
 test("repairs a mixed pair after a failed certificate write before publishing the watched trigger", async () => {
   const f = makeCertificateFixture();

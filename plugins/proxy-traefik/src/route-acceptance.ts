@@ -8,12 +8,18 @@ import { readAcquisitionState } from "./port-acquisition-state.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { type RouteSnapshot, matchesLiveRoute } from "./route-evidence-match.ts";
 import { routeNamespace, routeSchemes } from "./routing.ts";
+import { type ServedTlsProof, proveServedTls } from "./served-tls-proof.ts";
 
-export const acceptanceError = (app: AppId, classification: string) =>
+export const acceptanceError = (
+  app: AppId,
+  classification: string,
+  evidence?: { readonly routes: number; readonly attempts: number },
+) =>
   new ProxyApplyError({
-    message: `Traefik route acceptance failed (${classification}).`,
+    message: `Traefik route acceptance failed (${classification}${evidence === undefined ? "" : `; routes=${evidence.routes}; attempts=${evidence.attempts}`}).`,
     proxyId: "traefik",
     app: String(app),
+    cause: { classification, ...evidence },
     remediation:
       "Read `lando global:logs --service=traefik --tail=100`, inspect `lando global:info`, and run `lando doctor`, then retry.",
   });
@@ -60,20 +66,33 @@ export const acceptsAllRoutes = (
 export const awaitRouteAcceptance = Effect.fn("TraefikRouter.awaitRouteAcceptance")(function* (
   dependencies: TraefikProxyDependencies,
   owner: AppRouteOwner,
-  routes: ReadonlyArray<RoutePlan>,
+  input: { readonly routes: ReadonlyArray<RoutePlan>; readonly servedTls?: ServedTlsProof },
 ) {
+  const { routes } = input;
+  let classification = "graph-mismatch";
   const result = yield* runProbe(
     {
       id: "proxy-traefik-route-acceptance",
       policy: { maxAttempts: 121, delay: Duration.millis(250), timeout: Duration.seconds(30) },
       classify: { success: (accepted) => (accepted ? "green" : "yellow"), failure: () => "yellow" },
     },
-    readLiveRouteSnapshot(dependencies, routes).pipe(
-      Effect.map((snapshot) => snapshot !== undefined && acceptsAllRoutes(snapshot, owner, routes)),
-    ),
+    Effect.gen(function* () {
+      const snapshot = yield* readLiveRouteSnapshot(dependencies, routes);
+      if (snapshot === undefined || !acceptsAllRoutes(snapshot, owner, routes)) {
+        classification = "graph-mismatch";
+        return false;
+      }
+      const accepted =
+        input.servedTls === undefined ||
+        (yield* proveServedTls(dependencies, routes, input.servedTls).pipe(
+          Effect.catch(() => Effect.succeed(false)),
+        ));
+      classification = accepted ? "accepted" : "tls-not-current";
+      return accepted;
+    }),
   ).pipe(mapFailures(() => acceptanceError(owner.id, "probe-failed")));
   if (result.outcome !== "green")
     return yield* Effect.fail(
-      acceptanceError(owner.id, `not-converged; routes=${routes.length}; attempts=${result.attempts}`),
+      acceptanceError(owner.id, classification, { routes: routes.length, attempts: result.attempts }),
     );
 });

@@ -5,7 +5,7 @@ import { readAcquisitionState } from "./port-acquisition-state.ts";
 import { defaultDomainFile } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { matchesLiveRoute } from "./route-evidence-match.ts";
-import { routeReloadSnapshot } from "./route-reload-snapshot.ts";
+import { routeReloadSnapshot, servedSnapshotValues } from "./route-reload-snapshot.ts";
 import { isAcknowledged, routeReloadDigest } from "./route-reload-state.ts";
 import { authoritiesFor, routeSchemes } from "./routing.ts";
 import { normalizeDefaultDomain } from "./tls.ts";
@@ -56,11 +56,15 @@ export const makeRouteObserver = (
       observation: { status: "unknown" },
     };
     const stateStore = dependencies.stateStore;
-    if (stateStore === undefined || pendingReload.has(owner.ownerKey)) return unknown;
+    if (pendingReload.has(owner.ownerKey)) return unknown;
     const acknowledged = yield* Effect.gen(function* () {
       const domain = yield* dependencies.fileSystem.readText(defaultDomainFile(dependencies.paths));
       const snapshot = yield* routeReloadSnapshot(dependencies, owner, normalizeDefaultDomain(domain));
-      return yield* isAcknowledged(stateStore, owner.ownerKey, routeReloadDigest(snapshot));
+      return yield* isAcknowledged(
+        stateStore,
+        owner.ownerKey,
+        routeReloadDigest(servedSnapshotValues(snapshot)),
+      );
     }).pipe(Effect.catch(() => Effect.succeed(false)));
     return acknowledged ? evidence : unknown;
   });

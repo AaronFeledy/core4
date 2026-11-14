@@ -1,3 +1,4 @@
+import { prepareCertificatePair } from "@lando/sdk/certificates";
 import { type AppRouteOwner, type RoutePlan, certificateNameForHostname } from "@lando/sdk/schema";
 import { Effect, Redacted } from "effect";
 
@@ -12,7 +13,8 @@ import {
   joinFor,
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
-import { readOptional } from "./route-reload-snapshot.ts";
+import type { RouteReloadSnapshot } from "./route-reload-snapshot.ts";
+import { routeReloadDigest } from "./route-reload-state.ts";
 import { renderTraefikDefaultTlsConfig } from "./routing.ts";
 
 export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<string> => {
@@ -59,56 +61,52 @@ export const prepareTlsFiles = Effect.fn("TraefikRouter.prepareTlsFiles")(functi
     readonly owner: AppRouteOwner;
     readonly defaultDomain: string;
     readonly hostnames: ReadonlyArray<string>;
-    readonly refreshAppCertificate: boolean;
-    readonly refreshDefaultCertificate: boolean;
+    readonly snapshot: RouteReloadSnapshot;
     readonly root: string;
   },
 ) {
   const defaultFiles = defaultCertificateFiles(dependencies.paths, input.defaultDomain);
   const appFiles = appCertificateFiles(dependencies.paths, input.owner);
-  const defaultPair = input.refreshDefaultCertificate
-    ? yield* dependencies.certificateAuthority.issueCert({
-        cn: `*.${input.defaultDomain}`,
-        sans: defaultCertificateHostnames(input.defaultDomain),
-      })
-    : undefined;
-  const appPair = input.refreshAppCertificate
-    ? yield* dependencies.certificateAuthority.issueCert({
-        cn: input.hostnames[0] ?? input.defaultDomain,
-        sans: input.hostnames,
-      })
-    : undefined;
+  const existingPair = (certificate: string | undefined, privateKey: string | undefined) =>
+    certificate === undefined || privateKey === undefined
+      ? {}
+      : { existing: { certificate, privateKey: Redacted.make(privateKey) } };
+  const defaultPair = yield* prepareCertificatePair(dependencies.certificateAuthority, {
+    spec: {
+      cn: `*.${input.defaultDomain}`,
+      sans: defaultCertificateHostnames(input.defaultDomain),
+    },
+    root: input.root,
+    subject: "router default certificate",
+    ...existingPair(input.snapshot.defaultCertificate, input.snapshot.defaultPrivateKey),
+  });
+  const appPair = yield* prepareCertificatePair(dependencies.certificateAuthority, {
+    spec: {
+      cn: input.hostnames[0] ?? input.defaultDomain,
+      sans: input.hostnames,
+    },
+    root: input.root,
+    subject: `router owner ${input.owner.id}`,
+    ...existingPair(input.snapshot.certificate, input.snapshot.privateKey),
+  });
   const issuerFile = defaultIssuerFile(dependencies.paths, input.defaultDomain);
-  const issuer = defaultPair?.root.certificate ?? input.root;
-  const previousIssuer = yield* readOptional(dependencies, issuerFile);
+  const issuer = defaultPair.root;
   const defaultNames = defaultCertificateNames(input.defaultDomain);
   const tlsFile = defaultTlsFile(dependencies.paths);
   const config = renderTraefikDefaultTlsConfig({
     certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
     keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
   });
-  const previousConfig = yield* readOptional(dependencies, tlsFile);
-
   return {
-    appCertificate: appPair?.certificate,
-    defaultCertificate: defaultPair?.certificate,
-    publish: Effect.gen(function* () {
-      if (defaultPair !== undefined || appPair !== undefined) {
-        yield* dependencies.fileSystem.mkdir(certificateDir(dependencies.paths));
-      }
-      for (const [files, issued] of [
-        [defaultFiles, defaultPair],
-        [appFiles, appPair],
-      ] as const) {
-        if (issued === undefined) continue;
-        yield* dependencies.fileSystem.writeSecretAtomic(files.key, Redacted.value(issued.privateKey));
-        yield* dependencies.fileSystem.writeAtomic(files.cert, issued.certificate);
-      }
-      if (previousIssuer !== issuer) yield* dependencies.fileSystem.writeAtomic(issuerFile, issuer);
-      if (previousConfig !== config) yield* dependencies.fileSystem.writeAtomic(tlsFile, config);
-    }),
+    app: { files: appFiles, pair: appPair },
+    defaults: { files: defaultFiles, pair: defaultPair },
+    issuer: { file: issuerFile, content: issuer },
+    config: { file: tlsFile, content: config },
+    generation: routeReloadDigest([appPair.certificate, defaultPair.certificate]),
   };
 });
+
+export type PreparedRouterTls = Effect.Success<ReturnType<typeof prepareTlsFiles>>;
 
 export const removeAllCertificates = Effect.fnUntraced(function* (dependencies: TraefikProxyDependencies) {
   const directory = certificateDir(dependencies.paths);
