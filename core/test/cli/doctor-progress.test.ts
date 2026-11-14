@@ -227,10 +227,16 @@ describe("doctor progress events", () => {
     );
     expect(report.checks.find((check) => check.section === "mcp")?.status).toBe("pass");
     expect(report.checks.find((check) => check.section === "global-config")?.status).toBe("fail");
-    expect(recorder.events[0]).toMatchObject({ _tag: "task.tree.start", children: DEFAULT_SECTIONS });
+    expect(recorder.events[0]).toMatchObject({
+      _tag: "task.tree.start",
+      children: ["global-config", ...DEFAULT_SECTIONS],
+    });
     expect(
       recorder.events.filter((event) => event._tag === "task.start").map((event) => event.taskId),
-    ).toEqual([...DEFAULT_SECTIONS]);
+    ).toEqual(["global-config", ...DEFAULT_SECTIONS]);
+    expect(recorder.events.filter((event) => event._tag === "task.fail")).toMatchObject([
+      { taskId: "global-config", summary: "global-config · 1 failure", remediation: "lando config validate" },
+    ]);
     expect(
       recorder.events.find((event) => event._tag === "task.complete" && event.taskId === "provider"),
     ).toMatchObject({ outcome: "info", summary: "provider · skipped" });
