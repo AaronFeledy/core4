@@ -1,7 +1,7 @@
 import type { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
-import type { ArtifactRef, RuntimeProviderShape } from "@lando/sdk/services";
-import { Effect } from "effect";
+import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import { Cause, Effect } from "effect";
 import type { ArtifactBuildStep } from "./build-artifact-events.ts";
 import { buildKeyForService } from "./build-key.ts";
 import type { ArtifactBuildResult } from "./build-results.ts";
@@ -40,10 +40,12 @@ export const sourceIdentityMatches = (
 export const producedImagePresent = (
   provider: RuntimeProviderShape,
   complete: ArtifactBuildResult,
-): Effect.Effect<boolean> =>
+): Effect.Effect<boolean, ProviderError> =>
   complete.artifactOrigin !== "build" || complete.artifactRef === undefined
     ? Effect.succeed(true)
     : provider.pullArtifact({ ref: complete.artifactRef, policy: "never" }).pipe(
         Effect.as(true),
-        Effect.catch(() => Effect.succeed(false)),
+        Effect.catchCause((cause) =>
+          cause.reasons.every(Cause.isFailReason) ? Effect.succeed(false) : Effect.failCause(cause),
+        ),
       );
