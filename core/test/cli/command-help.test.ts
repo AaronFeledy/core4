@@ -288,6 +288,13 @@ describe("renderCommandHelp", () => {
   });
 });
 
+const rawToolingInput = {
+  acceptsArguments: true,
+  flags: [],
+  args: [],
+  revision: ToolingInputRevision.make("raw-help-fixture"),
+};
+
 describe("renderToolingHelp", () => {
   test("renders summary, typeable usage, extras, and service when present", () => {
     // Given a cache-shaped tooling entry with a service
@@ -295,11 +302,15 @@ describe("renderToolingHelp", () => {
       id: "app:greet",
       summary: "Echo hello",
       hidden: false,
-      runs: {
-        kind: "commands",
-        steps: 1,
-        targets: [{ kind: "service", name: "appserver" }],
-        program: "echo",
+      availability: {
+        _tag: "Ready" as const,
+        input: rawToolingInput,
+        runs: {
+          kind: "commands",
+          steps: 1,
+          targets: [{ kind: "service", name: "appserver" }],
+          program: "echo",
+        },
       },
     } satisfies ToolingHelpEntry;
 
@@ -317,7 +328,11 @@ describe("renderToolingHelp", () => {
 
   test("omits the service line when the cache entry has no service", () => {
     // Given a tooling entry without a service
-    const entry = { id: "app:greet", summary: "Echo hello" };
+    const entry = {
+      id: "app:greet",
+      summary: "Echo hello",
+      availability: { _tag: "Ready" as const, input: rawToolingInput },
+    };
 
     // When tooling help is rendered
     const help = renderToolingHelp(entry);
@@ -328,7 +343,11 @@ describe("renderToolingHelp", () => {
 
   test("uses a custom alias as the typeable usage name", () => {
     // Given a tooling id remapped by commandAliases.custom
-    const entry = { id: "app:greet", summary: "Echo hello" };
+    const entry = {
+      id: "app:greet",
+      summary: "Echo hello",
+      availability: { _tag: "Ready" as const, input: rawToolingInput },
+    };
 
     // When tooling help is rendered with that policy
     const help = renderToolingHelp(entry, { aliasPolicy: { custom: { hi: "app:greet" } } });
@@ -346,22 +365,25 @@ describe("renderToolingHelp", () => {
     const entry = {
       id: "app:deploy",
       summary: "Deploy the app",
-      input: {
-        acceptsArguments: true,
-        revision: ToolingInputRevision.make("help-fixture"),
-        flags: [
-          {
-            name: "env",
-            alias: "e",
-            boolean: false,
-            sensitive: false,
-            choices: ["dev", "prod"] as const,
-            default: "dev",
-            required: false,
-            description: "Target environment",
-          },
-        ],
-        args: [],
+      availability: {
+        _tag: "Ready" as const,
+        input: {
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("help-fixture"),
+          flags: [
+            {
+              name: "env",
+              alias: "e",
+              boolean: false,
+              sensitive: false,
+              choices: ["dev", "prod"] as const,
+              default: "dev",
+              required: false,
+              description: "Target environment",
+            },
+          ],
+          args: [],
+        },
       },
     } satisfies ToolingHelpEntry;
 
@@ -381,20 +403,23 @@ describe("renderToolingHelp", () => {
     const entry = {
       id: "app:deploy",
       summary: "Deploy the app",
-      input: {
-        acceptsArguments: true,
-        revision: ToolingInputRevision.make("help-fixture"),
-        flags: [
-          {
-            name: "verbose",
-            alias: "v",
-            boolean: true,
-            sensitive: false,
-            required: false,
-            description: "Verbose output",
-          },
-        ],
-        args: [],
+      availability: {
+        _tag: "Ready" as const,
+        input: {
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("help-fixture"),
+          flags: [
+            {
+              name: "verbose",
+              alias: "v",
+              boolean: true,
+              sensitive: false,
+              required: false,
+              description: "Verbose output",
+            },
+          ],
+          args: [],
+        },
       },
     };
 
@@ -415,19 +440,22 @@ describe("renderToolingHelp", () => {
     const entry = {
       id: "app:deploy",
       summary: "Deploy the app",
-      input: {
-        acceptsArguments: true,
-        revision: ToolingInputRevision.make("help-fixture"),
-        flags: [
-          {
-            name: "name",
-            boolean: false,
-            sensitive: false,
-            required: true,
-            description: "Release name",
-          },
-        ],
-        args: [],
+      availability: {
+        _tag: "Ready" as const,
+        input: {
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("help-fixture"),
+          flags: [
+            {
+              name: "name",
+              boolean: false,
+              sensitive: false,
+              required: true,
+              description: "Release name",
+            },
+          ],
+          args: [],
+        },
       },
     };
 
@@ -445,28 +473,31 @@ describe("renderToolingHelp", () => {
     const entry = {
       id: "app:deploy",
       summary: "Deploy the app",
-      input: {
-        acceptsArguments: true,
-        revision: ToolingInputRevision.make("help-fixture"),
-        flags: [],
-        args: [
-          {
-            name: "target",
-            order: 0,
-            sensitive: false,
-            choices: ["local", "remote"] as const,
-            required: true,
-            description: "Where to deploy",
-          },
-          {
-            name: "tag",
-            order: 1,
-            sensitive: false,
-            required: false,
-            default: "latest",
-            description: "Image tag",
-          },
-        ],
+      availability: {
+        _tag: "Ready" as const,
+        input: {
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("help-fixture"),
+          flags: [],
+          args: [
+            {
+              name: "target",
+              order: 0,
+              sensitive: false,
+              choices: ["local", "remote"] as const,
+              required: true,
+              description: "Where to deploy",
+            },
+            {
+              name: "tag",
+              order: 1,
+              sensitive: false,
+              required: false,
+              default: "latest",
+              description: "Image tag",
+            },
+          ],
+        },
       },
     } satisfies ToolingHelpEntry;
 
@@ -489,14 +520,17 @@ describe("renderToolingHelp", () => {
     const entry = {
       id: "app:deploy",
       summary: "Deploy the app",
-      input: {
-        acceptsArguments: true,
-        revision: ToolingInputRevision.make("help-fixture"),
-        flags: [{ name: "env", boolean: false, required: false, sensitive: false }],
-        args: [
-          { name: "target", order: 0, required: true, sensitive: false },
-          { name: "tag", order: 1, required: false, sensitive: false },
-        ],
+      availability: {
+        _tag: "Ready" as const,
+        input: {
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("help-fixture"),
+          flags: [{ name: "env", boolean: false, required: false, sensitive: false }],
+          args: [
+            { name: "target", order: 0, required: true, sensitive: false },
+            { name: "tag", order: 1, required: false, sensitive: false },
+          ],
+        },
       },
     };
 
@@ -508,9 +542,12 @@ describe("renderToolingHelp", () => {
     expect(sectionBody(help, "USAGE")).not.toContain("[args...]");
   });
 
-  test("omits FLAGS and ARGUMENTS when input is absent", () => {
-    // Given a tooling entry with no input field
-    const entry = { id: "app:greet", summary: "Echo hello", service: "appserver" };
+  test("omits FLAGS and ARGUMENTS for an empty declaration", () => {
+    const entry = {
+      id: "app:greet",
+      summary: "Echo hello",
+      availability: { _tag: "Ready" as const, input: rawToolingInput, service: "appserver" },
+    };
 
     // When tooling help is rendered
     const help = renderToolingHelp(entry);
@@ -571,16 +608,23 @@ describe("tooling ownership hints", () => {
     ({
       id,
       summary: "Hint fixture",
-      input: {
-        acceptsArguments: true,
-        revision: ToolingInputRevision.make("hint-fixture"),
-        flags: flags.map((flag) => ({ ...flag, required: false, sensitive: false })),
-        args: [],
+      availability: {
+        _tag: "Ready" as const,
+        input: {
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("hint-fixture"),
+          flags: flags.map((flag) => ({ ...flag, required: false, sensitive: false })),
+          args: [],
+        },
       },
     }) satisfies ToolingHelpEntry;
 
   test("a wrapper's hint shows where Lando's flags go and how to reach this page", () => {
-    const help = renderToolingHelp({ id: "app:wrap", summary: "Wrap a CLI", wrapper: true });
+    const help = renderToolingHelp({
+      id: "app:wrap",
+      summary: "Wrap a CLI",
+      availability: { _tag: "Ready" as const, input: rawToolingInput, wrapper: true },
+    });
     expect(help).toContain("`lando --verbose wrap`");
     expect(help).toContain("`lando help wrap`");
   });

@@ -203,31 +203,38 @@ export const dispatchHelpTarget = async (
       switch (route._tag) {
         case "tooling":
         case "bun-script": {
-          const unavailable = await Effect.runPromise(unavailableToolingError(route));
-          if (unavailable !== undefined && !route.disabled)
-            return renderAliasResolutionFailure(unavailable, catalog.context, route.commandId);
-          if (!route.disabled)
-            return printToolingHelp(
-              {
-                ...route,
-                id: route.commandId,
-                ...(route._tag === "bun-script" ? { source: route._tag } : {}),
-              },
-              route.aliasPolicy,
-              catalog.context,
-            );
-          return renderPreCommandFailure({
-            ...(catalog.context === undefined ? {} : { context: catalog.context }),
-            commandId: route.commandId,
-            error: new ToolingDisabledError({
-              message: `Tooling command ${escapeDiagnosticText(route.commandId)} is disabled.`,
-              tool: route.name,
-              source: { path: route.sourcePath ?? "<cached tooling>", task: route.name },
-              remediation: "Enable this task in the app's tooling definition before running it.",
-            }),
-            rendererMode: activeRendererMode,
-            resultFormat: activeResultFormat,
-          });
+          switch (route.availability._tag) {
+            case "Disabled":
+              return renderPreCommandFailure({
+                ...(catalog.context === undefined ? {} : { context: catalog.context }),
+                commandId: route.commandId,
+                error: new ToolingDisabledError({
+                  message: `Tooling command ${escapeDiagnosticText(route.commandId)} is disabled.`,
+                  tool: route.name,
+                  source: route.availability.source,
+                  remediation: "Enable this task in the app's tooling definition before running it.",
+                }),
+                rendererMode: activeRendererMode,
+                resultFormat: activeResultFormat,
+              });
+            case "Ready":
+            case "Unavailable": {
+              const unavailable = await Effect.runPromise(unavailableToolingError(route));
+              if (unavailable !== undefined)
+                return renderAliasResolutionFailure(unavailable, catalog.context, route.commandId);
+              return printToolingHelp(
+                {
+                  ...route,
+                  id: route.commandId,
+                  ...(route._tag === "bun-script" ? { source: route._tag } : {}),
+                },
+                route.aliasPolicy,
+                catalog.context,
+              );
+            }
+            default:
+              return route.availability satisfies never;
+          }
         }
         case "built-in":
           return printCommandHelp(route.entry, catalog.context);

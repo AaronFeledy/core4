@@ -90,10 +90,17 @@ export const ownerPolicy = (owner: InvocationOwner): OwnerPolicy => {
       return { tail: "all", claims: NO_CLAIMS, reservedOutput: [] };
     case "tooling":
       if (owner.refusal !== undefined) return nonePolicy(false);
-      return toolingPolicy(owner.route.input, {
-        ...(owner.route.disabled === true ? { disabled: true as const } : {}),
-        ...(owner.route.wrapper === true ? { wrapper: true as const } : {}),
-      });
+      switch (owner.route.availability._tag) {
+        case "Ready":
+          return toolingPolicy(owner.route.availability.input, {
+            ...(owner.route.availability.wrapper === true ? { wrapper: true as const } : {}),
+          });
+        case "Disabled":
+        case "Unavailable":
+          return nonePolicy(false);
+        default:
+          return owner.route.availability satisfies never;
+      }
     case "none":
     case "cache-miss":
     case "alias-disabled":
@@ -206,17 +213,24 @@ export const resolveInvocationOwner = async (
   }
 
   if (route?._tag === "tooling" || route?._tag === "bun-script") {
-    const refusal =
-      route.disabled === true
-        ? new ToolingDisabledError({
-            message: `Tooling command ${route.name} is disabled.`,
-            tool: route.name,
-            source: { path: route.sourcePath, task: route.name },
-            remediation: "Enable this task in the app's tooling definition before running it.",
-          })
-        : route.loadError === undefined
-          ? undefined
-          : await Effect.runPromise(unavailableToolingError(route));
+    let refusal: ToolingRefusal | undefined;
+    switch (route.availability._tag) {
+      case "Ready":
+        break;
+      case "Disabled":
+        refusal = new ToolingDisabledError({
+          message: `Tooling command ${route.name} is disabled.`,
+          tool: route.name,
+          source: route.availability.source,
+          remediation: "Enable this task in the app's tooling definition before running it.",
+        });
+        break;
+      case "Unavailable":
+        refusal = await Effect.runPromise(unavailableToolingError(route));
+        break;
+      default:
+        return route.availability satisfies never;
+    }
     return {
       kind: "tooling",
       route,

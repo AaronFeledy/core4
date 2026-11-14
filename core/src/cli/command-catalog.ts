@@ -1,8 +1,4 @@
-import {
-  type AppCommandIndexPayload,
-  type CommandLoadError,
-  commandIndexPresentation,
-} from "@lando/engine/cache/command-index";
+import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import type { ManifestDiagnostic } from "@lando/engine/plugins/manifest-selection";
 import type { CommandContribution } from "@lando/sdk/schema";
 import { HELP_TOPICS } from "./cold-path-output";
@@ -12,11 +8,11 @@ import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest
 import type { HelpAliasPolicy } from "./help-names";
 import { typeableName } from "./help-names";
 import type { PluginCommandRow } from "./plugin-command-catalog";
+import { type ToolingAvailability, normalizedToolingRoute } from "./tooling-route";
 
-export interface CommandCatalogEntry {
+interface CommandCatalogIdentity {
   readonly id: string;
   readonly summary: string;
-  readonly source: "built-in" | "plugin" | "tooling";
   readonly hidden: boolean;
   readonly tokens: readonly string[];
   readonly primary: string;
@@ -24,8 +20,12 @@ export interface CommandCatalogEntry {
   readonly plugin?: PluginCommandRow;
   readonly mcpAllowed?: boolean;
   readonly deferred?: DeferredCommandPlan;
-  readonly loadError?: CommandLoadError;
 }
+export type CommandCatalogEntry = CommandCatalogIdentity &
+  (
+    | { readonly source: "built-in" | "plugin" }
+    | { readonly source: "tooling"; readonly availability: ToolingAvailability }
+  );
 export interface CommandCatalog {
   readonly entries: readonly CommandCatalogEntry[];
   readonly byToken: ReadonlyMap<string, CommandCatalogEntry>;
@@ -105,14 +105,14 @@ export const buildCommandCatalog = (
       ...(command.spec.mcpAllowed === undefined ? {} : { mcpAllowed: command.spec.mcpAllowed }),
       ...(command.spec.deferred === undefined ? {} : { deferred: command.spec.deferred }),
     });
-  for (const command of (cache?.entries ?? []).map(commandIndexPresentation))
+  for (const command of cache?.entries ?? [])
     if (!byToken.has(command.id))
       add({
         id: command.id,
         summary: command.summary,
-        ...(command.loadError === undefined ? {} : { loadError: command.loadError }),
+        availability: normalizedToolingRoute(command, cache?.aliasPolicy).availability,
         source: "tooling",
-        hidden: command.hidden,
+        hidden: command.visibility === "internal",
         tokens: [],
         primary: command.id,
         extras: [],

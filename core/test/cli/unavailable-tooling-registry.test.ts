@@ -18,7 +18,7 @@ const landofile = {
 } as const;
 
 test.each([false, true])(
-  "executable registry excludes unavailable tooling with cached=%s (#2325)",
+  "registry retains unavailable diagnostics beside ready tooling with cached=%s (#2325)",
   async (cached) => {
     const root = await mkdtemp(join(tmpdir(), "lando-unavailable-registry-"));
     const cacheRoot = join(root, "cache");
@@ -53,7 +53,12 @@ test.each([false, true])(
           ),
         ),
       );
-      expect(commands.map((command) => command.id)).toEqual(["app:healthy"]);
+      expect(commands.map(({ id, _tag, hidden }) => ({ id, _tag, hidden }))).toEqual([
+        { id: "app:broken", _tag: "Unavailable", hidden: false },
+        { id: "app:healthy", _tag: "Ready", hidden: false },
+      ]);
+      const broken = commands.find((command) => command._tag === "Unavailable");
+      expect(broken?.diagnostic._tag).toBe("ToolingCompileError");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

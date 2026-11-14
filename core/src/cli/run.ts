@@ -204,13 +204,19 @@ const runCompiledCli = async (
     owner.kind === "tooling"
       ? toolingTypeableName(owner.route.commandId, owner.route.aliasPolicy).primary
       : undefined;
-  const toolingOwnership =
-    owner.kind === "tooling" &&
-    owner.route.disabled !== true &&
-    owner.route.wrapper !== true &&
-    toolingTaskName !== undefined
-      ? { taskName: toolingTaskName }
-      : undefined;
+  let toolingOwnership: { readonly taskName: string } | undefined;
+  if (owner.kind === "tooling" && toolingTaskName !== undefined) {
+    switch (owner.route.availability._tag) {
+      case "Ready":
+        if (owner.route.availability.wrapper !== true) toolingOwnership = { taskName: toolingTaskName };
+        break;
+      case "Disabled":
+      case "Unavailable":
+        break;
+      default:
+        return owner.route.availability satisfies never;
+    }
+  }
   const commandAbsent = owner.kind === "none" && tokens.argv.length === 0 && split.controls.length === 0;
   if (
     await applyInvocationSelections(split.globals, context, configGlobals, {
@@ -408,8 +414,7 @@ const runCompiledCli = async (
       const route = owner.route;
       if (split.help) {
         const unavailable = await Effect.runPromise(unavailableToolingError(route));
-        if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
-        else if (unavailable !== undefined)
+        if (unavailable !== undefined)
           await renderAliasResolutionFailure(unavailable, context, route.commandId);
         else
           await printToolingHelp(
@@ -424,13 +429,6 @@ const runCompiledCli = async (
         return;
       }
       if (toolingVersionRequested(route, tokens.argv)) {
-        if (route.disabled) {
-          await routeResolvedTooling(route, tokens.argv, {
-            ...(signal === undefined ? {} : { signal }),
-            context,
-          });
-          return;
-        }
         const unavailable = await Effect.runPromise(unavailableToolingError(route));
         if (unavailable !== undefined) {
           await renderAliasResolutionFailure(unavailable, context, route.commandId);

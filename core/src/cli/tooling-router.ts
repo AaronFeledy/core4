@@ -144,7 +144,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     if (canonicalEntry.sourceKind === "bun-script") {
       return bunScriptRoute(canonicalEntry, appRoot, cache);
     }
-    return normalizedToolingRoute(canonicalEntry, cache.aliasPolicy, cache.sourceFile);
+    return normalizedToolingRoute(canonicalEntry, cache.aliasPolicy);
   }
 
   const policy = cache.aliasPolicy;
@@ -181,7 +181,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     if (customEntry.sourceKind === "bun-script") {
       return bunScriptRoute(customEntry, appRoot, cache);
     }
-    return normalizedToolingRoute(customEntry, cache.aliasPolicy, cache.sourceFile);
+    return normalizedToolingRoute(customEntry, cache.aliasPolicy);
   }
 
   if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
@@ -237,7 +237,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   if (entry.sourceKind === "bun-script") {
     return bunScriptRoute(entry, appRoot, cache);
   }
-  return normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile);
+  return normalizedToolingRoute(entry, cache.aliasPolicy);
 });
 
 type ToolingCacheMiss = Extract<ToolingRoute, { readonly _tag: "cache-miss" }>;

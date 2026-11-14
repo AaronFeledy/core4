@@ -32,7 +32,7 @@ import { CommandRegistry, LandofileService, PathsService, type RegisteredCommand
  */
 import { Effect, Layer } from "effect";
 import { compileInspectedAppCommands } from "../cache/command-compiler.ts";
-import { type CommandIndexEntry, commandIndexPresentation } from "../cache/command-index.ts";
+import type { CommandIndexEntry } from "../cache/command-index.ts";
 import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
 import { fingerprintsFromInspection } from "../cache/command-script-freshness.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
@@ -46,16 +46,28 @@ const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
 });
 
 const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): ReadonlyArray<RegisteredCommand> =>
-  entries
-    .filter((entry) => entry._tag !== "Unavailable")
-    .map(commandIndexPresentation)
-    .map((entry) => ({
+  entries.map((entry): RegisteredCommand => {
+    const identity = {
       id: entry.id,
       summary: entry.summary,
-      hidden: entry.hidden,
-      ...(entry.input === undefined ? {} : { input: entry.input }),
-      ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-    }));
+      hidden: entry.visibility === "internal",
+    };
+    switch (entry._tag) {
+      case "Ready":
+        return {
+          ...identity,
+          _tag: "Ready",
+          input: entry.input,
+          ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+        };
+      case "Disabled":
+        return { ...identity, _tag: "Disabled", source: entry.source };
+      case "Unavailable":
+        return { ...identity, _tag: "Unavailable", diagnostic: entry.diagnostic };
+      default:
+        return entry satisfies never;
+    }
+  });
 
 export const layerWith = (
   registrationError: (

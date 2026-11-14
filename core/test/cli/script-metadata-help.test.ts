@@ -158,13 +158,16 @@ test.each([true, false])("carries normalized script help metadata when cached=%s
         name: "greet",
         summary: "Greet a target",
         hidden: false,
-        service: ":host",
         appRoot: root,
         relativePath: "greet.bun.sh",
-        runs: { kind: "script", path: ".lando/scripts/greet.bun.sh" },
-        input: {
-          flags: [{ name: "name", alias: "n", default: "world", boolean: false, required: false }],
-          args: [{ name: "target", order: 0, required: true }],
+        availability: {
+          _tag: "Ready",
+          service: ":host",
+          runs: { kind: "script", path: ".lando/scripts/greet.bun.sh" },
+          input: {
+            flags: [{ name: "name", alias: "n", default: "world", boolean: false, required: false }],
+            args: [{ name: "target", order: 0, required: true }],
+          },
         },
       });
       expect(helpRequested(route, ["--help"])).toBe(true);
@@ -271,10 +274,19 @@ test.each([
     summary: "Greet",
     hidden: overrides.hidden ?? false,
     appRoot: "/app",
-    ...(input === undefined ? {} : { input }),
+    availability: {
+      _tag: "Ready" as const,
+      input: input ?? Result.getOrThrow(normalizeToolingInput("greet", {})),
+    },
   };
   const route: ToolingRoute = overrides.disabled
-    ? { ...metadata, disabled: true, sourcePath: "/app/.lando/scripts/greet.bun.sh" }
+    ? {
+        ...metadata,
+        availability: {
+          _tag: "Disabled",
+          source: { path: "/app/.lando/scripts/greet.bun.sh", task: "greet" },
+        },
+      }
     : metadata;
   // When
   const requested = helpRequested(route, argv);
@@ -292,7 +304,7 @@ test("retains a newly discovered disabled script route for typed runtime refusal
     // When
     const route = await Effect.runPromise(fixtureRoute(root, cacheRoot, "greet"));
     // Then
-    expect(route).toMatchObject({ _tag: "bun-script", hidden: true, disabled: true });
+    expect(route).toMatchObject({ _tag: "bun-script", hidden: false, availability: { _tag: "Disabled" } });
     expect(helpRequested(route, ["--help"])).toBe(true);
   });
 });

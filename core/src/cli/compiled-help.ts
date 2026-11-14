@@ -1,6 +1,6 @@
 /** Cold-path help adapters avoid loading OCLIF. */
 
-import { type AppCommandIndexPayload, commandIndexPresentation } from "@lando/engine/cache/command-index";
+import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import { encodeCommandResult } from "@lando/sdk/command-result";
@@ -19,7 +19,7 @@ import { activeRendererMode, activeResultFormat, emitResultLine } from "./compil
 import { landoFlagsForPolicy, specOwnerPolicy, toolingPolicy } from "./flag-claims";
 import { formatFlagDefsForCommand, isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
-import { HelpCommandDescriptor } from "./help-command-descriptor";
+import { HelpCommandDescriptor, toolingHelpFields } from "./help-command-descriptor";
 import { commandHelpInput } from "./help-command-input";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { helpRedactor, redactHelpText } from "./help-redaction";
@@ -28,7 +28,7 @@ import { printMachineHelpTarget } from "./help-target";
 import { type PluginCommandListing, PluginMetadata } from "./plugin-command-catalog";
 import { moreRows } from "./root-help-topics";
 import type { ToolingMetadataStatus } from "./tooling-cache-status";
-import { toolingTypeableName } from "./tooling-route";
+import { normalizedToolingRoute, toolingTypeableName } from "./tooling-route";
 
 export { renderCommandHelp, renderToolingHelp } from "./cli-help";
 
@@ -74,8 +74,18 @@ const isBuiltInRegistryId = (id: string): boolean => Object.hasOwn(COMMAND_REGIS
 export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonly ThisAppHelpRow[] => {
   const aliasPolicy = cache.aliasPolicy;
   return cache.entries
-    .map(commandIndexPresentation)
-    .filter((entry) => !entry.hidden && !isBuiltInRegistryId(entry.id))
+    .filter((entry) => {
+      if (entry.visibility === "internal" || isBuiltInRegistryId(entry.id)) return false;
+      switch (entry._tag) {
+        case "Ready":
+        case "Unavailable":
+          return true;
+        case "Disabled":
+          return false;
+        default:
+          return entry satisfies never;
+      }
+    })
     .map((entry) => {
       const name = typeableName({
         canonicalId: entry.id,
@@ -87,7 +97,7 @@ export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonl
         primary: name.primary,
         extras: name.extras,
         summary: entry.summary,
-        ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
+        availability: normalizedToolingRoute(entry, aliasPolicy).availability,
       };
     })
     .toSorted(
@@ -102,7 +112,7 @@ const toCatalogRow = (row: ThisAppHelpRow, source: "built-in" | "tooling"): Help
   canonicalId: row.canonicalId,
   summary: row.summary,
   source,
-  ...(row.loadError === undefined ? {} : { loadError: row.loadError }),
+  ...(row.availability === undefined ? {} : toolingHelpFields(row.availability)),
 });
 
 const byTypeable = (left: HelpCatalogRow, right: HelpCatalogRow): number =>
@@ -142,7 +152,19 @@ export const buildHelpCatalog = (
     pluginMetadata: plugins?.metadata ?? { status: "available" },
     sections: { common, thisApp, more },
     all: catalog.entries
-      .filter((entry) => !entry.hidden)
+      .filter((entry) => {
+        if (entry.hidden) return false;
+        if (entry.source !== "tooling") return true;
+        switch (entry.availability._tag) {
+          case "Ready":
+          case "Unavailable":
+            return true;
+          case "Disabled":
+            return false;
+          default:
+            return entry.availability satisfies never;
+        }
+      })
       .map((entry): HelpCatalogRow => {
         const row = {
           canonicalId: entry.id,
@@ -162,7 +184,7 @@ export const buildHelpCatalog = (
         return {
           ...row,
           source: entry.source === "tooling" ? "tooling" : "built-in",
-          ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
+          ...(entry.source === "tooling" ? toolingHelpFields(entry.availability) : {}),
         };
       })
       .toSorted(byTypeable),
@@ -226,6 +248,21 @@ export const printToolingHelp = (
   aliasPolicy?: HelpAliasPolicy,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
+  const availability = entry.availability;
+  let policy: ReturnType<typeof toolingPolicy>;
+  switch (availability._tag) {
+    case "Ready":
+      policy = toolingPolicy(availability.input, availability.wrapper === true ? { wrapper: true } : {});
+      break;
+    case "Disabled":
+      policy = toolingPolicy(undefined, { disabled: true });
+      break;
+    case "Unavailable":
+      policy = toolingPolicy(undefined, {});
+      break;
+    default:
+      return availability satisfies never;
+  }
   if (isEnvelopeResultFormat(activeResultFormat)) {
     const names = toolingTypeableName(entry.id, aliasPolicy);
     return printMachineHelpTarget(
@@ -235,12 +272,8 @@ export const printToolingHelp = (
         extras: [...names.extras],
         summary: entry.summary,
         source: "tooling",
-        ...(entry.input === undefined ? {} : { input: entry.input }),
-        ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-        ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
-        landoFlags: landoFlagsForPolicy(
-          toolingPolicy(entry.input, entry.wrapper === true ? { wrapper: true } : {}),
-        ),
+        ...toolingHelpFields(availability),
+        landoFlags: landoFlagsForPolicy(policy),
       },
       activeResultFormat,
       context,

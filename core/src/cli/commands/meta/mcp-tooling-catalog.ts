@@ -1,4 +1,4 @@
-import { type CommandIndexEntry, commandIndexPresentation } from "@lando/engine/cache/command-index";
+import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-index-writer";
 import type { McpAppGeneration } from "@lando/mcp/apps";
 import type { McpDiagnostic, McpToolingCatalog } from "@lando/mcp/service";
@@ -7,6 +7,7 @@ import { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { toolingCacheRecovery } from "../../tooling-cache-status";
+import { isToolingDiagnostic } from "../../tooling-unavailable";
 import { toolingSpecFromRegistered } from "./mcp-tooling";
 
 export const toolingCatalogFromCache = (
@@ -29,7 +30,7 @@ export const toolingCatalogFromCache = (
           ...(command.diagnostic.remediation === undefined
             ? {}
             : { remediation: command.diagnostic.remediation }),
-          ...("issues" in command.diagnostic
+          ...(isToolingDiagnostic(command.diagnostic)
             ? {
                 issues: command.diagnostic.issues,
                 omittedIssueCount: command.diagnostic.omittedIssueCount,
@@ -39,7 +40,7 @@ export const toolingCatalogFromCache = (
         });
         return [];
       case "Ready":
-        return [{ spec: toolingSpecFromRegistered(commandIndexPresentation(command)), tooling: true }];
+        return [{ spec: toolingSpecFromRegistered({ ...command, hidden: false }), tooling: true }];
       default:
         return command satisfies never;
     }

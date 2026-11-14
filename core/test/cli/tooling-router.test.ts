@@ -76,8 +76,7 @@ test.each([
       name: "wipe",
       summary: "Record input",
       hidden: false,
-      input,
-      ...(wrapper ? { wrapper: true } : {}),
+      availability: { _tag: "Ready", input, ...(wrapper ? { wrapper: true } : {}) },
     };
     expect(toolingVersionRequested(route, argv)).toBe(expected);
   },
@@ -185,7 +184,7 @@ const assertDynamicToolingRoute = (
     commandId: `app:${name}`,
     name,
     hidden: false,
-    ...extra,
+    availability: { _tag: "Ready", ...extra },
   });
 };
 
@@ -200,17 +199,16 @@ const declaredInput = Result.getOrThrowWith(
 const declaredInputRoute = (
   overrides: Partial<Extract<ToolingRoute, { readonly _tag: "tooling" }>> = {},
 ): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
-  const { disabled, ...metadata } = overrides;
   const route = {
     _tag: "tooling" as const,
     commandId: "app:greet",
     name: "greet",
     summary: "Greet a target",
     hidden: false,
-    input: declaredInput,
-    ...metadata,
+    availability: { _tag: "Ready" as const, input: declaredInput },
+    ...overrides,
   };
-  return disabled ? { ...route, disabled: true, sourcePath: route.sourcePath ?? "/app/.lando.yml" } : route;
+  return route;
 };
 
 test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {
@@ -276,8 +274,7 @@ test("Given a fresh cached Bun script, when resolving it, then it selects the sc
       hidden: false,
       summary: "Run quality checks",
       appRoot: root,
-      sourcePath: join(root, ".lando.yml"),
-      input: emptyToolingInput(),
+      availability: { _tag: "Ready", input: emptyToolingInput() },
     });
     expect(argv.slice(1)).toEqual(["--fix"]);
   });
@@ -665,9 +662,8 @@ test("Given a disabled cached task, when resolving it, then the route retains re
       commandId: "app:legacy",
       name: "legacy",
       summary: "Retired task",
-      hidden: true,
-      sourcePath: ".lando.yml",
-      disabled: true,
+      hidden: false,
+      availability: { _tag: "Disabled", source: { path: ".lando.yml", task: "legacy" } },
     });
   });
 });
@@ -714,10 +710,16 @@ test.each([true, false] as const)(
   "Given a raw task with wrapper=%s, help follows its ownership",
   (wrapper) => {
     // Given
-    const { input: _input, ...route } = declaredInputRoute();
+    const route = declaredInputRoute();
 
     // When
-    const requested = helpRequested({ ...route, ...(wrapper ? { wrapper } : {}) }, ["--help"]);
+    const requested = helpRequested(
+      {
+        ...route,
+        availability: { _tag: "Ready", input: emptyToolingInput(), ...(wrapper ? { wrapper } : {}) },
+      },
+      ["--help"],
+    );
 
     // Then
     expect(requested).toBe(!wrapper);
@@ -738,16 +740,22 @@ test("Given a hidden declared-input task, when argv asks for help, then it route
 test("Given a task that declares its own help flag, when argv asks for help, then the declared flag wins", () => {
   // Given
   const byName = declaredInputRoute({
-    input: Result.getOrThrowWith(
-      normalizeToolingInput("greet", { flags: { help: { boolean: true } } }),
-      (error) => error,
-    ),
+    availability: {
+      _tag: "Ready",
+      input: Result.getOrThrowWith(
+        normalizeToolingInput("greet", { flags: { help: { boolean: true } } }),
+        (error) => error,
+      ),
+    },
   });
   const byAlias = declaredInputRoute({
-    input: Result.getOrThrowWith(
-      normalizeToolingInput("greet", { flags: { hint: { alias: "h", boolean: true } } }),
-      (error) => error,
-    ),
+    availability: {
+      _tag: "Ready",
+      input: Result.getOrThrowWith(
+        normalizeToolingInput("greet", { flags: { hint: { alias: "h", boolean: true } } }),
+        (error) => error,
+      ),
+    },
   });
 
   // When
@@ -768,6 +776,7 @@ test("Given mixed route kinds, help is requested only for the raw script", () =>
       summary: "",
       hidden: false,
       appRoot: "/tmp",
+      availability: { _tag: "Ready", input: emptyToolingInput() },
     },
     { _tag: "unknown-tooling", commandId: "app:nope", name: "nope" },
   ];

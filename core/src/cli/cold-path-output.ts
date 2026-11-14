@@ -1,4 +1,3 @@
-import type { CommandLoadError } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 import { getRecipeCatalog } from "../recipes/catalog";
 import { renderRecipeCatalog } from "../recipes/catalog-render";
@@ -8,13 +7,14 @@ import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { shouldStyleHelp, bold as wrapBold, cyan as wrapCyan, dim as wrapDim } from "./help-style";
 import { moreRows } from "./root-help-topics";
 import { type ToolingMetadataStatus, toolingMetadataNotice } from "./tooling-cache-status";
+import type { ToolingAvailability } from "./tooling-route";
 
 export type ThisAppHelpRow = {
   readonly canonicalId: string;
   readonly primary: string;
   readonly extras: ReadonlyArray<string>;
   readonly summary: string;
-  readonly loadError?: CommandLoadError;
+  readonly availability?: ToolingAvailability;
 };
 
 export type ColdHelpStyle = {
@@ -216,11 +216,19 @@ export const renderColdRootHelp = (
           "",
           style.bold("THIS APP"),
           ...formatSection(
-            thisAppRows.map((row) =>
-              row.loadError === undefined
-                ? row
-                : { ...row, summary: "[unavailable] Run lando app:config:lint." },
-            ),
+            thisAppRows.map((row) => {
+              const availability = row.availability;
+              if (availability === undefined) return row;
+              switch (availability._tag) {
+                case "Ready":
+                case "Disabled":
+                  return row;
+                case "Unavailable":
+                  return { ...row, summary: "[unavailable] Run lando app:config:lint." };
+                default:
+                  return availability satisfies never;
+              }
+            }),
             style,
           ),
         ];

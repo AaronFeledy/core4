@@ -2,6 +2,23 @@ import { ToolingCompileError } from "@lando/sdk/errors";
 import { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { PluginCommandDiagnostic } from "./plugin-command-catalog";
+import type { ToolingAvailability } from "./tooling-route";
+
+export const toolingHelpFields = (availability: ToolingAvailability) => {
+  switch (availability._tag) {
+    case "Ready":
+      return {
+        input: availability.input,
+        ...(availability.runs === undefined ? {} : { runs: availability.runs }),
+      };
+    case "Disabled":
+      return {};
+    case "Unavailable":
+      return { loadError: availability.diagnostic };
+    default:
+      return availability satisfies never;
+  }
+};
 
 const defaultValue = Schema.optionalKey(
   Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),

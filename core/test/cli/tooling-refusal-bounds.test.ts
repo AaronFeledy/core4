@@ -40,7 +40,7 @@ test("cached refusal stays within disclosure bounds after supplied-value redacti
       }),
     });
     if (entry === undefined) throw new Error("Missing compiled task");
-    const route = normalizedToolingRoute(entry, undefined, sourcePath);
+    const route = normalizedToolingRoute(entry, undefined);
     const refusal = await Effect.runPromise(unavailableToolingError(route));
     if (!(refusal instanceof ToolingCompileError)) throw new Error("Missing cached compile diagnostic");
     expect(bytes(refusal)).toBeLessThanOrEqual(16 * 1024);

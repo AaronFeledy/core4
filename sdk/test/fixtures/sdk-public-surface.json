@@ -1,4 +1,8 @@
 {
+  "registeredCommandTypes": {
+    "RegisteredCommandIdentity": "{ readonly id: string; readonly summary: string; readonly hidden: boolean; }",
+    "RegisteredCommand": "RegisteredCommandIdentity & ( | { readonly _tag: \"Ready\"; readonly input: import(\"../schema/tooling-input.ts\").ToolingInputDeclaration; readonly runs?: import(\"../schema/tooling-run-summary.ts\").ToolingRunSummary; } | { readonly _tag: \"Disabled\"; readonly source: { readonly path: string; readonly task: string } } | { readonly _tag: \"Unavailable\"; readonly diagnostic: | Pick<ToolingCompileError, \"_tag\" | \"tool\" | \"source\" | \"message\" | \"remediation\" | \"issues\" | \"omittedIssueCount\"> | { readonly _tag: string; readonly message: string; readonly remediation?: string }; } )"
+  },
   "hostMaintenanceTeardownSignature": "teardown?: (input: { readonly paths: HostRuntimePaths; readonly platform: HostPlatform; readonly stateStore: PluginStateStore; }) => Effect.Effect<HostTeardownResult, never>",
   "routerContributionFields": [
     "capabilities",

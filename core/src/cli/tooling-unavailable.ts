@@ -1,8 +1,17 @@
+import type { CommandLoadError } from "@lando/engine/cache/command-index";
 import type { BunShellScriptDiscoveryError } from "@lando/landofile/bun-sh-discovery";
 import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import type { ToolingRoute } from "./tooling-route";
+
+// The index decoder reserves this tag for the structured tooling diagnostic.
+export const isToolingDiagnostic = (
+  diagnostic: CommandLoadError,
+): diagnostic is Pick<
+  ToolingCompileError,
+  "_tag" | "tool" | "source" | "message" | "remediation" | "issues" | "omittedIssueCount"
+> => diagnostic._tag === "ToolingCompileError";
 
 /** Scripts re-read their source; tooling help uses the fresh index's deterministic diagnostic. */
 export const unavailableToolingError = (
@@ -14,19 +23,24 @@ export const unavailableToolingError = (
         Effect.match({ onFailure: (error) => error, onSuccess: () => undefined }),
       );
     case "tooling":
-      return Effect.succeed(
-        route.loadError === undefined
-          ? undefined
-          : new ToolingCompileError({
-              ...("issues" in route.loadError ? route.loadError : {}),
-              tool: "issues" in route.loadError ? route.loadError.tool : route.name,
-              ...("issues" in route.loadError || route.sourcePath === undefined
-                ? {}
-                : { source: { path: route.sourcePath, task: route.name } }),
-              message: route.loadError.message,
-              remediation: route.loadError.remediation ?? "Correct this task's tooling declaration.",
+      switch (route.availability._tag) {
+        case "Ready":
+        case "Disabled":
+          return Effect.succeed(undefined);
+        case "Unavailable": {
+          const diagnostic = route.availability.diagnostic;
+          return Effect.succeed(
+            new ToolingCompileError({
+              ...(isToolingDiagnostic(diagnostic) ? diagnostic : {}),
+              tool: isToolingDiagnostic(diagnostic) ? diagnostic.tool : route.name,
+              message: diagnostic.message,
+              remediation: diagnostic.remediation ?? "Correct this task's tooling declaration.",
             }),
-      );
+          );
+        }
+        default:
+          return route.availability satisfies never;
+      }
     case "not-tooling":
     case "built-in":
     case "plugin":

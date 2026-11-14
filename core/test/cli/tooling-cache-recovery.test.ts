@@ -68,8 +68,7 @@ test.each([
         name: "empty",
         summary: "",
         hidden: false,
-        input,
-        ...(wrapper ? { wrapper: true as const } : {}),
+        availability: { _tag: "Ready", input, ...(wrapper ? { wrapper: true as const } : {}) },
       },
       ["--help"],
     );

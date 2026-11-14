@@ -66,45 +66,6 @@ export type CommandIndexEntry =
   | DisabledCommandIndexEntry
   | UnavailableCommandIndexEntry;
 
-export interface CommandIndexPresentation {
-  readonly id: string;
-  readonly summary: string;
-  readonly hidden: boolean;
-  readonly disabled?: true;
-  readonly source?: "bun-script";
-  readonly sourcePath?: string;
-  readonly service?: string;
-  readonly input?: ToolingInputDeclaration;
-  readonly wrapper?: true;
-  readonly runs?: ToolingRunSummary;
-  readonly loadError?: CommandLoadError;
-}
-
-export const commandIndexPresentation = (entry: CommandIndexEntry): CommandIndexPresentation => {
-  const identity = {
-    id: entry.id,
-    summary: entry.summary,
-    hidden: entry.visibility === "internal" || entry._tag === "Disabled",
-    ...(entry.sourceKind === "bun-script" ? { source: "bun-script" as const } : {}),
-  };
-  switch (entry._tag) {
-    case "Ready":
-      return {
-        ...identity,
-        input: entry.input,
-        ...(entry.service === undefined ? {} : { service: entry.service }),
-        ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
-        ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-      };
-    case "Disabled":
-      return { ...identity, disabled: true, sourcePath: entry.source.path };
-    case "Unavailable":
-      return { ...identity, loadError: entry.diagnostic };
-    default:
-      return entry satisfies never;
-  }
-};
-
 interface CommandAliasPolicy {
   readonly enabled: boolean;
   readonly disabled: ReadonlyArray<string>;

@@ -202,13 +202,14 @@ describe("CommandRegistryLayer.layer", () => {
     });
   });
 
-  test("returns Landofile-only entries when a .bun.sh script is malformed (router-bootstrap stays best-effort)", async () => {
+  test("retains ready, disabled, and unavailable entries independently of internal visibility", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
         [
           "name: myapp",
           "tooling:",
+          "  retired: false",
           "  test:",
           "    description: Run tests",
           "    service: appserver",
@@ -220,7 +221,15 @@ describe("CommandRegistryLayer.layer", () => {
       process.chdir(dir);
 
       const commands = await listFromLive();
-      expect(commands.map((c) => c.id)).toEqual(["app:test"]);
+      expect(commands.map(({ id, _tag, hidden }) => ({ id, _tag, hidden }))).toEqual([
+        { id: "app:broken", _tag: "Unavailable", hidden: false },
+        { id: "app:retired", _tag: "Disabled", hidden: false },
+        { id: "app:test", _tag: "Ready", hidden: false },
+      ]);
+      const disabled = commands.find((command) => command._tag === "Disabled");
+      expect(disabled?.source).toEqual({ path: join(dir, ".lando.yml"), task: "retired" });
+      const unavailable = commands.find((command) => command._tag === "Unavailable");
+      expect(unavailable?.diagnostic._tag).toBe("BunShellScriptFrontMatterError");
     });
   });
 
