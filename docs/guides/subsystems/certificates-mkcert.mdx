@@ -116,13 +116,19 @@ LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key
 Lando keeps each app's leaf in its own folder under the Lando data directory and reuses it from one start to the next. You get a new certificate when:
 
 - you add a hostname or route the certificate doesn't cover yet
-- the certificate is within 30 days of expiring
+- the certificate is within 30 days of expiring (or one third of its lifetime for a leaf that lives less than 90 days)
 - the local CA is no longer the one that signed it
 - the certificate or key file is missing, damaged, or the two don't match
 
 Removing a hostname doesn't trigger a new certificate. The one you have still covers the names that remain.
 
 When the certificate does change, the next `lando start` recreates that service so it mounts the new files. An unchanged certificate never recreates a service. `lando restart --service <name>` won't recreate a service, so it asks you to run `lando rebuild` instead. `lando destroy` deletes the app's leaf.
+
+The router keeps separate certificates for HTTPS routes. Whenever Lando publishes an app's HTTPS routes, it checks that app's router certificate and the shared default certificate against the current CA and the same renewal margin. It replaces stale pairs and reloads them automatically, even when the route names haven't changed. You don't need to delete certificates or restart the shared router yourself. On Windows, Lando handles the router restart needed to load changed certificates.
+
+If only the router's saved issuer certificate is missing or stale, Lando repairs that file without replacing valid leaves or restarting an already acknowledged router. HTTPS publication still needs a readable CA root; a root-read or issuance failure leaves the previous publication in place and reports `ProxyApplyError` with the authority's remediation. HTTP-only publication and route withdrawal don't need the CA.
+
+These checks run when Lando applies certificates or routes. There is no background renewal, and publishing one app's routes doesn't renew other apps' router certificates. Start or restart each routed app to check its certificates. Router certificate reload does not recreate your app's services; the service-certificate recreation rule above applies to `certs: true`.
 
 Starting an app never installs mkcert or creates the local CA. Only `lando setup` does, and it keeps a CA you already have. If mkcert isn't installed when the app starts, the start fails and names the service:
 

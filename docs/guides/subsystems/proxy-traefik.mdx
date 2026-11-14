@@ -95,6 +95,10 @@ lando info
 
 HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTPS certificates](./certificates-mkcert.mdx).
 
+Each HTTPS route publication checks the app's certificate and the shared default certificate against the current CA root. Lando renews them within 30 days of expiry (capped at one third of their lifetime), or when their names, key, or signing root no longer match. It reloads replacement certificates even if the routes are unchanged; on Windows it handles the required shared-router restart. A missing or stale saved issuer alone is repaired without reissuing valid leaves or restarting an acknowledged router.
+
+Renewal happens when routes are published, not in the background, and applies only to that app and the shared default certificate. Start or restart each app whose HTTPS routes need checking. If the CA root cannot be read or issuance fails, publication fails before changing files and preserves the authority's remediation in `ProxyApplyError`. HTTP-only publication and withdrawing routes work without the CA.
+
 The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-dns.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
 Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published host ports still work.

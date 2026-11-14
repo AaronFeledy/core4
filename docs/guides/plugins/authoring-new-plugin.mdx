@@ -227,7 +227,16 @@ Run `runCaContract` from `@lando/sdk/test` against your authority in your own
 tests. It checks setup, `root`, the shape of what `issueCert` returns, and that
 the issued pair verifies against both the root it came with and `root` read
 afterwards. To make the same judgment yourself, call `certificatePairIsCurrent`
-from `@lando/sdk/certificates`. For tests that only need certificate-shaped
+from `@lando/sdk/certificates` with the requested names, the current root, and
+`LEAF_RENEWAL_MARGIN_MS` as `renewalMarginMs`. That constant is the shared 30-day
+policy for service and router leaves; the verifier caps it at one third of the
+leaf's lifetime. The Traefik router reads `root` once per HTTPS route apply,
+including warm reuse, so keep that read free of setup and issuance work. It
+repairs its saved issuer independently of valid leaves and reloads served-pair
+replacements itself. HTTP-only publication and withdrawal need no authority.
+These are apply-time checks, not background renewal.
+
+For tests that only need certificate-shaped
 input, `@lando/sdk/test` exports `TEST_CERTIFICATES`, a set of throwaway PEM
 fixtures you must never trust, and `makeTestCertificateAuthority`, which returns
 one fixed leaf whatever names you request.
