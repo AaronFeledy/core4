@@ -119,7 +119,7 @@ describe("workflow performance rendering", () => {
               expect.objectContaining({
                 name: "Log in to Docker Hub",
                 if: "env.WORKFLOW_PERF_DOCKER_HUB_LOGIN == 'true'",
-                uses: "docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567",
+                uses: "docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550",
                 env: { DOCKER_CONFIG: `\${{ runner.temp }}/workflow-performance-${cell.id}-registry` },
                 with: {
                   registry: "docker.io",
