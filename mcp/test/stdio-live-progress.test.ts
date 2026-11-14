@@ -75,8 +75,6 @@ describe("stdio live byte progress", () => {
           Effect.provide(
             serverLayer(
               {
-                cwd: process.cwd(),
-                env: { ...process.env },
                 commandEntries: [
                   { kind: "command" as const, spec },
                   {
