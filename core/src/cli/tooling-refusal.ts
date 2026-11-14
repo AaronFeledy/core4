@@ -1,5 +1,8 @@
 import { protectSuppliedValues } from "@lando/engine/operations/tooling";
-import { Effect, Layer } from "effect";
+import { projectToolingDiagnostic } from "@lando/engine/tooling/diagnostics";
+import { RedactionService } from "@lando/redaction/service";
+import { ToolingCompileError } from "@lando/sdk/errors";
+import { Effect, Layer, Option } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import {
   runCompiledCommand,
@@ -45,6 +48,12 @@ export const refuseToolingInvocation = async (input: {
         _tag: "RawArgv",
         argv: input.rawArgv.slice(input.head.commandEndIndex + 1),
       });
+      if (input.refusal instanceof ToolingCompileError) {
+        // runCompiledCommand's renderer boundary owns and provides this invocation's registry.
+        const redaction = Option.getOrThrow(yield* Effect.serviceOption(RedactionService));
+        const redactor = yield* redaction.forProfile("secrets", { sourceEnv: input.context.env });
+        return yield* Effect.fail(new ToolingCompileError(projectToolingDiagnostic(input.refusal, redactor)));
+      }
       return yield* Effect.fail(input.refusal);
     }),
     Layer.empty,
