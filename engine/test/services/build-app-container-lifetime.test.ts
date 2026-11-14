@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AppId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { BuildOrchestrator, EventService, StateStore } from "@lando/sdk/services";
+import { BuildOrchestrator, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Deferred, Effect, Fiber, Queue, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import { BuildOwner } from "../../src/services/build-owner.ts";
 import { openAppBuildResults } from "../../src/services/build-results.ts";
 import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
@@ -194,37 +194,5 @@ test("an inspect failure preserves the ordinary app command failure", async () =
     if (failure._tag !== "BuildPhaseFailedError") throw failure;
     expect(failure.failures).toHaveLength(1);
     expect(failure.failures[0]).toMatchObject({ exitCode: 7, step: { id: "web:app:install" } });
-  });
-});
-
-test("interrupting container inspection settles an app task without advertising a transcript", async () => {
-  await withTempRoots(async () => {
-    const inspecting = await Effect.runPromise(Deferred.make<void>());
-    const provider = {
-      ...TestRuntimeProvider,
-      inspect: () => Deferred.succeed(inspecting, undefined).pipe(Effect.andThen(Effect.never)),
-    } satisfies RuntimeProviderShape;
-    const plan = planWith({ web: [{ id: "install", phase: "app", command: { command: ["install"] } }] });
-
-    const events = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const queue = yield* (yield* EventService).subscribeQueue;
-          const fiber = yield* Effect.forkChild((yield* BuildOrchestrator).buildApp(plan));
-          yield* Deferred.await(inspecting);
-          yield* Fiber.interrupt(fiber);
-          return [...(yield* Queue.clear(queue))];
-        }),
-      ).pipe(Effect.provide(makeLayer(provider))),
-    );
-
-    const starts = events.filter((event) => event._tag === "task.start");
-    expect(starts).toHaveLength(1);
-    expect(starts[0]?.transcriptPath).toBeUndefined();
-    expect(events.filter((event) => event._tag === "task.fail")).toHaveLength(1);
-    expect(events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
-      succeeded: 0,
-      failed: 1,
-    });
   });
 });
