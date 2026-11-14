@@ -5,9 +5,13 @@ export const cacheMapping = (value: unknown): value is Readonly<Record<string, u
 export const exactCacheKeys = (value: Readonly<Record<string, unknown>>, keys: readonly string[]) =>
   Object.keys(value).every((key) => keys.includes(key));
 
-const denseArray = (value: unknown): value is readonly unknown[] =>
-  Array.isArray(value) &&
-  Array.from({ length: value.length }, (_, index) => Object.hasOwn(value, index)).every(Boolean);
+export const denseArray = (value: unknown): value is readonly unknown[] => {
+  if (!Array.isArray(value)) return false;
+  for (let index = 0; index < value.length; index++) {
+    if (!Object.hasOwn(value, index)) return false;
+  }
+  return true;
+};
 const path = (value: unknown): boolean =>
   denseArray(value) &&
   value.every((part) => typeof part === "string" || (typeof part === "number" && Number.isFinite(part)));

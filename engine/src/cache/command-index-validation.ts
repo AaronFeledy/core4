@@ -5,21 +5,13 @@ import type {
   ToolingRunSummary,
   ToolingRunTarget,
 } from "@lando/sdk/schema";
-import * as Predicate from "effect/Predicate";
-import { exactCacheKeys, isCommandLoadError } from "./command-diagnostic-validation.ts";
+import {
+  exactCacheKeys,
+  cacheMapping as isCacheMapping,
+  isCommandLoadError,
+  denseArray as isDenseArray,
+} from "./command-diagnostic-validation.ts";
 import type { AppCommandIndexPayload, CommandIndexEntry } from "./command-index.ts";
-
-// v8 preserves sparse arrays and non-record objects; neither is canonical cache metadata.
-const isCacheMapping = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  Predicate.isObject(value) && Object.getPrototypeOf(value) === Object.prototype;
-
-const isDenseArray = (value: unknown): value is readonly unknown[] => {
-  if (!Array.isArray(value)) return false;
-  for (let index = 0; index < value.length; index++) {
-    if (!Object.hasOwn(value, index)) return false;
-  }
-  return true;
-};
 
 const own = (value: Readonly<Record<string, unknown>>, key: string): unknown =>
   Object.hasOwn(value, key) ? value[key] : undefined;
