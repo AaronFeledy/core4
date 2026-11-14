@@ -23,7 +23,7 @@
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { certificatePairIsCurrent } from "@lando/sdk/certificates";
+import { LEAF_RENEWAL_MARGIN_MS, certificatePairIsCurrent } from "@lando/sdk/certificates";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CaError, isErrnoCode } from "@lando/sdk/errors";
@@ -40,9 +40,6 @@ import {
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { routeOwnerFromPlan } from "./route-owner.ts";
 import { resolveCertsDir, serviceCertificatePaths } from "./service-certificate-paths.ts";
-
-/** Reissue this long before expiry so a running service never reaches an expired leaf. */
-const RENEWAL_MARGIN_MS = 30 * 24 * 60 * 60 * 1000;
 
 type CertificateAuthorityResolutionError = Effect.Error<CertificateAuthorityResolverShape["resolve"]>;
 
@@ -214,7 +211,7 @@ export const prepareServiceCertificates = Effect.fn("ServiceCertificates.prepare
     const isCurrent = (certificate: string, privateKey: string, againstRoot: string, now: number) =>
       certificatePairIsCurrent(
         { certificate, privateKey },
-        { names, now, renewalMarginMs: RENEWAL_MARGIN_MS, root: againstRoot },
+        { names, now, renewalMarginMs: LEAF_RENEWAL_MARGIN_MS, root: againstRoot },
       );
     let certificate: string;
     if (

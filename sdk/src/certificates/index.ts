@@ -1,6 +1,9 @@
 import { X509Certificate, createPrivateKey } from "node:crypto";
 import { isIP } from "node:net";
 
+/** Apply-time leaf renewal margin, capped by the verifier at one third of leaf lifetime. */
+export const LEAF_RENEWAL_MARGIN_MS = 30 * 24 * 60 * 60 * 1000;
+
 export interface CertificatePair {
   /** PEM of the leaf certificate. */
   readonly certificate: string;
