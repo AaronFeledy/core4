@@ -1,6 +1,7 @@
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { renderPluginTopicHelp } from "./cold-path-output";
 import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
+import { landoFlagsForPolicy, specOwnerPolicy } from "./flag-claims";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { commandHelpInput } from "./help-command-input";
 import { typeableName } from "./help-names";
@@ -37,8 +38,11 @@ export const tryPluginCommandHelp = async (
     await renderHelpFailure(row.loadError, catalog.context);
     return true;
   }
+  const spec = row.spec;
+  if (spec === undefined) return false;
   const aliases = row.tokens?.filter((token) => token !== row.id) ?? [];
   const name = typeableName({ canonicalId: row.id, builtInAliases: aliases });
+  const definitions = pluginFlagDefinitions(spec);
   if (isEnvelopeResultFormat(activeResultFormat)) {
     await printMachineHelpTarget(
       {
@@ -50,22 +54,20 @@ export const tryPluginCommandHelp = async (
         plugin: row.pluginName,
         provenance: row.source,
         implementation: "validated",
-        ...(row.spec === undefined
-          ? {}
-          : { input: commandHelpInput(row.spec, pluginFlagDefinitions(row.spec)) }),
+        input: commandHelpInput(spec, definitions),
+        landoFlags: landoFlagsForPolicy(specOwnerPolicy(spec, definitions)),
       },
       activeResultFormat,
       catalog.context,
     );
-  } else if (row.spec !== undefined) {
+  } else {
     await emitResultLine(
       await redactHelpText(
-        renderPluginOwnedCommandHelp(row.spec, {
+        renderPluginOwnedCommandHelp(spec, {
           aliases,
           styled: shouldStyleHelp({
             isTTY: catalog.context?.io.stdoutIsTTY === true,
             env: catalog.context?.env ?? process.env,
-            argv: process.argv.slice(2),
             rendererMode: activeRendererMode,
           }),
         }),
@@ -102,7 +104,6 @@ export const printPluginTopicHelp = async (
         style: shouldStyleHelp({
           isTTY: catalog.context?.io.stdoutIsTTY === true,
           env: catalog.context?.env ?? process.env,
-          argv: process.argv.slice(2),
           rendererMode: activeRendererMode,
         }),
       }),

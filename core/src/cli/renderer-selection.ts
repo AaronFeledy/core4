@@ -1,7 +1,7 @@
 import { RendererSelectionError } from "@lando/sdk/errors";
 import { RENDERER_MODES } from "@lando/sdk/schema";
 
-import { scanArgvFlags } from "./argv-walk";
+import { scanLandoFlags } from "./lando-flags";
 import {
   deferredRendererFlagError,
   deferredRendererModeError,
@@ -38,31 +38,16 @@ export interface ExtractRendererFlagResult {
   readonly remainingArgv: ReadonlyArray<string>;
 }
 
-const RENDERER_LONG_FLAG = "--renderer";
-const RENDERER_EQ_PREFIX = `${RENDERER_LONG_FLAG}=`;
-
 export const extractRendererFlag = (argv: ReadonlyArray<string>): ExtractRendererFlagResult => {
   const deferred = findDeferredRendererFlag(argv);
   if (deferred !== undefined) {
     throw deferredRendererFlagError(deferred);
   }
   let mode: RendererMode | undefined;
-  const remaining = scanArgvFlags(argv, (arg, next) => {
-    if (arg === RENDERER_LONG_FLAG) {
-      if (next === undefined || next.startsWith("-")) {
-        throw new RendererSelectionError({
-          message: `--renderer requires a value (one of: ${ALLOWED_VALUES_DISPLAY}).`,
-          value: "",
-          source: "flag",
-          remediation: REMEDIATION,
-        });
-      }
-      mode = validate(next, "flag");
-      return { consumed: 1 };
-    }
-    if (arg.startsWith(RENDERER_EQ_PREFIX)) {
-      const value = arg.slice(RENDERER_EQ_PREFIX.length);
-      if (value === "") {
+  const remaining = scanLandoFlags(argv, {
+    "--renderer": (match) => {
+      const value = match.value;
+      if (value === undefined || (match.attached && value === "")) {
         throw new RendererSelectionError({
           message: `--renderer requires a value (one of: ${ALLOWED_VALUES_DISPLAY}).`,
           value: "",
@@ -71,9 +56,7 @@ export const extractRendererFlag = (argv: ReadonlyArray<string>): ExtractRendere
         });
       }
       mode = validate(value, "flag");
-      return { consumed: 0 };
-    }
-    return undefined;
+    },
   });
   return mode === undefined ? { remainingArgv: remaining } : { mode, remainingArgv: remaining };
 };

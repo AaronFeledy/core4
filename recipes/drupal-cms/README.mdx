@@ -58,7 +58,7 @@ Each prints `200`. Anything else means Drupal didn't render the page, so check `
 
 The generated Drush task uses the current app URL, including its proxy port, for login links. Set `DRUSH_OPTIONS_URI` or pass Drush `--uri` to choose another URL.
 
-For a Drush flag that also names a Lando flag, put `--` before the Drush arguments. For example, `lando drush -- status --format=json` passes `--format=json` to Drush.
+Every flag after `lando drush` goes to Drush, including ones Lando also has: `lando drush status --format=json` passes `--format=json` to Drush. Put Lando's own flags before `drush`, as in `lando --format=json drush status`.
 
 On Windows, a later Composer install can hit Composer's 300-second subprocess
 limit while moving Drupal core from the `vendor` volume into `web/` on the

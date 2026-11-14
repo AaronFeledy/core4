@@ -116,11 +116,13 @@ lando drush updatedb -y
 
 `user:login` prints a one-time login link for the admin account. `lando drush` builds links from the current app URL, including a nondefault proxy port. To pin another URL, set `DRUSH_OPTIONS_URI` under `services.appserver.environment` and run `lando start`, or pass Drush `--uri` on one command.
 
-Lando keeps `--format`, `--json`, `--debug`, and `--verbose` for itself when they come before `--`. Put `--` in front of Drush arguments that use them:
+`drush` is a wrapper task, so every flag after `lando drush` goes to Drush, including ones Lando also has, such as `--format`, `--debug`, and `--verbose`:
 
 ```sh
-lando drush -- status --format=json
+lando drush status --format=json
 ```
+
+Drush gets `status --format=json` and prints its own JSON. Lando's flags go before the task name: `lando --format=json drush status` returns Lando's result envelope instead.
 
 ## Run Drupal cron on a schedule
 

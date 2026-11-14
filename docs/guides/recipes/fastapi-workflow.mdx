@@ -67,11 +67,13 @@ lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 It runs in the foreground, so use a second terminal for everything else. `--reload` restarts it on code edits. Open the URL from `lando info`. Expect JSON like `{"hello":"lando"}`.
 
-Lando reads `--log-level`, `--debug`, and `--verbose` itself, so pass uvicorn's log level through `lando exec`:
+`uvicorn` is a wrapper task, so every flag after `lando uvicorn` goes to uvicorn, including `--log-level`, which Lando also has:
 
 ```sh
-lando exec web -- uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug
+lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug
 ```
+
+For Lando's own diagnostics, put the flag before the task name, as in `lando --debug uvicorn app.main:app --host 0.0.0.0 --port 8000`.
 
 ## See what the recipe writes
 

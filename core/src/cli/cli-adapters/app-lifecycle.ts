@@ -22,16 +22,17 @@ import {
   getActiveCommandInvocation,
   rejectInvalidInvocation,
 } from "../compiled-runtime";
+import type { CommandTokens } from "../invocation";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 
 export const runSetup = async (
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   signal?: AbortSignal,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:setup", argv, context)) return;
+  if (await rejectInvalidInvocation("meta:setup", tokens.argv, context)) return;
   const installDir = dirname(process.execPath);
-  const input = compiledCommandInputFromArgv("meta:setup", argv, { context });
+  const input = compiledCommandInputFromArgv("meta:setup", tokens.argv, { tokens, context });
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
   await runWithRendererHandling(

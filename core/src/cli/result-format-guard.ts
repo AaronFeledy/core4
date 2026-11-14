@@ -1,3 +1,4 @@
+import { RendererSelectionError } from "@lando/sdk/errors";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { activeJq, activeJsonControl, activeRendererMode, activeResultFormat } from "./compiled-runtime";
 import {
@@ -36,17 +37,31 @@ const refusalOutputMode = (
 export const rejectUnsupportedResultFormat = async (
   commandId: string,
   command: ResultFormatCapability | undefined,
-  options: { readonly payloadStdout?: boolean; readonly context?: CliInvocationContext } = {},
+  options: {
+    readonly payloadStdout?: boolean;
+    readonly context?: CliInvocationContext;
+    /** Ownership guidance appended after the allowed-value remediation. */
+    readonly remediationSuffix?: string;
+  } = {},
 ): Promise<boolean> => {
   if (supportsResultFormat(command, activeResultFormat)) return false;
+  const refusal = unsupportedResultFormatError({
+    commandId,
+    value: activeResultFormat,
+    supported: commandResultFormats(command),
+  });
   await renderPreCommandFailure({
     ...(options.context === undefined ? {} : { context: options.context }),
     commandId,
-    error: unsupportedResultFormatError({
-      commandId,
-      value: activeResultFormat,
-      supported: commandResultFormats(command),
-    }),
+    error:
+      options.remediationSuffix === undefined
+        ? refusal
+        : new RendererSelectionError({
+            message: refusal.message,
+            value: refusal.value,
+            source: refusal.source,
+            remediation: `${refusal.remediation} ${options.remediationSuffix}`,
+          }),
     ...refusalOutputMode(activeResultFormat),
     ...(options.payloadStdout === true ? { payloadStdout: true } : {}),
     usage: true,

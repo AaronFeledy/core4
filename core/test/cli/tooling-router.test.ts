@@ -15,16 +15,34 @@ import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize"
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Context, Effect, Result, Schema } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
+import { ownerPolicy } from "../../src/cli/invocation-owner.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
   type ToolingRoute,
   resolveAppCommandHelpAliases,
   resolveToolingRoute,
-  toolingHelpRequested,
   toolingName,
   toolingRouteError,
   toolingVersionRequested,
 } from "../../src/cli/tooling-router.ts";
+
+const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
+  switch (route._tag) {
+    case "tooling":
+    case "bun-script":
+      return splitCommandTokens(argv, ownerPolicy({ kind: "tooling", route })).help;
+    case "built-in":
+    case "plugin":
+    case "not-tooling":
+    case "alias-disabled":
+    case "cache-miss":
+    case "unknown-tooling":
+      return false;
+    default:
+      return route satisfies never;
+  }
+};
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));
@@ -558,7 +576,7 @@ test("Given a declared-input task, when its argv asks for help, then help is req
 
   // When
   const requests = [["--help"], ["-h"], ["dev", "--help"], ["--name=team", "-h"]].map((argv) =>
-    toolingHelpRequested(route, argv),
+    helpRequested(route, argv),
   );
 
   // Then
@@ -570,9 +588,7 @@ test("Given a declared-input task, when argv has no help option, then help is no
   const route = declaredInputRoute();
 
   // When
-  const requests = [[], ["dev"], ["--name=team"], ["--helpless"]].map((argv) =>
-    toolingHelpRequested(route, argv),
-  );
+  const requests = [[], ["dev"], ["--name=team"], ["--helpless"]].map((argv) => helpRequested(route, argv));
 
   // Then
   expect(requests).toEqual([false, false, false, false]);
@@ -586,7 +602,7 @@ test("Given a declared-input task, when help follows the argument terminator, th
   const requests = [
     ["--", "--help"],
     ["dev", "--", "-h"],
-  ].map((argv) => toolingHelpRequested(route, argv));
+  ].map((argv) => helpRequested(route, argv));
 
   // Then
   expect(requests).toEqual([false, false]);
@@ -599,7 +615,7 @@ test.each([true, false] as const)(
     const { input: _input, ...route } = declaredInputRoute();
 
     // When
-    const requested = toolingHelpRequested({ ...route, ...(wrapper ? { wrapper } : {}) }, ["--help"]);
+    const requested = helpRequested({ ...route, ...(wrapper ? { wrapper } : {}) }, ["--help"]);
 
     // Then
     expect(requested).toBe(!wrapper);
@@ -611,7 +627,7 @@ test("Given a hidden declared-input task, when argv asks for help, then it route
   const route = declaredInputRoute({ hidden: true });
 
   // When
-  const requested = toolingHelpRequested(route, ["--help"]);
+  const requested = helpRequested(route, ["--help"]);
 
   // Then
   expect(requested).toBe(true);
@@ -633,7 +649,7 @@ test("Given a task that declares its own help flag, when argv asks for help, the
   });
 
   // When
-  const requests = [toolingHelpRequested(byName, ["--help"]), toolingHelpRequested(byAlias, ["-h"])];
+  const requests = [helpRequested(byName, ["--help"]), helpRequested(byAlias, ["-h"])];
 
   // Then
   expect(requests).toEqual([false, false]);
@@ -655,7 +671,7 @@ test("Given mixed route kinds, help is requested only for the raw script", () =>
   ];
 
   // When
-  const requests = routes.map((route) => toolingHelpRequested(route, ["--help"]));
+  const requests = routes.map((route) => helpRequested(route, ["--help"]));
 
   // Then
   expect(requests).toEqual([false, true, false]);

@@ -23,6 +23,27 @@ in one result frame carrying that envelope (see below). `--format=json` is equiv
 shorthand for that full envelope. Bare `--json` lists keys. `--json=key`
 projects that key inside `result`. `--jq` prints a raw jq selection.
 
+These flags, like Lando's other own flags (`--renderer`, `--verbose`, `--debug`,
+`--log-level`, `--trace`), always work before the command name, as in
+`lando --format=json version`. After the name they work too, unless the command
+owns the words after its name: a `wrapper: true` task, any command that
+declares a flag with the same name (a task, a script, a plugin command, or a
+built-in such as `lando logs --tail`), `lando bun` and `lando x`, and the
+command line you hand to `lando exec` or `lando ssh`. In a script that calls commands
+you didn't write, put the flag first. See
+[Use a flag name Lando also has](./tooling/flags-and-args.mdx#use-a-flag-name-lando-also-has).
+
+A script or agent that needs the exact rule for one command can ask for it.
+`lando help <command> --format=json` returns `result.target.landoFlags`:
+
+| Field | What it tells you |
+| --- | --- |
+| `afterName` | Where Lando still reads its own flags after the command name. `until-separator`: anywhere before the first `--`. `command-tail`: only before the command line you hand over, as with `lando exec`. `none`: nowhere, so put them before the name. |
+| `commandOwned` | Lando flag spellings the command reads itself where Lando would otherwise read them, such as `--tail` on `lando logs`. Empty when there are none, and always empty with `afterName: none`, because then every word after the name is the command's. |
+
+`lando help exec --format=json` reports `"afterName":"command-tail"`, and
+`lando help bun --format=json` reports `"afterName":"none"`.
+
 On success the envelope wraps the command's typed result under `result` with
 `ok: true`. On failure it carries the tagged error JSON under `error` with
 `ok: false`. A process that finishes unsuccessfully also retains its typed
@@ -73,6 +94,10 @@ After adding the `stamp.bun.sh` example from that guide to your app, run this fr
 lando stamp abc1234 --format=json
 ```
 
+`stamp` declares no flags, so Lando reads `--format` after its name. For a
+script that declares its own `format` flag, or for a `wrapper: true` task such
+as `lando composer`, write `lando --format=json <name>` instead.
+
 ## Capture Bun-backed commands
 
 `lando bun` and `lando x` (aliases of `meta:bun` and `meta:x`) run Bun through
@@ -81,7 +106,8 @@ format flag they hand the child your terminal: stdin, stdout, and stderr pass
 straight through, byte for byte and without redaction, so an interactive Bun
 command behaves as if you had typed `bun`. Put Lando's own flags before `bun`
 or `x`. Everything after the command id is Bun's argv and is forwarded
-unchanged:
+unchanged. The one exception is `lando bun --help` (or `-h`) with nothing else
+before a `--`, which shows Lando's help for the command:
 
 ```sh
 lando --format=json bun -e 'console.log(2)'
@@ -262,6 +288,14 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
     <Step name="json-jq-conflict">
       <Run command="lando version --json --jq ." expectExit={2} />
       <Verify errorTag="JsonJqConflictError" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="read-flag-placement-from-help" render={false} reason="Machine help reports where Lando reads its own flags">
+    <Step name="read-placement">
+      <Verify command="lando help exec --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"afterName\":\"command-tail\"" } }} />
+      <Verify command="lando help bun --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"afterName\":\"none\"" } }} />
+      <Verify command="lando help logs --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"commandOwned\":\\[\"--tail\"\\]" } }} />
     </Step>
   </Scenario>
 
