@@ -43,7 +43,6 @@ export const liveTraefikFixture = Effect.fnUntraced(function* (socket: string) {
     (root) =>
       Effect.promise(async () => {
         await rm(root, { recursive: true, force: true });
-        console.info("Traefik live cleanup: temporary root removed", root);
       }),
   );
   const paths = { platform: "linux" as const, globalAppRoot: root };
@@ -89,10 +88,7 @@ export const liveTraefikFixture = Effect.fnUntraced(function* (socket: string) {
       201,
     ),
     () =>
-      checked({ method: "DELETE", path: `/containers/${name}?force=true&v=true` }, 204).pipe(
-        Effect.tap(() => Effect.sync(() => console.info("Traefik live cleanup: container removed", name))),
-        Effect.orDie,
-      ),
+      checked({ method: "DELETE", path: `/containers/${name}?force=true&v=true` }, 204).pipe(Effect.orDie),
   );
   yield* checked({ method: "POST", path: `/containers/${name}/start` }, 204);
   const inspect = () =>
