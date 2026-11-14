@@ -122,13 +122,25 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
     Effect.provide(input.contexts.runtime ?? input.contexts.config ?? Context.empty()),
   );
   const budgetMs = doctorSectionBudgetMs(sourceEnv);
-  const checks: DoctorSectionFinding[] = [...(input.initialChecks ?? [])];
+  const initial = input.initialChecks ?? [];
+  const checks: DoctorSectionFinding[] = [...initial];
   const skipped: DoctorSkip[] = [];
   const table = input.table ?? doctorSections({ options, sourceEnv, budgetMs, redact });
   const enabled = selectedDoctorSections(table, options);
-  const tree = yield* makeDoctorTree(enabled.map((spec) => spec.id));
+  // Bootstrap's global-config finding gets the first row, so a config problem is visible live.
+  const configChecks = initial.filter((check) => check.section === "global-config");
+  const configRow: ReadonlyArray<DoctorSectionId> = configChecks.length === 0 ? [] : ["global-config"];
+  const tree = yield* makeDoctorTree([...configRow, ...enabled.map((spec) => spec.id)]);
   return yield* Effect.gen(function* () {
     yield* tree.start;
+    if (configChecks.length > 0) {
+      yield* tree.startTask("global-config");
+      yield* settleDoctorSection(
+        tree,
+        "global-config",
+        sectionOutcomeFor("global-config", { checks: configChecks, skipped: [] }),
+      );
+    }
     let provider: DoctorProvider | undefined;
     for (const spec of enabled) {
       yield* tree.startTask(spec.id);
@@ -137,7 +149,7 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
       checks.push(...output.checks);
       skipped.push(...output.skipped);
       // Findings recorded before collection (a provider-bootstrap self check) settle their section's row too.
-      const prior = (input.initialChecks ?? []).filter((check) => check.section === spec.id);
+      const prior = initial.filter((check) => check.section === spec.id);
       yield* settleDoctorSection(
         tree,
         spec.id,
