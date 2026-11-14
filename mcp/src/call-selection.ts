@@ -14,7 +14,12 @@ import { McpToolInputError, type McpToolNotAllowedError } from "@lando/sdk/error
 import { Cause, Context, Effect, Option, Scope, type Semaphore } from "effect";
 
 import type { McpAppGenerationsShape } from "./apps";
-import { type McpAllowPolicy, isMcpEntryAuthorized, isMcpIdAuthorizable } from "./catalog";
+import {
+  type McpAllowPolicy,
+  isMcpEntryAuthorized,
+  isMcpIdAuthorizable,
+  isMcpToolingAuthorized,
+} from "./catalog";
 import type { McpDispatchDeps, McpToolSelection } from "./dispatch";
 import { mcpToolNotAllowedError } from "./dispatch-outcome";
 import { makeNestedExecute } from "./execute";
@@ -41,7 +46,7 @@ export interface McpCallSelectionDeps {
   readonly apps: McpAppGenerationsShape;
   readonly catalog: Effect.Success<ReturnType<typeof makeSessionCatalog>>;
   readonly policy: McpAllowPolicy;
-  readonly sessionOwners: ReadonlyMap<string, McpCommandEntry>;
+  readonly sessionOwners: ReadonlyMap<string, Extract<McpCommandEntry, { readonly kind: "command" }>>;
   readonly deps: Pick<McpDispatchDeps, "effective" | "allowlistSource">;
   readonly executor: McpCommandExecutorShape;
   readonly permits: Semaphore.Semaphore;
@@ -53,13 +58,20 @@ export const selectCallOwner = Effect.fnUntraced(function* (
 ): Effect.fn.Return<McpToolSelection, McpToolInputError | McpToolNotAllowedError, OperationDiscovery> {
   const { toolId } = call;
   // No owner of a denied or never-allowed id can run, so its app is never built.
-  const toolingOwner = session.catalog.toolingOwner(toolId);
-  if (
-    !(toolingOwner === undefined
-      ? isMcpIdAuthorizable(session.policy, toolId)
-      : isMcpEntryAuthorized(session.policy, toolingOwner))
-  )
-    return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));
+  const knownOwner = session.sessionOwners.get(toolId) ?? session.catalog.toolingOwner(toolId);
+  let authorizable: boolean;
+  switch (knownOwner?.kind) {
+    case "tooling":
+      authorizable = isMcpToolingAuthorized(session.policy, toolId);
+      break;
+    case "command":
+    case undefined:
+      authorizable = isMcpIdAuthorizable(session.policy, toolId);
+      break;
+    default:
+      return knownOwner satisfies never;
+  }
+  if (!authorizable) return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));
   const leased = yield* Effect.exit(
     session.catalog.refresh(
       Effect.map(Scope.provide(session.apps.acquire(call.cwd), call.scope), (generation) => ({ generation })),

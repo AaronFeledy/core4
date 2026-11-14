@@ -48,7 +48,7 @@ test("canonical MCP execution preserves and redacts broken-app aggregate diagnos
               Layer.succeed(
                 McpRuntimeConfig,
                 McpRuntimeConfig.of({
-                  commandEntries: [{ spec }],
+                  commandEntries: [{ kind: "command" as const, spec }],
                   defaultAllowlist: [spec.id],
                   apps: testAppGenerations(Layer.succeedContext(retained)),
                 }),

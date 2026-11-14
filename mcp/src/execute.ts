@@ -57,15 +57,24 @@ export const makeNestedExecute = (
       // Reuse the call's discovery memo; without one, this execution owns a fresh memo.
       const callDiscovery = yield* Effect.serviceOption(OperationDiscovery);
       const discover = callDiscovery._tag === "Some" ? withDiscoveryCwd : withAppDiscovery;
+      let snapshot: Pick<Parameters<McpCommandExecutorShape["execute"]>[1], "argv" | "args" | "flags">;
+      switch (entry.kind) {
+        case "tooling":
+          snapshot = { argv: [], args: {}, flags: {} };
+          break;
+        case "command":
+          snapshot = { argv: input.parsedArgv ?? input.argv, args: input.args, flags: input.flags };
+          break;
+        default:
+          return entry satisfies never;
+      }
       const exit = yield* discover(
         cwd,
         executor.execute(
           rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
           {
             commandId: entry.spec.id,
-            argv: entry.tooling === true ? [] : (input.parsedArgv ?? input.argv),
-            args: entry.tooling === true ? {} : input.args,
-            flags: entry.tooling === true ? {} : input.flags,
+            ...snapshot,
             ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
             ...(completion === undefined ? {} : { completion: (value) => completion(value, input) }),
           },

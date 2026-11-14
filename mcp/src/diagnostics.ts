@@ -37,7 +37,7 @@ export type McpDiagnostics = typeof McpDiagnostics.Type;
 /** Tooling freshness is independent of the contribution generation's selection fingerprint. */
 export interface McpToolingCatalog {
   readonly revision: string;
-  readonly entries: readonly McpCommandEntry[];
+  readonly entries: readonly Extract<McpCommandEntry, { readonly kind: "tooling" }>[];
   readonly unavailable: readonly McpDiagnostic[];
 }
 

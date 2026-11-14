@@ -49,7 +49,16 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
   readonly redactor: Redactor;
 }) {
   const sessionIds = new Set(
-    input.entries.filter((entry) => entry.tooling !== true).map((entry) => entry.spec.id),
+    input.entries.flatMap((entry) => {
+      switch (entry.kind) {
+        case "command":
+          return [entry.spec.id];
+        case "tooling":
+          return [];
+        default:
+          return entry satisfies never;
+      }
+    }),
   );
   const variants = new Map<string, Map<string, McpToolVariant>>();
   const published = new Map<string, ReadonlySet<string>>();
@@ -60,7 +69,16 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
     revision: 0,
     tooling: {
       revision: "initial",
-      entries: input.entries.filter((entry) => entry.tooling === true),
+      entries: input.entries.flatMap((entry) => {
+        switch (entry.kind) {
+          case "tooling":
+            return [entry];
+          case "command":
+            return [];
+          default:
+            return entry satisfies never;
+        }
+      }),
       unavailable: input.unavailable,
     },
     selected: undefined,

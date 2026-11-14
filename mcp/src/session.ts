@@ -67,7 +67,16 @@ export const serveSession = Effect.fnUntraced(
         const server = Context.get(context, McpServer.McpServer);
 
         const sessionOwners = new Map(
-          session.entries.filter((entry) => entry.tooling !== true).map((entry) => [entry.spec.id, entry]),
+          session.entries.flatMap((entry) => {
+            switch (entry.kind) {
+              case "command":
+                return [[entry.spec.id, entry] as const];
+              case "tooling":
+                return [];
+              default:
+                return entry satisfies never;
+            }
+          }),
         );
         const handle = (
           toolId: string,

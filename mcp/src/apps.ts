@@ -18,14 +18,14 @@ import type { McpCommandEntry } from "./registry";
 export type McpGenerationCommand =
   | {
       readonly _tag: "Eligible";
-      readonly entry: McpCommandEntry;
+      readonly entry: Extract<McpCommandEntry, { readonly kind: "command" }>;
       readonly diagnostics?: readonly Pick<McpDiagnostic, "_tag" | "message" | "remediation">[];
     }
   | {
       readonly _tag: "Failed";
       readonly commandId: string;
       readonly error: unknown;
-      readonly owner?: McpCommandOwner;
+      readonly owner?: Extract<McpCommandOwner, { readonly kind: "command" }>;
       readonly diagnostic?: Pick<McpDiagnostic, "_tag" | "message" | "remediation">;
     };
 
@@ -84,7 +84,7 @@ export const singleAppGenerations = <Services>(
 export const generationEntries = (
   generation: McpAppGeneration,
   sessionIds: ReadonlySet<string>,
-): ReadonlyArray<McpCommandEntry> =>
+): ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>> =>
   [...generation.commands.values()].flatMap((command) =>
     command._tag === "Eligible" && !sessionIds.has(command.entry.spec.id) ? [command.entry] : [],
   );

@@ -39,10 +39,9 @@ export type { McpResourceEntry } from "./resources";
 export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 
 export interface McpRuntimeConfigShape {
-  /** Invocation environment; omitted embedding input is captured when the service layer is built. */
   readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
-  readonly commandEntries: ReadonlyArray<McpCommandEntry>;
-  readonly toolingEntries?: ReadonlyArray<McpCommandEntry>;
+  readonly commandEntries: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>>;
+  readonly toolingEntries?: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "tooling" }>>;
   readonly toolingUnavailable?: readonly McpDiagnostic[];
   readonly toolingCatalog?: (generation: McpAppGeneration) => Effect.Effect<McpToolingCatalog, unknown>;
   readonly defaultAllowlist: ReadonlyArray<string>;
@@ -65,10 +64,7 @@ const sessionEntries = (
   options: McpCatalogOptions | undefined,
 ): ReadonlyArray<McpCommandEntry> =>
   options?.tooling === true
-    ? [
-        ...config.commandEntries,
-        ...(config.toolingEntries ?? []).map((entry) => ({ ...entry, tooling: true })),
-      ]
+    ? [...config.commandEntries, ...(config.toolingEntries ?? [])]
     : config.commandEntries;
 
 const sessionAllowPolicy = (

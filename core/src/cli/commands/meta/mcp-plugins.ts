@@ -105,6 +105,7 @@ const projectCandidate = Effect.fnUntraced(function* (candidate: GraphCommandCan
       commandId: candidate.id,
       error: loaded.failure,
       owner: {
+        kind: "command",
         spec: candidate.descriptor,
         plugin: {
           name: candidate.pluginName,
@@ -125,6 +126,7 @@ const projectCandidate = Effect.fnUntraced(function* (candidate: GraphCommandCan
     _tag: "Eligible",
     diagnostics,
     entry: {
+      kind: "command",
       spec,
       plugin: {
         name: candidate.pluginName,
@@ -201,7 +203,9 @@ export const retryFailedMcpPluginCommands = Effect.fn("Mcp.retryFailedPluginComm
 });
 
 /** Eligible owners of a projection, in selection order. */
-export const eligibleMcpEntries = (projection: McpPluginProjection): ReadonlyArray<McpCommandEntry> =>
+export const eligibleMcpEntries = (
+  projection: McpPluginProjection,
+): ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>> =>
   [...projection.commands.values()].flatMap((command) =>
     command._tag === "Eligible" ? [command.entry] : [],
   );

@@ -17,6 +17,7 @@ import { mcpRegistryWithToolingEntries } from "../../../../src/cli/commands/meta
 const registry = {
   commandEntries: [
     {
+      kind: "command" as const,
       spec: {
         id: "app:info",
         summary: "Show app info",
@@ -182,7 +183,7 @@ describe("mcpRegistryWithToolingEntries", () => {
     // Then
     expect(projected.commandEntries).toEqual(registry.commandEntries);
     expect(projected.toolingEntries?.map((tooling) => tooling.spec.id)).toEqual(["app:composer"]);
-    expect(projected.toolingEntries?.[0]?.tooling).toBe(true);
+    expect(projected.toolingEntries?.[0]?.kind).toBe("tooling");
   });
 });
 
@@ -270,7 +271,7 @@ test("actual MCP session rejects unknown tooling top-level names without retaini
     Effect.scoped(
       Effect.gen(function* () {
         const service = yield* McpService;
-        const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
+        const client = yield* startStdioClient(service.serve({ transport: "stdio", tooling: true }));
         return yield* client.request("tools/call", {
           name: command.id,
           arguments: { flags: { note: canary }, [canary]: "extra" },
@@ -282,7 +283,8 @@ test("actual MCP session rejects unknown tooling top-level names without retaini
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(McpRuntimeConfig, {
-                commandEntries: [entry],
+                toolingEntries: [entry],
+                commandEntries: [],
                 defaultAllowlist: [command.id],
                 apps: testAppGenerations(),
               }),

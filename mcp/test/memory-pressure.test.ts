@@ -67,7 +67,7 @@ describe("handleMemoryPressure", () => {
 describe("McpService.handleMemoryPressure", () => {
   test("clears the catalog cache", async () => {
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: spec("app:info") } satisfies McpCommandEntry],
+      commandEntries: [{ kind: "command" as const, spec: spec("app:info") } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(),
     };
@@ -94,6 +94,7 @@ describe("McpService.handleMemoryPressure", () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [
         {
+          kind: "command" as const,
           spec: spec("app:exec", () =>
             Effect.promise(async () => {
               started.resolve();

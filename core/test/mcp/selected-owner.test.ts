@@ -25,6 +25,7 @@ const owner = (
 ): McpGenerationCommand => {
   const source = options.source ?? "external";
   const entry: McpCommandEntry = {
+    kind: "command" as const,
     spec: {
       id,
       summary: `Fixture ${id}`,
@@ -278,7 +279,11 @@ test("a selected owner that failed to load keeps its tagged error and never fall
         _tag: "Failed",
         commandId: "fixture:shared",
         error: failure,
-        owner: { spec: { id: "fixture:shared" }, plugin: { name: "@example/app-b", source: "external" } },
+        owner: {
+          kind: "command" as const,
+          spec: { id: "fixture:shared" },
+          plugin: { name: "@example/app-b", source: "external" },
+        },
       },
     ]),
   ];

@@ -26,7 +26,7 @@ const fixture = () => {
         Layer.succeed(
           McpRuntimeConfig,
           McpRuntimeConfig.of({
-            commandEntries: [{ spec }],
+            commandEntries: [{ kind: "command" as const, spec }],
             defaultAllowlist: [spec.id],
             apps: testAppGenerations(),
           }),

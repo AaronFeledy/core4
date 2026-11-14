@@ -31,7 +31,11 @@ const spec = (id: string, extra: Partial<LandoCommandSpec> = {}): LandoCommandSp
   ...extra,
 });
 
-const entry = (id: string, extra: Partial<LandoCommandSpec> = {}): McpCommandEntry => ({
+const entry = (
+  id: string,
+  extra: Partial<LandoCommandSpec> = {},
+): Extract<McpCommandEntry, { readonly kind: "command" }> => ({
+  kind: "command" as const,
   spec: spec(id, extra),
 });
 
@@ -55,7 +59,7 @@ describe("deriveToolInputSchema", () => {
     const spec: LandoCommandSpec = appConfigDescribeSpec;
     const input = validateToolInput(spec, {});
     const catalog = buildCatalog({
-      commandEntries: [{ spec }],
+      commandEntries: [{ kind: "command" as const, spec }],
       effective: computeEffectiveAllowlist({ defaults: ["app:config:describe"] }),
     });
     expect(catalog.tools[0]).toMatchObject({
@@ -363,7 +367,7 @@ describe("buildCatalog", () => {
   test("projects tooling entries only when tooling is requested", () => {
     const base = {
       commandEntries,
-      toolingEntries: [entry("app:php")],
+      toolingEntries: [{ ...entry("app:php"), kind: "tooling" as const }],
       effective: computeEffectiveAllowlist({ defaults: ["app:info"], allow: ["app:php"] }),
     };
     expect(buildCatalog(base).tools.map((t) => t.toolId)).toEqual(["app:info"]);
@@ -376,7 +380,7 @@ describe("buildCatalog", () => {
   test("filters tooling entries through the effective allowlist", () => {
     const catalog = buildCatalog({
       commandEntries,
-      toolingEntries: [entry("app:php")],
+      toolingEntries: [{ ...entry("app:php"), kind: "tooling" as const }],
       effective: computeEffectiveAllowlist({ defaults: ["app:info"], allow: ["app:php"], deny: ["app:php"] }),
       options: { tooling: true },
     });

@@ -101,13 +101,14 @@ const decodeEnvelope = (envelope: unknown): CommandResultEnvelope =>
 const specFor = (id: string): McpCommandSpec | undefined =>
   allCommandEntries().find((entry) => entry.spec.id === id)?.spec;
 
-let commandEntries: ReadonlyArray<McpCommandEntry> = [];
+let commandEntries: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>> = [];
 beforeAll(async () => {
   commandEntries = (
     await Effect.runPromise(bundledMcpRegistry().pipe(Effect.provide(RedactionService.layer)))
   ).commandEntries;
 });
-const allCommandEntries = (): ReadonlyArray<McpCommandEntry> => commandEntries;
+const allCommandEntries = (): ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>> =>
+  commandEntries;
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
   Layer.effect(
@@ -209,6 +210,7 @@ describe("MCP contract suite — tool input schemas round-trip against FlagSpec/
 describe("MCP contract suite — success and failure dispatches return schema-valid envelopes", () => {
   test("a successful dispatch returns an ok:true envelope that decodes against CommandResultEnvelope", async () => {
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:info", () => Effect.succeed({ name: "demo" }), {
         resultSchema: Schema.Struct({ name: Schema.String }),
       }),
@@ -222,6 +224,7 @@ describe("MCP contract suite — success and failure dispatches return schema-va
 
   test("a tagged command failure returns an ok:false envelope that decodes against CommandResultEnvelope", async () => {
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:start", () =>
         Effect.fail(new PromptRequiredError({ message: "answer required", remediation: "pass --yes" })),
       ),
@@ -242,7 +245,7 @@ describe("MCP contract suite — deny wins over allow", () => {
   });
 
   test("a denied default id never appears in the catalog", () => {
-    const entries: ReadonlyArray<McpCommandEntry> = [{ spec: spec("app:info", () => Effect.succeed({})) }];
+    const entries = [{ kind: "command" as const, spec: spec("app:info", () => Effect.succeed({})) }];
     const catalog = buildCatalog({
       commandEntries: entries,
       effective: computeEffectiveAllowlist({ defaults: ["app:info"], deny: ["app:info"] }),
@@ -266,6 +269,7 @@ describe("MCP contract suite — destructive-id self-allow registration is rejec
 describe("MCP contract suite — non-interactive prompt failure surfaces as structured ok:false", () => {
   test("a command that requires a prompt fails as an ok:false envelope under non-interactive dispatch", async () => {
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:start", (input) =>
         (input as { readonly interaction?: string }).interaction === "non-interactive"
           ? Effect.fail(
@@ -299,7 +303,7 @@ describe("MCP contract suite — cancellation mid-call", () => {
       ),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: blocking }],
+      commandEntries: [{ kind: "command" as const, spec: blocking }],
       defaultAllowlist: ["app:exec"],
       apps: testAppGenerations(),
     };
@@ -344,7 +348,7 @@ describe("MCP contract suite — concurrency cap", () => {
       }),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: blocking }],
+      commandEntries: [{ kind: "command" as const, spec: blocking }],
       defaultAllowlist: ["app:exec"],
       apps: testAppGenerations(),
     };
@@ -374,6 +378,7 @@ describe("MCP contract suite — a known secret never crosses the transport", ()
   test("a secret in a command result is redacted before the envelope is returned", async () => {
     const secret = "sk-contract-suite-secret-token";
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:info", () => Effect.succeed({ token: secret }), {
         resultSchema: Schema.Struct({ token: Schema.String }),
       }),

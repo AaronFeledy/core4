@@ -25,6 +25,7 @@ test("retained MCP execution resolves each call's appPath with a fresh memo", as
     },
   );
   const entry = {
+    kind: "command" as const,
     spec: {
       id: "app:discovery",
       summary: "Discover",

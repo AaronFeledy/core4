@@ -54,7 +54,7 @@ const canarySpec: LandoCommandSpec = {
   redactionTokens: () => [MCP_DOCTOR_CANARY_SECRET],
 };
 
-const canaryEntry: McpCommandEntry = { spec: canarySpec };
+const canaryEntry = { spec: canarySpec, kind: "command" } satisfies McpCommandEntry;
 
 export const isMcpDefaultAllowlistFresh = (ids: ReadonlyArray<string>): boolean => {
   const expected = computeMcpDefaultAllowlist(MCP_DEFAULT_ALLOWLIST.map((id) => ({ id, mcpAllowed: true })));

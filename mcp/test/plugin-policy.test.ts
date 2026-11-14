@@ -22,7 +22,9 @@ test.each([
     resultSchema: Schema.Unknown,
     run: () => Effect.succeed({}),
   };
-  const entries: readonly McpCommandEntry[] = [{ spec, plugin: { name: "fixture", source: "bundled" } }];
+  const entries = [
+    { kind: "command" as const, spec, plugin: { name: "fixture", source: "bundled" as const } },
+  ] satisfies readonly McpCommandEntry[];
   expect(isMcpDestructiveCommand(spec)).toBe(true);
   expect(() => computeMcpDefaultAllowlist([spec])).toThrow();
   expect(filterMcpDefaultAllowlist([spec.id], entries)).toEqual([]);

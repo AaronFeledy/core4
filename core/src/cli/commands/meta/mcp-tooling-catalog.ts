@@ -40,7 +40,7 @@ export const toolingCatalogFromCache = (
         });
         return [];
       case "Ready":
-        return [{ spec: toolingSpecFromRegistered({ ...command, hidden: false }), tooling: true }];
+        return [{ spec: toolingSpecFromRegistered({ ...command, hidden: false }), kind: "tooling" as const }];
       default:
         return command satisfies never;
     }

@@ -67,16 +67,24 @@ export const isMcpIdAuthorizable = (policy: McpAllowPolicy, id: string): boolean
 export const isMcpToolingAuthorized = (policy: McpAllowPolicy, id: string): boolean =>
   !policy.deny.has(id) && !isMcpNeverAllowed(id);
 
-export type McpCommandOwner = Pick<McpCommandEntry, "plugin" | "tooling"> & {
+export type McpCommandOwner = Pick<McpCommandEntry, "plugin"> & {
   readonly spec: Pick<McpCommandSpec, "id" | "mcpAllowed" | "flags"> & { readonly hidden?: boolean };
-};
+} & ({ readonly kind: "command" } | { readonly kind: "tooling" });
 
-export const isMcpEntryAuthorized = (policy: McpAllowPolicy, entry: McpCommandOwner): boolean =>
-  entry.spec.hidden !== true &&
-  (entry.tooling === true
-    ? isMcpToolingAuthorized(policy, entry.spec.id)
-    : isMcpIdAuthorizable(policy, entry.spec.id) &&
-      (policy.allow.has(entry.spec.id) || filterMcpDefaultAllowlist([entry.spec.id], [entry]).length === 1));
+export const isMcpEntryAuthorized = (policy: McpAllowPolicy, entry: McpCommandOwner): boolean => {
+  if (entry.spec.hidden === true) return false;
+  switch (entry.kind) {
+    case "tooling":
+      return isMcpToolingAuthorized(policy, entry.spec.id);
+    case "command":
+      return (
+        isMcpIdAuthorizable(policy, entry.spec.id) &&
+        (policy.allow.has(entry.spec.id) || filterMcpDefaultAllowlist([entry.spec.id], [entry]).length === 1)
+      );
+    default:
+      return entry satisfies never;
+  }
+};
 
 export const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
   toolId: spec.id,
@@ -89,9 +97,9 @@ export const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
 
 export interface BuildCatalogInput {
   /** Command entries projected as tools (filtered by the effective allowlist). */
-  readonly commandEntries: ReadonlyArray<McpCommandEntry>;
+  readonly commandEntries: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>>;
   /** Tooling-task entries projected as tools only when `options.tooling` is true. */
-  readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
+  readonly toolingEntries?: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "tooling" }>> | undefined;
   readonly effective: EffectiveAllowlist;
   readonly options?: McpCatalogOptions | undefined;
 }

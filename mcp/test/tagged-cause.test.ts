@@ -19,6 +19,7 @@ test("MCP inspection and tool responses preserve redacted wrapped command causes
     }),
   });
   const entry = {
+    kind: "command" as const,
     spec: { id: "app:start", summary: "Start app", resultSchema: Schema.Void, run: () => Effect.void },
   };
 

@@ -30,6 +30,7 @@ const services = McpService.layer.pipe(
       Layer.succeed(McpRuntimeConfig, {
         commandEntries: [
           {
+            kind: "command" as const,
             spec: {
               id: "app:logs",
               summary: "Follow until abandoned",
@@ -38,6 +39,7 @@ const services = McpService.layer.pipe(
             },
           },
           {
+            kind: "command" as const,
             spec: {
               id: "app:info",
               summary: "Return a deterministic payload",
@@ -46,6 +48,7 @@ const services = McpService.layer.pipe(
             },
           },
           {
+            kind: "command" as const,
             spec: {
               id: "app:exec",
               summary: "Must stay queued behind the follow call",

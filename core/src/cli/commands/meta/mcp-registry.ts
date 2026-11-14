@@ -18,8 +18,8 @@ import type { LandoCommandSpec } from "../../spec/command-spec";
 import { toolingCatalogFromCache } from "./mcp-tooling-catalog";
 
 export interface McpCommandRegistry {
-  readonly commandEntries: ReadonlyArray<McpCommandEntry>;
-  readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
+  readonly commandEntries: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>>;
+  readonly toolingEntries?: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "tooling" }>> | undefined;
   readonly diagnostics?: readonly PluginCommandDiagnostic[];
   readonly toolingUnavailable?: readonly McpDiagnostic[];
   readonly generation?: McpAppGeneration;
@@ -35,12 +35,13 @@ export interface ResolvedMcpOptions {
 export const mcpRegistryFromBuiltIns = (
   entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
 ): McpCommandRegistry => ({
-  commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
+  commandEntries: entries.flatMap<Extract<McpCommandEntry, { readonly kind: "command" }>>(({ spec }) => {
     if (isMcpNeverAllowed(spec.id)) return [];
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
-    if (spec.id === "app:config") return appConfigMcpSpecs.map((spec: LandoCommandSpec) => ({ spec }));
-    return [{ spec }];
+    if (spec.id === "app:config")
+      return appConfigMcpSpecs.map((spec: LandoCommandSpec) => ({ spec, kind: "command" as const }));
+    return [{ spec, kind: "command" }];
   }),
 });
 

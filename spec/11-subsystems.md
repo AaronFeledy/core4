@@ -801,6 +801,8 @@ The sole tagged error is `ManagedFileError`, with reasons `io`, `decode`, `confl
 
 ### 10.14 MCP server (`McpService`)
 
+`McpCommandEntry` has one required ownership discriminant, `kind: "command" | "tooling"`. Runtime `commandEntries` accepts only command entries; `toolingEntries` and `McpToolingCatalog.entries` accept only tooling entries. Placement MUST NOT restamp ownership. Authorization and dispatch use the selected entry's kind.
+
 `McpService` is the in-process Model Context Protocol server behind `lando mcp` (§8.2.6). MCP is a projection of canonical command, result, resource, and event registries, not a parallel command surface. It exposes scoped `serve` and `catalog` over `McpServeOptions`, `McpCatalogOptions`, and `McpCatalog`.
 
 - The server runs on `effect/ai` `McpServer.layerStdio` and negotiates MCP protocol versions 2025-06-18, 2025-03-26, and 2024-11-05. `@lando/renderer` implements Effect's `Stdio` contract over Bun stdin and stdout, so it stays the only terminal writer. Inbound frames over 1 MiB end the session with `McpTransportError` before parsing.

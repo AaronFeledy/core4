@@ -26,7 +26,8 @@ import {
 } from "../../../../src/cli/commands/meta/mcp.ts";
 import { runCli } from "../../../../src/cli/index.ts";
 
-const entry = (id: string, summary: string): McpCommandEntry => ({
+const entry = (id: string, summary: string): Extract<McpCommandEntry, { readonly kind: "command" }> => ({
+  kind: "command" as const,
   spec: { id, summary } as McpCommandEntry["spec"],
 });
 
@@ -232,7 +233,7 @@ describe("mcpRegistryFromBuiltIns", () => {
     const spec = entry("app:info", "Show app info").spec;
     const registry = mcpRegistryFromBuiltIns([{ spec }]);
 
-    expect(registry).toEqual({ commandEntries: [{ spec }] });
+    expect(registry).toEqual({ commandEntries: [{ kind: "command", spec }] });
   });
 
   test("projects app config as constrained MCP read tools and omits the umbrella", () => {

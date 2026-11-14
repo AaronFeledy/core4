@@ -12,7 +12,7 @@ const failed = (id: string, source: "bundled" | "external", mcpAllowed = true) =
     _tag: "Failed",
     commandId: id,
     error: new SyntaxError("invalid module"),
-    owner: { spec: { id, mcpAllowed }, plugin: { name: `owner-${id}`, source } },
+    owner: { kind: "command" as const, spec: { id, mcpAllowed }, plugin: { name: `owner-${id}`, source } },
     diagnostic: {
       _tag: "PluginLoadError",
       message: `Cannot load ${id}`,
@@ -146,6 +146,7 @@ test("removing a tooling task does not grant its implicit allowance to a selecte
         {
           _tag: "Eligible",
           entry: {
+            kind: "command" as const,
             spec: { ...spec, run: () => Effect.succeed("external") },
             plugin: { name: "replacement", source: "external" },
           },
@@ -168,7 +169,7 @@ test("removing a tooling task does not grant its implicit allowance to a selecte
       }).pipe(
         Effect.provide(
           serverLayer({
-            toolingEntries: [{ spec, tooling: true }],
+            toolingEntries: [{ kind: "tooling" as const, spec }],
             apps: Effect.succeed({ acquire: () => Effect.succeed(generation) }),
             toolingCatalog: () => Effect.succeed({ revision: "removed", entries: [], unavailable: [] }),
           }),
