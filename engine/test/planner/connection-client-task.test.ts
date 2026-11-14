@@ -55,7 +55,7 @@ test("winning generated client provenance survives attachment without credential
   const plan = attachEffectiveTooling(
     appliedClientFixture().plan,
     compileEffectiveTooling({ landofile: {}, services }),
-    owners,
+    { connectionClients: owners },
   );
   expect(connectionClientsForPlan(plan)).toEqual({ psql: ServiceName.make("alpha") });
   expect(connectionClientOwners({ landofile: { tooling: { psql: { cmd: "authored" } } }, services })).toEqual(

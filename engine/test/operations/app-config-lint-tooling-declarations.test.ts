@@ -86,6 +86,46 @@ tooling:
 
 test.each([
   {
+    label: "dynamic and host-shell fields in an enabled internal include",
+    canonical: "toolingIncludes:\n  helpers:\n    file: ./tasks.yml\n    internal: true\n",
+    fragment:
+      "tooling:\n  dynamic:\n    service: ':host'\n    cmd: echo {{ flags.naem }}\n    flags:\n      name:\n        default: world\n  shell:\n    service: ':host'\n    cmd: echo $?\n",
+    local:
+      "tooling:\n  helpers:dynamic:\n    description: local metadata\n  helpers:shell:\n    description: local metadata\n",
+    paths: [
+      ["tooling", "helpers:dynamic", "cmd"],
+      ["tooling", "helpers:shell", "cmd"],
+    ],
+    sources: [
+      { file: "tasks.yml", layer: "canonical", path: ["tooling", "dynamic", "cmd"] },
+      { file: "tasks.yml", layer: "canonical", path: ["tooling", "shell", "cmd"] },
+    ],
+  },
+  {
+    label: "dynamic and host-shell local overrides",
+    canonical:
+      "tooling:\n  dynamic:\n    service: ':host'\n    cmd: echo root\n    flags:\n      name:\n        default: world\n  shell:\n    service: ':host'\n    cmd: echo root\n",
+    fragment: "",
+    local: "tooling:\n  dynamic:\n    cmd: echo {{ flags.naem }}\n  shell:\n    cmd: echo $?\n",
+    paths: [
+      ["tooling", "dynamic", "cmd"],
+      ["tooling", "shell", "cmd"],
+    ],
+    sources: [
+      { file: ".lando.local.yml", layer: "local", path: ["tooling", "dynamic", "cmd"] },
+      { file: ".lando.local.yml", layer: "local", path: ["tooling", "shell", "cmd"] },
+    ],
+  },
+  {
+    label: "disabled task skips dynamic, declaration, host-shell and reserved-name checks",
+    canonical:
+      "tooling:\n  start:\n    disabled: true\n    service: ':host'\n    wrapper: true\n    flags:\n      name:\n        default: world\n    cmd: echo {{ flags.naem }}\n    vars:\n      X:\n        sh: echo $?\n",
+    local: "",
+    fragment: "",
+    paths: [],
+    sources: [],
+  },
+  {
     label: "enabled internal namespace",
     canonical: "toolingIncludes:\n  helpers:\n    file: ./tasks.yml\n    internal: true\n",
     fragment:
@@ -163,7 +203,9 @@ test.each([
       ),
     );
     const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(layers)));
-    const findings = result.violations.filter((issue) => issue.rule === "landofile.tooling");
+    const findings = result.violations.filter(
+      (issue) => issue.rule === "landofile.tooling" || issue.rule === "landofile.host-shell",
+    );
     expect(result.valid).toBe(paths.length === 0);
     expect(findings.map((issue) => issue.path)).toEqual([...paths]);
     expect(findings.map((issue) => issue.source)).toEqual(

@@ -16,9 +16,11 @@ import {
   describeBunShellIssue,
 } from "../services/bun-shell-dialect.ts";
 import { compileEventStepLeaf } from "../tooling/step-compiler.ts";
-import { type EffectiveTooling, compareOrdinal, compileEffectiveTooling } from "./effective-tooling.ts";
+import type { EffectiveTooling } from "./effective-tooling.ts";
 import { RESERVED_EVENT_NAMES } from "./event-names.ts";
 import type { PlannerIssue } from "./resolved-validation.ts";
+import { enabledToolingEntries } from "./tooling-composition.ts";
+import { type EffectiveToolingResolution, toolingIssueSource } from "./tooling-provenance.ts";
 
 const RULE = "landofile.host-shell";
 
@@ -31,11 +33,7 @@ export interface HostShellSite {
 /** Planner resolution fields needed for host-shell static checks. */
 export interface HostShellResolution {
   readonly landofile: LandofileShape;
-  readonly services: ReadonlyArray<{
-    readonly name: string;
-    readonly serviceType: { readonly id: string };
-    readonly resolution: { readonly tooling?: EffectiveTooling };
-  }>;
+  readonly toolingResolution: EffectiveToolingResolution;
 }
 
 /** A host command Lando can check before it runs. */
@@ -69,8 +67,7 @@ export const hostToolingCommands = (
   tooling: EffectiveTooling,
   sites: readonly HostShellSite[],
 ): ReadonlyArray<HostCommand> =>
-  Object.entries(tooling).flatMap(([name, task]) => {
-    if (task.disabled === true) return [];
+  enabledToolingEntries(tooling).flatMap(([name, task]) => {
     const normalized = normalizeToolingTask(name, task);
     if (Result.isFailure(normalized)) return [];
     const variables = Object.entries(task.vars ?? {}).flatMap(([key, value]) => {
@@ -132,26 +129,16 @@ export const hostShellIssues = (
   sites: readonly HostShellSite[],
 ): ReadonlyArray<PlannerIssue> => {
   const { landofile } = resolution;
-  const services = resolution.services.map((entry) => ({
-    name: entry.name,
-    serviceTypeId: entry.serviceType.id,
-    ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
-  }));
-  const contributors = [...services].sort((left, right) => compareOrdinal(left.name, right.name));
-  // A service type's task is attributed to the service's `type`, the Landofile value that brought it in.
-  const sourcePath = (path: ValidationIssuePath): ValidationIssuePath => {
-    const name = String(path[1]);
-    if (path[0] !== "tooling" || Object.hasOwn(landofile.tooling ?? {}, name)) return path;
-    const contributor = contributors.find((service) => Object.hasOwn(service.tooling ?? {}, name));
-    return contributor === undefined ? path : ["services", contributor.name, "type"];
-  };
-  return [
-    ...hostToolingCommands(compileEffectiveTooling({ landofile, services }), sites),
-    ...hostEventCommands(landofile.events ?? {}, sites),
-  ].flatMap((command) => {
-    const source = getLandofileValueSource(landofile, sourcePath(command.path));
-    return findings(command).map((issue) => (source === undefined ? issue : { ...issue, source }));
-  });
+  const { tasks, provenance } = resolution.toolingResolution;
+  return [...hostToolingCommands(tasks, sites), ...hostEventCommands(landofile.events ?? {}, sites)].flatMap(
+    (command) => {
+      const source =
+        command.path[0] === "tooling"
+          ? toolingIssueSource(provenance, String(command.path[1]), command.path.slice(2))
+          : getLandofileValueSource(landofile, command.path);
+      return findings(command).map((issue) => (source === undefined ? issue : { ...issue, source }));
+    },
+  );
 };
 
 /**
