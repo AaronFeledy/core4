@@ -1,63 +1,16 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { X509Certificate } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { type Socket, createServer } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createSecureContext, createServer as createTlsServer } from "node:tls";
 import { observeTlsPeer } from "@lando/http-client/tls-peer";
 import { Cause, Effect, Exit, Fiber } from "effect";
-
-let directory: string;
-let leaf: string;
-let key: string;
-let otherRoot: string;
-let otherKey: string;
-beforeAll(async () => {
-  directory = await mkdtemp(join(tmpdir(), "tls-peer-"));
-  const pairs = await Promise.all(
-    ["pinned.invalid", "other.invalid"].map(async (hostname) => {
-      const certPath = join(directory, `${hostname}.pem`);
-      const keyPath = join(directory, `${hostname}.key`);
-      const child = Bun.spawn(
-        [
-          "openssl",
-          "req",
-          "-x509",
-          "-newkey",
-          "ec",
-          "-pkeyopt",
-          "ec_paramgen_curve:P-256",
-          "-nodes",
-          "-days",
-          "2",
-          "-subj",
-          `/CN=${hostname}`,
-          "-addext",
-          `subjectAltName=DNS:${hostname}`,
-          "-keyout",
-          keyPath,
-          "-out",
-          certPath,
-        ],
-        { stdout: "ignore", stderr: "pipe" },
-      );
-      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
-      if (code !== 0) throw new Error(`TLS fixture generation failed: ${stderr}`);
-      return { cert: await readFile(certPath, "utf8"), key: await readFile(keyPath, "utf8") };
-    }),
-  );
-  const [first, second] = pairs;
-  if (first === undefined || second === undefined) throw new Error("Missing TLS fixtures");
-  leaf = first.cert;
-  key = first.key;
-  otherRoot = second.cert;
-  otherKey = second.key;
-});
-afterAll(async () => {
-  if (directory !== undefined) await rm(directory, { recursive: true, force: true });
-});
+import {
+  pinnedPrivateKey as key,
+  pinnedCertificate as leaf,
+  otherPrivateKey as otherKey,
+  otherCertificate as otherRoot,
+} from "./fixtures/tls-peer.ts";
 
 const withPeer = async (
   tls: boolean,
