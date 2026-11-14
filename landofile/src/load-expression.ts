@@ -128,8 +128,7 @@ export const resolveLandofileLoadExpressions = (
           if (options.recorder === undefined) throw cause;
           const source = { file: options.source.sourcePath, layer: options.source.layer, path };
           const failure = normalizeLoadExpressionFailure(cause, options.source, path);
-          if (failure instanceof NotImplementedError)
-            options.recorder.effectiveChecks.push(Effect.fail(failure));
+          if (failure instanceof NotImplementedError) options.recorder.deferRefusal(failure, source);
           else options.recorder.record(failure, source);
           return value;
         }

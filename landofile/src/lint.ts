@@ -1,4 +1,4 @@
-import { basename, dirname } from "node:path";
+import { dirname } from "node:path";
 import { canonicalJson } from "@lando/sdk/digest";
 import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import { LandofileLoadFailure, landofileLoadFailures } from "@lando/sdk/errors";
@@ -11,13 +11,14 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema, type Scope } from "effect";
 import { createIncludeResolutionSession } from "./include-session.ts";
-import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { fragmentIssues, isToolingRefusal, unreportedToolingRefusals } from "./lint-fragments.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
+import { loadFailureViolation } from "./lint-load-failure.ts";
 import { routerBindWarnings } from "./lint-router.ts";
-import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
+import { attributeLintIssue } from "./lint-source.ts";
 import { appNameOf } from "./lint-violations.ts";
 import { prepareIncludeAcquisition } from "./load-acquisition.ts";
+import type { DeferredLoadRefusal } from "./load-failures.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
@@ -73,6 +74,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   let scope: "fragment" | "effective" = "fragment";
   const violations: ConfigLintViolation[] = [];
   let recordedFailures: readonly LandofileLoadFailure[] = [];
+  let deferredRefusals: readonly DeferredLoadRefusal[] = [];
   let composed: unknown;
   const finalized = yield* Effect.gen(function* () {
     const acquired = yield* inspectLandofileRootLayers(
@@ -80,6 +82,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       templates === undefined ? inputs : { ...inputs, templates },
     );
     recordedFailures = acquired.runtime.recorder?.failures ?? [];
+    deferredRefusals = acquired.runtime.recorder?.deferredRefusals ?? [];
     documents = acquired.sources.map(({ source, layer }) => ({
       file: source.file,
       form: source.form,
@@ -171,14 +174,15 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
       finalized.failure._tag === "LandofileLoadError"
         ? landofileLoadFailures(finalized.failure)
         : [finalized.failure];
-    if (errors.some((error) => isToolingRefusal(composed, violations, error)))
+    if (deferredRefusals.length > 0 || errors.some((error) => isToolingRefusal(composed, violations, error)))
       violations.push(...unreportedToolingRefusals(composed, violations, documents));
     for (const error of errors) {
       // A rejected Compose key or refused tooling key already has a located finding; a pathless copy only repeats it.
       const reportedRejection =
         (error._tag === "ComposeKeyRejectedError" &&
           violations.some((violation) => violation.rule === "landofile.compose-rejection")) ||
-        isToolingRefusal(composed, violations, error);
+        isToolingRefusal(composed, violations, error) ||
+        deferredRefusals.some((refusal) => refusal.error === error);
       if (error._tag === "LandofileValidationError")
         violations.push(
           ...error.issues.map((issue) =>
@@ -193,69 +197,25 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
             ),
           ),
         );
-      else if (!reportedRejection) {
-        const diagnosticSource = error._tag === "ConfigExpressionError" ? error.source : undefined;
-        const path =
-          error._tag === "LandofileIncludeError"
-            ? (error.path ?? [])
-            : error._tag === "ConfigExpressionError"
-              ? error.path
-              : error._tag === "LandofileLoadOutsideRootError" || error._tag === "LandofileLoadLimitError"
-                ? (error.path ?? [])
-                : error._tag === "LandofileImportRefMisuseError"
-                  ? error.configPath.split(".").map((key) => (/^\d+$/.test(key) ? Number(key) : key))
-                  : error._tag === "LandofileParseError"
-                    ? (error.sourcePath ?? [])
-                    : [];
-        let errorFile = file;
-        if (diagnosticSource !== undefined && "file" in diagnosticSource) {
-          errorFile = diagnosticSource.file;
-        } else if (error._tag === "LandofileIncludeError" && error.file !== undefined) {
-          errorFile = error.file;
-        } else if ("sourceFile" in error) {
-          errorFile = error.sourceFile ?? ("filePath" in error ? error.filePath : file);
-        } else if ("filePath" in error) {
-          errorFile = error.filePath;
-        } else if ("sourcePath" in error && typeof error.sourcePath === "string") {
-          errorFile = error.sourcePath;
-        }
-        const retained = documents.find(
-          (document) =>
-            document.file === errorFile &&
-            (diagnosticSource === undefined ||
-              !("layer" in diagnosticSource) ||
-              document.layer === diagnosticSource.layer),
-        );
-        const layer =
-          ("layer" in error ? error.layer : undefined) ??
-          retained?.layer ??
-          LANDOFILE_LAYER_POSITIONS.find((position) =>
-            basename(errorFile).startsWith(`${position.basename}.`),
-          )?.layer ??
-          "canonical";
-        violations.push({
-          rule: "landofile.load",
-          reason: error._tag,
-          severity: "error",
-          path,
-          scopes: [scope],
-          source: diagnosticSource ?? { file: errorFile, layer, path },
-          message: error.message,
-          ...(error._tag === "LandofileParseError" && error.sourcePath === undefined
-            ? {
-                ...(error.line === undefined ? {} : { line: error.line }),
-                ...(error.column === undefined ? {} : { column: error.column }),
-              }
-            : retained === undefined || path.length === 0
-              ? {}
-              : sourceCoordinates(retained, diagnosticSource?.path ?? path)),
-          ...("remediation" in error && error.remediation !== undefined
-            ? { suggestion: error.remediation }
-            : {}),
-        });
-      }
+      else if (!reportedRejection) violations.push(loadFailureViolation(error, { file, scope, documents }));
     }
   }
+  violations.push(
+    ...deferredRefusals.map(({ error, source }) =>
+      attributeLintIssue(
+        {
+          rule: "landofile.load",
+          reason: error._tag,
+          path: source.path,
+          source,
+          message: error.message,
+          suggestion: error.remediation,
+        },
+        "fragment",
+        documents,
+      ),
+    ),
+  );
   const unique = mergeLintFindings(violations);
   const app = Result.isSuccess(finalized)
     ? (finalized.success.document.name ?? "")
