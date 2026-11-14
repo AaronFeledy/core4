@@ -219,7 +219,17 @@ test.each([
             const plan = yield* planner.plan(landofile, provider.capabilities);
             yield* writeAppCommandCacheStrict({
               landofile: landofile.document,
-              entries: [{ id: "app:check", summary: "Check", hidden: false, service: "web" }],
+              entries: [
+                {
+                  id: "app:check",
+                  summary: "Check",
+                  _tag: "Ready",
+                  sourceKind: "tooling",
+                  visibility: "public",
+                  input: emptyToolingInput,
+                  service: "web",
+                },
+              ],
               cwd: appRoot,
               cacheRoot: paths.roots.userCacheRoot,
             });
@@ -300,3 +310,8 @@ test.each([
     }
   },
 );
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

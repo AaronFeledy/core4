@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import {
   type McpDispatchDeps,
   type McpExecute,
@@ -11,7 +12,7 @@ import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
-import { Cause, Effect, Schema } from "effect";
+import { Cause, Effect, Result, Schema } from "effect";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
@@ -266,7 +267,14 @@ describe("dispatchTool", () => {
     // Given
     const secret = "bareprojectedtoken";
     const projected = mcpRegistryWithToolingEntries({ commandEntries: [] }, [
-      { id: "app:projected", summary: "Projected tooling", hidden: false },
+      {
+        id: "app:projected",
+        summary: "Projected tooling",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: Result.getOrThrow(normalizeToolingInput("projected", {})),
+      },
     ]);
     const entry = projected.toolingEntries?.[0];
     expect(entry).toBeDefined();

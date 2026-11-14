@@ -11,7 +11,11 @@ import {
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
 import { publishHostShellWarnings } from "@lando/engine/operations/host-shell-warnings";
 import { plannedServiceArtifact } from "@lando/engine/operations/planned-service-artifact";
-import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
+import {
+  effectiveToolingForPlan,
+  toolingSourceResolverForPlan,
+} from "@lando/engine/planner/effective-tooling";
+import { registerPlanRedaction } from "@lando/engine/services/plan-redaction";
 import { type BunShellScriptDiscoveryError, inspectBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
@@ -119,14 +123,19 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const io = inspection.problems.find((problem) => problem.io);
   if (io !== undefined) return yield* Effect.fail(io.error);
   const redaction = yield* Effect.serviceOption(RedactionService);
+  const planValues = yield* registerPlanRedaction(plan);
   const redactor = Option.isSome(redaction)
     ? yield* redaction.value.forProfile("secrets")
-    : createRedactor("secrets", { values: collectSecretEnvValues(process.env) });
+    : createRedactor("secrets", {
+        values: [...collectSecretEnvValues(process.env), ...planValues.substring],
+        wholeTokenValues: planValues.wholeToken,
+      });
   const entries = yield* Effect.sync(() =>
     compileInspectedAppCommands({
       landofile: landofile.document,
       inspection,
       effectiveTooling: effectiveToolingForPlan(plan),
+      toolingSource: toolingSourceResolverForPlan(plan),
       redact: redactor.redactString,
     }),
   );
@@ -134,15 +143,24 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const events = Option.getOrUndefined(yield* Effect.serviceOption(EventService));
   const warned = new Set<string>();
   const toolingWarnings = entries.flatMap((entry) =>
-    entry.source === undefined && entry.loadError !== undefined
+    entry.sourceKind === "tooling" && entry._tag === "Unavailable"
       ? [
           {
             code: "LANDO_TOOLING_INVALID",
-            message: entry.loadError.message,
-            ...(entry.loadError.remediation === undefined
+            message: entry.diagnostic.message,
+            ...("issues" in entry.diagnostic
+              ? { issues: entry.diagnostic.issues, omittedIssueCount: entry.diagnostic.omittedIssueCount }
+              : {}),
+            ...(entry.diagnostic.remediation === undefined
               ? {}
-              : { remediation: entry.loadError.remediation }),
-            context: { path: plan.metadata.source, task: entry.id.slice("app:".length) },
+              : { remediation: entry.diagnostic.remediation }),
+            context: {
+              path:
+                "source" in entry.diagnostic
+                  ? (entry.diagnostic.source?.path ?? plan.metadata.source)
+                  : plan.metadata.source,
+              task: entry.id.slice("app:".length),
+            },
           },
         ]
       : [],

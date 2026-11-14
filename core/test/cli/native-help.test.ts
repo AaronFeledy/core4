@@ -69,7 +69,16 @@ const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: "native-help" },
-      entries: [{ id: "app:known", summary: "Known task", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:known",
+          summary: "Known task",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
     }),
@@ -459,3 +468,8 @@ describe("native unknown-command failures", () => {
     expect(result.stderr).toBe("");
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

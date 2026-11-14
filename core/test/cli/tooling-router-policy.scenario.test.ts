@@ -54,7 +54,16 @@ const writeFreshCache = async (
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile,
-      entries: [{ id: `app:${taskName}`, summary: `Policy test ${taskName}`, hidden: false }],
+      entries: [
+        {
+          id: `app:${taskName}`,
+          summary: `Policy test ${taskName}`,
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
       now: () => 100,
@@ -189,3 +198,8 @@ test("Given a remote include without a fragment path, command-not-found reports 
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }
 }, 30_000);
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

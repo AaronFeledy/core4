@@ -123,7 +123,16 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
                 custom: { start: "app:greet", bun: "app:greet", x: "app:greet" },
               },
             },
-            entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+            entries: [
+              {
+                id: "app:greet",
+                summary: "Greet",
+                _tag: "Ready",
+                sourceKind: "bun-script",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd,
             cacheRoot,
           }),
@@ -150,3 +159,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
     }, 120_000);
   },
 );
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

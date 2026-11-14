@@ -221,7 +221,7 @@ test("valid nested scripts and Landofile precedence survive refresh", async () =
         "app:env:init",
         "app:hello",
       ]);
-      expect(cache?.entries.find(({ id }) => id === "app:hello")?.source).toBeUndefined();
+      expect(cache?.entries.find(({ id }) => id === "app:hello")?.sourceKind).toBe("tooling");
       expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:db:seed" });
       expect(bare).toEqual({ _tag: "not-tooling" });
     },

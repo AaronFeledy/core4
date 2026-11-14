@@ -6,29 +6,104 @@ import {
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
 import type { LandofileShape, ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
+import type { ToolingDiagnostic } from "../tooling/diagnostics.ts";
 import { canonicalCacheJson } from "./canonical.ts";
 import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 10n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 11n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
 export const COMMAND_INDEX_HEADER_BYTES = 12;
 const VERSION_OFFSET = 4;
 
-export interface CommandIndexEntry {
+interface CommandIdentity {
+  readonly id: string;
+  readonly summary: string;
+  readonly sourceKind: "tooling" | "bun-script";
+  readonly visibility: "public" | "internal";
+}
+
+export interface ReadyCommandIndexEntry extends CommandIdentity {
+  readonly _tag: "Ready";
+  readonly diagnostic?: never;
+  readonly service?: string;
+  readonly input: ToolingInputDeclaration;
+  readonly wrapper?: true;
+  readonly runs?: ToolingRunSummary;
+}
+
+export interface DisabledCommandIndexEntry extends CommandIdentity {
+  readonly _tag: "Disabled";
+  readonly input?: never;
+  readonly service?: never;
+  readonly wrapper?: never;
+  readonly runs?: never;
+  readonly diagnostic?: never;
+  readonly source: { readonly path: string; readonly task: string };
+}
+
+export type CommandLoadError =
+  | ToolingDiagnostic
+  | {
+      readonly _tag: string;
+      readonly message: string;
+      readonly remediation?: string;
+    };
+
+export interface UnavailableCommandIndexEntry extends CommandIdentity {
+  readonly _tag: "Unavailable";
+  readonly input?: never;
+  readonly service?: never;
+  readonly wrapper?: never;
+  readonly runs?: never;
+  readonly diagnostic: CommandLoadError;
+}
+
+export type CommandIndexEntry =
+  | ReadyCommandIndexEntry
+  | DisabledCommandIndexEntry
+  | UnavailableCommandIndexEntry;
+
+export interface CommandIndexPresentation {
   readonly id: string;
   readonly summary: string;
   readonly hidden: boolean;
   readonly disabled?: true;
-  readonly service?: string;
   readonly source?: "bun-script";
+  readonly sourcePath?: string;
+  readonly service?: string;
   readonly input?: ToolingInputDeclaration;
   readonly wrapper?: true;
   readonly runs?: ToolingRunSummary;
-  readonly loadError?: { readonly _tag: string; readonly message: string; readonly remediation?: string };
+  readonly loadError?: CommandLoadError;
 }
+
+export const commandIndexPresentation = (entry: CommandIndexEntry): CommandIndexPresentation => {
+  const identity = {
+    id: entry.id,
+    summary: entry.summary,
+    hidden: entry.visibility === "internal" || entry._tag === "Disabled",
+    ...(entry.sourceKind === "bun-script" ? { source: "bun-script" as const } : {}),
+  };
+  switch (entry._tag) {
+    case "Ready":
+      return {
+        ...identity,
+        input: entry.input,
+        ...(entry.service === undefined ? {} : { service: entry.service }),
+        ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
+        ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+      };
+    case "Disabled":
+      return { ...identity, disabled: true, sourcePath: entry.source.path };
+    case "Unavailable":
+      return { ...identity, loadError: entry.diagnostic };
+    default:
+      return entry satisfies never;
+  }
+};
 
 interface CommandAliasPolicy {
   readonly enabled: boolean;

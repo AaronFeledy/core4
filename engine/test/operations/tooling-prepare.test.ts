@@ -14,6 +14,7 @@ import { ProcessRunner, RuntimeProviderRegistry, ShellRunner, ToolingEngine } fr
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { prepareToolingInvocation } from "../../src/operations/tooling-prepare.ts";
+import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeShellRunnerService } from "../../src/services/shell-runner.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
@@ -34,7 +35,11 @@ const plan: CurrentExecutableAppPlan = {
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"), source: "test", runtime: 4 },
 };
 
-const run = (task: ToolingTaskShape, input: ToolingInvocationInput = { _tag: "RawArgv", argv: [] }) => {
+const run = (
+  task: ToolingTaskShape,
+  input: ToolingInvocationInput = { _tag: "RawArgv", argv: [] },
+  currentPlan = plan,
+) => {
   const runner = Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer)));
   const layer = Layer.mergeAll(
     BunProcessRunner.layer,
@@ -65,7 +70,7 @@ const run = (task: ToolingTaskShape, input: ToolingInvocationInput = { _tag: "Ra
   );
   return Effect.runPromise(
     prepareToolingInvocation({
-      plan,
+      plan: currentPlan,
       options: {
         name: "probe",
         lookupKey: "probe",
@@ -92,6 +97,47 @@ test("registers a sensitive var before a later var reports it in stderr", async 
     failure: { _tag: "ToolingExecError", variable: "B", exitCode: 7 },
   });
   expect(JSON.stringify(result)).not.toContain("opaque-sensitive-value");
+});
+
+test("registers plan secrets before disclosing declaration keys and authored paths", async () => {
+  const secret = "opaque-plan-credential";
+  const task = { cmd: "echo", flags: { [secret]: { alias: "q" }, other: { alias: "q" } } };
+  const currentPlan = attachEffectiveTooling(
+    plan,
+    { probe: task, credentials: { env: { API_TOKEN: secret } } },
+    {
+      provenance: {
+        probe: {
+          origin: {
+            _tag: "Known",
+            source: { layer: "local", file: `/app/${secret}/tasks.yml`, path: ["tooling", "probe"] },
+          },
+          overrides: [],
+        },
+      },
+    },
+  );
+  const result = await run(task, { _tag: "RawArgv", argv: [] }, currentPlan);
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ToolingCompileError",
+      omittedIssueCount: 0,
+      issues: [
+        {
+          reason: "alias-collision",
+          source: { file: "/app/[redacted]/tasks.yml" },
+          related: [
+            {
+              path: ["tooling", "probe", "flags", "[redacted]", "alias"],
+              source: { file: "/app/[redacted]/tasks.yml" },
+            },
+          ],
+        },
+      ],
+    },
+  });
+  expect(JSON.stringify(result)).not.toContain(secret);
 });
 
 test.each([":host", "container"])(

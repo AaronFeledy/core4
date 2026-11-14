@@ -31,7 +31,7 @@ import { CommandRegistry, LandofileService, PathsService, type RegisteredCommand
  */
 import { Effect, Layer } from "effect";
 import { compileInspectedAppCommands } from "../cache/command-compiler.ts";
-import type { CommandIndexEntry } from "../cache/command-index.ts";
+import { type CommandIndexEntry, commandIndexPresentation } from "../cache/command-index.ts";
 import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
 import { fingerprintsFromInspection } from "../cache/command-script-freshness.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
@@ -45,7 +45,8 @@ const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
 
 const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): ReadonlyArray<RegisteredCommand> =>
   entries
-    .filter((entry) => entry.loadError === undefined)
+    .filter((entry) => entry._tag !== "Unavailable")
+    .map(commandIndexPresentation)
     .map((entry) => ({
       id: entry.id,
       summary: entry.summary,

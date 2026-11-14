@@ -28,7 +28,16 @@ test.each([false, true])(
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile: { name: "script-conflict" },
-            entries: [{ id: "app:info", summary: "Shadow info", hidden: false, source: "bun-script" }],
+            entries: [
+              {
+                id: "app:info",
+                summary: "Shadow info",
+                _tag: "Ready",
+                sourceKind: "bun-script",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: root,
             cacheRoot,
           }),
@@ -64,3 +73,8 @@ test.each([false, true])(
     }
   },
 );
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

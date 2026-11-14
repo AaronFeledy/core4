@@ -20,7 +20,17 @@ interface CacheFixture {
   readonly cacheRoot: string;
 }
 
-const entries = [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }] as const;
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+const entries = [
+  {
+    id: "app:greet",
+    summary: "Greet",
+    _tag: "Ready",
+    sourceKind: "bun-script",
+    visibility: "public",
+    input: emptyToolingInput,
+  },
+] as const;
 const programmaticSource = [
   "export default (ctx: { env: Record<string, string | undefined> }) => ({",
   '  name: "dynamic-alias",',
@@ -204,3 +214,6 @@ test("Given a static YAML Landofile cache, when the environment changes, then it
     );
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";

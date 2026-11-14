@@ -27,6 +27,7 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
           retired: { cmd: "echo must-not-run", disabled: true },
           removed: false,
           protected: { cmd: "help-token-secret", service: "help-token-secret" },
+          broken: { cmd: "echo", flags: { first: { alias: "q" }, second: { alias: "q" } } },
         },
       }),
       ["docs:build"],
@@ -36,7 +37,16 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
         cwd: root,
         cacheRoot,
         landofile,
-        entries: compileToolingCommands(landofile, createRedactor("secrets").redactString),
+        entries: compileToolingCommands(landofile, createRedactor("secrets").redactString, {
+          toolingSource: (name) => ({
+            path: "/authored/tasks.yml",
+            locate: (path) => ({
+              layer: "local",
+              file: "/authored/tasks.yml",
+              path: ["tooling", name, ...path.slice(2)],
+            }),
+          }),
+        }),
       }),
     );
     await run(root, cacheRoot);
@@ -143,11 +153,51 @@ test("internal and disabled tasks remain absent from cached listings", async () 
       }),
     )(JSON.parse(result.stdout));
     expect(envelope.result.sections.thisApp).toEqual([
+      expect.objectContaining({ canonicalId: "app:broken", typeable: "app:broken" }),
       expect.objectContaining({ canonicalId: "app:db:wait", typeable: "app:db:wait" }),
       expect.objectContaining({ canonicalId: "app:protected", typeable: "app:protected" }),
     ]);
   });
 });
+
+test.each([{ argv: ["help", "broken"] }, { argv: ["broken", "--help"] }, { argv: ["broken", "--version"] }])(
+  "unavailable cached help preserves structured sources without live loading: %j",
+  async ({ argv }) => {
+    await withCachedTasks(async (root, cacheRoot) => {
+      const result = await invoke(root, cacheRoot, [...argv, "--format=json"]);
+      expect(result.code, result.stdout + result.stderr).toBe(1);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "ToolingCompileError",
+          source: { path: "/authored/tasks.yml", task: "broken" },
+          omittedIssueCount: 0,
+          issues: [
+            {
+              reason: "alias-collision",
+              path: ["tooling", "broken", "flags", "second", "alias"],
+              source: {
+                layer: "local",
+                file: "/authored/tasks.yml",
+                path: ["tooling", "broken", "flags", "second", "alias"],
+              },
+              related: [
+                {
+                  path: ["tooling", "broken", "flags", "first", "alias"],
+                  source: {
+                    layer: "local",
+                    file: "/authored/tasks.yml",
+                    path: ["tooling", "broken", "flags", "first", "alias"],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      });
+    });
+  },
+);
 
 test.each([{ format: [] }, { format: ["--format=json"] }])(
   "redacts run metadata in targeted help for $format",

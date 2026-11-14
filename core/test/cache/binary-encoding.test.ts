@@ -26,6 +26,7 @@ import { DateTime, Effect } from "effect";
 
 const fixtureRoot = resolve(import.meta.dirname, "fixtures", "binary-cache");
 
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
 const appCommandPayload = {
   schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
   landoVersion: "0.0.0",
@@ -35,7 +36,17 @@ const appCommandPayload = {
   sourceSize: 128,
   versionConstraints: [],
   generatedAtMs: 1_700_000_100_000,
-  entries: [{ id: "fixture:task", summary: "Fixture task", hidden: false, service: "appserver" }],
+  entries: [
+    {
+      id: "fixture:task",
+      summary: "Fixture task",
+      _tag: "Ready" as const,
+      sourceKind: "tooling" as const,
+      visibility: "public" as const,
+      input: emptyToolingInput,
+      service: "appserver",
+    },
+  ],
 };
 
 const appPlanFixture: AppPlan = {
@@ -100,8 +111,9 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v9.bin",
+      fixture: "app-command-v11.bin",
       previousFixtures: [
+        "app-command-v9.bin",
         "app-command-v8.bin",
         "app-command-v7.bin",
         "app-command-v6.bin",
@@ -224,3 +236,6 @@ describe("binary cache encoding policy", () => {
     ).toBeNull();
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";

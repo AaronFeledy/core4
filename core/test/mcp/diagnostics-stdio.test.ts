@@ -33,7 +33,7 @@ tooling:
     cmd: echo healthy
   broken:
     service: ":host"
-    ${broken ? "wrapper: true\n    cmds:\n      - echo one\n      - echo two" : "cmd: echo repaired"}
+    ${broken ? "wrapper: true\n    cmds:\n      - echo one\n      - echo two\n    flags:\n      first:\n        alias: q\n      second:\n        alias: q" : "cmd: echo repaired"}
   denied:
     wrapper: true
   disabled:
@@ -80,10 +80,36 @@ test("diagnostics resource refreshes tooling and selected plugin failures with t
       "app:broken",
       "fixture:broken",
     ]);
-    expect(initial.diagnostics.find((record) => record.commandId === "app:broken")).toMatchObject({
+    const broken = initial.diagnostics.find((record) => record.commandId === "app:broken");
+    expect(broken).toMatchObject({
       kind: "tooling",
       sourceKind: "landofile",
       _tag: "ToolingCompileError",
+      omittedIssueCount: 0,
+    });
+    expect(broken?.issues?.map((issue) => issue.reason).sort()).toEqual([
+      "alias-collision",
+      "wrapper-command-count",
+      "wrapper-inputs",
+    ]);
+    const alias = broken?.issues?.find((issue) => issue.reason === "alias-collision");
+    expect({ path: alias?.path, source: alias?.source, related: alias?.related }).toEqual({
+      path: ["tooling", "broken", "flags", "second", "alias"],
+      source: {
+        file: join(app.root, ".lando.yml"),
+        layer: "canonical",
+        path: ["tooling", "broken", "flags", "second", "alias"],
+      },
+      related: [
+        {
+          path: ["tooling", "broken", "flags", "first", "alias"],
+          source: {
+            file: join(app.root, ".lando.yml"),
+            layer: "canonical",
+            path: ["tooling", "broken", "flags", "first", "alias"],
+          },
+        },
+      ],
     });
     expect(initial.omittedDiagnosticCount).toBe(0);
     expect(

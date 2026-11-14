@@ -78,7 +78,9 @@ const withCache = async (state: State, run: (cwd: string, cacheRoot: string) => 
             {
               id: "app:known",
               summary: "Old metadata must not leak",
-              hidden: false,
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
               input: Result.getOrThrowWith(
                 normalizeToolingInput("known", { flags: { credential: { sensitive: true } } }),
                 (error) => error,

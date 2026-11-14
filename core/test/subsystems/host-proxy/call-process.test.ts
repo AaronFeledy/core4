@@ -191,7 +191,16 @@ test.each([false, true])("child rejects an open alias routed to tooling (help=%s
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: "demo", commandAliases: { custom: { open: "app:greet" } } },
-      entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:greet",
+          summary: "Greet",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
       cwd: call.app.root,
       cacheRoot: paths.userCacheRoot,
     }),
@@ -272,3 +281,8 @@ test("child aborts active invocation when its worker stdin lease closes", async 
     await proc.exited;
   }
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

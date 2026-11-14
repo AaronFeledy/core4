@@ -5,34 +5,53 @@ import type {
 } from "@lando/landofile/bun-sh-discovery";
 import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
-import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import { type ToolingNormalizationSource, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Result } from "effect";
 import type { EffectiveTooling } from "../planner/effective-tooling.ts";
-import type { CommandIndexEntry } from "./command-index.ts";
+import { boundedDiagnosticSummary, projectToolingDiagnostic } from "../tooling/diagnostics.ts";
+import type { CommandIndexEntry, CommandLoadError } from "./command-index.ts";
 import { toolingRunSummary } from "./tooling-run-summary.ts";
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
+interface ToolingCommandSources {
+  readonly effectiveTooling?: EffectiveTooling | undefined;
+  readonly toolingSource?: (name: string) => ToolingNormalizationSource;
+}
+
 export const compileToolingCommands = (
   landofile: LandofileShape,
   redact: (text: string) => string,
-  effectiveTooling: EffectiveTooling | undefined = landofile.tooling,
+  options: ToolingCommandSources = {},
 ): ReadonlyArray<CommandIndexEntry> => {
+  const effectiveTooling = options.effectiveTooling ?? landofile.tooling;
   if (effectiveTooling === undefined) return [];
   const internal = new Set(getInternalToolingTasks(landofile));
   return Object.entries(effectiveTooling)
     .sort(([a], [b]) => compareOrdinal(a, b))
-    .map(([name, authored]) => {
+    .map(([name, authored]): CommandIndexEntry => {
       const identity = {
         id: `app:${name}`,
         summary: authored.description ?? authored.summary ?? "",
-        hidden: internal.has(name) || authored.disabled === true,
+        sourceKind: "tooling" as const,
+        visibility: internal.has(name) ? ("internal" as const) : ("public" as const),
       };
-      if (authored.disabled === true) return { ...identity, disabled: true as const };
-      const normalized = normalizeToolingTask(name, authored);
+      const source = options.toolingSource?.(name) ?? {
+        path: getLandofileValueSource(landofile, ["tooling", name])?.file ?? "<tooling>",
+        locate: (path: Parameters<typeof getLandofileValueSource>[1]) =>
+          getLandofileValueSource(landofile, path),
+      };
+      if (authored.disabled === true)
+        return { ...identity, _tag: "Disabled", source: { path: source.path, task: name } };
+      const normalized = normalizeToolingTask(name, authored, source);
       if (Result.isFailure(normalized))
-        return { ...identity, loadError: commandLoadError(normalized.failure, redact) };
+        return {
+          ...identity,
+          _tag: "Unavailable",
+          diagnostic: projectToolingDiagnostic(normalized.failure, { redactString: redact }),
+        };
       const task = normalized.success;
       const runs = toolingRunSummary(task);
       let service: string | undefined;
@@ -49,6 +68,7 @@ export const compileToolingCommands = (
       }
       return {
         ...identity,
+        _tag: "Ready",
         ...(service === undefined ? {} : { service }),
         input: task.input,
         ...(runs === undefined ? {} : { runs }),
@@ -58,21 +78,25 @@ export const compileToolingCommands = (
 };
 
 export const compileBunShellScriptCommand = (script: DiscoveredBunShellScript) =>
-  Result.map(
-    normalizeBunShellScript(script),
-    (task): CommandIndexEntry => ({
+  Result.map(normalizeBunShellScript(script), (task): CommandIndexEntry => {
+    const identity = {
       id: script.id,
       summary: task.summary,
-      hidden: task.disabled,
-      ...(task.disabled ? { disabled: true as const } : {}),
+      visibility: "public" as const,
+      sourceKind: "bun-script" as const,
+    };
+    if (task.disabled)
+      return { ...identity, _tag: "Disabled", source: { path: script.path, task: script.id.slice(4) } };
+    return {
+      ...identity,
+      _tag: "Ready",
       service: task.rawService,
-      source: "bun-script",
       ...(script.relativePath.length + ".lando/scripts/".length > 512
         ? {}
         : { runs: { kind: "script" as const, path: `.lando/scripts/${script.relativePath}` } }),
       input: task.input,
-    }),
-  );
+    };
+  });
 
 export const compileBunShellScriptCommands = (
   scripts: ReadonlyArray<DiscoveredBunShellScript>,
@@ -82,12 +106,11 @@ export const compileBunShellScriptCommands = (
 export const compileAppCommands = (
   landofile: LandofileShape,
   scripts: ReadonlyArray<DiscoveredBunShellScript>,
-  options: {
+  options: ToolingCommandSources & {
     readonly redact: (text: string) => string;
-    readonly effectiveTooling?: EffectiveTooling | undefined;
   },
 ): ReadonlyArray<CommandIndexEntry> => {
-  const toolingEntries = compileToolingCommands(landofile, options.redact, options.effectiveTooling);
+  const toolingEntries = compileToolingCommands(landofile, options.redact, options);
   const seen = new Set(toolingEntries.map((entry) => entry.id));
   const merged: CommandIndexEntry[] = [...toolingEntries];
   for (const entry of compileBunShellScriptCommands(scripts)) {
@@ -101,15 +124,9 @@ export const compileAppCommands = (
 const commandLoadError = (
   error: { readonly _tag: string; readonly message: string; readonly remediation: string },
   redact: (text: string) => string,
-): NonNullable<CommandIndexEntry["loadError"]> => {
+): CommandLoadError => {
   const bound = (text: string): string => {
-    const redacted = redact(text);
-    let result = "";
-    for (const character of redacted) {
-      if (Buffer.byteLength(result + character) > 1024) break;
-      result += character;
-    }
-    return result;
+    return boundedDiagnosticSummary(redact(text));
   };
   return {
     _tag: error._tag,
@@ -121,12 +138,13 @@ const commandLoadError = (
 export const scriptLoadError = (problem: BunShellScriptProblem, redact: (text: string) => string) =>
   commandLoadError(problem.error, redact);
 
-export const compileInspectedAppCommands = (options: {
-  readonly landofile: LandofileShape;
-  readonly inspection: BunShellScriptInspection;
-  readonly effectiveTooling?: EffectiveTooling | undefined;
-  readonly redact: (text: string) => string;
-}): readonly CommandIndexEntry[] => {
+export const compileInspectedAppCommands = (
+  options: ToolingCommandSources & {
+    readonly landofile: LandofileShape;
+    readonly inspection: BunShellScriptInspection;
+    readonly redact: (text: string) => string;
+  },
+): readonly CommandIndexEntry[] => {
   const entries = [...compileAppCommands(options.landofile, options.inspection.scripts, options)];
   const seen = new Set(entries.map((entry) => entry.id));
   for (const problem of options.inspection.problems) {
@@ -136,9 +154,10 @@ export const compileInspectedAppCommands = (options: {
     entries.push({
       id: problem.id,
       summary: "Unavailable script",
-      hidden: false,
-      source: "bun-script",
-      loadError: scriptLoadError(problem, options.redact),
+      _tag: "Unavailable",
+      visibility: "public",
+      sourceKind: "bun-script",
+      diagnostic: scriptLoadError(problem, options.redact),
     });
   }
   return entries.sort((a, b) => compareOrdinal(a.id, b.id));

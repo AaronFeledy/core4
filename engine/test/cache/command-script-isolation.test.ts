@@ -39,7 +39,11 @@ test.each([
     const inspection = await inspect(root);
     const entries = compileInspectedAppCommands({ landofile: {}, inspection, redact });
     expect(entries.map((entry) => entry.id)).toEqual(["app:bad", "app:good"]);
-    expect(entries[0]).toMatchObject({ source: "bun-script", loadError: { _tag: tag } });
+    expect(entries[0]).toMatchObject({
+      _tag: "Unavailable",
+      sourceKind: "bun-script",
+      diagnostic: { _tag: tag },
+    });
     expect(entries[0]).not.toHaveProperty("input");
     expect(entries[1]?.input).toBeDefined();
     expect(await commandScriptsFresh(root, fingerprintsFromInspection(inspection), true)).toBe(true);
@@ -55,7 +59,7 @@ test("groups every collision before parsing, and lets a Landofile task win (#221
     expect(inspection.scripts).toEqual([]);
     expect(entries).toHaveLength(1);
     for (const name of ["FOO", "Foo", "foo"])
-      expect(entries[0]?.loadError?.message).toContain(`${name}.bun.sh`);
+      expect(entries[0]?.diagnostic?.message).toContain(`${name}.bun.sh`);
     const overridden = compileInspectedAppCommands({
       landofile: { tooling: { foo: { cmd: "echo authored", service: ":host" } } },
       inspection,
@@ -63,7 +67,7 @@ test("groups every collision before parsing, and lets a Landofile task win (#221
     });
     expect(overridden).toHaveLength(1);
     expect(overridden[0]?.input).toBeDefined();
-    expect(overridden[0]).not.toHaveProperty("loadError");
+    expect(overridden[0]).not.toHaveProperty("diagnostic");
   });
 });
 

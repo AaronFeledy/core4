@@ -140,7 +140,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 
   const canonicalEntry = cache.entries.find((candidate) => candidate.id === token);
   if (canonicalEntry !== undefined) {
-    if (canonicalEntry.source === "bun-script") {
+    if (canonicalEntry.sourceKind === "bun-script") {
       return bunScriptRoute(canonicalEntry, appRoot, cache);
     }
     return normalizedToolingRoute(canonicalEntry, cache.aliasPolicy, cache.sourceFile);
@@ -177,7 +177,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     const customName = custom.startsWith("app:") ? custom.slice("app:".length) : custom;
     if (customEntry === undefined)
       return { _tag: "unknown-tooling", commandId: custom, name: customName } as const;
-    if (customEntry.source === "bun-script") {
+    if (customEntry.sourceKind === "bun-script") {
       return bunScriptRoute(customEntry, appRoot, cache);
     }
     return normalizedToolingRoute(customEntry, cache.aliasPolicy, cache.sourceFile);
@@ -213,9 +213,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
         {
           id: commandId,
           summary: "Unavailable script",
-          hidden: false,
-          source: "bun-script",
-          loadError: {
+          _tag: "Unavailable",
+          visibility: "public",
+          sourceKind: "bun-script",
+          diagnostic: {
             _tag: resolved.failure._tag,
             message: resolved.failure.message,
             remediation: resolved.failure.remediation,
@@ -232,7 +233,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     return { _tag: "unknown-tooling", commandId, name } as const;
   }
 
-  if (entry.source === "bun-script") {
+  if (entry.sourceKind === "bun-script") {
     return bunScriptRoute(entry, appRoot, cache);
   }
   return normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile);

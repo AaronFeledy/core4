@@ -14,7 +14,7 @@ import {
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
   test("uses version ten for unavailable task metadata", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(10n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(11n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(
@@ -50,11 +50,21 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       versionConstraints: [],
       generatedAtMs: 1_700_000_100_000,
       entries: [
-        { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
+        {
+          id: "app:composer",
+          summary: "Run Composer",
+          _tag: "Ready" as const,
+          sourceKind: "tooling" as const,
+          visibility: "public" as const,
+          input: emptyToolingInput,
+          service: "appserver",
+        },
         {
           id: "app:test",
           summary: "Run tests",
-          hidden: false,
+          _tag: "Ready" as const,
+          sourceKind: "tooling" as const,
+          visibility: "public" as const,
           input: {
             flags: [
               {
@@ -190,3 +200,8 @@ describe("deriveAppCommandToolingFingerprint", () => {
     expect(deriveAppCommandToolingFingerprint(first)).toBe(deriveAppCommandToolingFingerprint(second));
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

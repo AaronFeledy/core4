@@ -3,7 +3,7 @@ import { Result } from "effect";
 import type { HostShellResolution } from "./host-shell-issues.ts";
 import type { PlannerIssue } from "./resolved-validation.ts";
 import { enabledToolingEntries } from "./tooling-composition.ts";
-import { toolingIssueSource } from "./tooling-provenance.ts";
+import { toolingIssueLocations, toolingIssueSource } from "./tooling-provenance.ts";
 
 export const toolingDeclarationIssues = (resolution: HostShellResolution): readonly PlannerIssue[] => {
   const { tasks, provenance } = resolution.toolingResolution;
@@ -17,6 +17,15 @@ export const toolingDeclarationIssues = (resolution: HostShellResolution): reado
         rule: "landofile.tooling",
         path: ["tooling", name, ...issue.path],
         ...(source === undefined ? {} : { source }),
+        ...(issue.related === undefined
+          ? {}
+          : {
+              related: toolingIssueLocations(
+                provenance,
+                name,
+                issue.related.map((location) => location.path),
+              ),
+            }),
       };
     });
   });

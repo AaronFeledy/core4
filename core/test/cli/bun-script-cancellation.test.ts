@@ -35,7 +35,14 @@ for (const execution of ["source", "compiled"] as const)
             writeAppCommandCacheStrict({
               landofile: { name: "cancellation" },
               entries: [
-                { id: "app:slow", summary: "Cancellation probe", hidden: false, source: "bun-script" },
+                {
+                  id: "app:slow",
+                  summary: "Cancellation probe",
+                  _tag: "Ready",
+                  sourceKind: "bun-script",
+                  visibility: "public",
+                  input: emptyToolingInput,
+                },
               ],
               cwd: root,
               cacheRoot,
@@ -108,3 +115,8 @@ for (const execution of ["source", "compiled"] as const)
       },
       120_000,
     );
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

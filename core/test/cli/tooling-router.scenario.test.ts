@@ -39,8 +39,10 @@ const writeFreshCache = async (fixture: RouterFixture, taskName: string): Promis
         {
           id: `app:${taskName}`,
           summary: `Router test ${taskName}`,
-          hidden: false,
-          source: "bun-script",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput,
         },
       ],
       cwd: fixture.root,
@@ -58,7 +60,9 @@ const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: st
         {
           id: `app:${taskName}`,
           summary: "Greet a target environment",
-          hidden: false,
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
           service: "web",
           input: {
             acceptsArguments: true,
@@ -575,3 +579,8 @@ test("Given a cached task that declares input, when help is in its tail, then bo
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }
 }, 30_000);
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

@@ -70,7 +70,16 @@ const writeFreshCache = async (
           ? { commandAliases: { custom: { hi: "app:greet" } } }
           : { commandAliases }),
       },
-      entries: [{ id: "app:greet", summary: "Echo hello", hidden: false }],
+      entries: [
+        {
+          id: "app:greet",
+          summary: "Echo hello",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
     }),
@@ -248,3 +257,8 @@ describe("cwd-aware THIS APP overlay", () => {
     }
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

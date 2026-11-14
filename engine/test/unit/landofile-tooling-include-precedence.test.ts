@@ -109,6 +109,6 @@ describe("tooling include precedence", () => {
 
     // Then the root winner is not hidden by stale include provenance
     expect(resolved.document.tooling?.build?.cmd).toBe("root");
-    expect(commands.find((command) => command.id === "app:build")?.hidden).toBe(false);
+    expect(commands.find((command) => command.id === "app:build")?.visibility).toBe("public");
   });
 });

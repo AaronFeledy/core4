@@ -63,7 +63,7 @@ const withApp = async (
     await writeFile(join(root, ".lando.yml"), source);
     await writeFile(
       join(root, "internal.yml"),
-      "tooling:\n  bad:\n    wrapper: true\n  good:\n    cmd: echo private\n",
+      "tooling:\n  bad:\n    wrapper: true\n    flags:\n      first:\n        alias: q\n      second:\n        alias: q\n  good:\n    cmd: echo private\n",
     );
     const call = async (argv: readonly string[]) => {
       const child = Bun.spawn([process.execPath, cli, ...argv], {
@@ -109,6 +109,45 @@ test("refresh warns for invalid tooling and retains healthy and disabled sibling
       ["LANDO_TOOLING_INVALID", "broken"],
       ["LANDO_TOOLING_INVALID", "private:bad"],
     ]);
+    expect(envelope.warnings[0]).toMatchObject({
+      issues: [
+        {
+          reason: "alias-collision",
+          path: ["tooling", "aliasclash", "flags", "second", "alias"],
+          related: [
+            {
+              path: ["tooling", "aliasclash", "flags", "first", "alias"],
+              source: { file: expect.stringContaining(".lando.yml") },
+            },
+          ],
+        },
+      ],
+      omittedIssueCount: 0,
+    });
+    expect(envelope.warnings[2]).toMatchObject({
+      context: { path: expect.stringContaining("internal.yml") },
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          reason: "alias-collision",
+          path: ["tooling", "private:bad", "flags", "second", "alias"],
+          source: {
+            file: expect.stringContaining("internal.yml"),
+            layer: "canonical",
+            path: ["tooling", "bad", "flags", "second", "alias"],
+          },
+          related: [
+            {
+              path: ["tooling", "private:bad", "flags", "first", "alias"],
+              source: {
+                file: expect.stringContaining("internal.yml"),
+                layer: "canonical",
+                path: ["tooling", "bad", "flags", "first", "alias"],
+              },
+            },
+          ],
+        }),
+      ]),
+    });
   });
 });
 
@@ -140,7 +179,28 @@ test.each(
   await withApp(async (_root, call) => {
     const result = await call([...argv, "--format=json"]);
     expect(result.code, result.stdout + result.stderr).toBe(1);
-    expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, error: { _tag: "ToolingCompileError" } });
+    const failure = JSON.parse(result.stdout);
+    expect(failure).toMatchObject({
+      ok: false,
+      error: {
+        _tag: "ToolingCompileError",
+        omittedIssueCount: 0,
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            reason:
+              argv.includes("aliasclash") || argv.includes("app:private:bad")
+                ? "alias-collision"
+                : "wrapper-inputs",
+            source: {
+              layer: "canonical",
+              file: expect.stringContaining(argv.includes("app:private:bad") ? "internal.yml" : ".lando.yml"),
+              path: expect.any(Array),
+            },
+          }),
+        ]),
+      },
+    });
+    expect(failure.error).not.toHaveProperty("cause");
   });
 });
 
@@ -168,6 +228,23 @@ test("internal unavailable tasks stay hidden while healthy internal direct help 
     expect(rows.find((row: { canonicalId: string }) => row.canonicalId === "app:broken")).toHaveProperty(
       "loadError",
     );
+    expect(rows.find((row: { canonicalId: string }) => row.canonicalId === "app:aliasclash")).toMatchObject({
+      loadError: {
+        issues: [
+          {
+            reason: "alias-collision",
+            path: ["tooling", "aliasclash", "flags", "second", "alias"],
+            related: [
+              {
+                path: ["tooling", "aliasclash", "flags", "first", "alias"],
+                source: expect.objectContaining({ file: expect.stringContaining(".lando.yml") }),
+              },
+            ],
+          },
+        ],
+        omittedIssueCount: 0,
+      },
+    });
     const help = await call(["help", "app:private:good", "--format=json"]);
     expect(help.code, help.stderr).toBe(0);
     expect(JSON.parse(help.stdout)).toMatchObject({

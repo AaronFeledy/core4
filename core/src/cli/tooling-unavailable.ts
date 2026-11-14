@@ -18,8 +18,9 @@ export const unavailableToolingError = (
         route.loadError === undefined
           ? undefined
           : new ToolingCompileError({
-              tool: route.name,
-              ...(route.sourcePath === undefined
+              ...("issues" in route.loadError ? route.loadError : {}),
+              tool: "issues" in route.loadError ? route.loadError.tool : route.name,
+              ...("issues" in route.loadError || route.sourcePath === undefined
                 ? {}
                 : { source: { path: route.sourcePath, task: route.name } }),
               message: route.loadError.message,

@@ -66,7 +66,16 @@ const makeEntryFixture = async (commandAliases: {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: "alias-entry", commandAliases },
-      entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:greet",
+          summary: "Greet",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
       cwd: appRoot,
       cacheRoot,
     }),
@@ -120,7 +129,16 @@ test("custom aliases preserve resolved canonical JSON identity in shipping and p
     await Effect.runPromise(
       writeAppCommandCacheStrict({
         landofile: { name: "alias-scenario", commandAliases: { custom: { start: "app:greet" } } },
-        entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+        entries: [
+          {
+            id: "app:greet",
+            summary: "Greet",
+            _tag: "Ready",
+            sourceKind: "bun-script",
+            visibility: "public",
+            input: emptyToolingInput,
+          },
+        ],
         cwd: appRoot,
         cacheRoot,
       }),
@@ -311,3 +329,8 @@ test("alias policy failures use the pre-command identity", async () => {
     await fixture.cleanup();
   }
 }, 30_000);
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

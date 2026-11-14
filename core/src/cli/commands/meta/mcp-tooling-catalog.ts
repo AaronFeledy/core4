@@ -1,4 +1,4 @@
-import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
+import { type CommandIndexEntry, commandIndexPresentation } from "@lando/engine/cache/command-index";
 import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-index-writer";
 import type { McpAppGeneration } from "@lando/mcp/apps";
 import type { McpDiagnostic, McpToolingCatalog } from "@lando/mcp/service";
@@ -13,17 +13,34 @@ export const toolingCatalogFromCache = (
 ): McpToolingCatalog => {
   const unavailable: McpDiagnostic[] = [];
   const entries = commands.flatMap((command) => {
-    if (command.hidden || command.disabled === true) return [];
-    if (command.loadError !== undefined) {
-      unavailable.push({
-        commandId: command.id,
-        kind: "tooling",
-        sourceKind: command.source ?? "landofile",
-        ...command.loadError,
-      });
-      return [];
+    if (command.visibility === "internal") return [];
+    switch (command._tag) {
+      case "Disabled":
+        return [];
+      case "Unavailable":
+        unavailable.push({
+          commandId: command.id,
+          kind: "tooling",
+          sourceKind: command.sourceKind === "tooling" ? "landofile" : "bun-script",
+          _tag: command.diagnostic._tag,
+          message: command.diagnostic.message,
+          ...(command.diagnostic.remediation === undefined
+            ? {}
+            : { remediation: command.diagnostic.remediation }),
+          ...("issues" in command.diagnostic
+            ? {
+                issues: command.diagnostic.issues,
+                omittedIssueCount: command.diagnostic.omittedIssueCount,
+                ...(command.diagnostic.source === undefined ? {} : { source: command.diagnostic.source }),
+              }
+            : {}),
+        });
+        return [];
+      case "Ready":
+        return [{ spec: toolingSpecFromRegistered(commandIndexPresentation(command)), tooling: true }];
+      default:
+        return command satisfies never;
     }
-    return [{ spec: toolingSpecFromRegistered(command), tooling: true }];
   });
   return { revision, entries, unavailable };
 };

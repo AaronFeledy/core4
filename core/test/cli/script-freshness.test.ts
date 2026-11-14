@@ -80,7 +80,16 @@ test("an indexed mixed-case script runs its edited body without refresh", async 
     const path = join(root, ".lando/scripts/Probe.bun.sh");
     await writeFile(path, script);
     await cache(root, cacheRoot, {
-      entries: [{ id: "app:probe", summary: "Freshness probe", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:probe",
+          summary: "Freshness probe",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
     });
     await writeFile(path, script.replace("probe-output", "edited-output"));
     const result = await invoke(root, cacheRoot, "probe");
@@ -94,7 +103,16 @@ test("a removed indexed script rebuilds the index and reports an unknown command
     const path = join(root, ".lando/scripts/probe.bun.sh");
     await writeFile(path, script);
     await cache(root, cacheRoot, {
-      entries: [{ id: "app:probe", summary: "Probe", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:probe",
+          summary: "Probe",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
     });
     await rm(path);
     const result = await invoke(root, cacheRoot, "probe");
@@ -107,6 +125,7 @@ test("a removed indexed script rebuilds the index and reports an unknown command
   });
 }, 30_000);
 
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
 test.each([
   {
     label: "disabled alias",
@@ -117,7 +136,16 @@ test.each([
     label: "disabled alias system",
     policy: {
       commandAliases: { enabled: false, custom: { blocked: "app:known" } },
-      entries: [{ id: "app:known", summary: "Known", hidden: false }],
+      entries: [
+        {
+          id: "app:known",
+          summary: "Known",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
     },
     expected: "alias-disabled",
   },
@@ -125,13 +153,33 @@ test.each([
     label: "custom alias precedence",
     policy: {
       commandAliases: { custom: { blocked: "app:known" } },
-      entries: [{ id: "app:known", summary: "Known", hidden: false }],
+      entries: [
+        {
+          id: "app:known",
+          summary: "Known",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput,
+        },
+      ],
     },
     expected: "tooling",
   },
   {
     label: "disabled task precedence",
-    policy: { entries: [{ id: "app:blocked", summary: "Disabled", hidden: true }] },
+    policy: {
+      entries: [
+        {
+          id: "app:blocked",
+          summary: "Disabled",
+          _tag: "Disabled",
+          sourceKind: "tooling",
+          visibility: "public",
+          source: { path: ".lando.yml", task: "blocked" },
+        },
+      ],
+    },
     expected: "tooling",
   },
 ] satisfies readonly { label: string; policy: Parameters<typeof cache>[2]; expected: string }[])(
@@ -148,7 +196,8 @@ test.each([
       );
       expect(routes[0]).toMatchObject({ _tag: "bun-script", commandId: "app:probe" });
       expect(routes[1]).toMatchObject({ _tag: expected });
-      if (policy?.entries?.some((entry) => entry.hidden)) expect(routes[1]).toMatchObject({ hidden: true });
+      if (policy?.entries?.some((entry) => entry._tag === "Disabled"))
+        expect(routes[1]).toMatchObject({ hidden: true });
     });
   },
 );
@@ -187,3 +236,6 @@ test("a malformed script reports its front matter instead of a cache refresh", a
     expect(JSON.stringify(body.error)).not.toContain("app:cache:refresh");
   });
 }, 30_000);
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";

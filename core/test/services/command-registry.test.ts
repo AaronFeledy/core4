@@ -285,7 +285,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:cached-only", summary: "from cache", hidden: false }],
+            entries: [
+              {
+                id: "app:cached-only",
+                summary: "from cache",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -346,7 +355,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            entries: [
+              {
+                id: "app:cached-only",
+                summary: "from stale cache",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -379,7 +397,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            entries: [
+              {
+                id: "app:cached-only",
+                summary: "from stale cache",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -435,7 +462,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:cached-only", summary: "from cache", hidden: false }],
+            entries: [
+              {
+                id: "app:cached-only",
+                summary: "from cache",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -508,7 +544,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile: { name: "cached", lando: ">=0", tooling: { build: { cmd: "make" } } },
-            entries: [{ id: "app:build", summary: "", hidden: false }],
+            entries: [
+              {
+                id: "app:build",
+                summary: "",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
           }),
@@ -539,7 +584,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            entries: [
+              {
+                id: "app:cached-only",
+                summary: "from stale cache",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -578,7 +632,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
           await Effect.runPromise(
             writeAppCommandCacheStrict({
               landofile,
-              entries: [{ id: "app:cached-only", summary: "from cache", hidden: false }],
+              entries: [
+                {
+                  id: "app:cached-only",
+                  summary: "from cache",
+                  _tag: "Ready",
+                  sourceKind: "tooling",
+                  visibility: "public",
+                  input: emptyToolingInput,
+                },
+              ],
               cwd: dir,
               cacheRoot,
               now: () => 100,
@@ -610,7 +673,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:build", summary: "", hidden: false }],
+            entries: [
+              {
+                id: "app:build",
+                summary: "",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -657,7 +729,17 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile: cachedLandofile,
-            entries: [{ id: "app:stale", summary: "stale", hidden: false, service: "web" }],
+            entries: [
+              {
+                id: "app:stale",
+                summary: "stale",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+                service: "web",
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -714,7 +796,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:stale", summary: "stale", hidden: false }],
+            entries: [
+              {
+                id: "app:stale",
+                summary: "stale",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -785,7 +876,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         await Effect.runPromise(
           writeAppCommandCache({
             landofile,
-            entries: [{ id: "app:build", summary: "", hidden: false }],
+            entries: [
+              {
+                id: "app:build",
+                summary: "",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -795,7 +895,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         const fresh = await Effect.runPromise(
           readAppCommandCache({
             landofile,
-            entries: [{ id: "app:build", summary: "", hidden: false }],
+            entries: [
+              {
+                id: "app:build",
+                summary: "",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
           }),
@@ -805,7 +914,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         const stale = await Effect.runPromise(
           readAppCommandCache({
             landofile: { name: "tooling-cache", tooling: { test: { cmd: "bun test" } } },
-            entries: [{ id: "app:test", summary: "", hidden: false }],
+            entries: [
+              {
+                id: "app:test",
+                summary: "",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
           }),
@@ -827,7 +945,16 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
         const firstPath = await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
-            entries: [{ id: "app:composer", summary: "", hidden: false }],
+            entries: [
+              {
+                id: "app:composer",
+                summary: "",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: dir,
             cacheRoot,
             now: () => 100,
@@ -838,8 +965,23 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
           writeAppCommandCacheStrict({
             landofile,
             entries: [
-              { id: "app:composer", summary: "", hidden: false },
-              { id: "app:db:wait", summary: "Wait for the DB", hidden: false, service: ":host" },
+              {
+                id: "app:composer",
+                summary: "",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+              {
+                id: "app:db:wait",
+                summary: "Wait for the DB",
+                _tag: "Ready",
+                sourceKind: "tooling",
+                visibility: "public",
+                input: emptyToolingInput,
+                service: ":host",
+              },
             ],
             cwd: dir,
             cacheRoot,
@@ -936,3 +1078,8 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
     });
   });
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

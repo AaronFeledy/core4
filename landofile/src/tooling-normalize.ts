@@ -16,6 +16,7 @@ import {
 import { toolingIssue } from "./tooling-issues.ts";
 
 export type { ToolingInspection, ToolingNormalizationSource } from "./tooling-inspection.ts";
+export { toolingCompileResult } from "./tooling-inspection.ts";
 
 export type ToolingServiceRef =
   | { readonly kind: "service"; readonly name: string }

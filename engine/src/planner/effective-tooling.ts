@@ -2,6 +2,7 @@ import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
 } from "@lando/landofile/tooling-include-provenance";
+import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normalize";
 import { type AppPlan, ServiceName, ToolingTaskShape, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import type { EffectiveTooling } from "./tooling-composition.ts";
@@ -60,6 +61,32 @@ const toolingPlanFor = (plan: AppPlan) => {
 const provenanceForPlan = (plan: AppPlan): ToolingProvenance => {
   const value = toolingPlanFor(plan);
   return value?.version === 2 ? value.provenance : {};
+};
+
+export const toolingSourceResolverForResolution = (
+  resolution: { readonly tasks: EffectiveTooling; readonly provenance: ToolingProvenance },
+  sourcePath: string,
+) => {
+  return (name: string): ToolingNormalizationSource => {
+    const source = toolingIssueSource(
+      resolution.provenance,
+      name,
+      resolution.tasks[name]?.disabled === true ? ["disabled"] : [],
+    );
+    return {
+      path: source !== undefined && "file" in source ? source.file : sourcePath,
+      locate: (path) => toolingIssueSource(resolution.provenance, name, path.slice(2)),
+    };
+  };
+};
+
+/** Capture the extension once for a batch of normalization and source lookups. */
+export const toolingSourceResolverForPlan = (plan: AppPlan) => {
+  const value = toolingPlanFor(plan);
+  return toolingSourceResolverForResolution(
+    { tasks: value?.tasks ?? {}, provenance: value?.version === 2 ? value.provenance : {} },
+    plan.metadata.source,
+  );
 };
 
 export const connectionClientsForPlan = (plan: AppPlan): Readonly<Record<string, ServiceName>> =>

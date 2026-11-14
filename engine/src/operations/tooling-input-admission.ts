@@ -10,7 +10,8 @@ import {
   validateToolingInputRevision,
 } from "@lando/landofile/tooling-input";
 import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
-import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normalize";
+import { normalizeToolingTask, toolingCompileResult } from "@lando/landofile/tooling-normalize";
 import { RedactionService } from "@lando/redaction/service";
 import { ToolingCompileError, ToolingDisabledError } from "@lando/sdk/errors";
 import type {
@@ -20,7 +21,9 @@ import type {
   ToolingInvocationInput,
   ToolingTaskShape,
 } from "@lando/sdk/schema";
-import { Effect, Option } from "effect";
+import { createRedactor } from "@lando/sdk/secrets";
+import { Effect, Option, Result } from "effect";
+import { projectToolingDiagnostic } from "../tooling/diagnostics.ts";
 
 export const admitToolingInput = Effect.fnUntraced(function* (
   target: ToolingInputSubject & {
@@ -77,12 +80,13 @@ const protectSuppliedValues = Effect.fnUntraced(function* (input: ToolingInvocat
   }
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (Option.isSome(redaction)) yield* redaction.value.registerValues(tokens);
+  return tokens;
 });
 
 export const admitToolingTask = Effect.fnUntraced(function* (input: {
   readonly name: string;
   readonly task: ToolingTaskShape;
-  readonly source: { readonly path: string; readonly task: string };
+  readonly source: ToolingNormalizationSource & { readonly task: string };
   readonly input?: ToolingInvocationInput;
   readonly expectedInputRevision?: ToolingInputRevision;
   readonly sites?: readonly ParsedPendingSite[];
@@ -98,26 +102,28 @@ export const admitToolingTask = Effect.fnUntraced(function* (input: {
       }),
     );
   }
-  const normalized = yield* Effect.fromResult(
-    normalizeToolingTask(input.name, input.task, input.source),
-  ).pipe(Effect.tapError(() => protectSuppliedValues(input.input)));
-  const declaration = normalized.input;
-  const subject = { name: input.name, source: input.source };
-  const admitted = yield* admitToolingInput({ ...subject, input: declaration, disabled: false }, input);
+  const normalized = normalizeToolingTask(input.name, input.task, input.source);
   const sites = input.sites ?? [];
-  const issue = [
+  const issues = [
     ...toolingInvocationIssues(input.task, sites),
     ...dynamicToolingReferenceIssues(input.task, sites),
-  ][0];
-  if (issue !== undefined)
-    return yield* Effect.fail(
-      new ToolingCompileError({
-        tool: input.name,
-        source: input.source,
-        message: `${["tooling", input.name, ...issue.path].join(".")}: ${issue.message}`,
-        remediation: issue.suggestion,
-      }),
-    );
+  ];
+  const [first, ...rest] = issues;
+  const checked =
+    Result.isFailure(normalized) || first === undefined
+      ? normalized
+      : toolingCompileResult(input.name, Result.fail([first, ...rest]), input.source);
+  if (Result.isFailure(checked)) {
+    const suppliedValues = yield* protectSuppliedValues(input.input);
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactor = Option.isSome(redaction)
+      ? yield* redaction.value.forProfile("secrets")
+      : createRedactor("secrets", { values: suppliedValues });
+    return yield* Effect.fail(new ToolingCompileError(projectToolingDiagnostic(checked.failure, redactor)));
+  }
+  const declaration = checked.success.input;
+  const subject = { name: input.name, source: input.source };
+  const admitted = yield* admitToolingInput({ ...subject, input: declaration, disabled: false }, input);
   const consumed = consumedToolingInputs(input.task, sites);
   const remaining = {
     ...declaration,

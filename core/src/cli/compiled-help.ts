@@ -1,6 +1,6 @@
 /** Cold-path help adapters avoid loading OCLIF. */
 
-import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
+import { type AppCommandIndexPayload, commandIndexPresentation } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import { encodeCommandResult } from "@lando/sdk/command-result";
@@ -70,15 +70,7 @@ type HelpCatalogRow = typeof HelpCatalogRow.Type;
 const isBuiltInRegistryId = (id: string): boolean => Object.hasOwn(COMMAND_REGISTRY_MANIFEST.commands, id);
 
 const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): ToolingHelpEntry => ({
-  id: entry.id,
-  summary: entry.summary,
-  hidden: entry.hidden,
-  ...(entry.service === undefined ? {} : { service: entry.service }),
-  ...(entry.input === undefined ? {} : { input: entry.input }),
-  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
-  ...(entry.source === undefined ? {} : { source: entry.source }),
-  ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
+  ...commandIndexPresentation(entry),
 });
 
 export const toolingHelpEntryForToken = (
@@ -87,7 +79,7 @@ export const toolingHelpEntryForToken = (
 ): ToolingHelpEntry | undefined => {
   const aliasPolicy = cache.aliasPolicy;
   for (const entry of cache.entries) {
-    if (entry.hidden || isBuiltInRegistryId(entry.id)) continue;
+    if (entry._tag === "Disabled" || isBuiltInRegistryId(entry.id)) continue;
     if (entry.id === token) return toToolingHelpEntry(entry);
     const name = typeableName({
       canonicalId: entry.id,
@@ -103,6 +95,7 @@ export const toolingHelpEntryForToken = (
 export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonly ThisAppHelpRow[] => {
   const aliasPolicy = cache.aliasPolicy;
   return cache.entries
+    .map(commandIndexPresentation)
     .filter((entry) => !entry.hidden && !isBuiltInRegistryId(entry.id))
     .map((entry) => {
       const name = typeableName({

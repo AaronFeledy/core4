@@ -156,7 +156,9 @@ test.each(["fresh", "missing", "stale"])(
             {
               id: "app:db",
               summary: "Owned tooling DB",
-              hidden: false,
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
               input: {
                 flags: [],
                 args: [],
@@ -433,7 +435,9 @@ test("full listings omit plugin rows owned by fresh app tooling", async () => {
           {
             id: "app:inspect",
             summary: "Winning tooling fixture",
-            hidden: false,
+            _tag: "Ready",
+            sourceKind: "tooling",
+            visibility: "public",
             input: {
               flags: [],
               args: [],

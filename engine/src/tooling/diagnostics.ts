@@ -14,7 +14,7 @@ const encoder = new TextEncoder();
 const serializedBytes = (value: ToolingDiagnostic | string): number =>
   encoder.encode(JSON.stringify(value)).byteLength;
 
-const boundedSummary = (redacted: string): string => {
+export const boundedDiagnosticSummary = (redacted: string): string => {
   if (serializedBytes(redacted) <= MAX_SUMMARY_BYTES) return redacted;
   let result = "";
   let bytes = serializedBytes("...");
@@ -65,8 +65,8 @@ export const projectToolingDiagnostic = (
   const summary: ToolingDiagnostic = {
     _tag: "ToolingCompileError",
     tool: serializedBytes(tool) <= MAX_SUMMARY_BYTES ? tool : "[omitted]",
-    message: boundedSummary(text(diagnostic.message)),
-    remediation: boundedSummary(text(diagnostic.remediation)),
+    message: boundedDiagnosticSummary(text(diagnostic.message)),
+    remediation: boundedDiagnosticSummary(text(diagnostic.remediation)),
     issues: [],
     omittedIssueCount: diagnostic.omittedIssueCount + diagnostic.issues.length,
   };

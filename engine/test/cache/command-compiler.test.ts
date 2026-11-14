@@ -64,16 +64,18 @@ describe("compileToolingCommands", () => {
 
   test("summarizes effective task steps with distinct targets in authored order", () => {
     const [entry] = compileToolingCommands(landofile(undefined), redact, {
-      contributed: {
-        cmds: [
-          { cmd: "a", service: "web" },
-          { cmd: "b", service: ":host" },
-          { cmd: "c", service: "web" },
-          { cmd: "d", service: ":service" },
-          { cmd: "e", service: "{{ flags.target }}" },
-          "f",
-        ],
-        flags: { service: {} },
+      effectiveTooling: {
+        contributed: {
+          cmds: [
+            { cmd: "a", service: "web" },
+            { cmd: "b", service: ":host" },
+            { cmd: "c", service: "web" },
+            { cmd: "d", service: ":service" },
+            { cmd: "e", service: "{{ flags.target }}" },
+            "f",
+          ],
+          flags: { service: {} },
+        },
       },
     });
     expect(entry?.runs).toEqual({
@@ -120,8 +122,9 @@ describe("compileToolingCommands", () => {
         {
           id: "app:retired",
           summary: "",
-          hidden: true,
-          disabled: true,
+          _tag: "Disabled",
+          visibility: "public",
+          sourceKind: "tooling",
         },
       ]);
     },
@@ -196,7 +199,7 @@ describe("compileToolingCommands", () => {
     const source = landofile({ invalid: { cmd: "echo", flags: { name: { required: true, default: "x" } } } });
     // When / Then
     expect(compileAppCommands(source, [], { redact })).toMatchObject([
-      { id: "app:invalid", loadError: { _tag: "ToolingCompileError" } },
+      { id: "app:invalid", _tag: "Unavailable", diagnostic: { _tag: "ToolingCompileError" } },
     ]);
   });
 
@@ -215,9 +218,15 @@ describe("compileToolingCommands", () => {
     );
 
     expect(entries).toMatchObject([
-      { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
-      { id: "app:test", summary: "Tests", hidden: false, service: "appserver" },
-      { id: "app:zoo", summary: "Z thing", hidden: false, service: "appserver" },
+      {
+        id: "app:composer",
+        summary: "Run Composer",
+        _tag: "Ready",
+        visibility: "public",
+        service: "appserver",
+      },
+      { id: "app:test", summary: "Tests", _tag: "Ready", visibility: "public", service: "appserver" },
+      { id: "app:zoo", summary: "Z thing", _tag: "Ready", visibility: "public", service: "appserver" },
     ]);
   });
 
@@ -249,7 +258,7 @@ describe("compileToolingCommands", () => {
 
   test("omits the service field when the tooling task has no service binding", () => {
     const [entry] = compileToolingCommands(landofile({ build: { cmd: "make" } }), redact);
-    expect(entry).toMatchObject({ id: "app:build", summary: "", hidden: false });
+    expect(entry).toMatchObject({ id: "app:build", summary: "", _tag: "Ready", visibility: "public" });
     expect(entry).not.toHaveProperty("service");
   });
 
@@ -264,9 +273,9 @@ describe("compileToolingCommands", () => {
     const entries = compileToolingCommands(resolved, redact);
 
     // Then only the included tasks are hidden
-    expect(entries.find((entry) => entry.id === "app:docs:build")?.hidden).toBe(true);
+    expect(entries.find((entry) => entry.id === "app:docs:build")?.visibility).toBe("internal");
     expect(entries.find((entry) => entry.id === "app:docs:build")).not.toHaveProperty("disabled");
-    expect(entries.find((entry) => entry.id === "app:build")?.hidden).toBe(false);
+    expect(entries.find((entry) => entry.id === "app:build")?.visibility).toBe("public");
   });
 });
 
@@ -294,9 +303,10 @@ describe("compileBunShellScriptCommands", () => {
       {
         id: "app:quality",
         summary: "Run quality checks",
-        hidden: false,
+        _tag: "Ready",
+        visibility: "public",
         service: ":host",
-        source: "bun-script",
+        sourceKind: "bun-script",
         runs: { kind: "script", path: ".lando/scripts/quality.bun.sh" },
       },
     ]);
@@ -319,6 +329,8 @@ describe("compileBunShellScriptCommands", () => {
     // When
     const entries = compileAppCommands(source, scripts, { redact });
     // Then
-    expect(entries).toMatchObject([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
+    expect(entries).toMatchObject([
+      { id: "app:quality", summary: "Tooling wins", _tag: "Ready", visibility: "public" },
+    ]);
   });
 });

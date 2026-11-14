@@ -3,7 +3,7 @@ import {
   type ValidationIssue,
   type ValidationIssuePath,
   type ValidationIssueSource,
-  formatValidationIssueLine,
+  formatValidationIssuePath,
 } from "@lando/sdk/schema";
 import { Result } from "effect";
 
@@ -31,13 +31,17 @@ export const toolingCompileResult = <A>(
       ...location(issue),
       ...(issue.related === undefined ? {} : { related: issue.related.map(location) }),
     }));
-    const message = issues.map(formatValidationIssueLine).join("; ");
+    const message = issues
+      .map((issue) => `${formatValidationIssuePath(issue.path)}: ${issue.message}`)
+      .join("; ");
     return new ToolingCompileError({
       tool: name,
       message,
       issues,
       omittedIssueCount: 0,
       ...(source === undefined ? {} : { source: { path: source.path, task: name } }),
-      remediation: `Correct the tooling declaration for ${name}: ${message}`,
+      remediation: [
+        ...new Set(issues.flatMap((issue) => (issue.suggestion === undefined ? [] : [issue.suggestion]))),
+      ].join(" "),
     });
   });

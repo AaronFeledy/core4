@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ReadyCommandIndexEntry } from "@lando/engine/cache/command-index";
 import { runBunShellScript } from "@lando/engine/operations/tooling-bun-script";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { parseScriptFile } from "@lando/landofile/bun-sh-discovery";
@@ -29,7 +30,14 @@ test("tooling events stay value-free when current admission newly marks retained
       parseScriptFile(join(root, ".lando/scripts/private.bun.sh"), "private.bun.sh"),
     );
     const retained = Result.getOrThrow(normalizeToolingInput("private", { flags: { note: {} } }));
-    const command = { id: "app:private", summary: "Private", hidden: false, input: retained };
+    const command = {
+      id: "app:private",
+      summary: "Private",
+      _tag: "Ready",
+      sourceKind: "bun-script",
+      visibility: "public",
+      input: retained,
+    } satisfies ReadyCommandIndexEntry;
     const entry = mcpRegistryWithToolingEntries({ commandEntries: [] }, [command]).toolingEntries?.[0];
     if (entry === undefined) throw new Error("Missing tooling projection");
     const redaction = makeRedactionService();

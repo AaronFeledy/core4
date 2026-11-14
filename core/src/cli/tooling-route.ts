@@ -1,4 +1,9 @@
-import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
+import {
+  type AppCommandIndexPayload,
+  type CommandIndexEntry,
+  type CommandIndexPresentation,
+  commandIndexPresentation,
+} from "@lando/engine/cache/command-index";
 import { canonicalIdFromRelativePath } from "@lando/landofile/bun-sh-discovery";
 import type { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
@@ -12,10 +17,10 @@ interface ToolingRouteMetadata {
   readonly disabled?: true;
   readonly sourcePath?: string;
   readonly service?: string;
-  readonly input?: NonNullable<CommandIndexEntry["input"]>;
+  readonly input?: NonNullable<CommandIndexPresentation["input"]>;
   readonly wrapper?: true;
-  readonly runs?: NonNullable<CommandIndexEntry["runs"]>;
-  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
+  readonly runs?: NonNullable<CommandIndexPresentation["runs"]>;
+  readonly loadError?: NonNullable<CommandIndexPresentation["loadError"]>;
   readonly aliasPolicy?: NonNullable<AppCommandIndexPayload["aliasPolicy"]>;
 }
 
@@ -59,21 +64,19 @@ export const normalizedToolingRoute = (
   entry: CommandIndexEntry,
   aliasPolicy: AppCommandIndexPayload["aliasPolicy"],
   sourcePath?: string,
-): Extract<ToolingRoute, { readonly _tag: "tooling" }> => ({
-  _tag: "tooling",
-  commandId: entry.id,
-  name: entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id,
-  summary: entry.summary,
-  hidden: entry.hidden,
-  ...(entry.disabled === undefined ? {} : { disabled: entry.disabled }),
-  ...(sourcePath === undefined ? {} : { sourcePath }),
-  ...(entry.service === undefined ? {} : { service: entry.service }),
-  ...(entry.input === undefined ? {} : { input: entry.input }),
-  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
-  ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
-  ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
-});
+): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
+  const { id: _id, source: _source, ...metadata } = commandIndexPresentation(entry);
+  return {
+    ...metadata,
+    _tag: "tooling",
+    commandId: entry.id,
+    name: entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id,
+    summary: entry.summary,
+    ...(sourcePath === undefined ? {} : { sourcePath }),
+    ...(entry._tag === "Disabled" ? { sourcePath: entry.source.path } : {}),
+    ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+  };
+};
 
 export const bunScriptRoute = (
   entry: CommandIndexEntry,

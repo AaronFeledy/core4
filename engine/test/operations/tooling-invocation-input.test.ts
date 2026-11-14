@@ -166,6 +166,21 @@ test("a task without bindings retains declared forwarding", async () => {
   expect(result).toMatchObject({ _tag: "Success", success: { argv: ["--name=team", "--verbose"] } });
 });
 
+test("successful admission registers sensitive inputs without redacting ordinary values", async () => {
+  const redaction = makeRedactionService();
+  const result = await Effect.runPromise(
+    admitToolingTask({
+      name: "inspect",
+      task: { cmd: "echo", flags: { label: {}, credential: { sensitive: true } } },
+      input: { _tag: "RawArgv", argv: ["--label=public-label", "--credential=private-value"] },
+      source: { path: "/app/tasks.yml", task: "inspect" },
+    }).pipe(Effect.result, Effect.provideService(RedactionService, redaction)),
+  );
+  expect(result._tag).toBe("Success");
+  const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv: {} }));
+  expect(redactor.redactString("public-label private-value")).toBe("public-label [redacted]");
+});
+
 test("unknown input references fail at their authored path with a closest name", async () => {
   const result = await admit(
     { cmd: "echo {{ flags.naem }}", flags: { name: {} }, vars: { X: { sh: "exit 8" } } },
@@ -177,6 +192,48 @@ test("unknown input references fail at their authored path with a closest name",
       _tag: "ToolingCompileError",
       message: expect.stringContaining("tooling.inspect.cmd"),
       remediation: expect.stringContaining('Did you mean "name"?'),
+    },
+  });
+});
+
+test.each([
+  {
+    cmd: "echo {{ flags.naem }}",
+    flags: { name: { required: true } },
+    reason: "unknown-input-reference",
+    path: ["cmd"],
+  },
+  {
+    cmd: "echo {{ raw }}",
+    flags: { name: { required: true } },
+    reason: "raw-with-declared-inputs",
+    path: ["cmd"],
+  },
+  {
+    cmd: "echo",
+    dir: PortablePath.make("{{ vars.VALUE }}"),
+    vars: { VALUE: { sh: "exit 8" } },
+    flags: { name: { required: true } },
+    reason: "dynamic-var-reference",
+    path: ["dir"],
+  },
+])("static $reason precedes stale revision and invalid input", async ({ reason, path, ...task }) => {
+  const result = await Effect.runPromise(
+    admitToolingTask({
+      name: "inspect",
+      task,
+      input: { _tag: "RawArgv", argv: ["--unknown=credential"] },
+      expectedInputRevision: ToolingInputRevision.make("stale"),
+      source: { path: "/app/tasks.yml", task: "inspect" },
+      sites: authoredInvocationSites(task, "/app/tasks.yml"),
+    }).pipe(Effect.result),
+  );
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ToolingCompileError",
+      omittedIssueCount: 0,
+      issues: [{ reason, path: ["tooling", "inspect", ...path], source: { file: "/app/tasks.yml" } }],
     },
   });
 });

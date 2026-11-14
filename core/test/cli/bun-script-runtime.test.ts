@@ -102,7 +102,16 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile: { name: "compiled-script" },
-            entries: [{ id: "app:probe", summary: "Runtime probe", hidden: false, source: "bun-script" }],
+            entries: [
+              {
+                id: "app:probe",
+                summary: "Runtime probe",
+                _tag: "Ready",
+                sourceKind: "bun-script",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: root,
             cacheRoot,
           }),
@@ -173,7 +182,16 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile: { name: "compiled-script" },
-            entries: [{ id: "app:probe", summary: "Runtime probe", hidden: false, source: "bun-script" }],
+            entries: [
+              {
+                id: "app:probe",
+                summary: "Runtime probe",
+                _tag: "Ready",
+                sourceKind: "bun-script",
+                visibility: "public",
+                input: emptyToolingInput,
+              },
+            ],
             cwd: root,
             cacheRoot,
           }),
@@ -254,3 +272,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     60_000,
   );
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
