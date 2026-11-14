@@ -65,7 +65,10 @@ const sessionEntries = (
   options: McpCatalogOptions | undefined,
 ): ReadonlyArray<McpCommandEntry> =>
   options?.tooling === true
-    ? [...config.commandEntries, ...(config.toolingEntries ?? [])]
+    ? [
+        ...config.commandEntries,
+        ...(config.toolingEntries ?? []).map((entry) => ({ ...entry, tooling: true })),
+      ]
     : config.commandEntries;
 
 const sessionAllowPolicy = (
