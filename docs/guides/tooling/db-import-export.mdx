@@ -130,14 +130,25 @@ responding, `error.cause` holds that failure with its own `_tag`, message, and
 `remediation`, and `error.remediation` starts with what the runtime says to do.
 Database payloads and stdout are never included in these command failures.
 
-Host compression failures report `SqlDumpCompressionError`. If export staging
-cannot create its directory, the error identifies the destination directory.
-Write-access failures point to the directory's permissions or a read-only
-filesystem; space and quota failures point to host storage. An invalid parent
-path gets path guidance rather than a disk-space diagnosis. A staging-directory
-failure stops the export before the database dump starts. Compression and output
-writes can fail after the dump has finished; an existing destination still stays
-unchanged.
+Host filesystem failures during a transfer report `DataTransferError` for both
+compressed and plain dumps. Their `error.cause` is a `FileIoError` with the failed `path`, an
+`operation` of `read`, `stage`, or `persist`, and a `reason` you can use in a script.
+The remediation matches that operation: an unreadable source needs read access,
+while staging and output files need a writable location.
+
+The reason distinguishes permissions (`permission-denied`), a read-only
+filesystem (`read-only`), exhausted storage (`no-space`), account quota
+(`quota-exceeded`), a missing path (`not-found`), and an invalid path
+(`invalid-path`). Storage includes filesystem space and available inodes. Other
+I/O failures use `io` or `unknown`. Use the reported path and remediation to
+identify what needs to change.
+
+`SqlDumpCompressionError` means the compression or decompression itself failed,
+such as corrupt gzip or zstd input. A staging-directory failure stops the export
+before the database dump starts. Compression and output writes can fail after
+the dump has finished; an existing destination still stays unchanged. Initial
+checks for a missing or unreadable import file happen before the database probe
+and use `SqlDumpNotFoundError`.
 
 `lando db:*` commands mask only the target database's credential password or
 root password in their output and errors, following the same rules as other

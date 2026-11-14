@@ -138,6 +138,32 @@ Interruptions are excluded. Primary-error selection prefers the first unannotate
 
 This matches CLI and MCP projection, but the helper does not serialize or automatically redact the values. Handle them accordingly before displaying or recording them. `renderError` receives only the primary failure. A projected defect or interruption propagates as a defect with the original cause attached instead of returning the result object.
 
+Host-file reads, staging, and byte-file publication use `DataTransferError` with
+a normalized `FileIoError` cause. Both error classes are available from
+`@lando/sdk/errors`. For these transfer causes, `operation` is `read`, `stage`, or
+`persist`, `path` identifies the failed file or directory, and `reason`
+distinguishes permissions, read-only storage, exhausted space or quota, missing
+or invalid paths, I/O failures, and unknown failures. Inspect those fields after
+narrowing the cause to `FileIoError`; do not infer the operation from a dump's
+suffix or parse a native error message. Other uses of `FileIoError` may omit the
+transfer-specific fields.
+
+The normalized cause is built from the operation, path, and classified reason.
+It does not retain the native error's message, stack, attached data, or cause.
+This keeps library handling and machine output aligned without making arbitrary
+native errors serializable. Paths still go through your normal display and
+redaction boundary. SQL codec failures remain `SqlDumpCompressionError`, and
+stream failures and interruption retain their original identity. See
+[Script Lando with JSON](./guides/scripting-with-json.mdx#envelope-contract) for
+the serialized fields.
+
+Adapter and plugin authors can call `safeFileIoError(operation, path, cause)`
+from `@lando/sdk/errors` at a filesystem operation boundary. It supplies the
+shared reason and guidance while discarding native error data. Use
+`fileIoReason` from the Effect-free `@lando/sdk/errno` entry when you only need
+classification. The caller identifies where the failure occurred; an error code
+on a provider or codec failure does not make it a filesystem failure.
+
 ### Bun and plugin child exits
 
 Commands that run Bun for the user (`meta:bun`, `meta:x`, the plugin authoring and management commands, `meta:update`, and recipe `postInit` actions) share one observable contract, documented for CLI consumers in [Script Lando with JSON](./guides/scripting-with-json.mdx#capture-bun-backed-commands). The short version for hosts:

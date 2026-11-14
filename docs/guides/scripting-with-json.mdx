@@ -493,6 +493,25 @@ or nesting beyond 32 levels are omitted whole rather than partly serialized.
 Plain error reports show scalar fields and scalar arrays after their existing
 diagnostic details; use the envelope for nested objects.
 
+When host filesystem I/O causes a transfer to fail, `error._tag` is `DataTransferError` and
+`error.cause._tag` is `FileIoError`. The normalized cause supplies these fields:
+
+| Field | What to use it for |
+| --- | --- |
+| `operation` | `read` identifies a source read, `stage` identifies staging-directory allocation, and `persist` identifies writing or publishing the transfer's destination file. |
+| `path` | The file or directory whose operation failed. |
+| `reason` | `permission-denied`, `read-only`, `no-space`, `quota-exceeded`, `not-found`, `invalid-path`, `io`, or `unknown`. |
+| `remediation` | The next action for that operation and reason. |
+
+Branch on the tags and these fields, rather than matching the human message.
+For example, `no-space` calls for checking the filesystem containing `path`,
+while `permission-denied` on `read` calls for checking source access. An
+`unknown` reason is not evidence that a retry will succeed. The normalized cause
+contains no native error message, stack, or arbitrary attached properties, and
+the usual redaction still applies to its path. The same contract applies to
+compressed and plain file exports. A codec failure keeps
+`SqlDumpCompressionError`; it is not reported as a host-file failure.
+
 When a Landofile fails to load in more than one place, the error is
 `LandofileLoadError` and `error.failures` holds each underlying error in the same
 JSON-safe form, each with its own `_tag`, `message`, `remediation`, and location
