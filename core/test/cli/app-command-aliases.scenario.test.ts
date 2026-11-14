@@ -57,6 +57,12 @@ const makeEntryFixture = async (commandAliases: {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-command-alias-entry-"));
   const appRoot = join(fixtureRoot, "app");
   const cacheRoot = join(fixtureRoot, "cache");
+  const env = {
+    ...inheritedEnvironment(),
+    LANDO_USER_CACHE_ROOT: cacheRoot,
+    LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
+    LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
+  };
   await mkdir(join(appRoot, ".lando", "scripts"), { recursive: true });
   await writeFile(join(appRoot, ".lando.yml"), "name: alias-entry\n");
   await writeFile(
@@ -65,6 +71,7 @@ const makeEntryFixture = async (commandAliases: {
   );
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env,
       landofile: { name: "alias-entry", commandAliases },
       entries: [
         {
@@ -82,12 +89,7 @@ const makeEntryFixture = async (commandAliases: {
   );
   return {
     appRoot,
-    env: {
-      ...inheritedEnvironment(),
-      LANDO_USER_CACHE_ROOT: cacheRoot,
-      LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
-      LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
-    },
+    env,
     cleanup: () => rm(fixtureRoot, { recursive: true, force: true }),
   };
 };
@@ -115,6 +117,13 @@ test("custom aliases preserve resolved canonical JSON identity in shipping and p
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-command-alias-scenario-"));
   const appRoot = join(fixtureRoot, "app");
   const cacheRoot = join(fixtureRoot, "cache");
+  const env = {
+    ...inheritedEnvironment(),
+    PATH: "/no-such-path",
+    LANDO_USER_CACHE_ROOT: cacheRoot,
+    LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
+    LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
+  };
   try {
     // Given
     await mkdir(join(appRoot, ".lando", "scripts"), { recursive: true });
@@ -128,6 +137,7 @@ test("custom aliases preserve resolved canonical JSON identity in shipping and p
     );
     await Effect.runPromise(
       writeAppCommandCacheStrict({
+        env,
         landofile: { name: "alias-scenario", commandAliases: { custom: { start: "app:greet" } } },
         entries: [
           {
@@ -143,13 +153,6 @@ test("custom aliases preserve resolved canonical JSON identity in shipping and p
         cacheRoot,
       }),
     );
-    const env = {
-      ...inheritedEnvironment(),
-      PATH: "/no-such-path",
-      LANDO_USER_CACHE_ROOT: cacheRoot,
-      LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
-      LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
-    };
     const runner = join(fixtureRoot, "programmatic-dispatch-runner.ts");
     await writeFile(
       runner,

@@ -206,6 +206,7 @@ test.each([false, true])("child rejects an open alias routed to tooling (help=%s
   );
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: hostProxyChildEnv(process.env, paths, {}, call.depth),
       landofile: { name: "demo", commandAliases: { custom: { open: "app:greet" } } },
       entries: [
         {

@@ -42,11 +42,13 @@ import {
 } from "@lando/sdk/services";
 /** Rebuilds the app plan and command index caches without contacting the provider. */
 import { DateTime, Effect, Option, Schema } from "effect";
+import { CliInvocation } from "../../runtime/invocation-context";
 import { loadUserLandofile } from "../app-resolution";
 import { commandAliasRegistrationError } from "../command-alias-policy";
 import { BUILT_IN_COMMAND_IDS } from "../generated/command-ids";
 
 export interface AppCacheRefreshOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly cwd?: string;
   readonly cacheRoot?: string;
 }
@@ -111,6 +113,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const pluginRegistry = yield* PluginRegistry;
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
+  const env = options.env ?? (yield* CliInvocation).env;
 
   const landofile = yield* loadUserLandofile(landofileService);
   const capabilities = yield* registry.capabilities;
@@ -125,9 +128,9 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const redaction = yield* Effect.serviceOption(RedactionService);
   const planValues = yield* registerPlanRedaction(plan);
   const redactor = Option.isSome(redaction)
-    ? yield* redaction.value.forProfile("secrets")
+    ? yield* redaction.value.forProfile("secrets", { sourceEnv: env })
     : createRedactor("secrets", {
-        values: [...collectSecretEnvValues(process.env), ...planValues.substring],
+        values: [...collectSecretEnvValues(env), ...planValues.substring],
         wholeTokenValues: planValues.wholeToken,
       });
   const entries = yield* Effect.sync(() =>
@@ -210,6 +213,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   });
 
   const appCachePath = yield* writeAppCommandCacheStrict({
+    env,
     sourceScripts: fingerprintsFromInspection(inspection),
     dataIdentityFingerprint,
     landofile: landofile.document,

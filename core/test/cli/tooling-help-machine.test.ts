@@ -28,6 +28,12 @@ const withHelpApp = async (
       writeAppCommandCacheStrict({
         cwd: root,
         cacheRoot,
+        env: {
+          ...process.env,
+          LANDO_USER_CACHE_ROOT: cacheRoot,
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+        },
         landofile: { name: "machine-help" },
         entries: compileInspectedAppCommands({
           sourcePath: root,

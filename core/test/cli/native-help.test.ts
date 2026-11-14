@@ -68,6 +68,7 @@ const makeAppFixture = async (): Promise<{
 const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture>>): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: fixture.env,
       landofile: { name: "native-help" },
       entries: [
         {

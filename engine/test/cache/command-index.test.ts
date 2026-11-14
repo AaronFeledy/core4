@@ -7,14 +7,15 @@ import {
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
   decodeAppCommandIndex,
+  deriveAppCommandEnvironmentHash,
   deriveAppCommandToolingFingerprint,
   encodeAppCommandIndex,
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version ten for unavailable task metadata", () => {
+  test("uses version twelve for captured environment freshness", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(11n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(12n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(
@@ -26,6 +27,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
         landoVersion: "0.0.0",
         appName: "old",
         sourceFile: "/app/.lando.yml",
+        sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
         sourceMtimeMs: 0,
         sourceSize: 0,
         generatedAtMs: 0,
@@ -45,6 +47,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "myapp",
       sourceFile: "/tmp/test/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 1_700_000_000_000,
       sourceSize: 256,
       versionConstraints: [],
@@ -95,6 +98,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],
@@ -117,6 +121,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],
@@ -141,6 +146,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       landoVersion: "0.0.0",
       appName: "n",
       sourceFile: "/x/.lando.yml",
+      sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
       sourceMtimeMs: 0,
       sourceSize: 0,
       versionConstraints: [],

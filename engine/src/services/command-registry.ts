@@ -37,6 +37,7 @@ import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/c
 import { fingerprintsFromInspection } from "../cache/command-script-freshness.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
 import { PluginContributionGraph } from "../plugins/contribution-graph.ts";
+import { HostExecutionDefaults } from "./host-execution-context.ts";
 
 const discoverScriptsForCwd = Effect.fnUntraced(function* (cwd: string) {
   const appRoot = yield* findAppRoot(cwd);
@@ -73,7 +74,9 @@ export const layerWith = (
       const cacheOptions = paths._tag === "Some" ? { cacheRoot: paths.value.roots.userCacheRoot } : {};
       return CommandRegistry.of({
         list: Effect.gen(function* () {
+          const env = (yield* HostExecutionDefaults)?.env ?? process.env;
           const cached = yield* readFreshAppCommandCacheForCwd({
+            env,
             ...cacheOptions,
             includeScriptInventory: true,
           }).pipe(Effect.catch(() => Effect.succeed(null)));
@@ -94,8 +97,8 @@ export const layerWith = (
           const redaction = yield* Effect.serviceOption(RedactionService);
           const redactor =
             redaction._tag === "Some"
-              ? yield* redaction.value.forProfile("secrets")
-              : createRedactor("secrets", { values: collectSecretEnvValues(process.env) });
+              ? yield* redaction.value.forProfile("secrets", { sourceEnv: env })
+              : createRedactor("secrets", { values: collectSecretEnvValues(env) });
           const entries = compileInspectedAppCommands({
             landofile,
             sourcePath,
@@ -109,6 +112,7 @@ export const layerWith = (
           const error = registrationError(landofile.commandAliases, entries, pluginCommandIds);
           if (error !== undefined) return yield* Effect.fail(error);
           yield* writeAppCommandCache({
+            env,
             sourceScripts: fingerprintsFromInspection(scripts),
             landofile,
             entries,

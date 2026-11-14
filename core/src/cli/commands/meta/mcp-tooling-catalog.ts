@@ -47,17 +47,22 @@ export const toolingCatalogFromCache = (
 
 export const readMcpToolingCatalog = Effect.fnUntraced(function* (generation: McpAppGeneration) {
   const invocation = yield* CliInvocation;
+  const roots = resolveLandoRoots({ env: invocation.env });
   const options = {
     cwd: invocation.cwd,
-    roots: resolveLandoRoots({ env: invocation.env }),
+    env: invocation.env,
+    cacheRoot: roots.userCacheRoot,
+    roots,
     includeScriptInventory: true,
   };
   let receipt = yield* readAppCommandCacheForCwdDetailed(options);
   if (receipt.status !== "fresh" && receipt.sourcePath !== undefined) {
     const { refreshAppCache } = yield* Effect.promise(() => import("../app-cache-refresh"));
-    yield* refreshAppCache({ cwd: invocation.cwd, cacheRoot: options.roots.userCacheRoot }).pipe(
-      Effect.provide(generation.context),
-    );
+    yield* refreshAppCache({
+      cwd: invocation.cwd,
+      env: invocation.env,
+      cacheRoot: options.roots.userCacheRoot,
+    }).pipe(Effect.provide(generation.context));
     receipt = yield* readAppCommandCacheForCwdDetailed(options);
   }
   return receipt.status === "fresh"

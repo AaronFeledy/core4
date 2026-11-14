@@ -114,7 +114,7 @@ test("Given an unchanged programmatic Landofile, when routing its alias, then th
   );
 });
 
-test("Given a programmatic Landofile cache, when its environment changes, then the hot path serves the last full decode", async () => {
+test("Given a programmatic Landofile cache, when its environment changes, then the hot path reports stale metadata", async () => {
   await withEnvironment({ LANDO_TEST_ALIAS_NAME: "hi" }, async () => {
     await withCacheFixture(
       {
@@ -125,16 +125,22 @@ test("Given a programmatic Landofile cache, when its environment changes, then t
       async ({ root, cacheRoot }) => {
         // When
         process.env.LANDO_TEST_ALIAS_NAME = "hello";
-        const route = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
+        const route = await Effect.runPromise(
+          resolveToolingRoute("hi", { cwd: root, cacheRoot, rebuild: false }),
+        );
 
         // Then
-        expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
+        expect(route).toMatchObject({
+          _tag: "cache-miss",
+          reason: "stale-cache",
+          staleReason: "environment",
+        });
       },
     );
   });
 });
 
-test("Given a programmatic Landofile cache, when invocation-control variables change, then its alias remains fresh", async () => {
+test("Given a programmatic Landofile cache, when invocation-control variables change, then metadata is conservatively stale", async () => {
   await withEnvironment(
     { LANDO_TEST_ALIAS_NAME: "hi", _: "refresh-invocation", BUN_BE_BUN: "", SHLVL: "1" },
     async () => {
@@ -149,17 +155,23 @@ test("Given a programmatic Landofile cache, when invocation-control variables ch
           process.env._ = "command-substitution-invocation";
           process.env.BUN_BE_BUN = "1";
           process.env.SHLVL = "0";
-          const route = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
+          const route = await Effect.runPromise(
+            resolveToolingRoute("hi", { cwd: root, cacheRoot, rebuild: false }),
+          );
 
           // Then
-          expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
+          expect(route).toMatchObject({
+            _tag: "cache-miss",
+            reason: "stale-cache",
+            staleReason: "environment",
+          });
         },
       );
     },
   );
 });
 
-test("Given an unchanged templated Landofile, when render inputs change, then the hot path serves the last full decode", async () => {
+test("Given an unchanged templated Landofile, when render inputs change, then the hot path reports stale metadata", async () => {
   await withEnvironment({ LANDO_TEST_ALIAS_TARGET: "app:greet" }, async () => {
     await withCacheFixture(
       {
@@ -181,17 +193,23 @@ test("Given an unchanged templated Landofile, when render inputs change, then th
         // When
         const freshRoute = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
         process.env.LANDO_TEST_ALIAS_TARGET = "app:other";
-        const staleRoute = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
+        const staleRoute = await Effect.runPromise(
+          resolveToolingRoute("hi", { cwd: root, cacheRoot, rebuild: false }),
+        );
 
         // Then
         expect(freshRoute).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
-        expect(staleRoute).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
+        expect(staleRoute).toMatchObject({
+          _tag: "cache-miss",
+          reason: "stale-cache",
+          staleReason: "environment",
+        });
       },
     );
   });
 });
 
-test("Given a static YAML Landofile cache, when the environment changes, then its alias remains fresh", async () => {
+test("Given a static YAML Landofile cache, when the environment changes, then metadata is conservatively stale", async () => {
   await withEnvironment({ LANDO_TEST_UNRELATED_VALUE: "before" }, async () => {
     await withCacheFixture(
       {
@@ -205,10 +223,16 @@ test("Given a static YAML Landofile cache, when the environment changes, then it
       async ({ root, cacheRoot }) => {
         // When
         process.env.LANDO_TEST_UNRELATED_VALUE = "after";
-        const route = await Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot }));
+        const route = await Effect.runPromise(
+          resolveToolingRoute("hi", { cwd: root, cacheRoot, rebuild: false }),
+        );
 
         // Then
-        expect(route).toMatchObject({ _tag: "bun-script", commandId: "app:greet" });
+        expect(route).toMatchObject({
+          _tag: "cache-miss",
+          reason: "stale-cache",
+          staleReason: "environment",
+        });
       },
     );
   });

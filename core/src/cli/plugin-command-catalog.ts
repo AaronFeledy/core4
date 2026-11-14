@@ -219,7 +219,7 @@ export const createPluginCommandCatalog = (
       readAppCommandCacheForCwdDetailed(
         context === undefined || roots === undefined
           ? {}
-          : { cwd: context.cwd, cacheRoot: roots.userCacheRoot, roots },
+          : { cwd: context.cwd, env: context.env, cacheRoot: roots.userCacheRoot, roots },
       ),
     );
     if (receipt.status === "fresh") freshCache = receipt.payload;

@@ -88,6 +88,13 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       const bin = join(root, "bin");
       const cacheRoot = join(root, "cache");
       const emptyPath = join(root, "empty");
+      const env = {
+        ...process.env,
+        PATH: pathMode === "binary" ? bin : emptyPath,
+        LANDO_USER_CACHE_ROOT: cacheRoot,
+        LANDO_USER_DATA_ROOT: join(root, "data"),
+        LANDO_USER_CONF_ROOT: join(root, "conf"),
+      };
       try {
         await mkdir(bin);
         await mkdir(emptyPath);
@@ -101,6 +108,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
         );
         await Effect.runPromise(
           writeAppCommandCacheStrict({
+            env,
             landofile: { name: "compiled-script" },
             entries: [
               {
@@ -130,13 +138,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
         // When
         const child = Bun.spawn([binary, "probe"], {
           cwd: root,
-          env: {
-            ...process.env,
-            PATH: pathMode === "binary" ? bin : emptyPath,
-            LANDO_USER_CACHE_ROOT: cacheRoot,
-            LANDO_USER_DATA_ROOT: join(root, "data"),
-            LANDO_USER_CONF_ROOT: join(root, "conf"),
-          },
+          env,
           stdout: "pipe",
           stderr: "pipe",
         });
@@ -169,6 +171,14 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       const root = await mkdtemp(join(tmpdir(), "lando-compiled-script-"));
       const bin = join(root, "bin");
       const cacheRoot = join(root, "cache");
+      const env = {
+        ...process.env,
+        PATH: bin,
+        SCRIPT_RUNTIME_VALUE: "explicit-env",
+        LANDO_USER_CACHE_ROOT: cacheRoot,
+        LANDO_USER_DATA_ROOT: join(root, "data"),
+        LANDO_USER_CONF_ROOT: join(root, "conf"),
+      };
       try {
         await mkdir(bin);
         const binary = join(bin, "lando");
@@ -181,6 +191,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
         );
         await Effect.runPromise(
           writeAppCommandCacheStrict({
+            env,
             landofile: { name: "compiled-script" },
             entries: [
               {
@@ -221,14 +232,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
           ],
           {
             cwd: root,
-            env: {
-              ...process.env,
-              PATH: bin,
-              SCRIPT_RUNTIME_VALUE: "explicit-env",
-              LANDO_USER_CACHE_ROOT: cacheRoot,
-              LANDO_USER_DATA_ROOT: join(root, "data"),
-              LANDO_USER_CONF_ROOT: join(root, "conf"),
-            },
+            env,
             stdout: "pipe",
             stderr: "pipe",
           },

@@ -11,7 +11,7 @@ import { canonicalCacheJson } from "./canonical.ts";
 import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 11n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 12n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -126,6 +126,7 @@ export interface AppCommandIndexPayload {
   readonly landoVersion: string;
   readonly appName: string;
   readonly sourceFile: string;
+  readonly sourceEnvironmentHash: string;
   readonly sourceContentHash?: string;
   readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
   readonly sourceReferencedFiles?: ReadonlyArray<LandofileReferencedFile>;
@@ -141,6 +142,15 @@ export interface AppCommandIndexPayload {
 }
 
 const stableFingerprint = (value: unknown): string => sha256Hex(canonicalCacheJson(value));
+
+// Hash the incoming snapshot, before config loading augments it. Entries preserve
+// present undefined values separately from absent keys and empty strings.
+export const deriveAppCommandEnvironmentHash = (env: Readonly<Record<string, string | undefined>>): string =>
+  stableFingerprint(
+    Object.keys(env)
+      .sort()
+      .map((key) => [key, env[key] ?? null]),
+  );
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
   stableFingerprint({

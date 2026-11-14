@@ -9,8 +9,18 @@ import { LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { CliInvocation, processInvocationDefaults } from "../../src/runtime/invocation-context";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
+
+const invocationEnv = (root: string, cacheRoot: string) => ({
+  ...process.env,
+  NO_COLOR: "1",
+  LANDO_USER_CACHE_ROOT: cacheRoot,
+  LANDO_USER_DATA_ROOT: join(root, "data"),
+  LANDO_USER_CONF_ROOT: join(root, "conf"),
+  HELP_API_TOKEN: "help-token-secret",
+});
 
 const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-cached-task-help-"));
@@ -36,6 +46,7 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
       writeAppCommandCacheStrict({
         cwd: root,
         cacheRoot,
+        env: invocationEnv(root, cacheRoot),
         landofile,
         entries: compileToolingCommands(landofile, createRedactor("secrets").redactString, {
           sourcePath: root,
@@ -61,14 +72,7 @@ const invoke = async (root: string, cacheRoot: string, argv: readonly string[]) 
     cwd: root,
     stdout: "pipe",
     stderr: "pipe",
-    env: {
-      ...process.env,
-      NO_COLOR: "1",
-      LANDO_USER_CACHE_ROOT: cacheRoot,
-      LANDO_USER_DATA_ROOT: join(root, "data"),
-      LANDO_USER_CONF_ROOT: join(root, "conf"),
-      HELP_API_TOKEN: "help-token-secret",
-    },
+    env: invocationEnv(root, cacheRoot),
   });
   const [code, stdout, stderr] = await Promise.all([
     child.exited,
@@ -100,7 +104,15 @@ test("nested task machine help advertises a token accepted by the unchanged disp
       Schema.Struct({ result: Schema.Struct({ target: Schema.Struct({ typeable: Schema.String }) }) }),
     )(envelope);
     expect(
-      await Effect.runPromise(resolveToolingRoute(help.target.typeable, { cwd: root, cacheRoot })),
+      await Effect.runPromise(
+        resolveToolingRoute(help.target.typeable, { cwd: root, cacheRoot }).pipe(
+          Effect.provideService(CliInvocation, {
+            ...processInvocationDefaults,
+            cwd: root,
+            env: invocationEnv(root, cacheRoot),
+          }),
+        ),
+      ),
     ).toMatchObject({ _tag: "tooling", commandId: "app:db:wait" });
     expect(await Effect.runPromise(resolveToolingRoute("db:wait", { cwd: root, cacheRoot }))).toEqual({
       _tag: "not-tooling",

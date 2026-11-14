@@ -18,6 +18,7 @@ import {
   COMMAND_INDEX_HEADER_BYTES,
   COMMAND_INDEX_SCHEMA_VERSION,
   decodeAppCommandIndex,
+  deriveAppCommandEnvironmentHash,
   encodeAppCommandIndex,
 } from "@lando/engine/cache/command-index";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
@@ -31,6 +32,7 @@ const appCommandPayload = {
   landoVersion: "0.0.0",
   appName: "fixture-app",
   sourceFile: "/workspace/fixture-app/.lando.yml",
+  sourceEnvironmentHash: deriveAppCommandEnvironmentHash({}),
   sourceMtimeMs: 1_700_000_000_000,
   sourceSize: 128,
   versionConstraints: [],
@@ -110,8 +112,9 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v11.bin",
+      fixture: "app-command-v12.bin",
       previousFixtures: [
+        "app-command-v11.bin",
         "app-command-v9.bin",
         "app-command-v8.bin",
         "app-command-v7.bin",

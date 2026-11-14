@@ -10,7 +10,7 @@ const cli = resolve(import.meta.dir, "../../bin/lando.ts");
 const landofile = (task: string) =>
   `name: mcp-rebuild\nservices:\n  web:\n    image: nginx:1\ntooling:\n  ${task}:\n    service: ":host"\n    cmd: echo ${task}\n`;
 
-const run = async (root: string, argv: readonly string[]) => {
+const run = async (root: string, argv: readonly string[], env: Readonly<Record<string, string>> = {}) => {
   const child = Bun.spawn([process.execPath, cli, ...argv], {
     cwd: root,
     env: {
@@ -18,6 +18,7 @@ const run = async (root: string, argv: readonly string[]) => {
       LANDO_USER_DATA_ROOT: join(root, "data"),
       LANDO_USER_CACHE_ROOT: join(root, "cache"),
       LANDO_USER_CONF_ROOT: join(root, "conf"),
+      ...env,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -49,6 +50,39 @@ test("session start rebuilds a stale index so an app with services gets its tool
     )(JSON.parse(listed.stdout));
     const tooling = envelope.result.tools.filter((tool) => tool.source === "tooling").map((tool) => tool.id);
     expect(tooling).toEqual(["app:after"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+test("MCP catalog repairs cached environment failures without source edits", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-mcp-environment-rebuild-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: mcp-environment
+tooling:
+  deploy:
+    service: ":host"
+    cmd: echo deploying
+    flags:
+      target:
+        choices: [dev, prod]
+        default: "{{ env.TOOLING_CHOICE }}"
+`,
+    );
+    expect((await run(root, ["app:cache:refresh", "--format=json"], { TOOLING_CHOICE: "bad" })).exit).toBe(0);
+    const listed = await run(root, ["mcp", "--tooling", "--list", "--format=json"], {
+      TOOLING_CHOICE: "dev",
+    });
+    expect(listed.exit, listed.stdout + listed.stderr).toBe(0);
+    const envelope = Schema.decodeUnknownSync(
+      Schema.Struct({ ok: Schema.Literal(true), result: McpListResultSchema }),
+    )(JSON.parse(listed.stdout));
+    expect(envelope.result.tools.filter((tool) => tool.source === "tooling").map((tool) => tool.id)).toEqual([
+      "app:deploy",
+    ]);
+    expect(envelope.result.diagnostics).toEqual([]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

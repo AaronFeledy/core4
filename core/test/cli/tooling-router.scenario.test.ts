@@ -35,6 +35,7 @@ const writeFreshCache = async (fixture: RouterFixture, taskName: string): Promis
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: `router-${taskName}` },
+      env: fixture.env,
       entries: [
         {
           id: `app:${taskName}`,
@@ -56,6 +57,7 @@ const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: st
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: `router-${taskName}` },
+      env: fixture.env,
       entries: [
         {
           id: `app:${taskName}`,

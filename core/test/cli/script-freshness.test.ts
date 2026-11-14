@@ -7,9 +7,24 @@ import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-wr
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { CliInvocation, processInvocationDefaults } from "../../src/runtime/invocation-context";
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
 const script = "# ---\n# desc: Freshness probe\n# ---\necho -n probe-output\n";
+const invocationEnv = (root: string, cacheRoot: string) => ({
+  ...process.env,
+  LANDO_USER_CACHE_ROOT: cacheRoot,
+  LANDO_USER_DATA_ROOT: join(root, "data"),
+  LANDO_USER_CONF_ROOT: join(root, "conf"),
+});
+const fixtureRoute = (root: string, cacheRoot: string, name: string) =>
+  resolveToolingRoute(name, { cwd: root, cacheRoot }).pipe(
+    Effect.provideService(CliInvocation, {
+      ...processInvocationDefaults,
+      cwd: root,
+      env: invocationEnv(root, cacheRoot),
+    }),
+  );
 
 const withApp = async (run: (root: string, cacheRoot: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-cli-script-freshness-"));
@@ -34,6 +49,7 @@ const cache = (
     writeAppCommandCacheStrict({
       cwd: root,
       cacheRoot,
+      env: invocationEnv(root, cacheRoot),
       landofile: {
         name: "freshness",
         ...(policy.commandAliases === undefined ? {} : { commandAliases: policy.commandAliases }),
@@ -45,12 +61,7 @@ const cache = (
 const invoke = async (root: string, cacheRoot: string, name: string) => {
   const child = Bun.spawn([process.execPath, cli, name, "-j"], {
     cwd: root,
-    env: {
-      ...process.env,
-      LANDO_USER_CACHE_ROOT: cacheRoot,
-      LANDO_USER_DATA_ROOT: join(root, "data"),
-      LANDO_USER_CONF_ROOT: join(root, "conf"),
-    },
+    env: invocationEnv(root, cacheRoot),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -189,9 +200,7 @@ test.each([
       await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
       await writeFile(join(root, ".lando/scripts/blocked.bun.sh"), script);
       const routes = await Promise.all(
-        ["probe", "blocked"].map((name) =>
-          Effect.runPromise(resolveToolingRoute(name, { cwd: root, cacheRoot })),
-        ),
+        ["probe", "blocked"].map((name) => Effect.runPromise(fixtureRoute(root, cacheRoot, name))),
       );
       expect(routes[0]).toMatchObject({ _tag: "bun-script", commandId: "app:probe" });
       expect(routes[1]).toMatchObject({ _tag: expected });
@@ -205,7 +214,7 @@ test("a new script still runs after the Landofile changes", async () => {
   await withApp(async (root, cacheRoot) => {
     await cache(root, cacheRoot);
     await writeFile(join(root, ".lando/scripts/probe.bun.sh"), script);
-    expect(await Effect.runPromise(resolveToolingRoute("probe", { cwd: root, cacheRoot }))).toMatchObject({
+    expect(await Effect.runPromise(fixtureRoute(root, cacheRoot, "probe"))).toMatchObject({
       _tag: "bun-script",
     });
     await writeFile(join(root, ".lando.yml"), "name: freshness\n# changed\n");

@@ -53,6 +53,7 @@ const writeFreshCache = async (
 ): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: fixture.env,
       landofile,
       entries: [
         {

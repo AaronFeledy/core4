@@ -64,6 +64,7 @@ const writeFreshCache = async (
 ): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: fixture.env,
       landofile: {
         name: "native-help",
         ...(commandAliases === undefined

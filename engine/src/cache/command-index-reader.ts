@@ -13,8 +13,13 @@ import {
 } from "@lando/sdk/errors";
 import type { LandoRoots } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { CORE_VERSION } from "../version.ts";
-import { type AppCommandIndexPayload, decodeAppCommandIndex } from "./command-index.ts";
+import {
+  type AppCommandIndexPayload,
+  decodeAppCommandIndex,
+  deriveAppCommandEnvironmentHash,
+} from "./command-index.ts";
 import {
   type AppCommandCacheSource,
   isMissingFile,
@@ -35,6 +40,7 @@ export type AppCommandCacheReadResult =
     };
 
 export interface ReadAppCommandCacheOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly cwd?: string;
   readonly cacheRoot?: string;
   /** The invocation's roots; the folder's data identity is read under them when no StateStore is provided. */
@@ -43,7 +49,7 @@ export interface ReadAppCommandCacheOptions {
 }
 
 const readDetailed = async (
-  options: ReadAppCommandCacheOptions,
+  options: ReadAppCommandCacheOptions & { readonly env: Readonly<Record<string, string | undefined>> },
   source: AppCommandCacheSource,
 ): Promise<AppCommandCacheReadResult> => {
   const appRoot = dirname(source.filePath);
@@ -60,6 +66,8 @@ const readDetailed = async (
   if (payload === null) return { status: "invalid", sourcePath };
   if (payload.landoVersion !== CORE_VERSION)
     return { status: "stale", staleReason: "lando-version", sourcePath };
+  if (payload.sourceEnvironmentHash !== deriveAppCommandEnvironmentHash(options.env))
+    return { status: "stale", staleReason: "environment", sourcePath };
   if (payload.sourceFile !== sourcePath || !Array.isArray(payload.sourceLocalIncludePaths))
     return { status: "stale", staleReason: "source", sourcePath };
   if (!Array.isArray(payload.sourceReferencedFiles))
@@ -92,7 +100,7 @@ const readDetailed = async (
   const evaluation = evaluateVersionConstraints(payload.versionConstraints, CORE_VERSION);
   if (
     evaluation.invalid.length > 0 ||
-    (evaluation.unsatisfied.length > 0 && !isVersionConstraintSkipped(process.env))
+    (evaluation.unsatisfied.length > 0 && !isVersionConstraintSkipped(options.env))
   )
     return { status: "stale", staleReason: "version-constraint", sourcePath };
   return { status: "fresh", payload };
@@ -101,24 +109,27 @@ const readDetailed = async (
 export const readAppCommandCacheForCwdDetailed = (
   options: ReadAppCommandCacheOptions = {},
 ): Effect.Effect<AppCommandCacheReadResult, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd, options.roots).pipe(
-    Effect.flatMap((source) =>
-      source === undefined
-        ? Effect.succeed<AppCommandCacheReadResult>({ status: "missing" })
-        : Effect.tryPromise({
-            try: () => readDetailed(options, source),
-            catch: (cause) =>
-              cause instanceof CacheError
-                ? cause
-                : new CacheError({
-                    message: "Failed to read app-command metadata.",
-                    key: "app-command",
-                    cause,
-                    remediation: "Check that the app sources and Lando cache are readable, then retry.",
-                  }),
-          }),
-    ),
-  );
+  Effect.flatMap(HostExecutionDefaults, (host) => {
+    const scoped = { ...options, env: options.env ?? host?.env ?? { ...process.env } };
+    return resolveAppCommandCacheSource(scoped.cwd, scoped.roots).pipe(
+      Effect.flatMap((source) =>
+        source === undefined
+          ? Effect.succeed<AppCommandCacheReadResult>({ status: "missing" })
+          : Effect.tryPromise({
+              try: () => readDetailed(scoped, source),
+              catch: (cause) =>
+                cause instanceof CacheError
+                  ? cause
+                  : new CacheError({
+                      message: "Failed to read app-command metadata.",
+                      key: "app-command",
+                      cause,
+                      remediation: "Check that the app sources and Lando cache are readable, then retry.",
+                    }),
+            }),
+      ),
+    );
+  });
 
 export const readFreshAppCommandCacheForCwd = (
   options: ReadAppCommandCacheOptions = {},

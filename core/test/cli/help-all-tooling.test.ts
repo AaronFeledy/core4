@@ -67,6 +67,7 @@ test.each([...policies])(
       await writeFile(landofile, "name: all-help\n");
       const cachePath = await Effect.runPromise(
         writeAppCommandCacheStrict({
+          env,
           landofile: { name: "all-help", commandAliases: policy },
           entries: [
             {

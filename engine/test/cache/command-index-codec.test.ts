@@ -114,7 +114,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         expect(decode(currentAbiBytes(magic, value))).toBeNull();
       },
     );
-    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n])(
+    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n, 10n, 11n])(
       "rejects old header %s with a current body",
       (version) => {
         // Given
@@ -130,7 +130,7 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
       // When / Then
       expect(decode(bytes)).toBeNull();
     });
-    test.each(["schemaVersion", "landoVersion", "generatedAtMs", "entries"])(
+    test.each(["schemaVersion", "landoVersion", "generatedAtMs", "entries", "sourceEnvironmentHash"])(
       "rejects missing required field %s",
       (key) => {
         // Given
@@ -142,6 +142,9 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
     test.each([
       { schemaVersion: 5 },
       { landoVersion: null },
+      { sourceEnvironmentHash: null },
+      { sourceEnvironmentHash: "" },
+      { sourceEnvironmentHash: "not-a-digest" },
       { generatedAtMs: Number.NaN },
       { generatedAtMs: Number.POSITIVE_INFINITY },
       { entries: null },

@@ -37,6 +37,7 @@ export const app = {
   landoVersion: "4.0.0",
   appName: "codec",
   sourceFile: "/app/.lando.yml",
+  sourceEnvironmentHash: sha256Hex("environment"),
   sourceContentHash: sha256Hex("name: codec\n"),
   sourceLocalIncludePaths: ["/app/.lando.local.yml"],
   sourceReferencedFiles: [

@@ -224,6 +224,9 @@ export const isAppCommandIndexPayload = (value: unknown): value is AppCommandInd
   hasCommonFields(value) &&
   isString(own(value, "appName")) &&
   isString(own(value, "sourceFile")) &&
+  Object.hasOwn(value, "sourceEnvironmentHash") &&
+  isString(value.sourceEnvironmentHash) &&
+  /^[a-f0-9]{64}$/u.test(value.sourceEnvironmentHash) &&
   isFiniteNumber(own(value, "sourceMtimeMs")) &&
   isFiniteNumber(own(value, "sourceSize")) &&
   (!Object.hasOwn(value, "sourceContentHash") || isString(value.sourceContentHash)) &&
