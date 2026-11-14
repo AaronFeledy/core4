@@ -230,11 +230,40 @@ afterwards. To make the same judgment yourself, call `certificatePairIsCurrent`
 from `@lando/sdk/certificates` with the requested names, the current root, and
 `LEAF_RENEWAL_MARGIN_MS` as `renewalMarginMs`. That constant is the shared 30-day
 policy for service and router leaves; the verifier caps it at one third of the
-leaf's lifetime. The Traefik router reads `root` once per HTTPS route apply,
-including warm reuse, so keep that read free of setup and issuance work. It
-repairs its saved issuer independently of valid leaves and reloads served-pair
-replacements itself. HTTP-only publication and withdrawal need no authority.
-These are apply-time checks, not background renewal.
+leaf's lifetime.
+
+A plugin that stores certificates, such as a router, doesn't need to repeat that
+logic. Call `prepareCertificatePair` from the same module with the authority, the
+names you need, the root you read for this apply, and the pair you stored, if
+any:
+
+```ts
+import { prepareCertificatePair } from "@lando/sdk/certificates";
+
+const prepared = yield* prepareCertificatePair(authority, {
+  spec, // CertificateSpec: the cn and sans the leaf must cover
+  root, // PEM of the authority's current root
+  existing, // optional { certificate, privateKey }, privateKey wrapped in Redacted
+  subject: "service web", // names the leaf in a failure message
+});
+```
+
+`authority` needs only `id` and `issueCert`. The result is
+`{ source, certificate, privateKey, root }`. `source` is `"reused"` when your
+stored pair is still current under `root` and the 30-day margin, and `"issued"`
+after one `issueCert` call whose result passed the same check against the root
+that came with it. An unusable issuance fails with `CaError`. The helper reads and
+writes no files and keeps no cache: you store the pair, and `privateKey` stays
+`Redacted` so it can't leak into logs or JSON.
+
+The Traefik router reads `root` once per HTTPS route apply, including warm
+reuse, so keep that read free of setup and issuance work. It repairs its saved
+issuer independently of valid leaves and reloads served-pair replacements
+itself. After publishing, it confirms that the certificate it serves is current
+under your root before the start succeeds, so material the router can't serve
+fails the start instead of reaching a browser. HTTP-only publication and
+withdrawal need no authority. These are apply-time checks, not background
+renewal.
 
 For tests that only need certificate-shaped
 input, `@lando/sdk/test` exports `TEST_CERTIFICATES`, a set of throwaway PEM
