@@ -76,7 +76,7 @@ Tooling aliases declared under `tooling:` run inside their target service.
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
-Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. Reach for `rebuild` when you need a forced image pull or a forced rerun of build steps whose command text did not change. `start` does not take `-y`.
+Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. A `build.app` step runs again in every new container, so `stop` then `start` and bare `restart` both rerun those steps, while a `start` that keeps a container reports them as cached. Reach for `rebuild` when you need a forced image pull, or a forced rerun of build steps in a container that would otherwise stay. `start` does not take `-y`.
 
 `lando stop` withdraws the app's published hostnames along with its containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails.
 
