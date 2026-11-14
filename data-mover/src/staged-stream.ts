@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-import { DataTransferError } from "@lando/sdk/errors";
+import { DataTransferError, safeFileIoError } from "@lando/sdk/errors";
 import {
   type VerifiedStreamError,
   type VerifiedStreamResult,
@@ -36,8 +36,19 @@ export const stageVerifiedStream = Effect.fnUntraced(function* <E, R>(
     try: async () => {
       await mkdir(input.transferStagingDir, { recursive: true, mode: 0o700 });
       await chmod(input.transferStagingDir, 0o700);
-      await preparePrivateFile(input.transferStagingDir);
     },
+    catch: (cause) => {
+      const failure = safeFileIoError("stage", input.transferStagingDir, cause);
+      return new DataTransferError({
+        operation: "stage",
+        message: "Failed to secure the transfer staging directory.",
+        cause: failure,
+        remediation: failure.remediation,
+      });
+    },
+  });
+  yield* Effect.tryPromise({
+    try: () => preparePrivateFile(input.transferStagingDir),
     catch: (cause) =>
       new DataTransferError({
         operation: "stage",

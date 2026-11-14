@@ -179,7 +179,13 @@ describe("persistVerifiedStream writes", () => {
           );
           expect(error).toBeInstanceOf(VerifiedStreamError);
           expect(error.reason).toBe("persist");
-          if (failure === "error") expect(error.cause).toBe(cause);
+          if (failure === "error")
+            expect(error.cause).toMatchObject({
+              _tag: "FileIoError",
+              operation: "persist",
+              path: target,
+              reason: "unknown",
+            });
           expect(calls).toBe(2);
           expect(await fs.readFile(target, "utf8")).toBe("original");
           expect(await fs.readdir(join(target, ".."))).toEqual(["artifact.bin"]);

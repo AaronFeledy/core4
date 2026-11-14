@@ -634,7 +634,7 @@
       "decodeVariablePropsEither",
       "decodeVerifyPropsEither"
     ],
-    "./errno": ["errnoCode", "isErrnoCode"],
+    "./errno": ["FILE_IO_REASONS", "errnoCode", "fileIoReason", "isErrnoCode"],
     "./errors": [
       "AgentEnvPatternError",
       "AmbiguousCertificateAuthoritiesError",
@@ -694,7 +694,10 @@
       "DownloaderUnavailableError",
       "EnvironmentValueResolutionError",
       "EventError",
+      "FILE_IO_REASONS",
       "FileIoError",
+      "FileIoOperation",
+      "FileIoReason",
       "FileNotFoundError",
       "FilePermissionError",
       "FileSyncDriftError",
@@ -900,10 +903,12 @@
       "causeMessage",
       "choicesUnavailableFields",
       "errnoCode",
+      "fileIoReason",
       "interactionRequiredFields",
       "isErrnoCode",
       "landofileLoadFailures",
-      "promptValidationFields"
+      "promptValidationFields",
+      "safeFileIoError"
     ],
     "./events": [
       "BeforeExitEvent",
