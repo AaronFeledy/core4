@@ -199,15 +199,19 @@ const declaredInput = Result.getOrThrowWith(
 
 const declaredInputRoute = (
   overrides: Partial<Extract<ToolingRoute, { readonly _tag: "tooling" }>> = {},
-): Extract<ToolingRoute, { readonly _tag: "tooling" }> => ({
-  _tag: "tooling",
-  commandId: "app:greet",
-  name: "greet",
-  summary: "Greet a target",
-  hidden: false,
-  input: declaredInput,
-  ...overrides,
-});
+): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
+  const { disabled, ...metadata } = overrides;
+  const route = {
+    _tag: "tooling" as const,
+    commandId: "app:greet",
+    name: "greet",
+    summary: "Greet a target",
+    hidden: false,
+    input: declaredInput,
+    ...metadata,
+  };
+  return disabled ? { ...route, disabled: true, sourcePath: route.sourcePath ?? "/app/.lando.yml" } : route;
+};
 
 test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {
   // Given

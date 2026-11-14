@@ -7,7 +7,7 @@ import type {
   LandofileFormConflictError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { ToolingCompileError, ToolingDisabledError } from "@lando/sdk/errors";
+import { ToolingDisabledError } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Effect, Exit } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
@@ -208,18 +208,12 @@ export const resolveInvocationOwner = async (
   if (route?._tag === "tooling" || route?._tag === "bun-script") {
     const refusal =
       route.disabled === true
-        ? route.sourcePath === undefined
-          ? new ToolingCompileError({
-              message: `Disabled tooling command ${route.name} has no recorded source.`,
-              tool: route.name,
-              remediation: "Refresh the app's tooling metadata before running this command.",
-            })
-          : new ToolingDisabledError({
-              message: `Tooling command ${route.name} is disabled.`,
-              tool: route.name,
-              source: { path: route.sourcePath, task: route.name },
-              remediation: "Enable this task in the app's tooling definition before running it.",
-            })
+        ? new ToolingDisabledError({
+            message: `Tooling command ${route.name} is disabled.`,
+            tool: route.name,
+            source: { path: route.sourcePath, task: route.name },
+            remediation: "Enable this task in the app's tooling definition before running it.",
+          })
         : route.loadError === undefined
           ? undefined
           : await Effect.runPromise(unavailableToolingError(route));

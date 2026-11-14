@@ -10,20 +10,21 @@ import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { type HelpAliasPolicy, type TypeableName, typeableName } from "./help-names";
 import type { ToolingRebuildFailure } from "./tooling-cache-status";
 
-interface ToolingRouteMetadata {
+type ToolingRouteMetadata = {
   readonly commandId: string;
   readonly name: string;
   readonly summary: string;
   readonly hidden: boolean;
-  readonly disabled?: true;
-  readonly sourcePath?: string;
   readonly service?: string;
   readonly input?: NonNullable<CommandIndexPresentation["input"]>;
   readonly wrapper?: true;
   readonly runs?: NonNullable<CommandIndexPresentation["runs"]>;
   readonly loadError?: NonNullable<CommandIndexPresentation["loadError"]>;
   readonly aliasPolicy?: NonNullable<AppCommandIndexPayload["aliasPolicy"]>;
-}
+} & (
+  | { readonly disabled: true; readonly sourcePath: string }
+  | { readonly disabled?: never; readonly sourcePath?: string }
+);
 
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }
@@ -75,17 +76,17 @@ export const normalizedToolingRoute = (
   aliasPolicy: AppCommandIndexPayload["aliasPolicy"],
   sourcePath?: string,
 ): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
-  const { id: _id, source: _source, ...metadata } = commandIndexPresentation(entry);
-  return {
+  const { id: _id, source: _source, disabled: _disabled, ...metadata } = commandIndexPresentation(entry);
+  const route = {
     ...metadata,
-    _tag: "tooling",
+    _tag: "tooling" as const,
     commandId: entry.id,
     name: entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id,
     summary: entry.summary,
     ...(sourcePath === undefined ? {} : { sourcePath }),
-    ...(entry._tag === "Disabled" ? { sourcePath: entry.source.path } : {}),
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
   };
+  return entry._tag === "Disabled" ? { ...route, disabled: true, sourcePath: entry.source.path } : route;
 };
 
 export const bunScriptRoute = (

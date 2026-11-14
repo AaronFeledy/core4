@@ -264,16 +264,18 @@ test.each([
           normalizeToolingInput("greet", { args: { target: { required: true } } }),
           (error) => error,
         );
-  const route: ToolingRoute = {
-    _tag: "bun-script",
+  const metadata = {
+    _tag: "bun-script" as const,
     commandId: "app:greet",
     name: "greet",
     summary: "Greet",
     hidden: overrides.hidden ?? false,
-    ...(overrides.disabled ? { disabled: true as const } : {}),
     appRoot: "/app",
     ...(input === undefined ? {} : { input }),
   };
+  const route: ToolingRoute = overrides.disabled
+    ? { ...metadata, disabled: true, sourcePath: "/app/.lando/scripts/greet.bun.sh" }
+    : metadata;
   // When
   const requested = helpRequested(route, argv);
   // Then
