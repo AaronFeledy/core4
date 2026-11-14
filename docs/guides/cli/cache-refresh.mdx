@@ -24,15 +24,18 @@ A Landofile that does not plan fails with the real error, such as `LandofilePars
 
 ## Commands update themselves
 
-Lando caches the planned app so later commands can skip a full plan. On the host CLI, any app tooling command or script, `lando --help`, `lando help`, `lando help <task>`, and `lando <task> --help` check that cache first and rebuild it when it is missing, unreadable, or out of date. The cache is out of date after you:
+Lando caches the planned app so later commands can skip a full plan. On the host CLI, any app tooling command or script, `lando --help`, `lando help`, `lando help <task>`, and `lando <task> --help` check that cache first and rebuild it when it is missing, invalid, or out of date. The cache is out of date after you:
 
 - Edit `.lando.yml` or another merged Landofile layer
 - Change an `includes:` fragment or its lockfile
 - Change a file the Landofile `load()`s or `import()`s
+- Change the environment variables passed to Lando, including a value used by a tooling declaration
 - Add or remove a `.bun.sh` script, or edit a script's front matter
 - Upgrade Lando itself
 
 The next command just works. A fast rebuild prints nothing. In a terminal, one that takes longer than about half a second prints one line that names the cause, such as `Updating this app's commands (Landofile changed)...`. The rebuild is the same work this command does: it plans the Landofile and may fetch and pin includes, but it never starts services or the provider.
+
+An environment-only correction also clears an unavailable task. For example, if a flag default reads `{{ env.DEPLOY_TARGET }}` and that value is outside the declared choices, set it to an allowed value and retry. Help and invocation both pick up the correction without editing the Landofile or refreshing manually. Lando stores a hash for this freshness check, not the environment values.
 
 Built-in commands such as `lando start` and `lando info` never trigger that rebuild, and neither do `lando` calls made from inside a container through the host proxy.
 
@@ -77,7 +80,7 @@ tooling:
       - echo second
 ```
 
-`lando app:cache:refresh --format=json` exits 0 and names `deploy` in a `LANDO_TOOLING_INVALID` warning. `lando hello` runs. `lando deploy --format=json` fails with `ToolingCompileError`, and its `error.issues` entry has `reason: "wrapper-command-count"` at `tooling.deploy.wrapper`. Give the wrapper a single `cmd` and `lando deploy` works on the next call with no refresh in between.
+`lando app:cache:refresh --format=json` exits 0 and names `deploy` in a `LANDO_TOOLING_INVALID` warning. The warning's `issues` entry has `reason: "wrapper-command-count"` at `tooling.deploy.wrapper`, its `omittedIssueCount` is 0, and its `context` holds the Landofile path and the task. `lando hello` runs. `lando deploy --format=json` fails with `ToolingCompileError`, and its `error.issues` holds the same entry. Give the wrapper a single `cmd` and `lando deploy` works on the next call with no refresh in between.
 
 ## When your home directory changes
 
@@ -141,6 +144,7 @@ tooling:
       <Run command="lando app:cache:refresh --format=json" />
       <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true[\\s\\S]*\"code\":\\s*\"LANDO_TOOLING_INVALID\"" } }} />
       <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\":\\s*2" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"warnings\":\\s*\\[\\s*\\{\\s*\"issues\":\\s*\\[\\s*\\{\\s*\"reason\":\\s*\"wrapper-command-count\",\\s*\"path\":\\s*\\[\"tooling\",\\s*\"deploy\",\\s*\"wrapper\"\\][\\s\\S]*?\\}\\s*\\],\\s*\"omittedIssueCount\":\\s*0,\\s*\"code\":\\s*\"LANDO_TOOLING_INVALID\"[\\s\\S]*?\"context\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*\\.lando\\.yml\",\\s*\"task\":\\s*\"deploy\"\\s*\\}" } }} />
     </Step>
     <Step name="run-healthy-task-quietly">
       <Verify command="lando hello --format=json" expect={{ stdout: { regex: "healthy-task", not: { regex: "LANDO_TOOLING_INVALID" } } }} />

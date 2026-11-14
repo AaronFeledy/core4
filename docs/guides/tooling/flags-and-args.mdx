@@ -353,7 +353,7 @@ lando help broken
 lando broken --version
 ```
 
-The error names the task, the rule it broke, and the fix. With `--format=json`, a failed run also lists each finding in `error.issues`, so a script or agent doesn't parse the message:
+The error names the task, the rule it broke, and the fix. With `--format=json`, all four requests fail with the same `error`, and it lists each finding in `error.issues`, so a script or agent doesn't parse the message. This is the entry for `broken`, reindented, with the app directory shortened to `/home/you/app`:
 
 ```json
 {
@@ -361,11 +361,25 @@ The error names the task, the rule it broke, and the fix. With `--format=json`, 
   "path": ["tooling", "broken", "flags", "note", "alias"],
   "message": "Flag alias collides with another flag name or alias.",
   "suggestion": "Choose an alias that is not used by another flag name or alias.",
-  "related": [{ "path": ["tooling", "broken", "flags", "name", "alias"] }]
+  "source": {
+    "file": "/home/you/app/.lando.yml",
+    "layer": "canonical",
+    "path": ["tooling", "broken", "flags", "note", "alias"]
+  },
+  "related": [
+    {
+      "path": ["tooling", "broken", "flags", "name", "alias"],
+      "source": {
+        "file": "/home/you/app/.lando.yml",
+        "layer": "canonical",
+        "path": ["tooling", "broken", "flags", "name", "alias"]
+      }
+    }
+  ]
 }
 ```
 
-Match on `reason`, a stable id for the rule. `path` is the key to change, `suggestion` is the correction for that rule, and `related` points at the other declaration in a conflict, here the flag that already uses `n`. `error.source` names the file and task. `error.omittedIssueCount` is above zero only when Lando left findings out of a bounded diagnostic; lint always has the full list.
+Match on `reason`, a stable id for the rule. `path` is the key to change, `suggestion` is the correction for that rule, `source` is the file that key came from, and `related` points at the other declaration in a conflict, here the flag that already uses `n`. `error.source` names the file and task. `error.omittedIssueCount` is above zero only when Lando left findings out of a bounded diagnostic; lint always has the full list.
 
 To see every malformed task at once, run `lando app:config:lint`. Each one is a `landofile.tooling` finding at the key that is wrong, with the same `reason`. `lando app:cache:refresh` also warns with `LANDO_TOOLING_INVALID` for each one. The rebuild Lando does on its own before a command prints no warning. An MCP client reads the same problems from the [`lando://diagnostics` resource](../agent-native/mcp.mdx#find-out-why-a-tool-is-missing).
 
@@ -598,12 +612,15 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
     <Step name="refuse-malformed-task-help">
       <Run command="lando broken --help --format=json" expectExit={1} />
       <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+      <Verify command="lando broken --help --format=json" expectExit={1} expect={{ stdout: { regex: "\"issues\":\\s*\\[\\s*\\{\\s*\"reason\":\\s*\"alias-collision\",\\s*\"path\":\\s*\\[\"tooling\",\\s*\"broken\",\\s*\"flags\",\\s*\"note\",\\s*\"alias\"\\][\\s\\S]*?\"related\":\\s*\\[\\s*\\{\\s*\"path\":\\s*\\[\"tooling\",\\s*\"broken\",\\s*\"flags\",\\s*\"name\",\\s*\"alias\"\\][\\s\\S]*?\"source\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*\\.lando\\.yml\",\\s*\"task\":\\s*\"broken\"\\s*\\},\\s*\"omittedIssueCount\":\\s*0" } }} />
       <Run command="lando help broken --format=json" expectExit={1} />
       <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+      <Verify command="lando help broken --format=json" expectExit={1} expect={{ stdout: { regex: "\"issues\":\\s*\\[\\s*\\{\\s*\"reason\":\\s*\"alias-collision\",\\s*\"path\":\\s*\\[\"tooling\",\\s*\"broken\",\\s*\"flags\",\\s*\"note\",\\s*\"alias\"\\][\\s\\S]*?\"related\":\\s*\\[\\s*\\{\\s*\"path\":\\s*\\[\"tooling\",\\s*\"broken\",\\s*\"flags\",\\s*\"name\",\\s*\"alias\"\\][\\s\\S]*?\"source\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*\\.lando\\.yml\",\\s*\"task\":\\s*\"broken\"\\s*\\},\\s*\"omittedIssueCount\":\\s*0" } }} />
     </Step>
     <Step name="refuse-malformed-task-version">
       <Run command="lando broken --version --format=json" expectExit={1} />
       <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+      <Verify command="lando broken --version --format=json" expectExit={1} expect={{ stdout: { regex: "\"issues\":\\s*\\[\\s*\\{\\s*\"reason\":\\s*\"alias-collision\",\\s*\"path\":\\s*\\[\"tooling\",\\s*\"broken\",\\s*\"flags\",\\s*\"note\",\\s*\"alias\"\\][\\s\\S]*?\"related\":\\s*\\[\\s*\\{\\s*\"path\":\\s*\\[\"tooling\",\\s*\"broken\",\\s*\"flags\",\\s*\"name\",\\s*\"alias\"\\][\\s\\S]*?\"source\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*\\.lando\\.yml\",\\s*\"task\":\\s*\"broken\"\\s*\\},\\s*\"omittedIssueCount\":\\s*0" } }} />
     </Step>
     <Step name="list-malformed-task-as-unavailable">
       <Verify command="lando help --format=json" expect={{ stdout: { regex: "\"loadError\":\\s*\\{\\s*\"_tag\":\\s*\"ToolingCompileError\"", not: { regex: "retired" } } }} />

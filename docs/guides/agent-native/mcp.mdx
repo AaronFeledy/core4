@@ -402,21 +402,55 @@ fields:
 | `omittedDiagnosticCount` | Records left out to keep the payload within 16 KiB |
 
 Every record has `commandId`, `kind` (`tooling` or `plugin`), `_tag`, and
-`message`, usually with a `remediation`. A tooling record adds `sourceKind`:
-`landofile` for a task, `bun-script` for a `.bun.sh` script. A plugin record
-adds `plugin.name` and `plugin.source`. The schema also allows `source` (the
-file and task), `issues`, and `omittedIssueCount`, the fields a failed call
-reports under `error`; read them when they are present. This record is from an
-app whose `dup` task gives two flags the same alias:
+`message`, usually with a `remediation`. A plugin record adds `plugin.name` and
+`plugin.source`. A tooling record adds `sourceKind`: `landofile` for a task,
+`bun-script` for a `.bun.sh` script. Landofile task declaration failures
+(`ToolingCompileError`) also carry `issues` and `omittedIssueCount`, plus
+`source` (the file and task) when known and within the disclosure budget.
+These are the same fields a failed call reports under `error`.
+[Fix an unavailable task](../tooling/flags-and-args.mdx#fix-an-unavailable-task)
+explains how to read an `issues` entry.
+
+This record is from an app whose `dup` task gives two flags the same alias. It
+is one read of the resource, reindented, with the app directory shortened to
+`/home/you/app`:
 
 ```json
 {
   "commandId": "app:dup",
   "kind": "tooling",
   "_tag": "ToolingCompileError",
-  "message": "tooling.dup.flags.note.alias: Flag alias collides with another flag name or alias. Choose an alias that is not used by another flag name or alias.",
-  "remediation": "Run lando app:config:lint to see every finding. Correct the tooling declaration for dup: tooling.dup.flags.note.alias: Flag alias collides with another flag name or alias. Choose an alias that is not used by another flag name or alias.",
-  "sourceKind": "landofile"
+  "message": "tooling.dup.flags.note.alias: Flag alias collides with another flag name or alias.",
+  "remediation": "Choose an alias that is not used by another flag name or alias.",
+  "sourceKind": "landofile",
+  "source": {
+    "path": "/home/you/app/.lando.yml",
+    "task": "dup"
+  },
+  "issues": [
+    {
+      "reason": "alias-collision",
+      "path": ["tooling", "dup", "flags", "note", "alias"],
+      "message": "Flag alias collides with another flag name or alias.",
+      "suggestion": "Choose an alias that is not used by another flag name or alias.",
+      "source": {
+        "file": "/home/you/app/.lando.yml",
+        "layer": "canonical",
+        "path": ["tooling", "dup", "flags", "note", "alias"]
+      },
+      "related": [
+        {
+          "path": ["tooling", "dup", "flags", "name", "alias"],
+          "source": {
+            "file": "/home/you/app/.lando.yml",
+            "layer": "canonical",
+            "path": ["tooling", "dup", "flags", "name", "alias"]
+          }
+        }
+      ]
+    }
+  ],
+  "omittedIssueCount": 0
 }
 ```
 
@@ -428,6 +462,11 @@ names, read the resource again, and the record is gone and the tool is in
 break a working task, read the resource, and the tool leaves the list and gains
 a record. When a read changes the catalog, the server sends
 `notifications/tools/list_changed`.
+
+The session keeps the environment it started with. Editing a source file can
+take effect through a resource read, but changing a variable in your shell
+does not change a running server's environment. Start a new MCP session when
+you need it to use a different environment.
 
 The records cover only commands this session is allowed to expose:
 
