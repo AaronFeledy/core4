@@ -171,7 +171,6 @@ const renderPluginOwnedPreCommandFailure = async (
 ): Promise<void> => {
   await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, {
     ...(context === undefined ? {} : { context }),
-    failureExitCode: () => 2,
     preCommand: true,
     payloadStdout,
     ...(usage ? { usage } : {}),

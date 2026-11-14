@@ -262,7 +262,7 @@ test("a plugin load failure is reported even when followed by a Lando-sized flag
     // When
     const result = await f.invoke(["--format=json", "fixture:run", "--format=csv"]);
     // Then
-    expect(result.code, result.stderr).toBe(2);
+    expect(result.code, result.stderr).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
       error: { message: expect.stringContaining("fixture load failure") },
@@ -276,7 +276,7 @@ test("a machine-output flag after a plugin that fails to load chooses the report
   const f = await fixture(true);
   try {
     const result = await f.invoke(["fixture:run", "--format=json"]);
-    expect(result.code, result.stderr).toBe(2);
+    expect(result.code, result.stderr).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
       error: { message: expect.stringContaining("fixture load failure") },
@@ -307,7 +307,7 @@ test("an aliased plugin that fails to load reports the failure, not help, for a 
     // When
     const result = await f.invoke(["--format=json", "frun", "ls", "--help"]);
     // Then
-    expect(result.code, result.stderr).toBe(2);
+    expect(result.code, result.stderr).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
       error: { message: expect.stringContaining("fixture load failure") },
@@ -550,7 +550,7 @@ test("an incompatible reserved flag declaration fails the plugin load", async ()
   const f = await fixture();
   try {
     const result = await f.invoke(["fixture:bad"]);
-    expect(result.code, result.stderr).toBe(2);
+    expect(result.code, result.stderr).toBe(1);
     expect(`${result.stdout}\n${result.stderr}`).toContain("reserved flag");
     expect(`${result.stdout}\n${result.stderr}`).toContain("--format, --json, and -j");
   } finally {
