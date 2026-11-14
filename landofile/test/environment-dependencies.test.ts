@@ -36,7 +36,7 @@ describe("recordEnvironment view", () => {
 
   test("mutation traps return false and leave the snapshot unchanged", () => {
     const recorder = recordEnvironment({ KEEP: "1" });
-    const view = recorder.view as Record<string, string | undefined>;
+    const view = recorder.view;
     expect(Reflect.set(view, "KEEP", "2")).toBe(false);
     expect(Reflect.defineProperty(view, "NEW", { value: "x" })).toBe(false);
     expect(Reflect.deleteProperty(view, "KEEP")).toBe(false);

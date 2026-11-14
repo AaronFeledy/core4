@@ -98,7 +98,6 @@ export const prepareLandofileSource = Effect.fn("Landofile.prepareSource")(funct
           context: {
             ...(templateContext ?? {
               bootstrapLevel: "app" as const,
-              env: capturedEnv,
               scope: "landofile",
             }),
             env: environmentRecorder.view as Readonly<Record<string, string>>,
@@ -164,9 +163,7 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
     policy: context.policy,
     pendingSites: context.pendingSites,
     recorder: context.recorder,
-    ...(context.environmentRecorder === undefined
-      ? {}
-      : { environmentRecorder: context.environmentRecorder }),
+    environmentRecorder: context.environmentRecorder,
   });
   if (context.logger !== undefined) {
     const logger = context.logger;
@@ -183,12 +180,12 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
   }
   const prepared = yield* prepareOverlay(resolved.value, { file, layer: context.layer }, value);
   if (isPlainRecord(value)) copyLandofileProvenance(value, prepared.value);
-  let document = rememberLandofileReferencedFiles(
+  const document = rememberLandofileReferencedFiles(
     rememberOrigins(prepared.value, prepared.origins),
     resolved.dependencies,
   );
   if (context.environmentRecorder !== undefined) {
-    document = rememberLandofileEnvironmentDependencies(document, context.environmentRecorder.dependencies());
+    rememberLandofileEnvironmentDependencies(document, context.environmentRecorder.dependencies());
   }
   const documents =
     content === undefined

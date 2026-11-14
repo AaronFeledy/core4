@@ -209,9 +209,7 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         recorder,
         pendingSites: scope.pendingSites,
         pathPrefix: node.source.path,
-        ...(scope.environmentRecorder === undefined
-          ? {}
-          : { environmentRecorder: scope.environmentRecorder }),
+        environmentRecorder: scope.environmentRecorder,
       });
       accepted = resolved.value;
       dependencies.push(...resolved.dependencies);

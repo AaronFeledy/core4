@@ -44,9 +44,6 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
       context.environmentRecorder,
     )),
     recorder: context.recorder,
-    ...(context.environmentRecorder === undefined
-      ? {}
-      : { environmentRecorder: context.environmentRecorder }),
   };
   const loaded = yield* Effect.forEach(layers, ({ layer, landofile }) =>
     resolveLandofileIncludeLayers(

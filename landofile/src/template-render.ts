@@ -119,11 +119,9 @@ const parseError = (
   });
 
 /** Minimal pre-planning render context — no `service.*` / `info.*`. */
-const defaultRenderContext = (
-  env: Readonly<Record<string, string>> = hostExpressionEnvironment(),
-): TemplateRenderContext => ({
+const defaultRenderContext = (): TemplateRenderContext => ({
   bootstrapLevel: "app",
-  env,
+  env: hostExpressionEnvironment(),
   scope: "landofile",
 });
 

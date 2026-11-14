@@ -122,10 +122,6 @@ export const resolveLandofileLoadExpressions = (
           ],
         });
       };
-      const envRecorder = options.environmentRecorder;
-      const trackEnv = (ast: import("@lando/sdk/expressions").ExpressionTemplate): void => {
-        if (envRecorder !== undefined) recordExpressionEnvironment(envRecorder, ast);
-      };
       const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
         try {
           return visitValue(value, path);
@@ -187,7 +183,8 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
-          trackEnv(parsed.success);
+          if (options.environmentRecorder !== undefined)
+            recordExpressionEnvironment(options.environmentRecorder, parsed.success);
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
           if (deferred !== undefined) throw deferred;
           const references = parsed.success.segments.flatMap((segment) =>

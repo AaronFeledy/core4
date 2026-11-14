@@ -11,8 +11,6 @@ export const emptyEnvironmentDependencies = (): EnvironmentDependencies => ({
   names: [],
 });
 
-const sortedUnique = (names: Iterable<string>): readonly string[] => [...new Set(names)].sort();
-
 /** Merge dependency sets; any `Complete` arm wins. */
 export const unionEnvironmentDependencies = (
   ...parts: readonly EnvironmentDependencies[]
@@ -22,7 +20,7 @@ export const unionEnvironmentDependencies = (
     if (part._tag === "Complete") return { _tag: "Complete" };
     for (const name of part.names) names.add(name);
   }
-  return { _tag: "Names", names: sortedUnique(names) };
+  return { _tag: "Names", names: [...names].sort() };
 };
 
 export interface EnvironmentRecorder {
@@ -56,17 +54,14 @@ export const recordEnvironment = (env: Readonly<Record<string, string | undefine
 
   const view = new Proxy(target, {
     get(source, property, receiver) {
-      if (typeof property === "symbol") return Reflect.get(source, property, receiver);
       recordName(property);
       return Reflect.get(source, property, receiver);
     },
     has(source, property) {
-      if (typeof property === "symbol") return Reflect.has(source, property);
       recordName(property);
       return Reflect.has(source, property);
     },
     getOwnPropertyDescriptor(source, property) {
-      if (typeof property === "symbol") return Reflect.getOwnPropertyDescriptor(source, property);
       recordName(property);
       return Reflect.getOwnPropertyDescriptor(source, property);
     },
@@ -87,7 +82,7 @@ export const recordEnvironment = (env: Readonly<Record<string, string | undefine
 
   return {
     view,
-    dependencies: () => (complete ? { _tag: "Complete" } : { _tag: "Names", names: sortedUnique(names) }),
+    dependencies: () => (complete ? { _tag: "Complete" } : { _tag: "Names", names: [...names].sort() }),
     recordNames: (next) => {
       if (complete) return;
       for (const name of next) names.add(name);

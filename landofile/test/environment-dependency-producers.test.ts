@@ -108,7 +108,12 @@ describe("expression producer records deferred and resolved env members", () => 
         environmentRecorder: recorder,
       }),
     );
-    expect(resolved.pendingSites.length).toBeGreaterThan(0);
+    expect(resolved.pendingSites.map((site) => site.path)).toEqual([["name"], ["note"]]);
+    expect(resolved.value).toEqual({
+      name: "{{ env.FLAVOR }}",
+      note: "{{ env.MISSING }}",
+      services: { web: { type: "lando" } },
+    });
     expect(recorder.dependencies()).toEqual({
       _tag: "Names",
       names: ["FLAVOR", "MISSING"],
