@@ -161,7 +161,7 @@ test.each(cases)("settles every declared artifact task once for %s", async (_nam
     ]);
     expect(
       result.events.filter((event) => event._tag === "build-step-skip").map((event) => event.serviceName),
-    ).toEqual(cause.reasons.every(Cause.isFailReason) ? ["queued"] : []);
+    ).toEqual(cause.reasons.every(Cause.isFailReason) ? ["sibling", "queued"] : []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -100,7 +100,7 @@ export const layer = Layer.effect(
               for (const service of queued) yield* progress.abortTask(service);
               yield* Cause.hasInterruptsOnly(exit.cause) ? progress.interruptTree : progress.failTree;
               if (exit.cause.reasons.every(Cause.isFailReason)) {
-                for (const service of queued) {
+                for (const service of progress.abortedServices()) {
                   yield* buildStepFor(provider, service).pipe(
                     Effect.flatMap((step) =>
                       publishArtifactBuildStepSkip(
