@@ -12,7 +12,7 @@ test.each(["read", "stage", "persist"] as const)(
       operation,
       reason: "no-space",
       remediation: "Free host storage space.",
-    };
+    } as const;
 
     const decoded = Schema.decodeUnknownSync(FileIoError)(wire);
 
