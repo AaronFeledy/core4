@@ -4,9 +4,9 @@ import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
+import type { ToolingDiagnostic } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import type { LandofileShape, ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
-import type { ToolingDiagnostic } from "../tooling/diagnostics.ts";
 import { canonicalCacheJson } from "./canonical.ts";
 import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";

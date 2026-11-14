@@ -4,6 +4,7 @@ import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { RedactionService } from "@lando/redaction/service";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
+import { projectToolingDiagnostic } from "@lando/sdk/command-result";
 import {
   type ComposeKeyRejectedError,
   type LandofileLoadExpressionError,
@@ -43,7 +44,6 @@ import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-auth
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
-import { projectToolingDiagnostic } from "../tooling/diagnostics.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
 import { runBracketedInvocations } from "./tooling-bracket.ts";

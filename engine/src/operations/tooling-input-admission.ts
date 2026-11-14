@@ -13,6 +13,7 @@ import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-reda
 import type { ToolingNormalizationSource } from "@lando/landofile/tooling-normalize";
 import { normalizeToolingTask, toolingCompileResult } from "@lando/landofile/tooling-normalize";
 import { RedactionService } from "@lando/redaction/service";
+import { projectToolingDiagnostic } from "@lando/sdk/command-result";
 import { ToolingCompileError, ToolingDisabledError } from "@lando/sdk/errors";
 import type {
   ParsedPendingSite,
@@ -23,7 +24,6 @@ import type {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Option, Result } from "effect";
-import { projectToolingDiagnostic } from "../tooling/diagnostics.ts";
 
 export const admitToolingInput = Effect.fnUntraced(function* (
   target: ToolingInputSubject & {

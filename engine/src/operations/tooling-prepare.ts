@@ -1,6 +1,6 @@
 import type { InvocationProgram } from "@lando/landofile/compiled-sites";
 import { RedactionService } from "@lando/redaction/service";
-import { mapFailureCause } from "@lando/sdk/command-result";
+import { mapFailureCause, projectToolingDiagnostic } from "@lando/sdk/command-result";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppPlan, ToolingInputRevision, ToolingInvocationInput } from "@lando/sdk/schema";
@@ -8,7 +8,6 @@ import { createRedactor, isSecretEnvName } from "@lando/sdk/secrets";
 import { Effect, Option } from "effect";
 import { toolingSourceResolverForPlan } from "../planner/effective-tooling.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
-import { projectToolingDiagnostic } from "../tooling/diagnostics.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { type CompileToolingInput, compileToolingInvocations } from "./tooling-compile.ts";
 import { makeDynamicToolingVarResolver } from "./tooling-dynamic-vars.ts";

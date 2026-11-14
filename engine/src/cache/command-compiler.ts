@@ -7,10 +7,10 @@ import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { type ToolingNormalizationSource, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource } from "@lando/landofile/validation";
+import { boundedDiagnosticSummary, projectToolingDiagnostic } from "@lando/sdk/command-result";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Result } from "effect";
 import type { EffectiveTooling } from "../planner/effective-tooling.ts";
-import { boundedDiagnosticSummary, projectToolingDiagnostic } from "../tooling/diagnostics.ts";
 import type { CommandIndexEntry, CommandLoadError } from "./command-index.ts";
 import { toolingRunSummary } from "./tooling-run-summary.ts";
 
@@ -51,6 +51,7 @@ export const compileToolingCommands = (
         return {
           ...identity,
           _tag: "Unavailable",
+          // Storage bound only; publication bounds again with the invocation redactor.
           diagnostic: projectToolingDiagnostic(normalized.failure, { redactString: redact }),
         };
       const task = normalized.success;
