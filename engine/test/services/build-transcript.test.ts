@@ -64,7 +64,7 @@ describe("openBuildTranscript", () => {
         serviceName: "web",
         buildKey: "test-build",
       });
-      const escapeTarget = resolve(escapeRoot, "test-app", "app", "web", "test-build.log");
+      const escapeTarget = resolve(escapeRoot, relative(resolve(userDataRoot, "builds"), path));
 
       try {
         // When
