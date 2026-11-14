@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
+import { projectToolingDiagnostic } from "@lando/sdk/command-result";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
-import { projectToolingDiagnostic } from "../../src/tooling/diagnostics.ts";
 
 test("discloses at most eight findings and counts previously omitted findings", () => {
   const error = new ToolingCompileError({

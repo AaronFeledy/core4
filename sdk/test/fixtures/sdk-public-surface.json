@@ -555,6 +555,7 @@
     "./command-result": [
       "FailureRoleAnnotation",
       "annotateFailureRole",
+      "boundedDiagnosticSummary",
       "buildCommandResultEnvelope",
       "commandCompletionFromExitCode",
       "commandFailureCause",
@@ -576,6 +577,7 @@
       "normalizeDefect",
       "primaryFailureReason",
       "projectEncodedResult",
+      "projectToolingDiagnostic",
       "resolveCommandCompletion",
       "taggedErrorJson"
     ],
