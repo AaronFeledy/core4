@@ -13,6 +13,7 @@ export interface BuildTaskProgress {
   readonly unsettledServices: () => ReadonlyArray<ServicePlan>;
   readonly completeTree: Effect.Effect<void>;
   readonly failTree: Effect.Effect<void>;
+  readonly interruptTree: Effect.Effect<void>;
 }
 
 export const makeBuildTaskProgress = (events: ProgressEmitter, plan: AppPlan): BuildTaskProgress => {
@@ -43,22 +44,19 @@ export const makeBuildTaskProgress = (events: ProgressEmitter, plan: AppPlan): B
       tree
         .startTask(String(service.name))
         .pipe(
-          Effect.andThen(
-            tree.failTask(String(service.name), `Build ${String(service.name)} failed`, { exitCode: 1 }),
-          ),
+          Effect.andThen(tree.failTask(String(service.name), `Build ${String(service.name)} failed`)),
           Effect.andThen(markSettled(service)),
         ),
     abortTask: (service) =>
       tree
         .startTask(String(service.name))
         .pipe(
-          Effect.andThen(
-            tree.failTask(String(service.name), `Build ${String(service.name)} aborted`, { exitCode: 1 }),
-          ),
+          Effect.andThen(tree.failTask(String(service.name), `Build ${String(service.name)} aborted`)),
           Effect.andThen(markSettled(service)),
         ),
     unsettledServices: () => services.filter((service) => !settled.has(String(service.name))),
     completeTree: tree.close(`${plan.name} built`),
-    failTree: tree.close(`${plan.name} build failed`),
+    failTree: tree.settleFailure(`${plan.name} build failed`),
+    interruptTree: tree.settleInterrupt(`${plan.name} build interrupted`),
   };
 };

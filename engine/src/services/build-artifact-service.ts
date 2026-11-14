@@ -3,7 +3,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ArtifactBuildError, ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { EventService, PathsService, RuntimeProviderShape, StateStore } from "@lando/sdk/services";
-import { type Context, DateTime, Effect } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit } from "effect";
 import { buildAppKind, isScratchPlan } from "./build-app-kind.ts";
 import {
   buildStepFor,
@@ -251,5 +251,10 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
       yield* progress.completeTask(service, `Built ${String(service.name)}`);
       return { service: serviceWithArtifact(service, artifact), dispatched: true };
     }),
-  ).pipe(Effect.tapError(() => progress.failTask(service)));
+  ).pipe(
+    Effect.onExit((exit) => {
+      if (Exit.isSuccess(exit)) return Effect.void;
+      return Cause.hasInterruptsOnly(exit.cause) ? progress.abortTask(service) : progress.failTask(service);
+    }),
+  );
 });

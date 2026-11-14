@@ -174,7 +174,7 @@ describe("makeBuildTaskProgress", () => {
     });
   });
 
-  test("failTask and failTree publish fail summary, exit code, and fail counts", async () => {
+  test("failTask and failTree publish failure counts without inventing a command exit", async () => {
     // Given
     const publisher = collectPublisher();
     const progress = makeBuildTaskProgress(publisher, plan);
@@ -192,14 +192,15 @@ describe("makeBuildTaskProgress", () => {
     expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
       taskId: String(db.name),
       summary: `Build ${String(db.name)} failed`,
-      exitCode: 1,
     });
     expect(byTag(publisher.events, "task.tree.complete")[0]).toMatchObject({
       parentId,
       summary: `${plan.name} build failed`,
       succeeded: 1,
       failed: 2,
+      outcome: "failure",
     });
+    for (const event of byTag(publisher.events, "task.fail")) expect(event).not.toHaveProperty("exitCode");
   });
 
   test("abortTask on an unstarted service emits start then fail", async () => {
@@ -223,8 +224,8 @@ describe("makeBuildTaskProgress", () => {
     expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
       taskId: String(web.name),
       summary: `Build ${String(web.name)} aborted`,
-      exitCode: 1,
     });
+    expect(byTag(publisher.events, "task.fail")[0]).not.toHaveProperty("exitCode");
   });
 
   test("abortTask on a started service does not emit a duplicate start", async () => {
@@ -242,8 +243,8 @@ describe("makeBuildTaskProgress", () => {
     expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
       taskId: String(web.name),
       summary: `Build ${String(web.name)} aborted`,
-      exitCode: 1,
     });
+    expect(byTag(publisher.events, "task.fail")[0]).not.toHaveProperty("exitCode");
   });
 
   test("unsettledServices excludes complete, fail, and abort and keeps started", async () => {

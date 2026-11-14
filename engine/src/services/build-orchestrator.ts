@@ -1,3 +1,4 @@
+import { annotateFailureRole } from "@lando/sdk/command-result";
 import { type ServicePlan, clonedServiceParent } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
@@ -7,7 +8,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { Context, Effect, Layer } from "effect";
+import { Cause, Context, Effect, Exit, Layer } from "effect";
 import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import { buildStepFor } from "./build-artifact-cache.ts";
@@ -58,56 +59,64 @@ export const layer = Layer.effect(
         const redaction = yield* registerBuildRedaction(plan);
         const progress = makeBuildTaskProgress(events, plan);
         yield* progress.startTree;
-        const buildBatch = (batch: ReadonlyArray<ServicePlan>) =>
-          Effect.forEach(
-            batch,
-            (service) =>
-              buildService({
-                events,
-                paths,
-                progress,
-                provider,
-                refresh,
-                plan,
-                redaction,
-                service,
-                stateStore,
-              }),
-            { concurrency: 2 },
-          );
-        const built = yield* Effect.forEach(buildWaves(Object.values(plan.services)), buildBatch, {
-          concurrency: 1,
-        }).pipe(
-          Effect.map((waves) => waves.flat()),
-          Effect.tapError(() =>
-            Effect.gen(function* () {
-              for (const service of progress.unsettledServices()) {
-                const step = yield* buildStepFor(provider, service);
-                yield* publishArtifactBuildStepSkip(
+        return yield* Effect.gen(function* () {
+          const buildBatch = (batch: ReadonlyArray<ServicePlan>) =>
+            Effect.forEach(
+              batch,
+              (service) =>
+                buildService({
                   events,
-                  redactedBuildContext(redaction.redactor, plan, service),
-                  step,
-                  "phase-aborted",
-                );
-                yield* progress.abortTask(service);
+                  paths,
+                  progress,
+                  provider,
+                  refresh,
+                  plan,
+                  redaction,
+                  service,
+                  stateStore,
+                }),
+              { concurrency: 2 },
+            );
+          const built = yield* Effect.forEach(buildWaves(Object.values(plan.services)), buildBatch, {
+            concurrency: 1,
+          }).pipe(Effect.map((waves) => waves.flat()));
+          const services = { ...plan.services };
+          for (const { service } of built) services[service.name] = service;
+          if (built.some((entry) => entry.dispatched))
+            yield* sweepAppBuildTranscripts({
+              providerId: provider.id,
+              userDataRoot: paths.roots.userDataRoot,
+              owner: BuildOwner.fromPlan(plan),
+              phase: "artifact",
+              stateStore,
+              redact: (text) => redaction.redactor.redactString(text),
+            });
+          return { ...plan, services };
+        }).pipe(
+          Effect.onExit((exit) => {
+            if (Exit.isSuccess(exit)) return progress.completeTree;
+            return Effect.gen(function* () {
+              const queued = progress.unsettledServices();
+              for (const service of queued) yield* progress.abortTask(service);
+              yield* Cause.hasInterruptsOnly(exit.cause) ? progress.interruptTree : progress.failTree;
+              if (exit.cause.reasons.every(Cause.isFailReason)) {
+                for (const service of queued) {
+                  yield* buildStepFor(provider, service).pipe(
+                    Effect.flatMap((step) =>
+                      publishArtifactBuildStepSkip(
+                        events,
+                        redactedBuildContext(redaction.redactor, plan, service),
+                        step,
+                        "phase-aborted",
+                      ),
+                    ),
+                    Effect.catchCause((cause) => Effect.failCause(annotateFailureRole(cause, "cleanup"))),
+                  );
+                }
               }
-              yield* progress.failTree;
-            }),
-          ),
+            });
+          }),
         );
-        const services = { ...plan.services };
-        for (const { service } of built) services[service.name] = service;
-        if (built.some((entry) => entry.dispatched))
-          yield* sweepAppBuildTranscripts({
-            providerId: provider.id,
-            userDataRoot: paths.roots.userDataRoot,
-            owner: BuildOwner.fromPlan(plan),
-            phase: "artifact",
-            stateStore,
-            redact: (text) => redaction.redactor.redactString(text),
-          });
-        yield* progress.completeTree;
-        return { ...plan, services };
       }),
       buildApp: Effect.fn("BuildOrchestrator.buildApp")(function* (plan, options) {
         const redaction = yield* registerBuildRedaction(plan);
