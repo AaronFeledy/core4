@@ -7,6 +7,7 @@ import type {
   LandofileFormConflictError,
   NotImplementedError,
 } from "@lando/sdk/errors";
+import { ToolingCompileError, ToolingDisabledError } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Effect, Exit } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
@@ -17,7 +18,7 @@ import {
   resolveBuiltInCommand,
 } from "./built-in-command-registry";
 import { flagDefinitionsForCommand } from "./compiled-argv";
-import { NO_CLAIMS, specOwnerPolicy, toolingPolicy } from "./flag-claims";
+import { NO_CLAIMS, nonePolicy, specOwnerPolicy, toolingPolicy } from "./flag-claims";
 import { hostProxyDenied } from "./host-proxy/call-context";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import type { InvocationHead, OwnerPolicy } from "./invocation";
@@ -29,6 +30,11 @@ import type {
 import { pluginFlagDefinitions } from "./plugin-flag-definitions";
 import { preCommandOutputMode } from "./spec/command-boundary";
 import { type NormalizedToolingRoute, type ToolingRoute, resolveToolingRoute } from "./tooling-router";
+import { unavailableToolingError } from "./tooling-unavailable";
+
+type ToolingRefusal =
+  | NonNullable<Effect.Success<ReturnType<typeof unavailableToolingError>>>
+  | ToolingDisabledError;
 
 export type AliasResolutionFailure =
   | CacheError
@@ -48,7 +54,11 @@ export type InvocationOwner =
   | { readonly kind: "none" }
   | { readonly kind: "help" }
   | { readonly kind: "built-in"; readonly entry: BuiltInCommandEntry }
-  | { readonly kind: "tooling"; readonly route: NormalizedToolingRoute }
+  | {
+      readonly kind: "tooling";
+      readonly route: NormalizedToolingRoute;
+      readonly refusal?: ToolingRefusal;
+    }
   | { readonly kind: "plugin"; readonly token: string; readonly row: LoadedPluginRow }
   | {
       readonly kind: "plugin-unloaded";
@@ -79,6 +89,7 @@ export const ownerPolicy = (owner: InvocationOwner): OwnerPolicy => {
     case "plugin-unloaded":
       return { tail: "all", claims: NO_CLAIMS, reservedOutput: [] };
     case "tooling":
+      if (owner.refusal !== undefined) return nonePolicy(false);
       return toolingPolicy(owner.route.input, {
         ...(owner.route.disabled === true ? { disabled: true as const } : {}),
         ...(owner.route.wrapper === true ? { wrapper: true as const } : {}),
@@ -195,7 +206,28 @@ export const resolveInvocationOwner = async (
   }
 
   if (route?._tag === "tooling" || route?._tag === "bun-script") {
-    return { kind: "tooling", route };
+    const refusal =
+      route.disabled === true
+        ? route.sourcePath === undefined
+          ? new ToolingCompileError({
+              message: `Disabled tooling command ${route.name} has no recorded source.`,
+              tool: route.name,
+              remediation: "Refresh the app's tooling metadata before running this command.",
+            })
+          : new ToolingDisabledError({
+              message: `Tooling command ${route.name} is disabled.`,
+              tool: route.name,
+              source: { path: route.sourcePath, task: route.name },
+              remediation: "Enable this task in the app's tooling definition before running it.",
+            })
+        : route.loadError === undefined
+          ? undefined
+          : await Effect.runPromise(unavailableToolingError(route));
+    return {
+      kind: "tooling",
+      route,
+      ...(refusal === undefined ? {} : { refusal }),
+    };
   }
   if (route?._tag === "alias-disabled") return { kind: "alias-disabled", token: route.token };
   if (route?._tag === "cache-miss") return { kind: "cache-miss", token, route };

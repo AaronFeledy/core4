@@ -72,6 +72,7 @@ import {
 import { dispatchPluginUnavailable, tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveTopLevelAliases } from "./spec/command-spec";
+import { refuseToolingInvocation } from "./tooling-refusal";
 import { toolingTypeableName } from "./tooling-route";
 import { toolingRouteFailure, toolingVersionRequested } from "./tooling-router";
 import { unavailableToolingError } from "./tooling-unavailable";
@@ -187,6 +188,18 @@ const runCompiledCli = async (
   const split = splitInvocation(rawArgv, head, policy);
   onLandoGlobals(split.globals);
   const tokens = split.command;
+  if (owner.kind === "tooling" && owner.refusal !== undefined) {
+    await refuseToolingInvocation({
+      route: owner.route,
+      refusal: owner.refusal,
+      split,
+      head,
+      rawArgv,
+      context,
+      configGlobals,
+    });
+    return;
+  }
   const toolingTaskName =
     owner.kind === "tooling"
       ? toolingTypeableName(owner.route.commandId, owner.route.aliasPolicy).primary

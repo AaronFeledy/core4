@@ -71,6 +71,7 @@ export interface RunToolingOptions {
 export type RunToolingResult = ToolingResult & {
   readonly redactionTokens?: ReadonlyArray<string>;
 };
+export { protectSuppliedValues } from "./tooling-input-admission.ts";
 export type { ToolingResult };
 
 export const runToolingRedactionTokens = (result: RunToolingResult): ReadonlyArray<string> =>

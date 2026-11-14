@@ -50,7 +50,7 @@ export const admitToolingInput = Effect.fnUntraced(function* (
   return { invocation, values, redactionTokens };
 });
 
-const protectSuppliedValues = Effect.fnUntraced(function* (input: ToolingInvocationInput | undefined) {
+export const protectSuppliedValues = Effect.fnUntraced(function* (input: ToolingInvocationInput | undefined) {
   // Invalid declarations cannot classify inputs reliably; protect every supplied string before refusal.
   const invocation = input ?? { _tag: "RawArgv", argv: [] };
   const pending: unknown[] = [];
