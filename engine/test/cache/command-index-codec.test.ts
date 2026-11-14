@@ -24,27 +24,44 @@ const unavailable = {
     remediation: "Run lando app:config:lint.",
   },
 } as const;
-test("roundtrips an unavailable script without an executable input declaration", () => {
-  expect(
-    decodeAppCommandIndex(
-      currentAbiBytes("LCAC", {
-        ...app,
-        entries: [unavailable],
-        sourceScripts: [{ relativePath: "broken.bun.sh", invalid: "digest" }],
-      }),
-    )?.entries,
-  ).toEqual([unavailable]);
-});
+test.each(["bun-script", undefined])(
+  "roundtrips unavailable source %s without executable metadata",
+  (source) => {
+    const { source: scriptSource, ...toolingUnavailable } = unavailable;
+    const row = source === undefined ? toolingUnavailable : { ...toolingUnavailable, source: scriptSource };
+    expect(
+      decodeAppCommandIndex(
+        currentAbiBytes("LCAC", {
+          ...app,
+          entries: [row],
+          sourceScripts: [{ relativePath: "broken.bun.sh", invalid: "digest" }],
+        }),
+      )?.entries,
+    ).toEqual([row]);
+  },
+);
 test.each([
   { input: encodedInput },
   { wrapper: true },
-  { source: undefined },
+  { disabled: true, hidden: true },
   { loadError: null },
   { loadError: { _tag: "Error", message: "x".repeat(1025) } },
   { loadError: { _tag: "Error", message: "broken", remediation: "x".repeat(1025) } },
 ])("rejects an executable or malformed unavailable script %#", (patch) => {
   expect(
     decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [{ ...unavailable, ...patch }] })),
+  ).toBeNull();
+});
+
+test("rejects a disabled unavailable tooling row", () => {
+  const { source: _, ...toolingUnavailable } = unavailable;
+  expect(
+    decodeAppCommandIndex(
+      currentAbiBytes("LCAC", {
+        ...app,
+        entries: [{ ...toolingUnavailable, disabled: true, hidden: true }],
+      }),
+    ),
   ).toBeNull();
 });
 
@@ -57,13 +74,16 @@ for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as
         expect(decode(currentAbiBytes(magic, value))).toBeNull();
       },
     );
-    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n])("rejects old header %s with a current body", (version) => {
-      // Given
-      const bytes = currentAbiBytes(magic, payload);
-      new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, version, true);
-      // When / Then
-      expect(decode(bytes)).toBeNull();
-    });
+    test.each([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n])(
+      "rejects old header %s with a current body",
+      (version) => {
+        // Given
+        const bytes = currentAbiBytes(magic, payload);
+        new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, version, true);
+        // When / Then
+        expect(decode(bytes)).toBeNull();
+      },
+    );
     test("rejects a truncated v8 body under the current header", () => {
       // Given
       const bytes = currentAbiBytes(magic, payload).subarray(0, 15);

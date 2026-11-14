@@ -66,7 +66,7 @@ export const normalizedToolingRoute = (
   summary: entry.summary,
   hidden: entry.hidden,
   ...(entry.disabled === undefined ? {} : { disabled: entry.disabled }),
-  ...(entry.hidden && sourcePath !== undefined ? { sourcePath } : {}),
+  ...(sourcePath === undefined ? {} : { sourcePath }),
   ...(entry.service === undefined ? {} : { service: entry.service }),
   ...(entry.input === undefined ? {} : { input: entry.input }),
   ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),

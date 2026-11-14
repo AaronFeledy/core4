@@ -16,6 +16,7 @@ const compareOrdinal = (left: string, right: string): number => (left < right ? 
 
 export const compileToolingCommands = (
   landofile: LandofileShape,
+  redact: (text: string) => string,
   effectiveTooling: EffectiveTooling | undefined = landofile.tooling,
 ): ReadonlyArray<CommandIndexEntry> => {
   if (effectiveTooling === undefined) return [];
@@ -23,8 +24,16 @@ export const compileToolingCommands = (
   return Object.entries(effectiveTooling)
     .sort(([a], [b]) => compareOrdinal(a, b))
     .map(([name, authored]) => {
-      // Preserve the synchronous API by throwing the tagged error into callers' Effect boundaries.
-      const task = Result.getOrThrowWith(normalizeToolingTask(name, authored), (error) => error);
+      const identity = {
+        id: `app:${name}`,
+        summary: authored.description ?? authored.summary ?? "",
+        hidden: internal.has(name) || authored.disabled === true,
+      };
+      if (authored.disabled === true) return { ...identity, disabled: true as const };
+      const normalized = normalizeToolingTask(name, authored);
+      if (Result.isFailure(normalized))
+        return { ...identity, loadError: commandLoadError(normalized.failure, redact) };
+      const task = normalized.success;
       const runs = toolingRunSummary(task);
       let service: string | undefined;
       switch (task.service?.kind) {
@@ -39,10 +48,7 @@ export const compileToolingCommands = (
           task.service satisfies never;
       }
       return {
-        id: `app:${name}`,
-        summary: task.summary ?? "",
-        hidden: internal.has(name) || task.disabled,
-        ...(task.disabled ? { disabled: true as const } : {}),
+        ...identity,
         ...(service === undefined ? {} : { service }),
         input: task.input,
         ...(runs === undefined ? {} : { runs }),
@@ -76,9 +82,12 @@ export const compileBunShellScriptCommands = (
 export const compileAppCommands = (
   landofile: LandofileShape,
   scripts: ReadonlyArray<DiscoveredBunShellScript>,
-  effectiveTooling?: EffectiveTooling,
+  options: {
+    readonly redact: (text: string) => string;
+    readonly effectiveTooling?: EffectiveTooling | undefined;
+  },
 ): ReadonlyArray<CommandIndexEntry> => {
-  const toolingEntries = compileToolingCommands(landofile, effectiveTooling);
+  const toolingEntries = compileToolingCommands(landofile, options.redact, options.effectiveTooling);
   const seen = new Set(toolingEntries.map((entry) => entry.id));
   const merged: CommandIndexEntry[] = [...toolingEntries];
   for (const entry of compileBunShellScriptCommands(scripts)) {
@@ -89,8 +98,8 @@ export const compileAppCommands = (
   return merged.sort((a, b) => compareOrdinal(a.id, b.id));
 };
 
-export const scriptLoadError = (
-  problem: BunShellScriptProblem,
+const commandLoadError = (
+  error: { readonly _tag: string; readonly message: string; readonly remediation: string },
   redact: (text: string) => string,
 ): NonNullable<CommandIndexEntry["loadError"]> => {
   const bound = (text: string): string => {
@@ -103,11 +112,14 @@ export const scriptLoadError = (
     return result;
   };
   return {
-    _tag: problem.error._tag,
-    message: bound(problem.error.message),
-    remediation: bound(`Run lando app:config:lint to see every finding. ${problem.error.remediation}`),
+    _tag: error._tag,
+    message: bound(error.message),
+    remediation: bound(`Run lando app:config:lint to see every finding. ${error.remediation}`),
   };
 };
+
+export const scriptLoadError = (problem: BunShellScriptProblem, redact: (text: string) => string) =>
+  commandLoadError(problem.error, redact);
 
 export const compileInspectedAppCommands = (options: {
   readonly landofile: LandofileShape;
@@ -115,9 +127,7 @@ export const compileInspectedAppCommands = (options: {
   readonly effectiveTooling?: EffectiveTooling | undefined;
   readonly redact: (text: string) => string;
 }): readonly CommandIndexEntry[] => {
-  const entries = [
-    ...compileAppCommands(options.landofile, options.inspection.scripts, options.effectiveTooling),
-  ];
+  const entries = [...compileAppCommands(options.landofile, options.inspection.scripts, options)];
   const seen = new Set(entries.map((entry) => entry.id));
   for (const problem of options.inspection.problems) {
     if (problem.io) throw problem.error;

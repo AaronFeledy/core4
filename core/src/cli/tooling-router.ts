@@ -38,18 +38,6 @@ export {
 const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
   builtInCommandEntries.find((entry) => entry.spec.id === commandId);
 
-/**
- * The live error of a script route, or undefined when the script resolves. Invocation re-resolves
- * every script itself; help checks here so it never prints a page for a script that cannot run,
- * such as one a collision added after the index was built.
- */
-export const unavailableScriptError = (route: ToolingRoute) =>
-  route._tag === "bun-script"
-    ? resolveBunShellScript(route.appRoot, route.commandId).pipe(
-        Effect.match({ onFailure: (error) => error, onSuccess: () => undefined }),
-      )
-    : Effect.succeed(undefined);
-
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
   readonly cacheRoot?: string;

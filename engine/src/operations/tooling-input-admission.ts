@@ -9,8 +9,8 @@ import {
   lowerToolingInput,
   validateToolingInputRevision,
 } from "@lando/landofile/tooling-input";
-import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
+import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { RedactionService } from "@lando/redaction/service";
 import { ToolingCompileError, ToolingDisabledError } from "@lando/sdk/errors";
 import type {
@@ -47,6 +47,38 @@ export const admitToolingInput = Effect.fnUntraced(function* (
   return { invocation, values, redactionTokens };
 });
 
+const protectSuppliedValues = Effect.fnUntraced(function* (input: ToolingInvocationInput | undefined) {
+  // Invalid declarations cannot classify inputs reliably; protect every supplied string before refusal.
+  const invocation = input ?? { _tag: "RawArgv", argv: [] };
+  const pending: unknown[] = [];
+  switch (invocation._tag) {
+    case "RawArgv":
+      for (const token of invocation.argv) {
+        const equals = token.indexOf("=");
+        pending.push(token);
+        if (token.startsWith("-") && equals >= 0) pending.push(token.slice(equals + 1));
+      }
+      break;
+    case "NamedMaps":
+      pending.push(invocation.flags, invocation.args, invocation.passthroughArgv);
+      break;
+    default:
+      invocation satisfies never;
+  }
+  const seen = new WeakSet<object>();
+  const tokens: string[] = [];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === "string") tokens.push(value);
+    else if (value !== null && typeof value === "object" && !seen.has(value)) {
+      seen.add(value);
+      pending.push(...Object.values(value));
+    }
+  }
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (Option.isSome(redaction)) yield* redaction.value.registerValues(tokens);
+});
+
 export const admitToolingTask = Effect.fnUntraced(function* (input: {
   readonly name: string;
   readonly task: ToolingTaskShape;
@@ -55,12 +87,23 @@ export const admitToolingTask = Effect.fnUntraced(function* (input: {
   readonly expectedInputRevision?: ToolingInputRevision;
   readonly sites?: readonly ParsedPendingSite[];
 }) {
-  const declaration = yield* Effect.fromResult(normalizeToolingInput(input.name, input.task, input.source));
+  if (input.task.disabled === true) {
+    yield* protectSuppliedValues(input.input);
+    return yield* Effect.fail(
+      new ToolingDisabledError({
+        message: `Tooling command ${input.name} is disabled.`,
+        tool: input.name,
+        source: input.source,
+        remediation: `Enable tooling command ${input.name} in ${input.source.path} before running it.`,
+      }),
+    );
+  }
+  const normalized = yield* Effect.fromResult(
+    normalizeToolingTask(input.name, input.task, input.source),
+  ).pipe(Effect.tapError(() => protectSuppliedValues(input.input)));
+  const declaration = normalized.input;
   const subject = { name: input.name, source: input.source };
-  const admitted = yield* admitToolingInput(
-    { ...subject, input: declaration, disabled: input.task.disabled === true },
-    input,
-  );
+  const admitted = yield* admitToolingInput({ ...subject, input: declaration, disabled: false }, input);
   const sites = input.sites ?? [];
   const issue = [
     ...toolingInvocationIssues(input.task, sites),

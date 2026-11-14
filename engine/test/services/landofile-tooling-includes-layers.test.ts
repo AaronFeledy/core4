@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { compileToolingCommands } from "../../src/cache/command-compiler";
 import { loadLandofileLayers } from "../../src/services/landofile-live";
@@ -68,7 +69,7 @@ test("a higher Landofile layer removes internal provenance from its task winner"
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
 
     // Then the higher-layer winner is visible and carries no stale internal provenance
     expect(resolved.tooling?.build?.cmd).toBe("canonical");
@@ -100,7 +101,7 @@ test("an authored internal fragment hides its compiled commands", async () => {
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
 
     // Then the contributed command exists but is hidden from listings
     expect(resolved.tooling?.["docs:build"]?.cmd).toBe("make");
@@ -226,7 +227,7 @@ test("a higher layer overrides a canonical tooling declaration sharing its names
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
 
     // Then the shadowed source is never read and the base layer's flags still apply
     expect(resolved.tooling?.["docs:build"]?.cmd).toBe("canonical");
@@ -260,7 +261,7 @@ test("resolves tooling includes only after Landofile layers merge", async () => 
         Effect.provide(makeTestStateStore().layer),
       ),
     );
-    const commands = compileToolingCommands(resolved);
+    const commands = compileToolingCommands(resolved, createRedactor("secrets").redactString);
 
     // Then only the winning declaration is resolved
     expect(resolved.tooling?.["docs:build"]?.cmd).toBe("canonical");

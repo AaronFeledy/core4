@@ -1,5 +1,4 @@
 import type { InvocationProgram } from "@lando/landofile/compiled-sites";
-import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppPlan, ToolingInputRevision, ToolingInvocationInput } from "@lando/sdk/schema";
@@ -42,9 +41,6 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
     sites: input.sites,
   });
   redactionTokens.push(...admitted.redactionTokens);
-  yield* Effect.fromResult(
-    normalizeToolingTask(input.options.lookupKey, input.options.task, input.options.source),
-  );
   yield* registerPlanRedaction(input.plan);
   const preparedInput = { ...admitted, redactionTokens };
   const name = input.options.lookupKey;

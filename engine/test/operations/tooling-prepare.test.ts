@@ -183,6 +183,26 @@ test("refuses raw placement before any dynamic command starts", async () => {
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
 });
 
+test.each([{ argv: [] }, { argv: ["--unknown"] }, { argv: ["--target=web"] }])(
+  "malformed wrapper fails before input binding or dynamic commands for %j",
+  async ({ argv }) => {
+    const result = await run(
+      {
+        service: ":host",
+        wrapper: true,
+        cmd: "exit 9",
+        flags: { target: { required: true } },
+        vars: { X: { sh: "exit 8" } },
+      },
+      { _tag: "RawArgv", argv },
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ToolingCompileError", message: expect.stringContaining("wrapper:") },
+    });
+  },
+);
+
 test("missing invocation values name the input and remediation before dynamic commands", async () => {
   const result = await run({
     service: ":host",

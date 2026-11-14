@@ -132,7 +132,10 @@ test.each(
     const invocations: ToolingInvocation[] = [];
     const layer = harnessLayer({ landofile, plan, invocations, exitCode });
     const structured = { flags: { loud, mode }, args: { second: "last", first: "--first" } };
-    const registry = mcpRegistryWithToolingEntries({ commandEntries: [] }, compileToolingCommands(landofile));
+    const registry = mcpRegistryWithToolingEntries(
+      { commandEntries: [] },
+      compileToolingCommands(landofile, createRedactor("secrets").redactString),
+    );
     const entry = registry.toolingEntries?.[0];
     if (entry === undefined) throw new Error("Missing tooling MCP projection");
     // When
@@ -214,7 +217,10 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
   const plan = planFor(landofile);
   const invocations: ToolingInvocation[] = [];
   const layer = harnessLayer({ landofile, plan, invocations, exitCode: 0 });
-  const registry = mcpRegistryWithToolingEntries({ commandEntries: [] }, compileToolingCommands(landofile));
+  const registry = mcpRegistryWithToolingEntries(
+    { commandEntries: [] },
+    compileToolingCommands(landofile, createRedactor("secrets").redactString),
+  );
   const entry = registry.toolingEntries?.[0];
   if (entry === undefined) throw new Error("Missing tooling MCP projection");
   // When each surface receives the input it cannot express

@@ -17,14 +17,15 @@ import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
+  CacheError,
   CommandAliasConflictError,
   CommandAliasTargetError,
   EventError,
   LandoCommandError,
   PluginManifestError,
   SubscriberLevelMismatchError,
+  ToolingCompileError,
 } from "@lando/sdk/errors";
-import { type CacheError, ToolingCompileError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { createRedactor } from "@lando/sdk/secrets";
 import {
@@ -121,28 +122,41 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const redactor = Option.isSome(redaction)
     ? yield* redaction.value.forProfile("secrets")
     : createRedactor("secrets", { values: collectSecretEnvValues(process.env) });
-  const entries = yield* Effect.try({
-    try: () =>
-      compileInspectedAppCommands({
-        landofile: landofile.document,
-        inspection,
-        effectiveTooling: effectiveToolingForPlan(plan),
-        redact: redactor.redactString,
-      }),
-    catch: (cause) => {
-      if (cause instanceof ToolingCompileError)
-        return new ToolingCompileError({
-          message: cause.message,
-          tool: cause.tool,
-          source: cause.source ?? { path: plan.metadata.source, task: cause.tool },
-          remediation: cause.remediation,
-        });
-      throw cause;
-    },
-  });
+  const entries = yield* Effect.sync(() =>
+    compileInspectedAppCommands({
+      landofile: landofile.document,
+      inspection,
+      effectiveTooling: effectiveToolingForPlan(plan),
+      redact: redactor.redactString,
+    }),
+  );
   const machineOutput = yield* commandWarningsUseMachineOutput;
   const events = Option.getOrUndefined(yield* Effect.serviceOption(EventService));
   const warned = new Set<string>();
+  const toolingWarnings = entries.flatMap((entry) =>
+    entry.source === undefined && entry.loadError !== undefined
+      ? [
+          {
+            code: "LANDO_TOOLING_INVALID",
+            message: entry.loadError.message,
+            ...(entry.loadError.remediation === undefined
+              ? {}
+              : { remediation: entry.loadError.remediation }),
+            context: { path: plan.metadata.source, task: entry.id.slice("app:".length) },
+          },
+        ]
+      : [],
+  );
+  for (const warning of toolingWarnings) {
+    yield* recordCommandWarning(warning);
+    if (!machineOutput && events !== undefined)
+      yield* events.publish(
+        MessageWarnEvent.make({
+          body: `${warning.message} ${warning.remediation}`,
+          timestamp: yield* DateTime.now,
+        }),
+      );
+  }
   for (const problem of inspection.problems) {
     if (warned.has(problem.id ?? problem.file)) continue;
     warned.add(problem.id ?? problem.file);

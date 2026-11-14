@@ -12,9 +12,9 @@ import {
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version nine for unavailable script metadata", () => {
+  test("uses version ten for unavailable task metadata", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(9n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(10n);
   });
 
   test.each([2n, 3n, 4n, 5n, 6n])(

@@ -143,7 +143,7 @@ const isEntry = (value: unknown): value is CommandIndexEntry =>
   (!Object.hasOwn(value, "wrapper") || value.wrapper === true) &&
   (!Object.hasOwn(value, "runs") || isRuns(value.runs)) &&
   (!Object.hasOwn(value, "loadError") ||
-    (value.source === "bun-script" &&
+    (!Object.hasOwn(value, "disabled") &&
       !Object.hasOwn(value, "input") &&
       !Object.hasOwn(value, "wrapper") &&
       isCacheMapping(value.loadError) &&

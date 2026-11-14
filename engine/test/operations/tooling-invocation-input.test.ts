@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { authoredInvocationSites } from "@lando/landofile/compiled-sites";
-import { PortablePath, type ToolingInvocationInput, type ToolingTaskShape } from "@lando/sdk/schema";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import {
+  PortablePath,
+  ToolingInputRevision,
+  type ToolingInvocationInput,
+  type ToolingTaskShape,
+} from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { admitToolingTask } from "../../src/operations/tooling-input-admission.ts";
 
@@ -16,6 +22,87 @@ const admit = (task: ToolingTaskShape, input: ToolingInvocationInput) =>
       }),
     ),
   );
+
+test.each([
+  { _tag: "RawArgv", argv: ["--note=private-note", "--password=private-password"] },
+  { _tag: "NamedMaps", flags: { note: { nested: "private-note" }, password: "private-password" }, args: {} },
+] satisfies readonly ToolingInvocationInput[])(
+  "disabled invalid inputs refuse before normalization and protect supplied values: $_tag",
+  async (input) => {
+    const redaction = makeRedactionService();
+    const result = await Effect.runPromise(
+      Effect.result(
+        admitToolingTask({
+          name: "retired",
+          source: { path: "/app/.lando.yml", task: "retired" },
+          task: {
+            disabled: true,
+            wrapper: true,
+            cmd: "echo hi",
+            flags: { note: { alias: "q", sensitive: true }, password: { alias: "q" } },
+          },
+          input,
+        }),
+      ).pipe(Effect.provideService(RedactionService, redaction)),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ToolingDisabledError", tool: "retired" },
+    });
+    expect(JSON.stringify(result)).not.toContain("private-");
+    const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv: {} }));
+    expect(redactor.redactString("private-note private-password")).toBe("[redacted] [redacted]");
+  },
+);
+
+test.each(
+  (
+    [
+      { _tag: "RawArgv", argv: [] },
+      { _tag: "RawArgv", argv: ["--unknown=private-unknown"] },
+      { _tag: "RawArgv", argv: ["--target=private-target"] },
+      { _tag: "NamedMaps", flags: {}, args: {} },
+      { _tag: "NamedMaps", flags: { unknown: { nested: "private-unknown" } }, args: {} },
+      { _tag: "NamedMaps", flags: { target: "private-target" }, args: {} },
+    ] satisfies readonly ToolingInvocationInput[]
+  ).flatMap((input) => [
+    { input, revision: {} },
+    { input, revision: { expectedInputRevision: ToolingInputRevision.make("stale") } },
+  ]),
+)(
+  "malformed tasks precede binding and revision checks and protect all values: %j",
+  async ({ input, revision }) => {
+    const redaction = makeRedactionService();
+    const result = await Effect.runPromise(
+      admitToolingTask({
+        name: "inspect",
+        task: { service: ":host", wrapper: true, cmd: "echo hi", flags: { target: { required: true } } },
+        source: { path: "/app/.lando.yml", task: "inspect" },
+        input,
+        ...revision,
+      }).pipe(Effect.result, Effect.provideService(RedactionService, redaction)),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ToolingCompileError", message: expect.stringContaining("wrapper:") },
+    });
+    const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv: {} }));
+    switch (input._tag) {
+      case "RawArgv":
+        for (const token of input.argv) {
+          expect(redactor.redactString(token)).toBe("[redacted]");
+          expect(redactor.redactString(token.slice(token.indexOf("=") + 1))).toBe("[redacted]");
+        }
+        break;
+      case "NamedMaps":
+        if ("unknown" in input.flags) expect(redactor.redactString("private-unknown")).toBe("[redacted]");
+        if ("target" in input.flags) expect(redactor.redactString("private-target")).toBe("[redacted]");
+        break;
+      default:
+        input satisfies never;
+    }
+  },
+);
 
 test("consuming one flag still forwards an unconsumed verbose flag", async () => {
   const result = await admit(

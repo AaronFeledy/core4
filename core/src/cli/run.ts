@@ -96,8 +96,8 @@ import {
   toolingHelpRequested,
   toolingRouteFailure,
   toolingVersionRequested,
-  unavailableScriptError,
 } from "./tooling-router";
+import { unavailableToolingError } from "./tooling-unavailable";
 import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
@@ -481,7 +481,7 @@ const runCompiledCli = async (
       (route._tag === "tooling" || route._tag === "bun-script") &&
       toolingHelpRequested(route, argvTail)
     ) {
-      const unavailable = await Effect.runPromise(unavailableScriptError(route));
+      const unavailable = await Effect.runPromise(unavailableToolingError(route));
       if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
       else if (unavailable !== undefined)
         await renderAliasResolutionFailure(unavailable, context, route.commandId);
@@ -500,7 +500,10 @@ const runCompiledCli = async (
       (route._tag === "tooling" || route._tag === "bun-script") &&
       toolingVersionRequested(route, argvTail)
     ) {
+      const unavailable = await Effect.runPromise(unavailableToolingError(route));
       if (route.disabled) await routeResolvedTooling(route, argvTail, signal, context);
+      else if (unavailable !== undefined)
+        await renderAliasResolutionFailure(unavailable, context, route.commandId);
       else {
         const name = typeableName({
           canonicalId: route.commandId,

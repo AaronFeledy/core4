@@ -6,6 +6,7 @@ import { compileToolingCommands } from "@lando/engine/cache/command-compiler";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { LandofileShape } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
@@ -35,7 +36,7 @@ const withCachedTasks = async (run: (root: string, cacheRoot: string) => Promise
         cwd: root,
         cacheRoot,
         landofile,
-        entries: compileToolingCommands(landofile),
+        entries: compileToolingCommands(landofile, createRedactor("secrets").redactString),
       }),
     );
     await run(root, cacheRoot);
