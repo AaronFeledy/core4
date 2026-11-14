@@ -543,7 +543,7 @@
     ],
     "./abortable-promise": ["tryPromiseSettled"],
     "./app": [],
-    "./certificates": ["LEAF_RENEWAL_MARGIN_MS", "certificatePairIsCurrent"],
+    "./certificates": ["LEAF_RENEWAL_MARGIN_MS", "certificateIsCurrent", "certificatePairIsCurrent"],
     "./command-result": [
       "FailureRoleAnnotation",
       "annotateFailureRole",
