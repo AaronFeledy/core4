@@ -2,7 +2,7 @@ import { BunShellScriptFrontMatterError, LandofileParseError } from "@lando/sdk/
 import { type ToolingInputDeclaration, validationIssue } from "@lando/sdk/schema";
 import { Result } from "effect";
 import type { BunShellScriptDiscoveryError, DiscoveredBunShellScript } from "./bun-sh-discovery.ts";
-import { normalizeToolingInput } from "./tooling-input-normalize.ts";
+import { inspectToolingInput } from "./tooling-input-normalize.ts";
 
 export interface NormalizedBunShellScript {
   readonly name: string;
@@ -44,8 +44,16 @@ export const normalizeBunShellScript = (
         remediation: "Correct the script's input declarations and ensure input environment names are unique.",
       }),
     );
-  const normalized = normalizeToolingInput(script.name, script.frontMatter, { path: script.path });
-  if (Result.isFailure(normalized)) return fail(normalized.failure.message);
+  const normalized = inspectToolingInput(script.frontMatter);
+  if (Result.isFailure(normalized))
+    return Result.fail(
+      new BunShellScriptFrontMatterError({
+        path: script.path,
+        message: `.bun.sh front-matter at ${script.path} has invalid input declarations.`,
+        issues: [...normalized.failure],
+        remediation: "Correct the script's input declarations.",
+      }),
+    );
   const inputEnvSuffixes = { flags: {}, args: {} };
   for (const group of ["flags", "args"] as const) {
     const suffixes = new Map<string, string>();

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { PortablePath, type ToolingTaskShape } from "@lando/sdk/schema";
+import { PortablePath, type ToolingTaskShape, formatValidationIssuePath } from "@lando/sdk/schema";
 import { Result } from "effect";
-import { normalizeToolingTask, requiresProvider } from "../src/tooling-normalize.ts";
+import { inspectToolingTask, normalizeToolingTask, requiresProvider } from "../src/tooling-normalize.ts";
 
 describe("normalizeToolingTask", () => {
   test.each([
@@ -99,29 +99,52 @@ describe("normalizeToolingTask", () => {
     expect(result.service).toEqual(expected);
   });
 
-  const invalid: readonly (readonly [string, ToolingTaskShape])[] = [
-    ["boolean service flag", { service: ":loud", flags: { loud: { boolean: true } } }],
-    ["undeclared service flag", { service: ":nope" }],
-    ["invalid step service", { cmds: [{ cmd: "a", service: ":nope" }] }],
-    ["duplicate order", { args: { a: { order: 0 }, b: { order: 0 } } }],
-    ["partial order", { args: { a: { order: 0 }, b: {} } }],
-    ["duplicate aliases", { flags: { a: { alias: "x" }, b: { alias: "x" } } }],
-    ["alias collides with name", { flags: { a: { alias: "b" }, b: {} } }],
-    ["required flag default", { flags: { a: { required: true, default: "x" } } }],
-    ["required arg default", { args: { a: { required: true, default: "x" } } }],
-    ["boolean choices", { flags: { a: { boolean: true, choices: ["true"] } } }],
-    ["flag default outside choices", { flags: { a: { default: "x", choices: ["y"] } } }],
-    ["arg default outside choices", { args: { a: { default: 1, choices: ["2"] } } }],
-    ["required arg after optional", { args: { a: {}, b: { required: true } } }],
-    ["empty object command", { cmds: [{ cmd: " " }] }],
-    ["cmd and cmds together", { cmd: "a", cmds: ["b"] }],
-    ["wrapper with two commands", { cmds: ["a", "b"], wrapper: true }],
-    ["wrapper without a command", { wrapper: true }],
-    ["wrapper with flags", { cmd: "a", wrapper: true, flags: { loud: { boolean: true } } }],
-    ["wrapper with args", { cmd: "a", wrapper: true, args: { target: {} } }],
-    ["wrapper with arguments disabled", { cmd: "a", wrapper: true, arguments: false }],
+  const invalid: readonly (readonly [string, ToolingTaskShape, readonly (string | number)[]])[] = [
+    ["boolean service flag", { service: ":loud", flags: { loud: { boolean: true } } }, ["service"]],
+    ["undeclared service flag", { service: ":nope" }, ["service"]],
+    ["undeclared prototype service flag", { service: ":toString", flags: {} }, ["service"]],
+    ["invalid step service", { cmds: [{ cmd: "a", service: ":nope" }] }, ["cmds", 0, "service"]],
+    ["duplicate order", { args: { a: { order: 0 }, b: { order: 0 } } }, ["args", "b", "order"]],
+    ["partial order", { args: { a: { order: 0 }, b: {} } }, ["args", "b", "order"]],
+    ["duplicate aliases", { flags: { a: { alias: "x" }, b: { alias: "x" } } }, ["flags", "b", "alias"]],
+    ["alias collides with name", { flags: { a: { alias: "b" }, b: {} } }, ["flags", "a", "alias"]],
+    ["required flag default", { flags: { a: { required: true, default: "x" } } }, ["flags", "a", "default"]],
+    ["required arg default", { args: { a: { required: true, default: "x" } } }, ["args", "a", "default"]],
+    ["boolean choices", { flags: { a: { boolean: true, choices: ["true"] } } }, ["flags", "a", "choices"]],
+    [
+      "flag default outside choices",
+      { flags: { a: { default: "x", choices: ["y"] } } },
+      ["flags", "a", "default"],
+    ],
+    [
+      "arg default outside choices",
+      { args: { a: { default: 1, choices: ["2"] } } },
+      ["args", "a", "default"],
+    ],
+    ["required arg after optional", { args: { a: {}, b: { required: true } } }, ["args", "b", "order"]],
+    ["empty object command", { cmds: [{ cmd: " " }] }, ["cmds", 0, "cmd"]],
+    ["cmd and cmds together", { cmd: "a", cmds: ["b"] }, ["cmds"]],
+    ["wrapper with invalid step", { wrapper: true, cmds: [{ cmd: " " }] }, ["cmds", 0, "cmd"]],
+    ["wrapper with conflicting commands", { wrapper: true, cmd: "a", cmds: ["b"] }, ["cmds"]],
+    ["wrapper with two commands", { cmds: ["a", "b"], wrapper: true }, ["wrapper"]],
+    ["wrapper without a command", { wrapper: true }, ["wrapper"]],
+    ["wrapper with flags", { cmd: "a", wrapper: true, flags: { loud: { boolean: true } } }, ["wrapper"]],
+    ["wrapper with args", { cmd: "a", wrapper: true, args: { target: {} } }, ["wrapper"]],
+    ["wrapper with arguments disabled", { cmd: "a", wrapper: true, arguments: false }, ["wrapper"]],
+    ["reserved task env", { env: { LANDO_X: "hidden" } }, ["env", "LANDO_X"]],
+    [
+      "reserved step env",
+      { cmds: [{ cmd: "echo x", env: { LANDO_X: "hidden" } }] },
+      ["cmds", 0, "env", "LANDO_X"],
+    ],
+    [
+      "reserved var env",
+      { vars: { X: { sh: "echo x", env: { LANDO_X: "hidden" } } } },
+      ["vars", "X", "env", "LANDO_X"],
+    ],
+    ["invalid var service", { vars: { X: { sh: "echo x", service: ":missing" } } }, ["vars", "X", "service"]],
   ];
-  test.each(invalid)("rejects %s", (_label, task) => {
+  test.each(invalid)("rejects %s", (_label, task, path) => {
     // Given / When
     const result = normalizeToolingTask("run", task, { path: "/app/.lando.yml" });
     // Then
@@ -131,9 +154,33 @@ describe("normalizeToolingTask", () => {
         _tag: "ToolingCompileError",
         tool: "run",
         source: { path: "/app/.lando.yml", task: "run" },
+        message: expect.stringContaining(`tooling.run.${formatValidationIssuePath(path)}:`),
       });
       expect(result.failure.remediation).toBeTruthy();
     }
+    const inspection = inspectToolingTask("run", task);
+    expect(Result.isFailure(inspection) ? inspection.failure.map((issue) => issue.path) : []).toEqual([path]);
+  });
+
+  test("aggregates independent declarations while suppressing dependent order and step failures", () => {
+    const result = inspectToolingTask("run", {
+      service: ":missing",
+      flags: { a: { required: true, default: "hidden" }, b: { boolean: true, default: "hidden" } },
+      args: { a: { order: 0 }, b: { required: true }, c: { order: 0 } },
+      cmds: ["echo one", "echo two"],
+      env: { LANDO_X: "hidden" },
+      vars: { X: { sh: "echo hidden", service: ":missing" } },
+    });
+    expect(Result.isFailure(result) ? result.failure.map((issue) => issue.path) : []).toEqual([
+      ["flags", "a", "default"],
+      ["flags", "b", "default"],
+      ["args", "b", "order"],
+      ["args", "c", "order"],
+      ["env", "LANDO_X"],
+      ["service"],
+      ["vars", "X", "service"],
+    ]);
+    expect(JSON.stringify(result)).not.toContain("hidden");
   });
 
   test("normalizes metadata, scalar defaults and explicit arg order", () => {
