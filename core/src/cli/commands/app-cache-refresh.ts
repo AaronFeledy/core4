@@ -31,6 +31,7 @@ import type {
   ToolingCompileError,
 } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
+import { ValidationIssue } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
@@ -78,12 +79,36 @@ const PlannedServiceSchema = Schema.Struct({
   }),
 });
 
+const UnavailableTaskSourceSchema = Schema.Struct({
+  path: Schema.String.annotate({ description: "Known source file for this task." }),
+  task: Schema.String.annotate({ description: "Task name within the source." }),
+});
+
+const UnavailableTaskFindingSchema = Schema.Struct({
+  task: Schema.String.annotate({ description: "Tooling task name without the app: prefix." }),
+  source: Schema.optionalKey(UnavailableTaskSourceSchema).annotate({
+    description: "Task source identity, when known.",
+  }),
+  message: Schema.String.annotate({ description: "Human-readable reason the task is unavailable." }),
+  remediation: Schema.String.annotate({ description: "Corrective action for the unavailable task." }),
+  issues: Schema.Array(ValidationIssue).annotate({
+    description: "Bounded structured tooling findings for this task.",
+  }),
+  omittedIssueCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).annotate({
+    description: "Number of tooling findings omitted from this task's diagnostic budget.",
+  }),
+});
+
 export const AppCacheRefreshResultSchema = Schema.Struct({
   app: Schema.String,
   commandsCompiled: Schema.Number,
   appCommandCachePath: Schema.optionalKey(Schema.String),
   services: Schema.Array(PlannedServiceSchema).annotate({
     description: "Planned services and their artifact identity. Refresh does not pull or start them.",
+  }),
+  unavailableTasks: Schema.Array(UnavailableTaskFindingSchema).annotate({
+    description:
+      "Unavailable tooling tasks with bounded findings, sorted by task name. Cross-cutting LANDO_TOOLING_INVALID warnings retain only code, message, remediation, and context.",
   }),
 });
 export type AppCacheRefreshResult = typeof AppCacheRefreshResultSchema.Type;
@@ -146,29 +171,33 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const machineOutput = yield* commandWarningsUseMachineOutput;
   const events = Option.getOrUndefined(yield* Effect.serviceOption(EventService));
   const warned = new Set<string>();
-  const toolingWarnings = entries.flatMap((entry) =>
-    entry.sourceKind === "tooling" && entry._tag === "Unavailable"
-      ? [
-          {
-            code: "LANDO_TOOLING_INVALID",
-            message: entry.diagnostic.message,
-            ...("issues" in entry.diagnostic
-              ? { issues: entry.diagnostic.issues, omittedIssueCount: entry.diagnostic.omittedIssueCount }
-              : {}),
-            ...(entry.diagnostic.remediation === undefined
-              ? {}
-              : { remediation: entry.diagnostic.remediation }),
-            context: {
-              path:
-                "source" in entry.diagnostic
-                  ? (entry.diagnostic.source?.path ?? plan.metadata.source)
-                  : plan.metadata.source,
-              task: entry.id.slice("app:".length),
-            },
-          },
-        ]
-      : [],
-  );
+  const unavailableTasks = entries
+    .flatMap((entry) => {
+      if (entry.sourceKind !== "tooling" || entry._tag !== "Unavailable") return [];
+      const diagnostic = entry.diagnostic;
+      if (!("issues" in diagnostic)) return [];
+      const task = entry.id.slice("app:".length);
+      return [
+        {
+          task,
+          ...("source" in diagnostic && diagnostic.source !== undefined ? { source: diagnostic.source } : {}),
+          message: diagnostic.message,
+          remediation: diagnostic.remediation,
+          issues: [...diagnostic.issues],
+          omittedIssueCount: diagnostic.omittedIssueCount,
+        },
+      ];
+    })
+    .sort((left, right) => (left.task < right.task ? -1 : left.task > right.task ? 1 : 0));
+  const toolingWarnings = unavailableTasks.map((finding) => ({
+    code: "LANDO_TOOLING_INVALID",
+    message: finding.message,
+    remediation: finding.remediation,
+    context: {
+      path: finding.source?.path ?? plan.metadata.source,
+      task: finding.task,
+    },
+  }));
   for (const warning of toolingWarnings) {
     yield* recordCommandWarning(warning);
     if (!machineOutput && events !== undefined)
@@ -237,6 +266,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
     app: plan.name,
     commandsCompiled: entries.length,
     services,
+    unavailableTasks,
     ...(appCachePath === undefined ? {} : { appCommandCachePath: appCachePath }),
   };
 });

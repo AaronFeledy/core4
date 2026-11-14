@@ -109,7 +109,7 @@ test("refresh warns for invalid tooling and retains healthy and disabled sibling
       ["LANDO_TOOLING_INVALID", "broken"],
       ["LANDO_TOOLING_INVALID", "private:bad"],
     ]);
-    expect(envelope.warnings[0]).toMatchObject({
+    expect(envelope.result.unavailableTasks[0]).toMatchObject({
       issues: [
         {
           reason: "alias-collision",
@@ -126,6 +126,9 @@ test("refresh warns for invalid tooling and retains healthy and disabled sibling
     });
     expect(envelope.warnings[2]).toMatchObject({
       context: { path: expect.stringContaining("internal.yml") },
+    });
+    expect(envelope.result.unavailableTasks[2]).toMatchObject({
+      source: { path: expect.stringContaining("internal.yml") },
       issues: expect.arrayContaining([
         expect.objectContaining({
           reason: "alias-collision",

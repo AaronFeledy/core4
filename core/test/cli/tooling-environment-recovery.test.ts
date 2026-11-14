@@ -41,8 +41,24 @@ test.each(["source", "include"] as const)(
       const refreshed = await run("bad", ["app:cache:refresh"]);
       expect(refreshed.exitCode, refreshed.stdout + refreshed.stderr).toBe(0);
       expect(JSON.parse(refreshed.stdout)).toMatchObject({
-        warnings: [{ issues: [{ reason: "default-outside-choices" }] }],
+        result: {
+          unavailableTasks: [
+            {
+              task: "deploy",
+              issues: [{ reason: "default-outside-choices" }],
+            },
+          ],
+        },
+        warnings: [
+          {
+            code: "LANDO_TOOLING_INVALID",
+            context: { task: "deploy" },
+          },
+        ],
       });
+      const refreshedEnvelope = JSON.parse(refreshed.stdout);
+      expect(refreshedEnvelope.warnings[0]?.issues).toBeUndefined();
+      expect(refreshedEnvelope.warnings[0]?.omittedIssueCount).toBeUndefined();
 
       const help = await run("dev", ["help", "deploy"]);
       expect(help.exitCode, help.stdout + help.stderr).toBe(0);
