@@ -76,7 +76,6 @@ const coldHelpStyle = (catalog: PluginCommandCatalog) => ({
   style: shouldStyleHelp({
     isTTY: catalog.context?.io.stdoutIsTTY === true,
     env: catalog.context?.env ?? {},
-    argv: [],
     rendererMode: activeRendererMode,
   }),
 });

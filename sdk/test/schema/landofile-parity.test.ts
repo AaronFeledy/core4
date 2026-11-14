@@ -103,6 +103,12 @@ const INEXPRESSIBLE = [
     check: "npm semver range",
     reason: "The lando string uses semver.validRange, which has no JSON Schema projection.",
   },
+  {
+    id: "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml",
+    check: "scheduled cadence",
+    reason:
+      "Clock-aligned @every steps and exactly five cron fields are decoder filters; JSON Schema cannot express either rule.",
+  },
 ] as const;
 
 const SKIPPED = [
@@ -294,6 +300,10 @@ const INPUT_INEXPRESSIBLE = new Map([
   [
     "docs/guides/expressions/fixtures/expressions-plan-time-typed-field/.lando.yml",
     "Planner-scope rejection requires parsed scope analysis.",
+  ],
+  [
+    "docs/guides/schedule/fixtures/schedule-rejected-every/.lando.yml",
+    "Clock-aligned @every steps and five-field cron are decoder filters the editor schema cannot express.",
   ],
 ]);
 

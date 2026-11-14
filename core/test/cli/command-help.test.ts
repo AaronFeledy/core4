@@ -172,13 +172,59 @@ describe("renderCommandHelp", () => {
     // When per-command help is rendered
     const help = renderCommandHelp(entry);
 
-    // Then the locked footer documents --json [fields] and --jq as universal,
-    // and names the result formats this command actually honors.
-    expect(help).toContain("--json [fields]");
-    expect(help).toContain("--jq");
-    expect(help).toContain(
-      "Global flags (--format (text, json, yaml), --json [fields], --jq, --renderer, --verbose, --log-level, --debug, --trace) work on every command.",
-    );
+    // Then the locked footer lists every Lando flag and this command's formats.
+    const footer = help.split("\n").at(-1) ?? "";
+    for (const token of [
+      "--format (text, json, yaml)",
+      "--json [fields]",
+      "--jq",
+      "--renderer",
+      "--verbose",
+      "--log-level",
+      "--debug",
+      "--trace",
+    ]) {
+      expect(footer).toContain(token);
+    }
+  });
+
+  test("the footer names the command-tail placement for exec", () => {
+    // Given the strict-false exec command, which owns its command tail
+    const entry = requireBuiltIn("exec");
+
+    // When per-command help is rendered
+    const help = renderCommandHelp(entry);
+
+    // Then the footer's example places Lando's flags before the command to run
+    expect(help).toContain("lando exec --format=json <command>");
+  });
+
+  test("the footer names the before-the-name placement for a passthrough command", () => {
+    // Given meta:bun, which owns every token after its name
+    const entry = requireBuiltIn("bun");
+
+    // When per-command help is rendered
+    const help = renderCommandHelp(entry);
+
+    // Then the footer's example places Lando's flags only before the command name
+    expect(help).toContain("lando --format=json bun <args...>");
+  });
+
+  test("a reserved spelling a command authors gets no placement line", () => {
+    // Given logs, which authors --tail; Lando's own --tail is reserved, not a feature
+    const help = renderCommandHelp(requireBuiltIn("logs"));
+
+    // Then help lists the flag and emits no placement example for a Lando flag
+    expect(help).toContain("--tail <integer>");
+    expect(help).not.toContain("as in `lando");
+  });
+
+  test("the footer omits the shared-spelling line when nothing is shared", () => {
+    // Given info, which authors no Lando spelling
+    const help = renderCommandHelp(requireBuiltIn("info"));
+
+    // Then no command-owned line appears
+    expect(help).not.toContain("as in `lando");
   });
 
   test("renders spec.examples when the command declares them", () => {
@@ -505,7 +551,6 @@ describe("command help color", () => {
     const styled = shouldStyleHelp({
       isTTY: true,
       env: { NO_COLOR: "1" },
-      argv: [],
       rendererMode: "lando",
     });
 
@@ -515,5 +560,58 @@ describe("command help color", () => {
     // Then NO_COLOR suppresses CSI
     expect(styled).toBe(false);
     expect(help).not.toContain("\x1b[");
+  });
+});
+
+describe("tooling ownership hints", () => {
+  const declaring = (
+    id: string,
+    flags: ReadonlyArray<{ readonly name: string; readonly alias?: string; readonly boolean: boolean }>,
+  ) =>
+    ({
+      id,
+      summary: "Hint fixture",
+      input: {
+        acceptsArguments: true,
+        revision: ToolingInputRevision.make("hint-fixture"),
+        flags: flags.map((flag) => ({ ...flag, required: false, sensitive: false })),
+        args: [],
+      },
+    }) satisfies ToolingHelpEntry;
+
+  test("a wrapper's hint shows where Lando's flags go and how to reach this page", () => {
+    const help = renderToolingHelp({ id: "app:wrap", summary: "Wrap a CLI", wrapper: true });
+    expect(help).toContain("`lando --verbose wrap`");
+    expect(help).toContain("`lando help wrap`");
+  });
+
+  test("a declared flag Lando also has gets the before-the-name placement", () => {
+    const help = renderToolingHelp(declaring("app:build", [{ name: "verbose", boolean: true }]));
+    expect(help.match(/`[^`]+`/g)).toEqual(["`--verbose`", "`build`", "`lando --verbose build`"]);
+  });
+
+  test("the placement example gives a value-taking Lando flag a value", () => {
+    const help = renderToolingHelp(
+      declaring("app:report", [
+        { name: "format", boolean: false },
+        { name: "jobs", alias: "j", boolean: false },
+      ]),
+    );
+    expect(help.match(/`[^`]+`/g)).toEqual([
+      "`--format`",
+      "`-j`",
+      "`report`",
+      "`lando --format=<value> report`",
+    ]);
+  });
+
+  test("a reserved renderer flag and an unrelated flag get no placement hint", () => {
+    const help = renderToolingHelp(
+      declaring("app:follow", [
+        { name: "tail", boolean: true },
+        { name: "loud", boolean: true },
+      ]),
+    );
+    expect(help.match(/`[^`]+`/g) ?? []).toEqual([]);
   });
 });

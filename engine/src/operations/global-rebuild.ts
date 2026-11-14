@@ -149,6 +149,9 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
             preparedOverlays,
             options: {
               reconcile: true,
+              // A global rebuild destroys and re-applies every global service, so the record it
+              // leaves names the whole global app.
+              complete: true,
               ...(options.signal === undefined ? {} : { signal: options.signal }),
             },
           },

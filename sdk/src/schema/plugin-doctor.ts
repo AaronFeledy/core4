@@ -12,13 +12,21 @@ const PluginDoctorContextKey = Schema.String.pipe(
   Schema.check(Schema.isMinLength(1)),
   Schema.check(Schema.isMaxLength(128)),
 );
-const PluginDoctorContext = Schema.Record(PluginDoctorContextKey, PluginDoctorMessage).pipe(
+const PluginDoctorContext = Schema.Record(
+  PluginDoctorContextKey,
+  Schema.Union([PluginDoctorMessage, Schema.Array(PluginDoctorMessage).check(Schema.isMaxLength(64))]),
+).pipe(
   Schema.check(Schema.isMaxProperties(32)),
   Schema.check(
     Schema.makeFilter(
       (context) =>
         Object.keys(context).length <= 32 &&
-        Object.values(context).reduce((length, value) => length + value.length, 0) <= 16_000,
+        Object.values(context).reduce(
+          (length, value) =>
+            length +
+            (typeof value === "string" ? value.length : value.reduce((sum, item) => sum + item.length, 0)),
+          0,
+        ) <= 16_000,
       {
         message:
           "PluginDoctorReport.context must contain at most 32 entries and 16000 total value characters",
@@ -43,12 +51,16 @@ const PluginDoctorSolution = Schema.Struct({
  * One plugin-authored doctor result. Core strictly decodes, redacts every
  * string, and decodes again before report inclusion; invalid contributions are
  * dropped. Names and context keys are limited to 128 characters; message-like
- * strings to 2,000; context to 32 entries/16,000 value characters; and
+ * strings to 2,000; subjects to 1..512; context to 32 entries/16,000 value
+ * characters, counting every item in arrays of at most 64 strings; and
  * solutions to 16 entries.
  */
 export const PluginDoctorReport = Schema.Struct({
   name: PluginDoctorName.annotate({
     description: "Plugin-local check name, limited to 128 characters.",
+  }),
+  subject: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512))).annotate({
+    description: "What this finding is about, from 1 to 512 characters.",
   }),
   status: Schema.Literals(["pass", "warn", "fail"]).annotate({
     description: "Check outcome used by doctor summaries and exit status.",
@@ -71,7 +83,7 @@ export const PluginDoctorReport = Schema.Struct({
   ).annotate({ description: "Optional structured runtime state." }),
   context: PluginDoctorContext.annotate({
     description:
-      "Diagnostic context with at most 32 entries, 128-character keys, 2,000-character values, and 16,000 total value characters.",
+      "Diagnostic context with at most 32 entries, 128-character keys, string values or arrays of at most 64 strings, 2,000 characters per string, and 16,000 total value characters.",
   }),
   solutions: Schema.Array(PluginDoctorSolution)
     .pipe(Schema.check(Schema.isMaxLength(16)))

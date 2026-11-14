@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:PluginDoctorReport",
+    "changeKind": "unsupported-keyword",
+    "path": "$.context.additionalProperties",
+    "justification": "Doctor Track S widens context values from strings to strings or arrays of strings. Every previous value remains accepted; array items retain the 2000-character bound, arrays have at most 64 items, and all items count toward the existing 16000-character total. SDK decode tests cover these limits and core tests cover array-item redaction. This additive change is not classified by the conservative checker."
+  },
+  {
     "surface": "schema:VolumeLocator",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
@@ -285,7 +291,7 @@
     "surface": "command:cli:help",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Reviewed #2053 machine-help addition: built-in and plugin descriptor arms accept optional ordered input flags and args, including declared defaults, choices, spellings and positional stdio. Required descriptor fields and the tooling input/revision arm are unchanged, and catalog producers still omit inputs. Built-in and fixture-plugin CLI regressions cover the new target payload; the schema snapshot test verifies publication of both catalog and target shapes. The conservative classifier cannot descend through this anyOf change. #2103 removes the never-again-produced `unknown-command` reason from the unavailable `toolingMetadata` arm: a task a fresh index lacks is an UnknownCommandError, so that arm now lists only the cache-state reasons. #2136 adds optional bounded ToolingRunSummary metadata to tooling targets, with no required-field or input-declaration change. Cached task and live-script machine-help regressions cover propagation and redaction."
+    "justification": "Reviewed #2053 machine-help addition: built-in and plugin descriptor arms accept optional ordered input flags and args, including declared defaults, choices, spellings and positional stdio. Required descriptor fields and the tooling input/revision arm are unchanged, and catalog producers still omit inputs. Built-in and fixture-plugin CLI regressions cover the new target payload; the schema snapshot test verifies publication of both catalog and target shapes. The conservative classifier cannot descend through this anyOf change. #2103 removes the never-again-produced `unknown-command` reason from the unavailable `toolingMetadata` arm: a task a fresh index lacks is an UnknownCommandError, so that arm now lists only the cache-state reasons. #2136 adds optional bounded ToolingRunSummary metadata to tooling targets, with no required-field or input-declaration change. Cached task and live-script machine-help regressions cover propagation and redaction. The CLI flag-ownership change (#2222, #2178, #2327) makes `landoFlags { afterName, commandOwned }` a required field on the three target arms only; catalog row arms are unchanged, so catalog rows still omit it. Machine-help tests pin placement for built-in, plugin, and tooling targets."
   },
   {
     "surface": "command:app:config:lint",
@@ -6368,5 +6374,95 @@
     "changeKind": "property-removed",
     "path": "$.password",
     "justification": "Issue #2235 propagates the authored Redis password narrowing into the derived ServiceConfig input projection. The replacement is creds.password, and the loader rejects the old key before planning."
+  },
+  {
+    "surface": "schema:ExecutionSite",
+    "changeKind": "enum-widened",
+    "path": "$",
+    "justification": "Scheduled jobs add the schedule-job execution site so a secret reference in services.<name>.schedule.<index>.run gets site-aware remediation instead of a command written into the sidecar image. Existing sites keep their meaning; scheduled jobs are the only producer. Execution-site coverage and unsupported-secret-reference tests pin the new site."
+  },
+  {
+    "surface": "schema:ExecutionSiteMatch",
+    "changeKind": "enum-widened",
+    "path": "$.site",
+    "justification": "ExecutionSiteMatch publishes the same closed ExecutionSite set, so scheduled jobs add schedule-job here too. Existing matches keep their meaning and consumers must handle the additional site literal."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appConfig",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appListeners",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appVersionConstraints",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.deprecations",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.globalApp",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.globalConfig",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.mcp",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.provider.checks",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-optional",
+    "path": "$.provider",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.self",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "enum-changed",
+    "path": "$.skipped.items.section",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.skipped.items.status",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.subsystems",
+    "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
   }
 ]

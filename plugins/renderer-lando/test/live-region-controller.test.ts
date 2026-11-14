@@ -120,7 +120,6 @@ describe("LiveRegionController", () => {
     fixture.writes.length = 0;
     controller.setFooter(["restarted"]);
 
-    expect(fixture.calls).not.toContain("cursor:1,24:false");
     expect(fixture.calls).not.toContain("screenMode:split-footer");
     expect(written(fixture)).toContain("restarted");
   });
@@ -132,14 +131,14 @@ describe("LiveRegionController", () => {
     controller.requestLive();
     controller.dropLive();
 
-    expect(fixture.renderer.liveRequestCount).toBe(0);
+    expect(fixture.state().liveRequestCount).toBe(0);
     expect(fixture.fpsAssignments).toEqual([]);
 
     await controller.enterFullTail();
     controller.requestLive();
     controller.dropLive();
 
-    expect(fixture.renderer.liveRequestCount).toBe(0);
+    expect(fixture.state().liveRequestCount).toBe(0);
     expect(fixture.fpsAssignments.every((fps) => fps <= 30)).toBe(true);
     expect(fixture.state()).toMatchObject({ targetFps: 30, maxFps: 30 });
   });
@@ -161,8 +160,6 @@ describe("LiveRegionController", () => {
 
     controller.resize(42, 12);
 
-    expect(fixture.calls).not.toContain("cursor:1,12:false");
-    expect(fixture.calls).not.toContain("reset:true");
     expect(written(fixture)).toContain("one");
     expect(written(fixture)).toContain("two");
   });
@@ -188,8 +185,6 @@ describe("LiveRegionController", () => {
 
     await controller.reset();
 
-    expect(fixture.calls).not.toContain("cursor:1,4:false");
-    expect(fixture.calls).not.toContain("reset:true");
     expect(written(fixture)).toContain("kept");
   });
 
@@ -204,55 +199,32 @@ describe("LiveRegionController", () => {
 
     await controller.reset();
 
-    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual([]);
     expect(written(fixture)).not.toContain("imperative message");
   });
 
-  test("replays only the bounded visible suffix across repeated resizes", async () => {
+  test("a resize repaints the footer without rewriting committed rows", async () => {
+    // Given: the terminal owns committed rows, so a reflow must only touch the live footer.
     const fixture = makeFixture();
-    const controller = await createController(fixture);
-    controller.resize(8, 4);
+    const controller = await createController(fixture, {
+      stdout: process.stdout,
+      width: 8,
+      height: 4,
+      onResize: () => {
+        controller.setFooter(["footer"]);
+      },
+    });
     controller.setFooter(["footer"]);
-    for (const line of ["one", "two", "three", "four", "five", "six"]) {
-      controller.commitScrollback(line);
-    }
-    fixture.calls.length = 0;
+    for (const line of ["one", "two", "界界界", "123456789"]) controller.commitScrollback(`${line}\n`);
+    fixture.writes.length = 0;
 
-    fixture.emitResize(9, 4);
+    // When
+    fixture.emitResize(5, 4);
     fixture.emitResize(10, 4);
 
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
-    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual([]);
-  });
-
-  test("accounts for display-cell wrapping when bounding the resize suffix", async () => {
-    const fixture = makeFixture();
-    const controller = await createController(fixture);
-    controller.resize(4, 4);
-    controller.setFooter(["footer"]);
-    controller.commitScrollback("old");
-    controller.commitScrollback("123456789");
-    fixture.calls.length = 0;
-
-    fixture.emitResize(5, 4);
-
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
-    expect(fixture.calls).not.toContain("reset:true");
-  });
-
-  test("clips a partially visible wide-cell row to the available replay cells", async () => {
-    const fixture = makeFixture();
-    const controller = await createController(fixture);
-    controller.resize(4, 3);
-    controller.setFooter(["footer"]);
-    controller.commitScrollback("界界界");
-    controller.commitScrollback("tail");
-    fixture.calls.length = 0;
-
-    fixture.emitResize(5, 3);
-
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
-    expect(fixture.calls).not.toContain("reset:true");
+    // Then
+    const painted = written(fixture);
+    expect(painted).toContain("footer");
+    for (const line of ["one", "two", "界界界", "123456789"]) expect(painted).not.toContain(line);
   });
 
   test("enters and exits full tail using legal output-mode ordering", async () => {
@@ -267,7 +239,6 @@ describe("LiveRegionController", () => {
     expect(fixture.calls[0]).toBe("externalOutputMode:passthrough");
     expect(fixture.calls[1]).toBe("screenMode:alternate-screen");
     expect(fixture.calls).not.toContain("screenMode:split-footer");
-    expect(fixture.calls).not.toContain("cursor:1,24:false");
   });
 
   test("clearing the footer leaves the last live tree without rewriting it", async () => {
@@ -330,8 +301,6 @@ describe("LiveRegionController", () => {
 
     fixture.emitResize();
 
-    expect(fixture.calls).not.toContain("cursor:1,12:false");
-    expect(fixture.calls).not.toContain("reset:true");
     expect(written(fixture)).toContain("kept");
   });
 
@@ -357,8 +326,6 @@ describe("LiveRegionController", () => {
     fixture.writes.length = 0;
 
     fixture.emitResize(10, 4);
-
-    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([]);
   });
 
   test("commits all deferred alternate-screen scrollback in arrival order exactly once", async () => {
@@ -538,5 +505,134 @@ describe("LiveRegionController", () => {
 
     expect(controller).toBeDefined();
     expect(fixture.state().destroyCount).toBe(0);
+  });
+});
+
+// Transition steps wait only on promises the test holds, so one event-loop turn runs everything else first.
+const nextTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+describe("LiveRegionController — OpenTUI terminal transitions", () => {
+  test("full-tail acquires the alternate screen without mouse reporting or OpenTUI signal handlers", async () => {
+    // Given: Lando never reads the mouse, and it owns signals and renderer teardown.
+    const fixture = makeFixture();
+    let config: Record<string, unknown> | undefined;
+    const module = {
+      ...fixture.module,
+      createCliRenderer: async (nextConfig: Record<string, unknown>) => {
+        config = nextConfig;
+        return fixture.renderer;
+      },
+    } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
+    const controller = await createLiveRegionController(
+      { stdout: createCapturingStdout(fixture.writes), width: 80, height: 24 },
+      { loadModule: async () => module },
+    );
+
+    // When
+    await controller.enterFullTail();
+
+    // Then
+    expect(config).toMatchObject({
+      screenMode: "alternate-screen",
+      externalOutputMode: "passthrough",
+      useMouse: false,
+      exitSignals: [],
+    });
+    await controller.dispose();
+  });
+
+  test("exit keeps rows deferred until OpenTUI has restored the terminal", async () => {
+    // Given
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    await controller.enterFullTail();
+    controller.commitScrollback("before close\n");
+    fixture.writes.length = 0;
+    const releaseClose = fixture.holdClose();
+
+    // When
+    const exiting = controller.exitFullTail();
+    controller.commitScrollback("while closing\n");
+    await nextTurn();
+
+    // Then
+    expect(fixture.state().destroyCount).toBe(1);
+    expect(written(fixture)).toBe("");
+    releaseClose();
+    await exiting;
+    expectOrder(written(fixture), ["before close", "while closing"]);
+    await controller.dispose();
+  });
+
+  test("a terminal payload is written only after OpenTUI suspends the full tail", async () => {
+    // Given
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    await controller.enterFullTail();
+    let releaseSuspend = (): void => {};
+    fixture.renderer.suspend = () => {
+      fixture.calls.push("suspend");
+      return new Promise<void>((resolve) => {
+        releaseSuspend = resolve;
+      });
+    };
+    fixture.calls.length = 0;
+
+    // When
+    const writing = controller.suspendOutput("payload\n", () => {
+      fixture.calls.push("stdout:payload");
+    });
+    await nextTurn();
+
+    // Then
+    expect(fixture.calls).toEqual(["suspend"]);
+    releaseSuspend();
+    await writing;
+    expect(fixture.calls).toEqual(["suspend", "stdout:payload", "resume"]);
+    await controller.dispose();
+  });
+
+  test.each(["suspend", "resume"] as const)(
+    "a rejected %s leaves the full-tail footer painting",
+    async (transition) => {
+      // Given
+      const fixture = makeFixture();
+      const controller = await createController(fixture);
+      await controller.enterFullTail();
+      const failure = new Error(`${transition} failed`);
+      fixture.renderer[transition] = () => Promise.reject(failure);
+
+      // When
+      const writing = controller.suspendOutput("payload\n", () => {});
+      await expect(writing).rejects.toBe(failure);
+      controller.setFooter(["after failure"]);
+
+      // Then
+      expect(fixture.footerText()).toBe("after failure");
+      await controller.dispose();
+    },
+  );
+
+  test("a payload during exit waits for the restore and never suspends the closing renderer", async () => {
+    // Given
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    await controller.enterFullTail();
+    const releaseClose = fixture.holdClose();
+    const exiting = controller.exitFullTail();
+    fixture.calls.length = 0;
+
+    // When
+    const writing = controller.suspendOutput("payload\n", () => {
+      fixture.calls.push("stdout:payload");
+    });
+    await nextTurn();
+
+    // Then
+    expect(fixture.calls).toEqual([]);
+    releaseClose();
+    await Promise.all([exiting, writing]);
+    expect(fixture.calls).toEqual(["stdout:payload"]);
+    await controller.dispose();
   });
 });

@@ -67,6 +67,7 @@ import * as AppDefaults from "./app-defaults.ts";
 import { appFeatureError } from "./app-feature-error.ts";
 import { planServiceDrafts } from "./authored.ts";
 import { withCommittedLiteralDigests } from "./authored-literals.ts";
+import { materializeClonedServiceDrafts, networkServicesWithClones } from "./cloned-services.ts";
 import {
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,
@@ -449,10 +450,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     }
   }
 
-  const plannedServiceDrafts = yield* planServiceDrafts({
-    resolvedServices,
-    appRoot,
-  });
+  const plannedServiceDrafts = yield* planServiceDrafts({ resolvedServices, appRoot });
   const appFeatureResult = yield* applyPreparedAppFeatures(
     {
       appName,
@@ -461,6 +459,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     },
     preparedApp,
   ).pipe(mapFailures((error) => appFeatureError(appRoot, error)));
+  const { cloned, plannedWithClones } = yield* materializeClonedServiceDrafts(plannedServiceDrafts, {
+    clones: appFeatureResult.clones,
+    capabilities: providerCapabilities,
+    resolvedServices,
+    appRoot,
+    appSlug,
+  });
   const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
   for (const capability of appFeatureResult.requires.providerCapabilities) {
     if (providerSatisfiesCapability(providerCapabilities, capability)) continue;
@@ -475,7 +480,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const finalized = yield* finalizeServices({
     manifests,
     configs: landofile.configs,
-    plannedServiceDrafts,
+    plannedServiceDrafts: plannedWithClones,
     appId,
     appRoot,
     appSlug,
@@ -503,11 +508,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const perAppBridge = appId !== "global";
   const authoredNetworking = yield* normalizeNetworks({
     landofile,
-    services: Object.fromEntries(
-      resolvedServices
-        .filter(({ name }) => serviceNames.includes(name))
-        .map(({ name, service }) => [name, service]),
-    ),
+    services: networkServicesWithClones(resolvedServices, cloned, serviceNames),
     appRoot,
     perAppBridge,
   });

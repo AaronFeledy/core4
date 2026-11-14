@@ -503,7 +503,7 @@
     ],
     "StateStore": [
       "open:<A,I>(spec:StateBucketSpec<A,I>) => Effect.Effect<StateBucket<A>,StateStoreError>",
-      "withLock:<A,E>(key:string,body:Effect.Effect<A,E>) => Effect.Effect<A,E|StateStoreError>"
+      "withLock:<A,E,R>(key:string,body:Effect.Effect<A,E,R>) => Effect.Effect<A,E|StateStoreError,R>"
     ],
     "Telemetry": [
       "enabled:boolean",
@@ -543,7 +543,15 @@
     ],
     "./abortable-promise": ["tryPromiseSettled"],
     "./app": [],
-    "./certificates": ["certificatePairIsCurrent"],
+    "./certificates": [
+      "CertificateMaterial",
+      "CertificatePairPreparation",
+      "LEAF_RENEWAL_MARGIN_MS",
+      "PreparedCertificatePair",
+      "certificateIsCurrent",
+      "certificatePairIsCurrent",
+      "prepareCertificatePair"
+    ],
     "./command-result": [
       "FailureRoleAnnotation",
       "annotateFailureRole",
@@ -634,11 +642,12 @@
       "decodeVariablePropsEither",
       "decodeVerifyPropsEither"
     ],
-    "./errno": ["errnoCode", "isErrnoCode"],
+    "./errno": ["FILE_IO_REASONS", "errnoCode", "fileIoReason", "isErrnoCode"],
     "./errors": [
       "AgentEnvPatternError",
       "AmbiguousCertificateAuthoritiesError",
       "AppDataIdentityError",
+      "AppFeatureCloneError",
       "AppFeatureCycleError",
       "AppFeatureMutationConflictError",
       "AppFeatureSelectorMatchedNothingError",
@@ -693,7 +702,10 @@
       "DownloaderUnavailableError",
       "EnvironmentValueResolutionError",
       "EventError",
+      "FILE_IO_REASONS",
       "FileIoError",
+      "FileIoOperation",
+      "FileIoReason",
       "FileNotFoundError",
       "FilePermissionError",
       "FileSyncDriftError",
@@ -899,10 +911,12 @@
       "causeMessage",
       "choicesUnavailableFields",
       "errnoCode",
+      "fileIoReason",
       "interactionRequiredFields",
       "isErrnoCode",
       "landofileLoadFailures",
-      "promptValidationFields"
+      "promptValidationFields",
+      "safeFileIoError"
     ],
     "./events": [
       "BeforeExitEvent",
@@ -1268,6 +1282,7 @@
       "BuildStep",
       "BuildStepSkipEvent",
       "BunShellScriptFrontMatter",
+      "CLONED_SERVICE_PROVENANCE_KEY",
       "COMPOSE_DEPRECATED_TOP_LEVEL_KEYS",
       "COMPOSE_EXTENSION_TOP_LEVEL_PATTERN",
       "COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY",
@@ -1376,6 +1391,7 @@
       "ContainerUser",
       "ContentSource",
       "ContributionRef",
+      "CronExpression",
       "CurrentExecutableAppPlan",
       "DEBUGGER_HOST_ALIAS",
       "DEFAULT_KEYMAP_BINDINGS",
@@ -1751,6 +1767,9 @@
       "ScanPlan",
       "ScannerConfig",
       "ScenarioProps",
+      "ScheduleConfig",
+      "ScheduleJob",
+      "ScheduleJobName",
       "SchemaDeprecationAnnotationId",
       "SchemaExecutionSiteAnnotationId",
       "SchemaIssueLeaf",
@@ -1907,6 +1926,7 @@
       "canonicalSqlitePath",
       "certificateNameForHostname",
       "classifyAuthoringSource",
+      "clonedServiceParent",
       "closestKeys",
       "containerDestinationRefusalMessage",
       "decodeGuideFrontmatter",
@@ -1925,6 +1945,7 @@
       "endpointInvariantIssues",
       "executionSite",
       "executionSiteKey",
+      "expandCronMacro",
       "fileSyncDisposalCommitted",
       "fileSyncDisposalTransitions",
       "fileSyncInvalidationRequired",
@@ -1954,6 +1975,7 @@
       "isHostEventContainerStep",
       "isIdleRunStatus",
       "isLifecycleCommandId",
+      "isMappableEveryDurationMs",
       "isMergeDirectiveMemberAst",
       "isPlainAuthoringString",
       "isSortedUniquePluginTrustList",
@@ -1983,6 +2005,7 @@
       "orderMounts",
       "override",
       "parseContainerDestination",
+      "parseEveryDurationMs",
       "parseShortVolume",
       "parseValidationIssuePath",
       "planAppIdentity",

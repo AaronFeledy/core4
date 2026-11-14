@@ -194,7 +194,8 @@ export const writeLockEntries = (
       resolve(await realpathOrSelf(dirname(input.lockfilePath)), basename(input.lockfilePath)),
     );
     yield* stateStore.withLock(
-      `landofile-include-lock:${sha256Hex(canonicalPath)}`,
+      // The key becomes one file name under operation-locks; a colon is an NTFS data-stream separator.
+      `landofile-include-lock-${sha256Hex(canonicalPath)}`,
       Effect.gen(function* () {
         const current = yield* parseLockEntries(stateStore, input.appRoot, input.lockfilePath);
         const merged = new Map(input.merge ? current : []);

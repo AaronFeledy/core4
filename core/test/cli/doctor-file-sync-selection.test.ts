@@ -128,8 +128,16 @@ test.each([
     expect(result.checks.some((check) => check.context.engineId === "alternative")).toBe(
       scenario.alternative && scenario.defaultEngine !== "passthrough",
     );
-    expect(result.selfChecks?.filter((check) => check.section === "plugin-doctor-checks") ?? []).toEqual([]);
-    expect(result.selfChecks?.filter((check) => check.section === "file-sync-selection") ?? []).toEqual([]);
+    expect(
+      result.checks.some(
+        (check) => check.name === "doctor-self" && check.context.probe === "plugin-doctor-checks",
+      ),
+    ).toBe(false);
+    expect(
+      result.checks.some(
+        (check) => check.name === "doctor-self" && check.context.probe === "file-sync-selection",
+      ),
+    ).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

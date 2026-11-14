@@ -15,8 +15,9 @@ import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
 import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
-import { activeResultFormat, emitResultLine } from "./compiled-runtime";
-import { isEnvelopeResultFormat } from "./format-flags";
+import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
+import { landoFlagsForPolicy, specOwnerPolicy, toolingPolicy } from "./flag-claims";
+import { formatFlagDefsForCommand, isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { HelpCommandDescriptor } from "./help-command-descriptor";
 import { commandHelpInput } from "./help-command-input";
@@ -27,6 +28,7 @@ import { printMachineHelpTarget } from "./help-target";
 import { type PluginCommandListing, PluginMetadata } from "./plugin-command-catalog";
 import { moreRows } from "./root-help-topics";
 import type { ToolingMetadataStatus } from "./tooling-cache-status";
+import { toolingTypeableName } from "./tooling-route";
 
 export { renderCommandHelp, renderToolingHelp } from "./cli-help";
 
@@ -68,37 +70,6 @@ export type HelpCatalogResult = typeof HelpCatalogResult.Type;
 type HelpCatalogRow = typeof HelpCatalogRow.Type;
 
 const isBuiltInRegistryId = (id: string): boolean => Object.hasOwn(COMMAND_REGISTRY_MANIFEST.commands, id);
-
-const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): ToolingHelpEntry => ({
-  id: entry.id,
-  summary: entry.summary,
-  hidden: entry.hidden,
-  ...(entry.service === undefined ? {} : { service: entry.service }),
-  ...(entry.input === undefined ? {} : { input: entry.input }),
-  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
-  ...(entry.source === undefined ? {} : { source: entry.source }),
-  ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
-});
-
-export const toolingHelpEntryForToken = (
-  cache: AppCommandIndexPayload,
-  token: string,
-): ToolingHelpEntry | undefined => {
-  const aliasPolicy = cache.aliasPolicy;
-  for (const entry of cache.entries) {
-    if (entry.hidden || isBuiltInRegistryId(entry.id)) continue;
-    if (entry.id === token) return toToolingHelpEntry(entry);
-    const name = typeableName({
-      canonicalId: entry.id,
-      builtInAliases: [],
-      implicitNamespaceStrip: true,
-      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
-    });
-    if (name.primary === token || name.extras.includes(token)) return toToolingHelpEntry(entry);
-  }
-  return undefined;
-};
 
 export const thisAppHelpRowsFromCache = (cache: AppCommandIndexPayload): readonly ThisAppHelpRow[] => {
   const aliasPolicy = cache.aliasPolicy;
@@ -218,20 +189,6 @@ export const printHelpCatalogJson = (
     }).pipe(Effect.provideService(CliInvocation, context)),
   );
 
-const rendererModeFrom = (
-  argv: ReadonlyArray<string>,
-  env: Readonly<Record<string, string | undefined>>,
-): string | undefined => {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--") break;
-    if (arg === "--renderer") return argv[index + 1];
-    if (arg?.startsWith("--renderer=")) return arg.slice("--renderer=".length);
-  }
-  const fromEnv = env.LANDO_RENDERER;
-  return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
-};
-
 export const printCommandHelp = (
   entry: BuiltInCommandEntry,
   context: CliInvocationContext = processInvocationContext(),
@@ -245,19 +202,18 @@ export const printCommandHelp = (
         summary: entry.spec.summary,
         source: "built-in",
         input: commandHelpInput(entry.spec),
+        landoFlags: landoFlagsForPolicy(specOwnerPolicy(entry.spec, formatFlagDefsForCommand(entry.spec))),
       },
       activeResultFormat,
       context,
     );
   }
-  const argv = process.argv.slice(2);
   return emitResultLine(
     renderCommandHelp(entry, {
       styled: shouldStyleHelp({
         isTTY: context.io.stdoutIsTTY === true,
         env: context.env,
-        argv,
-        rendererMode: rendererModeFrom(argv, context.env),
+        rendererMode: activeRendererMode,
       }),
     }),
     context,
@@ -270,12 +226,7 @@ export const printToolingHelp = (
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) {
-    const names = typeableName({
-      canonicalId: entry.id,
-      builtInAliases: [],
-      implicitNamespaceStrip: true,
-      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
-    });
+    const names = toolingTypeableName(entry.id, aliasPolicy);
     return printMachineHelpTarget(
       {
         canonicalId: entry.id,
@@ -286,19 +237,20 @@ export const printToolingHelp = (
         ...(entry.input === undefined ? {} : { input: entry.input }),
         ...(entry.runs === undefined ? {} : { runs: entry.runs }),
         ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
+        landoFlags: landoFlagsForPolicy(
+          toolingPolicy(entry.input, entry.wrapper === true ? { wrapper: true } : {}),
+        ),
       },
       activeResultFormat,
       context,
     );
   }
-  const argv = process.argv.slice(2);
   return redactHelpText(
     renderToolingHelp(entry, {
       styled: shouldStyleHelp({
         isTTY: context.io.stdoutIsTTY === true,
         env: context.env,
-        argv,
-        rendererMode: rendererModeFrom(argv, context.env),
+        rendererMode: activeRendererMode,
       }),
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     }),

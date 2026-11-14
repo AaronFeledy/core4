@@ -20,7 +20,7 @@ nativeListenPortSuite({
   serviceType: mssqlServiceType,
   variable: "MSSQL_TCP_PORT",
   defaultPort: 1433,
-  reservedPorts: [1434],
+  reservedPorts: [135, 1431, 1434],
   startupCommand: "/bin/bash",
 });
 

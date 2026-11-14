@@ -57,6 +57,14 @@ const affectsProviders = (path: string): boolean =>
   path === "sdk/src/services/service-readiness.ts" ||
   path === "sdk/src/errors/provider.ts" ||
   path === "sdk/src/schema/service-probe.ts" ||
+  path.startsWith("sdk/src/certificates/") ||
+  /^http-client\/src\/(?:tls-peer|live|policy|network-trust|network-request|direct-http)\.ts$/u.test(path) ||
+  /^plugins\/proxy-traefik\/src\/(?:apply-routes|publish-routes|tls|served-tls-proof|route-acceptance|live-route-snapshot|route-reload-state|route-reload-snapshot|proxy|proxy-paths|proxy-types|routing|dashboard|secret-file|global-services\/traefik)\.ts$/u.test(
+    path,
+  ) ||
+  /^plugins\/proxy-traefik\/test\/(?:live-traefik-fixture\.ts|router-certificate-fixtures\.json)$/u.test(
+    path,
+  ) ||
   path.startsWith("sdk/src/services/provider") ||
   path.startsWith("sdk/test/contract/provider") ||
   path === ".github/workflows/ci.yml" ||

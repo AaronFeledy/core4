@@ -1,54 +1,17 @@
-/**
- * Subsystem diagnostics for `lando doctor`.
- *
- * Aggregates the status of each `lando doctor` subsystem (proxy, certificate
- * authority, SSH agent, healthcheck engine, endpoint scanner, host DNS)
- * into a diagnostic record with `status`, `severity`, `recovery`, `context`,
- * and `solution` fields.
- *
- * Checks inspect the runtime services supplied by the caller. Missing services
- * and probes that doctor does not execute are reported as skipped, not passed.
- *
- * When `--fix` is requested, a degraded subsystem whose recovery is classified
- * `automatic` (non-privileged, exposes a re-runnable `setup()` step) has its
- * setup step re-run in-process; the attempt outcome is reported as
- * command-shaped metadata. Subsystems classified `manual` — privileged
- * operations (CA trust-store install, host DNS writes) or subsystems with no
- * `setup()` recovery step — are never auto-run and always fall back to a manual
- * remediation, matching the no-silent-elevation rule for diagnostics.
- */
-
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { RouterService, SshService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
-
-import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsSubsystemCheck } from "./doctor-certs-status";
+import type { DoctorFinding, DoctorSectionResult } from "./doctor-contract";
 import { idleGlobalProvider } from "./doctor-global-runtime";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostDnsCheck } from "./doctor-host-dns-check";
-import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
-import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
-import { renderSectionCheck } from "./doctor-section-render";
 import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export {
-  type DoctorSubsystemCheck,
-  DoctorSubsystemFailure,
-  type SubsystemRecovery,
   classifySubsystemFailure,
   subsystemFailureDiagnostic,
 } from "./doctor-subsystem-checks";
-
-export interface SubsystemDoctorResult {
-  readonly checks: ReadonlyArray<DoctorSubsystemCheck>;
-  readonly skipped?: ReadonlyArray<{
-    readonly section: string;
-    readonly status: "skipped";
-    readonly reason: string;
-  }>;
-}
 
 export interface SubsystemDoctorOptions {
   /**
@@ -56,14 +19,12 @@ export interface SubsystemDoctorOptions {
    * `automatic`. Privileged / no-setup subsystems are never auto-run.
    */
   readonly fix?: boolean;
-  readonly certs?: CertsDoctorStatus;
-  readonly networkTrust?: NetworkTrustDoctorStatus;
   readonly sshAgent?: SshAgentDoctorOptions;
 }
 
 export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   options: SubsystemDoctorOptions = {},
-): Effect.fn.Return<SubsystemDoctorResult, never> {
+): Effect.fn.Return<DoctorSectionResult, never> {
   const fix = options.fix === true;
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
@@ -76,8 +37,6 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
     proxy === undefined || (idleProvider !== undefined && !routerUnavailable)
       ? []
       : [yield* buildProxyCheck(proxy, fix)];
-  const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
-  const certsCheck = yield* certsSubsystemCheck(certs, fix);
   const sshChecks =
     ssh === undefined
       ? []
@@ -96,10 +55,10 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   return {
     checks: [
       ...proxyChecks,
-      ...(certsCheck === undefined ? [] : [certsCheck]),
-      ...sshChecks.flatMap((check): ReadonlyArray<DoctorSubsystemCheck> => {
+      ...sshChecks.flatMap((check): ReadonlyArray<DoctorFinding> => {
         if (check.context.sidecarSkipped !== "true") return [check];
-        const gpg = check.details?.gpg;
+        if (check.details === undefined || !("gpg" in check.details)) return [];
+        const gpg = check.details.gpg;
         if (gpg === undefined) return [];
         const ready = gpg.upstream.reachable && gpg.keyringExported;
         return [
@@ -126,7 +85,6 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
         ];
       }),
       ...hostDnsChecks,
-      ...(options.networkTrust === undefined ? [] : [options.networkTrust]),
     ],
     skipped: [
       ...(idleProvider === undefined
@@ -134,18 +92,16 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
         : [
             ...(routerUnavailable ? [] : ["router"]),
             ...(sshChecks.some((check) => check.context.sidecarSkipped === "true") ? ["ssh-sidecar"] : []),
-          ].map((section) => ({
-            section,
-            status: "skipped" as const,
+          ].map((check) => ({
+            check,
             reason: `Provider ${idleProvider} holding the global app is idle; readiness was not inspected.`,
           }))),
-      ...[["router", proxy] as const, ["ssh", ssh] as const].flatMap(([section, service]) =>
+      ...[["router", proxy] as const, ["ssh", ssh] as const].flatMap(([check, service]) =>
         service === undefined
           ? [
               {
-                section,
-                status: "skipped" as const,
-                reason: "Runtime subsystem service was not provided; no inspection was performed.",
+                check,
+                reason: "Requires the provider runtime; no subsystem inspection was performed.",
               },
             ]
           : [],
@@ -153,94 +109,21 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
       ...(Option.isNone(resolver)
         ? [
             {
-              section: "host-dns",
-              status: "skipped" as const,
+              check: "host-dns",
               reason: "Host DNS resolver was not provided; no host DNS inspection was performed.",
             },
           ]
         : []),
       {
-        section: "healthcheck",
-        status: "skipped",
+        check: "healthcheck",
         reason:
           "No service healthcheck was executed against a selected available provider. Service readiness and build gates inspect healthchecks during lando start and rebuild.",
       },
       {
-        section: "scanner",
-        status: "skipped",
+        check: "scanner",
         reason:
           "No app endpoints were inspected against a selected available provider. Endpoint scanning runs after lando start.",
       },
     ],
   };
 });
-
-export const renderSubsystemDoctorResult = (result: SubsystemDoctorResult): string =>
-  [
-    ...result.checks.flatMap((check) => renderSectionCheck(check, { skipContextKeys: ["subsystem"] })),
-    ...(result.skipped ?? []).map((entry) => `${entry.section}: SKIPPED · ${entry.reason}`),
-  ].join("\n");
-
-const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
-  "subsystem",
-  "subsystemId",
-  "ready",
-  "state",
-  "acquisitionMode",
-  "httpPort",
-  "httpsPort",
-  "certsReason",
-  "certsCandidateIds",
-  "certsPlugin",
-  "certsDetail",
-  "mode",
-  "reason",
-  "socketPath",
-  "danglingEnvSocket",
-  "note",
-  "baseDomain",
-  "loopback",
-  "dnsHostname",
-  "dnsResolved",
-  "dnsAddresses",
-  "failure",
-  "message",
-  "remediation",
-  "caConfigured",
-  "caCount",
-  "caLoaded",
-  "caTrustHost",
-  "caInjectIntoServices",
-  "proxyConfigured",
-  "proxyInjectIntoServices",
-  "noProxyCount",
-  "fixOutcome",
-  "fixCommand",
-  "fixExitCode",
-  "fixError",
-];
-
-const checkEventPayload = (check: DoctorSubsystemCheck): Record<string, unknown> => ({
-  _tag: "doctor.check",
-  name: check.name,
-  status: check.status,
-  severity: check.severity,
-  recovery: check.recovery,
-  context: orderKnownKeys(check.context, CONTEXT_KEY_ORDER),
-  ...(check.details === undefined ? {} : { details: check.details }),
-  solutions: doctorSolutionPayloads(check.solutions),
-});
-
-export interface SubsystemDoctorNdjsonOptions {
-  readonly now?: Date;
-}
-
-export const renderSubsystemDoctorResultAsNdjson = (
-  result: SubsystemDoctorResult,
-  options: SubsystemDoctorNdjsonOptions = {},
-): string =>
-  renderDoctorChecksAsNdjson({
-    checks: result.checks,
-    now: options.now,
-    checkEventPayload,
-  });

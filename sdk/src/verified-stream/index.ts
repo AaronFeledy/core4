@@ -13,18 +13,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { Effect, Predicate, Ref, Schema, type Scope, Stream } from "effect";
+import { Effect, Predicate, Ref, type Scope, Stream } from "effect";
+import { VerifiedStreamError, persistenceError } from "./errors.ts";
 
-/** Failure raised while persisting/verifying a streamed artifact. */
-export class VerifiedStreamError extends Schema.TaggedError<VerifiedStreamError>()("VerifiedStreamError", {
-  reason: Schema.Literals(["checksum", "size", "persist"]),
-  message: Schema.String,
-  expectedSha256: Schema.optionalKey(Schema.String),
-  actualSha256: Schema.optionalKey(Schema.String),
-  expectedSizeBytes: Schema.optionalKey(Schema.Number),
-  actualSizeBytes: Schema.optionalKey(Schema.Number),
-  cause: Schema.optionalKey(Schema.Unknown),
-}) {}
+export { VerifiedStreamError } from "./errors.ts";
 
 export interface VerifiedStreamResult {
   readonly sha256: string;
@@ -130,14 +122,7 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
   if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
   yield* Effect.tryPromise({
     try: () => assertReplaceableDestination(params.destinationPath),
-    catch: (cause) =>
-      cause instanceof VerifiedStreamError
-        ? cause
-        : new VerifiedStreamError({
-            reason: "persist",
-            message: "Failed to inspect the destination.",
-            cause,
-          }),
+    catch: (cause) => persistenceError("Failed to inspect the destination.", params.destinationPath, cause),
   });
   const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
   const committed = yield* Ref.make(false);
@@ -153,18 +138,13 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
   yield* Effect.tryPromise({
     try: () => mkdir(dirname(params.destinationPath), { recursive: true }),
     catch: (cause) =>
-      new VerifiedStreamError({
-        reason: "persist",
-        message: "Failed to create destination directory.",
-        cause,
-      }),
+      persistenceError("Failed to create destination directory.", params.destinationPath, cause),
   });
 
   const handle = yield* Effect.acquireRelease(
     Effect.tryPromise({
       try: () => open(tempPath, "w", params.mode),
-      catch: (cause) =>
-        new VerifiedStreamError({ reason: "persist", message: "Failed to open temp file.", cause }),
+      catch: (cause) => persistenceError("Failed to open temp file.", params.destinationPath, cause),
     }),
     (h) => Effect.promise(() => h.close().catch(() => undefined)),
   );
@@ -192,7 +172,7 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
         const { bytesWritten } = yield* Effect.tryPromise({
           try: () => handle.write(chunk.subarray(offset)),
           catch: (cause) =>
-            new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
+            persistenceError("Failed to write artifact bytes.", params.destinationPath, cause),
         });
         if (
           !Number.isSafeInteger(bytesWritten) ||
@@ -219,10 +199,10 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
   }
 
   if (params.mode !== undefined) {
+    const mode = params.mode;
     yield* Effect.tryPromise({
-      try: () => chmod(tempPath, params.mode as number),
-      catch: (cause) =>
-        new VerifiedStreamError({ reason: "persist", message: "Failed to set file mode.", cause }),
+      try: () => chmod(tempPath, mode),
+      catch: (cause) => persistenceError("Failed to set file mode.", params.destinationPath, cause),
     });
   }
 
@@ -235,10 +215,7 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
         await assertReplaceableDestination(params.destinationPath);
         await rename(tempPath, params.destinationPath);
       },
-      catch: (cause) =>
-        cause instanceof VerifiedStreamError
-          ? cause
-          : new VerifiedStreamError({ reason: "persist", message: "Failed to persist artifact.", cause }),
+      catch: (cause) => persistenceError("Failed to persist artifact.", params.destinationPath, cause),
     }),
   );
   yield* Ref.set(committed, true);

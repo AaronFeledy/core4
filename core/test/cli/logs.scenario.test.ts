@@ -24,7 +24,7 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
-import { openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
+import { BuildOwner, openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
@@ -519,10 +519,12 @@ describe("lando logs", () => {
     expect(rendered).toContain("database stdout: console line");
   });
 
-  test("an empty build result names lando rebuild instead of no log lines", () => {
+  test("reports empty build history without prescribing a forced rebuild", () => {
     const rendered = renderLogsAppResult({ app: "test-logs", lines: [] }, true);
 
-    expect(rendered).toContain("lando rebuild");
+    expect(rendered).toContain("test-logs");
+    expect(rendered).toContain("no recorded build output");
+    expect(rendered).not.toContain("lando rebuild");
     expect(rendered).not.toContain("no log lines");
   });
 
@@ -860,17 +862,24 @@ describe("lando logs", () => {
     const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-logs-build-scenario-")));
     try {
       const state = makeTestStateStore();
-      const transcript = join(dataRoot, "builds", String(plan.id), "artifact", "web", "image.log");
+      const transcript = join(
+        dataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+        "web",
+        "image.log",
+      );
       await mkdir(dirname(transcript), { recursive: true });
       await writeFile(transcript, "built image\n");
-      const bucket = await Effect.runPromise(openAppBuildResults(state.service, String(plan.id)));
+      const bucket = await Effect.runPromise(openAppBuildResults(state.service, BuildOwner.fromPlan(plan)));
       await Effect.runPromise(
         recordBuildResult(bucket, {
           buildKey: "image",
           service: web.name,
           phase: "artifact",
           outcome: "complete",
-          exitCode: 0,
           durationMs: 1,
           transcriptPath: AbsolutePath.make(transcript),
         }),

@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { resolveApp } from "./app/resolve";
 import { AppConfigResultSchema, appConfig, appConfigRedactionTokens } from "./cli/commands/app-config";
 import { resilientDoctorReport } from "./cli/commands/doctor-bootstrap";
-import { DoctorReportSchema } from "./cli/commands/doctor-report-contract";
+import { DoctorReportSchema } from "./cli/commands/doctor-contract";
 import { AppsListResultSchema, listServices } from "./cli/commands/list";
 
 export const resources: ReadonlyArray<McpResourceEntry> = [

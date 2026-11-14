@@ -178,6 +178,12 @@ export const TEST_SELECTIONS = [
     needs: "LANDO_TEST_PODMAN_SOCKET",
   },
   {
+    id: "proxy-traefik-certificate-live",
+    paths: ["plugins/proxy-traefik/test/router-certificate-publication.integration.test.ts"],
+    jobs: live,
+    needs: "LANDO_TEST_PODMAN_SOCKET",
+  },
+  {
     id: "providers-sqlite-integrity",
     paths: ["plugins/sql/test/sqlite-integrity.integration.test.ts"],
     jobs: live,
@@ -188,6 +194,12 @@ export const TEST_SELECTIONS = [
     paths: ["plugins/sql/test/sqlite-borrowed-mounts.integration.test.ts"],
     jobs: live,
     needs: "LANDO_TEST_DOCKER_SOCKET",
+  },
+  {
+    id: "providers-schedule",
+    paths: ["plugins/schedule/test/schedule.integration.test.ts"],
+    jobs: live,
+    needs: "LANDO_TEST_PODMAN_SOCKET or LANDO_TEST_DOCKER_SOCKET",
   },
   {
     id: "library",

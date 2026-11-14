@@ -64,8 +64,27 @@ const makePromptCancelledError = (): Error => {
   return error;
 };
 
+const isOneNonAsciiCharacter = (text: string): boolean =>
+  [...text].length === 1 && (text.codePointAt(0) ?? 0) > 0x7f;
+
+/**
+ * Under the Kitty keyboard protocol, Ctrl+С on a Cyrillic layout arrives as `с` with the US-layout `c` in
+ * `baseCode`. Like OpenTUI's key bindings, fall back to the base key only when the typed key is one non-ASCII
+ * character, so Dvorak Ctrl+J (physical C) does not cancel.
+ */
+const isCtrlC = (key: KeyEventLike): boolean => {
+  if (key.ctrl !== true) return false;
+  if (key.name === "c") return true;
+  return (
+    key.name !== undefined &&
+    isOneNonAsciiCharacter(key.name) &&
+    key.baseCode !== undefined &&
+    String.fromCodePoint(key.baseCode).toLowerCase() === "c"
+  );
+};
+
 const isCancellationKey = (key: KeyEventLike): boolean =>
-  key.name === "escape" || (key.ctrl === true && key.name === "c") || key.sequence === "\u0003";
+  key.name === "escape" || isCtrlC(key) || key.sequence === "\u0003";
 
 const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
 
@@ -104,6 +123,9 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
             stdout: deps.noColor === true ? monochromePromptTerminal(terminal) : terminal,
             remote: false,
             exitOnCtrlC: false,
+            // Lando owns signals and settles the prompt itself; a renderer OpenTUI destroys on SIGINT
+            // would leave the prompt waiting forever.
+            exitSignals: [],
             screenMode: "main-screen",
             useMouse: false,
             targetFps: 30,
@@ -201,7 +223,8 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
         cleanupCause ??= cause;
       }
       try {
-        await renderer.destroy();
+        renderer.destroy();
+        await renderer.closed;
       } catch (cause) {
         cleanupCause ??= cause;
       }

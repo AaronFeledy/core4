@@ -24,6 +24,103 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { withCwd } from "../_support/temp-cwd";
 
 describe("doctor provider-bootstrap failure", () => {
+  test.each(["mcp", "network-trust"])(
+    "does not construct a provider runtime for --section %s",
+    async (section) => {
+      let builds = 0;
+      const factory = Layer.succeed(
+        RuntimeLayerFactory,
+        RuntimeLayerFactory.of({
+          make: <Services>(): Layer.Layer<Services, ConfigError> => {
+            builds += 1;
+            return Layer.effectContext(Effect.die("provider runtime must remain lazy"));
+          },
+        }),
+      );
+      const report = await Effect.runPromise(
+        resilientDoctorReport({ sections: [section], env: {} }).pipe(
+          Effect.provide(factory),
+          Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
+          Effect.provideService(
+            HostDnsResolver,
+            HostDnsResolver.of({ lookup: () => Effect.succeed(["127.0.0.1"]) }),
+          ),
+        ),
+      );
+      expect(builds).toBe(0);
+      expect(report.checks.map((check) => check.section)).toEqual(["global-config", section]);
+      expect(report.checks.some((check) => check.name === "doctor-self")).toBe(false);
+    },
+  );
+
+  test("--section subsystems builds the provider runtime and degrades when it cannot", async () => {
+    let builds = 0;
+    const factory = Layer.succeed(
+      RuntimeLayerFactory,
+      RuntimeLayerFactory.of({
+        make: <Services>(): Layer.Layer<Services, ConfigError> => {
+          builds += 1;
+          return Layer.effectContext(Effect.die("provider runtime unavailable"));
+        },
+      }),
+    );
+    const report = await Effect.runPromise(
+      resilientDoctorReport({ sections: ["subsystems"], env: {} }).pipe(
+        Effect.provide(factory),
+        Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
+        Effect.provideService(
+          HostDnsResolver,
+          HostDnsResolver.of({ lookup: () => Effect.succeed(["127.0.0.1"]) }),
+        ),
+      ),
+    );
+    expect(builds).toBe(1);
+    expect(report.checks.find((check) => check.name === "doctor-self")?.context.probe).toBe(
+      "provider-bootstrap",
+    );
+    expect(report.checks.some((check) => check.section === "subsystems" && check.name === "host-dns")).toBe(
+      true,
+    );
+    expect(
+      report.skipped.filter(
+        (skip) => skip.section === "subsystems" && skip.reason.includes("provider runtime"),
+      ),
+    ).toEqual([expect.objectContaining({ check: "router" }), expect.objectContaining({ check: "ssh" })]);
+  });
+
+  test("invalid global config still runs the requested app version check", async () => {
+    const root = await mkdtemp(join(tmpdir(), "doctor-config-independent-"));
+    try {
+      await writeFile(join(root, ".lando.yml"), "name: independent-app\nlando: '>=99'\n");
+      const factory = Layer.succeed(
+        RuntimeLayerFactory,
+        RuntimeLayerFactory.of({
+          make: <Services>(): Layer.Layer<Services> => Layer.effectContext(Effect.die("unused")),
+        }),
+      );
+      const report = await withCwd(root, () =>
+        Effect.runPromise(
+          resilientDoctorReport({ app: true, env: {}, platform: "darwin" }).pipe(
+            Effect.provide(factory),
+            Effect.provideService(GlobalConfigSources, {
+              env: {},
+              sources: { user: false, env: false },
+              host: { router: { httpPort: 99999 } },
+            }),
+          ),
+        ),
+      );
+      expect(report.checks.find((check) => check.section === "global-config")?.status).toBe("fail");
+      expect(report.checks.find((check) => check.section === "app-version-constraints")?.status).toBe("fail");
+      expect(report.checks.find((check) => check.section === "mcp")?.status).toBe("pass");
+      expect(
+        report.skipped.some((skip) => skip.section === "app-version-constraints" || skip.section === "mcp"),
+      ).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test.each([false, true])("preserves independent diagnostics when fix=%s", async (fix) => {
     // Given valid global config and an app, but a provider runtime that cannot build.
     const root = await mkdtemp(join(tmpdir(), "lando-doctor-provider-bootstrap-"));
@@ -95,55 +192,79 @@ describe("doctor provider-bootstrap failure", () => {
       );
 
       // Then uninspected sections are explicit skips, not stub warnings or healthy empty results.
-      expect(report.globalConfig?.status).toBe("pass");
-      expect(report.self?.checks).toEqual([
-        expect.objectContaining({ section: "provider-bootstrap", status: "fail", reason: "failure" }),
-      ]);
-      expect(report.skipped?.map((entry) => entry.section)).toEqual([
-        "provider",
-        "router",
-        "ssh",
-        "healthcheck",
-        "scanner",
-        "certificate-authority",
-        "missing-app-roots",
-        "orphaned-volume-snapshots",
-        "app-config",
-        "app-listeners",
-        "deprecations",
-        "debugger-host",
-      ]);
+      expect(report.checks.find((check) => check.section === "global-config")?.status).toBe("pass");
+      expect(report.checks.find((check) => check.name === "doctor-self")).toMatchObject({
+        section: "provider",
+        status: "fail",
+        context: { probe: "provider-bootstrap", reason: "failure" },
+      });
+      expect(report.skipped.map((entry) => entry.section)).toEqual(
+        expect.arrayContaining([
+          "provider",
+          "subsystems",
+          "certificate-authority",
+          "missing-app-roots",
+          "orphaned-volume-snapshots",
+          "app-config",
+          "app-listeners",
+          "deprecations",
+        ]),
+      );
       expect(
-        report.skipped?.every(
-          (entry) =>
-            entry.status === "skipped" &&
-            (entry.section === "debugger-host" || entry.reason.includes("provider-bootstrap")),
-        ),
+        report.skipped
+          .filter((entry) => entry.section !== "subsystems")
+          .map((entry) => entry.check)
+          .filter((check) => check !== undefined),
+      ).toEqual([]);
+      expect(
+        report.skipped.filter((entry) => entry.section === "subsystems").map((entry) => entry.check),
+      ).toEqual(expect.arrayContaining(["router", "ssh", "healthcheck", "scanner"]));
+      expect(report.skipped.every((entry) => entry.reason.length > 0)).toBe(true);
+      expect(
+        report.checks
+          .filter((check) => check.section === "provider")
+          .every((check) => check.name === "doctor-self"),
       ).toBe(true);
-      expect(report.provider.checks).toEqual([]);
-      expect(report.subsystems.checks.map((check) => check.name)).toContain("filesystem-watch");
-      expect(report.subsystems.checks.map((check) => check.name)).toContain("network-trust");
-      expect(report.subsystems.checks.map((check) => check.name)).toContain("legacy-snapshot-catalogs");
       expect(
-        report.subsystems.checks.find((check) => check.name === "legacy-snapshot-catalogs")?.context.count,
+        report.checks.filter((check) => check.section === "filesystem-watch").map((check) => check.name),
+      ).toContain("filesystem-watch");
+      expect(
+        report.checks.filter((check) => check.section === "network-trust").map((check) => check.name),
+      ).toContain("network-trust");
+      expect(
+        report.checks
+          .filter((check) => check.section === "legacy-snapshot-catalogs")
+          .map((check) => check.name),
+      ).toContain("legacy-snapshot-catalogs");
+      expect(
+        report.checks.find(
+          (check) =>
+            check.section === "legacy-snapshot-catalogs" && check.name === "legacy-snapshot-catalogs",
+        )?.context.count,
       ).toBe("1");
       expect(
-        report.subsystems.checks.find((check) => check.name === "accelerated-start")?.context.attemptId,
+        report.checks.find(
+          (check) => check.section === "accelerated-starts" && check.name === "accelerated-start",
+        )?.context.attemptId,
       ).toBe("host-attempt");
-      expect(report.subsystems.checks.find((check) => check.name === "host-dns")).toMatchObject({
+      expect(
+        report.checks.find((check) => check.section === "subsystems" && check.name === "host-dns"),
+      ).toMatchObject({
         status: "pass",
-        context: { dnsResolved: "true", dnsAddresses: "127.0.0.1" },
+        context: { dnsResolved: "true", dnsAddresses: ["127.0.0.1"] },
       });
       for (const name of ["router", "ssh", "certs", "healthcheck", "url-scanner"]) {
-        expect(report.subsystems.checks.some((check) => check.name === name)).toBe(false);
+        expect(report.checks.some((check) => check.section === "subsystems" && check.name === name)).toBe(
+          false,
+        );
       }
-      expect(report.globalApp.checks.length).toBeGreaterThan(0);
-      expect(report.mcp.checks.length).toBeGreaterThan(0);
-      expect(report.appVersionConstraints?.checks).toEqual([
+      expect(report.checks.filter((check) => check.section === "global-app").length).toBeGreaterThan(0);
+      expect(report.checks.filter((check) => check.section === "mcp").length).toBeGreaterThan(0);
+      expect(report.checks.filter((check) => check.section === "app-version-constraints")).toEqual([
         expect.objectContaining({ name: "app-version-constraint", status: "pass" }),
       ]);
-      expect(report.appConfig).toBeUndefined();
-      expect(report.deprecations).toBeUndefined();
+      expect(report.checks.some((check) => check.section === "app-config")).toBe(false);
+      expect(report.checks.some((check) => check.section === "deprecations")).toBe(false);
       expect(JSON.stringify(report)).not.toContain("lando doctor --fix");
 
       const encoded = Schema.encodeSync(DoctorReportSchema)(report);
@@ -172,15 +293,15 @@ describe("doctor provider-bootstrap failure", () => {
         .split("\n")
         .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)))
         .flatMap((frame) => (frame._tag === "event" ? [frame.payload] : []));
-      for (const entry of report.skipped ?? []) {
-        expect(text).toContain(`${entry.section}: SKIPPED`);
+      for (const entry of report.skipped) {
+        expect(text).toContain(`${entry.check ?? entry.section}: SKIPPED`);
         expect(summary.sections.find((section) => section.title === "skipped")?.rows).toContainEqual(
-          expect.objectContaining({ label: entry.section, value: "SKIPPED" }),
+          expect.objectContaining({ label: entry.check ?? entry.section, value: "SKIPPED" }),
         );
         expect(events).toContainEqual(expect.objectContaining(entry));
       }
-      expect(text).toContain("section: provider-bootstrap");
-      expect(ndjson).toContain('"section":"provider-bootstrap"');
+      expect(text).toContain("probe: provider-bootstrap");
+      expect(ndjson).toContain('"probe":"provider-bootstrap"');
     } finally {
       await rm(root, { recursive: true, force: true });
     }

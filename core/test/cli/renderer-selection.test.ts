@@ -95,6 +95,18 @@ describe("extractRendererFlag", () => {
     expect(() => extractRendererFlag(["--renderer="])).toThrow(RendererSelectionError);
   });
 
+  test("rejects an adjacent empty --renderer value", () => {
+    try {
+      extractRendererFlag(["--renderer", ""]);
+      expect.unreachable();
+    } catch (error) {
+      const tagged = error as RendererSelectionError;
+      expect(tagged._tag).toBe("RendererSelectionError");
+      expect(tagged.value).toBe("");
+      expect(tagged.message).toContain("Unsupported renderer value");
+    }
+  });
+
   test("the last --renderer wins when multiple are supplied", () => {
     const result = extractRendererFlag(["--renderer=json", "--renderer=plain"]);
     expect(result.mode).toBe("plain");

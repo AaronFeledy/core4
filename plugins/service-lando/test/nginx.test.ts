@@ -414,6 +414,7 @@ describe("nginx PHP FPM app-feature wire", () => {
         const view = views.find((candidate) => candidate.serviceName === name);
         return view === undefined ? undefined : mutatorsFor(view);
       },
+      addClonedService: () => undefined,
     };
     return { context, commands };
   };

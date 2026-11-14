@@ -331,6 +331,44 @@ describe("provider-podman applied state", () => {
     });
   });
 
+  test("list inspects only applied plans for the requested app", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const first = planFor("first-app");
+      const second = planFor("second-app");
+      await Effect.runPromise(persistAppliedPlan(state, first));
+      await Effect.runPromise(persistAppliedPlan(state, second));
+      const requests: string[] = [];
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          env: {},
+          conflictDetector: () => Effect.void,
+          appliedPlanState: state,
+          podmanApi: {
+            ping: Effect.void,
+            info: Effect.succeed({ version: { Version: "6.0.0" } }),
+            request: (input) =>
+              Effect.sync(() => {
+                requests.push(input.path);
+                return { status: 404, body: "" };
+              }),
+          },
+        }),
+      );
+
+      const all = await Effect.runPromise(provider.list({}));
+      expect(all).toHaveLength(2);
+      requests.length = 0;
+
+      const filtered = await Effect.runPromise(provider.list({ app: first.id }));
+
+      expect(filtered.map((row) => row.app)).toEqual([first.id]);
+      expect(requests).toHaveLength(1);
+      expect(requests.some((path) => path.includes(String(second.id)))).toBe(false);
+    });
+  });
+
   test("one collection preserves multiple apps and removes only the selected app", async () => {
     await withStateRoot(async (root) => {
       const state = stateFor(root);

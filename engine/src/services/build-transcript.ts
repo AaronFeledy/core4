@@ -5,6 +5,7 @@ import { dirname, join, sep } from "node:path";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import type { BuildOwner } from "./build-owner.ts";
 
 const READ_CHUNK_BYTES = 8192;
 
@@ -14,8 +15,7 @@ export interface BuildTranscript {
 
 interface BuildTranscriptLocationInput {
   readonly userDataRoot: string;
-  readonly appId: string;
-  readonly scratch: boolean;
+  readonly owner: BuildOwner;
 }
 
 interface BuildTranscriptPhaseInput extends BuildTranscriptLocationInput {
@@ -43,7 +43,12 @@ const safePathSegment = (value: string): string =>
 
 export const makeBuildTranscriptAppDir = (input: BuildTranscriptLocationInput): AbsolutePath =>
   AbsolutePath.make(
-    join(input.userDataRoot, "builds", ...(input.scratch ? ["scratch"] : []), safePathSegment(input.appId)),
+    join(
+      input.userDataRoot,
+      "builds",
+      input.owner.kind === "scratch" ? "scratch" : "owners",
+      safePathSegment(input.owner.key),
+    ),
   );
 
 export const makeBuildTranscriptPhaseDir = (input: BuildTranscriptPhaseInput): AbsolutePath =>

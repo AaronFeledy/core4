@@ -1,104 +1,36 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
+import { canonicalJson } from "@lando/sdk/digest";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
-  AbsolutePath,
-  AppId,
+  type AbsolutePath,
   type AppPlan,
-  ProviderId,
-  ResourceOwnership,
-  ServiceName,
+  type ResourceOwnership,
   landoOwnedNetworkNames,
   planAppIdentity,
-  planDataId,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { SCRATCH_ID_LABEL, scratchLabelsForPlan } from "./labels.ts";
 import { isSharedNetwork } from "./native-ownership.ts";
-import { serviceContainerName } from "./plan.ts";
-import { volumeClassForStore } from "./volume-classes.ts";
+import {
+  ResourceOwnershipInventory as Inventory,
+  type OwnedResource,
+  RESOURCE_OWNERSHIP_VERSION,
+  type ResourceInventory,
+  ownershipFailure,
+  resourcesForPlan,
+  validate,
+} from "./resource-ownership-inventory.ts";
 
-const ResourceOwner = Schema.Struct({
-  nativeName: Schema.String,
-  appId: AppId,
-  appRoot: AbsolutePath,
-  ownerKey: Schema.String,
-  providerId: ProviderId,
-});
-const ContainerIdentity = Schema.Struct({
-  ...ResourceOwner.fields,
-  kind: Schema.Literal("container"),
-  service: ServiceName,
-});
-const NetworkIdentity = Schema.Struct({
-  ...ResourceOwner.fields,
-  kind: Schema.Literal("network"),
-  role: Schema.optionalKey(Schema.Literal("authored")),
-  scratchId: Schema.optionalKey(AppId),
-});
-const VolumeIdentity = Schema.Struct({
-  ...ResourceOwner.fields,
-  kind: Schema.Literal("volume"),
-  volumeClass: Schema.Literals(["data", "cache"]),
-  volumeScope: Schema.Literals(["app", "service", "global"]),
-});
-const ResourceIdentity = Schema.Union([ContainerIdentity, NetworkIdentity, VolumeIdentity]);
-export const OwnedResource = Schema.Union([
-  Schema.Struct({ ...ContainerIdentity.fields, identityDigest: Schema.String }),
-  Schema.Struct({ ...NetworkIdentity.fields, identityDigest: Schema.String }),
-  Schema.Struct({ ...VolumeIdentity.fields, identityDigest: Schema.String }),
-]);
-export type OwnedResource = typeof OwnedResource.Type;
-export const RESOURCE_OWNERSHIP_VERSION = 1;
-const Inventory = Schema.Struct({ ...ResourceOwnership.fields, resources: Schema.Array(OwnedResource) });
-export type ResourceInventory = typeof Inventory.Type;
-export { Inventory as ResourceOwnershipInventory };
+export {
+  OwnedResource,
+  RESOURCE_OWNERSHIP_VERSION,
+  type ResourceInventory,
+  ResourceOwnershipInventory,
+  ownershipFailure,
+} from "./resource-ownership-inventory.ts";
 
-export const ownershipFailure = (providerId: string, cause?: unknown) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "resource-ownership",
-    message: "Resource ownership inventory could not be verified or persisted.",
-    remediation: "Repair the provider plugin state and retry cleanup before starting this app.",
-    ...(cause === undefined ? {} : { cause }),
-  });
-
-const digest = (resource: typeof ResourceIdentity.Type) => sha256Hex(canonicalJson(resource));
-const identify = (resource: typeof ResourceIdentity.Type): OwnedResource => ({
-  ...resource,
-  identityDigest: digest(resource),
-});
 const keyFor = (resource: OwnedResource) => resource.identityDigest;
-
-const validate = (inventory: ResourceInventory, root: AbsolutePath, providerId: string) => {
-  const owner = planAppIdentity({ root });
-  if (
-    inventory.appRoot !== root ||
-    inventory.ownerKey !== owner.ownerKey ||
-    inventory.providerId !== providerId
-  )
-    throw ownershipFailure(providerId);
-  const appIds = new Set(inventory.resources.map((resource) => resource.appId));
-  if (inventory.appIds.length !== appIds.size || inventory.appIds.some((id) => !appIds.has(id)))
-    throw ownershipFailure(providerId);
-  for (const resource of inventory.resources) {
-    const { identityDigest, ...identity } = resource;
-    if (
-      resource.appRoot !== root ||
-      resource.ownerKey !== owner.ownerKey ||
-      resource.providerId !== providerId ||
-      (resource.kind === "network" && isSharedNetwork({}, resource.nativeName)) ||
-      (resource.kind === "network" &&
-        resource.scratchId !== undefined &&
-        resource.scratchId !== resource.appId) ||
-      identityDigest !== digest(identity) ||
-      !inventory.appIds.includes(resource.appId)
-    )
-      throw ownershipFailure(providerId);
-  }
-  return inventory;
-};
 
 export const makeResourceOwnershipStore = (providerId: string, state?: PluginStateStore) => {
   const open = (root: AbsolutePath) =>
@@ -142,6 +74,26 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
       plan.provider !== providerId
     )
       return yield* Effect.fail(ownershipFailure(providerId));
+    if (previous !== undefined && previous.root !== root) {
+      const previousOwner = planAppIdentity(previous);
+      if (
+        previous.provider !== providerId ||
+        previous.id !== plan.id ||
+        previousOwner.appRoot !== previous.root ||
+        previousOwner.ownerKey !== planAppIdentity({ root: previous.root }).ownerKey
+      )
+        return yield* Effect.fail(ownershipFailure(providerId));
+      return yield* Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "resource-ownership",
+          message: `App name ${plan.name} is still assigned to the project at ${previous.root}. Stopping that project does not release its name.`,
+          remediation:
+            "Change `name:` in this project's .lando.yml and run `lando start` again. To release the runtime name instead, run `lando destroy` from the other project, only if you intend to tear it down.",
+          details: { root: previous.root, app: previous.id, name: plan.name, reason: "name-reserved" },
+        }),
+      );
+    }
     const resources: OwnedResource[] = [];
     for (const attempt of previous === undefined ? [plan] : [previous, plan]) {
       const attemptOwner = planAppIdentity(attempt);
@@ -152,49 +104,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         attemptOwner.ownerKey !== owner.ownerKey
       )
         return yield* Effect.fail(ownershipFailure(providerId));
-      // Only persisted owner fields enter the digest; an identity's repoGroupKey is never stored.
-      const identity = {
-        appRoot: root,
-        ownerKey: owner.ownerKey,
-        appId: attempt.id,
-        providerId: attempt.provider,
-      };
-      const scratchId = scratchLabelsForPlan(attempt)[SCRATCH_ID_LABEL];
-      for (const service of Object.values(attempt.services))
-        resources.push(
-          identify({
-            ...identity,
-            kind: "container",
-            nativeName: serviceContainerName(attempt, service.name),
-            service: service.name,
-          }),
-        );
-      for (const name of landoOwnedNetworkNames(attempt)) {
-        const authored = attempt.networking?.authoredNetworks?.some(
-          (network) => !network.external && network.name === name,
-        );
-        if (!isSharedNetwork(attempt, name))
-          resources.push(
-            identify({
-              ...identity,
-              kind: "network",
-              nativeName: name,
-              ...(authored ? { role: "authored" as const } : {}),
-              ...(scratchId === undefined ? {} : { scratchId: AppId.make(scratchId) }),
-            }),
-          );
-      }
-      for (const store of attempt.stores)
-        resources.push(
-          identify({
-            ...identity,
-            kind: "volume",
-            appId: planDataId(attempt),
-            nativeName: store.name,
-            volumeClass: volumeClassForStore(store),
-            volumeScope: store.scope,
-          }),
-        );
+      resources.push(...resourcesForPlan(attempt));
     }
     const bucket = yield* open(root);
     yield* bucket

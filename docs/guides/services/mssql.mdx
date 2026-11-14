@@ -123,7 +123,7 @@ services:
 
 Other services connect to `database` on port `14330`; SQL Server tools write that as `database,14330`. Lando sets `MSSQL_TCP_PORT` for the server and exposes the same value as `LANDO_DB_PORT`. The `sqlcmd` task and `lando db:*` commands pass `-S localhost,14330`.
 
-Port `1434` fails during planning. SQL Server reserves it for its dedicated admin connection, so a server listening there never becomes ready.
+Ports `135`, `1431`, and `1434` fail during planning. SQL Server reserves `135` for its MSDTC RPC endpoint mapper, `1431` for an internal loopback connection, and `1434` for its dedicated admin connection.
 
 Lando sets `MSSQL_TCP_PORT` from `port:`. An authored `MSSQL_TCP_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.MSSQL_TCP_PORT`. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor that port.
 

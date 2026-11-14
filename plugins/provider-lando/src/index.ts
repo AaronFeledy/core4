@@ -1938,21 +1938,25 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         list: (filter) =>
           hydratePlansFromDisk.pipe(
             Effect.flatMap(() =>
-              Effect.forEach(Array.from(plans.values()), (plan) =>
-                Effect.forEach(Object.values(plan.services), (service) =>
-                  runtimeInspect(
-                    plan,
-                    { app: plan.id, service: service.name },
-                    { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
-                  ).pipe(
-                    // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
-                    Effect.map((snapshot) => ({
-                      ...snapshot,
-                      appRoot: plan.root,
-                      labels: snapshot.labels ?? scratchLabelsForPlan(plan),
-                    })),
-                  ),
+              Effect.forEach(
+                Array.from(plans.values()).filter(
+                  (plan) => filter.app === undefined || plan.id === filter.app,
                 ),
+                (plan) =>
+                  Effect.forEach(Object.values(plan.services), (service) =>
+                    runtimeInspect(
+                      plan,
+                      { app: plan.id, service: service.name },
+                      { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
+                    ).pipe(
+                      // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
+                      Effect.map((snapshot) => ({
+                        ...snapshot,
+                        appRoot: plan.root,
+                        labels: snapshot.labels ?? scratchLabelsForPlan(plan),
+                      })),
+                    ),
+                  ),
               ),
             ),
             Effect.map((snapshots) => snapshots.flat()),

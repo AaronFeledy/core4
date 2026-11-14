@@ -25,13 +25,25 @@ export const routeReloadSnapshot = (
 ) => {
   const certificates = appCertificateFiles(dependencies.paths, owner);
   const defaults = defaultCertificateFiles(dependencies.paths, defaultDomain);
-  return Effect.all([
-    readOptional(dependencies, routeFile(dependencies.paths, owner)),
-    readOptional(dependencies, certificates.cert),
-    readOptional(dependencies, certificates.key),
-    readOptional(dependencies, defaults.cert),
-    readOptional(dependencies, defaults.key),
-    readOptional(dependencies, defaultTlsFile(dependencies.paths)),
-    readOptional(dependencies, dashboardConfigFile(dependencies.paths)),
-  ]);
+  return Effect.all({
+    routeConfig: readOptional(dependencies, routeFile(dependencies.paths, owner)),
+    certificate: readOptional(dependencies, certificates.cert),
+    privateKey: readOptional(dependencies, certificates.key),
+    defaultCertificate: readOptional(dependencies, defaults.cert),
+    defaultPrivateKey: readOptional(dependencies, defaults.key),
+    defaultTlsConfig: readOptional(dependencies, defaultTlsFile(dependencies.paths)),
+    dashboardConfig: readOptional(dependencies, dashboardConfigFile(dependencies.paths)),
+  });
 };
+
+export type RouteReloadSnapshot = Effect.Success<ReturnType<typeof routeReloadSnapshot>>;
+
+export const servedSnapshotValues = (snapshot: RouteReloadSnapshot) => [
+  snapshot.routeConfig,
+  snapshot.certificate,
+  snapshot.privateKey,
+  snapshot.defaultCertificate,
+  snapshot.defaultPrivateKey,
+  snapshot.defaultTlsConfig,
+  snapshot.dashboardConfig,
+];

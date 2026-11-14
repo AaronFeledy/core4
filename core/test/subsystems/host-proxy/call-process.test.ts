@@ -102,6 +102,22 @@ test.each(
   expect(JSON.parse(result.stdout).error._tag).toBe("HostProxyCommandNotAllowedError");
 });
 
+// The envelope flag must stay before `--`; after it, the token belongs to the command.
+test.each([
+  { argv: ["--format=json"], commandId: "cli:unknown" },
+  { argv: ["--help", "--format=json"], commandId: "--help" },
+  { argv: ["--help", "app:open", "--format=json"], commandId: "--help" },
+  { argv: ["--format=json", "--", "app:open"], commandId: "--" },
+] as const)("child denies $argv naming $commandId", async ({ argv, commandId }) => {
+  const { call, paths } = await fixture();
+  const result = await invoke({ ...call, argv }, paths);
+  expect(result.exitCode).not.toBe(0);
+  expect(JSON.parse(result.stdout).error).toMatchObject({
+    _tag: "HostProxyCommandNotAllowedError",
+    commandId,
+  });
+});
+
 test("child publishes redacted pre/post execution hooks on command failure", async () => {
   const { call, paths } = await fixture();
   await writeFile(join(call.app.root, ".lando.yml"), "name: demo\n");

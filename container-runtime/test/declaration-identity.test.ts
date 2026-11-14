@@ -34,7 +34,7 @@ test.each([undefined, "derived-web"])(
       remove: () => Effect.void,
     });
     // When
-    await Effect.runPromise(cache.rememberPlan(incoming, false));
+    await Effect.runPromise(cache.rememberPlan(incoming));
     // Then
     expect(written[0]?.services[database.name]?.serviceTypeId).toBe("derived-database");
     expect(written[0]?.services[service.name]?.serviceTypeId).toBe(previousId);

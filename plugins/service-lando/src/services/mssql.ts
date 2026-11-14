@@ -22,7 +22,11 @@ export const MSSQL_LISTENER = {
   variables: ["MSSQL_TCP_PORT"],
   daemon: "SQL Server",
   when: "All SQL Server services",
-  reserved: [{ port: 1434, use: "dedicated admin connection" }],
+  reserved: [
+    { port: 135, use: "MSDTC RPC endpoint mapper" },
+    { port: 1431, use: "internal loopback connection" },
+    { port: 1434, use: "dedicated admin connection" },
+  ],
 } as const;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");
 const SQLCMD = "/opt/mssql-tools18/bin/sqlcmd";

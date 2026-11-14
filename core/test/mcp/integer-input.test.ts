@@ -9,8 +9,11 @@ import { logsSpec as typedLogsSpec } from "../../src/cli/command-specs/app/logs"
 import { metaSourcesGcSpec } from "../../src/cli/command-specs/meta/sources/gc";
 import { parseFlagValue } from "../../src/cli/compiled-argv";
 import { validateEventCommandInput } from "../../src/cli/event-command-input";
+import { specOwnerPolicy } from "../../src/cli/flag-claims";
 import { validateCliFlagValues } from "../../src/cli/flag-value-validation";
+import { splitCommandTokens } from "../../src/cli/invocation";
 import {
+  pluginFlagDefinitions,
   pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
 } from "../../src/cli/run-plugin-owned-command";
@@ -49,13 +52,15 @@ test("uses integer metadata rather than the flag name on native inputs", () => {
 });
 test("keeps plugin-owned integer flags on the native validation and parsing path", () => {
   const spec = { id: "db:inspect", flags: { count: Flags.integer() } };
-  expect(pluginOwnedCliFlagError(spec, ["--count=7.5"])).toMatchObject({
+  const tokens = (argv: ReadonlyArray<string>) =>
+    splitCommandTokens(argv, specOwnerPolicy(spec, pluginFlagDefinitions(spec)), "all").command;
+  expect(pluginOwnedCliFlagError(spec, tokens(["--count=7.5"]))).toMatchObject({
     _tag: "MalformedCliFlagValueError",
     flag: "count",
     issue: "invalid_integer",
   });
-  expect(pluginOwnedCommandInputFromArgv(spec, ["--count=7.5"]).flags.count).toBeUndefined();
-  expect(pluginOwnedCommandInputFromArgv(spec, ["--count=7"]).flags.count).toBe(7);
+  expect(pluginOwnedCommandInputFromArgv(spec, tokens(["--count=7.5"])).flags.count).toBeUndefined();
+  expect(pluginOwnedCommandInputFromArgv(spec, tokens(["--count=7"])).flags.count).toBe(7);
 });
 test("preserves native and structured input error tags for invalid tail", async () => {
   const event = await Effect.runPromise(

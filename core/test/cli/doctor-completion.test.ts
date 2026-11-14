@@ -8,17 +8,10 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor";
 import { doctor } from "../../src/cli/commands/doctor";
-import type { DoctorReport } from "../../src/cli/commands/doctor-report";
+import type { DoctorReport } from "../../src/cli/commands/doctor-contract";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { compiledCommandOptionsFromSpec } from "../../src/cli/run-built-in-command";
-
-const emptyReport: DoctorReport = {
-  version: "4.0.0-test",
-  provider: { checks: [] },
-  subsystems: { checks: [] },
-  globalApp: { checks: [] },
-  mcp: { checks: [] },
-};
 
 const providerReport = async (state: "running" | "idle" | "failure"): Promise<DoctorReport> => {
   const provider = {
@@ -57,8 +50,13 @@ const providerReport = async (state: "running" | "idle" | "failure"): Promise<Do
       ),
     ),
   );
-  expect(result.selfChecks).toBeUndefined();
-  return { ...emptyReport, provider: { checks: result.checks } };
+  expect(result.checks.filter((check) => check.name === "doctor-self")).toEqual([]);
+  return makeDoctorReport({
+    version: "4.0.0-test",
+    ...(result.provider === undefined ? {} : { provider: result.provider }),
+    checks: result.checks.map((check) => ({ section: "provider" as const, ...check })),
+    skipped: (result.skipped ?? []).map((skip) => ({ section: "provider" as const, ...skip })),
+  });
 };
 
 describe("doctor command completion", () => {
@@ -66,7 +64,7 @@ describe("doctor command completion", () => {
     "returns a findings exit code for a real provider failure in %s",
     async (format) => {
       const report = await providerReport("failure");
-      expect(report.provider.checks).toContainEqual(
+      expect(report.checks.filter((check) => check.section === "provider")).toContainEqual(
         expect.objectContaining({ name: "selected-provider", status: "fail" }),
       );
       const io = createBufferedRendererIO();
@@ -97,7 +95,7 @@ describe("doctor command completion", () => {
           .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
         expect(frames.at(-1)).toMatchObject({
           _tag: "result",
-          envelope: { ok: true, result: { failed: 1 } },
+          envelope: { ok: true, result: { summary: { failed: 1 } } },
         });
       } else {
         const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(
@@ -115,14 +113,13 @@ describe("doctor command completion", () => {
   });
 
   test.each(["pass", "warn", "fail"] as const)("classifies %s subsystem findings", (status) => {
-    const report: DoctorReport = {
-      ...emptyReport,
-      subsystems: {
-        checks: [
-          { name: "router", status, severity: "warn", recovery: "manual", context: {}, solutions: [] },
-        ],
-      },
-    };
+    const report: DoctorReport = makeDoctorReport({
+      version: "4.0.0-test",
+      checks: [
+        { section: "subsystems", name: "router", status, severity: "warn", context: {}, solutions: [] },
+      ],
+      skipped: [],
+    });
     expect(metaDoctorSpec.completion?.(report, {})).toEqual({
       ok: true,
       exitCode: status === "fail" ? 1 : 0,

@@ -121,10 +121,10 @@ export class StateStore extends Context.Service<
   {
     readonly open: <A, I>(spec: StateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
     /** Serialize an arbitrary scoped operation by a durable, host-wide lock key. */
-    readonly withLock: <A, E>(
+    readonly withLock: <A, E, R>(
       key: string,
-      body: Effect.Effect<A, E>,
-    ) => Effect.Effect<A, E | StateStoreError>;
+      body: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | StateStoreError, R>;
   }
 >()("@lando/core/StateStore") {}
 

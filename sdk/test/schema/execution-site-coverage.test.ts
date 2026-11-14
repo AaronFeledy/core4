@@ -123,6 +123,8 @@ test.each([
   [["services", "web", "entrypoint", 0], "service-entrypoint", [0]],
   [["services", "web", "healthcheck"], "healthcheck", []],
   [["services", "web", "healthcheck", "test", 0], "healthcheck", ["test", 0]],
+  [["services", "web", "schedule", 0, "run"], "schedule-job", []],
+  [["services", "web", "schedule", 0, "run", 0], "schedule-job", [0]],
   [["services", "web", "readiness", "command"], "healthcheck", ["command"]],
   [["services", "web", "build", "app"], "build-app", []],
   [["services", "web", "build", "app", 0], "build-app", [0]],

@@ -88,7 +88,7 @@ export const makeStateStore = (options: {
           ),
         ),
     ),
-    withLock: Effect.fn("StateStore.withLock")(<A, E>(key: string, body: Effect.Effect<A, E>) =>
+    withLock: Effect.fn("StateStore.withLock")(<A, E, R>(key: string, body: Effect.Effect<A, E, R>) =>
       resolveStatePath("userData", "operation-locks", key, "withLock", roots).pipe(
         Effect.flatMap((resolved) =>
           withAdvisoryLockUsing(options.privateFileAccess)(resolved.file, "withLock", body),

@@ -3,7 +3,7 @@ import { lstat, mkdtemp, readFile, realpath, rm, stat, symlink, utimes, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Deferred, Effect, Fiber } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Result } from "effect";
 
 import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "../../src/lock.ts";
 import { lockTestAccess } from "./lock-test-access.ts";
@@ -120,6 +120,36 @@ describe("advisory state lock", () => {
       );
       expect(result._tag).toBe("Failure");
       expect(Date.now() - started).toBeLessThan(1_500);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  test("a timed-out acquire names the live owner and how long it has held the lock", async () => {
+    // Given a lock a live process took a minute ago
+    const dir = await mkdtemp(join(tmpdir(), "lando-state-lock-"));
+    const path = join(dir, "held.lock");
+    await writeFile(
+      path,
+      JSON.stringify({ pid: process.pid, token: "live", createdAt: Date.now() - 60_000 }),
+    );
+    try {
+      // When a waiter gives up
+      const error = await run(
+        Effect.flip(
+          acquireAdvisoryLockAt(path, "test", {
+            expireLiveOwner: false,
+            timeoutMs: 20,
+            retryMs: 10,
+            privateFileAccess: lockTestAccess,
+          }),
+        ),
+      );
+      // Then the failure identifies the owner instead of an anonymous "another process"
+      expect(error).toMatchObject({ reason: "lock", path, cause: { ownerPid: process.pid } });
+      expect((error.cause as { heldMs: number }).heldMs).toBeGreaterThanOrEqual(60_000);
+      expect(error.remediation).toMatch(
+        new RegExp(`^Process ${process.pid} has held this lock for \\d+s\\.`),
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -256,4 +286,143 @@ describe("advisory state lock", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+});
+
+test("same-fiber re-entry dies at once instead of waiting on its own lock", async () => {
+  // Given a lock target this fiber already holds.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+  try {
+    const file = join(dir, "state.json");
+    await writeFile(file, "{}\n");
+    const started = Date.now();
+
+    // When the same fiber nests an acquisition of the same file.
+    const result = await Effect.runPromiseExit(
+      withAdvisoryLock(file, "test", withAdvisoryLock(file, "test", Effect.succeed("unreachable")), {
+        expireLiveOwner: false,
+      }).pipe(Effect.timeout("1 second")),
+    );
+
+    // Then it dies immediately, names the lock, and reports a Lando bug.
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const defect = Cause.findDefect(result.cause);
+      expect(Result.isSuccess(defect)).toBe(true);
+      if (Result.isSuccess(defect)) {
+        expect(String(defect.success)).toContain(`${file}.lock`);
+        expect(String(defect.success)).toContain("Lando bug");
+      }
+    }
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(await run(withAdvisoryLock(file, "test", Effect.succeed("released")))).toBe("released");
+    await expect(stat(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("same-fiber re-entry from a wait hook dies while the outer acquire is still waiting", async () => {
+  // Given a file lock another owner holds, so the acquire waits and runs its wait hook.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+  try {
+    const file = join(dir, "state.json");
+    await writeFile(file, "{}\n");
+    await writeFile(
+      `${file}.lock`,
+      JSON.stringify({ pid: process.pid, token: "other-owner", createdAt: Date.now() }),
+    );
+
+    // When the wait hook re-enters the same lock on the same fiber.
+    const result = await Effect.runPromiseExit(
+      withAdvisoryLock(file, "test", Effect.succeed("unreachable"), {
+        expireLiveOwner: false,
+        timeoutMs: 200,
+        retryMs: 10,
+        onWait: withAdvisoryLock(file, "test", Effect.void).pipe(Effect.orDie),
+      }),
+    );
+
+    // Then it dies as a Lando bug instead of waiting on the permit it already holds.
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const defect = Cause.findDefect(result.cause);
+      expect(Result.isSuccess(defect)).toBe(true);
+      if (Result.isSuccess(defect)) expect(String(defect.success)).toContain("Lando bug");
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a different fiber still waits for the held lock and then acquires it", async () => {
+  // Given one fiber holding the lock inside its body.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+  try {
+    const file = join(dir, "state.json");
+    await writeFile(file, "{}\n");
+    const entered = await Effect.runPromise(Deferred.make<void>());
+    const release = await Effect.runPromise(Deferred.make<void>());
+    const secondEntered = await Effect.runPromise(Deferred.make<void>());
+    const first = Effect.runFork(
+      withAdvisoryLock(
+        file,
+        "test",
+        Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        { expireLiveOwner: false },
+      ),
+    );
+    await Effect.runPromise(Deferred.await(entered));
+
+    // When a different fiber acquires the same lock.
+    const second = Effect.runFork(
+      withAdvisoryLock(file, "test", Deferred.succeed(secondEntered, undefined), {
+        expireLiveOwner: false,
+      }),
+    );
+    const beforeRelease = await Effect.runPromise(Deferred.poll(secondEntered));
+    await Effect.runPromise(Deferred.succeed(release, undefined));
+    await Effect.runPromise(Fiber.join(first));
+    await Effect.runPromise(Fiber.join(second));
+
+    // Then it serialized instead of dying and entered after the holder released.
+    expect(beforeRelease._tag).toBe("None");
+    expect((await Effect.runPromise(Deferred.poll(secondEntered)))._tag).toBe("Some");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("interruption while holding clears the holder for a later acquisition", async () => {
+  // Given a fiber is interrupted while it holds the lock.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+  try {
+    const file = join(dir, "state.json");
+    await writeFile(file, "{}\n");
+    await run(
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const fiber = yield* Effect.forkChild(
+          withAdvisoryLock(
+            file,
+            "test",
+            Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+            { expireLiveOwner: false },
+          ),
+        );
+        yield* Deferred.await(entered);
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+
+    // When a later acquisition runs.
+    const reacquired = await run(
+      withAdvisoryLock(file, "test", Effect.succeed("reacquired"), { expireLiveOwner: false }),
+    );
+
+    // Then the stale holder record did not block or falsely reject it.
+    expect(reacquired).toBe("reacquired");
+    await expect(stat(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

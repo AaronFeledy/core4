@@ -94,6 +94,8 @@ export const resolveHomePath = (input: {
 export const applyServiceHome = (input: {
   readonly servicePlan: ServicePlan;
   readonly serviceName: string;
+  /** Service whose name keys the home store; defaults to `serviceName`. */
+  readonly storeOwner?: string;
   readonly appSlug: string;
   readonly appRoot: string;
   readonly intent: ServiceHomeIntent;
@@ -144,7 +146,7 @@ export const applyServiceHome = (input: {
   if (occupied !== undefined)
     return { ...input.servicePlan, home: { state: "authored", target: homeTarget, mount: occupied } };
 
-  const store = landoServiceHomeStoreName(input.appSlug, input.serviceName, principal);
+  const store = landoServiceHomeStoreName(input.appSlug, input.storeOwner ?? input.serviceName, principal);
 
   return {
     ...input.servicePlan,

@@ -12,7 +12,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import {
   ArchiveFormatError,
   ArtifactTransferError,
-  DataChecksumMismatchError,
+  type DataChecksumMismatchError,
   DataEndpointUnsupportedError,
   DataSourceOutsideRootError,
   DataTargetExistsError,
@@ -97,6 +97,7 @@ import { snapshotArchivePath, stateFailure } from "./snapshot-paths.ts";
 import { removeCatalogSnapshot } from "./snapshot-removal.ts";
 import { requireSnapshotSeedTarget } from "./snapshot-seed.ts";
 import { stageVerifiedStream } from "./staged-stream.ts";
+import { endpointName, hostReadError, mapVerifiedError } from "./transfer-errors.ts";
 import { sharedVolumeInitialization } from "./volume-initialization.ts";
 
 interface DataMoverEvents {
@@ -116,25 +117,6 @@ const helperPayload = Schema.decodeUnknownSync(PortablePath)("/data/payload");
 
 const absolutePath = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 const providerId = (id: string) => Schema.decodeUnknownSync(ProviderId)(id);
-
-const endpointName = (endpoint: DataEndpoint): string => {
-  switch (endpoint._tag) {
-    case "hostPath":
-      return `hostPath:${endpoint.path}`;
-    case "hostArchive":
-      return `hostArchive:${endpoint.format}:${endpoint.path}`;
-    case "stream":
-      return "stream";
-    case "volume":
-      return `volume:${endpoint.app}:${endpoint.store}`;
-    case "servicePath":
-      return `servicePath:${endpoint.app}:${endpoint.service}:${endpoint.path}`;
-    case "serviceCmd":
-      return `serviceCmd:${endpoint.app}:${endpoint.service}`;
-    case "artifact":
-      return `artifact:${endpoint.ref}`;
-  }
-};
 
 const appFromEndpoint = (endpoint: DataEndpoint) => {
   switch (endpoint._tag) {
@@ -365,27 +347,6 @@ const providerCommandSpec = (
   ...(env === undefined ? {} : { env }),
 });
 
-const mapVerifiedError = (error: VerifiedStreamError, spec: DataTransferSpec) => {
-  if (error.reason === "checksum") {
-    return new DataChecksumMismatchError({
-      message: "Data transfer checksum did not match the expected SHA-256.",
-      expectedSha256: error.expectedSha256 ?? spec.expectedDigest ?? "",
-      actualSha256: error.actualSha256 ?? "",
-      archivePath: spec.to._tag === "hostArchive" ? spec.to.path : undefined,
-      remediation: "Retry the transfer from a trusted source; verification cannot be skipped.",
-    });
-  }
-
-  return new DataTransferError({
-    message: error.message,
-    fromEndpoint: endpointName(spec.from),
-    toEndpoint: endpointName(spec.to),
-    operation: "persist",
-    remediation: "Verify the destination path is writable and retry the transfer.",
-    cause: error,
-  });
-};
-
 const realpathNearestExisting = async (path: string): Promise<string> => {
   const found = await findRealpathAncestor(path, (candidate) =>
     realpath(candidate).catch((cause: unknown) => {
@@ -589,32 +550,8 @@ const copyHostTree = (
 const hostSourceIsDirectory = (path: string): Effect.Effect<boolean, DataTransferError> =>
   Effect.tryPromise({
     try: () => stat(path),
-    catch: (cause) =>
-      new DataTransferError({
-        message: "Failed to inspect host source endpoint.",
-        fromEndpoint: `hostPath:${path}`,
-        operation: "stat-host",
-        cause,
-        remediation: `Confirm ${path} exists and is readable, then retry the transfer.`,
-      }),
+    catch: (cause) => hostReadError(path, cause, "stat-host"),
   }).pipe(Effect.map((info) => info.isDirectory()));
-
-const hostReadError = (path: string, cause: unknown): DataTransferError => {
-  const code = errnoCode(cause);
-  const missing = code === "ENOENT";
-  const denied = code === "EACCES" || code === "EPERM";
-  return new DataTransferError({
-    message: missing
-      ? `Host data file not found: ${path}`
-      : denied
-        ? `Host data file is not readable: ${path}`
-        : "Failed to read host data endpoint.",
-    fromEndpoint: `hostPath:${path}`,
-    operation: "read-host",
-    cause,
-    remediation: "Check that the host path exists and is readable.",
-  });
-};
 
 const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransferError> =>
   Stream.unwrap(

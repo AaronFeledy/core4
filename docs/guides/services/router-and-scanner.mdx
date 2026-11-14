@@ -95,7 +95,7 @@ The value resolves through normal config precedence. Last one wins:
 
 So a global `router.enabled: false` turns the router off for every app on the machine, and a single app can opt back in with `router.enabled: true` in its own Landofile. The reverse works too: leave the global default alone and disable the router for the one app that doesn't want it.
 
-You don't need any of that for an app with no routes. A database-only, worker, or build app never starts the router, and its `lando start` only withdraws routes it published earlier.
+You don't need any of that for an app with no routes. A database-only, worker, or build app never starts the router, and its `lando start` only withdraws routes it published earlier. If the router can't withdraw them, the start still succeeds and warns that the app's old URLs may still resolve.
 
 ## Tune the scanner per service
 

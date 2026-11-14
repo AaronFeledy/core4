@@ -73,15 +73,23 @@ test.skipIf(podmanEnv === undefined).each([
         "MYSQL_USER=lando",
         "-e",
         "MYSQL_PASSWORD=lando-test",
-        "--health-cmd",
-        "mysqladmin ping -h 127.0.0.1 -plando-test",
-        "--health-interval",
-        "2s",
-        "--health-retries",
-        "60",
         `mysql:${version}`,
       ]);
-      await run(podman, ["wait", "--condition=healthy", id]);
+      // The managed runtime disables Podman's systemd healthcheck timers, so wait for MySQL
+      // inside the container over TCP instead; the entrypoint's initialization server is
+      // socket-only, so a successful connection proves the real server is serving.
+      await run(podman, [
+        "exec",
+        id,
+        "mysqladmin",
+        "--wait=120",
+        "-h",
+        "127.0.0.1",
+        "-u",
+        "root",
+        "-plando-test",
+        "ping",
+      ]);
       const output = await run(podman, [
         "run",
         "--rm",

@@ -11,10 +11,12 @@ import {
 import { DateTime, Effect, Result } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import {
+  coherentContainerOwnership,
   containerOwnershipLabels,
   inspectOwnedNativeId,
   privateNetworkLabels as ownershipPrivateNetworkLabels,
   ownsServiceContainer,
+  serviceContainerOwnershipLabels,
   verifiedNativeId,
 } from "../src/native-ownership.ts";
 import { commonContainerLabels } from "../src/plan.ts";
@@ -61,6 +63,22 @@ const plan: AppPlan = {
 const service = plan.services[web];
 if (service === undefined) throw new TypeError("Missing fixture service");
 const ownedLabels = commonContainerLabels(plan, service);
+const globalPlan: AppPlan = {
+  ...plan,
+  id: AppId.make("global"),
+  name: "global",
+  slug: "global",
+  root: AbsolutePath.make("/home/me/.lando/global"),
+  provider: ProviderId.make("lando"),
+};
+const scratchPlan: AppPlan = {
+  ...plan,
+  id: AppId.make("scratch-demo"),
+  name: "scratch-demo",
+  slug: "scratch-demo",
+  root: AbsolutePath.make("/tmp/scratch-demo"),
+  extensions: { "@lando/core/scratch": { id: "scratch-demo" } },
+};
 
 test.each([
   { name: "native ownership", labels: ownedLabels, containerId: "owned-id", service: "web", owned: true },
@@ -110,6 +128,118 @@ test.each([
   { name: "absent identity", labels: ownedLabels, containerId: "", service: "web", owned: false },
 ])("service-container mutation requires $name proof", (row) => {
   expect(ownsServiceContainer(plan, row)).toBe(row.owned);
+});
+
+const ownershipIdentity = {
+  app: "owned",
+  appRoot: "/owned",
+  service: "web",
+  providerId: "docker",
+} as const;
+
+test.each([
+  { name: "legitimate native labels", labels: ownedLabels, accepted: true },
+  {
+    name: "a matching provider label",
+    labels: { ...ownedLabels, "dev.lando.provider": "docker" },
+    accepted: true,
+  },
+  {
+    name: "a matching owner label",
+    labels: { ...ownedLabels, "dev.lando.owner": appIdentityKey("owner", "/owned") },
+    accepted: true,
+  },
+  { name: "a matching legacy label", labels: { ...ownedLabels, "com.lando.app": "owned" }, accepted: true },
+  {
+    name: "scratch markers on the app's own scratch id",
+    labels: { ...ownedLabels, "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": "owned" },
+    accepted: true,
+  },
+  { name: "a foreign app", labels: { ...ownedLabels, "dev.lando.app": "other" }, accepted: false },
+  { name: "a foreign root", labels: { ...ownedLabels, "dev.lando.app-root": "/other" }, accepted: false },
+  { name: "a foreign service", labels: { ...ownedLabels, "dev.lando.service": "other" }, accepted: false },
+  {
+    name: "a missing service label",
+    labels: { "dev.lando.app": "owned", "dev.lando.app-root": "/owned" },
+    accepted: false,
+  },
+  {
+    name: "a conflicting provider",
+    labels: { ...ownedLabels, "dev.lando.provider": "lando" },
+    accepted: false,
+  },
+  { name: "a conflicting owner", labels: { ...ownedLabels, "dev.lando.owner": "other" }, accepted: false },
+  { name: "a role helper", labels: { ...ownedLabels, "dev.lando.role": "data-helper" }, accepted: false },
+  {
+    name: "a contradictory legacy label",
+    labels: { ...ownedLabels, "com.lando.app": "other" },
+    accepted: false,
+  },
+  {
+    name: "an incoherent scratch marker",
+    labels: { ...ownedLabels, "dev.lando.scratch": "TRUE" },
+    accepted: false,
+  },
+  {
+    name: "a foreign scratch id",
+    labels: { ...ownedLabels, "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": "other" },
+    accepted: false,
+  },
+])("the shared ownership predicate accepts $name=$accepted", ({ labels, accepted }) => {
+  expect(serviceContainerOwnershipLabels(labels, ownershipIdentity)).toBe(accepted);
+});
+
+test("the shared ownership predicate refuses an absent label set", () => {
+  expect(serviceContainerOwnershipLabels(undefined, ownershipIdentity)).toBe(false);
+});
+
+test("legitimate global and scratch service containers pass the shared predicate", () => {
+  const globalService = globalPlan.services[web];
+  const scratchService = scratchPlan.services[web];
+  if (globalService === undefined || scratchService === undefined)
+    throw new TypeError("Missing fixture service");
+
+  expect(
+    serviceContainerOwnershipLabels(commonContainerLabels(globalPlan, globalService), {
+      app: "global",
+      appRoot: "/home/me/.lando/global",
+      service: "web",
+      providerId: "lando",
+    }),
+  ).toBe(true);
+  expect(
+    ownsServiceContainer(globalPlan, {
+      containerId: "global-id",
+      service: "web",
+      labels: commonContainerLabels(globalPlan, globalService),
+    }),
+  ).toBe(true);
+
+  const scratchLabels = commonContainerLabels(scratchPlan, scratchService);
+  expect(scratchLabels["dev.lando.scratch"]).toBe("TRUE");
+  expect(
+    serviceContainerOwnershipLabels(scratchLabels, {
+      app: "scratch-demo",
+      appRoot: "/tmp/scratch-demo",
+      service: "web",
+      providerId: "docker",
+    }),
+  ).toBe(true);
+  expect(
+    ownsServiceContainer(scratchPlan, {
+      containerId: "scratch-id",
+      service: "web",
+      labels: scratchLabels,
+    }),
+  ).toBe(true);
+});
+
+test("legacy com.lando.app handling stays as it was", () => {
+  expect(coherentContainerOwnership({ "com.lando.app": "owned" }, "docker")).toBe(true);
+  expect(
+    coherentContainerOwnership({ "com.lando.app": "owned", "dev.lando.provider": "docker" }, "docker"),
+  ).toBe(false);
+  expect(coherentContainerOwnership({ ...ownedLabels, "dev.lando.provider": "lando" }, "docker")).toBe(false);
 });
 const networkLabels = privateNetworkLabels({
   ...planAppIdentity(plan),
@@ -388,13 +518,16 @@ test("verifiedNativeId names a coherent foreign-root container and keeps machine
   });
 });
 
-test("verifiedNativeId keeps the generic refusal for unlabeled or incoherent resources", async () => {
+test("verifiedNativeId refuses unlabeled or incoherent resources and names the failing label", async () => {
   // Given: unlabeled and incoherent label sets at the planned name.
-  for (const labels of [
-    {},
-    { "dev.lando.app": "x" },
-    { ...containerOwnershipLabels(plan, web), "dev.lando.app-root": "/other/app", "dev.lando.service": "" },
-  ]) {
+  for (const [labels, problem] of [
+    [{}, "dev.lando.app label"],
+    [{ "dev.lando.app": "x" }, "dev.lando.app label"],
+    [
+      { ...containerOwnershipLabels(plan, web), "dev.lando.app-root": "/other/app", "dev.lando.service": "" },
+      "dev.lando.app-root label",
+    ],
+  ] as const) {
     // When
     const result = await Effect.runPromise(
       verifiedNativeId(
@@ -404,14 +537,13 @@ test("verifiedNativeId keeps the generic refusal for unlabeled or incoherent res
         { kind: "container", name: "lando-owned-web" },
       ).pipe(Effect.result),
     );
-    // Then: today's generic verification message, not the foreign-root remediation.
+    // Then: a verification refusal naming the container and failing label, not the foreign-root remediation.
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
         _tag: "ProviderUnavailableError",
         operation: "resource-ownership",
-        message:
-          "Native resource ownership labels or identity could not be verified. No mutation is authorized.",
+        details: { container: "lando-owned-web", problem },
       },
     });
     if (result._tag === "Failure") {
@@ -419,9 +551,62 @@ test("verifiedNativeId keeps the generic refusal for unlabeled or incoherent res
         remediation:
           "Inspect the conflicting native resource and restore its verified Lando ownership or move it out of the planned name before retrying. Unlabeled resources cannot be adopted.",
       });
-      expect(result.failure).not.toHaveProperty("details");
     }
   }
+});
+
+for (const labels of [
+  { ...containerOwnershipLabels(plan, web), "dev.lando.provider": "lando" },
+  { ...containerOwnershipLabels(plan, web), "dev.lando.owner": "other-owner" },
+  { ...containerOwnershipLabels(plan, web), "dev.lando.role": "data-helper" },
+  { ...containerOwnershipLabels(plan, web), "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": "owned" },
+]) {
+  test(`inspectOwnedNativeId refuses planned-name container ownership ${JSON.stringify(labels)}`, async () => {
+    // Given
+    const name = "lando-owned--web";
+    const fake = fakeApi(
+      new Map([[`/containers/${name}/json`, { Id: "replacement", Config: { Labels: labels } }]]),
+    );
+    // When
+    const result = await Effect.runPromise(
+      inspectOwnedNativeId(
+        fake.api,
+        { kind: "container", name, labels: containerOwnershipLabels(plan, web) },
+        ctx,
+      ).pipe(Effect.result),
+    );
+    // Then
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ProviderUnavailableError", operation: "resource-ownership" },
+    });
+    expect(fake.calls.filter((call) => call.method !== "GET")).toEqual([]);
+  });
+}
+
+test("inspectOwnedNativeId accepts a scratch plan's own container", async () => {
+  // Given
+  const name = "lando-scratch-demo--web";
+  const scratchService = scratchPlan.services[web];
+  if (scratchService === undefined) throw new TypeError("Missing scratch fixture service");
+  const fake = fakeApi(
+    new Map([
+      [
+        `/containers/${name}/json`,
+        { Id: "scratch-container", Config: { Labels: commonContainerLabels(scratchPlan, scratchService) } },
+      ],
+    ]),
+  );
+  // When
+  const id = await Effect.runPromise(
+    inspectOwnedNativeId(
+      fake.api,
+      { kind: "container", name, labels: containerOwnershipLabels(scratchPlan, web) },
+      ctx,
+    ),
+  );
+  // Then
+  expect(id).toBe("scratch-container");
 });
 
 test("inspectOwnedNativeId names a coherent foreign-root network", async () => {

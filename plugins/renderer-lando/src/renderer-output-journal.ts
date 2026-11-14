@@ -4,7 +4,7 @@ interface LiveRegionOutput {
   readonly commitScrollback: (text: string) => void;
   readonly rememberScrollback: (text: string) => void;
   readonly noteInPlaceOutput?: () => void;
-  readonly suspendOutput?: (chunk: string | Uint8Array, write: () => void) => void;
+  readonly suspendOutput?: (chunk: string | Uint8Array, write: () => void) => void | Promise<void>;
 }
 
 const MAX_RETAINED_CHARACTERS = 256 * 1024;
@@ -19,11 +19,10 @@ class RendererOutputJournal {
     this.#io = io;
   }
 
-  writeOutput(chunk: string | Uint8Array, write: () => void, terminal: boolean): void {
-    if (terminal && this.#active?.suspendOutput !== undefined) {
-      this.#active.suspendOutput(chunk, write);
-      return;
-    }
+  /** Resolves after `write` ran; a pending full-tail terminal transition delays it. */
+  writeOutput(chunk: string | Uint8Array, write: () => void, terminal: boolean): void | Promise<void> {
+    if (terminal && this.#active?.suspendOutput !== undefined)
+      return this.#active.suspendOutput(chunk, write);
     write();
   }
 

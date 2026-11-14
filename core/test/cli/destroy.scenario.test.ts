@@ -30,7 +30,7 @@ import {
 import { makeTestStateStore } from "@lando/core/testing";
 import * as BunDataMover from "@lando/data-mover/service";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
-import { openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
+import { BuildOwner, openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -678,11 +678,13 @@ describe("lando destroy", () => {
     await withTempCwd(async (dataRoot) => {
       // Given a first build that failed before anything was applied.
       const harness = makeDestroyLayer({ userDataRoot: dataRoot, absent: true });
-      const appDir = join(dataRoot, "builds", String(plan.id));
+      const appDir = join(dataRoot, "builds", "owners", BuildOwner.fromPlan(plan).key);
       const transcript = join(appDir, "app", "web", "install.log");
       await mkdir(join(appDir, "app", "web"), { recursive: true });
       await writeFile(transcript, "install output\n");
-      const bucket = await Effect.runPromise(openAppBuildResults(harness.stateStore, String(plan.id)));
+      const bucket = await Effect.runPromise(
+        openAppBuildResults(harness.stateStore, BuildOwner.fromPlan(plan)),
+      );
       const entry = {
         buildKey: "app-key",
         service: web.name,

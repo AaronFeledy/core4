@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import {
   removeBuildTranscripts,
@@ -26,11 +27,11 @@ describe("sweepAppBuildTranscripts", () => {
       // Given a transcript on disk and an index entry with the same service dir and file name but
       // a different user data root spelling (a symlinked home, a different env variable spelling).
       const store = makeTestStateStore();
-      const appId = "app";
-      const transcript = join(root, "builds", appId, "app", "web", "key.log");
+      const owner = BuildOwner.root(AbsolutePath.make("/tmp/app"));
+      const transcript = join(root, "builds", "owners", owner.key, "app", "web", "key.log");
       await mkdir(dirname(transcript), { recursive: true });
       await writeFile(transcript, "output\n");
-      const bucket = await Effect.runPromise(openAppBuildResults(store.service, appId));
+      const bucket = await Effect.runPromise(openAppBuildResults(store.service, owner));
       await Effect.runPromise(
         recordBuildResult(bucket, {
           buildKey: "key",
@@ -41,7 +42,7 @@ describe("sweepAppBuildTranscripts", () => {
           exitCode: 0,
           durationMs: 1,
           transcriptPath: AbsolutePath.make(
-            join("/symlinked-home/lando", "builds", appId, "app", "web", "key.log"),
+            join("/symlinked-home/lando", "builds", "owners", owner.key, "app", "web", "key.log"),
           ),
         }),
       );
@@ -50,8 +51,7 @@ describe("sweepAppBuildTranscripts", () => {
       await Effect.runPromise(
         sweepAppBuildTranscripts({
           stateStore: store.service,
-          appId,
-          scratch: false,
+          owner,
           phase: "app",
           userDataRoot: root,
           redact: (text) => text,
@@ -68,13 +68,14 @@ describe("sweepAppBuildTranscripts", () => {
       // Given a scratch app with one referenced app-step transcript and one stale transcript.
       const store = makeTestStateStore();
       const appId = "scratch-demo-123456";
+      const owner = BuildOwner.scratch(AppId.make(appId));
       const directory = join(root, "builds", "scratch", appId, "app", "web");
       const referenced = join(directory, "install.log");
       const stale = join(directory, "stale.log");
       await mkdir(directory, { recursive: true });
       await writeFile(referenced, "install output\n");
       await writeFile(stale, "stale output\n");
-      const bucket = await Effect.runPromise(openAppBuildResults(store.service, appId));
+      const bucket = await Effect.runPromise(openAppBuildResults(store.service, owner));
       await Effect.runPromise(
         recordBuildResult(bucket, {
           buildKey: "install",
@@ -92,8 +93,7 @@ describe("sweepAppBuildTranscripts", () => {
       await Effect.runPromise(
         sweepAppBuildTranscripts({
           stateStore: store.service,
-          appId,
-          scratch: true,
+          owner,
           phase: "app",
           userDataRoot: root,
           redact: (text) => text,
@@ -118,14 +118,14 @@ describe("removeBuildTranscripts", () => {
         const outside = join(root, "outside");
         await mkdir(userDataRoot);
         await mkdir(outside);
-        const victim = join(outside, "app");
+        await mkdir(join(outside, "owners"));
+        const owner = BuildOwner.root(AbsolutePath.make("/tmp/app"));
+        const victim = join(outside, "owners", owner.key);
         await writeFile(victim, "keep me\n");
         await symlink(outside, join(userDataRoot, "builds"));
 
         // When the app's build output is removed.
-        await Effect.runPromise(
-          removeBuildTranscripts({ userDataRoot, appId: "app", scratch: false, providerId: "test" }),
-        );
+        await Effect.runPromise(removeBuildTranscripts({ userDataRoot, owner, providerId: "test" }));
 
         // Then the outside file survives: the unlink branch checks its parent first.
         expect(await readFile(victim, "utf8")).toBe("keep me\n");
@@ -140,17 +140,16 @@ describe("removeBuildTranscripts", () => {
         // Given an app path that is a symlink to a directory outside the data root.
         const userDataRoot = join(root, "data");
         const outside = join(root, "outside");
-        await mkdir(join(userDataRoot, "builds"), { recursive: true });
+        await mkdir(join(userDataRoot, "builds", "owners"), { recursive: true });
         await mkdir(outside);
         const insideOutside = join(outside, "transcript.log");
         await writeFile(insideOutside, "outside output\n");
-        const appDir = join(userDataRoot, "builds", "app");
+        const owner = BuildOwner.root(AbsolutePath.make("/tmp/app"));
+        const appDir = join(userDataRoot, "builds", "owners", owner.key);
         await symlink(outside, appDir);
 
         // When the app's build output is removed.
-        await Effect.runPromise(
-          removeBuildTranscripts({ userDataRoot, appId: "app", scratch: false, providerId: "test" }),
-        );
+        await Effect.runPromise(removeBuildTranscripts({ userDataRoot, owner, providerId: "test" }));
 
         // Then the link itself is gone and its target is untouched.
         await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });

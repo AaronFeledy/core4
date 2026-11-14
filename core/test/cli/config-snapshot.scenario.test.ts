@@ -94,10 +94,26 @@ test("repair commands remain available under invalid config and notification pro
     const doctor = await temp.run(["doctor", "--format=json"]);
     expect(doctor.code).toBe(1);
     const report = JSON.parse(doctor.stdout).result;
-    expect(report.globalConfig).toMatchObject({ status: "fail", error: { _tag: "ConfigError" } });
-    expect(report.skipped).toHaveLength(6);
     expect(
-      report.subsystems.checks.some((check: { readonly name: string }) => check.name === "filesystem-watch"),
+      report.checks.find((check: { readonly section: string }) => check.section === "global-config"),
+    ).toMatchObject({ status: "fail", details: { _tag: "ConfigError" } });
+    expect(report.skipped.map((entry: { readonly section: string }) => entry.section).sort()).toEqual([
+      "accelerated-starts",
+      "certificate-authority",
+      "debugger-host",
+      "global-app",
+      "legacy-snapshot-catalogs",
+      "missing-app-roots",
+      "network-trust",
+      "orphaned-volume-snapshots",
+      "provider",
+      "subsystems",
+    ]);
+    expect(report.checks.find((check: { readonly section: string }) => check.section === "mcp")?.status).toBe(
+      "pass",
+    );
+    expect(
+      report.checks.some((check: { readonly section: string }) => check.section === "filesystem-watch"),
     ).toBe(true);
     expect(doctor.stdout).not.toContain("--fix");
     const repaired = await temp.run(["config", "unset", "router.httpPort", "--format=json"]);
@@ -155,15 +171,23 @@ test("invalid presentation config cannot block doctor or config repair", async (
     // Then doctor reports config issues and independent checks, repair works, and explicit flags still fail.
     const report = JSON.parse(doctor.stdout).result;
     expect(doctor.code).toBe(1);
+    const globalConfig = report.checks.find(
+      (check: { readonly section: string }) => check.section === "global-config",
+    );
     expect(
-      report.globalConfig.error.issues.map((issue: { readonly path: readonly string[] }) => issue.path),
+      globalConfig?.details?.issues?.map((issue: { readonly path: readonly string[] }) => issue.path),
     ).toEqual(expect.arrayContaining([["renderer"], ["logLevel"], ["router", "httpPort"]]));
     expect(
-      report.subsystems.checks.some((check: { readonly name: string }) => check.name === "filesystem-watch"),
+      report.checks.some((check: { readonly section: string }) => check.section === "filesystem-watch"),
     ).toBe(true);
     expect(report.skipped.map((entry: { readonly section: string }) => entry.section)).toEqual(
-      expect.arrayContaining(["app-config", "app-version-constraints", "deprecations"]),
+      expect.arrayContaining(["app-config", "deprecations"]),
     );
+    expect(
+      report.skipped.some(
+        (entry: { readonly section: string }) => entry.section === "app-version-constraints",
+      ),
+    ).toBe(false);
     expect(doctor.stdout).not.toContain("--fix");
     expect(repair.code).toBe(0);
     expect(JSON.parse(repair.stdout).warnings).toMatchObject([{ code: "LANDO_CONFIG_OTHER_SOURCE_INVALID" }]);

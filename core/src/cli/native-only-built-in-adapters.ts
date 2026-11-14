@@ -17,10 +17,11 @@ import { makeInitOutput } from "./commands/init-output.ts";
 import { initUsesMachineOutput, makeInitReview, renderInitReviewNext } from "./commands/init-review.ts";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { activeResultFormat, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
+import type { CommandTokens } from "./invocation";
 
 export const runNativeOnlyBuiltIn = async (
   entry: BuiltInCommandEntry,
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   parentSignal?: AbortSignal,
   context?: CliInvocationContext,
 ): Promise<void> => {
@@ -28,7 +29,8 @@ export const runNativeOnlyBuiltIn = async (
   const signalOptions = parentSignal === undefined ? {} : { signal: parentSignal };
   switch (entry.spec.id) {
     case "apps:init": {
-      const input = compiledCommandInputFromArgv(entry.spec.id, argv, {
+      const input = compiledCommandInputFromArgv(entry.spec.id, tokens.argv, {
+        tokens,
         ...(context === undefined ? {} : { context }),
       });
       let reviewed = false;
@@ -92,13 +94,13 @@ export const runNativeOnlyBuiltIn = async (
       return;
     }
     case "meta:setup":
-      await runWithProcessAbortSignal((signal) => runSetup(argv, signal, context), signalOptions);
+      await runWithProcessAbortSignal((signal) => runSetup(tokens, signal, context), signalOptions);
       return;
     case "meta:shellenv":
-      await runWithProcessAbortSignal((signal) => runMetaShellenv(argv, signal, context), signalOptions);
+      await runWithProcessAbortSignal((signal) => runMetaShellenv(tokens, signal, context), signalOptions);
       return;
     case "meta:uninstall":
-      await runWithProcessAbortSignal((signal) => runMetaUninstall(argv, signal, context), signalOptions);
+      await runWithProcessAbortSignal((signal) => runMetaUninstall(tokens, signal, context), signalOptions);
       return;
     default:
       throw new TypeError(`Built-in command ${entry.spec.id} is not embedding-exempt.`);

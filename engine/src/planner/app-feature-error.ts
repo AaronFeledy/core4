@@ -14,7 +14,7 @@ export const appFeatureError = (appRoot: string, cause: unknown): LandofileValid
   if (cause instanceof Error && Schema.is(TaggedAppFeatureFailure)(cause)) {
     const diagnostic = taggedErrorJson(cause);
     const context: Record<string, string> = { _tag: diagnostic._tag };
-    for (const key of ["feature", "service", "reason", "image", "field"] as const) {
+    for (const key of ["feature", "service", "reason", "image", "field", "from"] as const) {
       const value = diagnostic[key];
       if (typeof value === "string") context[key] = value;
     }

@@ -15,6 +15,8 @@ lando version --verbose
 lando version --debug
 ```
 
+These flags always work before the command name, as in `lando --verbose version`. After the name they're Lando's too, unless the command owns the words after its name, as a `wrapper: true` task does. See [Use a flag name Lando also has](../tooling/flags-and-args.mdx#use-a-flag-name-lando-also-has).
+
 `--debug` is `--log-level=debug` plus `--verbose`. `--log-level` only changes the diagnostic floor. Pass `--renderer=lando` when you want the TUI. Pass `--renderer=json` when you want the JSON envelope on stdout.
 
 ## Pick a renderer

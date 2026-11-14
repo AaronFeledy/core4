@@ -16,6 +16,7 @@ export const CATALOG_SERVICE_TAIL_KEYS = [
   "endpoints",
   "healthcheck",
   "dependsOn",
+  "schedule",
   "labels",
   "envFile",
   "networks",

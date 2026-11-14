@@ -37,6 +37,10 @@ export const StartAppResult = Schema.Struct({
   checks: Schema.optionalKey(Schema.Array(CheckResult)).annotate({
     description: "Post-start endpoint checks, when scanning was performed.",
   }),
+  servicesRemoved: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description:
+      "Names of services whose containers were removed because the Landofile no longer defines them; omitted when a service selection removed nothing.",
+  }),
 }).annotate({ description: "Services and optional readiness checks returned after starting an app." });
 export type StartAppResult = typeof StartAppResult.Type;
 
@@ -76,6 +80,7 @@ export const RestartAppResult = Schema.Struct({
   app: Schema.String.annotate({ description: "Name of the restarted app." }),
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
+  servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({ description: "Services and optional readiness checks returned after restarting an app." });
 export type RestartAppResult = typeof RestartAppResult.Type;
 
@@ -86,6 +91,7 @@ export const RebuildAppResult = Schema.Struct({
   }),
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
+  servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({
   description: "Rebuilt services and their post-start observations returned after rebuilding an app.",
 });

@@ -31,7 +31,6 @@ import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./too
 export {
   type NormalizedToolingRoute,
   type ToolingRoute,
-  toolingHelpRequested,
   toolingVersionRequested,
 } from "./tooling-route";
 

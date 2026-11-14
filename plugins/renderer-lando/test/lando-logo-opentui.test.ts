@@ -36,7 +36,6 @@ describe("OpenTUI Lando logo", () => {
         width: 80,
         height: 40,
         screenMode: "alternate-screen",
-        useThread: false,
       });
       try {
         const frame = createLandoLogo(openTui, setup.renderer, {
@@ -72,7 +71,6 @@ describe("OpenTUI Lando logo", () => {
       width: 80,
       height: 40,
       screenMode: "alternate-screen",
-      useThread: false,
     });
     try {
       const panel = new openTui.BoxRenderable(setup.renderer, {

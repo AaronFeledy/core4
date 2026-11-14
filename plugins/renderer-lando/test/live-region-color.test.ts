@@ -22,8 +22,11 @@ test.each([true, false])("expanded native frame honors noColor=%j", async (noCol
   const path = join(root, "output");
   const fd = openSync(path, "w");
   const stdout = new WriteStream(fd);
-  stdout.write = (chunk: string | Uint8Array) => {
+  stdout.write = (chunk: string | Uint8Array, ...args: readonly unknown[]) => {
     writeSync(fd, Buffer.from(chunk));
+    // OpenTUI waits for the write callback before it sends the next frame.
+    const done = args.find((arg) => typeof arg === "function");
+    if (typeof done === "function") done();
     return true;
   };
   let setup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;

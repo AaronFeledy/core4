@@ -3,23 +3,21 @@ import { access, chmod, mkdir, mkdtemp, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import {
-  CommandStdioError,
+  type CommandStdioError,
   DataTransferError,
   SqlDumpCompressionError,
+  type SqlDumpIncompleteError,
   SqlDumpNotFoundError,
   errnoCode,
 } from "@lando/sdk/errors";
 import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, Stream } from "effect";
+import { Effect, type Scope, Stream } from "effect";
 
-import {
-  type DumpCompression,
-  collectDumpPrefix,
-  detectDumpCompression,
-  releaseStagedDump,
-} from "./compression.ts";
+import { type DumpCompression, releaseStagedDump } from "./compression.ts";
 import { type DumpCompletenessRule, trackDumpCompleteness } from "./dump-completeness.ts";
+import { openDumpSource } from "./dump-source.ts";
+import { dumpTransferError } from "./dump-transfer-error.ts";
 
 type DumpMiss = "missing" | "unreadable" | "directory";
 
@@ -57,72 +55,15 @@ export const ensureDumpFile = (path: string, appRoot: string): Effect.Effect<voi
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),
   });
 
-const stageError =
-  (stagingDir: string) =>
-  (cause: unknown): DataTransferError =>
-    new DataTransferError({
-      message: `Failed to stage the dump in ${stagingDir}.`,
-      toEndpoint: "hostPath",
-      operation: "stage",
-      remediation: `Check that ${stagingDir} is writable and has room for the uncompressed dump, then retry.`,
-      cause,
-    });
-
-const decompressError = (label: string, compression: Exclude<DumpCompression, "none">) =>
+const decompressError = (label: string, compression: Exclude<DumpCompression, "none">, cause: unknown) =>
   new SqlDumpCompressionError({
     message: `Failed to decompress dump: ${label}`,
     path: label,
     compression,
     operation: "decompress",
+    cause,
     remediation: `The ${compression} data is corrupt or cut short. Recreate the dump, then retry the import.`,
   });
-
-type DumpSourceReader = {
-  readonly read: () => Promise<
-    | { readonly done: true; readonly value?: Uint8Array | undefined }
-    | { readonly done: false; readonly value: Uint8Array }
-  >;
-  readonly cancel: (reason?: unknown) => Promise<void>;
-};
-
-/**
- * Reads the first bytes for magic detection, then hands back a stream that still starts at byte 0.
- * `sourceFailure` remembers a read error so it isn't mistaken for corrupt compression after it
- * passes through a decompressor.
- */
-const peekCompression = async (reader: DumpSourceReader) => {
-  let sourceFailure: { readonly cause: unknown } | undefined;
-  const read = async () => {
-    try {
-      return await reader.read();
-    } catch (cause) {
-      sourceFailure = { cause };
-      throw cause;
-    }
-  };
-  const pending: Uint8Array[] = [];
-  let prefix: Uint8Array = new Uint8Array();
-  while (prefix.byteLength < 4) {
-    const next = await read();
-    if (next.done) break;
-    pending.push(next.value);
-    prefix = collectDumpPrefix(next.value, prefix);
-  }
-  const body = new ReadableStream<Uint8Array>({
-    pull: async (controller) => {
-      const queued = pending.shift();
-      if (queued !== undefined) {
-        controller.enqueue(queued);
-        return;
-      }
-      const next = await read();
-      if (next.done) controller.close();
-      else controller.enqueue(next.value);
-    },
-    cancel: (reason) => reader.cancel(reason),
-  });
-  return { compression: detectDumpCompression(prefix), body, sourceFailure: () => sourceFailure };
-};
 
 export type PreparedDump = {
   /** Plaintext dump to import: the original file, or an owner-only staged copy. */
@@ -145,84 +86,104 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
   readonly privateFileAccess: PrivateFileAccess;
   readonly completeness: DumpCompletenessRule | undefined;
   readonly stdin?: Stream.Stream<Uint8Array, CommandStdioError>;
-}) {
-  const stageFailure = stageError(input.stagingDir);
+}): Effect.fn.Return<
+  PreparedDump,
+  CommandStdioError | DataTransferError | SqlDumpCompressionError | SqlDumpIncompleteError,
+  Scope.Scope
+> {
+  const stageFailure = (cause: unknown) => dumpTransferError("stage", input.stagingDir, cause);
+  let privacyFailure: DataTransferError | undefined;
+  const privateAccessFailure = (path: string, cause: unknown) =>
+    new DataTransferError({
+      operation: "stage",
+      toEndpoint: "hostPath",
+      message: `Failed to secure private access to the dump staging path: ${path}`,
+      cause,
+      remediation: "Check owner-only access and ACL settings on the dump staging path, then retry.",
+    });
   const makePrivate = async (path: string): Promise<void> => {
     await input.privateFileAccess.enforce(path);
     await input.privateFileAccess.verify(path);
   };
   const fromStdin = input.stdin !== undefined;
   const label = fromStdin ? "stdin" : input.file;
-  const readFailure = (cause: unknown) => {
-    if (cause instanceof CommandStdioError) return cause;
-    if (fromStdin) return stageFailure(cause);
-    return dumpNotFound(input.file, input.appRoot, dumpMissKind(cause));
-  };
   // The scope owns the source reader: interruption at any point, even mid-peek, waits for the
   // source to cancel (closing the file or releasing stdin) before the import moves on.
-  const source =
-    input.stdin === undefined ? Bun.file(input.file).stream() : Stream.toReadableStream(input.stdin);
-  const reader = yield* Effect.acquireRelease(
-    Effect.sync(() => source.getReader()),
-    (owned) => Effect.promise(() => owned.cancel().catch(() => undefined)),
-  );
-  const opened = yield* Effect.tryPromise({ try: () => peekCompression(reader), catch: readFailure });
+  const opened = yield* openDumpSource(input);
   const tracker = trackDumpCompleteness(input.completeness);
 
   if (opened.compression === "none" && !fromStdin) {
     const hash = new Bun.CryptoHasher("sha256");
-    yield* Stream.runForEach(
-      Stream.fromReadableStream({ evaluate: () => opened.body, onError: readFailure }),
-      (chunk) =>
-        Effect.sync(() => {
-          hash.update(chunk);
-          tracker.push(chunk);
-        }),
+    yield* Stream.runForEach(opened.stream(opened.body, opened.readFailure), (chunk) =>
+      Effect.sync(() => {
+        hash.update(chunk);
+        tracker.push(chunk);
+      }),
     );
     yield* tracker.requireComplete(label, fromStdin);
     return { path: input.file, digest: hash.digest("hex") } satisfies PreparedDump;
   }
 
+  yield* Effect.tryPromise({
+    try: async () => {
+      await mkdir(input.stagingDir, { recursive: true, mode: 0o700 });
+      await chmod(input.stagingDir, 0o700);
+    },
+    catch: stageFailure,
+  });
+  yield* Effect.tryPromise({
+    try: () => makePrivate(input.stagingDir),
+    catch: (cause) => privateAccessFailure(input.stagingDir, cause),
+  });
   const directory = yield* Effect.acquireRelease(
-    Effect.tryPromise({
-      try: async () => {
-        await mkdir(input.stagingDir, { recursive: true, mode: 0o700 });
-        await chmod(input.stagingDir, 0o700);
-        await makePrivate(input.stagingDir);
-        const created = await mkdtemp(join(input.stagingDir, "sql-dump-"));
-        await makePrivate(created);
-        return created;
-      },
-      catch: stageFailure,
-    }),
+    Effect.tryPromise({ try: () => mkdtemp(join(input.stagingDir, "sql-dump-")), catch: stageFailure }),
     releaseStagedDump,
   );
+  yield* Effect.tryPromise({
+    try: () => makePrivate(directory),
+    catch: (cause) => privateAccessFailure(directory, cause),
+  });
   const path = join(directory, "dump");
   const compression = opened.compression;
   const plaintext =
-    compression === "none" ? opened.body : opened.body.pipeThrough(new DecompressionStream(compression));
+    compression === "none"
+      ? opened.body
+      : yield* Effect.try({
+          try: () => opened.body.pipeThrough(new DecompressionStream(compression)),
+          catch: (cause) => decompressError(label, compression, cause),
+        });
   const staged = yield* persistVerifiedStream({
-    body: Stream.fromReadableStream({
-      evaluate: () =>
-        plaintext.pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>({
-            transform: (chunk, controller) => {
-              tracker.push(chunk);
-              controller.enqueue(chunk);
-            },
-          }),
-        ),
-      onError: (cause) => {
-        const source = opened.sourceFailure();
-        if (source !== undefined) return readFailure(source.cause);
-        if (cause instanceof CommandStdioError) return cause;
-        return compression === "none" ? stageFailure(cause) : decompressError(label, compression);
-      },
-    }),
+    body: opened.stream(
+      plaintext.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform: (chunk, controller) => {
+            tracker.push(chunk);
+            controller.enqueue(chunk);
+          },
+        }),
+      ),
+      (cause) =>
+        compression === "none" ? opened.readFailure(cause) : decompressError(label, compression, cause),
+    ),
     destinationPath: path,
     mode: 0o600,
-    beforeWrite: makePrivate,
-  }).pipe(mapFailures((error) => (error instanceof VerifiedStreamError ? stageFailure(error) : error)));
+    beforeWrite: async (path) => {
+      try {
+        await makePrivate(path);
+      } catch (cause) {
+        privacyFailure = privateAccessFailure(path, cause);
+        throw privacyFailure;
+      }
+    },
+  }).pipe(
+    mapFailures((error) =>
+      error instanceof VerifiedStreamError
+        ? privacyFailure === undefined
+          ? dumpTransferError("persist", path, error)
+          : privacyFailure
+        : error,
+    ),
+  );
   yield* tracker.requireComplete(label, fromStdin);
   return { path, digest: staged.sha256 } satisfies PreparedDump;
 });

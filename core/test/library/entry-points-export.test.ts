@@ -18,7 +18,7 @@ const publicEntryPoints = [
     specifier: "@lando/core/bundled-plugins",
     exportKey: "./bundled-plugins",
     target: "./src/runtime/bundled-plugins.ts",
-    assertSymbol: (mod: Record<string, unknown>) => expect(mod.BUNDLED_PLUGIN_MODULES).toHaveLength(16),
+    assertSymbol: (mod: Record<string, unknown>) => expect(mod.BUNDLED_PLUGIN_MODULES).toHaveLength(17),
   },
   {
     specifier: "@lando/core/schema",

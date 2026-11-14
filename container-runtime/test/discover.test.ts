@@ -84,6 +84,7 @@ test("a container's app-root label overrides the planned root for the same conta
     containerId,
     status: "running" as const,
     publications: { status: "unknown" as const },
+    labels: { "dev.lando.app": "app", "dev.lando.app-root": appRoot, "dev.lando.service": "web" },
   });
 
   const result = labelOwnedSnapshots(
@@ -97,6 +98,75 @@ test("a container's app-root label overrides the planned root for the same conta
   ]);
 });
 
+test("reports the listing provider id and keeps a conflicting provider label", async () => {
+  // Given a container that another provider's label claims, listed through this provider.
+  const api: EngineHttpApi = {
+    request: () =>
+      Effect.succeed({
+        status: 200,
+        body: JSON.stringify([
+          {
+            Id: "claimed-by-docker",
+            State: "running",
+            Labels: {
+              "dev.lando.app": "orphan",
+              "dev.lando.app-root": "/tmp/deleted",
+              "dev.lando.service": "db",
+              "dev.lando.provider": "docker",
+            },
+          },
+        ]),
+      }),
+  };
+  // When
+  const services = await Effect.runPromise(discoverLabeledContainers(api, ctx));
+  // Then discovery never rewrites the reporting provider, so the ownership predicate can reject it.
+  expect(services).toEqual([
+    {
+      providerId: ProviderId.make("podman"),
+      app: AppId.make("orphan"),
+      appRoot: AbsolutePath.make("/tmp/deleted"),
+      service: ServiceName.make("db"),
+      containerId: "claimed-by-docker",
+      status: "running",
+      publications: { status: "unknown" },
+      labels: {
+        "dev.lando.app": "orphan",
+        "dev.lando.app-root": "/tmp/deleted",
+        "dev.lando.service": "db",
+        "dev.lando.provider": "docker",
+      },
+    },
+  ]);
+});
+
+test("a contradictory discovered container cannot override the planned root", () => {
+  // Given a container whose own provider label contradicts the provider listing it.
+  const planned = {
+    providerId: ProviderId.make("lando"),
+    app: AppId.make("app"),
+    appRoot: AbsolutePath.make("/plan-root"),
+    service: ServiceName.make("web"),
+    containerId: "recreated",
+    status: "running" as const,
+    publications: { status: "unknown" as const },
+  };
+  const contradictory = {
+    ...planned,
+    appRoot: AbsolutePath.make("/deleted-root"),
+    labels: {
+      "dev.lando.app": "app",
+      "dev.lando.app-root": "/deleted-root",
+      "dev.lando.service": "web",
+      "dev.lando.provider": "docker",
+    },
+  };
+  // When
+  const result = labelOwnedSnapshots([planned], [contradictory]);
+  // Then the incoherent label set cannot rewrite this plan's teardown target.
+  expect(result.map((snapshot) => snapshot.appRoot)).toEqual([AbsolutePath.make("/plan-root")]);
+});
+
 test.each([false, true])("merges label-owned containers with includeScratch=%s", (includeScratch) => {
   const planned = {
     providerId: ProviderId.make("podman"),
@@ -107,11 +177,16 @@ test.each([false, true])("merges label-owned containers with includeScratch=%s",
     status: "running" as const,
     publications: { status: "unknown" as const },
   };
-  const labeled = { ...planned, appRoot: AbsolutePath.make("/label-root") };
+  const labeled = {
+    ...planned,
+    appRoot: AbsolutePath.make("/label-root"),
+    labels: { "dev.lando.app": "app", "dev.lando.app-root": "/label-root", "dev.lando.service": "web" },
+  };
   const unplanned = { ...planned, containerId: "unplanned" };
   const scratch = { ...planned, containerId: "scratch", labels: { "dev.lando.scratch": "TRUE" } };
 
   const result = mergeDiscoveredContainers([planned], [labeled, unplanned, scratch], includeScratch);
 
-  expect(result).toEqual(includeScratch ? [labeled, unplanned, scratch] : [labeled, unplanned]);
+  const relabeled = { ...planned, appRoot: AbsolutePath.make("/label-root") };
+  expect(result).toEqual(includeScratch ? [relabeled, unplanned, scratch] : [relabeled, unplanned]);
 });

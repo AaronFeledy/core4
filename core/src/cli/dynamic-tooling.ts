@@ -23,6 +23,7 @@ import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
 import { Effect, Layer } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
+import { selectionOwnershipHint } from "./cli-help";
 import { finishCommandProgress } from "./command-progress";
 import { renderRunToolingResult } from "./commands/tooling";
 import {
@@ -37,6 +38,7 @@ import {
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { attachToolingHostIo, toolingHostStdin } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
+import type { LandoFlagMatch } from "./lando-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { type ToolingRoute, toolingRouteError } from "./tooling-router";
@@ -233,12 +235,28 @@ export const renderAliasResolutionFailure = async (
   });
 };
 
+export interface ToolingSelectionOwnership {
+  readonly taskName: string;
+  /** The `--format` occurrence typed after the task name, when there is one. */
+  readonly format?: LandoFlagMatch;
+}
+
+export interface RouteResolvedToolingOptions {
+  readonly signal?: AbortSignal;
+  readonly context?: CliInvocationContext;
+  readonly ownership?: ToolingSelectionOwnership;
+}
+
 export const routeResolvedTooling = async (
   route: ToolingRoute,
   argv: ReadonlyArray<string>,
-  signal?: AbortSignal,
-  context?: CliInvocationContext,
+  options: RouteResolvedToolingOptions = {},
 ): Promise<boolean> => {
+  const { signal, context } = options;
+  const remediationSuffix =
+    options.ownership?.format === undefined
+      ? undefined
+      : selectionOwnershipHint(options.ownership.format, options.ownership.taskName);
   if (signal?.aborted) return true;
   switch (route._tag) {
     case "not-tooling":
@@ -265,6 +283,7 @@ export const routeResolvedTooling = async (
       if (
         await rejectUnsupportedResultFormat(`app:${route.name}`, undefined, {
           ...(context === undefined ? {} : { context }),
+          ...(remediationSuffix === undefined ? {} : { remediationSuffix }),
         })
       )
         return true;
@@ -275,6 +294,7 @@ export const routeResolvedTooling = async (
       if (
         await rejectUnsupportedResultFormat(`app:${route.name}`, undefined, {
           ...(context === undefined ? {} : { context }),
+          ...(remediationSuffix === undefined ? {} : { remediationSuffix }),
         })
       )
         return true;

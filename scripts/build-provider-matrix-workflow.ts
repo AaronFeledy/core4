@@ -255,7 +255,7 @@ ${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-li
 
       - name: Upload provider matrix cell report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-matrix-report-\${{ matrix.cell }}
           path: provider-matrix-reports/\${{ matrix.cell }}.json
@@ -287,7 +287,7 @@ ${managedLandoTeardown}
 
       - name: Upload provider matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-matrix-diagnostics-\${{ matrix.cell }}
           path: provider-matrix-diagnostics

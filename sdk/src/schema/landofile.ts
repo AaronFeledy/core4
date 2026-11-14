@@ -44,6 +44,7 @@ import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
+import { ScheduleConfig } from "./schedule.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 import { SqliteTargetConfig } from "./sqlite.ts";
 import { ToolingAuthoredInputFields } from "./tooling-input.ts";
@@ -721,6 +722,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         'PHP Xdebug selection: true installs with mode "debug", a comma-separated Xdebug 3 mode string, or false to skip install.',
     }),
+    schedule: Schema.optionalKey(ScheduleConfig).annotate({
+      description:
+        "Scheduled jobs for this service. Lando compiles them into one <service>-schedule sidecar cloned from this service image and build. Mounts, environment, user, and networks are copied onto that sidecar.",
+    }),
     db_client: Schema.optionalKey(
       Schema.Union([Schema.Literal("auto"), Schema.Literal(false), Schema.String]),
     ).annotate({
@@ -990,7 +995,7 @@ export const ToolingTaskShape = Schema.Struct({
   ...ToolingAuthoredInputFields,
   wrapper: Schema.optionalKey(Schema.Boolean).annotate({
     description:
-      "Mark this task as a thin wrapper around one CLI tool. -h, --help, and --version go to that tool instead of Lando. Requires one command and no declared flags or args.",
+      "Mark this task as a thin wrapper around one CLI tool. Every argument and flag after the task name goes to that tool, including --help, --version, and flags Lando also has; Lando's own flags go before the task name. Requires one command and no declared flags or args.",
   }),
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",

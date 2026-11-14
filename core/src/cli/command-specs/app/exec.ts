@@ -9,7 +9,6 @@ import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
-import { wordsBeforeSeparator } from "../../command-tail";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
@@ -35,14 +34,14 @@ const execFlags = {
   }),
 };
 
-// The CLI input keeps a `--` the user typed and drops the one Lando inserts before the command tail.
+// Where the user typed `--` among the command words, or -1 without one.
 const cliSeparatorAt = (input: unknown): number =>
-  wordsBeforeSeparator(
-    typeof input === "object" && input !== null && "argv" in input && Array.isArray(input.argv)
-      ? input.argv.filter((arg): arg is string => typeof arg === "string")
-      : [],
-    execFlags,
-  );
+  typeof input === "object" &&
+  input !== null &&
+  "separatorAt" in input &&
+  typeof input.separatorAt === "number"
+    ? input.separatorAt
+    : -1;
 
 export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServices> = {
   resultSchema: ExecAppResult,

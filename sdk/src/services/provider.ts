@@ -166,6 +166,12 @@ export interface ArtifactPullSpec {
 }
 
 export interface ApplyOptions {
+  /**
+   * When true, the plan names every service of the app, so the provider persists it (or
+   * `recordedPlan` when given) as the whole applied record instead of carrying previous
+   * services it does not name. `reconcile` only forces container recreation.
+   */
+  readonly complete?: boolean;
   readonly reconcile: boolean;
   readonly recordedPlan?: AppPlan;
   /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */
@@ -301,6 +307,8 @@ export interface ServiceRuntimeFields {
   readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
+  /** Native container identity: stable across in-place restarts, different after replacement.
+   * Omission means consumers cannot prove that container-local work can be reused. */
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;

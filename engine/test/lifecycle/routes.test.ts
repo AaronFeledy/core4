@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
+import { type LandoEvent, RouterService, type RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { applyAppRoutes } from "../../src/lifecycle/routes.ts";
 import { collectObservedConnections, observeService } from "../../src/operations/connection-collector.ts";
+import { makeUnavailableRouter } from "../../src/subsystems/proxy/api.ts";
 import { web } from "../operations/start-progress-topology-support.ts";
 
 const service = ServiceName.make("web");
@@ -39,6 +40,14 @@ const cachedPlan: AppPlan = {
   extensions: {},
 };
 
+const recordingEvents = () => {
+  const events: LandoEvent[] = [];
+  return {
+    emitter: { publish: (event: LandoEvent) => Effect.sync(() => void events.push(event)) },
+    warnings: () => events.flatMap((event) => (event._tag === "message.warn" ? [event.body] : [])),
+  };
+};
+
 describe("applyAppRoutes", () => {
   test.each([false, true])(
     "withdraws routes without setup when the plan has no routes (cleanup fails: %s)",
@@ -67,14 +76,43 @@ describe("applyAppRoutes", () => {
           ),
       };
 
-      // When
-      const result = await Effect.runPromise(applyAppRoutes(proxy, plan));
+      const recorded = recordingEvents();
 
-      // Then
+      // When
+      const result = await Effect.runPromise(applyAppRoutes(proxy, plan, recorded.emitter));
+
+      // Then the start still succeeds, and a failed withdrawal says the old URLs may remain.
       expect(calls).toEqual([routeOwnerFromPlan(plan)]);
       expect(result).toEqual({ app: plan.id, appliedRoutes: [], authorities: [] });
+      expect(recorded.warnings()).toEqual(
+        fails
+          ? [
+              "Routes that demo published earlier were not withdrawn, so its old URLs may still resolve. router unavailable Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+            ]
+          : [],
+      );
     },
   );
+
+  test("stays quiet for a route-free plan when no router is available", async () => {
+    // Given a host with no selectable router, which published nothing to withdraw.
+    const plan: AppPlan = { ...cachedPlan, routes: [], router: { enabled: true } };
+    const proxy = makeUnavailableRouter(
+      new ProxyError({
+        message: "No router is installed.",
+        proxyId: "unavailable",
+        remediation: "Install a RouterService plugin.",
+      }),
+    );
+    const recorded = recordingEvents();
+
+    // When
+    const result = await Effect.runPromise(applyAppRoutes(proxy, plan, recorded.emitter));
+
+    // Then
+    expect(result).toEqual({ app: plan.id, appliedRoutes: [], authorities: [] });
+    expect(recorded.warnings()).toEqual([]);
+  });
 
   test("skips setup and route publication when the plan disables the router", async () => {
     // Given: declared routes and a conflicting Landofile must not override the plan.
@@ -94,7 +132,9 @@ describe("applyAppRoutes", () => {
     };
 
     // When
-    const result = await Effect.runPromise(applyAppRoutes(proxy, plan, { enabled: true }));
+    const result = await Effect.runPromise(
+      applyAppRoutes(proxy, plan, recordingEvents().emitter, { enabled: true }),
+    );
 
     // Then
     expect(calls).toEqual(["removeRoutes"]);
@@ -120,7 +160,9 @@ describe("applyAppRoutes", () => {
       };
 
       // When: enablement comes from the plan, not the Landofile.
-      const result = await Effect.runPromise(applyAppRoutes(proxy, plan, { enabled: false }));
+      const result = await Effect.runPromise(
+        applyAppRoutes(proxy, plan, recordingEvents().emitter, { enabled: false }),
+      );
 
       // Then
       expect(calls).toEqual(["setup", "applyRoutes"]);

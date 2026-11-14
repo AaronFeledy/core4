@@ -18,6 +18,7 @@ import { Cause, Effect, Layer, Option, Schema } from "effect";
 
 import { buildLogsApp } from "../../src/operations/logs-build.ts";
 import {
+  BuildOwner,
   markBuildResultUsed,
   openAppBuildResults,
   recordBuildResult,
@@ -75,23 +76,24 @@ const makeLayer = (plan: ReturnType<typeof planWith>, userDataRoot: string, stat
     Layer.succeed(StateStore, state),
   );
 
-const transcriptPath = (userDataRoot: string, planId: string, phase: string, name: string) =>
-  AbsolutePath.make(join(userDataRoot, "builds", planId, phase, "web", `${name}.log`));
+const transcriptPath = (userDataRoot: string, owner: BuildOwner, phase: string, name: string) =>
+  AbsolutePath.make(join(userDataRoot, "builds", "owners", owner.key, phase, "web", `${name}.log`));
 
 const seed = async (
   state: StateStoreShape,
   plan: ReturnType<typeof planWith>,
-  inputs: ReadonlyArray<{
-    readonly name: string;
-    readonly phase: "artifact" | "app";
-    readonly step?: string;
-    readonly body?: string;
-  }>,
+  inputs: ReadonlyArray<
+    {
+      readonly name: string;
+      readonly body?: string;
+    } & ({ readonly phase: "artifact" } | { readonly phase: "app"; readonly step: string })
+  >,
   userDataRoot: string,
 ) => {
-  const bucket = await Effect.runPromise(openAppBuildResults(state, String(plan.id)));
+  const owner = BuildOwner.fromPlan(plan);
+  const bucket = await Effect.runPromise(openAppBuildResults(state, owner));
   for (const input of inputs) {
-    const path = transcriptPath(userDataRoot, String(plan.id), input.phase, input.name);
+    const path = transcriptPath(userDataRoot, owner, input.phase, input.name);
     if (input.body !== undefined) {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, input.body);
@@ -100,10 +102,8 @@ const seed = async (
       recordBuildResult(bucket, {
         buildKey: input.name,
         service: ServiceName.make("web"),
-        phase: input.phase,
-        ...(input.step === undefined ? {} : { step: input.step }),
+        ...(input.phase === "app" ? { phase: "app", step: input.step } : { phase: "artifact" }),
         outcome: "complete",
-        exitCode: 0,
         durationMs: 1,
         transcriptPath: path,
       }),

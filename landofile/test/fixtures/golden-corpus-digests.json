@@ -457,6 +457,10 @@
       "digest": "de7c35b02f36239aed6566b22710712972b8e24966ee87f334aac17561176562"
     },
     {
+      "fixture": "docs/guides/flags-and-args/fixtures/shared-flag-names",
+      "digest": "704c9f0a578b4efe0b4f5b89ea2c456d2b70260ea4b340cb6deb3ea32696fab0"
+    },
+    {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
       "digest": "93e781d9036aeddf186f20ba3b21f899ae6f8f3f516dfc2397c81d8e8b6be7b6"
     },
@@ -1137,6 +1141,17 @@
       "digest": "03cac783553c63c735d82f0c694c227a9530ad616cea2762db78258687ae06b8"
     },
     {
+      "fixture": "docs/guides/schedule/fixtures/schedule-demo",
+      "digest": "d4d00fa9a391316cfe5b0d7fdf08fd7aaa29d8fd702dbd90d0638452a2867f3a"
+    },
+    {
+      "fixture": "docs/guides/schedule/fixtures/schedule-rejected-every",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/scripting-with-json/fixtures/project-script",
       "digest": "9942ee3c3be445567566a7dd2c59733ed33fb9e1339411438ee165c383b74a47"
     },
@@ -1302,6 +1317,10 @@
     {
       "fixture": "docs/guides/typesense/fixtures/typesense-demo",
       "digest": "95e962df56ce0ced5e73ee2e2c3a9f389464f5aff60fc483ebe4639c785229f0"
+    },
+    {
+      "fixture": "docs/guides/typo3-workflow/fixtures/typo3-demo",
+      "digest": "27a7c30d834caf9d74c9339806cefc1527838fdefe599f88ca16e1c07971b44b"
     },
     {
       "fixture": "docs/guides/valkey/fixtures/valkey-demo",
@@ -1590,9 +1609,9 @@
         "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
       },
       "after": {
-        "digest": "9e9c712e5ed587b8ec284c19961749bf2d51b03103f9242710d6ca2559f62358"
+        "digest": "a9fd21050cd91e4daf20c917056809fbdf4a6f33493f830cc477d9840b6746dd"
       },
-      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The encoded document drops bcmath from that one install command; nothing else changed."
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry; nothing else changed."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

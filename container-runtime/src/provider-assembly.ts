@@ -113,8 +113,11 @@ export const bindResolvedProviderOps = (
 export const rememberAppliedPlan = (
   appliedPlans: Pick<ReturnType<typeof makeAppliedPlanCache>, "rememberPlan">,
   plan: AppPlan,
-  applyOptions: Pick<ApplyOptions, "recordedPlan" | "reconcile">,
-) => appliedPlans.rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile);
+  applyOptions: Pick<ApplyOptions, "recordedPlan" | "complete">,
+) =>
+  appliedPlans.rememberPlan(applyOptions.recordedPlan ?? plan, {
+    complete: applyOptions.complete === true,
+  });
 
 export const forgetAppliedPlanUnlessKept = (
   appliedPlans: Pick<ReturnType<typeof makeAppliedPlanCache>, "forgetPlan">,
