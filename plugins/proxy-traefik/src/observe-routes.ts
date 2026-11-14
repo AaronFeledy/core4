@@ -22,7 +22,7 @@ export const observeRoutes = Effect.fn("TraefikRouter.observeRoutes")(function* 
   const unknown: RouteEvidence = { configuredAuthorities, observation: { status: "unknown" } };
   if (requestedRoutes.length === 0) return { configuredAuthorities, observation: { status: "missing" } };
   if (ports === undefined) return unknown;
-  const snapshot = yield* readLiveRouteSnapshot(dependencies, requestedRoutes).pipe(
+  const snapshot = yield* readLiveRouteSnapshot(dependencies, requestedRoutes.flatMap(routeSchemes)).pipe(
     Effect.timeout("5 seconds"),
     Effect.catch(() => Effect.succeed(undefined)),
   );

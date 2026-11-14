@@ -77,7 +77,7 @@ export const awaitRouteAcceptance = Effect.fn("TraefikRouter.awaitRouteAcceptanc
       classify: { success: (accepted) => (accepted ? "green" : "yellow"), failure: () => "yellow" },
     },
     Effect.gen(function* () {
-      const snapshot = yield* readLiveRouteSnapshot(dependencies, routes);
+      const snapshot = yield* readLiveRouteSnapshot(dependencies, ["http"]);
       if (snapshot === undefined || !acceptsAllRoutes(snapshot, owner, routes)) {
         classification = "graph-mismatch";
         return false;

@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import type { TlsPeerInput } from "@lando/http-client/tls-peer";
 import { Clock, Deferred, Effect, Exit, Fiber } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import { HttpClientError, TransportError } from "effect/http/HttpClientError";
 import { TestClock } from "effect/testing";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { app } from "./proxy-tls-harness.ts";
@@ -155,12 +157,27 @@ test("does not observe TLS or read the CA for HTTP-only application and withdraw
   expect(f.calls).toEqual([]);
 });
 
-test("reports TLS currency separately from graph mismatch after the shared acceptance deadline", async () => {
+test("reports TLS currency when dashboard HTTPS rejects the handshake but the HTTP graph matches", async () => {
   const f = makeCertificateFixture();
   f.seed(pem.current);
+  const { probeForward: _probe, ...dependencies } = f.dependencies;
+  const peers = new Set<string>();
   const service = makeTraefikRouterService({
-    ...f.dependencies,
-    observeTlsPeer: () => Effect.succeed(pem.rotated.certificate),
+    ...dependencies,
+    httpClient: HttpClient.make((request) =>
+      request.url.startsWith("https:")
+        ? Effect.fail(
+            new HttpClientError({
+              reason: new TransportError({ request, cause: "CERT_HAS_EXPIRED" }),
+            }),
+          )
+        : f.runtime.httpClient.execute(request),
+    ),
+    observeTlsPeer: ({ hostname }) =>
+      Effect.sync(() => {
+        peers.add(hostname);
+        return pem.rotated.certificate;
+      }),
   });
   await f.run(
     Effect.gen(function* () {
@@ -174,6 +191,8 @@ test("reports TLS currency separately from graph mismatch after the shared accep
       expect(JSON.stringify(result)).not.toContain("BEGIN CERTIFICATE");
     }),
   );
+  expect(peers).toEqual(new Set([route.hostname, domain, `traefik.${domain}`, `x.${domain}`]));
+  expect(f.runtime.requests.some((url) => url.endsWith("/api/rawdata"))).toBe(true);
   f.runtime.requests.length = 0;
   await f.run(f.makeService().applyRoutes([route], app));
   expect(f.runtime.requests).toHaveLength(1);
