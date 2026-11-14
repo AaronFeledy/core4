@@ -70,7 +70,7 @@ describe("lando3 leftovers", () => {
       status: "warn",
       severity: "warn",
       runtimeStatus: "lando3-resources-found",
-      context: { project: "myappsite", providerId, volumes: "myappsite_data", containers: "legacy_web" },
+      context: { project: "myappsite", providerId, volumes: ["myappsite_data"], containers: ["legacy_web"] },
     });
     expect(result.solutions).toHaveLength(1);
     expect(result.solutions[0]?.kind).toBe("manual");
@@ -137,7 +137,7 @@ describe("lando3 leftovers", () => {
     const result = await report(runLando3Leftovers({ ...base, resources }), "lando3-leftovers");
     // Then
     expect(result.runtimeStatus).toBe("lando3-resources-found");
-    expect(result.context.containers).toBe("web");
+    expect(result.context.containers).toEqual(["web"]);
   });
   test("caps names and exposes truncation when results are large", async () => {
     // Given
@@ -150,8 +150,8 @@ describe("lando3 leftovers", () => {
     // When
     const result = await report(runLando3Leftovers({ ...base, resources }), "lando3-leftovers");
     // Then
-    expect(result.context.volumes?.length).toBe(2000);
-    expect(result.context.containers?.length).toBe(2000);
+    expect(result.context.volumes).toEqual(Array.from({ length: 7 }, () => "a".repeat(256)));
+    expect(result.context.containers).toEqual(Array.from({ length: 7 }, () => "a".repeat(256)));
     expect(result.context).toMatchObject({ volumesTruncated: "true", containersTruncated: "true" });
   });
   test.each([

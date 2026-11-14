@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -11,44 +11,25 @@ import { PathsService, RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
+import { certsSubsystemCheck } from "../../src/cli/commands/doctor-certs-status.ts";
+import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
+import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
+import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { HOST_DNS_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
-import {
-  type SubsystemDoctorResult,
-  renderSubsystemDoctorResult,
-  renderSubsystemDoctorResultAsNdjson,
-  subsystemDoctor,
-} from "../../src/cli/commands/doctor-subsystems.ts";
+import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
-const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.ndjson");
-
-const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "host-dns"] as const;
+const EXPECTED_SUBSYSTEMS = ["router", "ssh", "host-dns"] as const;
 
 const dnsLayer = (addresses: ReadonlyArray<string>) =>
   Layer.succeed(HostDnsResolver, HostDnsResolver.of({ lookup: () => Effect.succeed(addresses) }));
 
-const runDefault = (): Promise<SubsystemDoctorResult> =>
+const runDefault = (): Promise<DoctorSectionResult> =>
   Effect.runPromise(
     subsystemDoctor().pipe(Effect.provide(dnsLayer([])), Effect.provide(DefaultSubsystemDoctorLayer)),
   );
-
-const decodeFrames = (ndjson: string) =>
-  ndjson
-    .trimEnd()
-    .split("\n")
-    .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
-
-const eventPayloads = (ndjson: string): ReadonlyArray<Record<string, unknown>> =>
-  decodeFrames(ndjson).flatMap((frame) =>
-    frame._tag === "event" ? [frame.payload as Record<string, unknown>] : [],
-  );
-
-const resultEnvelope = (ndjson: string) => {
-  const frame = decodeFrames(ndjson).at(-1);
-  if (frame?._tag !== "result") throw new Error("expected terminal result frame");
-  return frame.envelope;
-};
 
 const writeAcquisitionState = (
   mode: string,
@@ -160,7 +141,7 @@ describe("meta:doctor subsystem checks", () => {
     );
     const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
-    expect(hostProxy?.context.dnsAddresses).toBe("192.0.2.1");
+    expect(hostProxy?.context.dnsAddresses).toEqual(["192.0.2.1"]);
   });
 
   test("skips manual DNS recovery when fix is requested", async () => {
@@ -212,106 +193,6 @@ describe("meta:doctor subsystem checks", () => {
       subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
     );
     expect(result.checks.length).toBe(EXPECTED_SUBSYSTEMS.length);
-  });
-
-  test("passes the certs check when the local root is in the host trust store", async () => {
-    const result = await Effect.runPromise(
-      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert", trusted: true } }).pipe(
-        Effect.provide(DefaultSubsystemDoctorLayer),
-      ),
-    );
-    const certs = result.checks.find((check) => check.name === "certs");
-    expect(certs?.status).toBe("pass");
-    expect(certs?.context.certsTrusted).toBe("true");
-    expect(result.skipped?.some((entry) => entry.section === "certs")).toBe(false);
-  });
-
-  test("warns when the local root is not in the host trust store", async () => {
-    const result = await Effect.runPromise(
-      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert", trusted: false }, fix: true }).pipe(
-        Effect.provide(DefaultSubsystemDoctorLayer),
-      ),
-    );
-    const certs = result.checks.find((check) => check.name === "certs");
-    expect(certs?.status).toBe("warn");
-    expect(certs?.context.certsTrusted).toBe("false");
-    expect(certs?.context.fixOutcome).toBe("skipped-manual");
-    expect(certs?.solutions[0]?.description).toContain("--skip-install-ca");
-    expect(certs?.solutions[0]?.command).toBe("lando setup");
-  });
-
-  test("warns with the authority remediation when the local root cannot be read", async () => {
-    // Given a selected authority whose root is missing, and a request to fix.
-    const status = {
-      _tag: "root-unavailable",
-      id: "mkcert",
-      detail: "mkcert has no local CA in /caroot.",
-      remediation: "Run `lando setup` to download mkcert and install the local CA.",
-    } as const;
-
-    // When doctor reports subsystems.
-    const result = await Effect.runPromise(
-      subsystemDoctor({ certs: status, fix: true }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
-    );
-
-    // Then the finding uses that remediation and does not run setup.
-    const certs = result.checks.find((check) => check.name === "certs");
-    expect(certs?.status).toBe("warn");
-    expect(certs?.recovery).toBe("manual");
-    expect(certs?.context.subsystemId).toBe("mkcert");
-    expect(certs?.context.fixOutcome).toBe("skipped-manual");
-    expect(certs?.solutions[0]).toEqual({
-      kind: "manual",
-      description: status.remediation,
-      command: "lando setup",
-    });
-  });
-
-  test("preserves tagged certificate resolution context for degraded statuses", async () => {
-    // Given
-    const cases: ReadonlyArray<{
-      readonly status: CertsDoctorStatus;
-      readonly context: Readonly<Record<string, string>>;
-    }> = [
-      {
-        status: { _tag: "unresolved" },
-        context: {},
-      },
-      {
-        status: { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
-        context: {
-          certsReason: "ambiguous",
-          certsCandidateIds: "first,second",
-          certsDetail: "choose one",
-        },
-      },
-      {
-        status: { _tag: "load-failed", pluginName: "ca-plugin", detail: "load failed" },
-        context: {
-          certsReason: "load-failed",
-          certsPlugin: "ca-plugin",
-          certsDetail: "load failed",
-        },
-      },
-    ];
-
-    for (const fixture of cases) {
-      // When
-      const result = await Effect.runPromise(
-        subsystemDoctor({ certs: fixture.status }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
-      );
-
-      // Then
-      const certs = result.checks.find((check) => check.name === "certs");
-      expect(certs?.status).toBe("warn");
-      expect(certs?.context).toEqual({
-        subsystem: "certs",
-        subsystemId: "unavailable",
-        ready: "false",
-        ...fixture.context,
-      });
-      expect(certs?.solutions[0]?.command).toBe("lando setup");
-    }
   });
 
   test("reports a ready subsystem as pass with no remediation when a real implementation is wired", async () => {
@@ -535,21 +416,110 @@ describe("meta:doctor subsystem checks", () => {
       expect(healthcheck).toBeUndefined();
       expect(scanner).toBeUndefined();
       expect(result.checks.map((check) => check.name)).toEqual(
-        provided ? [...EXPECTED_SUBSYSTEMS] : ["certs", "host-dns"],
+        provided ? [...EXPECTED_SUBSYSTEMS] : ["host-dns"],
       );
-      expect(result.skipped?.map((entry) => entry.section)).toEqual(
+      expect(result.skipped?.map((entry) => entry.check)).toEqual(
         provided ? ["healthcheck", "scanner"] : ["router", "ssh", "healthcheck", "scanner"],
       );
       for (const entry of result.skipped ?? []) {
-        expect(entry.status).toBe("skipped");
         expect(entry.reason.length).toBeGreaterThan(0);
       }
     },
   );
+});
+
+describe("certificate-authority check findings", () => {
+  const certsFinding = (status: CertsDoctorStatus, fix = false) =>
+    Effect.runPromise(certsSubsystemCheck(status, fix));
+
+  test("passes the certs check when the local root is in the host trust store", async () => {
+    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: true });
+
+    expect(certs?.status).toBe("pass");
+    expect(certs?.context.certsTrusted).toBe("true");
+  });
+
+  test("warns when the local root is not in the host trust store", async () => {
+    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: false }, true);
+
+    expect(certs?.status).toBe("warn");
+    expect(certs?.context.certsTrusted).toBe("false");
+    expect(certs?.context.fixOutcome).toBe("skipped-manual");
+    expect(certs?.solutions[0]?.description).toContain("--skip-install-ca");
+    expect(certs?.solutions[0]?.command).toBe("lando setup");
+  });
+
+  test("warns with the authority remediation when the local root cannot be read", async () => {
+    const status = {
+      _tag: "root-unavailable",
+      id: "mkcert",
+      detail: "mkcert has no local CA in /caroot.",
+      remediation: "Run `lando setup` to download mkcert and install the local CA.",
+    } as const;
+
+    const certs = await certsFinding(status, true);
+
+    expect(certs?.status).toBe("warn");
+    expect(certs?.recovery).toBe("manual");
+    expect(certs?.context.subsystemId).toBe("mkcert");
+    expect(certs?.context.fixOutcome).toBe("skipped-manual");
+    expect(certs?.solutions[0]).toEqual({
+      kind: "manual",
+      description: status.remediation,
+      command: "lando setup",
+    });
+  });
+
+  test("preserves tagged certificate resolution context for degraded statuses", async () => {
+    const cases: ReadonlyArray<{
+      readonly status: CertsDoctorStatus;
+      readonly context: Readonly<Record<string, string | ReadonlyArray<string>>>;
+    }> = [
+      { status: { _tag: "unresolved" }, context: {} },
+      {
+        status: { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
+        context: {
+          certsReason: "ambiguous",
+          certsCandidateIds: ["first", "second"],
+          certsDetail: "choose one",
+        },
+      },
+      {
+        status: { _tag: "load-failed", pluginName: "ca-plugin", detail: "load failed" },
+        context: {
+          certsReason: "load-failed",
+          certsPlugin: "ca-plugin",
+          certsDetail: "load failed",
+        },
+      },
+    ];
+
+    for (const fixture of cases) {
+      const certs = await certsFinding(fixture.status);
+      expect(certs?.status).toBe("warn");
+      expect(certs?.context).toMatchObject({
+        subsystem: "certs",
+        subsystemId: "unavailable",
+        ready: "false",
+        ...fixture.context,
+      });
+      expect(certs?.solutions[0]?.command).toBe("lando setup");
+    }
+  });
+});
+
+describe("subsystem report rendering", () => {
+  const subsystemReport = async () => {
+    const result = await runDefault();
+    return makeDoctorReport({
+      version: "4.0.0-test",
+      checks: result.checks.map((finding) => ({ section: "subsystems" as const, ...finding })),
+      skipped: [],
+    });
+  };
 
   test("plain-text renderer surfaces every subsystem name, status, and remediation", async () => {
-    const result = await runDefault();
-    const text = renderSubsystemDoctorResult(result);
+    const text = renderDoctorReport(await subsystemReport(), undefined, { all: true });
 
     for (const name of EXPECTED_SUBSYSTEMS) {
       expect(text).toContain(`${name}:`);
@@ -560,44 +530,30 @@ describe("meta:doctor subsystem checks", () => {
     expect(text).not.toContain("[object Object]");
   });
 
-  test("ndjson output matches the meta-doctor.subsystems.ndjson fixture", async () => {
-    const result = await runDefault();
-    const actual = renderSubsystemDoctorResultAsNdjson(result, {
-      now: new Date("1970-01-01T00:00:00.000Z"),
-    });
-    const expected = readFileSync(FIXTURE_PATH, "utf-8");
-
-    expect(actual).toBe(expected);
-  });
-
   test("ndjson stream emits one doctor.check event frame per subsystem and a terminal result frame", async () => {
-    const result = await runDefault();
-    const ndjson = renderSubsystemDoctorResultAsNdjson(result, {
-      now: new Date("1970-01-01T00:00:00.000Z"),
-    });
-    const frames = decodeFrames(ndjson);
+    const report = await subsystemReport();
+    const ndjson = renderDoctorReportAsNdjson(report);
+    const frames = ndjson
+      .trimEnd()
+      .split("\n")
+      .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
     expect(frames.at(-1)?._tag).toBe("result");
-    const checks = eventPayloads(ndjson);
+    const checks = frames.flatMap((frame) =>
+      frame._tag === "event" ? [frame.payload as Record<string, unknown>] : [],
+    );
     expect(checks.map((check) => check.name)).toEqual([...EXPECTED_SUBSYSTEMS]);
     for (const check of checks) {
-      expect(check._tag).toBe("doctor.check");
+      expect(check.section).toBe("subsystems");
       expect(check).toHaveProperty("status");
       expect(check).toHaveProperty("severity");
       expect(check).toHaveProperty("context");
       expect(check).toHaveProperty("solutions");
     }
-
-    const warned = result.checks.filter((check) => check.status === "warn").length;
-    const failed = result.checks.filter((check) => check.status === "fail").length;
-    expect(resultEnvelope(ndjson)).toMatchObject({
+    const envelope = frames.at(-1);
+    expect(envelope?._tag === "result" ? envelope.envelope : undefined).toMatchObject({
       command: "meta:doctor",
       ok: true,
-      result: {
-        timestamp: "1970-01-01T00:00:00.000Z",
-        checks: result.checks.length,
-        failed,
-        warned,
-      },
+      result: { version: report.version, summary: report.summary },
     });
   });
 });

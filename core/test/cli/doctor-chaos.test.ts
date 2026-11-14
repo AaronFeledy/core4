@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -9,15 +11,15 @@ import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sd
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 import { probeBudgetMs } from "../../src/cli/commands/doctor-plugin-checks.ts";
-import {
-  DoctorReportSchema,
-  collectDoctorReport,
-  doctorReport,
-} from "../../src/cli/commands/doctor-report.ts";
+import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
+import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer";
+import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
 
 /**
  * Chaos coverage for the doctor self-resilience contract: every service doctor
@@ -89,8 +91,10 @@ const advanceSettled = Effect.fnUntraced(function* (millis: number) {
   }
 });
 
-const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray<{ section: string }> } }) =>
-  (report.self?.checks ?? []).map((check) => check.section);
+const selfSections = (report: DoctorSectionResult) =>
+  report.checks
+    .filter((check) => check.name === "doctor-self")
+    .map((check) => check.context.probe ?? "provider");
 
 describe("doctor chaos: provider path", () => {
   test("interrupts doctor when its AbortSignal aborts mid-flight", async () => {
@@ -135,11 +139,11 @@ describe("doctor chaos: provider path", () => {
       name: "selected-provider",
       status: "fail",
       severity: "error",
-      runtimeStatus: "unavailable",
     });
+    expect(result.provider?.runtimeStatus).toBe("unavailable");
     expect(check?.context.failure).toBe("ProviderUnavailableError");
     expect(check?.solutions.map((solution) => solution.command)).toContain("lando setup");
-    expect(check?.selection?.providerId).toBe("lando");
+    expect(result.provider?.selection.providerId).toBe("lando");
   });
 
   test("degrades to a failed check when the provider status probe fails", async () => {
@@ -165,7 +169,25 @@ describe("doctor chaos: provider path", () => {
     const check = result.checks.find((entry) => entry.name === "selected-provider");
     expect(check?.status).toBe("fail");
     expect(check?.context.statusProbe).toBe("failure");
-    expect((result.selfChecks ?? []).map((entry) => entry.section)).not.toContain("provider-status");
+    expect(selfSections(result)).not.toContain("provider-status");
+  });
+
+  test("classifies a failing status read by its cause instead of assuming a timeout", async () => {
+    // Given a status probe that dies with a defect
+    const layers = layersFor(statusRegistry(Effect.die(new Error("status probe exploded"))));
+
+    // When
+    const result = await Effect.runPromise(doctor({}).pipe(Effect.provide(layers)));
+
+    // Then the defect is reported as a defect, not as an unreachable timeout
+    const check = result.checks.find((entry) => entry.name === "selected-provider");
+    expect(check?.status).toBe("fail");
+    expect(check?.context.statusProbe).toBe("defect");
+    expect(result.provider?.runtimeStatus).toBe("unknown (status probe failed)");
+    expect(
+      result.checks.find((entry) => entry.name === "doctor-self" && entry.context.probe === "provider-status")
+        ?.context.reason,
+    ).toBe("defect");
   });
 
   test("bounds a hanging provider status probe and keeps answering", async () => {
@@ -179,10 +201,10 @@ describe("doctor chaos: provider path", () => {
     const check = result.checks.find((entry) => entry.name === "selected-provider");
     expect(check?.status).toBe("fail");
     expect(check?.context.statusProbe).toBe("timeout");
-    expect(check?.runtimeStatus).toContain("timed out");
+    expect(result.provider?.runtimeStatus).toContain("timed out");
   });
 
-  test("records a self check when configuration cannot be read", async () => {
+  test("reports invalid configuration as a global-config finding without a self check", async () => {
     // Given a ConfigService whose reads always fail
     const layers = makeLandoRuntime({
       bootstrap: "none",
@@ -193,10 +215,85 @@ describe("doctor chaos: provider path", () => {
     // When
     const result = await Effect.runPromise(resilientDoctorReport({}).pipe(Effect.provide(layers)));
 
-    // Then selection still resolves from the capability default
-    expect(result.self?.checks.map((entry) => entry.section)).toEqual(["global-config"]);
-    expect(result.provider.checks).toEqual([]);
-    expect(result.globalConfig?.error?.issues?.[0]?.source?.layer).toBe("host");
+    // Then the expected configuration failure is a global-config finding, not a self failure
+    const globalConfig = result.checks.find((entry) => entry.section === "global-config");
+    expect(globalConfig).toMatchObject({ status: "fail", details: { _tag: "ConfigError" } });
+    expect(result.checks.filter((entry) => entry.name === "doctor-self")).toEqual([]);
+    expect(result.checks.filter((entry) => entry.section === "provider")).toEqual([]);
+    expect(
+      globalConfig?.details !== undefined && "issues" in globalConfig.details
+        ? globalConfig.details.issues?.[0]?.source?.layer
+        : undefined,
+    ).toBe("host");
+  });
+
+  test("classifies a config validation defect as a global-config self check", async () => {
+    // Given a configuration source whose snapshot read throws instead of returning a ConfigError
+    const sources = GlobalConfigSources.of(
+      Object.defineProperty(
+        { env: {}, sources: { user: false, env: false }, rootOverrides: {} },
+        "snapshot",
+        {
+          get() {
+            throw new Error("config snapshot exploded");
+          },
+        },
+      ),
+    );
+    const runtimeLayer = Layer.mergeAll(
+      layersFor(statusRegistry(TestRuntimeProvider.getStatus)),
+      Layer.succeed(
+        PluginRegistryLayer.PluginRegistry,
+        PluginRegistryLayer.PluginRegistry.of({
+          list: Effect.succeed([]),
+          load: () => Effect.die("unused"),
+          loadServiceType: () => Effect.die("unused"),
+          loadServiceFeature: () => Effect.die("unused"),
+          loadAppFeature: () => Effect.die("unused"),
+        }),
+      ),
+    );
+    const factory = Layer.succeed(RuntimeLayerFactory, RuntimeLayerFactory.of({ make: () => runtimeLayer }));
+
+    // When
+    const result = await Effect.runPromise(
+      resilientDoctorReport({ env: SHORT_BUDGET_ENV }).pipe(
+        Effect.provide(Layer.merge(factory, Layer.succeed(GlobalConfigSources, sources))),
+      ),
+    );
+
+    // Then the defect is a self failure attributed to global-config, not a doctor finding
+    const self = result.checks.find((entry) => entry.name === "doctor-self");
+    expect(self).toMatchObject({
+      section: "global-config",
+      status: "fail",
+      severity: "error",
+      context: { reason: "defect", message: "config snapshot exploded" },
+    });
+    expect(
+      result.checks.filter((entry) => entry.section === "global-config" && entry.name !== "doctor-self"),
+    ).toEqual([]);
+  });
+
+  test("attributes a config validation timeout to a global-config self check", async () => {
+    // Given a config layer that never finishes building
+    // When the isolated config operation exceeds its budget
+    const outcome = await Effect.runPromise(
+      isolateDoctorSection({
+        section: "global-config",
+        effect: Effect.never,
+        fallback: undefined,
+        budgetMs: 1_000,
+      }),
+    );
+
+    // Then the timeout is a self failure attributed to global-config
+    expect(outcome.self).toMatchObject({
+      section: "global-config",
+      status: "fail",
+      severity: "error",
+      context: { reason: "timeout" },
+    });
   });
 });
 
@@ -222,9 +319,14 @@ describe("doctor chaos: plugin-contributed checks", () => {
 
     // Then the built-in checks survive and the failure is attributed
     expect(result.checks.find((entry) => entry.name === "selected-provider")).toBeDefined();
-    const self = result.selfChecks?.find((entry) => entry.section === "plugin-check:chaos-die");
-    expect(self).toMatchObject({ status: "fail", severity: "error", reason: "defect" });
-    expect(self?.context.checkId).toBe("chaos-die");
+    const self = result.checks.find(
+      (check) => check.name === "doctor-self" && check.context.probe === "plugin-check:chaos-die",
+    );
+    expect(self).toMatchObject({
+      status: "fail",
+      severity: "error",
+      context: { reason: "defect", checkId: "chaos-die" },
+    });
   });
 
   test("isolates duplicate doctor-check descriptors without leaking registered secrets", async () => {
@@ -279,11 +381,12 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const result = await Effect.runPromise(doctor({}, [first, second]).pipe(Effect.provide(layers)));
 
     // Then index failure is isolated while built-in provider diagnostics survive
-    const selfChecks = (result.selfChecks ?? []).filter((check) => check.section === "plugin-doctor-checks");
+    const selfChecks = result.checks.filter(
+      (check) => check.name === "doctor-self" && check.context.probe === "plugin-doctor-checks",
+    );
     expect(selfChecks).toHaveLength(1);
     expect(selfChecks[0]).toMatchObject({
-      reason: "failure",
-      context: { failure: "PluginDescriptorMismatchError" },
+      context: { probe: "plugin-doctor-checks", reason: "failure", failure: "PluginDescriptorMismatchError" },
     });
     expect(
       selfChecks[0]?.solutions.some((solution) =>
@@ -306,8 +409,10 @@ describe("doctor chaos: plugin-contributed checks", () => {
     );
 
     // Then
-    const self = result.selfChecks?.find((entry) => entry.section === "plugin-check:chaos-hang");
-    expect(self?.reason).toBe("timeout");
+    const self = result.checks.find(
+      (check) => check.name === "doctor-self" && check.context.probe === "plugin-check:chaos-hang",
+    );
+    expect(self?.context.reason).toBe("timeout");
     expect(result.checks.find((entry) => entry.name === "selected-provider")).toBeDefined();
   });
 
@@ -342,7 +447,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
 
     // Then
     expect(result.checks.find((entry) => entry.name === "chaos-healthy")?.status).toBe("pass");
-    expect(result.selfChecks?.map((entry) => entry.section)).toContain("plugin-check:chaos-sibling-die");
+    expect(selfSections(result)).toContain("plugin-check:chaos-sibling-die");
   });
 
   test("isolates a hanging contribution inside the report while retaining its healthy sibling", async () => {
@@ -385,8 +490,13 @@ describe("doctor chaos: plugin-contributed checks", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options,
-            provider: doctor(options, [hanging, healthy]),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: doctor(options, [hanging, healthy]).pipe(Effect.provide(layers)),
+              }),
+            ],
           }),
         );
         yield* Deferred.await(hangStarted);
@@ -399,16 +509,15 @@ describe("doctor chaos: plugin-contributed checks", () => {
 
     // Then
     const sections = selfSections(report);
-    expect(sections.filter((section) => section.startsWith("plugin-check:"))).toEqual([
-      "plugin-check:chaos-report-hang",
-    ]);
-    expect(sections).not.toContain("provider");
     expect(
-      report.provider.checks.find((entry) => entry.name === "selected-provider")?.selection?.providerId,
-    ).toBe("lando");
-    expect(report.provider.checks.find((entry) => entry.name === "chaos-report-healthy")?.status).toBe(
-      "pass",
-    );
+      sections.filter((section) => typeof section === "string" && section.startsWith("plugin-check:")),
+    ).toEqual(["plugin-check:chaos-report-hang"]);
+    expect(sections).not.toContain("provider");
+    expect(report.provider?.selection.providerId).toBe("lando");
+    expect(
+      report.checks.find((check) => check.section === "provider" && check.name === "chaos-report-healthy")
+        ?.status,
+    ).toBe("pass");
   });
 
   test("preserves contribution input order when checks complete in reverse", async () => {
@@ -461,8 +570,13 @@ describe("doctor chaos: plugin-contributed checks", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options,
-            provider: doctor(options, [first, second]),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: doctor(options, [first, second]).pipe(Effect.provide(layers)),
+              }),
+            ],
           }),
         );
         yield* Deferred.await(firstStarted);
@@ -474,8 +588,8 @@ describe("doctor chaos: plugin-contributed checks", () => {
 
     // Then
     expect(
-      report.provider.checks
-        .filter((entry) => entry.name.startsWith("chaos-order-"))
+      report.checks
+        .filter((check) => check.section === "provider" && check.name.startsWith("chaos-order-"))
         .map((entry) => entry.name),
     ).toEqual(["chaos-order-first", "chaos-order-second"]);
   });
@@ -504,8 +618,13 @@ describe("doctor chaos: plugin-contributed checks", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options: reportOptions,
-            provider: doctor(doctorOptions, [hanging]),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: doctor(doctorOptions, [hanging]).pipe(Effect.provide(layers)),
+              }),
+            ],
           }),
         );
         yield* Deferred.await(pluginStarted);
@@ -520,7 +639,9 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const sections = selfSections(report);
     expect(sections).toContain("plugin-check:chaos-aggregate-hang");
     expect(sections).toContain("provider-status");
-    expect(report.provider.checks.map((check) => check.name)).toContain("selected-provider");
+    expect(
+      report.checks.filter((check) => check.section === "provider").map((check) => check.name),
+    ).toContain("selected-provider");
     expect(sections).not.toContain("provider");
   });
 });
@@ -538,8 +659,13 @@ describe("doctor chaos: whole report", () => {
         const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options: { signal: controller.signal },
-            provider: Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
-            deprecations: Effect.succeed({ entries: [] }),
+            contexts: {},
+            table: [
+              independentSection({
+                id: "provider",
+                run: Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+              }),
+            ],
           }).pipe(Effect.provide(layers)),
         );
         yield* Deferred.await(started);
@@ -599,8 +725,10 @@ describe("doctor chaos: whole report", () => {
 
     // Then the report is still structured, schema-valid, and carries self checks
     expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
-    expect(report.provider.checks.length).toBeGreaterThan(0);
-    expect(report.provider.checks.find((check) => check.name === "selected-provider")?.status).toBe("fail");
+    expect(
+      report.checks.find((check) => check.section === "provider" && check.name === "selected-provider")
+        ?.status,
+    ).toBe("fail");
     // Provider-section self checks are lifted to the report level, never duplicated.
     expect(report.provider).not.toHaveProperty("selfChecks");
   });

@@ -4,7 +4,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { type Context, Effect, Layer } from "effect";
-import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import { doctor } from "../../src/cli/commands/doctor.ts";
 import { OOM_CHECK_NAME } from "../../src/cli/commands/doctor-oom.ts";
 
 const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -77,15 +77,10 @@ describe("doctor collection of oom died events", () => {
 
     const oomCheck = result.checks.find((check) => check.name === OOM_CHECK_NAME);
     expect(oomCheck).toBeDefined();
-    expect(oomCheck?.providerKind).toBe("managed");
     expect(oomCheck?.context.app).toBe("myapp");
     expect(oomCheck?.context.service).toBe("web");
-
-    const text = renderDoctorResult(result);
-    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-    expect(text).toContain(`${OOM_CHECK_NAME}: fail`);
-    expect(ndjson).toContain('"oomKilled":true');
-    expect(`${text}\n${ndjson}`).not.toContain("s3cr3t");
+    expect(oomCheck?.context.oomKilled).toBe("true");
+    expect(JSON.stringify(result)).not.toContain("s3cr3t");
   });
 
   test("a stalled event-history request does not discard provider checks", async () => {
@@ -98,8 +93,12 @@ describe("doctor collection of oom died events", () => {
       doctor({ env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } }).pipe(Effect.provide(buildLayers(provider))),
     );
 
-    expect(result.checks.some((check) => check.providerId === "lando")).toBe(true);
-    expect(result.selfChecks?.some((check) => check.context.section === "container-died-events")).toBe(true);
+    expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
+    expect(
+      result.checks.some(
+        (check) => check.name === "doctor-self" && check.context.probe === "container-died-events",
+      ),
+    ).toBe(true);
   });
   test("doctor consumes provider died-event payloads when the provider exposes them", async () => {
     const provider = {

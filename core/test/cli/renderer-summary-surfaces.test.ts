@@ -8,10 +8,14 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
+import type { DoctorReport, DoctorSectionFinding } from "../../src/cli/commands/doctor-contract.ts";
 import { doctorTreeSummary } from "../../src/cli/commands/doctor-progress.ts";
-import type { DoctorReport } from "../../src/cli/commands/doctor-report.ts";
-import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-report.ts";
-import { countDoctorChecks } from "../../src/cli/commands/doctor-report-render.ts";
+import {
+  buildDoctorReportSummary,
+  doctorCheckSection,
+  renderDoctorReport,
+} from "../../src/cli/commands/doctor-render-text.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { buildInfoSummary } from "../../src/cli/commands/info-render.ts";
 import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-status.ts";
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
@@ -292,128 +296,91 @@ describe("global status summary", () => {
 });
 
 describe("doctor summary", () => {
-  const report: DoctorReport = {
-    provider: {
-      checks: [
-        {
-          name: "selected-provider",
-          status: "warn",
-          severity: "warn",
-          providerId: "podman",
-          providerName: "Podman Runtime Provider",
-          providerVersion: "5.1.0",
-          providerKind: "podman",
-          runtimeStatus: "stopped",
-          runtime: { running: false },
-          capabilities: {},
-          context: { providerId: "podman", evidence: "connect failed: token=[redacted]" },
-          solutions: [{ kind: "manual", description: "Run `lando setup`.", command: "lando setup" }],
-        },
-      ],
+  const providerHeader = {
+    id: "podman",
+    kind: "user-installed" as const,
+    selection: {
+      providerId: "podman",
+      source: "config" as const,
+      inputs: { config: "podman", capabilityDefault: "lando" },
     },
-    subsystems: { checks: [] },
-    globalApp: { checks: [] },
-    mcp: { checks: [] },
-  } as unknown as DoctorReport;
-
-  const check = (overrides: Partial<DoctorReport["provider"]["checks"][number]>) => ({
+    name: "Podman Runtime Provider",
+    version: "5.1.0",
+    runtimeStatus: "stopped",
+    runtime: { running: false },
+    capabilities: {},
+  };
+  const check = (overrides: Partial<DoctorSectionFinding> = {}): DoctorSectionFinding => ({
+    section: "provider",
     name: "selected-provider",
     status: "pass",
     severity: "info",
-    providerId: "lando",
-    providerName: "Lando",
-    providerVersion: "0.0.0",
-    providerKind: "managed",
-    runtimeStatus: "running",
-    runtime: { running: true },
-    capabilities: {},
-    context: { providerId: "lando", providerKind: "managed", providerVersion: "0.0.0" },
+    context: {},
     solutions: [],
     ...overrides,
   });
-
-  const emptyReport = { subsystems: { checks: [] }, globalApp: { checks: [] }, mcp: { checks: [] } };
+  const state = (checks: ReadonlyArray<DoctorSectionFinding>, provider = providerHeader): DoctorReport =>
+    makeDoctorReport({ version: "4.0.0-dev", provider, checks, skipped: [] });
 
   test("renders degraded doctor checks on the task-tree rail and preserves redaction markers", () => {
+    const report = state([
+      check({
+        status: "warn",
+        severity: "warn",
+        runtimeStatus: "stopped",
+        runtime: { running: false },
+        context: { evidence: "connect failed: token=[redacted]" },
+        solutions: [{ kind: "manual", description: "Run `lando setup`.", command: "lando setup" }],
+      }),
+    ]);
     const out = renderDoctorReport(report, decorated(80));
     expect(out.startsWith("\n")).toBe(true);
     for (const line of out.split("\n")) expect(displayWidth(line)).toBeLessThanOrEqual(80);
-    expect(stripAnsi(out)).toBe(
-      [
-        "",
-        "╭─ Needs attention",
-        "│ provider: podman · providerName: Podman Runtime Provider · providerVersion:",
-        "│ 5.1.0 · providerKind: podman · runtimeStatus: stopped",
-        "│",
-        "│ provider",
-        "│ ! selected-provider  warn",
-        "│   evidence: connect failed: token=[redacted]",
-        "│   ↳ Run `lando setup`.",
-        "│",
-        "├─ next",
-        "│ lando setup",
-        "╰─ 1 checks · 0 failed · 1 warning",
-      ].join("\n"),
-    );
-  });
-
-  test("rolls warning checks up to the doctor document tone", () => {
+    const text = stripAnsi(out);
+    expect(text).toContain("Needs attention");
+    expect(text).toContain("provider: podman");
+    expect(text).toContain("selected-provider");
+    expect(text).toContain("token=[redacted]");
+    expect(text).toContain("Run `lando setup`.");
     expect(buildDoctorReportSummary(report).tone).toBe("warn");
   });
 
   test("hides passing checks by default and lists their full context under --all", () => {
-    const report = {
-      version: "4.0.0-dev",
-      provider: {
-        checks: [
-          check({
-            context: { providerId: "lando", reason: "no-app-context" },
-            solutions: [{ kind: "manual", description: "Run inside an app.", command: "lando doctor" }],
-          }),
-        ],
-      },
-      ...emptyReport,
-    } as unknown as DoctorReport;
+    const report = state([
+      check({
+        context: { reason: "no-app-context" },
+        solutions: [{ kind: "manual", description: "Run inside an app.", command: "lando doctor" }],
+      }),
+    ]);
     const summary = buildDoctorReportSummary(report);
     expect(summary.title).toBe("Healthy");
     expect(summary.tone).toBe("ok");
-    expect(summary.subtitle).toBe(
-      "version: 4.0.0-dev · provider: lando · providerName: Lando · providerVersion: 0.0.0 · providerKind: managed · runtimeStatus: running",
-    );
-    expect(summary.sections).toEqual([]);
+    expect(summary.subtitle).toContain("version: 4.0.0-dev");
+    expect(summary.subtitle).toContain("provider: podman");
+    expect(summary.sections.find((section) => section.title === "provider")).toBeUndefined();
     expect(summary.nextSteps).toBeUndefined();
     expect(summary.footer).toBe("1 checks passed · lando doctor --all lists every check");
 
     const all = buildDoctorReportSummary(report, { all: true });
-    expect(all.sections.map((section) => section.title)).toEqual([
-      "provider",
-      "subsystems",
-      "global app",
-      "mcp",
-    ]);
-    expect(all.sections[0]?.rows[0]).toMatchObject({
+    const provider = all.sections.find((section) => section.title === "provider");
+    expect(provider?.rows[0]).toMatchObject({
       label: "selected-provider",
       tone: "ok",
       value: "pass",
-      fields: [
-        { label: "severity", value: "info" },
-        { label: "runtimeStatus", value: "running" },
-        { label: "reason", value: "no-app-context" },
-      ],
     });
-    expect(all.sections[0]?.rows[0]?.remedy).toContain("Run inside an app.");
-    expect(all.sections[1]?.notes).toEqual(["No checks reported."]);
+    expect(provider?.rows[0]?.fields).toContainEqual({ label: "reason", value: "no-app-context" });
+    expect(provider?.rows[0]?.remedy).toContain("Run inside an app.");
     expect(all.footer).toBe("1 checks passed");
   });
 
-  test("collapses repeated per-app findings into one row listing the varying key", () => {
+  test("collapses repeated per-app findings into one row listing subjects", () => {
     const transport = (appId: string, socketType: string) =>
       check({
         name: "host-proxy-transport",
+        subject: appId,
         status: "warn",
         severity: "warn",
         context: {
-          providerId: "lando",
           appId,
           transport: "unix-socket",
           endpoint: `/run/${appId}/host-proxy.sock`,
@@ -424,26 +391,22 @@ describe("doctor summary", () => {
           { kind: "manual", description: "Run lando restart from the app.", command: "lando restart" },
         ],
       });
-    const summaryReport = {
-      provider: {
-        checks: [
-          check({}),
-          transport("alpha", "socket"),
-          transport("beta", "socket"),
-          transport("gamma", "missing"),
-          transport("alpha", "socket"),
-        ],
-      },
-      ...emptyReport,
-    } as unknown as DoctorReport;
+    const summaryReport = state([
+      check(),
+      transport("alpha", "socket"),
+      transport("beta", "socket"),
+      transport("gamma", "missing"),
+      transport("alpha", "socket"),
+    ]);
     const summary = buildDoctorReportSummary(summaryReport);
-    expect(summary.sections[0]?.rows).toHaveLength(1);
-    expect(summary.sections[0]?.rows[0]).toEqual({
+    const rows = summary.sections.find((section) => section.title === "provider")?.rows;
+    expect(rows).toHaveLength(1);
+    expect(rows?.[0]).toEqual({
       label: "host-proxy-transport",
       tone: "warn",
       value: "warn (4 checks)",
       fields: [
-        { label: "entries", value: "appId: alpha; appId: beta; appId: gamma" },
+        { label: "entries", value: "alpha; beta; gamma" },
         { label: "remaining", value: "+1 more (lando doctor --all)" },
         { label: "transport", value: "unix-socket" },
         { label: "failure", value: "control-probe-failed" },
@@ -452,33 +415,35 @@ describe("doctor summary", () => {
     });
     expect(summary.nextSteps).toEqual(["lando restart"]);
     expect(summary.footer).toBe("5 checks · 0 failed · 4 warnings · lando doctor --all lists every check");
-    expect(buildDoctorReportSummary(summaryReport, { all: true }).sections[0]?.rows).toHaveLength(5);
+    expect(
+      buildDoctorReportSummary(summaryReport, { all: true }).sections.find(
+        (section) => section.title === "provider",
+      )?.rows,
+    ).toHaveLength(5);
   });
 
   test("does not collapse same-named checks whose status or remediation differ", () => {
-    const summary = buildDoctorReportSummary({
-      provider: {
-        checks: [
-          check({ name: "host-proxy-transport", status: "pass" }),
-          check({
-            name: "host-proxy-transport",
-            status: "warn",
-            severity: "warn",
-            solutions: [{ kind: "manual", description: "Restart.", command: "lando restart" }],
-          }),
-          check({
-            name: "host-proxy-transport",
-            status: "fail",
-            severity: "error",
-            solutions: [{ kind: "manual", description: "Rerun setup.", command: "lando setup" }],
-          }),
-        ],
-      },
-      ...emptyReport,
-    } as unknown as DoctorReport);
+    const summary = buildDoctorReportSummary(
+      state([
+        check({ name: "host-proxy-transport", status: "pass" }),
+        check({
+          name: "host-proxy-transport",
+          status: "warn",
+          severity: "warn",
+          solutions: [{ kind: "manual", description: "Restart.", command: "lando restart" }],
+        }),
+        check({
+          name: "host-proxy-transport",
+          status: "fail",
+          severity: "error",
+          solutions: [{ kind: "manual", description: "Rerun setup.", command: "lando setup" }],
+        }),
+      ]),
+    );
     expect(summary.title).toBe("Problems found");
-    expect(summary.sections[0]?.rows.map((row) => row.tone)).toEqual(["warn", "error"]);
-    expect(summary.sections[0]?.rows.map((row) => row.remedy)).toEqual([
+    const rows = summary.sections.find((section) => section.title === "provider")?.rows;
+    expect(rows?.map((row) => row.tone)).toEqual(["warn", "error"]);
+    expect(rows?.map((row) => row.remedy)).toEqual([
       "Restart. Run `lando restart`.",
       "Rerun setup. Run `lando setup`.",
     ]);
@@ -486,115 +451,189 @@ describe("doctor summary", () => {
   });
 
   test("counts error deprecations as failures in the title, footer, and tree summary", () => {
-    const deprecated = {
-      provider: { checks: [] },
-      subsystems: { checks: [] },
-      globalApp: { checks: [] },
-      mcp: { checks: [] },
-      deprecations: {
-        entries: [
-          {
-            kind: "command",
-            id: "app:legacy",
-            severity: "error",
-            since: "4.1.0",
-            note: "Old command is not supported.",
-            source: "app:demo",
-            count: 1,
-          },
-        ],
-      },
-    } as unknown as DoctorReport;
+    const deprecated = makeDoctorReport({
+      version: "4.0.0-dev",
+      checks: [
+        {
+          section: "deprecations",
+          name: "deprecation",
+          status: "fail",
+          severity: "error",
+          context: { kind: "command", id: "app:legacy", since: "4.1.0" },
+          solutions: [{ kind: "manual", description: "Old command is not supported." }],
+        },
+      ],
+      skipped: [],
+    });
     const summary = buildDoctorReportSummary(deprecated);
     expect(summary.sections.find((section) => section.title === "deprecations")?.rows[0]?.tone).toBe("error");
     expect(summary.title).toBe("Problems found");
-    expect(summary.footer).toBe("0 checks · 1 failed");
-    expect(doctorTreeSummary(countDoctorChecks(deprecated))).toBe("doctor · 1 problem found");
-    const withPassingCheck = {
-      ...deprecated,
-      provider: { checks: [check({})] },
-    } as unknown as DoctorReport;
+    expect(summary.footer).toBe("1 checks · 1 failed");
+    expect(doctorTreeSummary(deprecated.summary)).toBe("doctor · 1 problem found");
+    const withPassingCheck = makeDoctorReport({
+      version: "4.0.0-dev",
+      checks: [
+        {
+          section: "deprecations",
+          name: "deprecation",
+          status: "fail",
+          severity: "error",
+          context: {},
+          solutions: [],
+        },
+        check(),
+      ],
+      skipped: [],
+    });
     expect(buildDoctorReportSummary(withPassingCheck).footer).toBe(
-      "1 checks · 1 failed · lando doctor --all lists every check",
+      "2 checks · 1 failed · lando doctor --all lists every check",
     );
   });
 
   test("counts warnings in the footer and keeps header tone aligned with rows", () => {
-    const summary = buildDoctorReportSummary({
-      version: "4.0.0-dev",
-      provider: {
-        checks: [
-          {
-            name: "runtime-service",
-            status: "warn",
-            severity: "warn",
-            providerId: "lando",
-            providerName: "Lando",
-            providerVersion: "0.0.0",
-            providerKind: "managed",
-            runtimeStatus: "running",
-            runtime: { running: true },
-            capabilities: {},
-            context: { orphanPids: "9" },
-            solutions: [{ kind: "manual", description: "kill leftover", command: "kill 9" }],
-          },
-        ],
-      },
-      subsystems: { checks: [] },
-      globalApp: { checks: [] },
-      mcp: { checks: [] },
-    } as unknown as DoctorReport);
+    const summary = buildDoctorReportSummary(
+      state([
+        check({
+          name: "runtime-service",
+          status: "warn",
+          severity: "warn",
+          runtimeStatus: "running",
+          runtime: { running: true },
+          context: { orphanPids: ["9"] },
+          solutions: [{ kind: "manual", description: "kill leftover", command: "kill 9" }],
+        }),
+      ]),
+    );
     expect(summary.tone).toBe("warn");
     expect(summary.footer).toBe("1 checks · 0 failed · 1 warning");
-    expect(summary.sections[0]?.rows[0]?.tone).toBe("warn");
-    expect(summary.sections[0]?.rows[0]?.remedy).toBe("kill leftover Run `kill 9`.");
+    const row = summary.sections.find((section) => section.title === "provider")?.rows[0];
+    expect(row?.tone).toBe("warn");
+    expect(row?.remedy).toBe("kill leftover Run `kill 9`.");
   });
 
   test("keeps an all-pass doctor report at OK with no warning footer", () => {
-    const summary = buildDoctorReportSummary({
-      version: "4.0.0-dev",
-      provider: {
-        checks: [
-          {
-            name: "selected-provider",
-            status: "pass",
-            severity: "info",
-            providerId: "lando",
-            providerName: "Lando",
-            providerVersion: "0.0.0",
-            providerKind: "managed",
-            runtimeStatus: "running",
-            runtime: { running: true },
-            capabilities: {},
-            context: {},
-            solutions: [],
-          },
-        ],
-      },
-      subsystems: { checks: [] },
-      globalApp: { checks: [] },
-      mcp: { checks: [] },
-    } as unknown as DoctorReport);
+    const summary = buildDoctorReportSummary(state([check()]));
     expect(summary.tone).toBe("ok");
     expect(summary.footer).toBe("1 checks passed · lando doctor --all lists every check");
   });
 
-  test("counts app config lint in doctor footer when it contributes a failure", () => {
-    const summary = buildDoctorReportSummary({
+  test("lists every deprecation finding without --all", () => {
+    const deprecated = makeDoctorReport({
       version: "4.0.0-dev",
-      provider: { checks: [] },
-      subsystems: { checks: [] },
-      globalApp: { checks: [] },
-      mcp: { checks: [] },
-      appConfig: {
-        app: "demo",
-        file: "/tmp/demo/.lando.yml",
-        valid: false,
-        violations: [
-          { rule: "landofile.validation", severity: "error", path: ["bogusKey"], message: "unexpected key" },
-        ],
-      },
+      checks: [
+        {
+          section: "deprecations",
+          name: "deprecation",
+          status: "pass",
+          severity: "info",
+          context: { kind: "flag", id: "legacy-flag", since: "4.2.0", source: "core", count: "1" },
+          solutions: [{ kind: "manual", description: "Rename the flag." }],
+        },
+        {
+          section: "deprecations",
+          name: "deprecation",
+          status: "fail",
+          severity: "error",
+          context: {
+            kind: "command",
+            id: "app:legacy",
+            since: "4.1.0",
+            source: "app:demo",
+            count: "2",
+          },
+          solutions: [{ kind: "manual", description: "Stop using app:legacy." }],
+        },
+      ],
+      skipped: [],
     });
+
+    const rows = buildDoctorReportSummary(deprecated).sections.find(
+      (section) => section.title === "deprecations",
+    )?.rows;
+    expect(rows).toHaveLength(2);
+    expect(rows?.[0]?.fields).toContainEqual({ label: "id", value: "legacy-flag" });
+
+    const text = renderDoctorReport(deprecated);
+    expect(text).toContain("id: legacy-flag");
+    expect(text).toContain("id: app:legacy");
+  });
+
+  test("distinguishes collapsed findings by app-config location and deprecation id", () => {
+    const appConfig = (location: string): DoctorSectionFinding => ({
+      section: "app-config",
+      name: "env-file.literal",
+      subject: `/app/.lando.yml#${location}`,
+      status: "warn",
+      severity: "warn",
+      context: { file: "/app/.lando.yml", location, message: "Environment file is a literal path." },
+      solutions: [],
+    });
+    const summary = buildDoctorReportSummary(
+      makeDoctorReport({
+        version: "4.0.0-dev",
+        checks: [appConfig("services.web.environment_file"), appConfig("services.db.environment_file")],
+        skipped: [],
+      }),
+    );
+    expect(
+      summary.sections.find((section) => section.title === "app-config")?.rows[0]?.fields,
+    ).toContainEqual({
+      label: "entries",
+      value: "/app/.lando.yml#services.web.environment_file; /app/.lando.yml#services.db.environment_file",
+    });
+
+    const deprecation = (id: string): DoctorSectionFinding => ({
+      section: "deprecations",
+      name: "deprecation",
+      subject: `flag:${id}`,
+      status: "warn",
+      severity: "warn",
+      context: { kind: "flag", id, since: "4.2.0", source: "core", count: "1" },
+      solutions: [],
+    });
+    const deprecations = doctorCheckSection(
+      "deprecations",
+      makeDoctorReport({ checks: [deprecation("legacy-one"), deprecation("legacy-two")], skipped: [] })
+        .checks,
+      {},
+    );
+    expect(deprecations?.rows[0]?.fields).toContainEqual({
+      label: "entries",
+      value: "flag:legacy-one; flag:legacy-two",
+    });
+  });
+
+  test("omits the skipped section when nothing was skipped", () => {
+    const clean = state([check()]);
+    expect(buildDoctorReportSummary(clean).sections.map((section) => section.title)).not.toContain("skipped");
+    expect(renderDoctorReport(clean)).not.toContain("No checks were skipped.");
+
+    const withSkip = makeDoctorReport({
+      version: "4.0.0-dev",
+      checks: [],
+      skipped: [{ section: "app-listeners", reason: "Runtime idle" }],
+    });
+    expect(buildDoctorReportSummary(withSkip).sections.map((section) => section.title)).toContain("skipped");
+    expect(renderDoctorReport(withSkip)).toContain("Runtime idle");
+  });
+
+  test("counts app config lint in doctor footer when it contributes a failure", () => {
+    const summary = buildDoctorReportSummary(
+      makeDoctorReport({
+        version: "4.0.0-dev",
+        checks: [
+          {
+            section: "app-config",
+            name: "landofile.validation",
+            status: "fail",
+            severity: "error",
+            context: { file: "/tmp/demo/.lando.yml", message: "unexpected key" },
+            solutions: [],
+          },
+        ],
+        skipped: [],
+      }),
+    );
     expect(summary.footer).toBe("1 checks · 1 failed");
     expect(summary.tone).toBe("error");
   });

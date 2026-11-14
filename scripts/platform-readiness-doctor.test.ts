@@ -5,13 +5,12 @@ import { classifyPlatformReadinessDoctorResult } from "./platform-readiness-doct
 const WINDOWS_PREREQUISITE_ENVELOPE =
   '{"apiVersion":"v4","command":"meta:setup","ok":false,"error":{"_tag":"ProviderUnavailableError","message":"Windows virtualization prerequisites are not available. Hyper-V, WSL2, and Virtual Machine Platform are required."}}';
 
-const emptyChecks = { checks: [] } as const;
-
-const managedProviderCheck = (input: {
+const check = (input: {
   readonly name: string;
   readonly status: "pass" | "warn" | "fail";
-  readonly running: boolean;
+  readonly section?: string;
 }) => ({
+  section: input.section ?? "provider",
   name: input.name,
   status: input.status,
   severity:
@@ -20,13 +19,6 @@ const managedProviderCheck = (input: {
       : input.status === "warn"
         ? ("warn" as const)
         : ("info" as const),
-  providerId: "lando",
-  providerName: "Lando",
-  providerVersion: "4.0.0-dev.0",
-  providerKind: "managed" as const,
-  runtimeStatus: input.running ? "running" : "stopped",
-  runtime: { running: input.running },
-  capabilities: {},
   context: {},
   solutions: [],
 });
@@ -34,14 +26,13 @@ const managedProviderCheck = (input: {
 const healthyDoctorReport = () => ({
   version: "4.0.0-dev.0",
   provider: {
-    checks: [
-      managedProviderCheck({ name: "setup-readiness", status: "pass", running: true }),
-      managedProviderCheck({ name: "disk", status: "warn", running: true }),
-    ],
+    id: "lando",
+    kind: "managed" as const,
+    selection: { providerId: "lando", source: "default", inputs: { capabilityDefault: "lando" } },
   },
-  subsystems: emptyChecks,
-  globalApp: emptyChecks,
-  mcp: emptyChecks,
+  checks: [check({ name: "setup-readiness", status: "pass" }), check({ name: "disk", status: "warn" })],
+  skipped: [],
+  summary: { checks: 2, passed: 1, warned: 1, failed: 0 },
 });
 
 const doctorEnvelope = (
@@ -58,9 +49,9 @@ const doctorEnvelope = (
   });
 
 describe("platform readiness doctor classification", () => {
-  test("passes when doctor JSON is healthy with a warning and setup-readiness running", () => {
+  test("passes when doctor JSON is healthy with a warning and setup-readiness passes", () => {
     const report = healthyDoctorReport();
-    expect(report.provider.checks.some((check) => check.status === "warn")).toBe(true);
+    expect(report.checks.some((entry) => entry.status === "warn")).toBe(true);
     expect(
       classifyPlatformReadinessDoctorResult({
         exitCode: 0,
@@ -83,53 +74,30 @@ describe("platform readiness doctor classification", () => {
     ).toMatchObject({ outcome: "failed", exitCode: 1 });
   });
 
-  test("fails exit 0 when the report includes a self object", () => {
+  test("fails exit 0 when the report includes a doctor-self check", () => {
     expect(
       classifyPlatformReadinessDoctorResult({
         exitCode: 0,
         stdout: doctorEnvelope({
           ...healthyDoctorReport(),
-          self: {
-            checks: [
-              {
-                name: "doctor-self",
-                section: "provider",
-                status: "fail",
-                severity: "error",
-                reason: "failure",
-                context: {},
-                solutions: [],
-              },
-            ],
-          },
+          checks: [...healthyDoctorReport().checks, check({ name: "doctor-self", status: "pass" })],
         }),
         stderr: "",
       }),
     ).toMatchObject({ outcome: "failed", exitCode: 1 });
   });
 
-  test("fails exit 0 when a provider, subsystems, globalApp, or mcp check has status fail", () => {
-    const report = healthyDoctorReport();
-    const failingCheck = managedProviderCheck({ name: "engine", status: "fail", running: true });
-    const reports = {
-      provider: {
-        ...report,
-        provider: { checks: [...report.provider.checks, failingCheck] },
-      },
-      subsystems: { ...report, subsystems: { checks: [failingCheck] } },
-      globalApp: { ...report, globalApp: { checks: [failingCheck] } },
-      mcp: { ...report, mcp: { checks: [failingCheck] } },
-    } as const;
-
-    for (const next of Object.values(reports)) {
-      expect(
-        classifyPlatformReadinessDoctorResult({
-          exitCode: 0,
-          stdout: doctorEnvelope(next),
-          stderr: "",
+  test("fails exit 0 when any check has status fail", () => {
+    expect(
+      classifyPlatformReadinessDoctorResult({
+        exitCode: 0,
+        stdout: doctorEnvelope({
+          ...healthyDoctorReport(),
+          checks: [...healthyDoctorReport().checks, check({ name: "engine", status: "fail" })],
         }),
-      ).toMatchObject({ outcome: "failed", exitCode: 1 });
-    }
+        stderr: "",
+      }),
+    ).toMatchObject({ outcome: "failed", exitCode: 1 });
   });
 
   test("fails when setup-readiness is missing", () => {
@@ -139,29 +107,23 @@ describe("platform readiness doctor classification", () => {
         exitCode: 0,
         stdout: doctorEnvelope({
           ...report,
-          provider: {
-            checks: report.provider.checks.filter((check) => check.name !== "setup-readiness"),
-          },
+          checks: report.checks.filter((entry) => entry.name !== "setup-readiness"),
         }),
         stderr: "",
       }),
     ).toMatchObject({ outcome: "failed", exitCode: 1 });
   });
 
-  test("fails when setup-readiness passes but runtime is not running", () => {
+  test("fails when setup-readiness does not pass", () => {
     const report = healthyDoctorReport();
     expect(
       classifyPlatformReadinessDoctorResult({
         exitCode: 0,
         stdout: doctorEnvelope({
           ...report,
-          provider: {
-            checks: report.provider.checks.map((check) =>
-              check.name === "setup-readiness"
-                ? { ...check, runtimeStatus: "stopped", runtime: { running: false } }
-                : check,
-            ),
-          },
+          checks: report.checks.map((entry) =>
+            entry.name === "setup-readiness" ? { ...entry, status: "warn" } : entry,
+          ),
         }),
         stderr: "",
       }),

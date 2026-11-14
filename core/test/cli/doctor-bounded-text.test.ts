@@ -2,56 +2,72 @@ import { describe, expect, test } from "bun:test";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { Effect, Layer } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor";
-import type { DoctorCheck } from "../../src/cli/commands/doctor-contract";
-import { type DoctorReport, DoctorReportSchema } from "../../src/cli/commands/doctor-report-contract";
-import {
-  buildDoctorReportSummary,
-  renderDoctorReport,
-  renderDoctorReportAsNdjson,
-} from "../../src/cli/commands/doctor-report-render";
+import type {
+  DoctorFinding,
+  DoctorReport,
+  DoctorSectionFinding,
+} from "../../src/cli/commands/doctor-contract";
+import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract";
+import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson";
+import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-render-text";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report";
 import { type RenderContext, runWithRendererHandling } from "../../src/cli/renderer-boundary";
 
 const tty: RenderContext = { mode: "lando", format: "text", isTTY: true, columns: 80, noColor: true };
-const check = (overrides: Partial<DoctorCheck> = {}): DoctorCheck => ({
+const check = (overrides: Partial<DoctorSectionFinding> = {}): DoctorSectionFinding => ({
+  section: "provider",
   name: "selected-provider",
   status: "pass",
   severity: "info",
-  providerId: "lando",
-  providerName: "Lando",
-  providerVersion: "4.2.0",
-  providerKind: "managed",
-  runtimeStatus: "ready",
-  runtime: { running: true, version: "6.0.0" },
-  capabilities: { buildSecrets: true },
   context: {},
   solutions: [],
-  selection: {
-    providerId: "lando",
-    source: "config",
-    inputs: { config: "lando", capabilityDefault: "lando" },
-  },
   ...overrides,
 });
-const report = (checks: ReadonlyArray<DoctorCheck>): DoctorReport => ({
-  version: "4.2.0",
-  globalConfig: { status: "pass" },
-  provider: { checks },
-  subsystems: { checks: [] },
-  globalApp: { checks: [] },
-  mcp: { checks: [] },
+const report = (
+  checks: ReadonlyArray<DoctorSectionFinding>,
+  extras: { readonly skipped?: DoctorReport["skipped"] } = {},
+): DoctorReport =>
+  makeDoctorReport({
+    version: "4.2.0",
+    provider: {
+      id: "lando",
+      kind: "managed",
+      selection: {
+        providerId: "lando",
+        source: "config",
+        inputs: { config: "lando", capabilityDefault: "lando" },
+      },
+      name: "Lando",
+      version: "4.2.0",
+      runtimeStatus: "ready",
+      runtime: { running: true, version: "6.0.0" },
+      capabilities: { buildSecrets: true },
+    },
+    checks,
+    skipped: extras.skipped ?? [],
+  });
+
+const findingIn = (
+  section: DoctorSectionFinding["section"],
+  finding: DoctorFinding,
+): DoctorSectionFinding => ({
+  section,
+  ...finding,
 });
+
 const leftovers = report([
   check(),
   ...Array.from({ length: 365 }, (_, index) =>
-    check({
+    findingIn("accelerated-starts", {
       name: "accelerated-start",
+      subject: `/apps/accelerated-${index}`,
       status: "warn",
       severity: "warn",
       context: {
         appId: `app-${index}`,
         appRoot: `/apps/accelerated-${index}`,
         journalPath: `/journals/${index}`,
-        volumes: Array.from({ length: 40 }, (_, n) => `volume-${n}`).join(", "),
+        volumes: Array.from({ length: 40 }, (_, n) => `volume-${n}`),
       },
       solutions: [
         {
@@ -63,8 +79,9 @@ const leftovers = report([
     }),
   ),
   ...Array.from({ length: 24 }, (_, index) =>
-    check({
+    findingIn("missing-app-roots", {
       name: "missing-app-root",
+      subject: `/apps/missing-${index}`,
       status: "warn",
       severity: "warn",
       context: { root: `/apps/missing-${index}` },
@@ -92,10 +109,9 @@ describe("bounded doctor text", () => {
       expect(bounded).toContain("+362 more");
       expect(bounded).toContain("365 remediation variants");
       expect(bounded).not.toContain("accelerated-364");
-      expect(bounded).not.toContain("global-config");
       expect(bounded).not.toContain("buildSecrets");
       const all = buildDoctorReportSummary(leftovers, { all: true });
-      expect(all.sections.find((section) => section.title === "provider")?.rows).toHaveLength(390);
+      expect(all.sections.find((section) => section.title === "provider")?.rows).toHaveLength(1);
       for (let index = 0; index < 365; index++) expect(full).toContain(`/apps/accelerated-${index}`);
       for (let index = 0; index < 24; index++) expect(full).toContain(`/apps/missing-${index}`);
       expect(full).toContain("volume-39");
@@ -121,22 +137,25 @@ describe("bounded doctor text", () => {
       });
       const output = io.stdoutLines().join("\n");
       const json = format === "json" ? JSON.parse(output) : Bun.YAML.parse(output);
-      expect(json.result.provider.checks).toEqual(leftovers.provider.checks);
+      expect(json.result.checks).toEqual(leftovers.checks);
       const frames = renderDoctorReportAsNdjson(leftovers)
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line));
       expect(frames.filter((frame) => frame._tag === "event" && frame.event === "doctor.check")).toHaveLength(
-        391,
+        390,
       );
     },
   );
 
   test("groups nonadjacent records by contributor, name and status without attributing a variant remedy to all", () => {
-    const finding = (pluginId: string, root: string, description: string): DoctorCheck =>
+    const finding = (pluginId: string, root: string, description: string): DoctorSectionFinding =>
       check({
         name: "cleanup",
+        contributor: pluginId,
+        subject: root,
         status: "warn",
+        severity: "warn",
         context: { pluginId, root },
         solutions: [
           { kind: "manual", description, command: "lando cleanup" },
@@ -148,26 +167,28 @@ describe("bounded doctor text", () => {
         finding("one", "/first", "First"),
         finding("two", "/other", "Foreign"),
         finding("one", "/second", "Second"),
-        check({ name: "cleanup", status: "fail", context: { pluginId: "one" } }),
+        check({ name: "cleanup", status: "fail", severity: "error", context: { pluginId: "one" } }),
       ]),
     );
-    const rows = summary.sections[0]?.rows;
+    const rows = summary.sections.find((section) => section.title === "provider")?.rows;
     expect(rows).toHaveLength(3);
     expect(rows?.[0]?.value).toBe("warn (2 checks)");
     expect(rows?.[0]?.remedy).toBe("2 remediation variants (lando doctor --all) Run `lando cleanup`.");
-    expect(rows?.[0]?.fields).toContainEqual({ label: "entries", value: "root: /first; root: /second" });
+    expect(rows?.[0]?.fields).toContainEqual({ label: "entries", value: "/first; /second" });
     expect(rows?.[1]?.remedy).toContain("Foreign");
   });
 
-  test("bounds only declared list keys and context values, preserving complete solutions", () => {
+  test("bounds array context and long items while preserving scalars and complete solutions", () => {
     const command = `lando repair ${"x".repeat(400)}`;
     const description = `Keep your data. ${"details, ".repeat(80)}`;
     const value = report([
       check({
         status: "warn",
+        severity: "warn",
         context: {
-          files: "one, two, three, four, five",
-          targets: "a-sync, b-sync, c-sync, d-sync",
+          files: ["one, two", "three", "four", "five"],
+          targets: ["a-sync", "b-sync", "c-sync", "d-sync"],
+          arbitrary: ["y".repeat(500), "last"],
           error: "one, two, three, four, five",
           evidence: "x".repeat(500),
         },
@@ -175,15 +196,17 @@ describe("bounded doctor text", () => {
       }),
     ]);
     const text = renderDoctorReport(value);
-    expect(text).toContain("files: one, two, three (+2 more)");
+    expect(text).toContain("files: one, two, three, four (+1 more)");
     expect(text).toContain("targets: a-sync, b-sync, c-sync (+1 more)");
     expect(text).toContain("error: one, two, three, four, five");
     expect(text).not.toContain("x".repeat(500));
+    expect(text).toContain(`arbitrary: ${"y".repeat(240)}..., last`);
     expect(text).toContain(description);
     expect(text).toContain(command);
     const full = renderDoctorReport(value, undefined, { all: true });
     expect(full).toContain("files: one, two, three, four, five");
     expect(full).toContain(`evidence: ${"x".repeat(500)}`);
+    expect(full).toContain(`arbitrary: ${"y".repeat(500)}, last`);
   });
 
   test("plain header prints provider identity and selection once and flag plumbing enables full output", () => {
@@ -200,35 +223,35 @@ describe("bounded doctor text", () => {
   test.each([undefined, tty])(
     "always shows skipped sections, each self failure, and deprecations on surface %j",
     (context) => {
-      const value: DoctorReport = {
-        ...report([check()]),
-        globalConfig: { status: "fail" },
-        skipped: [{ section: "listeners", status: "skipped", reason: "Runtime idle" }],
-        deprecations: {
-          entries: [
-            {
-              kind: "service-type",
-              id: "legacy",
-              severity: "info",
-              since: "4.2.0",
-              note: "Replace legacy",
-              source: "app:test",
-              count: 1,
-            },
-          ],
-        },
-        self: {
-          checks: ["first", "second", "third", "fourth"].map((message) => ({
-            name: "doctor-self",
-            section: "provider",
+      const value = report(
+        [
+          check(),
+          findingIn("global-config", {
+            name: "global-config",
             status: "fail",
             severity: "error",
-            reason: "failure",
-            context: { message },
+            context: { message: "bad config" },
             solutions: [],
-          })),
-        },
-      };
+          }),
+          findingIn("deprecations", {
+            name: "deprecation",
+            status: "fail",
+            severity: "error",
+            context: { kind: "service-type", id: "legacy", since: "4.2.0" },
+            solutions: [{ kind: "manual", description: "Replace legacy" }],
+          }),
+          ...["first", "second", "third", "fourth"].map((message) =>
+            findingIn("provider", {
+              name: "doctor-self",
+              status: "fail",
+              severity: "error",
+              context: { reason: "failure", message },
+              solutions: [],
+            }),
+          ),
+        ],
+        { skipped: [{ section: "app-listeners", reason: "Runtime idle" }] },
+      );
       const text = renderDoctorReport(value, context);
       expect(text).toContain("global-config");
       expect(text).toContain("fail");

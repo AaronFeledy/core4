@@ -9,18 +9,15 @@ describe("doctor setup readiness", () => {
     { status: "in-progress", providerId: "docker", command: "lando setup --provider=docker" },
     { status: "failed", providerId: "podman", command: "lando setup --provider=podman" },
   ] as const)("warns and offers `$command` when a $status record has no failed step", (row) => {
-    const check = buildSetupReadinessDoctorCheck(
-      {
-        status: row.status,
-        providerId: row.providerId,
-        updatedAt: "2026-09-22T00:00:00.000Z",
-        steps: [{ id: "provider", status: "satisfied", evidence: "Provider setup completed." }],
-      },
-      { id: row.providerId, displayName: "Provider", version: "test" },
-    );
+    const check = buildSetupReadinessDoctorCheck({
+      status: row.status,
+      providerId: row.providerId,
+      updatedAt: "2026-09-22T00:00:00.000Z",
+      steps: [{ id: "provider", status: "satisfied", evidence: "Provider setup completed." }],
+    });
 
     expect(check.status).toBe("warn");
-    expect(check.runtimeStatus).toBe(row.status);
+    expect(check.context.setupStatus).toBe(row.status);
     expect(check.solutions).toEqual([
       { kind: "manual", description: expect.stringContaining(`\`${row.command}\``), command: row.command },
     ]);
@@ -45,14 +42,10 @@ describe("doctor setup readiness", () => {
       ],
     } satisfies SetupReadinessSummary;
 
-    const check = buildSetupReadinessDoctorCheck(summary, {
-      id: "lando",
-      displayName: "Lando",
-      version: "0.0.0-test",
-    });
+    const check = buildSetupReadinessDoctorCheck(summary);
 
     expect(check.status).toBe("pass");
-    expect(check.runtimeStatus).toBe("ready");
+    expect(check.context.setupStatus).toBe("ready");
     expect(check.context.stepFileSync).toBe("skipped");
     expect(check.context.lastFailedStep).toBeUndefined();
     expect(check.solutions).toEqual([]);
