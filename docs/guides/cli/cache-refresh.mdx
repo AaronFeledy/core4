@@ -38,7 +38,7 @@ Built-in commands such as `lando start` and `lando info` never trigger that rebu
 
 When the rebuild fails because of broken Landofile YAML, invalid config, an unsupported tooling key or scope, or an include Lando cannot fetch, the command you ran fails with that real error. Fix it and rerun; Lando does not cache the failure. `lando --help` still lists built-in and plugin commands and shows `This app's commands are unavailable:` with the error and its remediation.
 
-One malformed task does not fail refresh or block other commands. That covers a task that is valid YAML and schema but contradicts itself: two flags sharing an alias, a default outside its choices, a `wrapper: true` task with two commands, an `env` key starting with `LANDO_`, or a `service: ":<flag>"` selector with no such flag. Explicit refresh warns with `LANDO_TOOLING_INVALID` and still exits 0; an automatic command-index rebuild stays silent. The task stays in help as `[unavailable]`, with `loadError` in machine catalogs. Running it, asking for its help with `lando <task> --help` or `lando help <task>`, or passing it `--version` fails with `ToolingCompileError`. Fix the Landofile and the next call rebuilds the metadata and runs the task. A task that is disabled is refused first, so a malformed disabled task stays hidden and produces no warning. See [Fix an unavailable task](../tooling/flags-and-args.mdx#fix-an-unavailable-task).
+One malformed task does not fail refresh or block other commands. That covers a task that is valid YAML and schema but contradicts itself, such as two flags sharing an alias or a `wrapper: true` task with two commands. Explicit refresh warns with `LANDO_TOOLING_INVALID` and still exits 0; an automatic command-index rebuild stays silent. A disabled task is refused before Lando reads its declaration, so a malformed disabled task produces no warning. [Fix an unavailable task](../tooling/flags-and-args.mdx#fix-an-unavailable-task) covers what the task's own calls and help report, and [Read tooling declaration findings](../landofile/config-lint.mdx#read-tooling-declaration-findings) lists every rule.
 
 A malformed `.bun.sh` file gets the same treatment. Explicit refresh, start, restart, and rebuild warn about it; an automatic command-index rebuild stays silent. The script stays in help as `[unavailable]`, with `loadError` in machine catalogs, and is omitted from MCP. Invoking that script or requesting its own help fails with its current tagged error. A lifecycle hook that calls it still fails. Fixing the file takes effect on the next call. Unreadable files and directories still fail refresh with their path and error.
 
@@ -77,7 +77,7 @@ tooling:
       - echo second
 ```
 
-`lando app:cache:refresh --format=json` exits 0 and names `deploy` in a `LANDO_TOOLING_INVALID` warning. `lando hello` runs. `lando deploy` fails with `ToolingCompileError` until you give the wrapper a single `cmd`. After that edit, `lando deploy` works on the next call with no refresh in between.
+`lando app:cache:refresh --format=json` exits 0 and names `deploy` in a `LANDO_TOOLING_INVALID` warning. `lando hello` runs. `lando deploy --format=json` fails with `ToolingCompileError`, and its `error.issues` entry has `reason: "wrapper-command-count"` at `tooling.deploy.wrapper`. Give the wrapper a single `cmd` and `lando deploy` works on the next call with no refresh in between.
 
 ## When your home directory changes
 
@@ -148,6 +148,7 @@ tooling:
     <Step name="refuse-malformed-wrapper">
       <Run command="lando deploy --format=json" expectExit={1} />
       <Verify errorTag="ToolingCompileError" expect={{ regex: "exactly one command" }} />
+      <Verify command="lando deploy --format=json" expectExit={1} expect={{ stdout: { regex: "\"issues\":\\s*\\[\\s*\\{[\\s\\S]*?\"reason\":\\s*\"wrapper-command-count\"[\\s\\S]*?\"path\":\\s*\\[\"tooling\",\\s*\"deploy\",\\s*\"wrapper\"\\]" } }} />
     </Step>
     <Step name="repair-and-rerun">
       <UseFixture name="cache-refresh-repaired-task" />

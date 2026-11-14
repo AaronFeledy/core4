@@ -83,7 +83,7 @@ Built and not listed below: the Effect runtime and SDK contracts; the service-ty
 | MCP streamable HTTP transport | §10.14 | Not started | Stdio only; needs a §10.14 transport contract first. |
 | `registry:<id>` includes | §7.7.1 | Not started | Local, `user:`, git, and `npm:` includes are built. |
 | `meta:plugin:add` from Git, `file:`, or tarball | §9.6 | Not started | npm sources are built. |
-| Live MCP tooling catalog replacement | §8.5.1, §10.14 | Not started | Tooling descriptors are captured at session start; clients reconnect after tooling declarations change. Mid-session plugin tool additions and same-id variants are built (§10.14); atomic whole-catalog replacement and tool removal remain open. |
+| Live MCP tooling catalog replacement | §8.5.1, §10.14 | Partial | Tooling descriptors are captured at session start. Reading `lando://diagnostics` refreshes the session app's tooling tools and unavailable-command records, including removal (§10.14); freshness checks on `tools/list` and before a tooling call are not built, so a client that does not read the resource still reconnects. Mid-session plugin tool additions and same-id variants are built (§10.14); atomic whole-catalog replacement remains open. |
 
 ### Runtime, checks, and build
 

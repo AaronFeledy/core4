@@ -308,9 +308,21 @@ lando help broken
 lando broken --version
 ```
 
-The error names the task, the rule it broke, and the fix.
+The error names the task, the rule it broke, and the fix. With `--format=json`, a failed run also lists each finding in `error.issues`, so a script or agent doesn't parse the message:
 
-To see every malformed task at once, run `lando app:config:lint`. Each one is a `landofile.tooling` finding at the key that is wrong. `lando app:cache:refresh` also warns with `LANDO_TOOLING_INVALID` for each one. The rebuild Lando does on its own before a command prints no warning.
+```json
+{
+  "reason": "alias-collision",
+  "path": ["tooling", "broken", "flags", "note", "alias"],
+  "message": "Flag alias collides with another flag name or alias.",
+  "suggestion": "Choose an alias that is not used by another flag name or alias.",
+  "related": [{ "path": ["tooling", "broken", "flags", "name", "alias"] }]
+}
+```
+
+Match on `reason`, a stable id for the rule. `path` is the key to change, `suggestion` is the correction for that rule, and `related` points at the other declaration in a conflict, here the flag that already uses `n`. `error.source` names the file and task. `error.omittedIssueCount` is above zero only when Lando left findings out of a bounded diagnostic; lint always has the full list.
+
+To see every malformed task at once, run `lando app:config:lint`. Each one is a `landofile.tooling` finding at the key that is wrong, with the same `reason`. `lando app:cache:refresh` also warns with `LANDO_TOOLING_INVALID` for each one. The rebuild Lando does on its own before a command prints no warning. An MCP client reads the same problems from the [`lando://diagnostics` resource](../agent-native/mcp.mdx#find-out-why-a-tool-is-missing).
 
 Fix the declaration and run the task again. Lando sees that the Landofile changed and rebuilds its command metadata on that run. You don't refresh anything by hand.
 
@@ -502,6 +514,12 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
     <Step name="refuse-malformed-task">
       <Run command="lando broken --format=json" expectExit={1} />
       <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+      <Verify command="lando broken --format=json" expectExit={1} expect={{ stdout: { regex: "\"issues\":\\s*\\[\\s*\\{[\\s\\S]*?\"reason\":\\s*\"alias-collision\"" } }} />
+      <Verify command="lando broken --format=json" expectExit={1} expect={{ stdout: { regex: "\"related\":\\s*\\[\\s*\\{\\s*\"path\":\\s*\\[\"tooling\",\\s*\"broken\",\\s*\"flags\",\\s*\"name\",\\s*\"alias\"\\]" } }} />
+      <Verify command="lando broken --format=json" expectExit={1} expect={{ stdout: { regex: "\"source\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*\\.lando\\.yml\",\\s*\"task\":\\s*\"broken\"\\s*\\}" } }} />
+    </Step>
+    <Step name="lint-names-the-rule-and-skips-disabled">
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.tooling\",\\s*\"reason\":\\s*\"alias-collision\"[^}]*\"path\":\\s*\\[\"tooling\",\\s*\"broken\"", not: { regex: "\"tooling\",\\s*\"retired\"" } } }} />
     </Step>
     <Step name="refuse-malformed-task-help">
       <Run command="lando broken --help --format=json" expectExit={1} />

@@ -153,6 +153,7 @@ If you are looking for a public surface or policy:
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch, help projection, unavailable rows, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Structured tooling diagnostics, disclosure bounds, and tooling source provenance | 08 + 12 | §8.7 + §12.1 |
 | `strict: false` command tails and unknown-flag rejection for exec/ssh/run | 08 | §8.3 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
@@ -206,6 +207,7 @@ If you are looking for a public surface or policy:
 | Scope-owned per-service environment overrides | 06 | §6.9 |
 | Managed-file ownership, ledger, and errors | 11 | §10.13 |
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
+| MCP `lando://diagnostics` resource, authorization filtering, and repair without reconnecting | 11 | §10.14 |
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |

@@ -105,10 +105,10 @@ lando app:config:lint --format=json
 JSON output is a stable `ConfigLintResult` for editor integrations:
 
 ```
-{ app, file, valid, violations: [{ rule, reason?, severity, path, message, scopes, source: { file, layer, path }, suggestion?, line?, column? }] }
+{ app, file, valid, violations: [{ rule, reason?, severity, path, message, scopes, source: { file, layer, path }, suggestion?, related?, line?, column? }] }
 ```
 
-Each finding extends `ValidationIssue` with a stable `rule` and a `severity` of `error` or `warning`. `valid` means there are no error-severity findings; warnings alone leave it true. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it. A `landofile.load` finding also carries `reason`, a stable id for the cause: the failing issue's own rule, such as `unsupported-secret-reference` or `unsupported-expression`, or the failure's error tag, such as `LandofileIncludeError`. Match on `reason` instead of parsing `message`.
+Each finding extends `ValidationIssue` with a stable `rule` and a `severity` of `error` or `warning`. `valid` means there are no error-severity findings; warnings alone leave it true. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it. A `landofile.load` finding also carries `reason`, a stable id for the cause: the failing issue's own rule, such as `unsupported-secret-reference` or `unsupported-expression`, or the failure's error tag, such as `LandofileIncludeError`. A [tooling declaration finding](#read-tooling-declaration-findings) carries one too, such as `alias-collision`. Match on `reason` instead of parsing `message`. `related`, when present, lists the other declarations that explain a conflict. It holds locations only, never the values written there.
 
 Text output prints `suggestion` under `fix:`.
 
@@ -204,11 +204,19 @@ A task can pass the schema and still contradict itself. Lint reports each of the
 
 One run lists every affected task, not only the first. Fix them in any order.
 
+Each finding has a `reason` that names the rule, such as `alias-collision`, `default-outside-choices`, `argument-order-duplicate`, `wrapper-command-count`, `reserved-env`, or `service-flag`, and a `suggestion` written for that rule. Two flags sharing `-n` read like this:
+
+```
+  tooling.broken.flags.note.alias: error [landofile.tooling] Flag alias collides with another flag name or alias.
+    at /tmp/malformed-task/.lando.yml:14:9 (canonical layer; effective)
+    fix: Choose an alias that is not used by another flag name or alias.
+```
+
 `source` names where the value was written, which isn't always your root Landofile. It can be an include or tooling include fragment, an override layer such as `.lando.local.yml`, `toolingDefaults` when the task inherited the value from there, or the service's `type` when a service type contributed the task.
 
 Lint skips disabled tasks, whether you wrote `tooling.<name>: false` or `disabled: true`, because Lando refuses them before it reads their declarations. It does check tasks hidden by `internal: true` on a tooling include. Those stay callable, so their mistakes still matter.
 
-These findings are lint-only. A malformed task doesn't stop unrelated tasks or `lando start` unless a lifecycle hook calls it. Lando lists it as unavailable, and it fails with `ToolingCompileError` when you run it or ask for its help. A hook that calls it follows the usual event failure policy and preserves the task's diagnostic and correction. See [Fix an unavailable task](../tooling/flags-and-args.mdx#fix-an-unavailable-task).
+These findings are lint-only. A malformed task doesn't stop unrelated tasks or `lando start` unless a lifecycle hook calls it. Lando lists it as unavailable, and it fails with `ToolingCompileError` when you run it or ask for its help. That error carries the same findings in `error.issues`. See [Fix an unavailable task](../tooling/flags-and-args.mdx#fix-an-unavailable-task) for what a call, a hook, and an MCP client see.
 
 ## Read computed var findings
 
@@ -406,6 +414,11 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.tooling\"[^}]*\"path\":\\s*\\[\"tooling\",\\s*\"reserved\",\\s*\"env\"" } }} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.tooling\"[^}]*\"path\":\\s*\\[\"tooling\",\\s*\"routed\",\\s*\"service\"\\s*\\][^{}]*\"line\":\\s*48,\\s*\"column\":\\s*5" } }} />
     </Step>
+    <Step name="lint-names-each-rule">
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"alias-collision\"[^}]*\"path\":\\s*\\[\"tooling\",\\s*\"dup\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"wrapper-command-count\"[^}]*\"path\":\\s*\\[\"tooling\",\\s*\"wrapped\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"default-outside-choices\"[^}]*\"suggestion\":\\s*\"Choose a default from the declared choices" } }} />
+    </Step>
     <Step name="lint-attributes-include-and-skips-disabled">
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\"tooling\",\\s*\"ops:sync\"[^{]*\\{[^}]*ops.\\.lando\\.tasks\\.yml", not: { regex: "\"tooling\",\\s*\"retired\"" } } }} />
     </Step>
@@ -417,6 +430,8 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
     <Step name="refuse-hidden-malformed-task">
       <Run command="lando app:ops:sync --format=json" expectExit={1} />
       <Verify errorTag="ToolingCompileError" expect={{ regex: "ops:sync" }} />
+      <Verify command="lando app:ops:sync --format=json" expectExit={1} expect={{ stdout: { regex: "\"issues\":\\s*\\[\\s*\\{[\\s\\S]*?\"reason\":\\s*\"alias-collision\"" } }} />
+      <Verify command="lando app:ops:sync --format=json" expectExit={1} expect={{ stdout: { regex: "\"source\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*ops.\\.lando\\.tasks\\.yml\",\\s*\"task\":\\s*\"ops:sync\"" } }} />
     </Step>
     <Step name="cleanup-tooling-declarations"><Cleanup /></Step>
   </Scenario>
