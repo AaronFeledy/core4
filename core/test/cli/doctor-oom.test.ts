@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import {
   OOM_CHECK_NAME,
   buildOomDoctorCheck,
   classifyDiedEvent,
   collectOomDoctorChecks,
 } from "../../src/cli/commands/doctor-oom.ts";
+import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
+import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 
-const PROVIDER = { id: "lando", displayName: "Lando Managed Runtime", version: "0.0.0" } as const;
-const CONTEXT = { provider: PROVIDER, providerKind: "managed" as const, platform: "linux" as const };
+const CONTEXT = { platform: "linux" as const };
 const REDACTOR = createStandaloneRedactor("secrets", { sourceEnv: {} });
 
 const solutionText = (solutions: ReadonlyArray<{ readonly description: string }>): string =>
@@ -163,10 +164,8 @@ describe("buildOomDoctorCheck", () => {
     expect(check.status).toBe("fail");
     expect(check.severity).toBe("error");
     expect(check.runtimeStatus).toBe("oom-killed");
-    expect(check.runtime.running).toBe(false);
-    expect(check.runtime.oomKilled).toBe(true);
-    expect(check.providerId).toBe("lando");
-    expect(check.providerKind).toBe("managed");
+    expect(check.runtime?.running).toBe(false);
+    expect(check.context.oomKilled).toBe("true");
     const joined = solutionText(check.solutions);
     expect(joined).toContain("memory");
     expect(joined).toContain("logs");
@@ -240,10 +239,22 @@ describe("buildOomDoctorCheck", () => {
     expect(serialized).not.toContain("s3cr3t");
     expect(serialized).not.toContain("pw@app.example.com");
     expect(check.context.image).toContain("[redacted]");
+    expect(check.subject).toBe("lando-secret--web");
   });
 });
 
 describe("collectOomDoctorChecks", () => {
+  test("uses redacted app and service when the container name is absent", () => {
+    const check = buildOomDoctorCheck(
+      {
+        kind: "oom",
+        correlation: { app: "https://user:password@app.example.com", service: "web" },
+      },
+      CONTEXT,
+      REDACTOR,
+    );
+    expect(check?.subject).toBe("https://[redacted]@app.example.com/web");
+  });
   test("returns one check per oom-killed event, skipping non-oom and malformed", () => {
     const checks = collectOomDoctorChecks(
       [
@@ -271,7 +282,7 @@ describe("collectOomDoctorChecks", () => {
 });
 
 describe("doctor rendering of oom checks", () => {
-  test("text render surfaces oom status, remediation, and no raw secret payload", () => {
+  const oomReport = () => {
     const check = buildOomDoctorCheck(
       classifyDiedEvent(
         diedEvent({
@@ -290,36 +301,27 @@ describe("doctor rendering of oom checks", () => {
       REDACTOR,
     );
     if (check === undefined) throw new Error("expected check");
-    const text = renderDoctorResult({ checks: [check] });
+    return makeDoctorReport({
+      version: "4.0.0-test",
+      checks: [{ section: "provider", ...check }],
+      skipped: [],
+    });
+  };
+
+  test("text render surfaces oom status, remediation, and no raw secret payload", () => {
+    const text = renderDoctorReport(oomReport());
     expect(text).toContain(`${OOM_CHECK_NAME}: fail`);
     expect(text.toLowerCase()).toContain("memory");
     expect(text).not.toContain("s3cr3t");
   });
 
-  test("ndjson render surfaces oomKilled in the runtime payload and stays redacted", () => {
-    const check = buildOomDoctorCheck(
-      classifyDiedEvent(
-        diedEvent({
-          OOMKilled: true,
-          Actor: {
-            Attributes: {
-              name: "lando-x--web",
-              image: "oci://user:s3cr3t@r.example.com/a",
-              "dev.lando.app": "x",
-              "dev.lando.service": "web",
-            },
-          },
-        }),
-      ),
-      CONTEXT,
-      REDACTOR,
-    );
-    if (check === undefined) throw new Error("expected check");
-    const ndjson = renderDoctorResultAsNdjson({ checks: [check] });
+  test("ndjson render surfaces oomKilled in the check payload and stays redacted", () => {
+    const ndjson = renderDoctorReportAsNdjson(oomReport());
     const first = JSON.parse(ndjson.trim().split("\n")[0] ?? "{}") as {
-      payload?: { runtime?: { oomKilled?: boolean } };
+      payload?: { context?: { oomKilled?: string }; runtime?: { running?: boolean } };
     };
-    expect(first.payload?.runtime?.oomKilled).toBe(true);
+    expect(first.payload?.context?.oomKilled).toBe("true");
+    expect(first.payload?.runtime?.running).toBe(false);
     expect(ndjson).not.toContain("s3cr3t");
   });
 });

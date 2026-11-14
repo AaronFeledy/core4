@@ -2,15 +2,15 @@ import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-do
 import { DEFAULT_PROXY_DOMAIN } from "@lando/engine/planner/naming";
 import { runProbe } from "@lando/sdk/probe";
 import { Duration, Effect, Ref, Result } from "effect";
-
+import type { DoctorFinding } from "./doctor-contract";
 import { HostDnsResolver } from "./doctor-host-dns";
-import { type DoctorSubsystemCheck, HOST_DNS_SPEC, passCheck } from "./doctor-subsystem-checks";
+import { HOST_DNS_SPEC, passCheck } from "./doctor-subsystem-checks";
 
 export const HOST_DNS_LOOPBACK = "127.0.0.1";
 
 export const buildHostDnsCheck = Effect.fnUntraced(function* (
   fix: boolean,
-): Effect.fn.Return<DoctorSubsystemCheck, never, HostDnsResolver> {
+): Effect.fn.Return<DoctorFinding, never, HostDnsResolver> {
   const baseDomain = (yield* resolveProxyDefaultDomain).toLowerCase();
   const loopback = HOST_DNS_LOOPBACK;
   const resolver = yield* HostDnsResolver;
@@ -34,13 +34,13 @@ export const buildHostDnsCheck = Effect.fnUntraced(function* (
   );
   const addresses = yield* Ref.get(addressesRef);
   const dnsReady = Result.isSuccess(resolved) && resolved.success.outcome === "green";
-  const dnsContext: Record<string, string> = {
+  const dnsContext: Record<string, string | ReadonlyArray<string>> = {
     subsystem: "host-dns",
     baseDomain,
     loopback,
     dnsHostname: hostname,
     dnsResolved: String(dnsReady),
-    ...(addresses.length === 0 ? {} : { dnsAddresses: addresses.join(",") }),
+    ...(addresses.length === 0 ? {} : { dnsAddresses: addresses }),
   };
   if (dnsReady) return passCheck(HOST_DNS_SPEC, dnsContext);
 

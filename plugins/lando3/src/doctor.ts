@@ -41,7 +41,10 @@ export const runLando3Leftovers = Effect.fn("Lando3Doctor.leftovers")(function* 
     label: { key: "io.lando.root", value: input.app.root },
     limit: 32,
   });
-  const context: Record<string, string> = { project: project.slice(0, 2000), providerId: input.providerId };
+  const context: Record<string, string | ReadonlyArray<string>> = {
+    project: project.slice(0, 2000),
+    providerId: input.providerId,
+  };
   const reasons: string[] = [];
   let hasHits = false;
   for (const [key, inspection] of [
@@ -50,9 +53,16 @@ export const runLando3Leftovers = Effect.fn("Lando3Doctor.leftovers")(function* 
   ] as const) {
     Match.value(inspection).pipe(
       Match.when({ status: "ok" }, ({ names, truncated }) => {
-        const joined = names.join(",");
-        context[key] = joined.slice(0, 2000);
-        if (truncated || joined.length > 2000) context[`${key}Truncated`] = "true";
+        const listed: string[] = [];
+        let length = 0;
+        for (const name of names) {
+          const nextLength = length + name.length + (listed.length === 0 ? 0 : 1);
+          if (nextLength > 2000 || listed.length === 64) break;
+          listed.push(name);
+          length = nextLength;
+        }
+        context[key] = listed;
+        if (truncated || listed.length < names.length) context[`${key}Truncated`] = "true";
         hasHits ||= names.length > 0;
       }),
       Match.when({ status: "unsupported" }, ({ reason }) => {

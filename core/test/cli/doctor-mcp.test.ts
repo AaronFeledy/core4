@@ -3,17 +3,18 @@ import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { Effect, Layer } from "effect";
+import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract";
 import {
   DefaultMcpDoctorLayer,
   MCP_DOCTOR_CANARY_SECRET,
-  type McpDoctorResult,
   isMcpDefaultAllowlistFresh,
   mcpDoctor,
-  renderMcpDoctorResult,
-  renderMcpDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor-mcp.ts";
+import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
+import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 
-const runWithDefault = (): Promise<McpDoctorResult> =>
+const runWithDefault = (): Promise<DoctorSectionResult> =>
   Effect.runPromise(mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)));
 
 const identityRedactionLayer = Layer.succeed(
@@ -72,10 +73,13 @@ describe("mcpDoctor", () => {
 
   test("renders a human-readable line and an NDJSON doctor.check event", async () => {
     const result = await runWithDefault();
-    const text = renderMcpDoctorResult(result);
-    expect(text).toContain("mcp: pass");
-    const now = new Date("2026-07-06T00:00:00.000Z");
-    const ndjson = renderMcpDoctorResultAsNdjson(result, { now });
+    const report = makeDoctorReport({
+      version: "4.0.0-test",
+      checks: result.checks.map((finding) => ({ section: "mcp" as const, ...finding })),
+      skipped: [],
+    });
+    expect(renderDoctorReport(report, undefined, { all: true })).toContain("mcp: pass");
+    const ndjson = renderDoctorReportAsNdjson(report);
     expect(ndjson).toContain('"event":"doctor.check"');
     expect(ndjson).toContain('"name":"mcp"');
     expect(ndjson).not.toContain(MCP_DOCTOR_CANARY_SECRET);

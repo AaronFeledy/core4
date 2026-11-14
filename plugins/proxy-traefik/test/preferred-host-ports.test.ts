@@ -99,7 +99,7 @@ describe("makePreferredHostPortsCheck", () => {
       });
       expect(reports[0]?.context.host).toBe(LOOPBACK_HOST);
       expect(reports[0]?.context.holder).toBe("ddev");
-      expect(reports[0]?.context.ports).toBe(String(DESIRED_HTTP_PORT));
+      expect(reports[0]?.context.ports).toEqual([String(DESIRED_HTTP_PORT)]);
       expect(joinedSolutions(reports[0]?.solutions ?? [])).toContain("ddev poweroff");
     } finally {
       acquisition.cleanup();
@@ -244,7 +244,7 @@ describe("makePreferredHostPortsCheck", () => {
 
       // Then: one report lists 80,443 and remediates nginx.
       expect(reports).toHaveLength(1);
-      expect(reports[0]?.context.ports).toBe(`${DESIRED_HTTP_PORT},${DESIRED_HTTPS_PORT}`);
+      expect(reports[0]?.context.ports).toEqual([String(DESIRED_HTTP_PORT), String(DESIRED_HTTPS_PORT)]);
       expect(reports[0]?.context.holder).toBe("nginx");
       expect(joinedSolutions(reports[0]?.solutions ?? [])).toContain("nginx");
     } finally {

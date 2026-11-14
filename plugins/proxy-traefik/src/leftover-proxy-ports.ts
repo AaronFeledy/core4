@@ -200,7 +200,7 @@ const leftoverReport = (leftover: ReadonlyArray<LoopbackPortSnapshot>): PluginDo
     runtime: { running: false },
     context: {
       host: LOOPBACK_HOST,
-      ports: leftover.map((item) => String(item.port)).join(","),
+      ports: leftover.map((item) => String(item.port)),
       holder: first?.comm ?? "rootlessport",
     },
     solutions: [
@@ -234,7 +234,7 @@ const otherDataRootReport = (holders: ReadonlyArray<LoopbackPortSnapshot>): Plug
     runtime: { running: true },
     context: {
       host: LOOPBACK_HOST,
-      ports: holders.map((item) => String(item.port)).join(","),
+      ports: holders.map((item) => String(item.port)),
       holder: first?.comm ?? "rootlessport",
       ...(ownerBin === undefined ? {} : { ownerRuntimeBinDir: ownerBin }),
       ...(first?.pid === undefined ? {} : { pid: String(first.pid) }),

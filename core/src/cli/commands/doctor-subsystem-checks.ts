@@ -1,64 +1,12 @@
-import { AgentSocketDelivery } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 
 import { redactString } from "../redact";
-import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
-import { DoctorSeveritySchema, passCheckNamed, warnCheck } from "./doctor-check-builders";
+import { passCheckNamed, warnCheck } from "./doctor-check-builders";
+import type { DoctorFinding, DoctorRecovery, DoctorSolution } from "./doctor-contract";
+import { DoctorSeverity } from "./doctor-contract";
 import { resolveSecretsRedactor } from "./secrets-redactor";
-
-/**
- * Whether a degraded subsystem can be recovered automatically by re-running its
- * `setup()` step (`automatic`) or requires a manual remediation because the
- * recovery is privileged or no in-process setup step exists (`manual`).
- */
-export type SubsystemRecovery = "automatic" | "manual";
-
-export const SshAgentPostureDetails = Schema.Struct({
-  mode: Schema.Literals(["sidecar", "host"]),
-  upstream: Schema.Struct({
-    source: Schema.Literals([
-      "sidecar",
-      "explicit",
-      "env",
-      "1password",
-      "gpg",
-      "yubikey-agent",
-      "windows-openssh",
-      "none",
-    ]),
-    reachable: Schema.Boolean,
-    identities: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-    reason: Schema.optionalKey(Schema.String),
-    socketPath: Schema.optionalKey(Schema.String),
-    danglingEnvSocket: Schema.optionalKey(Schema.String),
-  }),
-  delivery: Schema.Union([AgentSocketDelivery, Schema.Literals(["none", "runtime-volume"])]),
-  runtimeVolume: Schema.optionalKey(Schema.String),
-  security: Schema.String,
-  gpg: Schema.optionalKey(
-    Schema.Struct({
-      forward: Schema.Literal(true),
-      upstream: Schema.Struct({
-        source: Schema.Literals(["explicit", "gpgconf", "none"]),
-        reachable: Schema.Boolean,
-      }),
-      keyringExported: Schema.Boolean,
-      security: Schema.String,
-    }),
-  ),
-});
-
-export interface DoctorSubsystemCheck {
-  readonly name: string;
-  readonly status: DoctorStatus;
-  readonly severity: DoctorSeverity;
-  readonly recovery: SubsystemRecovery;
-  readonly context: Readonly<Record<string, string>>;
-  readonly solutions: ReadonlyArray<DoctorSolution>;
-  readonly details?: typeof SshAgentPostureDetails.Type;
-}
 
 /**
  * A `lando doctor` subsystem failure mapped to a tagged diagnostic that carries
@@ -70,7 +18,7 @@ export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFa
   "DoctorSubsystemFailure",
   {
     subsystem: Schema.String,
-    severity: DoctorSeveritySchema,
+    severity: DoctorSeverity,
     solution: Schema.Struct({
       kind: Schema.Literals(["automatic", "manual"]),
       description: Schema.String,
@@ -106,7 +54,7 @@ const automaticFixSolution = (description: string): DoctorSolution => ({
 
 export interface SubsystemSpec {
   readonly name: string;
-  readonly recovery: SubsystemRecovery;
+  readonly recovery: DoctorRecovery;
   /**
    * Remediation shown for `manual` subsystems and as the fallback when an
    * `automatic` recovery attempt fails.
@@ -233,22 +181,22 @@ const errorMessage = (cause: unknown, redactor: Redactor): string => {
   return redactString(String(cause), redactor);
 };
 
-export const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorSubsystemCheck =>
+export const passCheck = (spec: SubsystemSpec, context: DoctorFinding["context"]): DoctorFinding =>
   passCheckNamed({ name: spec.name, recovery: spec.recovery, context });
 
-const withoutPreFixState = (context: Record<string, string>): Record<string, string> =>
+const withoutPreFixState = (context: DoctorFinding["context"]): DoctorFinding["context"] =>
   Object.fromEntries(Object.entries(context).filter(([key]) => key !== "state"));
 
 export const buildDegradedCheck = Effect.fnUntraced(function* (
   spec: SubsystemSpec,
-  baseContext: Record<string, string>,
+  baseContext: DoctorFinding["context"],
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
   cause?: unknown,
-  refreshContext?: () => Effect.Effect<Record<string, string>, never>,
-): Effect.fn.Return<DoctorSubsystemCheck, never> {
+  refreshContext?: () => Effect.Effect<DoctorFinding["context"], never>,
+): Effect.fn.Return<DoctorFinding, never> {
   const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
-  const serviceId = baseContext.subsystemId ?? "unknown";
+  const serviceId = typeof baseContext.subsystemId === "string" ? baseContext.subsystemId : "unknown";
 
   if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
     const fixCommand = `${spec.name}.setup`;
