@@ -28,7 +28,9 @@ test("lists resources and the public schema template", async () => {
     ).pipe(Effect.provide(layer)),
   );
   expect(observed.list).toMatchObject({
-    result: { resources: uris.map((uri) => ({ uri, mimeType: "application/json" })) },
+    result: {
+      resources: [...uris, "lando://diagnostics"].map((uri) => ({ uri, mimeType: "application/json" })),
+    },
   });
   expect(observed.templates).toMatchObject({
     result: { resourceTemplates: [{ uriTemplate: "lando://schemas/{name}", mimeType: "application/json" }] },

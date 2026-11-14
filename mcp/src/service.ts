@@ -20,11 +20,20 @@ import {
   makeMcpAllowPolicy,
   toDescriptor,
 } from "./catalog";
+import type { McpDiagnostic, McpToolingCatalog } from "./diagnostics";
 import { type MemoryPressureLevel, handleMemoryPressure } from "./memory-pressure";
 import { McpCommandExecutor } from "./port";
 import type { McpCommandEntry } from "./registry";
 import type { McpResourceEntry } from "./resources";
 import { serveSession } from "./session";
+
+export {
+  McpDiagnostic,
+  McpDiagnostics,
+  type McpToolingCatalog,
+  boundDiagnostics,
+  pluginDiagnostics,
+} from "./diagnostics";
 
 export type { McpResourceEntry } from "./resources";
 export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
@@ -32,6 +41,8 @@ export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 export interface McpRuntimeConfigShape {
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry>;
+  readonly toolingUnavailable?: readonly McpDiagnostic[];
+  readonly toolingCatalog?: (generation: McpAppGeneration) => Effect.Effect<McpToolingCatalog, unknown>;
   readonly defaultAllowlist: ReadonlyArray<string>;
   readonly resources?: ReadonlyArray<McpResourceEntry>;
   readonly version?: string;
@@ -55,17 +66,13 @@ const sessionEntries = (
     ? [...config.commandEntries, ...(config.toolingEntries ?? [])]
     : config.commandEntries;
 
-/** The session allow policy; tooling ids join `allow` when tooling is on. */
 const sessionAllowPolicy = (
   config: McpRuntimeConfigShape,
   options: McpCatalogOptions | undefined,
 ): McpAllowPolicy =>
   makeMcpAllowPolicy({
     defaults: config.defaultAllowlist,
-    allow:
-      options?.tooling === true
-        ? [...(options.allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
-        : options?.allow,
+    allow: options?.allow,
     deny: options?.deny,
   });
 

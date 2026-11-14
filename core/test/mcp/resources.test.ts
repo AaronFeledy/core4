@@ -128,12 +128,15 @@ test("lists core-owned resources with their registered schemas and JSON MIME typ
   const response = await withResourceSession((client) => client.request("resources/list"));
   expect(response).toMatchObject({
     result: {
-      resources: resources.map(({ uri, name, description }) => ({
-        uri,
-        name,
-        description,
-        mimeType: "application/json",
-      })),
+      resources: [
+        ...resources.map(({ uri, name, description }) => ({
+          uri,
+          name,
+          description,
+          mimeType: "application/json",
+        })),
+        expect.objectContaining({ uri: "lando://diagnostics", mimeType: "application/json" }),
+      ],
     },
   });
 });

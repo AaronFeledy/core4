@@ -70,15 +70,18 @@ const isTaggedDiagnostic = Schema.is(
 /** A redacted, escaped, bounded diagnostic for a plugin failure or MCP policy refusal. */
 export const mcpPluginDiagnostic = (error: unknown, redactor: Redactor): PluginCommandDiagnostic => {
   const tagged = isTaggedDiagnostic(error);
+  const bounded = (text: string) => {
+    let result = "";
+    for (const character of escapeDiagnosticText(redactor.redactString(text))) {
+      if (Buffer.byteLength(result + character) > 1024) break;
+      result += character;
+    }
+    return result;
+  };
   return {
     _tag: tagged ? error._tag : "PluginLoadError",
-    message: escapeDiagnosticText(redactor.redactString(tagged ? error.message : String(error))).slice(
-      0,
-      2048,
-    ),
-    ...(tagged && error.remediation !== undefined
-      ? { remediation: escapeDiagnosticText(redactor.redactString(error.remediation)).slice(0, 2048) }
-      : {}),
+    message: bounded(tagged ? error.message : String(error)),
+    ...(tagged && error.remediation !== undefined ? { remediation: bounded(error.remediation) } : {}),
   };
 };
 
@@ -95,8 +98,22 @@ const projectCandidate = Effect.fnUntraced(function* (candidate: GraphCommandCan
     loadPluginSpec(candidate.id, candidate.pluginName, candidate.load, candidate.descriptor),
   );
   if (loaded._tag === "Failure") {
-    diagnostics.push(mcpPluginDiagnostic(loaded.failure, redactor));
-    const command: McpGenerationCommand = { _tag: "Failed", commandId: candidate.id, error: loaded.failure };
+    const diagnostic = mcpPluginDiagnostic(loaded.failure, redactor);
+    diagnostics.push(diagnostic);
+    const command: McpGenerationCommand = {
+      _tag: "Failed",
+      commandId: candidate.id,
+      error: loaded.failure,
+      owner: {
+        spec: candidate.descriptor,
+        plugin: {
+          name: candidate.pluginName,
+          source: candidate.source === "bundled" ? "bundled" : "external",
+          provenance: candidate.source,
+        },
+      },
+      diagnostic,
+    };
     return { command, diagnostics };
   }
   const spec = pluginSpec(candidate, loaded.success);
@@ -106,6 +123,7 @@ const projectCandidate = Effect.fnUntraced(function* (candidate: GraphCommandCan
   if (policy._tag === "Failure") diagnostics.push(mcpPluginDiagnostic(policy.failure, redactor));
   const command: McpGenerationCommand = {
     _tag: "Eligible",
+    diagnostics,
     entry: {
       spec,
       plugin: {
@@ -134,6 +152,7 @@ export const projectMcpPluginCommands = Effect.fn("Mcp.projectPluginCommands")(f
   const commands = new Map<string, McpGenerationCommand>();
   for (const candidate of graph.commands) {
     if (sessionIds.has(candidate.id) || commands.has(candidate.id)) continue;
+    if (candidate.descriptor.hidden === true) continue;
     if (isMcpNeverAllowed(candidate.id)) {
       diagnostics.push(
         mcpPluginDiagnostic(
@@ -157,8 +176,7 @@ export const projectMcpPluginCommands = Effect.fn("Mcp.projectPluginCommands")(f
 /**
  * Retry each failed owner's projection against the same selected owner. A fix the generation's
  * fingerprint cannot see (a lazily imported command module) takes effect without a rebuild; an
- * owner that still fails keeps its failure, and no other owner is ever promoted. Returns the
- * updated commands, or undefined when nothing recovered.
+ * owner that still fails keeps its failure, and no other owner is ever promoted.
  */
 export const retryFailedMcpPluginCommands = Effect.fn("Mcp.retryFailedPluginCommands")(function* (
   graph: PluginContributionGraphShape,
@@ -171,7 +189,11 @@ export const retryFailedMcpPluginCommands = Effect.fn("Mcp.retryFailedPluginComm
     const candidate = graph.commands.find((owner) => owner.id === command.commandId);
     if (candidate === undefined) continue;
     const projected = yield* projectCandidate(candidate, redactor);
-    if (projected.command._tag !== "Eligible") continue;
+    if (
+      projected.command._tag === "Failed" &&
+      JSON.stringify(projected.command.diagnostic) === JSON.stringify(command.diagnostic)
+    )
+      continue;
     next ??= new Map(commands);
     next.set(command.commandId, projected.command);
   }

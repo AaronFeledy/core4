@@ -56,7 +56,19 @@ export const makeMcpAppGenerations = Effect.fnUntraced(function* (input: {
         record.commands,
         redactor,
       );
-      return commands === undefined ? record : { ...record, commands };
+      return commands === undefined
+        ? record
+        : {
+            ...record,
+            commands,
+            diagnostics: [...commands.values()].flatMap((command) =>
+              command._tag === "Failed"
+                ? command.diagnostic === undefined
+                  ? []
+                  : [command.diagnostic]
+                : (command.diagnostics ?? []),
+            ),
+          };
     }),
   });
 });

@@ -273,7 +273,14 @@ test("a selected owner that failed to load keeps its tagged error and never fall
   });
   const apps = [
     generation("/apps/a", [owner("a", "fixture:shared", { runs })]),
-    generation("/apps/b", [{ _tag: "Failed", commandId: "fixture:shared", error: failure }]),
+    generation("/apps/b", [
+      {
+        _tag: "Failed",
+        commandId: "fixture:shared",
+        error: failure,
+        owner: { spec: { id: "fixture:shared" }, plugin: { name: "@example/app-b", source: "external" } },
+      },
+    ]),
   ];
 
   // When the failed app's owner is selected

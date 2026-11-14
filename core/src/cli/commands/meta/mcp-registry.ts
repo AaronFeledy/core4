@@ -1,26 +1,28 @@
-import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import {
   assertMcpAllowlistSafe,
   filterMcpDefaultAllowlist,
   isAppConfigMcpUnsafeId,
   isMcpNeverAllowed,
 } from "@lando/mcp/allowlist";
+import type { McpAppGeneration } from "@lando/mcp/apps";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
+import type { McpDiagnostic } from "@lando/mcp/service";
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
-import type { RegisteredCommand } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
 import { escapeDiagnosticText } from "../../diagnostic-text";
 import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
 import type { LandoCommandSpec } from "../../spec/command-spec";
-import { toolingSpecFromRegistered } from "./mcp-tooling";
+import { toolingCatalogFromCache } from "./mcp-tooling-catalog";
 
 export interface McpCommandRegistry {
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
   readonly diagnostics?: readonly PluginCommandDiagnostic[];
+  readonly toolingUnavailable?: readonly McpDiagnostic[];
+  readonly generation?: McpAppGeneration;
 }
 
 export interface ResolvedMcpOptions {
@@ -44,18 +46,18 @@ export const mcpRegistryFromBuiltIns = (
 
 export const mcpRegistryWithToolingEntries = (
   registry: McpCommandRegistry,
-  commands: ReadonlyArray<RegisteredCommand & Pick<CommandIndexEntry, "loadError">>,
-): McpCommandRegistry => ({
-  ...registry,
-  toolingEntries: commands
-    .filter((command) => !command.hidden && command.loadError === undefined)
-    .map((command) => ({ spec: toolingSpecFromRegistered(command), tooling: true })),
-});
+  commands: Parameters<typeof toolingCatalogFromCache>[1],
+): McpCommandRegistry => {
+  const catalog = toolingCatalogFromCache("projection", commands);
+  return { ...registry, toolingEntries: catalog.entries, toolingUnavailable: catalog.unavailable };
+};
 
 export const knownIdsOf = (registry: McpCommandRegistry): ReadonlySet<string> =>
   new Set([
     ...registry.commandEntries.map((entry) => entry.spec.id),
     ...(registry.toolingEntries ?? []).map((entry) => entry.spec.id),
+    ...(registry.toolingUnavailable ?? []).map((entry) => entry.commandId),
+    ...(registry.generation?.commands.keys() ?? []),
   ]);
 
 export const defaultIdsOf = (registry: McpCommandRegistry): readonly string[] =>

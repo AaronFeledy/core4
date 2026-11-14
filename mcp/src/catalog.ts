@@ -64,9 +64,19 @@ export const isMcpIdAuthorizable = (policy: McpAllowPolicy, id: string): boolean
  * allowance covers only built-ins and reviewed bundled contributions, so an external plugin that
  * replaces a default-allowed bundled id does not inherit it.
  */
-export const isMcpEntryAuthorized = (policy: McpAllowPolicy, entry: McpCommandEntry): boolean =>
-  isMcpIdAuthorizable(policy, entry.spec.id) &&
-  (policy.allow.has(entry.spec.id) || filterMcpDefaultAllowlist([entry.spec.id], [entry]).length === 1);
+export const isMcpToolingAuthorized = (policy: McpAllowPolicy, id: string): boolean =>
+  !policy.deny.has(id) && !isMcpNeverAllowed(id);
+
+export type McpCommandOwner = Pick<McpCommandEntry, "plugin" | "tooling"> & {
+  readonly spec: Pick<McpCommandSpec, "id" | "mcpAllowed" | "flags"> & { readonly hidden?: boolean };
+};
+
+export const isMcpEntryAuthorized = (policy: McpAllowPolicy, entry: McpCommandOwner): boolean =>
+  entry.spec.hidden !== true &&
+  (entry.tooling === true
+    ? isMcpToolingAuthorized(policy, entry.spec.id)
+    : isMcpIdAuthorizable(policy, entry.spec.id) &&
+      (policy.allow.has(entry.spec.id) || filterMcpDefaultAllowlist([entry.spec.id], [entry]).length === 1));
 
 export const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
   toolId: spec.id,
