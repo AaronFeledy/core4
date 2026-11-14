@@ -159,7 +159,7 @@ A mutating command that shells out to another `lando` mutate on the same app reu
 Run it again with `--volumes` when you want those named volumes gone; Lando removes them from what the provider
 still holds, and reports `unchanged` when there is nothing left to remove.
 
-Once the teardown succeeds, `destroy` also removes the app's saved build output. The next `lando start` creates new containers, so it runs the `build.app` steps again. A built image that still exists is reused, not rebuilt. A destroy that fails partway keeps the saved build output, so `lando logs --build` still prints it.
+Once the teardown succeeds, `destroy` also removes the app's saved build output. Only this folder's output goes: another checkout that uses the same app name keeps its own. The next `lando start` creates new containers, so it runs the `build.app` steps again. A built image that still exists is reused, not rebuilt. A destroy that fails partway keeps the saved build output, so `lando logs --build` still prints it.
 
 Snapshots stay with plain `destroy` and `--volumes`. **`--purge` also deletes this folder's catalogued snapshots and their provider-stored data**, even when an earlier destroy left only ownership inventory. Selection uses the volume owner's canonical app root, not the app name, so another worktree's snapshots stay untouched. Native data is removed through the provider that recorded each snapshot; a failed deletion leaves its catalog entry available for retry.
 

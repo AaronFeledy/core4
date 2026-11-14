@@ -98,6 +98,10 @@ A `build.app` step did its work inside one container, so its result counts only 
 
 A container you removed with your container runtime counts as new too. Services are tracked separately, so recreating one service doesn't rerun the steps of another whose container stayed.
 
+Editing a step's command or `user` runs it on the next `lando start`, even in a container that stayed. So does changing it back. Only a step's most recent run in its container counts, so an older result is never revived.
+
+An interrupted `build.app` step needs no cleanup. Press Ctrl-C during `lando start` or `lando rebuild`, then run `lando start`. The step you interrupted runs again, along with the steps that hadn't started. A step that had already finished stays cached while its container stays.
+
 Because `build.app` steps repeat, write them so a second run is harmless. `npm ci`, `composer install`, and the `chown` above already are. Your app mount and named volumes outlive the container, so a rerun step finds the files its last run left there. A step that appends to a file in your project should check before it appends.
 
 Put anything that belongs to the image in `build.artifact`: system packages and global tools. The image keeps them across `lando stop`, and nothing has to run again.
@@ -121,11 +125,13 @@ Image build lines are labeled `[build]` and `build.app` lines `[build:<step id>]
 
 A step that `lando start` reports as cached prints nothing new, and `lando logs --build` still prints the output of the run that produced it. A successful `lando destroy` removes the app's saved build output along with its containers.
 
+Saved output belongs to the project folder, not to the app's `name`. A folder never prints output that another folder saved under the same name. Rename the app in its Landofile and the output you already saved stays with the folder.
+
 The two phases fail differently:
 
 | Phase | What a failure does | What is left running |
 | --- | --- | --- |
-| `build.artifact` | Stops the start, along with the other services' image builds | Nothing. No container exists yet |
+| `build.artifact` | Stops the start, along with the other services' image builds, which are reported as aborted | Nothing. No container exists yet |
 | `build.app` | Lets steps that don't depend on the failed one finish, then fails the start with every failed step listed | The app's containers |
 
 Either way the error names the service, repeats the last lines of the step's output, and gives the `lando logs --build` command that prints all of it. To read it and get going again, see [Recover from a failed build step](./php-build-failures.mdx).
