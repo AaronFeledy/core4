@@ -54,11 +54,7 @@ test("OOM diagnostics mask registered correlation values", async () => {
   // When
   const check = buildOomDoctorCheck(
     { kind: "oom", correlation: { app: secret, containerName: envSecret } },
-    {
-      provider: { id: "lando", displayName: "Lando", version: "0.0.0" },
-      providerKind: "managed",
-      platform: "linux",
-    },
+    { platform: "linux" },
     await Effect.runPromise(service.forProfile("secrets", { sourceEnv: { P5_OOM_SECRET: envSecret } })),
   );
   // Then

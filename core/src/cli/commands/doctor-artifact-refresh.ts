@@ -2,8 +2,7 @@ import { type PullChecks, openPullChecks, overduePullChecks } from "@lando/engin
 import { StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract";
-import { providerKindFor } from "./doctor-contract";
+import type { DoctorFinding } from "./doctor-contract";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -14,9 +13,7 @@ export const buildArtifactRefreshDoctorCheck = (input: {
   readonly checks: PullChecks;
   readonly now: number;
   readonly runtimeId: string;
-  readonly provider: { readonly id: string; readonly displayName: string; readonly version: string };
-  readonly selection?: DoctorSelectionRecord;
-}): DoctorCheck | undefined => {
+}): DoctorFinding | undefined => {
   const tracked = Object.values(input.checks).filter((check) => check.runtimeId === input.runtimeId);
   if (tracked.length === 0) return undefined;
   const overdue = overduePullChecks(input.checks, { runtimeId: input.runtimeId, now: input.now });
@@ -26,19 +23,6 @@ export const buildArtifactRefreshDoctorCheck = (input: {
     name: "artifact-refresh",
     status,
     severity: status === "pass" ? "info" : "warn",
-    providerId: input.provider.id,
-    providerName: input.provider.displayName,
-    providerVersion: input.provider.version,
-    providerKind: providerKindFor(input.provider.id),
-    runtimeStatus: status,
-    runtime: {
-      running: true,
-      message:
-        oldest === undefined
-          ? "Image tags with a refresh window were checked recently."
-          : `${oldest.ref} was last checked ${ageDays(oldest.checkedAt, input.now)} days ago. The next start checks the registry.`,
-    },
-    capabilities: {},
     context: {
       tracked: String(tracked.length),
       overdue: String(overdue.length),
@@ -56,15 +40,12 @@ export const buildArtifactRefreshDoctorCheck = (input: {
               command: "lando rebuild",
             },
           ],
-    ...(input.selection === undefined ? {} : { selection: input.selection }),
   };
 };
 
 export const collectArtifactRefreshDoctorCheck = Effect.fnUntraced(function* (input: {
   readonly runtimeId: string;
   readonly now: number;
-  readonly provider: { readonly id: string; readonly displayName: string; readonly version: string };
-  readonly selection?: DoctorSelectionRecord;
 }) {
   const store = yield* Effect.serviceOption(StateStore);
   if (store._tag === "None") return undefined;

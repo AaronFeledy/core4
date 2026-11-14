@@ -963,11 +963,15 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--after` | Return checks strictly after this check id; requires --limit. |
 | `--all` | List every check, including passing ones, instead of only degraded checks. |
 | `--app` | Also lint the current app's Landofile and check its running services' listeners. |
 | `--deprecations` | Also report deprecated surfaces used by the current app and loaded plugins. |
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
+| `--limit` | Return at most this many checks (1 to 1000). |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
+| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
+| `--status` | Include checks with this status (repeatable). (one of `pass`, `warn`, `fail`) |
 
 ## `lando meta:events:follow`
 

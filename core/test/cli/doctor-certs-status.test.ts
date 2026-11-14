@@ -189,7 +189,7 @@ describe("certificate authority doctor status", () => {
       { certsReason: "unavailable", certsDetail: "missing" },
       {
         certsReason: "ambiguous",
-        certsCandidateIds: "first,second",
+        certsCandidateIds: ["first", "second"],
         certsDetail: "choose one",
       },
       {

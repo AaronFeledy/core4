@@ -3,12 +3,11 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { GlobalConfig } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { legacySnapshotCatalogsDoctor } from "../../src/cli/commands/doctor-legacy-snapshot-catalogs";
 import { collectDoctorReport } from "../../src/cli/commands/doctor-report";
-import { configServiceLayer } from "./agent-env-test-config.ts";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
 
 test.each([false, true])(
   "doctor passes without legacy catalogs (snapshot directory exists: %s)",
@@ -30,7 +29,7 @@ test.each([false, true])(
       );
       // Then absence is a passing check.
       expect(checks).toMatchObject([
-        { name: "legacy-snapshot-catalogs", status: "pass", context: { count: "0", paths: "" } },
+        { name: "legacy-snapshot-catalogs", status: "pass", context: { count: "0", paths: [] } },
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -88,7 +87,7 @@ test("doctor warns with redacted paths even when legacy catalog contents cannot 
         name: "legacy-snapshot-catalogs",
         status: "warn",
         recovery: "manual",
-        context: { count: "2", paths: files.map(redact).join("\n") },
+        context: { count: "2", paths: files.map(redact) },
         solutions: [{ kind: "manual" }],
       },
     ]);
@@ -104,24 +103,32 @@ test.each([false, true])(
     const root = await mkdtemp(join(tmpdir(), "lando-legacy-report-"));
     const paths = makeLandoPaths({ userDataRoot: root });
     const directory = join(paths.snapshotsDir, "old-app");
-    const config = Schema.decodeUnknownSync(GlobalConfig)({});
     try {
       await mkdir(directory, { recursive: true });
       await writeFile(join(directory, "index.bin"), "{}");
       // When collecting the complete report, including the optional fix mode.
       const report = await Effect.runPromise(
         collectDoctorReport({
-          options: { fix, env: {}, platform: "darwin" },
-          provider: Effect.succeed({ checks: [] }),
-          deprecations: Effect.succeed({ entries: [] }),
-          subsystems: () => Effect.succeed({ checks: [] }),
-        }).pipe(Effect.provideService(PathsService, paths), Effect.provide(configServiceLayer(config))),
+          options: { fix, env: {}, platform: "darwin", sections: ["legacy-snapshot-catalogs"] },
+          contexts: {},
+          table: [
+            independentSection({
+              id: "legacy-snapshot-catalogs",
+              run: legacySnapshotCatalogsDoctor((text) => text).pipe(
+                Effect.provideService(PathsService, paths),
+                Effect.map((checks) => ({ checks })),
+              ),
+            }),
+          ],
+        }),
       );
       // Then the registered check warns with manual recovery rather than starting a provider.
-      expect(
-        report.subsystems.checks.filter(({ name }) => name === "legacy-snapshot-catalogs"),
-      ).toMatchObject([
-        { status: "warn", recovery: "manual", context: { count: "1", paths: join(directory, "index.bin") } },
+      expect(report.checks.filter((check) => check.section === "legacy-snapshot-catalogs")).toMatchObject([
+        {
+          status: "warn",
+          recovery: "manual",
+          context: { count: "1", paths: [join(directory, "index.bin")] },
+        },
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });

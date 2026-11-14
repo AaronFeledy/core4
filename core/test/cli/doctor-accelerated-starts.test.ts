@@ -90,6 +90,7 @@ test.each(
   expect(checks).toHaveLength(1);
   expect(checks[0]).toMatchObject({
     name: "accelerated-start",
+    subject: "/apps/demo",
     status: "warn",
     recovery: "manual",
     context: {
@@ -98,8 +99,8 @@ test.each(
       phase: phase === "retained" ? "apply-intent" : phase,
       attemptId: "attempt-1",
       journalPath: bucket.path,
-      sessions: "web/app-mount",
-      volumes: "demo-sync",
+      sessions: ["web/app-mount"],
+      volumes: ["demo-sync"],
     },
   });
   expect(checks[0]?.solutions[0]?.description).toContain("lando start");
@@ -154,6 +155,7 @@ test("doctor reports a corrupt journal while still reporting readable attempts",
     }).pipe(Effect.provide(BunFileSystem.layer)),
   );
   expect(checks.map((check) => check.name)).toEqual(["accelerated-start-journal", "accelerated-start"]);
+  expect(checks[0]?.subject).toBe(`redacted(${paths[0]})`);
   expect(checks[0]?.context).toMatchObject({
     journalPath: `redacted(${paths[0]})`,
     errorTag: "redacted(StateStoreError)",

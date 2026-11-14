@@ -20,9 +20,11 @@ Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names fo
 
 ## Read the report
 
-Doctor runs one section at a time under the same live task list `lando start` paints: `✓` for a clean section, `!` when it passed with warnings, `✗` when a check failed or doctor could not run the section. The text report shows non-passing checks, skipped sections with their reasons, and any failures of doctor's own checks. Deprecation findings stay visible when requested. Passing checks, including a valid global config, stay out of the default report, whether you read it in a terminal or pipe it to a file.
+Doctor runs one section at a time under the same live task list `lando start` paints, with one row per section: `provider`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, and `debugger-host`. `--app` adds `app-listeners`, `app-version-constraints`, and `app-config` rows, and `--deprecations` adds a `deprecations` row. A row closes with `✓` for a clean section, `!` when it passed with warnings, and `✗` when a check failed or doctor could not run the section. A section where doctor inspected nothing closes as skipped.
 
-Repeated findings from the same contributor with the same check name and status appear as one entry with a count and up to three identifying paths or IDs. Long resource lists show a few items and the number left out. Identical remediation appears once; when the remedies differ, the report gives the number of variants and any command they share. The next steps collect distinct commands, with at most one per check name.
+The text report names the selected provider once, at the top. Below that it shows non-passing checks grouped by section, skipped entries with their reasons, and every `doctor-self` entry. A `doctor-self` entry means doctor could not finish one of its own checks; it carries the probe, the reason, and the message. Deprecation findings stay visible when requested. Passing checks, including a valid global config, stay out of the default report, whether you read it in a terminal or pipe it to a file.
+
+Repeated findings from the same contributor with the same check name and status appear as one entry with a count and up to three identifying paths or IDs. Long resource lists show a few items and the number left out. Identical remediation appears once; when the remedies differ, the report gives the number of variants and any command they share. The next steps collect distinct commands, with at most one per check name. `doctor-self` entries are never combined, so each failure of doctor's own checks stays readable.
 
 To see every record, including passing checks, full context, provider capabilities, and every remediation variant:
 
@@ -35,6 +37,58 @@ For a structured report containing every record regardless of `--all`, run:
 ```sh
 lando doctor --format=json
 ```
+
+To run specific sections, repeat `--section`:
+
+```sh
+lando doctor --section mcp --section filesystem-watch --format=json
+```
+
+Sections run in report order. Selecting `app-config`, `app-listeners`,
+`app-version-constraints`, or `deprecations` enables it without `--app` or
+`--deprecations`. Unselected sections have no progress row, finding, or skipped
+entry. Doctor always checks global config and includes it in structured output.
+An unknown section produces a usage error listing valid names.
+
+## Read a bounded report
+
+To limit the response for a script or agent, select statuses and a page size:
+
+```sh
+lando doctor --format=json --status fail --status warn --limit 20
+```
+
+JSON and YAML contain every finding unless you use `--status` or `--limit`.
+Repeat `--status` to include multiple statuses. `--limit` accepts a whole number
+from 1 to 1000 and adds `result.page`; `page.matched` counts matching checks before
+paging. The summary, skipped entries, provider details, and exit status still
+describe the whole run. A page with no failures can therefore exit `1`.
+
+Each check's `id` combines its section, name, and subject when present. Collisions
+receive `#2`, `#3`, and so on in report order. Pages sort by section order, then
+by ID. When `page.next` is present, pass its exact value as `--after` with the
+same statuses and page size. In a POSIX shell with `jq`, save and use that cursor:
+
+```sh
+lando doctor --format=json --status fail --status warn --limit 20 > doctor.json
+cursor=$(jq -r .result.page.next doctor.json)
+lando doctor --format=json --status fail --status warn --limit 20 --after "$cursor"
+```
+
+Continue only while `page.next` exists. `--after` requires `--limit` and a valid
+section prefix, even if the check itself has disappeared. Each invocation checks
+the host again and resumes strictly after the cursor. Additions or removals
+before it do not shift later checks into or out of a page; a finding present in
+both selected runs appears once across the pages. Start again to see new
+findings before the cursor. Keep the same statuses while paging; findings that
+change to an excluded status leave the selection. Every view uses the complete
+report's redaction.
+
+Doctor builds the provider runtime only when a selected section needs it. For
+example, `lando doctor --section mcp` checks MCP without loading provider services.
+Selecting `subsystems` also builds the runtime so doctor can inspect the router
+and SSH services; if the runtime cannot start, those two checks appear under
+`skipped` and host DNS is still checked.
 
 A check passes only after doctor inspects it. Loading a healthcheck runner or an
 endpoint scanner does not prove either one works against your provider. Doctor
@@ -49,9 +103,10 @@ On Linux and WSL, Lando's shutdown receipt establishes idle after a quiescent `l
 
 To remove an app while runtime state is unknown, use `lando destroy`. It starts or repairs the managed runtime holding that app's resources, then checks the live inventory before cleanup. This also works after a crash, `wsl --terminate`, or the first poweroff after an upgrade without shutdown evidence. `lando destroy --root` and `lando apps:gc --prune` prepare owning runtimes the same way; if preparation fails, cleanup reports that failure. Doctor, other observation commands, and `lando stop` never launch the runtime.
 
-JSON reports keep these entries in the report's `skipped` array, separate from
-`subsystems.checks`. The library `doctorReport()` skips the subsystem section
-when neither runtime subsystem services nor a host DNS resolver were supplied.
+JSON reports keep these entries in `result.skipped`, separate from
+`result.checks`. Each entry has a `section` and a `reason`, plus a `check` name
+when only part of a section went uninspected. When provider services are unavailable,
+the subsystem section still checks host DNS and records router and SSH skips separately.
 
 The `host-dns` check resolves `lando-doctor-probe.<proxy.defaultDomain>` through
 your host DNS resolver, independently of the host-proxy worker. It passes only when
@@ -62,14 +117,15 @@ An unavailable resolver produces a `SKIPPED` entry with a reason.
 Selecting a certificate authority does not verify its installation or host trust.
 Doctor reports `certs` as `SKIPPED` when selection succeeds but no read-only trust
 inspection is available. Certificate selection errors still appear as findings.
+The `certs` check belongs to the `certificate-authority` section.
 
 | Check | What to do |
 | --- | --- |
-| global-config | Your global config does not decode. Doctor prints the `ConfigError` and its fix, marks `provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, and `mcp` as `SKIPPED` (plus `app-config`, `app-version-constraints`, and `deprecations` under `--app` or `--deprecations`), still runs config-independent checks such as `filesystem-watch`, and exits `1`. Run `lando config validate`, repair with `lando config set`, `unset`, or `edit`, then rerun doctor. See [Repair an invalid global config](../config/global-config.mdx#repair-an-invalid-global-config). |
+| global-config | Your global config does not decode. This check fails with the `ConfigError` and its fix. Selected sections that need config or the provider runtime appear as `SKIPPED`, with a reason pointing to `global-config`. The live task list still shows their rows. MCP, filesystem watches, and requested app version constraints run independently. Doctor exits `1`. Run `lando config validate`, repair with `lando config set`, `unset`, or `edit`, then rerun doctor. See [Repair an invalid global config](../config/global-config.mdx#repair-an-invalid-global-config). |
 | selected-provider | Idle passes without repair. For a failure, follow its cause-specific remediation; a missing runtime bundle needs `lando setup`, while a provider API or process-inspection failure names the access or runtime problem. |
 | runtime-service | Idle passes. Descendants of Lando's verified service process belong to it, including its rootless child. Only positively identified unowned processes receive termination advice. |
 | host-proxy-transport | Reachability is skipped on an idle runtime. The separate `host-proxy-privacy` check still reports host run-directory privacy; its pass does not claim reachability. If the runtime is up but the app's worker isn't running, `lando start` in that app restarts it. Ownership or privacy remediation appears only when those checks fail. |
-| provider-bootstrap | Global config passed, but doctor could not build the provider runtime. Read this self check's failure and suggested repair. Doctor marks `provider`, `router`, `ssh`, `healthcheck`, `scanner`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` as `SKIPPED`, plus requested `app-config` and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-dns`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
+| provider-bootstrap | Global config passed, but doctor could not build the provider runtime. It appears as a `doctor-self` entry in the `provider` section with probe `provider-bootstrap`; read its failure and suggested repair. Doctor marks the `provider`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` sections as `SKIPPED`, along with the `router`, `ssh`, `healthcheck`, and `scanner` checks in `subsystems`, plus requested `app-listeners`, `app-config`, and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-dns`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
 | host-dns | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-dns.mdx). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. When the finding says a router is not installed or not selected, set `defaultRouterService` in `config.yml` to an installed router id or remove the setting; `doctor --fix` leaves that one to you. Until you do, `lando start`, `lando restart`, and `lando rebuild` on an app with routes stop with the same reason before changing anything, so a running app stays up. Apps without routes, `lando info`, `lando logs`, `lando exec`, `lando stop`, and `lando destroy` keep working. |
 | legacy-route-files | Lando removes recognized generated files automatically on the next routed app start; run `lando setup` to clean them up now. The check reports generated and unrecognized counts with bounded evidence lists. Review and manually delete only unrecognized files you no longer need (on Windows, then run `lando global:restart`), then republish needed routes with each owning app's start command. See [Read the legacy route files check](../global/doctor-walkthrough.mdx#read-the-legacy-route-files-check). |
@@ -90,6 +146,34 @@ If doctor names a host prerequisite, fix it and rerun `lando setup`. If the mana
 Read the orphan report before deleting anything. Without `--prune`, this command only reports candidates:
 
 <Guide>
+  <Scenario id="bounded-doctor-json" render={false} reason="Verify bounded report structure without depending on installed host state.">
+    <Step name="read-one-check">
+      <Run runtime="library" displayCode="lando doctor --section mcp --format=json --limit 1" code={`const run = yield* context.runCli(["doctor", "--section", "mcp", "--format=json", "--limit", "1"]);
+const report = JSON.parse(run.stdout).result;
+expect(report.checks.length).toBeLessThanOrEqual(1);
+expect(report.page.limit).toBe(1);
+expect(report.page.matched).toBe(report.summary.checks);
+expect(report.checks.every((check: { readonly id: unknown }) => typeof check.id === "string")).toBe(true);`} />
+    </Step>
+  </Scenario>
+  <Scenario id="doctor-json-statuses" render={false} reason="Verify status selection against whole-run counts on any installed host.">
+    <Step name="read-non-passing-checks">
+      <Run runtime="library" displayCode="lando doctor --section mcp --format=json --status fail --status warn" code={`const run = yield* context.runCli(["doctor", "--section", "mcp", "--format=json", "--status", "fail", "--status", "warn"]);
+const report = JSON.parse(run.stdout).result;
+expect(report.checks.every((check: { readonly status: string }) => check.status === "fail" || check.status === "warn")).toBe(true);
+expect(report.checks.length).toBe(report.summary.failed + report.summary.warned);
+expect(report.page).toBeUndefined();`} />
+    </Step>
+  </Scenario>
+  <Scenario id="selected-doctor-sections" render={false} reason="Assert the exact selected sections and absence of skips in structured output.">
+    <Step name="inspect-mcp-only">
+      <Run runtime="library" displayCode="lando doctor --section mcp --format=json" code={`const run = yield* context.runCli(["doctor", "--section", "mcp", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(run.exitCode).toBe(0);
+expect(report.result.checks.map((check: { readonly section: string }) => check.section)).toEqual(["global-config", "mcp"]);
+expect(report.result.skipped).toEqual([]);`} />
+    </Step>
+  </Scenario>
   <Scenario id="inspect-missing-app-roots" render>
     <Step name="inspect">
       <Run command="lando apps:gc --format=json" />
@@ -107,10 +191,9 @@ Read the orphan report before deleting anything. Without `--prune`, this command
       <UseFixture name="unstarted-app" />
       <Run runtime="library" displayCode="lando doctor --app --format=json" code={`const run = yield* context.runCli(["doctor", "--app", "--format=json"]);
 const report = JSON.parse(run.stdout);
-expect(report.result.appListeners.checks).toEqual([]);
+expect(report.result.checks.filter((check: { readonly section: string }) => check.section === "app-listeners")).toEqual([]);
 expect(report.result.skipped).toContainEqual({
   section: "app-listeners",
-  status: "skipped",
   reason: "No applied plan was found for the current app; no listeners were observed.",
 });`} />
     </Step>
@@ -285,10 +368,14 @@ finding: No TCP listener was observed on planned port 8080 at this instant. If t
 
 The action also names what your application, command, or custom image must
 configure when it owns that listener. `--fix` does not change your server's
-configuration. Without `--app`, doctor does not perform this listener check.
-JSON keeps observations in `result.appListeners.checks`, with string context fields
-`service`, `port`, `listenerState`, `finding`, and `bindings`, plus `solutions`.
-Unavailable observations go in the report's `skipped` array.
+configuration. Use `--app` or `--section app-listeners` to run this check.
+JSON observations appear in `result.checks` with `section: app-listeners`.
+Each has string context fields `service`, `port`, `listenerState`, and `finding`,
+an array of strings in `context.bindings`, and a `solutions` list. Its `subject`
+identifies the listener as `<app>/<service>:<port>`. Its `context.providerId` names the
+applied plan's provider, which can differ from the provider in the report header.
+Unavailable observations go in `result.skipped`. A skipped service has
+`check: app-listener:<service>`; a skip of the whole section has no `check`.
 
 ## Machine-readable output
 
@@ -297,7 +384,34 @@ lando doctor --format=json
 lando doctor --format=yaml
 ```
 
-Use those formats in scripts. Both wrap the report in the standard result envelope under `result`, so `ok` and the tagged `error` are always there to branch on. Doctor redacts secrets, certificate bodies, and proxy URLs.
+Use those formats in scripts. Both wrap the report in the standard result envelope under `result`. Doctor redacts secrets, certificate bodies, and proxy URLs.
+
+The report is one flat list of checks, not one object per section:
+
+| Field | What it holds |
+| --- | --- |
+| `result.version` | The report's version string. |
+| `result.provider` | The selected provider, stated once: `id`, `kind` (`managed` or `user-installed`), and `selection`, which records how it was chosen. `name`, `version`, `runtimeStatus`, `runtime`, and `capabilities` appear when doctor could observe the provider. The field is absent when no provider was selected. |
+| `result.checks` | Every check doctor ran, in section order. |
+| `result.skipped` | What doctor did not inspect. Always present, possibly empty. Each entry is `{ section, reason }`, with `check` added when only that check was skipped. |
+| `result.summary` | Counts for the whole run: `checks`, `passed`, `warned`, `failed`, and `selfFailed` (doctor's own failures, also counted in `failed`). Skipped entries are not counted, and `--status`, `--limit`, and `--after` never change it. |
+
+Each check has a `section`, a `name`, a `status` (`pass`, `warn`, or `fail`), a `severity` (`info`, `warn`, or `error`), a `context` map, and a `solutions` list. Context values are strings or arrays of strings: `sessions`, `volumes`, `services`, and `dnsAddresses` are arrays; `reason` and `providerId` stay strings. Optional fields include `runtimeStatus` or `runtime` for the check's own runtime observations, `contributor` for the plugin contribution id, `recovery`, and `details` for a typed record such as a `ConfigError` or Landofile lint violation.
+
+Repeatable findings have a `subject`, such as an app root, journal path, or container name. Grouped text rows show up to three subjects and the number remaining, falling back to finding names when subjects are absent. Text shows the first three items of each context array unless you use `--all`, `--status`, or `--limit`, which print every record in full; it never splits scalar strings at commas. JSON and YAML preserve full arrays.
+
+The `section` is one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, or `app-config`. To read one section, filter on it:
+
+```sh
+lando doctor --format=json | jq '.result.checks[] | select(.section == "subsystems")'
+lando doctor --format=json | jq '.result.summary'
+```
+
+With `--app`, the `app-config` section holds one check per Landofile lint violation. The check's `name` is the rule id and its `details` is the violation. A clean Landofile yields a single passing `app-config-lint` check.
+
+Doctor exits `1` when `summary.failed` is above zero. A failing check is a diagnosis, so the envelope stays `ok: true`. The exception is a check named `doctor-self`, which records that doctor could not finish one of its own checks. Its `context.reason` is `failure`, `defect`, or `timeout`, `context.message` says what happened, and `context.probe` names the unit when it is narrower than the section. Any `doctor-self` check makes the envelope `ok: false`.
+
+For a stream, `lando doctor --format=ndjson` writes the same records one per line. See [Ask only for a format the command produces](../scripting-with-json.mdx#ask-only-for-a-format-the-command-produces).
 
 ## Verify
 
