@@ -20,7 +20,7 @@ lando db:import dump.sql.gz --yes
 lando db:import dump.sql.zst --yes
 ```
 
-`.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. Host compression stages the uncompressed dump in a temp file, so a huge dump pays disk twice. Credentials stay in the service environment, not on argv.
+`.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. A compressed server-database export stages the uncompressed dump beside the destination, so that directory needs write access and room for both files. Lando creates missing destination directories and removes its staging files when the export finishes or fails. Compressed imports stage in Lando's cache directory instead. Credentials stay in the service environment, not on argv.
 
 ## Export or import a dump
 
@@ -129,6 +129,26 @@ When the container runtime itself failed, for example because it stopped
 responding, `error.cause` holds that failure with its own `_tag`, message, and
 `remediation`, and `error.remediation` starts with what the runtime says to do.
 Database payloads and stdout are never included in these command failures.
+
+Host filesystem failures during a transfer report `DataTransferError` for both
+compressed and plain dumps. Their `error.cause` is a `FileIoError` with the failed `path`, an
+`operation` of `read`, `stage`, or `persist`, and a `reason` you can use in a script.
+The remediation matches that operation: an unreadable source needs read access,
+while staging and output files need a writable location.
+
+The reason distinguishes permissions (`permission-denied`), a read-only
+filesystem (`read-only`), exhausted storage (`no-space`), account quota
+(`quota-exceeded`), a missing path (`not-found`), and an invalid path
+(`invalid-path`). Storage includes filesystem space and available inodes. Other
+I/O failures use `io` or `unknown`. Use the reported path and remediation to
+identify what needs to change.
+
+`SqlDumpCompressionError` means the compression or decompression itself failed,
+such as corrupt gzip or zstd input. A staging-directory failure stops the export
+before the database dump starts. Compression and output writes can fail after
+the dump has finished; an existing destination still stays unchanged. Initial
+checks for a missing or unreadable import file happen before the database probe
+and use `SqlDumpNotFoundError`.
 
 `lando db:*` commands mask only the target database's credential password or
 root password in their output and errors, following the same rules as other
