@@ -4,13 +4,14 @@ import { MessageWarnEvent } from "@lando/sdk/events";
 import type { BuildAppError } from "@lando/sdk/services";
 import { Cause, DateTime, Effect } from "effect";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
-import { type AppBuildAttempt, appBuildResultWarning, buildResultsError } from "./build-app-disposition.ts";
+import { type AppBuildAttempt, appBuildResultWarning } from "./build-app-disposition.ts";
 import { isScratchPlan } from "./build-app-kind.ts";
 import type { AppStep } from "./build-app-plan.ts";
 import type { AppBuildInput } from "./build-app-step-runner.ts";
 import { BuildOwner } from "./build-owner.ts";
 import {
   type AppBuildResult,
+  buildResultsError,
   markBuildResultUsed,
   openAppBuildResults,
   recordBuildResult,

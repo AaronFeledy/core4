@@ -22,6 +22,7 @@ import { BuildOwner } from "./build-owner.ts";
 import type { BuildRedaction } from "./build-redaction.ts";
 import { buildFailureRemediation, buildRemediationSuffix } from "./build-remediation.ts";
 import {
+  buildResultsError,
   findCompleteBuildResult,
   markBuildResultUsed,
   openAppBuildResults,
@@ -35,16 +36,6 @@ import { resolveSourceArtifact } from "./source-artifact.ts";
 
 const timestamp = DateTime.now;
 const encoder = new TextEncoder();
-
-const mapBuildCacheError = (providerId: string, cause: unknown) =>
-  new ProviderInternalError({
-    providerId,
-    operation: "buildResults",
-    message: "Unable to access the build-results cache.",
-    cause,
-    remediation:
-      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
-  });
 
 const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBuildStep) =>
   makeBuildTranscriptPath({
@@ -88,8 +79,8 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
         isScratchPlan(plan)
           ? openScratchBuildResults(stateStore)
           : openAppBuildResults(stateStore, BuildOwner.fromPlan(plan))
-      ).pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
-      const cached = yield* bucket.get.pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
+      ).pipe(mapFailures((cause) => buildResultsError(provider.id, cause)));
+      const cached = yield* bucket.get.pipe(mapFailures((cause) => buildResultsError(provider.id, cause)));
       if (!input.refresh && service.pullPolicy !== "build") {
         const complete = findCompleteBuildResult(cached ?? [], {
           buildKey: step.buildKey,
@@ -103,7 +94,7 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
         ) {
           // The output that is in use must be the newest entry: never age out a key the app runs.
           yield* markBuildResultUsed(bucket, complete).pipe(
-            mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
+            mapFailures((cause) => buildResultsError(provider.id, cause)),
           );
           // A cache hit advertises the transcript recorded by the run that produced it and opens nothing.
           const recordedTranscript = (yield* buildTranscriptExists(complete.transcriptPath))
@@ -206,7 +197,7 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
             durationMs: performance.now() - started,
             transcriptPath,
           }).pipe(
-            mapFailures((cause) => mapBuildCacheError(provider.id, cause)),
+            mapFailures((cause) => buildResultsError(provider.id, cause)),
             Effect.exit,
             Effect.asVoid,
           ),
@@ -238,7 +229,7 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
                 : { sourceArtifactDigest: sourceArtifact.digest }),
             }),
         transcriptPath,
-      }).pipe(mapFailures((cause) => mapBuildCacheError(provider.id, cause)));
+      }).pipe(mapFailures((cause) => buildResultsError(provider.id, cause)));
 
       yield* events.publish({
         _tag: "post-build",

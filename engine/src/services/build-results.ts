@@ -1,10 +1,20 @@
-import type { StateStoreError } from "@lando/sdk/errors";
+import { ProviderInternalError, type StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
 import type { BuildOwner } from "./build-owner.ts";
 
 export { BuildOwner } from "./build-owner.ts";
+
+export const buildResultsError = (providerId: string, cause: unknown) =>
+  new ProviderInternalError({
+    providerId,
+    operation: "buildResults",
+    message: "Unable to access the build-results cache.",
+    cause,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
+  });
 
 // Version 4 discards the former flat shape; no app receipt can carry artifact provenance.
 const BUILD_RESULTS_VERSION = 4;

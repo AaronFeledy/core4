@@ -1,6 +1,6 @@
 import type { ScheduleOutcome } from "@lando/container-runtime/dependency-schedule";
 import { primaryFailureReason } from "@lando/sdk/command-result";
-import { BuildStepFailedError, type EventError, ProviderInternalError } from "@lando/sdk/errors";
+import { BuildStepFailedError, type EventError } from "@lando/sdk/errors";
 import type { AbsolutePath, CommandWarning } from "@lando/sdk/schema";
 import type { BuildAppError, StateBucket } from "@lando/sdk/services";
 import { Cause, type Effect } from "effect";
@@ -38,16 +38,6 @@ export interface AppStepDisposition {
   readonly durationMs: number;
   readonly failure?: BuildStepFailedError;
 }
-
-export const buildResultsError = (providerId: string, cause: unknown) =>
-  new ProviderInternalError({
-    providerId,
-    operation: "buildResults",
-    message: "Unable to access the build-results cache.",
-    cause,
-    remediation:
-      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
-  });
 
 export const failedAppStepDisposition = (
   appStep: AppStep,
