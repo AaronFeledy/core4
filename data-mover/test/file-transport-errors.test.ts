@@ -6,10 +6,7 @@ import { AbsolutePath, type DataEndpoint } from "@lando/sdk/schema";
 import { Effect, Schema, Stream } from "effect";
 import { withFileTransport } from "./file-transport-fixture.ts";
 
-const hostSource = (path: string, archive: boolean): DataEndpoint =>
-  archive
-    ? { _tag: "hostArchive", path: AbsolutePath.make(path), format: "tar" }
-    : { _tag: "hostPath", path: AbsolutePath.make(path) };
+const hostSource = (path: string): DataEndpoint => ({ _tag: "hostPath", path: AbsolutePath.make(path) });
 
 for (const archive of [false, "tar", "tar.gz", "tar.zst"] as const) {
   for (const missing of [false, true]) {
@@ -27,7 +24,7 @@ for (const archive of [false, "tar", "tar.gz", "tar.zst"] as const) {
               .read(
                 archive
                   ? { _tag: "hostArchive", path: AbsolutePath.make(path), format: archive }
-                  : hostSource(path, false),
+                  : hostSource(path),
               )
               .pipe(Stream.runDrain, Effect.scoped, Effect.flip),
           );
@@ -60,8 +57,8 @@ test("host-to-host missing source keeps source role through directory inspection
     const error = await Effect.runPromise(
       mover()
         .transfer({
-          from: hostSource(source, false),
-          to: hostSource(join(root, "target"), false),
+          from: hostSource(source),
+          to: hostSource(join(root, "target")),
         })
         .pipe(Effect.scoped, Effect.flip),
     );
@@ -116,10 +113,10 @@ for (const archive of [false, true]) {
         try {
           const to: DataEndpoint = archive
             ? { _tag: "hostArchive", path: AbsolutePath.make(target), format: "tar.gz" }
-            : hostSource(target, false);
+            : hostSource(target);
           const error = await Effect.runPromise(
             mover()
-              .transfer({ from: hostSource(source, false), to })
+              .transfer({ from: hostSource(source), to })
               .pipe(Effect.scoped, Effect.flip),
           );
           expect(error).toBeInstanceOf(DataTransferError);

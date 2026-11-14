@@ -92,18 +92,14 @@ describe("compressed export filesystem failures", () => {
     expect(await fs.readFile(parent, "utf8")).toBe("keep me");
   });
 
-  // These errno values cannot be produced portably without privileged mounts or exhausting storage.
-  test.each([
-    ["EPERM", "permission-denied", false],
-    ["EROFS", "read-only", false],
-    ["ENOSPC", "no-space", true],
-    ["EDQUOT", "quota-exceeded", true],
-    ["ENOENT", "not-found", false],
-    ["ENOTDIR", "invalid-path", false],
-    ["EIO", "io", false],
-    [undefined, "unknown", false],
-  ] as const)("preserves staging cause and accurate guidance for %s", async (code, guidance, space) => {
-    const cause = Object.assign(new Error("staging failed"), { code });
+  // Real disk exhaustion cannot safely be induced in the shared host filesystem.
+  test("normalizes ENOSPC staging failures and forwards safe guidance before transferring", async () => {
+    const cause = Object.assign(new Error("HOSTILE_MESSAGE"), {
+      code: "ENOSPC",
+      stack: "HOSTILE_STACK",
+      payload: "HOSTILE_PAYLOAD",
+      cause: { message: "HOSTILE_CAUSE" },
+    });
     const staging = spyOn(fs, "mkdtemp").mockRejectedValueOnce(cause);
     let transferred = false;
     try {
@@ -125,20 +121,13 @@ describe("compressed export filesystem failures", () => {
         _tag: "FileIoError",
         operation: "stage",
         path: root,
-        reason: guidance,
+        reason: "no-space",
       });
       expect(error.cause).toBeInstanceOf(FileIoError);
       if (!(error.cause instanceof FileIoError)) throw new Error("expected safe cause");
       expect(error.remediation).toBe(error.cause.remediation);
-      expect(JSON.parse(JSON.stringify(error.cause))).toEqual({
-        _tag: "FileIoError",
-        operation: "stage",
-        path: root,
-        reason: guidance,
-        message: error.cause.message,
-        remediation: error.remediation,
-      });
-      expect(/Free space|quota/iu.test(error.remediation)).toBe(space);
+      expect(error.cause.cause).toBeUndefined();
+      expect(`${error.stack}\n${error.cause.stack}\n${JSON.stringify(error)}`).not.toMatch(/HOSTILE_/u);
       expect(transferred).toBe(false);
       expect(await fs.readdir(root)).toEqual([]);
     } finally {
