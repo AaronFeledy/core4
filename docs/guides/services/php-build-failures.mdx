@@ -160,7 +160,7 @@ lando start
 lando info
 ```
 
-`lando start` reuses the containers from the failed attempt, runs the failed step again, and reports the steps that already succeeded as cached. Run `lando stop` first if you want the app quiet while you work on the fix.
+`lando start` reuses the containers from the failed attempt, runs the failed step again, and reports the steps that already succeeded as cached. You can run `lando stop` first if you want the app quiet while you work on the fix. The start after a stop creates new containers, so it runs every `build.app` step again, not only the one that failed.
 
 ## Read the full build output
 
@@ -260,7 +260,7 @@ Masking has limits. An ordinary build arg such as `NODE_MAJOR: "22"` is public a
 
 `lando start` is the right command after you fix a failed step. A failed step always runs again on the next start. So does a step whose inputs changed. Editing a `build.app` entry changes that step's build key. For an image, the inputs are the Dockerfile and build context contents, the build args, the service's build steps, and the base image digest Lando resolved.
 
-A step that already succeeded with the same inputs doesn't run again. Start reports it as cached, and `lando logs --build` still prints the output of the run that produced it. This holds for both phases. A second `lando start` of an app whose one `build.app` step already succeeded reports:
+A step that already succeeded with the same inputs doesn't run again while its work is still there. For an image step, that means the built image still exists. For a `build.app` step, it means the service still has the container the step ran in. Start reports such a step as cached, and `lando logs --build` still prints the output of the run that produced it. A second `lando start` of a running app whose one `build.app` step already succeeded reports:
 
 ```text
 ▼ Building app dependencies (1 step)
@@ -276,9 +276,11 @@ Run `lando rebuild` when you need a build that start would skip:
 
 A service with `pull_policy: build` builds its image on every start. See [Control when the image is pulled](./compose-passthrough.mdx#control-when-the-image-is-pulled).
 
-### After `lando destroy`
+### After the containers are replaced
 
-`lando destroy` removes the app's saved build output and forgets the results of its `build.app` steps. Those steps ran inside containers that no longer exist, so the next `lando start` runs every one of them again:
+A `build.app` step's result is good only for the container it ran in. `lando stop`, bare `lando restart`, and `lando destroy` all remove the app's containers, so the start that follows runs every `build.app` step again in the new ones. So does a `lando start` that recreates one service's container for a Landofile change, for that service. `lando restart -s <service>` keeps the container and runs no build steps. [When a step runs again](./build-steps.mdx#when-a-step-runs-again) has the full list.
+
+A successful `lando destroy` also removes the app's saved build output. This is the start after a destroy:
 
 ```text
 ▼ Building app dependencies (1 step)

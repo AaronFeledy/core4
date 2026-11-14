@@ -9,7 +9,7 @@ tags: [docs, tooling, php, composer]
 
 [Composer on PHP](composer-php.mdx) covers routing a `composer` tooling task. This guide makes `composer install` part of the build so you do not run it by hand after every `lando start`.
 
-In a PHP project with `composer.json`, add the command under `services.appserver.build.app` in `.lando.yml`. It runs on first start or when its build key changes, after the project code is mounted. `lando rebuild` forces it to run again:
+In a PHP project with `composer.json`, add the command under `services.appserver.build.app` in `.lando.yml`. Lando runs it after the project code is mounted, each time it creates the `appserver` container: on the first start, on the start after `lando stop` or `lando destroy`, and on `lando restart`. A `lando start` that keeps the container reports the step as cached. `lando rebuild` forces it to run again:
 
 ```yaml
 name: php-composer-workflows-demo
@@ -81,7 +81,7 @@ composer global require squizlabs/php_codesniffer
 
 ## Re-run after composer.json changes
 
-The first `lando start` (and every `lando rebuild`) re-runs the `build.app` composer install, downloading packages not already in the Composer cache volume. After you change `composer.json`:
+Lando doesn't read `composer.json`, so editing it doesn't change the step. A `lando start` on the running app still reports the install as cached. Every run of the step, in a new container or under `lando rebuild`, downloads only packages not already in the Composer cache volume. After you change `composer.json`, force the step:
 
 ```sh
 lando rebuild
