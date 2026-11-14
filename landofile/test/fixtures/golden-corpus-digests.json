@@ -464,6 +464,10 @@
       "digest": "38bea87cbb745818b7960bc0079e07d5e38e2e7ef3ed2f4dc0fc4b91bc452ed5"
     },
     {
+      "fixture": "docs/guides/flags-and-args/fixtures/shared-flag-names",
+      "digest": "704c9f0a578b4efe0b4f5b89ea2c456d2b70260ea4b340cb6deb3ea32696fab0"
+    },
+    {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
       "digest": "93e781d9036aeddf186f20ba3b21f899ae6f8f3f516dfc2397c81d8e8b6be7b6"
     },

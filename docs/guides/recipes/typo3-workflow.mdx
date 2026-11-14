@@ -38,7 +38,7 @@ tooling:
 
 - `allowOverride: true` lets Apache read the `public/.htaccess` TYPO3 writes, so page URLs rewrite to `index.php`.
 - `uploadDirs` is relative to the webroot, so `fileadmin` covers `public/fileadmin`. A PHP request there gets Lando's 403 page instead of running.
-- `lando typo3` runs the CLI as `www-data`, the user Apache runs as. Caches it writes stay writable by the site. `wrapper: true` sends `--help` and `--version` to the TYPO3 CLI instead of Lando.
+- `lando typo3` runs the CLI as `www-data`, the user Apache runs as. Caches it writes stay writable by the site. `wrapper: true` sends everything after `lando typo3` to the TYPO3 CLI, including `--help`, `--version`, and flags Lando also has, such as `--verbose`. Lando's own flags go before `typo3`.
 
 Check the file, then start the app:
 

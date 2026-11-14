@@ -21,6 +21,7 @@
 import { NotImplementedError } from "@lando/sdk/errors";
 
 import { findArgvFlag } from "./argv-walk";
+import { matchLandoFlag } from "./lando-flags";
 
 interface DeferredRendererSurface {
   readonly feature: string;
@@ -131,17 +132,8 @@ export const deferredRendererFlagError = (flag: string): NotImplementedError => 
  */
 export const findDeferredRendererFlag = (argv: ReadonlyArray<string>): string | undefined =>
   findArgvFlag(argv, (arg, next) => {
-    if (arg === "--tail") {
-      if (next !== undefined && !next.startsWith("-")) return undefined;
-    }
-    if (DEFERRED_RENDERER_FLAGS.has(arg)) return arg;
-    const eqIndex = arg.indexOf("=");
-    if (eqIndex > 0) {
-      const head = arg.slice(0, eqIndex);
-      if (head === "--tail") return undefined;
-      if (DEFERRED_RENDERER_FLAGS.has(head)) return head;
-    }
-    return undefined;
+    const match = matchLandoFlag(arg, next);
+    return match !== undefined && match.flag.role === "reserved" ? match.flag.spelling : undefined;
   });
 
 export const isDeferredRendererMode = (value: string): boolean => DEFERRED_RENDERER_MODES.has(value);

@@ -29,14 +29,15 @@ import {
   runCompiledCommand,
   setActiveCommandId,
 } from "../compiled-runtime";
+import type { CommandTokens } from "../invocation";
 
 export const runMetaUninstall = async (
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   signal?: AbortSignal,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:uninstall", argv, context)) return;
-  const input = compiledCommandInputFromArgv("meta:uninstall", argv, { context });
+  if (await rejectInvalidInvocation("meta:uninstall", tokens.argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:uninstall", tokens.argv, { tokens, context });
   return runCompiledCommand(
     uninstall(uninstallOptionsFromInput(input)),
     Layer.mergeAll(
@@ -50,12 +51,12 @@ export const runMetaUninstall = async (
 };
 
 export const runMetaMcp = async (
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   signal?: AbortSignal,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:mcp", argv, context)) return;
-  const input = compiledCommandInputFromArgv("meta:mcp", argv, { context });
+  if (await rejectInvalidInvocation("meta:mcp", tokens.argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:mcp", tokens.argv, { tokens, context });
   const flags = mcpFlagsFromParsed(input.flags);
   const commandRuntime = resolveCompiledCommandRuntime(
     "meta:mcp",
@@ -104,14 +105,14 @@ export const runMetaVersion = async (context?: CliInvocationContext): Promise<vo
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
 export const runMetaShellenv = async (
-  argv: ReadonlyArray<string> = [],
+  tokens: CommandTokens,
   signal?: AbortSignal,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:shellenv", argv, context)) return;
-  const input = compiledCommandInputFromArgv("meta:shellenv", argv, { context });
+  if (await rejectInvalidInvocation("meta:shellenv", tokens.argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:shellenv", tokens.argv, { tokens, context });
   const shell = input.flags.shell;
-  if (argv.includes("--shell") && shell === undefined) {
+  if (tokens.argv.includes("--shell") && shell === undefined) {
     await emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh", context);
     context.setExitCode(2);
     return;

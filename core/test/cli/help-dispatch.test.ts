@@ -111,3 +111,91 @@ describe("help dispatcher special", () => {
     ).toHaveLength(nonHiddenBuiltInCount);
   });
 });
+
+describe("help command flag legality", () => {
+  test.each([{ argv: ["help", "info", "--version"] }, { argv: ["help", "-v"] }])(
+    "Given $argv, when dispatched, then the help command rejects the Lando control",
+    async ({ argv }) => {
+      // Given / When
+      const result = await runCli(argv);
+
+      // Then
+      expect(result.exitCode).toBe(2);
+      expect(`${result.stdout}\n${result.stderr}`).toContain("UnknownCliFlagError");
+    },
+  );
+
+  test("Given help info --help, when dispatched, then command help renders", async () => {
+    // Given / When
+    const result = await runCli(["help", "info", "--help"]);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("USAGE");
+  });
+
+  test("Given -- --format=json, when dispatched, then root text help renders", async () => {
+    // Given / When
+    // Bun consumes the first `--` before the script path; a compiled binary passes one.
+    const result = await runCli(["--", "--", "--format=json"]);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("COMMON");
+  });
+
+  test("Given --json --help, when dispatched, then the machine catalog renders", async () => {
+    // Given / When
+    const result = await runCli(["--json", "--help"]);
+    const envelope = JSON.parse(result.stdout) as {
+      result: { sections: { common: ReadonlyArray<unknown> } };
+    };
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(envelope).toMatchObject({ command: "cli:help", ok: true });
+    expect(envelope.result.sections.common.length).toBeGreaterThan(0);
+  });
+
+  test("Given help info --json --jq ., when dispatched, then help wins over the conflict check", async () => {
+    // Given / When
+    const result = await runCli(["help", "info", "--json", "--jq", "."]);
+
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+  });
+
+  test("Given an unknown command with --version outside an app, then Lando's version is not printed", async () => {
+    // Given / When
+    const result = await runCli(["bogus", "--version"]);
+
+    // Then
+    expect(result.exitCode).toBe(2);
+    expect(`${result.stdout}\n${result.stderr}`).toContain('Unknown command "bogus".');
+  });
+});
+
+test("Given the machine catalog, when rendered, then rows carry no flag placement", async () => {
+  // Given / When
+  const result = await runCli(["help", "--format=json"]);
+  const envelope = JSON.parse(result.stdout) as {
+    result: {
+      sections: {
+        common: ReadonlyArray<Record<string, unknown>>;
+        more: ReadonlyArray<Record<string, unknown>>;
+      };
+      all: ReadonlyArray<Record<string, unknown>>;
+    };
+  };
+
+  // Then only help targets describe placement, not catalog rows
+  expect(result.exitCode, result.stderr).toBe(0);
+  for (const row of [
+    ...envelope.result.sections.common,
+    ...envelope.result.sections.more,
+    ...envelope.result.all,
+  ]) {
+    expect("landoFlags" in row).toBe(false);
+  }
+});

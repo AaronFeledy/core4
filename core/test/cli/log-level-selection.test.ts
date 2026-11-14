@@ -130,6 +130,12 @@ describe("extractLogLevelFlags", () => {
     expectRemediationListsLevels(error.remediation);
   });
 
+  test("throws LogLevelSelectionError for an adjacent empty --log-level value", () => {
+    const error = expectLogLevelSelectionError(() => extractLogLevelFlags(["--log-level", ""]));
+    expect(error.value).toBe("");
+    expect(error.message).toContain("Unsupported log level value");
+  });
+
   test("throws LogLevelSelectionError when --log-level is followed by another flag", () => {
     const error = expectLogLevelSelectionError(() => extractLogLevelFlags(["--log-level", "--debug"]));
     expect(error.source).toBe("flag");

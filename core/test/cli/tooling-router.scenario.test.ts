@@ -341,22 +341,17 @@ test.each([true, false])(
       ]);
 
       // Then
-      expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(
-        wrapper ? 0 : 1,
-      );
-      expect(lastEnvelope(compiledResult.stdout)).toMatchObject(
-        wrapper
-          ? {
-              command: "app:inspect-argv",
-              ok: true,
-              result: { stdout: "dynamic-version-ok --version\n" },
-            }
-          : {
-              command: "app:inspect-argv",
-              ok: false,
-              error: { _tag: "ToolingInputError", field: "version", tool: "app:inspect-argv" },
-            },
-      );
+      if (wrapper) {
+        expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
+        expect(compiledResult.stdout).toBe("dynamic-version-ok --version --format=json\n");
+      } else {
+        expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(2);
+        expect(lastEnvelope(compiledResult.stdout)).toMatchObject({
+          command: "app:inspect-argv",
+          ok: false,
+          error: { _tag: "ToolingInputError", field: "version", tool: "app:inspect-argv" },
+        });
+      }
     } finally {
       await compiled.cleanup();
     }
@@ -584,3 +579,306 @@ import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/t
 import { Result as FixtureResult } from "effect";
 
 const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);
+const writeFlagOwnershipTasks = async (fixture: RouterFixture): Promise<void> => {
+  await writeFile(
+    join(fixture.root, ".lando.yml"),
+    [
+      "name: flag-ownership",
+      "tooling:",
+      "  build:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      verbose:",
+      "        boolean: true",
+      "  report:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      format:",
+      "        description: Task format",
+      "  release:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      label:",
+      "        description: Release label",
+      "  stamp:",
+      '    service: ":host"',
+      "    cmd: echo ARGV",
+      "    flags:",
+      "      version:",
+      "        description: Version to stamp",
+      "      help:",
+      "        description: Help topic",
+      "  wrap:",
+      '    service: ":host"',
+      "    cmd: echo WRAP",
+      "    wrapper: true",
+      "  plain:",
+      '    service: ":host"',
+      "    cmd: echo PLAIN",
+      "",
+    ].join("\n"),
+  );
+  const scripts = join(fixture.root, ".lando", "scripts");
+  await mkdir(scripts, { recursive: true });
+  await writeFile(
+    join(scripts, "probe.bun.sh"),
+    [
+      "# ---",
+      "# desc: Probe declared flags",
+      '# service: ":host"',
+      "# flags:",
+      "#   format:",
+      "#     description: Script format",
+      "# ---",
+      'echo "SCRIPT $1"',
+      "",
+    ].join("\n"),
+  );
+};
+
+test.each([
+  {
+    name: "a task-declared verbose flag reaches the task after its name",
+    argv: ["build", "--verbose"],
+    expected: { command: "app:build", result: { stdout: "ARGV --verbose\n" } },
+  },
+  {
+    name: "a verbose flag before the task name stays Lando's",
+    argv: ["--verbose", "build"],
+    expected: { command: "app:build", result: { stdout: "ARGV\n" } },
+  },
+  {
+    name: "a task-declared format flag reaches the task instead of Lando",
+    argv: ["report", "--format=csv"],
+    expected: { command: "app:report", result: { stdout: "ARGV --format=csv\n" } },
+  },
+  {
+    name: "a task flag and Lando's envelope apply when the task does not declare format",
+    argv: ["build", "--verbose", "--format=json"],
+    expected: { command: "app:build", result: { stdout: "ARGV --verbose\n" } },
+  },
+  {
+    name: "a wrapper task receives every token after its name",
+    argv: ["wrap", "status", "--format=csv", "--verbose"],
+    expected: { command: "app:wrap", result: { stdout: "WRAP status --format=csv --verbose\n" } },
+  },
+  {
+    name: "a leading -- is dropped once for a declared task",
+    argv: ["build", "--", "--verbose"],
+    expected: { command: "app:build", result: { stdout: "ARGV --verbose\n" } },
+  },
+  {
+    name: "a .bun.sh script owns a declared format flag",
+    argv: ["probe", "--format=csv"],
+    expected: { command: "app:probe", result: { stdout: "SCRIPT --format=csv\n" } },
+  },
+  {
+    name: "help for a declared-format task stays Lando's",
+    argv: ["help", "report", "--format=json"],
+    expected: {
+      command: "cli:help",
+      result: { target: { canonicalId: "app:report", source: "tooling" } },
+    },
+  },
+])(
+  "$name",
+  async ({ argv, expected }) => {
+    const fixture = await makeFixture("flag-ownership");
+    try {
+      await writeFlagOwnershipTasks(fixture);
+      const result = await runSource(fixture, ["--renderer=plain", "--format=json", ...argv]);
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(lastEnvelope(result.stdout)).toMatchObject({ ok: true, ...expected });
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+  60_000,
+);
+
+test("a declared value flag followed by a Lando flag is a missing value, not the next word", async () => {
+  const fixture = await makeFixture("flag-missing-value");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const result = await runSource(fixture, ["--format=json", "report", "--format", "--trace", "csv"]);
+    expect(result.exitCode).toBe(1);
+    expect(lastEnvelope(result.stdout)).toMatchObject({
+      ok: false,
+      command: "app:report",
+      error: { _tag: "ToolingInputError", field: "format" },
+    });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);
+
+test("an undeclared format flag still rejects an unsupported Lando result format", async () => {
+  const fixture = await makeFixture("flag-task-and-envelope");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const rejected = await runSource(fixture, ["build", "--verbose", "--format=csv"]);
+    expect(rejected.exitCode).toBe(2);
+    expect(`${rejected.stdout}\n${rejected.stderr}`).toContain(
+      'Unsupported result format value "csv" from flag',
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);
+
+test("a declared string flag owns --help as its value slot", async () => {
+  const fixture = await makeFixture("flag-label-help");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const result = await runSource(fixture, ["--format=json", "release", "--label", "--help"]);
+    expect(result.exitCode).toBe(1);
+    expect(lastEnvelope(result.stdout)).toMatchObject({
+      ok: false,
+      command: "app:release",
+      error: { _tag: "ToolingInputError", field: "label" },
+    });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);
+
+test.each([
+  { argv: ["stamp", "--version", "--renderer=bogus"], field: "version" },
+  { argv: ["stamp", "--help", "--format=csv"], field: "help" },
+])(
+  "a declared value flag named like a Lando control owns $argv.2 as its value slot",
+  async ({ argv, field }) => {
+    const fixture = await makeFixture(`flag-${field}-slot`);
+    try {
+      await writeFlagOwnershipTasks(fixture);
+      const result = await runSource(fixture, ["--format=json", ...argv]);
+      expect(result.exitCode).toBe(1);
+      expect(lastEnvelope(result.stdout)).toMatchObject({
+        ok: false,
+        command: "app:stamp",
+        error: { _tag: "ToolingInputError", field },
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+  60_000,
+);
+
+test("machine tooling help carries flag placement for ordinary, declaring, and wrapper tasks", async () => {
+  const fixture = await makeFixture("flag-placement");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const cases = [
+      { task: "plain", afterName: "until-separator", includes: ["--version", "-v"] },
+      { task: "report", afterName: "until-separator", includes: ["--format", "--version", "-v"] },
+      { task: "wrap", afterName: "none", includes: [] },
+    ] as const;
+    for (const entry of cases) {
+      const result = await runSource(fixture, ["--renderer=plain", "--format=json", "help", entry.task]);
+      expect(result.exitCode, result.stderr).toBe(0);
+      const target = (
+        lastEnvelope(result.stdout) as {
+          result: { target: { landoFlags: { afterName: string; commandOwned: ReadonlyArray<string> } } };
+        }
+      ).result.target;
+      expect(target.landoFlags.afterName).toBe(entry.afterName);
+      if (entry.task === "wrap") expect(target.landoFlags.commandOwned).toEqual([]);
+      for (const spelling of entry.includes) expect(target.landoFlags.commandOwned).toContain(spelling);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+}, 60_000);
+
+test("a flag typed after a task name explains Lando's ownership", async () => {
+  const fixture = await makeFixture("flag-ownership-guidance");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+    const cases = [
+      {
+        argv: ["--format=json", "build", "--format=csv"],
+        tag: "RendererSelectionError",
+        typed: "--format=csv",
+        original: "Use --format=<value>",
+        machine: true,
+      },
+      {
+        argv: ["--format=json", "build", "--format=table"],
+        tag: "RendererSelectionError",
+        typed: "--format=table",
+        original: "does not support result format",
+        machine: false,
+      },
+      {
+        argv: ["--format=json", "build", "--renderer=bogus"],
+        tag: "RendererSelectionError",
+        typed: "--renderer=bogus",
+        original: "Use --renderer=<value>",
+        machine: true,
+      },
+      {
+        argv: ["--format=json", "build", "--log-level=bogus"],
+        tag: "LogLevelSelectionError",
+        typed: "--log-level=bogus",
+        original: "Use --log-level=<value>",
+        machine: true,
+      },
+    ] as const;
+    for (const entry of cases) {
+      const result = await runSource(fixture, entry.argv);
+      expect(result.exitCode, result.stderr).not.toBe(0);
+      const output = `${result.stdout}\n${result.stderr}`;
+      const remediation = entry.machine
+        ? String((lastEnvelope(result.stdout).error as { remediation?: unknown }).remediation)
+        : output;
+      if (entry.machine) expect(lastEnvelope(result.stdout).error).toMatchObject({ _tag: entry.tag });
+      else expect(output).toContain(entry.tag);
+      expect(remediation).toContain(entry.original);
+      expect(remediation).toContain(`\`${entry.typed.split("=")[0]}\` after \`build\``);
+      expect(remediation).toContain(`lando build -- ${entry.typed}`);
+      expect(remediation).toContain("wrapper: true");
+      expect(remediation).toContain(`lando ${entry.typed.split("=")[0]}=<value> build`);
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120_000);
+
+test("a task's later selection flag wins attribution and env/config failures stay unexplained", async () => {
+  const fixture = await makeFixture("flag-ownership-attribution");
+  try {
+    await writeFlagOwnershipTasks(fixture);
+
+    const both = await runSource(fixture, ["--format=json", "build", "--format=bogus", "--renderer=bogus"]);
+    const bothRemediation = String(
+      (lastEnvelope(both.stdout).error as { remediation?: unknown }).remediation,
+    );
+    expect(bothRemediation).toContain("`--renderer` after `build`");
+    expect(bothRemediation).not.toContain("`--format` after `build`");
+
+    fixture.env.LANDO_RENDERER = "bogus";
+    const viaEnv = await runSource(fixture, ["--format=json", "build", "--jq=x"]);
+    expect(viaEnv.exitCode).toBe(2);
+    expect(lastEnvelope(viaEnv.stdout).error).toMatchObject({ _tag: "RendererSelectionError" });
+    const envRemediation = String(
+      (lastEnvelope(viaEnv.stdout).error as { remediation?: unknown }).remediation,
+    );
+    expect(envRemediation).not.toContain("wrapper: true");
+    fixture.env.LANDO_RENDERER = "lando";
+
+    const beforeName = await runSource(fixture, ["--format=json", "--renderer=bogus", "build"]);
+    expect(beforeName.exitCode).toBe(2);
+    expect(lastEnvelope(beforeName.stdout).error).toMatchObject({ _tag: "RendererSelectionError" });
+    expect(`${beforeName.stdout}\n${beforeName.stderr}`).not.toContain("wrapper: true");
+
+    const wrapper = await runSource(fixture, ["--format=json", "wrap", "--renderer=bogus"]);
+    expect(wrapper.exitCode, wrapper.stderr).toBe(0);
+    expect(lastEnvelope(wrapper.stdout)).toMatchObject({ ok: true });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120_000);

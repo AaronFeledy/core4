@@ -1,4 +1,4 @@
-type FlagDefinition = {
+export type FlagDefinition = {
   readonly name: string;
   readonly boolean: boolean;
   readonly integer: boolean;

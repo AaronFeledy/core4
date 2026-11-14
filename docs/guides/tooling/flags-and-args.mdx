@@ -161,9 +161,42 @@ Set `sensitive: true` on a flag or argument, including one named `note` or anoth
 
 Values remain literal: this annotation does not enable expressions or secret-provider lookup. Lando redacts supplied sensitive values before its output, errors, events, or traces become observable, including invalid, stale, and disabled calls. It cannot protect arbitrary files or external logs written by your command. Use the [fake-value script example](../bun-shell-scripts/#mark-sensitive-inputs) to verify the boundary without exposing a real credential.
 
+## Use a flag name Lando also has
+
+Lando has flags of its own: `--format`, `--json`, `-j`, `--jq`, `--renderer`, `--verbose`, `--debug`, `--log-level`, and `--trace`. Before the task name they're always Lando's. After the task name, a flag your task declares belongs to the task, even when Lando has one with the same spelling:
+
+```yaml
+tooling:
+  summary:
+    description: Summarize the last build
+    service: ":host"
+    flags:
+      verbose:
+        boolean: true
+        description: Include every step
+      format:
+        description: Summary format
+    cmd: echo "verbose={{ default(flags.verbose, false) }} format={{ default(flags.format, 'none') }}"
+```
+
+| You run | The task prints | Lando's own output |
+| --- | --- | --- |
+| `lando summary --verbose` | `verbose=true format=none` | Normal |
+| `lando --verbose summary` | `verbose=false format=none` | Verbose event dump |
+| `lando summary --format=csv` | `verbose=false format=csv` | Normal |
+| `lando --format=json summary --format=csv` | `verbose=false format=csv` | JSON envelope, with that line in `result.stdout` |
+
+An alias counts too. A flag declared with `alias: j` owns `-j` after the task name, and `lando -j <task>` still asks Lando for JSON. `lando summary --help` ends with a reminder that names the flags the task took over:
+
+```
+`--verbose`, `--format` after `summary` are this command's flags. Put Lando's own before the name, as in `lando --verbose summary`.
+```
+
+A Lando flag the task doesn't declare stays Lando's after the name. If `summary` declared only `verbose`, `lando summary --verbose --format=json` would set the task's `verbose` and return Lando's JSON envelope. `.bun.sh` scripts that declare flags follow the same rule; [Declare flags and read inputs by name](./bun-shell-scripts.mdx#declare-flags-and-read-inputs-by-name) has a script you can run.
+
 ## Forward undeclared input
 
-Declaring input is opt-in. A task with no `flags:` or `args:` forwards your input straight to the command. Set `wrapper: true` when the task is a thin wrapper around one CLI tool, so help and version requests reach it too:
+Declaring input is opt-in. A task with no `flags:` or `args:` forwards your input straight to the command. Set `wrapper: true` when the task is a thin wrapper around one CLI tool. Everything after the task name then goes to that tool, including flags Lando also has:
 
 ```yaml
 tooling:
@@ -173,13 +206,21 @@ tooling:
     wrapper: true
 ```
 
-`lando npm install --save-dev vitest` hands `install --save-dev vitest` to `npm` untouched. Add `flags:` only when you want Lando to check the input first. Raw tails are for undeclared passthrough, not a way to fill gaps in named arguments. Do not mix declared named input with a raw tail; Lando rejects the ambiguous call. Prefer named maps for declared MCP, event, and library inputs.
+`lando npm install --save-dev vitest` hands `install --save-dev vitest` to `npm` untouched. `lando npm ls --json` hands over `ls --json` the same way, and `lando npm --help`, `lando npm -h`, and `lando npm --version` all go to npm. To use one of Lando's flags with a wrapper, put it before the task name: `lando --format=json npm ls` returns Lando's result envelope. `lando help npm` shows Lando's help for the wrapper, which ends with the same rule:
 
-With `wrapper: true`, `lando npm --help`, `lando npm -h`, and `lando npm --version` go to npm. A wrapper must have exactly one command (`cmd`, including an argv list, or one entry in `cmds`), no declared flags or args, and must not set `arguments: false`. A wrapper that breaks these rules fails with `ToolingCompileError` when you run it, and `lando app:config:lint` reports it beforehand. Move the extra steps to another task or drop `wrapper: true`.
+```
+Arguments and flags after `npm` go to the command. Put Lando's own flags before it, as in `lando --verbose npm`. Run `lando help npm` to see this page.
+```
 
-Without `wrapper: true`, Lando answers `-h` and `--help` itself and does not run the task, even when the task is a single command. Either spelling works anywhere before the first `--`. A declared flag named `help` or aliased to `h` owns both spellings instead. `lando help <task>` shows Lando's help for any enabled task, including a wrapper.
+Lando drops one `--` right after the task name, so `lando npm -- ls` also runs `npm ls`.
 
-To pass help to a non-wrapper task, put it after a leading `--`. For example, with this task in your Landofile:
+Add `flags:` only when you want Lando to check the input first. Raw tails are for undeclared passthrough, not a way to fill gaps in named arguments. Do not mix declared named input with a raw tail; Lando rejects the ambiguous call. Prefer named maps for declared MCP, event, and library inputs.
+
+A wrapper must have exactly one command (`cmd`, including an argv list, or one entry in `cmds`), no declared flags or args, and must not set `arguments: false`. A wrapper that breaks these rules fails with `ToolingCompileError` when you run it, and `lando app:config:lint` reports it beforehand. Move the extra steps to another task or drop `wrapper: true`.
+
+Without `wrapper: true`, an undeclared task still forwards its arguments, but Lando reads its own flags anywhere before the first `--`. Lando also answers `-h` and `--help` itself and does not run the task, even when the task is a single command. A declared flag named `help` or aliased to `h` owns both spellings instead. `lando help <task>` shows Lando's help for any enabled task, including a wrapper.
+
+To pass help, or a flag Lando also has, to a non-wrapper task that doesn't declare it, put it after a leading `--`. For example, with this task in your Landofile:
 
 ```yaml
 tooling:
@@ -188,7 +229,11 @@ tooling:
     cmd: npm run build
 ```
 
-Run `lando build -- --help`. Lando consumes only the `--` right after the task name; everything after it, including another `--`, reaches the command unchanged.
+Run `lando build -- --help` or `lando build -- --format=csv`. Lando consumes only the `--` right after the task name; everything after it, including another `--`, reaches the command unchanged. Without the `--`, `lando build --format=csv` fails with `RendererSelectionError` because Lando reads `--format` and `csv` is not one of its formats. The error names the task and your options:
+
+```
+`--format` after `build` is read by Lando. To pass it to the command, run `lando build -- --format=csv`, declare a `format` flag on the task, or set `wrapper: true` if the task wraps one CLI tool. Lando's own `--format` also works before the name: `lando --format=<value> build`.
+```
 
 A lone `lando build --version` fails with `ToolingInputError` before execution because a project task has no version of its own. Run `lando version` for Lando's version, or `lando build -- --version` to pass the option to the command. A declared flag named `version` owns that input instead. `--version` with other tokens is ordinary input. `.bun.sh` scripts follow the same help and lone-version rules; `wrapper` is not a front-matter key.
 
@@ -358,7 +403,7 @@ This object can merge with an object task from a lower config layer. An authored
 For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. From the next invocation on, it is hidden from listings, help, and the MCP tooling catalog, and direct calls fail with `ToolingDisabledError` without running the body.
 
 <Guide>
-  <Scenario id="raw-help-forwarding" render={false} reason="Only explicit wrappers forward help; a single script command must not run">
+  <Scenario id="raw-help-forwarding" render={false} reason="A wrapper owns every flag after its name; an undeclared plain task leaves Lando its flags and help">
     <Step name="prepare-forwarding">
       <UseFixture name="help-forwarding" />
     </Step>
@@ -367,7 +412,20 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
       <Verify command="lando check-marker --format=json" expect={{ stdout: { regex: "absent\\\\n" } }} />
     </Step>
     <Step name="forward-wrapper-help">
-      <Verify command="lando wrapped --help --format=json" expect={{ stdout: { regex: "forwarded --help" } }} />
+      <Verify command="lando wrapped --help" expect={{ stdout: "forwarded --help\n" }} />
+      <Verify command="lando --format=json wrapped --help" expect={{ stdout: { regex: "\"command\":\"app:wrapped\"[\\s\\S]*\"stdout\":\"forwarded --help\\\\n\"" } }} />
+    </Step>
+    <Step name="forward-every-flag-after-a-wrapper">
+      <Verify command="lando wrapped status --format=csv --verbose --version" expect={{ stdout: "forwarded status --format=csv --verbose --version\n" }} />
+      <Verify command="lando --format=json wrapped status --format=csv" expect={{ stdout: { regex: "\"command\":\"app:wrapped\"[\\s\\S]*\"stdout\":\"forwarded status --format=csv\\\\n\"" } }} />
+      <Verify command="lando wrapped -- --format=csv" expect={{ stdout: "forwarded --format=csv\n" }} />
+      <Verify command="lando help wrapped" expect={{ stdout: { regex: "Arguments and flags after `wrapped` go to the command\\." } }} />
+    </Step>
+    <Step name="keep-lando-flags-on-an-undeclared-task">
+      <Verify command="lando plain --format=csv" expectExit={2} expect={{ stderr: { regex: "`--format` after `plain` is read by Lando[\\s\\S]*`lando plain -- --format=csv`[\\s\\S]*`lando --format=<value> plain`[\\s\\S]*RendererSelectionError" } }} />
+      <Verify command="lando check-marker --format=json" expect={{ stdout: { regex: "absent\\\\n" } }} />
+      <Verify command="lando plain -- --format=csv" expect={{ stdout: "" }} />
+      <Verify command="lando check-marker --format=json" expect={{ stdout: { regex: "present\\\\n" } }} />
     </Step>
     <Step name="cleanup-forwarding">
       <Cleanup />
@@ -381,6 +439,22 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
       <Verify command="lando invalid --format=json" expectExit={1} expect={{ stdout: { regex: "ToolingCompileError[\\s\\S]*exactly one command" } }} />
     </Step>
     <Step name="cleanup-invalid-wrapper">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="declared-flag-shares-a-lando-flag-name" render={false} reason="Proves each row of the table in the section on flag names Lando also has">
+    <Step name="prepare-shared-flag-names">
+      <UseFixture name="shared-flag-names" />
+    </Step>
+    <Step name="declared-flags-go-to-the-task">
+      <Verify command="lando --format=json summary --verbose" expect={{ stdout: { regex: "\"command\":\"app:summary\"[\\s\\S]*\"stdout\":\"verbose=true format=none\\\\n\"" } }} />
+      <Verify command="lando --format=json summary --format=csv" expect={{ stdout: { regex: "\"command\":\"app:summary\"[\\s\\S]*\"stdout\":\"verbose=false format=csv\\\\n\"" } }} />
+    </Step>
+    <Step name="lando-flags-before-the-name-stay-landos">
+      <Verify command="lando --format=json --verbose summary" expect={{ stdout: { regex: "\"stdout\":\"verbose=false format=none\\\\n\"" } }} />
+      <Verify command="lando summary --help" expect={{ stdout: { regex: "`--verbose`, `--format` after `summary`[\\s\\S]*`lando --verbose summary`" } }} />
+    </Step>
+    <Step name="cleanup-shared-flag-names">
       <Cleanup />
     </Step>
   </Scenario>

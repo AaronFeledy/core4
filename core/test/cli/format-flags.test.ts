@@ -15,6 +15,16 @@ import {
   universalFormatFlagDefs,
 } from "../../src/cli/format-flags.ts";
 
+const expectRendererError = (run: () => unknown): RendererSelectionError => {
+  try {
+    run();
+    expect.unreachable();
+  } catch (error) {
+    if (!(error instanceof RendererSelectionError)) throw error;
+    return error;
+  }
+};
+
 describe("format-flags constants", () => {
   test("RESULT_FORMATS lists supported command result formats", () => {
     expect(RESULT_FORMATS).toEqual(["text", "json", "table", "yaml", "ndjson"]);
@@ -202,6 +212,24 @@ describe("extractFormatFlags", () => {
       expect(tagged.source).toBe("flag");
       expect(tagged.value).toBe("");
     }
+  });
+
+  test("accepts an adjacent empty --jq value", () => {
+    const result = extractFormatFlags(["info", "--jq", ""]);
+    expect(result.jq).toBe("");
+    expect(result.json).toBe(true);
+    expect(result.remainingArgv).toEqual(["info"]);
+  });
+
+  test("rejects an attached empty --format= value as missing", () => {
+    const error = expectRendererError(() => extractFormatFlags(["info", "--format="]));
+    expect(error.message).toContain("--format requires a value");
+  });
+
+  test("rejects an adjacent empty --format value as unsupported", () => {
+    const error = expectRendererError(() => extractFormatFlags(["info", "--format", ""]));
+    expect(error.message).toContain("Unsupported result format value");
+    expect(error.value).toBe("");
   });
 
   test("tracks explicit --format and --json while stripping both", () => {

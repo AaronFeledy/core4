@@ -11,14 +11,29 @@ import { AppPlanner, CommandRegistry, RuntimeProviderRegistry } from "@lando/sdk
 import { Effect, Result, Schema } from "effect";
 import { renderColdAllHelp, renderColdRootHelp } from "../../src/cli/cold-path-output.ts";
 import { HelpCatalogResult, buildHelpCatalog } from "../../src/cli/compiled-help.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
+import { ownerPolicy } from "../../src/cli/invocation-owner.ts";
 import { renderPreCommandFailure } from "../../src/cli/spec/command-boundary.ts";
 import { toolingMetadataStatus } from "../../src/cli/tooling-cache-status.ts";
 import { readCliAppCommandCache } from "../../src/cli/tooling-command-cache.ts";
-import {
-  resolveToolingRoute,
-  toolingHelpRequested,
-  toolingRouteFailure,
-} from "../../src/cli/tooling-router.ts";
+import { type ToolingRoute, resolveToolingRoute, toolingRouteFailure } from "../../src/cli/tooling-router.ts";
+
+const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
+  switch (route._tag) {
+    case "tooling":
+    case "bun-script":
+      return splitCommandTokens(argv, ownerPolicy({ kind: "tooling", route })).help;
+    case "built-in":
+    case "plugin":
+    case "not-tooling":
+    case "alias-disabled":
+    case "cache-miss":
+    case "unknown-tooling":
+      return false;
+    default:
+      return route satisfies never;
+  }
+};
 
 const states = ["missing", "stale", "invalid", "unknown"] as const;
 type State = (typeof states)[number];
@@ -46,7 +61,7 @@ test.each([
       (error) => error,
     );
     // When
-    const requested = toolingHelpRequested(
+    const requested = helpRequested(
       {
         _tag: "tooling",
         commandId: "app:empty",
