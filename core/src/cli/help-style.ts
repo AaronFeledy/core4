@@ -15,18 +15,7 @@ export const cyan = (text: string): string => wrap(SGR.cyan, text);
 export type ShouldStyleHelpInput = {
   readonly isTTY: boolean;
   readonly env: Readonly<Record<string, string | undefined>>;
-  readonly argv: ReadonlyArray<string>;
   readonly rendererMode: string | undefined;
-};
-
-const hasJsonOutputFlag = (argv: ReadonlyArray<string>): boolean => {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--") return false;
-    if (arg === "--json" || arg === "-j" || arg === "--format=json") return true;
-    if (arg === "--format" && argv[index + 1] === "json") return true;
-  }
-  return false;
 };
 
 // Keep this predicate local: cold-path help must not import the renderer runtime.
@@ -36,7 +25,6 @@ export const shouldStyleHelp = (input: ShouldStyleHelpInput): boolean => {
     input.isTTY &&
     input.env.TERM !== "dumb" &&
     (noColor === undefined || noColor === "") &&
-    !hasJsonOutputFlag(input.argv) &&
     (input.rendererMode === undefined || input.rendererMode === "lando")
   );
 };

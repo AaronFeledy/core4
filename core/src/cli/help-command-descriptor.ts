@@ -56,28 +56,53 @@ const fields = {
   extras: Schema.Array(Schema.String),
   summary: Schema.String,
 };
-export const HelpCommandDescriptor = Schema.Union([
-  Schema.Struct({
-    ...fields,
-    source: Schema.Literal("built-in"),
-    input: Schema.optionalKey(HelpCommandInput),
+
+const builtInDescriptor = Schema.Struct({
+  ...fields,
+  source: Schema.Literal("built-in"),
+  input: Schema.optionalKey(HelpCommandInput),
+});
+
+const toolingDescriptor = Schema.Struct({
+  ...fields,
+  source: Schema.Literal("tooling"),
+  loadError: Schema.optionalKey(PluginCommandDiagnostic),
+  input: Schema.optionalKey(ToolingInputDeclaration),
+  runs: Schema.optionalKey(ToolingRunSummary).annotate({
+    description: "Bounded summary of what this task runs.",
   }),
-  Schema.Struct({
-    ...fields,
-    source: Schema.Literal("tooling"),
-    loadError: Schema.optionalKey(PluginCommandDiagnostic),
-    input: Schema.optionalKey(ToolingInputDeclaration),
-    runs: Schema.optionalKey(ToolingRunSummary).annotate({
-      description: "Bounded summary of what this task runs.",
-    }),
+});
+
+const pluginDescriptor = Schema.Struct({
+  ...fields,
+  source: Schema.Literal("plugin"),
+  input: Schema.optionalKey(HelpCommandInput),
+  plugin: Schema.String,
+  provenance: Schema.optionalKey(Schema.Literals(["bundled", "system", "user", "app", "explicit"])),
+  implementation: Schema.optionalKey(Schema.Literals(["discovered", "validated"])),
+  loadError: Schema.optionalKey(PluginCommandDiagnostic),
+});
+
+/** One catalog row: what a command is and where it came from. Catalog rows carry no placement data. */
+export const HelpCommandDescriptor = Schema.Union([builtInDescriptor, toolingDescriptor, pluginDescriptor]);
+
+export const HelpLandoFlags = Schema.Struct({
+  afterName: Schema.Literals(["until-separator", "command-tail", "none"]).annotate({
+    description:
+      "Where Lando still reads its own flags after the command name: until-separator (up to the first --), command-tail (up to the command's tail), or none (only before the name).",
   }),
-  Schema.Struct({
-    ...fields,
-    source: Schema.Literal("plugin"),
-    input: Schema.optionalKey(HelpCommandInput),
-    plugin: Schema.String,
-    provenance: Schema.optionalKey(Schema.Literals(["bundled", "system", "user", "app", "explicit"])),
-    implementation: Schema.optionalKey(Schema.Literals(["discovered", "validated"])),
-    loadError: Schema.optionalKey(PluginCommandDiagnostic),
+  commandOwned: Schema.Array(Schema.String).annotate({
+    description:
+      "Lando flag spellings the command reads itself where Lando would otherwise read them; empty when afterName is none, because then every token after the name is the command's.",
   }),
+}).annotate({
+  identifier: "HelpLandoFlags",
+  description: "Placement of Lando's own flags for one help target.",
+});
+
+/** A help target: the catalog row plus the required flag-placement field. */
+export const HelpCommandTargetDescriptor = Schema.Union([
+  Schema.Struct({ ...builtInDescriptor.fields, landoFlags: HelpLandoFlags }),
+  Schema.Struct({ ...toolingDescriptor.fields, landoFlags: HelpLandoFlags }),
+  Schema.Struct({ ...pluginDescriptor.fields, landoFlags: HelpLandoFlags }),
 ]);
