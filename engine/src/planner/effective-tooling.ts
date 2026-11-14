@@ -32,18 +32,24 @@ export const compareOrdinal = (left: string, right: string): number =>
 const sortedTooling = (tooling: EffectiveTooling): EffectiveTooling =>
   Object.fromEntries(Object.entries(tooling).sort(([left], [right]) => compareOrdinal(left, right)));
 
+export const toolingContributors = (services: ReadonlyArray<ToolingServiceContribution>) => {
+  const winners = new Map<string, ToolingServiceContribution>();
+  for (const service of [...services].sort((left, right) => compareOrdinal(left.name, right.name))) {
+    for (const name of Object.keys(service.tooling ?? {}).sort(compareOrdinal)) {
+      if (!winners.has(name)) winners.set(name, service);
+    }
+  }
+  return winners;
+};
+
 export const toolingBeforeDefaults = (input: {
   readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults">;
   readonly services: ReadonlyArray<ToolingServiceContribution>;
 }): EffectiveTooling => {
   const contributed: Record<string, ToolingTaskShape> = {};
-  for (const service of [...input.services].sort((left, right) => compareOrdinal(left.name, right.name))) {
-    for (const [name, task] of Object.entries(service.tooling ?? {}).sort(([left], [right]) =>
-      compareOrdinal(left, right),
-    )) {
-      if (contributed[name] !== undefined) continue;
-      contributed[name] = { service: service.name, ...task };
-    }
+  for (const [name, service] of toolingContributors(input.services)) {
+    const task = service.tooling?.[name];
+    if (task !== undefined) contributed[name] = { service: service.name, ...task };
   }
 
   return { ...contributed, ...input.landofile.tooling };
