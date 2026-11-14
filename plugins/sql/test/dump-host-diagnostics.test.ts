@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DataTransferError, FileIoError } from "@lando/sdk/errors";
+import { PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { Cause, Effect, Exit, Option } from "effect";
 import { writeDumpTransform } from "../src/compression.ts";
 import { prepareImportDump } from "../src/dump-file.ts";
@@ -46,45 +47,49 @@ test.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
 );
 
 for (const compression of ["none", "gzip", "zstd"] as const) {
-  test(`${compression} import preserves the source/read role for unknown errors after admission`, async () => {
-    const path = join(root, "source.sql");
-    const file = Bun.file(path);
-    const bytes = new TextEncoder().encode("select 1;");
-    const prefix =
-      compression === "gzip"
-        ? Bun.gzipSync(bytes)
-        : compression === "zstd"
-          ? Bun.zstdCompressSync(bytes)
-          : bytes;
-    let reads = 0;
-    const stream = spyOn(file, "stream").mockReturnValue(
-      new ReadableStream({
-        pull(controller) {
-          if (reads++ === 0) controller.enqueue(prefix.subarray(0, 4));
-          else
-            controller.error(
-              Object.assign(new Error("private SQL payload"), { code: "UNRECOGNIZED", secret: "password" }),
-            );
-        },
-      }),
-    );
-    const open = spyOn(Bun, "file").mockReturnValue(file);
-    try {
-      const error = failureOf(await Effect.runPromiseExit(Effect.scoped(prepare(path))));
-      expect(error).toBeInstanceOf(DataTransferError);
-      expect(error).toMatchObject({
-        fromEndpoint: "hostPath",
-        operation: "read",
-        cause: { _tag: "FileIoError", operation: "read", reason: "unknown", path },
-      });
-      expect(JSON.stringify(error)).not.toMatch(/private SQL payload|UNRECOGNIZED|password/u);
-      expect(await fs.readdir(root)).toEqual(compression === "none" ? [] : ["stage"]);
-      if (compression !== "none") expect(await fs.readdir(join(root, "stage"))).toEqual([]);
-    } finally {
-      open.mockRestore();
-      stream.mockRestore();
-    }
-  });
+  test.each([
+    ["UNRECOGNIZED", "unknown"],
+    ["ENOENT", "not-found"],
+  ] as const)(
+    `${compression} import preserves the source/read role and %s reason after admission`,
+    async (code, reason) => {
+      const path = join(root, "source.sql");
+      const file = Bun.file(path);
+      const bytes = new TextEncoder().encode("select 1;");
+      const prefix =
+        compression === "gzip"
+          ? Bun.gzipSync(bytes)
+          : compression === "zstd"
+            ? Bun.zstdCompressSync(bytes)
+            : bytes;
+      let reads = 0;
+      const stream = spyOn(file, "stream").mockReturnValue(
+        new ReadableStream({
+          pull(controller) {
+            if (reads++ === 0) controller.enqueue(new Uint8Array(prefix.subarray(0, 4)));
+            else
+              controller.error(Object.assign(new Error("private SQL payload"), { code, secret: "password" }));
+          },
+        }),
+      );
+      const open = spyOn(Bun, "file").mockReturnValue(file);
+      try {
+        const error = failureOf(await Effect.runPromiseExit(Effect.scoped(prepare(path))));
+        expect(error).toBeInstanceOf(DataTransferError);
+        expect(error).toMatchObject({
+          fromEndpoint: "hostPath",
+          operation: "read",
+          cause: { _tag: "FileIoError", operation: "read", reason, path },
+        });
+        expect(JSON.stringify(error)).not.toMatch(/private SQL payload|UNRECOGNIZED|password/u);
+        expect(await fs.readdir(root)).toEqual(compression === "none" ? [] : ["stage"]);
+        if (compression !== "none") expect(await fs.readdir(join(root, "stage"))).toEqual([]);
+      } finally {
+        open.mockRestore();
+        stream.mockRestore();
+      }
+    },
+  );
 }
 
 for (const compression of ["gzip", "zstd"] as const) {
@@ -162,15 +167,11 @@ for (const compression of ["gzip", "zstd"] as const) {
 }
 
 test.each([2, 3])(
-  "privacy callback failure at access %s retains its type and cleans staging",
+  "privacy callback failure at access %s wraps the original cause and cleans staging",
   async (access) => {
     const path = join(root, "source.gz");
     await fs.writeFile(path, Bun.gzipSync("select 1;"));
-    const failure = new FileIoError({
-      message: "ACL policy refused",
-      path,
-      remediation: "Restore the ACL policy.",
-    });
+    const failure = Object.assign(new PrivateFileAccessError(path), { code: "ENOSPC" });
     let calls = 0;
     const error = failureOf(
       await Effect.runPromiseExit(
@@ -190,7 +191,12 @@ test.each([2, 3])(
         ),
       ),
     );
-    expect(error).toBe(failure);
+    expect(error).toBeInstanceOf(DataTransferError);
+    if (!(error instanceof DataTransferError)) throw new Error("expected private-access transfer error");
+    expect(error).toMatchObject({ operation: "stage", toEndpoint: "hostPath" });
+    expect(error.cause).toBe(failure);
+    expect(error.remediation).toMatch(/owner-only|private access|ACL/u);
+    expect(error.remediation).not.toMatch(/space|quota/iu);
     expect(await fs.readdir(join(root, "stage"))).toEqual([]);
   },
 );
