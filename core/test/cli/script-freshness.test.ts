@@ -205,7 +205,7 @@ test.each([
       expect(routes[0]).toMatchObject({ _tag: "bun-script", commandId: "app:probe" });
       expect(routes[1]).toMatchObject({ _tag: expected });
       if (policy?.entries?.some((entry) => entry._tag === "Disabled"))
-        expect(routes[1]).toMatchObject({ hidden: true });
+        expect(routes[1]).toMatchObject({ availability: { _tag: "Disabled" }, hidden: false });
     });
   },
 );
