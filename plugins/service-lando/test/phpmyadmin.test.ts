@@ -179,6 +179,7 @@ const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
       const view = views.find((candidate) => candidate.serviceName === name);
       return view === undefined ? undefined : mutatorsFor(view);
     },
+    addClonedService: () => undefined,
   };
 
   return { context, captures };

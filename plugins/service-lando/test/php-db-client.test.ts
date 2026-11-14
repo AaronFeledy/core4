@@ -170,6 +170,7 @@ const applyFeature = (views: ReadonlyArray<AppFeatureServiceView>) => {
       const view = views.find((candidate) => candidate.serviceName === name);
       return view === undefined ? undefined : mutatorsFor(view);
     },
+    addClonedService: () => undefined,
   };
   Effect.runSync(phpDbClientFeature.apply(context));
   return steps;

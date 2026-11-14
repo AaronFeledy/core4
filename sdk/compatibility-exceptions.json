@@ -6368,5 +6368,17 @@
     "changeKind": "property-removed",
     "path": "$.password",
     "justification": "Issue #2235 propagates the authored Redis password narrowing into the derived ServiceConfig input projection. The replacement is creds.password, and the loader rejects the old key before planning."
+  },
+  {
+    "surface": "schema:ExecutionSite",
+    "changeKind": "enum-widened",
+    "path": "$",
+    "justification": "Scheduled jobs add the schedule-job execution site so a secret reference in services.<name>.schedule.<index>.run gets site-aware remediation instead of a command written into the sidecar image. Existing sites keep their meaning; scheduled jobs are the only producer. Execution-site coverage and unsupported-secret-reference tests pin the new site."
+  },
+  {
+    "surface": "schema:ExecutionSiteMatch",
+    "changeKind": "enum-widened",
+    "path": "$.site",
+    "justification": "ExecutionSiteMatch publishes the same closed ExecutionSite set, so scheduled jobs add schedule-job here too. Existing matches keep their meaning and consumers must handle the additional site literal."
   }
 ]

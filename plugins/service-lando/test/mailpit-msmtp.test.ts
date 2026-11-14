@@ -74,6 +74,7 @@ const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
       const target = views.find((candidate) => candidate.serviceName === name);
       return target === undefined ? undefined : mutatorsFor(target);
     },
+    addClonedService: () => undefined,
   };
 
   return Effect.runPromiseExit(mailpitWireFeature.apply(context)).then((result) => ({ result, steps }));

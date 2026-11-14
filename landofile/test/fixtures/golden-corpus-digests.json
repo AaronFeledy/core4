@@ -1125,6 +1125,17 @@
       "digest": "03cac783553c63c735d82f0c694c227a9530ad616cea2762db78258687ae06b8"
     },
     {
+      "fixture": "docs/guides/schedule/fixtures/schedule-demo",
+      "digest": "d4d00fa9a391316cfe5b0d7fdf08fd7aaa29d8fd702dbd90d0638452a2867f3a"
+    },
+    {
+      "fixture": "docs/guides/schedule/fixtures/schedule-rejected-every",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/scripting-with-json/fixtures/project-script",
       "digest": "9942ee3c3be445567566a7dd2c59733ed33fb9e1339411438ee165c383b74a47"
     },
@@ -1582,9 +1593,9 @@
         "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
       },
       "after": {
-        "digest": "9e9c712e5ed587b8ec284c19961749bf2d51b03103f9242710d6ca2559f62358"
+        "digest": "a9fd21050cd91e4daf20c917056809fbdf4a6f33493f830cc477d9840b6746dd"
       },
-      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The encoded document drops bcmath from that one install command; nothing else changed."
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry; nothing else changed."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

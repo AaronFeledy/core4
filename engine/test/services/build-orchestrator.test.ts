@@ -105,6 +105,14 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+const companionOf = (parent: ServicePlan): ServicePlan => ({
+  ...parent,
+  name: ServiceName.make(`${String(parent.name)}-schedule`),
+  primary: false,
+  dependsOn: [{ service: parent.name, condition: "service_started", required: true }],
+  provenance: { clonedBy: { feature: "test.clone", from: String(parent.name) } },
+});
+
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => Predicate.isObject(value);
 
 const buildLifecycleEntry = (event: unknown): readonly [unknown, unknown] | undefined => {
@@ -609,6 +617,126 @@ describe("BuildOrchestratorLayer.layer", () => {
       message: "build failed",
       remediation: failure.remediation,
     });
+  });
+
+  test.each([
+    ["parent", true],
+    ["companion", false],
+  ] as const)(
+    "starts a companion build only after its parent build finishes when the %s is listed first",
+    async (_first, parentFirst) => {
+      // Given a companion cloned from web and a parent build the test holds open.
+      const parentStarted = Deferred.makeUnsafe<void>();
+      const parentFinished = Deferred.makeUnsafe<void>();
+      const releaseParent = Deferred.makeUnsafe<void>();
+      const started: string[] = [];
+      const companion = companionOf(web);
+      const companionPlan: AppPlan = {
+        ...plan,
+        services: parentFirst
+          ? { [web.name]: web, [companion.name]: companion }
+          : { [companion.name]: companion, [web.name]: web },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.gen(function* () {
+            if (spec.service === web.name) {
+              started.push(String(spec.service));
+              yield* Deferred.succeed(parentStarted, undefined);
+              yield* Deferred.await(releaseParent);
+              yield* Deferred.succeed(parentFinished, undefined);
+              return { providerId, ref: `${spec.service}:test` };
+            }
+            // Then the companion's build only ever starts once the parent's build has finished.
+            expect(yield* Deferred.isDone(parentFinished)).toBe(true);
+            started.push(String(spec.service));
+            return { providerId, ref: `${spec.service}:test` };
+          }),
+      };
+
+      // When the parent build is held open.
+      const builtPlan = await Effect.runPromise(
+        Effect.gen(function* () {
+          const orchestrator = yield* BuildOrchestrator;
+          const fiber = yield* Effect.forkChild(orchestrator.build(companionPlan));
+          yield* Deferred.await(parentStarted);
+          expect(started).toEqual([String(web.name)]);
+          yield* Deferred.succeed(releaseParent, undefined);
+          return yield* Fiber.join(fiber);
+        }).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then both build, the companion after the parent, and the plan keeps its service order.
+      expect(started).toEqual([String(web.name), String(companion.name)]);
+      expect(Object.keys(builtPlan.services)).toEqual(Object.keys(companionPlan.services));
+    },
+  );
+
+  test("reports a companion as aborted when its parent build fails", async () => {
+    // Given a companion cloned from web and a parent build the test fails.
+    const parentStarted = Deferred.makeUnsafe<void>();
+    const releaseFailure = Deferred.makeUnsafe<void>();
+    const started: string[] = [];
+    const failure = new ProviderInternalError({
+      providerId: "test",
+      operation: "buildArtifact",
+      message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
+    });
+    const companion = companionOf(web);
+    const companionPlan: AppPlan = {
+      ...plan,
+      services: { [web.name]: web, [companion.name]: companion },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: (spec: ArtifactBuildSpec) =>
+        spec.service === web.name
+          ? Deferred.succeed(parentStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseFailure)),
+              Effect.andThen(Effect.fail(failure)),
+            )
+          : Effect.sync(() => {
+              started.push(String(spec.service));
+              return { providerId, ref: `${spec.service}:test` };
+            }),
+    };
+
+    // When the parent build fails.
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const fiber = yield* Effect.forkChild(Effect.flip(orchestrator.build(companionPlan)));
+          yield* Deferred.await(parentStarted);
+          const companionAttempts = [...started];
+          yield* Deferred.succeed(releaseFailure, undefined);
+          const error = yield* Fiber.join(fiber);
+          return { error, companionAttempts, events: [...(yield* Queue.clear(queue))] };
+        }),
+      ).pipe(Effect.provide(layer(provider))),
+    );
+
+    // Then the companion never builds and is settled the way an undispatched task is.
+    expect(result.companionAttempts).toEqual([]);
+    expect(result.error).toMatchObject({
+      _tag: "ProviderInternalError",
+      operation: "buildArtifact",
+      message: "build failed",
+    });
+    expect(
+      result.events
+        .filter((event) => event._tag === "task.fail")
+        .map((event) => [event.taskId, event.summary])
+        .sort(),
+    ).toEqual([
+      [String(web.name), `Build ${String(web.name)} failed`],
+      [String(companion.name), `Build ${String(companion.name)} aborted`],
+    ]);
   });
 
   test.each([

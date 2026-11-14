@@ -96,6 +96,7 @@ If you are looking for a public surface or policy:
 | Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
 | Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
+| Scheduled jobs: per-service `schedule`, cadence, timezone, identity, sidecar grouping and naming, scheduler acquisition, and the `schedule:list` / `schedule:run` commands | 01 + 06 + 08 + 11 | §1.4 + §6.2.2 + §8.2.8 + §10.14 |
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
 | File-sync eligibility, shared policy, and provider prepared-volume support | 04 + 05 | §4.3 + §4.4 + §5.4 |
@@ -112,6 +113,8 @@ If you are looking for a public surface or policy:
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
+| Generated companion services: `addClonedService`, `AppFeatureCloneError`, shared and non-inherited parent facts, naming, provenance, selection, and removal | 06 | §6.11.4 + §6.11.5 |
+| In-build acquisition of pinned third-party artifacts by Lando-contributed build steps | 06 + 11 | §6.13.3 + §10.3.3 |
 | Final effective feature validation, explicit field claims and structured feature issues | 06 | §6.11.0 + §6.11.4 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |

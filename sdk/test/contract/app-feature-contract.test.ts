@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AppFeatureDefinition } from "@lando/sdk/services";
+import type { AppFeatureDefinition, ClonedServiceRequest } from "@lando/sdk/services";
 import { type AppFeatureContractHarness, ContractFailure, runAppFeatureContract } from "@lando/sdk/test";
 import { Cause, Effect } from "effect";
 
@@ -291,5 +291,75 @@ describe("runAppFeatureContract", () => {
       { feature: inactive, services, expectNoActivation: true },
       "app feature requires.globalServices entries are non-empty ids",
     );
+  });
+});
+
+describe("runAppFeatureContract clones", () => {
+  test("seeds extra normalizedConfig fields and exposes recorded clone requests", async () => {
+    // Given a feature that only clones when the seeded config carries its image.
+    const recorded: Array<ClonedServiceRequest> = [];
+    const feature: AppFeatureDefinition = {
+      id: "clone-recorder",
+      priority: 100,
+      selectors: { types: ["php"] },
+      apply: (ctx) =>
+        Effect.sync(() => {
+          if (ctx.selected[0]?.normalizedConfig.image !== "acme/php:8.3") return;
+          ctx.addClonedService({ from: "php", name: "php-schedule", command: ["true"] });
+        }),
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      runAppFeatureContract({
+        feature,
+        services: [{ serviceName: "php", serviceType: "php", normalizedConfig: { image: "acme/php:8.3" } }],
+        onRecordedClones: (clones) => recorded.push(...clones),
+      }),
+    );
+
+    // Then
+    expect(result).toBeUndefined();
+    expect(recorded).toEqual([{ from: "php", name: "php-schedule", command: ["true"] }]);
+  });
+
+  test("rejects a clone whose parent is not one of the selected services", async () => {
+    await expectAppFeatureFailure(
+      {
+        feature: {
+          id: "clone-unselected",
+          priority: 100,
+          selectors: { types: ["php"] },
+          apply: (ctx) =>
+            Effect.sync(() => {
+              ctx.addClonedService({ from: "node", name: "node-schedule", command: ["true"] });
+            }),
+        },
+        services,
+      },
+      "app feature clones only selected services",
+    );
+  });
+
+  test("rejects clone requests that differ across a replay", async () => {
+    // Given an apply whose clone name depends on how often it ran.
+    let invocations = 0;
+    const feature: AppFeatureDefinition = {
+      id: "clone-unstable",
+      priority: 100,
+      selectors: { types: ["php"] },
+      apply: (ctx) =>
+        Effect.sync(() => {
+          invocations += 1;
+          ctx.addClonedService({
+            from: "php",
+            name: invocations === 1 ? "php-first" : "php-second",
+            command: ["true"],
+          });
+        }),
+    };
+
+    // When / Then
+    await expectAppFeatureFailure({ feature, services }, "app feature clone requests are replay-safe");
   });
 });

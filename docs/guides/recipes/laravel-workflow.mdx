@@ -15,7 +15,7 @@ cd laravel-demo
 lando start
 ```
 
-The named init creates `laravel-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Apache is up after start. Drop a Laravel app in so `artisan` exists.
+The named init creates `laravel-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, no worker, and no scheduler. Apache is up after start. Drop a Laravel app in so `artisan` exists.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
@@ -139,6 +139,37 @@ You don't need manual `appMount.includes` overrides. The worker runs
 lando logs --service=worker
 ```
 
+## Run the Laravel scheduler
+
+The worker handles queued jobs. Laravel's task scheduler is separate: it expects `php artisan schedule:run` once a minute. Choose it at init with the same `--answer` flag the other options use:
+
+```sh
+lando init --recipe laravel --name=laravel-demo --yes --answer=scheduler=true
+```
+
+That adds a `laravel-scheduler` job to `appserver` that runs every minute as `www-data`, the user your site's PHP runs as, so files the job writes stay writable by the site.
+
+To add the job to an existing app, keep the `recipe:` block and the other generated keys, add it to `appserver` in `.lando.yml`, then run `lando restart`:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: laravel-scheduler
+        every: "* * * * *"
+        run: [php, /app/artisan, "schedule:run"]
+        user: www-data
+```
+
+Check that Lando sees the job, then run it once without waiting:
+
+```sh
+lando schedule:list
+lando schedule:run laravel-scheduler
+```
+
+Timed runs write their output to the job's sidecar, which shares the code and environment of `appserver`. Read it with `lando logs --service appserver-schedule-www-data`. See [Run scheduled jobs](../services/schedule.mdx) for users, timezones, and logs.
+
 ## Connect Eloquent and Redis
 
 Lando sets `DB_CONNECTION` to `mysql` for MariaDB or `pgsql` for PostgreSQL,
@@ -196,6 +227,7 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 
 - [Laravel recipe](/recipes/laravel/)
 - [Run Laravel Reverb websockets behind the Lando proxy](./laravel-reverb.mdx)
+- [Run scheduled jobs](../services/schedule.mdx)
 - [Add PHP](../services/php.mdx)
 - [Add MariaDB](../services/mariadb.mdx)
 - [Add Redis](../services/redis.mdx)

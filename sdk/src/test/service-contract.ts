@@ -19,6 +19,7 @@ import type {
   AppFeatureDefinition,
   AppFeatureServiceMutators,
   AppFeatureServiceView,
+  ClonedServiceRequest,
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
   ServiceFeatureContext,
@@ -526,6 +527,8 @@ export interface AppFeatureContractService {
   readonly primary?: boolean;
   readonly featureIds?: ReadonlyArray<string>;
   readonly environment?: Environment;
+  /** Extra resolved-config fields a feature may read, merged over `{ type: serviceType }`. */
+  readonly normalizedConfig?: ServiceConfig;
   readonly connection?: DatabaseConnection;
 }
 
@@ -537,6 +540,8 @@ export interface AppFeatureContractHarness {
   readonly appName?: string;
   readonly appRoot?: string;
   readonly config?: Readonly<Record<string, unknown>>;
+  /** Receives the clone requests `apply` recorded, after the replay assertions pass. */
+  readonly onRecordedClones?: (clones: ReadonlyArray<ClonedServiceRequest>) => void;
 }
 
 interface RecordedAppFeatureService {
@@ -585,7 +590,7 @@ const makeRecordingAppFeatureContext = (
       framework: service.framework,
       primary: service.primary ?? false,
       featureIds: service.featureIds ?? [],
-      normalizedConfig: { type: service.serviceType },
+      normalizedConfig: { type: service.serviceType, ...service.normalizedConfig },
       ...(service.connection === undefined ? {} : { connection: service.connection }),
     };
     records.set(service.serviceName, {
@@ -597,6 +602,7 @@ const makeRecordingAppFeatureContext = (
 
   const ledger = new Map<string, EnvironmentValue>();
   const conflicts: Array<{ readonly service: string; readonly key: string }> = [];
+  const clones: Array<ClonedServiceRequest> = [];
 
   const mutatorsFor = (serviceName: string): AppFeatureServiceMutators => {
     const record = records.get(serviceName);
@@ -652,6 +658,17 @@ const makeRecordingAppFeatureContext = (
       for (const name of selectedNames) mutate(mutatorsFor(name));
     },
     select: (name) => (selectedSet.has(name) ? mutatorsFor(name) : undefined),
+    addClonedService: (request) => {
+      clones.push({
+        ...request,
+        command: Array.isArray(request.command) ? [...request.command] : request.command,
+        ...(request.extraBuildSteps === undefined
+          ? {}
+          : { extraBuildSteps: request.extraBuildSteps.map((step) => ({ ...step })) }),
+        ...(request.extraEnv === undefined ? {} : { extraEnv: { ...request.extraEnv } }),
+        ...(request.omitConfigKeys === undefined ? {} : { omitConfigKeys: [...request.omitConfigKeys] }),
+      });
+    },
   };
 
   const proxiedContext = new Proxy(context, {
@@ -661,7 +678,7 @@ const makeRecordingAppFeatureContext = (
     },
   });
 
-  return { context: proxiedContext, records, selectedNames, conflicts, forbiddenReads };
+  return { context: proxiedContext, records, selectedNames, conflicts, forbiddenReads, clones };
 };
 
 /**
@@ -700,9 +717,10 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
     (feature.activatedBy !== undefined && activatedServices.length === 0);
 
   if (expectNoActivation) {
-    const { context, records, selectedNames, forbiddenReads } = makeRecordingAppFeatureContext(input, {
-      forceNoSelection: true,
-    });
+    const { context, records, selectedNames, forbiddenReads, clones } = makeRecordingAppFeatureContext(
+      input,
+      { forceNoSelection: true },
+    );
     const applyExit = yield* Effect.exit(feature.apply(context));
     if (Exit.isFailure(applyExit)) {
       yield* Effect.fail(appFeatureFailure("app feature apply succeeds", Cause.pretty(applyExit.cause)));
@@ -713,9 +731,9 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
       .filter(([, record]) => record.mutated)
       .map(([serviceName]) => serviceName);
     yield* requireAppFeature(
-      selectedNames.length === 0 && mutatedServices.length === 0,
-      "app feature with no activation match is a no-op (no mutation, no selected services)",
-      { selectedNames, mutatedServices },
+      selectedNames.length === 0 && mutatedServices.length === 0 && clones.length === 0,
+      "app feature with no activation match is a no-op (no mutation, no selected services, no clones)",
+      { selectedNames, mutatedServices, clones },
     );
     yield* requireAppFeature(
       forbiddenReads.size === 0,
@@ -731,7 +749,7 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
     { activatedBy: feature.activatedBy },
   );
 
-  const { context, records, selectedNames, conflicts, forbiddenReads } =
+  const { context, records, selectedNames, conflicts, forbiddenReads, clones } =
     makeRecordingAppFeatureContext(input);
   const declarations = yield* appEndpointDeclarations(feature, context);
 
@@ -759,19 +777,36 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
     conflicts,
   );
 
-  const requiresEffect = yield* Effect.exit(feature.apply(makeRecordingAppFeatureContext(input).context));
+  const selectedForClone = new Set(selectedNames);
+  const unselectedClone = clones.find((request) => !selectedForClone.has(request.from));
+  yield* requireAppFeature(
+    unselectedClone === undefined,
+    "app feature clones only selected services",
+    unselectedClone,
+  );
+
+  const replay = makeRecordingAppFeatureContext(input);
+  const requiresEffect = yield* Effect.exit(feature.apply(replay.context));
   yield* requireAppFeature(
     Exit.isSuccess(requiresEffect),
     "app feature apply is replay-safe",
     Exit.isFailure(requiresEffect) ? Cause.pretty(requiresEffect.cause) : undefined,
+  );
+  yield* requireAppFeature(
+    canonicalJson(clones) === canonicalJson(replay.clones),
+    "app feature clone requests are replay-safe",
+    { first: clones, second: replay.clones },
   );
 
   const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
   yield* requireAppFeature(
     selectedNames.length === 0 ||
       mutatedSelected ||
+      clones.length > 0 ||
       Object.values(declarations).some((endpoints) => endpoints.length > 0),
-    "app feature mutates at least one selected service draft",
-    { selectedNames },
+    "app feature mutates at least one selected service draft or queues a clone",
+    { selectedNames, clones },
   );
+
+  input.onRecordedClones?.(clones);
 });

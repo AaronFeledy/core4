@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { DateTime, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
@@ -148,6 +148,39 @@ test("fails before payload creation when the mounted helper is absent", async ()
   expect(result._tag).toBe("ServiceExecError");
   expect(result.remediation).toContain("lando start");
   expect(f.requests.map((request) => request.method)).toEqual(["GET"]);
+});
+
+test.each([
+  ["absent", { status: 404, body: JSON.stringify({ message: "no such container" }) }],
+  ["exited", { status: 200, body: JSON.stringify({ Id: "container", State: { Status: "exited" } }) }],
+] as const)("reports a service whose container is %s as not running", async (containerState, inspect) => {
+  const f = fixture();
+  const requests: EngineHttpRequest[] = [];
+  const result = await Effect.runPromise(
+    Stream.runCollect(
+      supervisedExecStream(
+        plan,
+        target,
+        { command: ["payload"] },
+        {
+          ...f.options,
+          api: {
+            ...f.api,
+            request: (request) =>
+              Effect.sync(() => {
+                requests.push(request);
+                return inspect;
+              }),
+          },
+        },
+      ),
+    ).pipe(Effect.flip),
+  );
+  expect(result).toBeInstanceOf(ServiceExecError);
+  if (!(result instanceof ServiceExecError)) return;
+  expect(result.details).toEqual({ containerState });
+  expect(result.remediation).toContain("lando start");
+  expect(requests.map((request) => request.method)).toEqual(["GET"]);
 });
 
 test("preserves provider failure tags and remediation", async () => {

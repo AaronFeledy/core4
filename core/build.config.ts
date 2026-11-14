@@ -125,6 +125,7 @@ export const buildConfig: BuildConfig = {
       contributes: { templateEngines: ["mustache"] },
     },
     { name: "@lando/sql", path: "plugins/sql" },
+    { name: "@lando/schedule", path: "plugins/schedule" },
     { name: "@lando/lando4", path: "plugins/lando4" },
     {
       name: "@lando/lando3",

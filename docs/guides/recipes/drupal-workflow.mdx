@@ -124,6 +124,22 @@ lando drush status --format=json
 
 Drush gets `status --format=json` and prints its own JSON. Lando's flags go before the task name: `lando --format=json drush status` returns Lando's result envelope instead.
 
+## Run Drupal cron on a schedule
+
+Add a `schedule:` job to `appserver` in `.lando.yml`, keeping the generated keys, then run `lando restart`:
+
+```yaml
+services:
+  appserver:
+    schedule:
+      - name: drupal-cron
+        every: "@hourly"
+        run: "cd /app && vendor/bin/drush cron"
+        user: www-data
+```
+
+The job uses the project-local Drush and runs as `www-data`, the user the site's PHP runs as, so files cron writes stay writable by the site. `lando schedule:run drupal-cron` runs it once right away, in the sidecar that runs the timed job. See [Run scheduled jobs](../services/schedule.mdx).
+
 ## Import, export, and snapshot the database
 
 `db:import` executes the dump's SQL in `database`; the dump determines which existing data is changed or replaced. Lando snapshots the volume first, and import asks before it runs. `--yes` answers for you:

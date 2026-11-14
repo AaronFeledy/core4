@@ -1502,3 +1502,33 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `spec` | Package spec (e.g. prettier@latest, @astrojs/cli) |
+
+## `lando schedule:list`
+
+List scheduled jobs and their next run times.
+
+Provided by `@lando/schedule`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Limit the list to one service. |
+
+## `lando schedule:run`
+
+Run a scheduled job once, now, in the sidecar that schedules it.
+
+Provided by `@lando/schedule`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `name` | Job name unique within the service. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Parent service when the job name is used more than once. |

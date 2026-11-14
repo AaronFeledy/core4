@@ -106,7 +106,11 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
       const shadow: MountPlan = {
         type: "volume",
         origin: "derived",
-        store: landoServiceShadowStoreName(input.context.appSlug, input.context.serviceName, target),
+        store: landoServiceShadowStoreName(
+          input.context.appSlug,
+          input.context.storeOwner ?? input.context.serviceName,
+          target,
+        ),
         target,
         readOnly: false,
       };

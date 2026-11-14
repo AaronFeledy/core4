@@ -68,6 +68,7 @@ const wire = (siblings: readonly AppFeatureServiceView[]) => {
     selected,
     forEachSelected: (apply) => apply(mutator),
     select: (name) => (name === "pma" ? mutator : undefined),
+    addClonedService: () => undefined,
   };
   return { environment, apply: phpMyAdminWireFeature.apply(context) };
 };
