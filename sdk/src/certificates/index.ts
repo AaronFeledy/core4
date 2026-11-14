@@ -5,3 +5,5 @@ export {
   certificateIsCurrent,
   certificatePairIsCurrent,
 } from "./currency.ts";
+export { prepareCertificatePair } from "./prepare.ts";
+export { CertificateMaterial, CertificatePairPreparation, PreparedCertificatePair } from "./schema.ts";
