@@ -65,15 +65,16 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
       const stateStore = yield* StateStore;
       const paths = yield* PathsService;
       const providerId = String(options.providerId ?? "lando");
-      // A build.app result only describes the container the step ran in; the global app has no app
-      // steps today, but its index is cleared before any provider call for the same reason.
-      yield* clearAppBuildResults(stateStore, GLOBAL_APP_ID);
-      const removeBuildOutput = removeBuildTranscripts({
-        providerId,
-        userDataRoot: paths.roots.userDataRoot,
-        appId: GLOBAL_APP_ID,
-        scratch: false,
-      });
+      const removeBuildOutput = clearAppBuildResults(stateStore, GLOBAL_APP_ID).pipe(
+        Effect.andThen(
+          removeBuildTranscripts({
+            providerId,
+            userDataRoot: paths.roots.userDataRoot,
+            appId: GLOBAL_APP_ID,
+            scratch: false,
+          }),
+        ),
+      );
       const loaded = yield* resolveGlobalTeardown("destroy").pipe(
         Effect.provideService(TeardownProvider, options.providerId),
       );

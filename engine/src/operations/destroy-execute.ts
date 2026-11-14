@@ -52,20 +52,19 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
     ]),
   ];
   const buildProviderId = String(plan.target?.plan.provider ?? plan.applied?.plan.provider ?? "lando");
-  // A build.app result only describes the container the step ran in, and a teardown that fails
-  // halfway has already removed containers: forget those results before any provider call runs.
-  yield* Effect.forEach(buildAppIds, (appId) => clearAppBuildResults(stateStore, appId), {
-    discard: true,
-  });
   const removeBuildOutput = Effect.forEach(
     buildAppIds,
     (appId) =>
-      removeBuildTranscripts({
-        providerId: buildProviderId,
-        userDataRoot: paths.roots.userDataRoot,
-        appId,
-        scratch: false,
-      }),
+      clearAppBuildResults(stateStore, appId).pipe(
+        Effect.andThen(
+          removeBuildTranscripts({
+            providerId: buildProviderId,
+            userDataRoot: paths.roots.userDataRoot,
+            appId,
+            scratch: false,
+          }),
+        ),
+      ),
     { discard: true },
   );
   const evidence = plan.evidence;

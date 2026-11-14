@@ -200,7 +200,7 @@ const buildEntry = (
   transcriptPath: AbsolutePath.make(transcriptPath),
 });
 
-test("destroy forgets app results before teardown and removes the app build directory after it", async () => {
+test("destroy clears app results and build output only after successful teardown", async () => {
   // Given an app with image and app-step build output.
   const state = makeTestStateStore();
   let atDestroy: ReadonlyArray<{ readonly phase: string }> = [];
@@ -226,16 +226,16 @@ test("destroy forgets app results before teardown and removes the app build dire
   // When
   const result = await runDestroyTarget(harness, { volumes: true });
 
-  // Then: the provider saw no app-step result, the image result survived, and the output is gone.
+  // Then: results survive until teardown succeeds, and only the image result stays afterwards.
   expect(result.outcome).toBe("destroyed");
-  expect(atDestroy.map((entry) => entry.phase)).toEqual(["artifact"]);
+  expect(atDestroy.map((entry) => entry.phase)).toEqual(["artifact", "app"]);
   await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
   await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
   const remaining = await Effect.runPromise(bucket.get);
   expect(remaining?.map((entry) => entry.phase)).toEqual(["artifact"]);
 });
 
-test("a failed teardown keeps the build directory after app results were forgotten", async () => {
+test("a failed teardown keeps app results and build transcripts", async () => {
   // Given an app whose provider destroy fails.
   const state = makeTestStateStore();
   const harness = makeHarness({
@@ -259,8 +259,9 @@ test("a failed teardown keeps the build directory after app results were forgott
   // When
   await expect(runDestroyTarget(harness, { volumes: true })).rejects.toBeInstanceOf(ProviderUnavailableError);
 
-  // Then: a half-finished teardown still invalidates results but keeps the transcripts.
+  // Then: failed teardown preserves the results and their transcripts.
   expect(await Bun.file(transcript).exists()).toBe(true);
   const remaining = await Effect.runPromise(bucket.get);
-  expect(remaining ?? []).toEqual([]);
+  expect(remaining).toHaveLength(1);
+  expect(remaining?.[0]).toMatchObject({ phase: "app", step: "web:app:install", transcriptPath: transcript });
 });
