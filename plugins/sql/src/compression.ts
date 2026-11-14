@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
-import { SqlDumpCompressionError } from "@lando/sdk/errors";
+import { SqlDumpCompressionError, errnoCode } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
-import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { VerifiedStreamError, persistVerifiedStream } from "@lando/sdk/verified-stream";
 import { Effect, type Scope, Stream, absurd } from "effect";
 
 export type DumpCompression = "gzip" | "zstd" | "none";
@@ -67,23 +67,41 @@ const streamThrough = (
   }
 };
 
-const dumpCompressionError = (
-  path: string,
-  compression: Exclude<DumpCompression, "none">,
-  operation: "compress" | "decompress",
-): SqlDumpCompressionError =>
+const filesystemRemediation = (cause: unknown): string | undefined => {
+  switch (errnoCode(cause instanceof VerifiedStreamError ? cause.cause : cause)) {
+    case "EACCES":
+    case "EPERM":
+    case "EROFS":
+      return "Verify the destination directory is writable, then retry.";
+    case "ENOSPC":
+    case "EDQUOT":
+      return "Check host disk space and storage quota, then retry.";
+    case "ENOENT":
+    case "ENOTDIR":
+    case "EEXIST":
+      return "Verify the dump path and its parent directory are valid, then retry.";
+    default:
+      return undefined;
+  }
+};
+
+const dumpCompressionError = (input: {
+  readonly path: string;
+  readonly compression: Exclude<DumpCompression, "none">;
+  readonly operation: "compress" | "decompress";
+  readonly cause: unknown;
+}): SqlDumpCompressionError =>
   new SqlDumpCompressionError({
+    ...input,
     message:
-      operation === "compress"
-        ? `Failed to compress dump file: ${path}`
-        : `Failed to decompress dump file: ${path}`,
-    path,
-    compression,
-    operation,
+      input.operation === "compress"
+        ? `Failed to compress dump file: ${input.path}`
+        : `Failed to decompress dump file: ${input.path}`,
     remediation:
-      operation === "compress"
-        ? "Retry the export after checking host disk space. Dump compression runs on the host process, not inside the database service."
-        : "Confirm the dump starts with gzip or zstd magic bytes, then retry the import.",
+      filesystemRemediation(input.cause) ??
+      (input.operation === "compress"
+        ? "Check the underlying error and the dump source and destination paths, then retry the export. Dump compression runs on the host process, not inside the database service."
+        : "Confirm the dump starts with gzip or zstd magic bytes, then retry the import."),
   });
 
 export const writeDumpTransform = (
@@ -95,18 +113,28 @@ export const writeDumpTransform = (
 ): Effect.Effect<{ readonly digest: string; readonly sizeBytes: number }, SqlDumpCompressionError> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const source = Bun.file(sourcePath).stream();
       const result = yield* persistVerifiedStream({
-        body: Stream.fromReadableStream({
-          evaluate: () => streamThrough(source, compression, operation, level),
-          onError: () => dumpCompressionError(sourcePath, compression, operation),
-          releaseLockOnEnd: true,
-        }),
+        body: Stream.unwrap(
+          Effect.try({
+            try: () => streamThrough(Bun.file(sourcePath).stream(), compression, operation, level),
+            catch: (cause) => dumpCompressionError({ path: sourcePath, compression, operation, cause }),
+          }).pipe(
+            Effect.map((transformed) =>
+              Stream.fromReadableStream({
+                evaluate: () => transformed,
+                onError: (cause) => dumpCompressionError({ path: sourcePath, compression, operation, cause }),
+                releaseLockOnEnd: true,
+              }),
+            ),
+          ),
+        ),
         destinationPath: destPath,
         mode: 0o600,
       }).pipe(
-        mapFailures(() =>
-          dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
+        mapFailures((cause) =>
+          cause instanceof SqlDumpCompressionError
+            ? cause
+            : dumpCompressionError({ path: destPath, compression, operation, cause }),
         ),
       );
       return { digest: result.sha256, sizeBytes: result.sizeBytes };
@@ -123,7 +151,17 @@ export const acquireStagedDump = (
       await mkdir(parent, { recursive: true });
       return mkdtemp(join(parent, ".lando-dump-"));
     },
-    catch: () => dumpCompressionError(parent, compression, operation),
+    catch: (cause) =>
+      new SqlDumpCompressionError({
+        message: `Failed to create a dump staging directory in ${parent}`,
+        path: parent,
+        compression,
+        operation,
+        cause,
+        remediation:
+          filesystemRemediation(cause) ??
+          "Check the underlying error and the destination directory, then retry the export.",
+      }),
   });
 
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>
