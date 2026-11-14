@@ -154,7 +154,7 @@ export const writeDumpTransform = (
         mode: 0o600,
       }).pipe(
         mapFailures((cause) =>
-          cause instanceof VerifiedStreamError ? dumpTransferError("persist", destPath, cause.cause) : cause,
+          cause instanceof VerifiedStreamError ? dumpTransferError("persist", destPath, cause) : cause,
         ),
       );
       return { digest: result.sha256, sizeBytes: result.sizeBytes };

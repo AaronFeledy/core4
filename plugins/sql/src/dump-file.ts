@@ -257,7 +257,7 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
     mapFailures((error) =>
       error instanceof VerifiedStreamError
         ? privacyFailure === undefined
-          ? dumpTransferError("persist", path, error.cause)
+          ? dumpTransferError("persist", path, error)
           : privacyFailure
         : error,
     ),
