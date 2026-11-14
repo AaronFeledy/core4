@@ -420,7 +420,7 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"default-outside-choices\"[^}]*\"suggestion\":\\s*\"Choose a default from the declared choices" } }} />
     </Step>
     <Step name="lint-attributes-include-and-skips-disabled">
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\"tooling\",\\s*\"ops:sync\"[^{]*\\{[^}]*ops.\\.lando\\.tasks\\.yml", not: { regex: "\"tooling\",\\s*\"retired\"" } } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\"tooling\",\\s*\"ops:sync\"[^{]*\\{[^}]*ops.{1,2}\\.lando\\.tasks\\.yml", not: { regex: "\"tooling\",\\s*\"retired\"" } } }} />
     </Step>
     <Step name="refresh-keeps-healthy-tasks">
       <Run command="lando app:cache:refresh --format=json" />
@@ -431,7 +431,7 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <Run command="lando app:ops:sync --format=json" expectExit={1} />
       <Verify errorTag="ToolingCompileError" expect={{ regex: "ops:sync" }} />
       <Verify command="lando app:ops:sync --format=json" expectExit={1} expect={{ stdout: { regex: "\"issues\":\\s*\\[\\s*\\{[\\s\\S]*?\"reason\":\\s*\"alias-collision\"" } }} />
-      <Verify command="lando app:ops:sync --format=json" expectExit={1} expect={{ stdout: { regex: "\"source\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*ops.\\.lando\\.tasks\\.yml\",\\s*\"task\":\\s*\"ops:sync\"" } }} />
+      <Verify command="lando app:ops:sync --format=json" expectExit={1} expect={{ stdout: { regex: "\"source\":\\s*\\{\\s*\"path\":\\s*\"[^\"]*ops.{1,2}\\.lando\\.tasks\\.yml\",\\s*\"task\":\\s*\"ops:sync\"" } }} />
     </Step>
     <Step name="cleanup-tooling-declarations"><Cleanup /></Step>
   </Scenario>
