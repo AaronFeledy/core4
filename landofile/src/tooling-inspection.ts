@@ -1,21 +1,42 @@
 import { ToolingCompileError } from "@lando/sdk/errors";
-import { type ValidationIssue, formatValidationIssueLine } from "@lando/sdk/schema";
+import {
+  type ValidationIssue,
+  type ValidationIssuePath,
+  type ValidationIssueSource,
+  formatValidationIssueLine,
+} from "@lando/sdk/schema";
 import { Result } from "effect";
 
 export type ToolingInspection<A> = Result.Result<A, readonly [ValidationIssue, ...ValidationIssue[]]>;
 
+export interface ToolingNormalizationSource {
+  readonly path: string;
+  /** Receives a full effective tooling path; return only a known physical source. */
+  readonly locate?: (path: ValidationIssuePath) => ValidationIssueSource | undefined;
+}
+
 export const toolingCompileResult = <A>(
   name: string,
   inspection: ToolingInspection<A>,
-  source?: { readonly path: string },
+  source?: ToolingNormalizationSource,
 ): Result.Result<A, ToolingCompileError> =>
-  Result.mapError(inspection, (issues) => {
-    const message = issues
-      .map((issue) => formatValidationIssueLine({ ...issue, path: ["tooling", name, ...issue.path] }))
-      .join("; ");
+  Result.mapError(inspection, (findings) => {
+    const location = (relative: Pick<ValidationIssue, "path" | "source">) => {
+      const path = ["tooling", name, ...relative.path];
+      const physical = relative.source ?? source?.locate?.(path);
+      return { path, ...(physical === undefined ? {} : { source: physical }) };
+    };
+    const issues = findings.map((issue) => ({
+      ...issue,
+      ...location(issue),
+      ...(issue.related === undefined ? {} : { related: issue.related.map(location) }),
+    }));
+    const message = issues.map(formatValidationIssueLine).join("; ");
     return new ToolingCompileError({
       tool: name,
       message,
+      issues,
+      omittedIssueCount: 0,
       ...(source === undefined ? {} : { source: { path: source.path, task: name } }),
       remediation: `Correct the tooling declaration for ${name}: ${message}`,
     });

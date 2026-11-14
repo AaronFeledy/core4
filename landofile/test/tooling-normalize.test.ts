@@ -155,11 +155,52 @@ describe("normalizeToolingTask", () => {
         tool: "run",
         source: { path: "/app/.lando.yml", task: "run" },
         message: expect.stringContaining(`tooling.run.${formatValidationIssuePath(path)}:`),
+        issues: [
+          { path: ["tooling", "run", ...path], reason: expect.any(String), suggestion: expect.any(String) },
+        ],
+        omittedIssueCount: 0,
       });
       expect(result.failure.remediation).toBeTruthy();
     }
     const inspection = inspectToolingTask("run", task);
     expect(Result.isFailure(inspection) ? inspection.failure.map((issue) => issue.path) : []).toEqual([path]);
+  });
+
+  test("locates both alias declarations without serializing the locator or authored values", () => {
+    const result = normalizeToolingTask(
+      "run",
+      {
+        flags: { first: { alias: "x", default: "hidden" }, second: { alias: "x" }, third: { alias: "x" } },
+      },
+      {
+        path: "/app/.lando.yml",
+        locate: (path) => ({ layer: "local", file: "/app/.lando.local.yml", path }),
+      },
+    );
+    expect(Result.isFailure(result) ? result.failure.issues : []).toEqual(
+      ["second", "third"].map((name) => ({
+        path: ["tooling", "run", "flags", name, "alias"],
+        reason: "alias-collision",
+        message: "Flag alias collides with another flag name or alias.",
+        suggestion: "Choose an alias that is not used by another flag name or alias.",
+        source: {
+          layer: "local",
+          file: "/app/.lando.local.yml",
+          path: ["tooling", "run", "flags", name, "alias"],
+        },
+        related: [
+          {
+            path: ["tooling", "run", "flags", "first", "alias"],
+            source: {
+              layer: "local",
+              file: "/app/.lando.local.yml",
+              path: ["tooling", "run", "flags", "first", "alias"],
+            },
+          },
+        ],
+      })),
+    );
+    expect(JSON.stringify(result)).not.toMatch(/hidden|locate/);
   });
 
   test("aggregates independent declarations while suppressing dependent order and step failures", () => {

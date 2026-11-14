@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ToolingInputDeclaration, type ToolingTaskShape } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 import { bindToolingInput } from "../src/tooling-input.ts";
-import { normalizeToolingInput } from "../src/tooling-input-normalize.ts";
+import { inspectToolingInput, normalizeToolingInput } from "../src/tooling-input-normalize.ts";
 import { toolingInputRedactionTokens } from "../src/tooling-input-redaction.ts";
 
 const invalidMetadata: readonly ToolingTaskShape[] = [
@@ -17,6 +17,30 @@ test.each(invalidMetadata)("refuses sensitive literal metadata without retaining
   // Then
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
   expect(JSON.stringify(result)).not.toContain("canary");
+  if (Result.isFailure(result)) {
+    expect(result.failure.issues).toMatchObject([{ reason: expect.stringMatching(/^sensitive-/) }]);
+    expect(result.failure.omittedIssueCount).toBe(0);
+  }
+});
+
+test("keeps all relative findings and related flag-name locations for pure inspection", () => {
+  const result = inspectToolingInput({
+    flags: Object.fromEntries(
+      Array.from({ length: 10 }, (_, i) => [`flag${i}`, { sensitive: true, default: "canary" }]),
+    ),
+  });
+  expect(
+    Result.isFailure(result) ? result.failure.map(({ path, reason }) => ({ path, reason })) : [],
+  ).toEqual(
+    Array.from({ length: 10 }, (_, i) => ({
+      path: ["flags", `flag${i}`, "default"],
+      reason: "sensitive-default",
+    })),
+  );
+  const collision = inspectToolingInput({ flags: { first: { alias: "second" }, second: {} } });
+  expect(Result.isFailure(collision) ? collision.failure[0].related : []).toEqual([
+    { path: ["flags", "second"] },
+  ]);
 });
 
 test("classifies every raw sensitive occurrence across errors and overwrites", () => {

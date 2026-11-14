@@ -8,9 +8,14 @@ import type {
 } from "@lando/sdk/schema";
 import { Result } from "effect";
 import { inspectToolingInput } from "./tooling-input-normalize.ts";
-import { type ToolingInspection, toolingCompileResult } from "./tooling-inspection.ts";
+import {
+  type ToolingInspection,
+  type ToolingNormalizationSource,
+  toolingCompileResult,
+} from "./tooling-inspection.ts";
+import { toolingIssue } from "./tooling-issues.ts";
 
-export type { ToolingInspection } from "./tooling-inspection.ts";
+export type { ToolingInspection, ToolingNormalizationSource } from "./tooling-inspection.ts";
 
 export type ToolingServiceRef =
   | { readonly kind: "service"; readonly name: string }
@@ -49,24 +54,19 @@ export const inspectToolingTask = (
   const provenance = source === undefined ? {} : { source: { path: source.path, task: name } };
   const input = inspectToolingInput(task);
   const issues: ValidationIssue[] = Result.isFailure(input) ? [...input.failure] : [];
-  const report = (path: ValidationIssuePath, message: string) => {
-    issues.push({ path, message, suggestion: "Correct this tooling declaration." });
+  const report = (...args: Parameters<typeof toolingIssue>) => {
+    issues.push(toolingIssue(...args));
   };
   const inspectEnv = (env: Environment | undefined, path: ValidationIssuePath) => {
     for (const key of Object.keys(env ?? {})) {
-      if (key === "LANDO" || key.startsWith("LANDO_"))
-        report([...path, key], "Tooling env must not override reserved runtime keys.");
+      if (key === "LANDO" || key.startsWith("LANDO_")) report([...path, key], "reserved-env");
     }
   };
   inspectEnv(task.env, ["env"]);
   if (task.wrapper === true) {
     if (Object.keys(task.flags ?? {}).length > 0 || Object.keys(task.args ?? {}).length > 0)
-      report(
-        ["wrapper"],
-        "A wrapper task declares no flags or args; remove those declarations or remove wrapper.",
-      );
-    if (task.arguments === false)
-      report(["wrapper"], "A wrapper task accepts arguments; remove arguments: false or remove wrapper.");
+      report(["wrapper"], "wrapper-inputs");
+    if (task.arguments === false) report(["wrapper"], "wrapper-arguments");
   }
   const serviceRef = (
     value: string | undefined,
@@ -78,7 +78,7 @@ export const inspectToolingTask = (
     const key = value.slice(1);
     const flag = Object.hasOwn(task.flags ?? {}, key) ? task.flags?.[key] : undefined;
     if (flag === undefined || flag.boolean === true) {
-      report(path, "Service reference requires a declared non-boolean flag.");
+      report(path, "service-flag");
       return undefined;
     }
     return { kind: "flag", flag: key };
@@ -91,7 +91,7 @@ export const inspectToolingTask = (
   }
   const env = { ...task.env };
   const conflictingCommands = task.cmd !== undefined && task.cmds !== undefined;
-  if (conflictingCommands) report(["cmds"], "Use cmd or cmds, not both.");
+  if (conflictingCommands) report(["cmds"], "command-conflict");
   const steps: NormalizedToolingStep[] = [];
   if (task.cmd !== undefined) {
     steps.push({
@@ -109,7 +109,7 @@ export const inspectToolingTask = (
     inspectEnv(step.env, [...path, "env"]);
     const target = step.service === undefined ? service : serviceRef(step.service, [...path, "service"]);
     if (typeof step.cmd !== "string" || step.cmd.trim().length === 0) {
-      report(typeof entry === "string" ? path : [...path, "cmd"], "Each command step needs a non-empty cmd.");
+      report(typeof entry === "string" ? path : [...path, "cmd"], "empty-command");
       continue;
     }
     const dir = step.dir ?? task.dir;
@@ -131,10 +131,7 @@ export const inspectToolingTask = (
     !conflictingCommands &&
     (task.cmd === undefined ? (task.cmds?.length ?? 0) : 1) !== 1
   )
-    report(
-      ["wrapper"],
-      "A wrapper task runs exactly one command; move setup into its own task or remove wrapper.",
-    );
+    report(["wrapper"], "wrapper-command-count");
   const [first, ...rest] = issues;
   if (first !== undefined) return Result.fail([first, ...rest]);
   if (Result.isFailure(input)) return Result.fail(input.failure);
@@ -156,7 +153,7 @@ export const inspectToolingTask = (
 export const normalizeToolingTask = (
   name: string,
   task: ToolingTaskShape,
-  source?: { readonly path: string },
+  source?: ToolingNormalizationSource,
 ): Result.Result<NormalizedToolingTask, ToolingCompileError> =>
   toolingCompileResult(name, inspectToolingTask(name, task, source), source);
 
