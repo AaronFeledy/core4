@@ -129,7 +129,6 @@ const main = async (): Promise<void> => {
       const { runCli } = await import("@lando/core/cli");
       const { processInvocationContext } = await import("../src/runtime/invocation-context");
       if (state.received() !== undefined) return;
-      // processInvocationContext supplies IO/exit; env/cwd stay the host-entry snapshot above.
       const context = { ...processInvocationContext(), cwd: capturedCwd, env: capturedEnv };
       await runCli({ argv, rootUrl: import.meta.url, discovery, signal: state.signal, context });
     } finally {

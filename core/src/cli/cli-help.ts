@@ -306,16 +306,16 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
   const style = helpStyle(options?.styled === true);
   const names = typeableFor(entry.id, [], options?.aliasPolicy, true);
   const input = availability.input;
-  const usage =
-    input.acceptsArguments && input.flags.length + input.args.length === 0
-      ? `lando ${names.primary} [args...]`
-      : `lando ${names.primary}${input.flags.length === 0 ? "" : " [flags]"}${
-          input.args.length === 0
-            ? ""
-            : ` ${input.args
-                .map((arg) => (arg.required ? `<${arg.name.toUpperCase()}>` : `[${arg.name.toUpperCase()}]`))
-                .join(" ")}`
-        }`;
+  const acceptsRawArguments = input.acceptsArguments && input.flags.length + input.args.length === 0;
+  const usage = acceptsRawArguments
+    ? `lando ${names.primary} [args...]`
+    : `lando ${names.primary}${input.flags.length === 0 ? "" : " [flags]"}${
+        input.args.length === 0
+          ? ""
+          : ` ${input.args
+              .map((arg) => (arg.required ? `<${arg.name.toUpperCase()}>` : `[${arg.name.toUpperCase()}]`))
+              .join(" ")}`
+      }`;
   const flagRows = input.flags.map((flag) => {
     const alias = flag.alias === undefined ? "" : `, -${flag.alias}`;
     return `  --${flag.name}${flag.boolean ? "[=true|false]" : "=<value>"}${alias}${helpItemMeta(flag)}`;
@@ -333,7 +333,7 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
   if (availability.runs !== undefined) lines.push("", toolingRunHelp(availability.runs));
   const sharedFlags = sharedFlagHint(input, names.primary);
   if (sharedFlags !== undefined) lines.push("", sharedFlags);
-  if (input.acceptsArguments && input.flags.length + input.args.length === 0)
+  if (acceptsRawArguments)
     lines.push(
       "",
       availability.wrapper

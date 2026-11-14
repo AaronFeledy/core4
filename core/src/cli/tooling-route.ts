@@ -94,7 +94,7 @@ export const normalizedToolingRoute = (
     default:
       return entry satisfies never;
   }
-  const route = {
+  return {
     availability,
     hidden: entry.visibility === "internal",
     _tag: "tooling" as const,
@@ -103,7 +103,6 @@ export const normalizedToolingRoute = (
     summary: entry.summary,
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
   };
-  return route;
 };
 
 export const bunScriptRoute = (

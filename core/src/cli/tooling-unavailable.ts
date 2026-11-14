@@ -29,10 +29,11 @@ export const unavailableToolingError = (
           return Effect.succeed(undefined);
         case "Unavailable": {
           const diagnostic = route.availability.diagnostic;
+          const structured = isToolingDiagnostic(diagnostic);
           return Effect.succeed(
             new ToolingCompileError({
-              ...(isToolingDiagnostic(diagnostic) ? diagnostic : {}),
-              tool: isToolingDiagnostic(diagnostic) ? diagnostic.tool : route.name,
+              ...(structured ? diagnostic : {}),
+              tool: structured ? diagnostic.tool : route.name,
               message: diagnostic.message,
               remediation: diagnostic.remediation ?? "Correct this task's tooling declaration.",
             }),
