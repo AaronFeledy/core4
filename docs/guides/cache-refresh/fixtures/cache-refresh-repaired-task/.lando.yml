@@ -1,0 +1,11 @@
+name: cache-refresh-invalid-task
+tooling:
+  hello:
+    description: A healthy task
+    service: ":host"
+    cmd: echo healthy-task
+  deploy:
+    description: A wrapper with one command
+    service: ":host"
+    wrapper: true
+    cmd: echo repaired-task

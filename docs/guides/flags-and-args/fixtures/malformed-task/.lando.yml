@@ -1,0 +1,25 @@
+name: malformed-task
+tooling:
+  hello:
+    description: A healthy task
+    service: ":host"
+    cmd: echo healthy-task
+  broken:
+    description: Two flags share one alias
+    service: ":host"
+    flags:
+      name:
+        alias: n
+      note:
+        alias: n
+    cmd: echo broken-task
+  retired:
+    description: A disabled task with the same mistake
+    disabled: true
+    service: ":host"
+    flags:
+      name:
+        alias: n
+      note:
+        alias: n
+    cmd: echo retired-task

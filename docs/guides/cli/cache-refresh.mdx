@@ -18,9 +18,9 @@ There is no top-level `lando cache:refresh` alias. Use the `app:` form.
 
 You do not need this command to make your commands show up or update. Lando keeps the command index current on its own; see [Commands update themselves](#commands-update-themselves).
 
-To check a plan, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands, including unavailable scripts. `result.services` lists every planned service. A registry image has `artifact.kind` `ref` and `artifact.ref`, the tag a later start or rebuild uses. A service Lando builds has `artifact.kind` `build`, and `contentHash` when the plan has one. The result omits build context, arguments, and inline source. After the app is running, `lando info --format=json` reports that same identity under `services[].artifact`. Refresh does not pull the image or start the service.
+To check a plan, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands, including unavailable tasks and scripts. `result.services` lists every planned service. A registry image has `artifact.kind` `ref` and `artifact.ref`, the tag a later start or rebuild uses. A service Lando builds has `artifact.kind` `build`, and `contentHash` when the plan has one. The result omits build context, arguments, and inline source. After the app is running, `lando info --format=json` reports that same identity under `services[].artifact`. Refresh does not pull the image or start the service.
 
-A Landofile that does not plan fails with the real error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag`. The same run prints refresh warnings: `LANDO_HOST_SHELL_SYNTAX` for a host task whose `cmd` or `vars.<name>.sh` is written in POSIX-only syntax, and `LANDO_SCRIPT_INVALID` for a script with invalid metadata. `lando app:config:lint` reports those too.
+A Landofile that does not plan fails with the real error, such as `LandofileParseError` or `LandofileValidationError`, as `error._tag`. A successful run prints refresh warnings: `LANDO_HOST_SHELL_SYNTAX` for a host task whose `cmd` or `vars.<name>.sh` is written in POSIX-only syntax, `LANDO_TOOLING_INVALID` for a task whose declaration contradicts itself, and `LANDO_SCRIPT_INVALID` for a script with invalid metadata. `lando app:config:lint` reports those too.
 
 ## Commands update themselves
 
@@ -36,9 +36,11 @@ The next command just works. A fast rebuild prints nothing. In a terminal, one t
 
 Built-in commands such as `lando start` and `lando info` never trigger that rebuild, and neither do `lando` calls made from inside a container through the host proxy.
 
-When the rebuild fails because of broken Landofile YAML, invalid config, a broken tooling definition, or an include Lando cannot fetch, the command you ran fails with that real error. Fix it and rerun; Lando does not cache the failure. `lando --help` still lists built-in and plugin commands and shows `This app's commands are unavailable:` with the error and its remediation.
+When the rebuild fails because of broken Landofile YAML, invalid config, an unsupported tooling key or scope, or an include Lando cannot fetch, the command you ran fails with that real error. Fix it and rerun; Lando does not cache the failure. `lando --help` still lists built-in and plugin commands and shows `This app's commands are unavailable:` with the error and its remediation.
 
-A malformed `.bun.sh` file does not fail refresh or block other commands. Explicit refresh, start, restart, and rebuild warn about it; an automatic command-index rebuild stays silent. The script stays in help as `[unavailable]`, with `loadError` in machine catalogs, and is omitted from MCP. Invoking that script or requesting its own help fails with its current tagged error. A lifecycle hook that calls it still fails. Fixing the file takes effect on the next call. Unreadable files and directories still fail refresh with their path and error.
+One malformed task does not fail refresh or block other commands. That covers a task that is valid YAML and schema but contradicts itself: two flags sharing an alias, a default outside its choices, a `wrapper: true` task with two commands, an `env` key starting with `LANDO_`, or a `service: ":<flag>"` selector with no such flag. Explicit refresh warns with `LANDO_TOOLING_INVALID` and still exits 0; an automatic command-index rebuild stays silent. The task stays in help as `[unavailable]`, with `loadError` in machine catalogs. Running it, asking for its help with `lando <task> --help` or `lando help <task>`, or passing it `--version` fails with `ToolingCompileError`. Fix the Landofile and the next call rebuilds the metadata and runs the task. A task that is disabled is refused first, so a malformed disabled task stays hidden and produces no warning. See [Fix an unavailable task](../tooling/flags-and-args.mdx#fix-an-unavailable-task).
+
+A malformed `.bun.sh` file gets the same treatment. Explicit refresh, start, restart, and rebuild warn about it; an automatic command-index rebuild stays silent. The script stays in help as `[unavailable]`, with `loadError` in machine catalogs, and is omitted from MCP. Invoking that script or requesting its own help fails with its current tagged error. A lifecycle hook that calls it still fails. Fixing the file takes effect on the next call. Unreadable files and directories still fail refresh with their path and error.
 
 For example, with a `bad.bun.sh` that has no front matter next to a healthy script, `lando app:cache:refresh --format=json` exits 0 with `ok: true`, counts both commands in `commandsCompiled`, and carries this entry in `warnings`:
 
@@ -54,6 +56,28 @@ For example, with a `bad.bun.sh` that has no front matter next to a healthy scri
 ```
 
 To see every broken script at once, with its line and column, run `lando app:config:lint`, which reports `script.front-matter` and `script.host-shell` findings even when the Landofile does not load. See [Read script findings](../landofile/config-lint.mdx#read-script-findings) and the [captured refresh and invocation example](../tooling/bun-shell-scripts.mdx#write-the-front-matter).
+
+## Refresh with one malformed task
+
+This app has a healthy `hello` task and a `deploy` wrapper that breaks the one-command rule:
+
+```yaml
+name: cache-refresh-invalid-task
+tooling:
+  hello:
+    description: A healthy task
+    service: ":host"
+    cmd: echo healthy-task
+  deploy:
+    description: A wrapper with two commands
+    service: ":host"
+    wrapper: true
+    cmds:
+      - echo first
+      - echo second
+```
+
+`lando app:cache:refresh --format=json` exits 0 and names `deploy` in a `LANDO_TOOLING_INVALID` warning. `lando hello` runs. `lando deploy` fails with `ToolingCompileError` until you give the wrapper a single `cmd`. After that edit, `lando deploy` works on the next call with no refresh in between.
 
 ## When your home directory changes
 
@@ -106,6 +130,30 @@ tooling:
       <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\"" } }} />
     </Step>
     <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="refresh-with-malformed-task" render>
+    <Step name="scaffold-invalid-task">
+      <UseFixture name="cache-refresh-invalid-task" />
+    </Step>
+    <Step name="refresh-warns-and-succeeds">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true[\\s\\S]*\"code\":\\s*\"LANDO_TOOLING_INVALID\"" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"commandsCompiled\":\\s*2" } }} />
+    </Step>
+    <Step name="run-healthy-task-quietly">
+      <Verify command="lando hello --format=json" expect={{ stdout: { regex: "healthy-task", not: { regex: "LANDO_TOOLING_INVALID" } } }} />
+    </Step>
+    <Step name="refuse-malformed-wrapper">
+      <Run command="lando deploy --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "exactly one command" }} />
+    </Step>
+    <Step name="repair-and-rerun">
+      <UseFixture name="cache-refresh-repaired-task" />
+      <Verify command="lando deploy --format=json" expect={{ stdout: { regex: "repaired-task" } }} />
+    </Step>
+    <Step name="cleanup-invalid-task">
       <Cleanup />
     </Step>
   </Scenario>

@@ -77,7 +77,7 @@ Each key under `flags:` is one `--flag`. Every option is optional; an empty obje
 | `description` | Help text for `lando <task> --help` |
 | `sensitive` | `true` protects supplied values in Lando output, errors, events, and traces |
 
-A `boolean` flag can't take `choices` or a string `default`. Explicit false overrides a true default, both on the CLI and in named JSON input. For example, to default `loud` to true in the task above, use:
+A `boolean` flag can't take `choices` or a string `default`, a `default` has to be one of the `choices`, and two flags can't share an `alias`. Break one of these rules and Lando refuses that task; see [Fix an unavailable task](#fix-an-unavailable-task). Explicit false overrides a true default, both on the CLI and in named JSON input. For example, to default `loud` to true in the task above, use:
 
 ```yaml
 flags:
@@ -111,9 +111,11 @@ args:
 
 `choices`, `default`, `required`, `description`, and `sensitive` behave the same as they do for flags. A few layout rules apply on top:
 
-- Either every arg declares `order` or none do. Leave them all out and the order follows the YAML key order; mix the two and the Landofile is rejected.
+- Either every arg declares `order` or none do. Leave them all out and the order follows the YAML key order; mix the two and Lando refuses the task.
 - Two args can't share an `order`. Gaps are fine: `0` and `5` work, `0` and `0` don't.
 - A required arg can't come after an optional one.
+
+A task that breaks a layout rule is refused on its own. The rest of the Landofile still loads; see [Fix an unavailable task](#fix-an-unavailable-task).
 
 Named arguments retain their names; order matters when reading or producing argv. A trailing optional argument can be left off. For an argv-only task, an absent argument before a later value creates a gap that argv cannot represent. Lando refuses that projection with `ToolingInputError` rather than moving the later value into the wrong slot. A later default can create the same gap:
 
@@ -151,7 +153,7 @@ For a task with no declared flags or args, `{{ raw }}` inserts the passthrough t
 
 Lando refuses data interpolation in backticks, here-documents, arithmetic or parameter expansions, and dollar-prefixed quotes, where ordinary quoting would change its meaning. It also refuses a preceding unescaped dollar sign that could combine with data to start an expansion, including inside double quotes. Quoting protects the shell boundary; it cannot protect a program that interprets an argument as code. For example, `sh -c "{{ flags.code }}"` still asks `sh` to execute that input. Load-time scopes such as `env`, `host`, and `app`, and literal vars independent of invocation input, remain authored command text. Use them only for text you intend to author into the command.
 
-Unknown references such as `flags.naem` are `landofile.tooling` lint findings with a closest-name suggestion. They do not block planning other tasks, but invoking the affected task fails with `ToolingCompileError` before any var command runs. The invocation scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` are not implemented yet; loading a reference names the scope and its authored path with `NotImplementedError`.
+Unknown references such as `flags.naem` are `landofile.tooling` lint findings with a closest-name suggestion. They do not block planning other tasks, but invoking the affected task fails with `ToolingCompileError` before any var command runs. The invocation scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` are not implemented yet. A reference to one fails the load for the whole app with `NotImplementedError`, naming the scope and its authored path. `lando app:config:lint` lists every such reference at its path, line, and column.
 
 ## Protect sensitive values
 
@@ -173,7 +175,7 @@ tooling:
 
 `lando npm install --save-dev vitest` hands `install --save-dev vitest` to `npm` untouched. Add `flags:` only when you want Lando to check the input first. Raw tails are for undeclared passthrough, not a way to fill gaps in named arguments. Do not mix declared named input with a raw tail; Lando rejects the ambiguous call. Prefer named maps for declared MCP, event, and library inputs.
 
-With `wrapper: true`, `lando npm --help`, `lando npm -h`, and `lando npm --version` go to npm. A wrapper must have exactly one command (`cmd`, including an argv list, or one entry in `cmds`), no declared flags or args, and must not set `arguments: false`. A wrapper that breaks these rules fails with `ToolingCompileError`; move the extra steps to another task or drop `wrapper: true`.
+With `wrapper: true`, `lando npm --help`, `lando npm -h`, and `lando npm --version` go to npm. A wrapper must have exactly one command (`cmd`, including an argv list, or one entry in `cmds`), no declared flags or args, and must not set `arguments: false`. A wrapper that breaks these rules fails with `ToolingCompileError` when you run it, and `lando app:config:lint` reports it beforehand. Move the extra steps to another task or drop `wrapper: true`.
 
 Without `wrapper: true`, Lando answers `-h` and `--help` itself and does not run the task, even when the task is a single command. Either spelling works anywhere before the first `--`. A declared flag named `help` or aliased to `h` owns both spellings instead. `lando help <task>` shows Lando's help for any enabled task, including a wrapper.
 
@@ -293,6 +295,27 @@ A few positions cannot read a computed var: another var's definition (including 
 
 `{ default: ... }` and `{ prompt: ... }` are not var forms. Lando rejects them at load with `NotImplementedError`. Write the value directly as `vars.<name>: <value>`; for a value the caller should supply, declare a flag or argument, or compute it with `sh`.
 
+## Fix an unavailable task
+
+A task whose declaration contradicts itself doesn't take the app down with it. Two flags sharing an alias, a default outside its choices, a wrapper with two commands, an `env` key starting with `LANDO_`, and a `service: ":<flag>"` selector with no such flag all count. Unrelated tasks and `lando start` keep working unless a lifecycle hook calls the malformed task. That call follows the usual event failure policy: a failing pre-event stops the operation, while a post-event failure produces a warning. Both retain the task's diagnostic and correction.
+
+`lando --help` lists the broken task with an `[unavailable]` marker, and `lando help --format=json` carries the reason as `loadError` on its row. The task itself refuses every request with `ToolingCompileError` before any command runs:
+
+```sh
+lando broken
+lando broken --help
+lando help broken
+lando broken --version
+```
+
+The error names the task, the rule it broke, and the fix.
+
+To see every malformed task at once, run `lando app:config:lint`. Each one is a `landofile.tooling` finding at the key that is wrong. `lando app:cache:refresh` also warns with `LANDO_TOOLING_INVALID` for each one. The rebuild Lando does on its own before a command prints no warning.
+
+Fix the declaration and run the task again. Lando sees that the Landofile changed and rebuilds its command metadata on that run. You don't refresh anything by hand.
+
+This covers a task that is wrong on its own. A YAML syntax error, a schema error, or an unsupported key or scope still fails the load for every command.
+
 ## Turn a task off
 
 Set a task to `false` to drop an inherited or service-type task of the same name:
@@ -315,6 +338,8 @@ tooling:
     service: web
     cmd: echo legacy
 ```
+
+Lando refuses a disabled task before it reads the declaration. A disabled task with a mistake in its flags stays hidden, isn't listed as unavailable, and still fails with `ToolingDisabledError`.
 
 This object can merge with an object task from a lower config layer. An authored task always replaces a service-type task of the same name, so this does not preserve a service type's definition. Deleting the key lets an inherited task return; use `false` when it must stay off.
 
@@ -464,6 +489,38 @@ For a `.bun.sh` script, put `# disabled: true` inside its front-matter block. Fr
       <Verify errorTag="ToolingDisabledError" expect={{ regex: "retired-shorthand" }} />
     </Step>
     <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="isolate-malformed-task" render>
+    <Step name="scaffold-malformed-task">
+      <UseFixture name="malformed-task" />
+    </Step>
+    <Step name="run-healthy-task">
+      <Verify command="lando hello --format=json" expect={{ stdout: { regex: "healthy-task", not: { regex: "LANDO_TOOLING_INVALID" } } }} />
+    </Step>
+    <Step name="refuse-malformed-task">
+      <Run command="lando broken --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+    </Step>
+    <Step name="refuse-malformed-task-help">
+      <Run command="lando broken --help --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+      <Run command="lando help broken --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+    </Step>
+    <Step name="refuse-malformed-task-version">
+      <Run command="lando broken --version --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "alias" }} />
+    </Step>
+    <Step name="list-malformed-task-as-unavailable">
+      <Verify command="lando help --format=json" expect={{ stdout: { regex: "\"loadError\":\\s*\\{\\s*\"_tag\":\\s*\"ToolingCompileError\"", not: { regex: "retired" } } }} />
+    </Step>
+    <Step name="refuse-disabled-before-declaration">
+      <Run command="lando retired --format=json" expectExit={1} />
+      <Verify errorTag="ToolingDisabledError" expect={{ regex: "retired" }} />
+    </Step>
+    <Step name="cleanup-malformed-task">
       <Cleanup />
     </Step>
   </Scenario>

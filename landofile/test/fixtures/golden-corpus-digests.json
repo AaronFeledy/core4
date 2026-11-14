@@ -72,6 +72,14 @@
       "digest": "19ca47822cd36b2ff703ef380c3c2c6beaaa677667103e38390774781099904d"
     },
     {
+      "fixture": "docs/guides/cache-refresh/fixtures/cache-refresh-invalid-task",
+      "digest": "81c13dc415c329551a3ce8b6275527a023b3c78406446f7b527358f6a0fdd1a5"
+    },
+    {
+      "fixture": "docs/guides/cache-refresh/fixtures/cache-refresh-repaired-task",
+      "digest": "bee60dc84612dc26d4a66db3274363ca7a9859e1f40f644c086e9103c1ec99d5"
+    },
+    {
       "fixture": "docs/guides/certificates-mkcert/fixtures/certificate-routes",
       "digest": "3fd3605fe40808c2ae675efc55460ca952591a8398b920424b8049dfc3b9e355"
     },
@@ -167,10 +175,21 @@
       "digest": "8915d062ed66e315386002f280dc0ab4abec22ca9c1602ccb1f3bc0c005f8686"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-declarations",
+      "digest": "ef2cfc0506b711f1a38aa858b6f5140e72cff729aef48c7d8ee2a500dc761eb7"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-include",
       "invalid": {
         "status": "invalid",
         "tag": "LandofileIncludeError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-unsupported-scopes",
+      "invalid": {
+        "status": "invalid",
+        "tag": "NotImplementedError"
       }
     },
     {
@@ -439,6 +458,10 @@
     {
       "fixture": "docs/guides/flags-and-args/fixtures/invalid-wrapper",
       "digest": "de7c35b02f36239aed6566b22710712972b8e24966ee87f334aac17561176562"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/malformed-task",
+      "digest": "38bea87cbb745818b7960bc0079e07d5e38e2e7ef3ed2f4dc0fc4b91bc452ed5"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",

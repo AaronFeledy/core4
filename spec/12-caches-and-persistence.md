@@ -11,7 +11,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 
 ### 12.1 Cache catalog
 
-The app command index retains healthy script metadata and unavailable script rows with bounded `loadError`; unavailable rows carry no executable input declaration. Entries and script fingerprints come from one inspection snapshot. Valid script fingerprints cover paths and normalized metadata only; invalid and ambiguous script paths use `{ relativePath, invalid: sha256(content) }`. I/O failures are never persisted as unavailable scripts. Landofile tasks take precedence when ids overlap.
+The app command index retains healthy task and script metadata and unavailable rows with bounded `loadError`, for scripts with content failures and for enabled Landofile tasks that fail normalization (§8.7); unavailable rows carry no executable input declaration. Entries and script fingerprints come from one inspection snapshot. Valid script fingerprints cover paths and normalized metadata only; invalid and ambiguous script paths use `{ relativePath, invalid: sha256(content) }`. I/O failures are never persisted as unavailable scripts. Landofile tasks take precedence when ids overlap.
 
 The persisted app-plan key includes private implementation coordinates `{ name, source, realpath, identity }` for every selected non-bundled plugin with a path (§9.7), the resolved planning data name, and app kind (`user`, `scratch`, or `global`). The contribution graph captures plugin coordinates when it imports packages, including entryless packages, and carries them to planning outside the SDK registry contract. Planning MUST NOT walk plugin trees again. An unchanged implementation retains cache hits; editing any included source file or repointing the same name and version to another realpath invalidates the key. If the post-import identity differs from the pre-import observation, that invocation MUST skip persistent plan-cache writes. Help, version, and fresh cached-tooling paths MUST NOT perform the identity walk. Plugin coordinates are key inputs and do not change payload semantics; the private app-plan schema revision is 50.
 
@@ -52,7 +52,7 @@ The embedded container helper (§17.3) uses `<userCacheRoot>/tool-downloads/cont
 
 ### 12.2 Cache encoding
 
-The private app command-index ABI is 9. ABI 8 and earlier are rejected and regenerated, with no migration or compatibility reader. Decoder invariants MUST reject `loadError` entries that also carry input declarations or wrapper routing metadata, non-script `loadError` entries, and message/remediation strings longer than 1 KiB of UTF-8. The stored diagnostics MUST be redacted before bounding. A fingerprint carries exactly one of a valid metadata `sha256` or an invalid content `invalid` digest.
+The private app command-index ABI is 10. ABI 9 and earlier are rejected and regenerated, with no migration or compatibility reader. A `loadError` entry MAY be a script or a Landofile task. Decoder invariants MUST reject `loadError` entries that also carry input declarations or wrapper routing metadata, `loadError` on a disabled entry, and message/remediation strings longer than 1 KiB of UTF-8. The stored diagnostics MUST be redacted before bounding. A fingerprint carries exactly one of a valid metadata `sha256` or an invalid content `invalid` digest.
 
 Router and tooling hot-path caches MUST use binary encoding. `Bun.serialize` is permitted for private cache shapes; public contract caches such as `AppPlan` use Effect Schema binary encoding. A cache MUST NOT mix encodings.
 
