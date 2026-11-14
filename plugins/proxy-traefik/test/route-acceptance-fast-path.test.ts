@@ -12,6 +12,7 @@ import {
   defaultTlsFile,
   routeFile,
 } from "../src/proxy-paths.ts";
+import { routeReloadDigest } from "../src/route-reload-state.ts";
 import { renderTraefikDefaultTlsConfig, renderTraefikDynamicConfig } from "../src/routing.ts";
 import { certificatePem, privateKeyPem } from "./current-certificate-fixture.ts";
 import { app, httpsRoutes } from "./proxy-tls-harness.ts";
@@ -75,14 +76,18 @@ test.each(["linux", "darwin", "wsl"] as const)(
     );
     fixture.files.set(
       routeFile(paths, app),
-      renderTraefikDynamicConfig([route], app, {
+      `${renderTraefikDynamicConfig([route], app, {
         certFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.crt`,
         keyFile: `/etc/traefik/dynamic/certs/${app.ownerKey}.key`,
-      }),
+      })}# lando-certificate-generation: ${routeReloadDigest([certificatePem, certificatePem])}\n`,
     );
     let restarts = 0;
     const service = makeTraefikRouterService({
       ...fixture.dependencies,
+      certificateAuthority: {
+        ...fixture.dependencies.certificateAuthority,
+        root: Effect.succeed({ certificate: certificatePem, trusted: true }),
+      },
       globalApp: {
         ...fixture.dependencies.globalApp,
         restartRunningService: () =>

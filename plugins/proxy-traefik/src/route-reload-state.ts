@@ -1,4 +1,4 @@
-import { certificatePairIsCurrent as isCurrent } from "@lando/sdk/certificates";
+import { LEAF_RENEWAL_MARGIN_MS, certificatePairIsCurrent as isCurrent } from "@lando/sdk/certificates";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { type AppRouteOwner, type CertificateName, certificateNameForHostname } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -37,17 +37,24 @@ export const routeReloadDigest = (values: ReadonlyArray<string | undefined>): st
 /**
  * Whether the router's copy of a pair still serves `hostnames` at `now`. Route hostnames map
  * through `certificateNameForHostname` (a leftmost partial wildcard becomes `*.<rest>`); a hostname
- * no certificate can cover is never current. No renewal margin and no root check.
+ * no certificate can cover is never current. Checks the current root and shared leaf renewal margin.
  */
 export const certificatePairIsCurrent = (
   certificatePem: string,
   privateKeyPem: string,
-  hostnames: ReadonlyArray<string>,
-  now: number,
+  options: { readonly hostnames: ReadonlyArray<string>; readonly now: number; readonly root: string },
 ): boolean => {
-  const names = hostnames.map(certificateNameForHostname);
+  const names = options.hostnames.map(certificateNameForHostname);
   if (!names.every((name): name is CertificateName => name !== undefined)) return false;
-  return isCurrent({ certificate: certificatePem, privateKey: privateKeyPem }, { names, now });
+  return isCurrent(
+    { certificate: certificatePem, privateKey: privateKeyPem },
+    {
+      names,
+      now: options.now,
+      renewalMarginMs: LEAF_RENEWAL_MARGIN_MS,
+      root: options.root,
+    },
+  );
 };
 
 export const isAcknowledged = (

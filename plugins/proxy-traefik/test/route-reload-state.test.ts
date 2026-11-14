@@ -48,45 +48,83 @@ const now = Date.parse("2027-01-01T00:00:00Z");
 describe("certificatePairIsCurrent", () => {
   test("accepts wildcard and exact hostnames the certificate covers", () => {
     expect(
-      certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.demo.lndo.site", "demo.lndo.site"], now),
+      certificatePairIsCurrent(certificatePem, privateKeyPem, {
+        hostnames: ["*.demo.lndo.site", "demo.lndo.site"],
+        now,
+        root: certificatePem,
+      }),
     ).toBe(true);
   });
 
   test("accepts partial leftmost route wildcards covered by a mapped *.rest SAN", () => {
     expect(
-      certificatePairIsCurrent(
-        mappedWildcardCertificatePem,
-        mappedWildcardPrivateKeyPem,
-        ["x.lndo.site", "*-x.lndo.site"],
+      certificatePairIsCurrent(mappedWildcardCertificatePem, mappedWildcardPrivateKeyPem, {
+        hostnames: ["x.lndo.site", "*-x.lndo.site"],
         now,
-      ),
+        root: mappedWildcardCertificatePem,
+      }),
     ).toBe(true);
   });
 
   test("rejects hostnames the certificate does not cover", () => {
-    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.other.lndo.site"], now)).toBe(false);
-    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["a.b.demo.lndo.site"], now)).toBe(false);
-    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.lndo.site"], now)).toBe(false);
+    expect(
+      certificatePairIsCurrent(certificatePem, privateKeyPem, {
+        hostnames: ["*.other.lndo.site"],
+        now,
+        root: certificatePem,
+      }),
+    ).toBe(false);
+    expect(
+      certificatePairIsCurrent(certificatePem, privateKeyPem, {
+        hostnames: ["a.b.demo.lndo.site"],
+        now,
+        root: certificatePem,
+      }),
+    ).toBe(false);
+    expect(
+      certificatePairIsCurrent(certificatePem, privateKeyPem, {
+        hostnames: ["*.lndo.site"],
+        now,
+        root: certificatePem,
+      }),
+    ).toBe(false);
     // *-demo.lndo.site maps to *.lndo.site, which this leaf does not carry.
-    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*-demo.lndo.site"], now)).toBe(false);
+    expect(
+      certificatePairIsCurrent(certificatePem, privateKeyPem, {
+        hostnames: ["*-demo.lndo.site"],
+        now,
+        root: certificatePem,
+      }),
+    ).toBe(false);
   });
 
   test("rejects a public key passed as the private key", () => {
     // Given: the public half of the certificate's own key pair
     const publicKeyPem = createPublicKey(privateKeyPem).export({ type: "spki", format: "pem" }).toString();
     // Then
-    expect(certificatePairIsCurrent(certificatePem, publicKeyPem, ["demo.lndo.site"], now)).toBe(false);
-    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["demo.lndo.site"], now)).toBe(true);
+    expect(
+      certificatePairIsCurrent(certificatePem, publicKeyPem, {
+        hostnames: ["demo.lndo.site"],
+        now,
+        root: certificatePem,
+      }),
+    ).toBe(false);
+    expect(
+      certificatePairIsCurrent(certificatePem, privateKeyPem, {
+        hostnames: ["demo.lndo.site"],
+        now,
+        root: certificatePem,
+      }),
+    ).toBe(true);
   });
 
   test("rejects an expired certificate", () => {
     expect(
-      certificatePairIsCurrent(
-        certificatePem,
-        privateKeyPem,
-        ["demo.lndo.site"],
-        Date.parse("2040-01-01T00:00:00Z"),
-      ),
+      certificatePairIsCurrent(certificatePem, privateKeyPem, {
+        hostnames: ["demo.lndo.site"],
+        now: Date.parse("2040-01-01T00:00:00Z"),
+        root: certificatePem,
+      }),
     ).toBe(false);
   });
 });

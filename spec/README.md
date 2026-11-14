@@ -184,6 +184,7 @@ If you are looking for a public surface or policy:
 | Manifest-only router selection, static global-service requirements, and plan-cache identity | 04 + 10 + 11 | §4.3 + §9.5 + §10.2 |
 | Exact route-application acceptance, bounded convergence, warm-route reuse, and stopped-router withdrawal | 11 | §10.2.1 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
+| Router leaf renewal, current-root checks, issuer repair, and watched certificate reload | 11 | §10.3 + §10.2.1 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |

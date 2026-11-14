@@ -6,6 +6,7 @@ import { removeAppCertificates } from "../src/tls.ts";
 import { app } from "./proxy-tls-harness.ts";
 import { makeAcceptanceFixture } from "./route-acceptance-fixture.ts";
 import { routeMetadataLine } from "./route-owner-fixture.ts";
+import { DAY_MS, expiry, makeCertificateFixture, pem, route } from "./router-certificate-fixture.ts";
 
 for (const operation of ["empty-routes", "remove-routes", "certificate", "private-key"] as const) {
   test(`cancellation joins an in-flight ${operation} unlink before releasing its caller`, async () => {
@@ -70,3 +71,46 @@ for (const operation of ["empty-routes", "remove-routes", "certificate", "privat
     expect(fixture.files.has(target)).toBe(false);
   });
 }
+
+test.each(["default", "app"] as const)(
+  "cancellation joins the complete TLS publication after the %s key write starts",
+  async (target) => {
+    const f = makeCertificateFixture("win32");
+    f.seed(pem.expiring);
+    const key = target === "app" ? f.appFiles.key : f.defaultFiles.key;
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const service = makeTraefikRouterService({
+      ...f.dependencies,
+      fileSystem: {
+        ...f.dependencies.fileSystem,
+        writeSecretAtomic: (path, content) =>
+          path === key
+            ? Effect.tryPromise(async () => {
+                entered.resolve();
+                await release.promise;
+              }).pipe(Effect.andThen(f.dependencies.fileSystem.writeSecretAtomic(path, content)))
+            : f.dependencies.fileSystem.writeSecretAtomic(path, content),
+      },
+    });
+    const applying = f.run(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(service.applyRoutes([route], app));
+        yield* Effect.promise(() => entered.promise);
+        const interruption = yield* Effect.forkChild(Fiber.interrupt(fiber));
+        yield* Effect.yieldNow;
+        yield* Effect.sync(() => release.resolve());
+        yield* Fiber.join(interruption);
+      }),
+      expiry + DAY_MS,
+    );
+    await applying;
+
+    expect(f.files.get(f.appFiles.cert)).toBe(pem.current.certificate);
+    expect(f.files.get(f.appFiles.key)).toBe(pem.current.privateKey);
+    expect(f.files.get(f.defaultFiles.cert)).toBe(pem.current.certificate);
+    expect(f.files.get(f.defaultFiles.key)).toBe(pem.current.privateKey);
+    expect(f.operations.at(-1)).toBe(`write:${f.watched}`);
+    expect(f.events).not.toContain("ack:set");
+  },
+);

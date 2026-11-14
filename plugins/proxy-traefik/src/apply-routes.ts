@@ -7,7 +7,6 @@ import {
   TRAEFIK_CONTAINER_CERTIFICATE_DIR,
   defaultCertificateNames,
   defaultDomainFile,
-  defaultIssuerFile,
   routeFile,
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
@@ -27,7 +26,13 @@ import {
   renderTraefikDefaultTlsConfig,
   renderTraefikDynamicConfig,
 } from "./routing.ts";
-import { ensureTlsFiles, httpsHostnames, normalizeDefaultDomain, removeAppCertificates } from "./tls.ts";
+import {
+  defaultCertificateHostnames,
+  httpsHostnames,
+  normalizeDefaultDomain,
+  prepareTlsFiles,
+  removeAppCertificates,
+} from "./tls.ts";
 
 export const makeRouteApplication = (
   dependencies: TraefikProxyDependencies,
@@ -80,6 +85,8 @@ export const makeRouteApplication = (
       return { app, appliedRoutes: nextRoutes, authorities: authoritiesFor(nextRoutes, ports) };
     }
     const hostnames = httpsHostnames(nextRoutes);
+    const root =
+      hostnames.length === 0 ? undefined : (yield* dependencies.certificateAuthority.root).certificate;
     const expectedTls =
       hostnames.length === 0
         ? undefined
@@ -87,35 +94,55 @@ export const makeRouteApplication = (
             certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${appKey}.crt`,
             keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${appKey}.key`,
           };
-    const expectedConfig = renderTraefikDynamicConfig(nextRoutes, owner, expectedTls);
     const snapshot = yield* routeReloadSnapshot(dependencies, owner, domain);
     const [persistedConfig, certificate, privateKey, defaultCertificate, defaultPrivateKey] = snapshot;
     const now = yield* Clock.currentTimeMillis;
     const appCurrent =
-      hostnames.length === 0
+      root === undefined
         ? certificate === undefined && privateKey === undefined
         : certificate !== undefined &&
           privateKey !== undefined &&
-          certificatePairIsCurrent(certificate, privateKey, hostnames, now);
+          certificatePairIsCurrent(certificate, privateKey, {
+            hostnames,
+            now,
+            root,
+          });
     const defaultCurrent =
-      hostnames.length === 0 ||
+      root === undefined ||
       (defaultCertificate !== undefined &&
         defaultPrivateKey !== undefined &&
-        certificatePairIsCurrent(
-          defaultCertificate,
-          defaultPrivateKey,
-          [`test.${domain}`, domain, `traefik.${domain}`],
+        certificatePairIsCurrent(defaultCertificate, defaultPrivateKey, {
+          hostnames: defaultCertificateHostnames(domain),
           now,
-        ));
+          root,
+        }));
+    const tls =
+      root === undefined
+        ? undefined
+        : yield* prepareTlsFiles(dependencies, {
+            owner,
+            defaultDomain: domain,
+            hostnames,
+            refreshAppCertificate: !appCurrent,
+            refreshDefaultCertificate: !defaultCurrent,
+            root,
+          });
+    const expectedConfig =
+      renderTraefikDynamicConfig(nextRoutes, owner, expectedTls) +
+      (tls === undefined
+        ? ""
+        : `# lando-certificate-generation: ${routeReloadDigest([
+            tls.appCertificate ?? certificate,
+            tls.defaultCertificate ?? defaultCertificate,
+          ])}\n`);
     const defaultNames = defaultCertificateNames(domain);
     const tlsCurrent =
       hostnames.length === 0 ||
-      (snapshot[5] ===
+      snapshot[5] ===
         renderTraefikDefaultTlsConfig({
           certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
           keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
-        }) &&
-        (yield* dependencies.fileSystem.exists(defaultIssuerFile(dependencies.paths, domain))));
+        });
     const unchanged =
       persistedConfig === expectedConfig &&
       appCurrent &&
@@ -128,25 +155,19 @@ export const makeRouteApplication = (
       (windowsStore !== undefined
         ? yield* isAcknowledged(windowsStore, appKey, routeReloadDigest(snapshot))
         : routes.has(appKey) && !pendingReload.has(appKey));
-    pendingReload.add(appKey);
-    if (windowsStore !== undefined && !warmAcknowledged)
-      yield* invalidateAcknowledgement(windowsStore, appKey);
-    if (!unchanged) {
-      yield* ensureDashboardFile(dependencies, domain);
-      if (hostnames.length === 0) yield* removeAppCertificates(dependencies, owner);
-      const tls =
-        hostnames.length === 0
-          ? undefined
-          : yield* ensureTlsFiles(dependencies, {
-              owner,
-              defaultDomain: domain,
-              hostnames,
-              refreshAppCertificate: !appCurrent,
-              refreshDefaultCertificate: !defaultCurrent,
-            });
-      const config = renderTraefikDynamicConfig(nextRoutes, owner, tls);
-      if (persistedConfig !== config) yield* dependencies.fileSystem.writeAtomic(file, config);
-    }
+    yield* Effect.gen(function* () {
+      pendingReload.add(appKey);
+      if (windowsStore !== undefined && !warmAcknowledged)
+        yield* invalidateAcknowledgement(windowsStore, appKey);
+      if (!unchanged) {
+        yield* ensureDashboardFile(dependencies, domain);
+        if (hostnames.length === 0) yield* removeAppCertificates(dependencies, owner);
+      }
+      if (tls !== undefined) yield* tls.publish;
+      // Traefik watches top-level YAML; nested PEM replacement alone does not reload it.
+      if (persistedConfig !== expectedConfig || !appCurrent || !defaultCurrent)
+        yield* dependencies.fileSystem.writeAtomic(file, expectedConfig);
+    }).pipe(Effect.uninterruptible);
     if (dependencies.paths.platform === "win32" && !warmAcknowledged) {
       const before = routeReloadDigest(yield* routeReloadSnapshot(dependencies, owner, domain));
       yield* restart;
