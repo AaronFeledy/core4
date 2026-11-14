@@ -12,6 +12,7 @@ import {
 import { Effect, Result } from "effect";
 import { authoredSiteId } from "./compiled-sites.ts";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
+import { recordExpressionEnvironment } from "./environment-dependencies.ts";
 import {
   hasIncludeConditions,
   includeConditionPath,
@@ -119,6 +120,8 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         );
         continue;
       }
+      if (scope.environmentRecorder !== undefined)
+        recordExpressionEnvironment(scope.environmentRecorder, parsed.success);
       const references = parsed.success.segments.flatMap((segment) =>
         segment.kind === "SecretRefSegment" ? [segment.name] : [],
       );
@@ -206,6 +209,9 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
         recorder,
         pendingSites: scope.pendingSites,
         pathPrefix: node.source.path,
+        ...(scope.environmentRecorder === undefined
+          ? {}
+          : { environmentRecorder: scope.environmentRecorder }),
       });
       accepted = resolved.value;
       dependencies.push(...resolved.dependencies);

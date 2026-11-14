@@ -18,6 +18,7 @@ import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
+import { recordExpressionEnvironment } from "./environment-dependencies.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
 import { normalizeLoadExpressionFailure } from "./load-expression-failure.ts";
@@ -121,6 +122,10 @@ export const resolveLandofileLoadExpressions = (
           ],
         });
       };
+      const envRecorder = options.environmentRecorder;
+      const trackEnv = (ast: import("@lando/sdk/expressions").ExpressionTemplate): void => {
+        if (envRecorder !== undefined) recordExpressionEnvironment(envRecorder, ast);
+      };
       const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
         try {
           return visitValue(value, path);
@@ -182,6 +187,7 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
+          trackEnv(parsed.success);
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
           if (deferred !== undefined) throw deferred;
           const references = parsed.success.segments.flatMap((segment) =>
