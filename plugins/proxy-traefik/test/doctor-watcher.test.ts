@@ -57,7 +57,7 @@ const solutionText = (solution: {
 
 const reportStalenessCorpus = (report: {
   readonly runtimeStatus?: string | undefined;
-  readonly context: Readonly<Record<string, string>>;
+  readonly context: Readonly<Record<string, string | ReadonlyArray<string>>>;
   readonly solutions: ReadonlyArray<{ readonly description: string; readonly command?: string | undefined }>;
 }): string =>
   [

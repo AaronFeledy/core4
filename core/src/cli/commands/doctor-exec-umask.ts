@@ -8,22 +8,11 @@ import type { AppId, ServiceName } from "@lando/sdk/schema";
 import type { CommandSpec, ExecResult, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import type {
-  DoctorCheck,
-  DoctorRuntime,
-  DoctorSelectionRecord,
-  DoctorSeverity,
-  DoctorSolution,
-  DoctorStatus,
-} from "./doctor-contract";
-import { providerKindFor } from "./doctor-contract";
+import type { DoctorFinding, DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor-contract";
 
 export const EXEC_UMASK_CHECK_NAME = "exec-umask";
 
 export interface ExecUmaskDoctorProvider {
-  readonly id: string;
-  readonly displayName: string;
-  readonly version: string;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, unknown>;
   readonly exec: (
     target: { readonly app: AppId; readonly service: ServiceName },
@@ -76,13 +65,7 @@ export const diagnoseExecUmask = (input: {
   };
 };
 
-export const buildExecUmaskDoctorCheck = (
-  diagnosis: ExecUmaskDiagnosis,
-  provider: { readonly id: string; readonly displayName: string; readonly version: string },
-  runtime: DoctorRuntime,
-  runtimeStatus: string,
-  selection?: DoctorSelectionRecord,
-): DoctorCheck => {
+export const buildExecUmaskDoctorCheck = (diagnosis: ExecUmaskDiagnosis): DoctorFinding => {
   const status: DoctorStatus =
     diagnosis.probeStatus === "unprobed" || isWorldWritableUmask(diagnosis.execUmask) ? "warn" : "pass";
   const severity: DoctorSeverity = status === "warn" ? "warn" : "info";
@@ -90,17 +73,7 @@ export const buildExecUmaskDoctorCheck = (
     name: EXEC_UMASK_CHECK_NAME,
     status,
     severity,
-    providerId: provider.id,
-    providerName: provider.displayName,
-    providerVersion: provider.version,
-    providerKind: providerKindFor(provider.id),
-    runtimeStatus,
-    runtime,
-    capabilities: {},
     context: {
-      providerId: provider.id,
-      providerKind: providerKindFor(provider.id),
-      providerVersion: provider.version,
       engineVersion: diagnosis.engineVersion,
       execUmask: diagnosis.execUmask,
       effectiveExecUmask: diagnosis.effectiveExecUmask,
@@ -108,7 +81,6 @@ export const buildExecUmaskDoctorCheck = (
       probeStatus: diagnosis.probeStatus,
     },
     solutions: diagnosis.compensating ? [COMPENSATING_REMEDIATION] : [],
-    ...(selection === undefined ? {} : { selection }),
   };
 };
 
@@ -118,11 +90,10 @@ const runningService = (entries: ReadonlyArray<ServiceRuntimeInfo>): ServiceRunt
 export const collectExecUmaskDoctorCheck = Effect.fnUntraced(function* (input: {
   readonly provider: ExecUmaskDoctorProvider;
   readonly engineVersion: string | undefined;
-  readonly runtime: DoctorRuntime;
-  readonly runtimeStatus: string;
-  readonly selection: DoctorSelectionRecord;
-}): Effect.fn.Return<DoctorCheck> {
-  const listed = input.runtime.running
+  /** A runtime that is not running (including idle) is never listed or exec'd. */
+  readonly running: boolean;
+}): Effect.fn.Return<DoctorFinding> {
+  const listed = input.running
     ? yield* input.provider.list({}).pipe(Effect.catch(() => Effect.succeed([])))
     : [];
   const service = runningService(listed);
@@ -153,9 +124,5 @@ export const collectExecUmaskDoctorCheck = Effect.fnUntraced(function* (input: {
       stdout: probed,
       ...(effectiveStdout === undefined ? {} : { effectiveStdout }),
     }),
-    input.provider,
-    input.runtime,
-    input.runtimeStatus,
-    input.selection,
   );
 });

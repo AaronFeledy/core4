@@ -7,7 +7,13 @@ import { AbsolutePath, type AppId } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { makeTestSshService } from "@lando/sdk/test";
 import { type Context, Effect } from "effect";
+import type { DoctorFinding } from "../../src/cli/commands/doctor-contract.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
+
+const gpgDetails = (check: Pick<DoctorFinding, "details">) => {
+  const value = check.details;
+  return value !== undefined && "gpg" in value ? value.gpg : undefined;
+};
 
 const SECURITY =
   "Services on apps that opt in can request signatures from this agent; private keys stay on the host.";
@@ -58,7 +64,7 @@ test("reports gpg detail when forward is enabled and omits exported key bytes", 
       }),
     );
     // Then
-    expect(check.details?.gpg).toEqual({
+    expect(gpgDetails(check)).toEqual({
       forward: true,
       upstream: { source: "explicit", reachable: true },
       keyringExported: true,
@@ -90,7 +96,7 @@ test("doctor never launches gpg-agent when the socket is missing", async () => {
     }),
   );
   // Then
-  expect(check.details?.gpg).toMatchObject({ forward: true, upstream: { source: "none", reachable: false } });
+  expect(gpgDetails(check)).toMatchObject({ forward: true, upstream: { source: "none", reachable: false } });
   expect(calls.some((call) => call.includes("--launch"))).toBe(false);
 });
 
@@ -108,5 +114,5 @@ test("omits the gpg detail when forwarding is disabled", async () => {
     }),
   );
   // Then
-  expect(check.details?.gpg).toBeUndefined();
+  expect(gpgDetails(check)).toBeUndefined();
 });

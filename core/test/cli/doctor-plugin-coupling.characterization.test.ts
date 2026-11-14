@@ -34,7 +34,8 @@ import { TestFileSyncEngine } from "@lando/sdk/test";
 import { resolveHostKey } from "@lando/sdk/tool-provisioning";
 import { type Context, Effect, Layer } from "effect";
 
-import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
+import { doctor } from "../../src/cli/commands/doctor.ts";
+import type { DoctorFinding } from "../../src/cli/commands/doctor-contract.ts";
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
@@ -90,7 +91,7 @@ const runDoctorWithUserDataRoot = (userDataRoot: string) =>
     ),
   );
 
-const fileSyncCheckFrom = (checks: ReadonlyArray<DoctorCheck>): DoctorCheck => {
+const fileSyncCheckFrom = (checks: ReadonlyArray<DoctorFinding>): DoctorFinding => {
   const check = checks.find((candidate) => candidate.name === "file-sync");
   if (check === undefined) throw new Error("expected a file-sync doctor check");
   return check;
@@ -116,8 +117,7 @@ describe("doctor() file-sync plugin contribution", () => {
       expect(check.status).toBe("warn");
       expect(check.severity).toBe("warn");
       expect(check.runtimeStatus).toBe("not-installed");
-      expect(check.runtime.running).toBe(false);
-      expect(check.runtime).not.toHaveProperty("version");
+      expect(check.runtime).toBeUndefined();
       expect(check.context).toEqual({
         engineId: "mutagen",
         mutagenVersion: "not-installed",
@@ -148,7 +148,7 @@ describe("doctor() file-sync plugin contribution", () => {
 
       expect(check.status).toBe("warn");
       expect(check.runtimeStatus).toBe("installed");
-      expect(check.runtime.running).toBe(false);
+      expect(check.runtime).toBeUndefined();
       expect(check.context.mutagenVersion).toBe("v0.0.0-stale");
       expect(check.context.mutagenVersion).toBe("v0.0.0-stale");
       expect(check.context.expectedVersion).toBe(MUTAGEN_TOOL_VERSION);
@@ -180,7 +180,7 @@ describe("doctor() file-sync plugin contribution", () => {
       expect(check.status).toBe("warn");
       expect(check.severity).toBe("warn");
       expect(check.runtimeStatus).toBe("installed-client-unavailable");
-      expect(check.runtime.running).toBe(false);
+      expect(check.runtime).toBeUndefined();
       expect(check.context.mutagenVersion).toBe(MUTAGEN_TOOL_VERSION);
       expect(check.context.mutagenVersion).toBe(MUTAGEN_TOOL_VERSION);
       expect(check.context.clientStatus).toBe("unavailable");
@@ -217,7 +217,7 @@ describe("doctor() file-sync plugin contribution", () => {
 
       expect(check.status).toBe("warn");
       expect(check.runtimeStatus).toBe("installed");
-      expect(check.runtime.running).toBe(false);
+      expect(check.runtime).toBeUndefined();
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

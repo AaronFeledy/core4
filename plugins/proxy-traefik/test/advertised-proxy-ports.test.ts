@@ -73,7 +73,7 @@ describe("makeAdvertisedProxyPortsCheck", () => {
       status: "warn",
       runtimeStatus: "advertised-port-unhealthy",
     });
-    expect(reports[0]?.context.ports).toBe("80");
+    expect(reports[0]?.context.ports).toEqual(["80"]);
     expect(reports[0]?.solutions.some((solution) => solution.command === "lando global:restart")).toBe(true);
   });
 
@@ -107,7 +107,7 @@ describe("makeAdvertisedProxyPortsCheck", () => {
       // When: the check reads acquisition instead of an override pair.
       const reports = await runCheck(readers, "linux", undefined, acq.userDataRoot);
       // Then: it probes 80, not a fallback authority.
-      expect(reports[0]?.context.ports).toBe("80");
+      expect(reports[0]?.context.ports).toEqual(["80"]);
     } finally {
       acq.cleanup();
     }

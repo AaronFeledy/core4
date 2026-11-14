@@ -6,7 +6,7 @@ import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns";
-import { doctorReport } from "../../src/cli/commands/doctor-report";
+import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
 
 test.each([
   { addresses: ["127.0.0.1"], status: "pass" },
@@ -55,12 +55,14 @@ test.each([
     );
     // Then the injected resolver determines the verdict without invented service status.
     expect(hostnames).toEqual(["lando-doctor-probe.lndo.site"]);
-    const check = report.subsystems.checks.find((entry) => entry.name === "host-dns");
+    const check = report.checks
+      .filter((check) => check.section === "subsystems")
+      .find((entry) => entry.name === "host-dns");
     expect(check).toMatchObject({ status, context: { dnsResolved: String(status === "pass") } });
     for (const key of ["active", "mode", "mechanism", "subsystemId"]) {
       expect(check?.context).not.toHaveProperty(key);
     }
-    expect(report.skipped?.some((entry) => ["subsystems", "host-dns"].includes(entry.section))).toBe(false);
+    expect(report.skipped.some((entry) => entry.check === "host-dns")).toBe(false);
     if (status === "warn") expect(check?.solutions[0]?.description).toContain("DNS-rebinding protection");
   },
 );

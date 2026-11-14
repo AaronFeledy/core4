@@ -24,8 +24,9 @@ import {
 import { type Context, Effect, Option, Result } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 import { loadUserLandofile } from "../app-resolution";
+import type { DoctorFinding, SshAgentPostureDetails } from "./doctor-contract";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
-import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
+import { SSH_SPEC } from "./doctor-subsystem-checks";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 type Details = typeof SshAgentPostureDetails.Type;
@@ -46,7 +47,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
     readonly fix?: boolean;
     readonly idleProvider?: string;
   },
-): Effect.fn.Return<DoctorSubsystemCheck> {
+): Effect.fn.Return<DoctorFinding> {
   const config = yield* Effect.serviceOption(ConfigService);
   const sshAgent =
     input.globalConfig === undefined && Option.isSome(config)
