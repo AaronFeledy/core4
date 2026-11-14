@@ -50,11 +50,11 @@ const rules = {
     suggestion: "Remove the LANDO or LANDO_* environment entry; use a name outside that reserved namespace.",
   },
   "wrapper-inputs": {
-    message: "A wrapper task declares no flags or args.",
+    message: "Wrapper tasks must not declare flags or args",
     suggestion: "Remove the flags and args declarations, or remove wrapper to bind declared inputs.",
   },
   "wrapper-arguments": {
-    message: "A wrapper task accepts arguments.",
+    message: "Wrapper tasks must accept arguments",
     suggestion: "Remove arguments: false, or remove wrapper.",
   },
   "service-flag": {
