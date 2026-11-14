@@ -9,7 +9,7 @@ import {
   PreScratchDestroyEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
 import {
   DataMover,
   EventService,
@@ -24,6 +24,7 @@ import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
+import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import {
   removeBuildTranscripts,
@@ -139,7 +140,7 @@ export const makeScratchReaper = Effect.gen(function* () {
               }),
             });
         // teardown succeeded: the destroyed container's build output is stale.
-        yield* clearAppBuildResults(stateStore, input.id).pipe(
+        yield* clearAppBuildResults(stateStore, BuildOwner.scratch(AppId.make(input.id))).pipe(
           Effect.catch((failure) =>
             warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
           ),
@@ -148,8 +149,7 @@ export const makeScratchReaper = Effect.gen(function* () {
           yield* removeBuildTranscripts({
             providerId: scratchProviderId,
             userDataRoot: paths.value.roots.userDataRoot,
-            appId: input.id,
-            scratch: true,
+            owner: BuildOwner.scratch(AppId.make(input.id)),
           });
         }
         yield* events.publish(

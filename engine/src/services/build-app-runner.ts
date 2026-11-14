@@ -20,6 +20,7 @@ import {
   makeAppStepExecution,
 } from "./build-app-step-execution.ts";
 import type { AppBuildInput } from "./build-app-step-runner.ts";
+import { BuildOwner } from "./build-owner.ts";
 import { openAppBuildResults } from "./build-results.ts";
 import { sweepAppBuildTranscripts } from "./build-transcript-cleanup.ts";
 
@@ -44,7 +45,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
   const graphPlan = buildAppGraph(input.plan, steps);
   if (graphPlan._tag === "Cycle") return yield* planError(input, graphPlan.edges);
   const parentId = `build-app-${String(input.plan.id)}`;
-  const bucket = yield* openAppBuildResults(input.stateStore, String(input.plan.id)).pipe(
+  const bucket = yield* openAppBuildResults(input.stateStore, BuildOwner.fromPlan(input.plan)).pipe(
     mapFailures((cause) => buildResultsError(input.provider.id, cause)),
   );
   const cached =
@@ -235,8 +236,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
     yield* sweepAppBuildTranscripts({
       providerId: input.provider.id,
       userDataRoot: input.paths.roots.userDataRoot,
-      appId: String(input.plan.id),
-      scratch: isScratchPlan(input.plan),
+      owner: BuildOwner.fromPlan(input.plan),
       phase: "app",
       stateStore: input.stateStore,
       redact: (text) => input.redaction.redactor.redactString(text),

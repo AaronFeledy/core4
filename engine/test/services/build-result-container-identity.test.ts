@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { DateTime, Schema } from "effect";
-import { BuildResultEntry, findCompleteBuildResult } from "../../src/services/build-results.ts";
+import {
+  AppBuildResult,
+  BuildResultEntry,
+  findCompleteBuildResult,
+} from "../../src/services/build-results.ts";
 
 const entry = {
   buildKey: "install-key",
@@ -24,7 +28,7 @@ test.each([
   { recordedId: "", observedId: "web-1", hit: false },
 ])("app reuse binds recorded $recordedId to observed $observedId", ({ recordedId, observedId, hit }) => {
   const recorded = { ...entry, ...(recordedId === undefined ? {} : { containerId: recordedId }) };
-  const decoded = Schema.decodeUnknownSync(BuildResultEntry)({
+  const decoded = Schema.decodeUnknownSync(AppBuildResult)({
     ...recorded,
     completedAt: DateTime.formatIso(entry.completedAt),
   });
@@ -58,8 +62,8 @@ test.each(["complete", "fail"] as const)(
   },
 );
 
-test("legacy app entries decode as misses without discarding artifact cache entries", () => {
-  const { step: _, ...artifactFields } = entry;
+test("unknown app identity misses without discarding artifact evidence", () => {
+  const { step: _, exitCode: _exit, ...artifactFields } = entry;
   const legacyArtifact = { ...artifactFields, phase: "artifact" as const, artifactRef: "web:built" };
   const entries = Schema.decodeUnknownSync(Schema.Array(BuildResultEntry))([
     { ...entry, completedAt: DateTime.formatIso(entry.completedAt) },

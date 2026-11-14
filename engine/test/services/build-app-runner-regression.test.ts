@@ -10,6 +10,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Fiber, Queue, Stream } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { appSteps } from "../../src/services/build-app-plan.ts";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import {
   openAppBuildResults,
   openScratchBuildResults,
@@ -270,7 +271,13 @@ test("caps the published task detail line while the transcript keeps the framed 
 test("sweeps unreferenced app transcripts after a successful phase", async () => {
   await withTempRoots(async () => {
     // Given an app phase directory left with a stale file and an orphaned service directory.
-    const phase = join(process.env.LANDO_USER_DATA_ROOT ?? "", "builds", "app-build-runner", "app");
+    const phase = join(
+      process.env.LANDO_USER_DATA_ROOT ?? "",
+      "builds",
+      "owners",
+      BuildOwner.fromPlan(planWith({})).key,
+      "app",
+    );
     await mkdir(join(phase, "web"), { recursive: true });
     await mkdir(join(phase, "ghost"), { recursive: true });
     await writeFile(join(phase, "web", "stale.log"), "stale\n");
@@ -302,7 +309,13 @@ test("sweeps unreferenced app transcripts after a successful phase", async () =>
 test("keeps unreferenced app transcripts when the phase fails", async () => {
   await withTempRoots(async () => {
     // Given a stale transcript and a step that exits nonzero.
-    const phase = join(process.env.LANDO_USER_DATA_ROOT ?? "", "builds", "app-build-runner", "app");
+    const phase = join(
+      process.env.LANDO_USER_DATA_ROOT ?? "",
+      "builds",
+      "owners",
+      BuildOwner.fromPlan(planWith({})).key,
+      "app",
+    );
     await mkdir(join(phase, "web"), { recursive: true });
     const stale = join(phase, "web", "stale.log");
     await writeFile(stale, "stale\n");
@@ -352,7 +365,14 @@ test("reusing an older app-step key moves it to the newest position", async () =
     });
     const stepKey = appSteps(plan)[0]?.step.buildKey;
     if (stepKey === undefined) throw new TypeError("step is missing");
-    const directory = join(process.env.LANDO_USER_DATA_ROOT ?? "", "builds", String(plan.id), "app", "web");
+    const directory = join(
+      process.env.LANDO_USER_DATA_ROOT ?? "",
+      "builds",
+      "owners",
+      BuildOwner.fromPlan(plan).key,
+      "app",
+      "web",
+    );
     const olderPath = join(directory, `${stepKey}.log`);
     const newerPath = join(directory, "newer.log");
     await mkdir(directory, { recursive: true });
@@ -363,7 +383,7 @@ test("reusing an older app-step key moves it to the newest position", async () =
     const entries = await Effect.runPromise(
       Effect.gen(function* () {
         const stateStore = yield* StateStore;
-        const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+        const bucket = yield* openAppBuildResults(stateStore, BuildOwner.fromPlan(plan));
         yield* recordBuildResult(bucket, {
           buildKey: stepKey,
           containerId: "web-1",
@@ -671,7 +691,7 @@ test("treats a user app named scratch-* as a user app", async () => {
           const error = yield* Effect.flip(
             Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.buildApp(plan)),
           );
-          const appBucket = yield* openAppBuildResults(stateStore, "scratch-demo");
+          const appBucket = yield* openAppBuildResults(stateStore, BuildOwner.fromPlan(plan));
           const scratchBucket = yield* openScratchBuildResults(stateStore);
           return {
             error,
@@ -686,7 +706,9 @@ test("treats a user app named scratch-* as a user app", async () => {
     expect(result.error._tag).toBe("BuildPhaseFailedError");
     if (result.error._tag !== "BuildPhaseFailedError") throw result.error;
     const failure = result.error.failures[0];
-    expect(String(failure?.transcriptPath)).toContain(join("builds", "scratch-demo", "app", "web"));
+    expect(String(failure?.transcriptPath)).toContain(
+      join("builds", "owners", BuildOwner.fromPlan(plan).key, "app", "web"),
+    );
     expect(String(failure?.transcriptPath)).not.toContain(join("builds", "scratch", "scratch-demo"));
     expect(result.appEntries).toHaveLength(1);
     expect(result.scratchEntries).toEqual([]);

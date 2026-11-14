@@ -5,6 +5,7 @@ import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/servic
 import { BuildOrchestrator, EventService, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Queue, Stream } from "effect";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import { openAppBuildResults } from "../../src/services/build-results.ts";
 import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
 
@@ -98,7 +99,7 @@ for (const observation of ["missing", "empty", "failure"] as const) {
           yield* orchestrator.buildApp(plan);
           known = false;
           yield* orchestrator.buildApp(plan);
-          return yield* (yield* openAppBuildResults(yield* StateStore, String(plan.id))).get;
+          return yield* (yield* openAppBuildResults(yield* StateStore, BuildOwner.fromPlan(plan))).get;
         }).pipe(Effect.provide(makeLayer(provider))),
       );
 
@@ -138,7 +139,7 @@ test("forced app builds observe and record identity and a failed attempt prevent
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const orchestrator = yield* BuildOrchestrator;
-        const bucket = yield* openAppBuildResults(yield* StateStore, String(plan.id));
+        const bucket = yield* openAppBuildResults(yield* StateStore, BuildOwner.fromPlan(plan));
         yield* orchestrator.buildApp(plan, { force: true });
         dispatchCounts.push(calls);
         yield* orchestrator.buildApp(plan);

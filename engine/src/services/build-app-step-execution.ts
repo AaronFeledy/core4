@@ -1,9 +1,10 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { BuildStepFailedError, ProviderInternalError } from "@lando/sdk/errors";
 import { TaskCompleteEvent, TaskFailEvent, TaskStartEvent } from "@lando/sdk/events";
-import type { ProviderError, StateBucket } from "@lando/sdk/services";
-import { Cause, DateTime, Effect } from "effect";
+import type { StateBucket } from "@lando/sdk/services";
+import { DateTime, Effect } from "effect";
 import { buildAppKind, isScratchPlan } from "./build-app-kind.ts";
+import { makeAppBuildObservation } from "./build-app-observation.ts";
 import type { AppStep } from "./build-app-plan.ts";
 import {
   type AppBuildInput,
@@ -11,6 +12,7 @@ import {
   appStepProviderFailureMessage,
   runAppBuildStep,
 } from "./build-app-step-runner.ts";
+import { BuildOwner } from "./build-owner.ts";
 import { buildFailureRemediation, buildRemediationSuffix } from "./build-remediation.ts";
 import {
   type BuildResultEntry,
@@ -43,7 +45,7 @@ export interface AppStepExecution {
 }
 
 export const makeAppStepExecution = (input: AppBuildInput, execution: AppStepExecution) => {
-  const observations = new Map<string, Effect.Effect<string | undefined, ProviderError>>();
+  const observe = makeAppBuildObservation(input);
   const appRef = isScratchPlan(input.plan)
     ? ({ kind: "scratch", id: input.redaction.redactor.redactString(input.plan.slug) } as const)
     : ({ kind: "user", id: input.redaction.redactor.redactString(input.plan.slug) } as const);
@@ -100,19 +102,7 @@ export const makeAppStepExecution = (input: AppBuildInput, execution: AppStepExe
       return "blocked" as const;
     }
 
-    let observation = observations.get(step.service);
-    if (observation === undefined) {
-      observation = yield* Effect.cached(
-        input.provider.inspect({ app: input.plan.id, service: step.service }).pipe(
-          Effect.map((info) => (info.containerId === "" ? undefined : info.containerId)),
-          Effect.catchCause((cause) =>
-            cause.reasons.every(Cause.isFailReason) ? Effect.succeed(undefined) : Effect.failCause(cause),
-          ),
-        ),
-      );
-      observations.set(step.service, observation);
-    }
-    const containerId = yield* observation;
+    const containerId = yield* observe(step.service);
     execution.startedIds.add(step.id);
     const cachedHit = execution.force
       ? undefined
@@ -166,11 +156,10 @@ export const makeAppStepExecution = (input: AppBuildInput, execution: AppStepExe
     execution.dispatched = true;
     const transcriptPath = makeBuildTranscriptPath({
       userDataRoot: input.paths.roots.userDataRoot,
-      appId: String(input.plan.id),
+      owner: BuildOwner.fromPlan(input.plan),
       phase: "app",
       serviceName: String(step.service),
       buildKey: step.buildKey,
-      scratch: isScratchPlan(input.plan),
     });
     const result = yield* runAppBuildStep(input, appStep, transcriptPath);
     execution.settledIds.add(step.id);
@@ -184,7 +173,7 @@ export const makeAppStepExecution = (input: AppBuildInput, execution: AppStepExe
       step: step.id,
       ...(containerId === undefined ? {} : { containerId }),
       outcome: failed ? "fail" : "complete",
-      exitCode: result.exitCode ?? 1,
+      ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
       durationMs: result.durationMs,
       transcriptPath,
     }).pipe(mapFailures((cause) => buildResultsError(input.provider.id, cause)));

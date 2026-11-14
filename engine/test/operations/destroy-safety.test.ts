@@ -8,11 +8,8 @@ import { startChildTaskId } from "@lando/sdk/task-progress";
 import { Effect, Schema } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
-import {
-  type BuildResultEntry,
-  openAppBuildResults,
-  recordBuildResult,
-} from "../../src/services/build-results.ts";
+import { BuildOwner } from "../../src/services/build-owner.ts";
+import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { emptySnapshots } from "./data-mover-support.ts";
@@ -185,17 +182,11 @@ test("destroy reports unchanged when the provider returns no-op and nothing else
   expect(byTag(harness.events, "post-destroy")).toMatchObject([{ outcome: "unchanged" }]);
 });
 
-const buildEntry = (
-  phase: "artifact" | "app",
-  transcriptPath: string,
-  step?: string,
-): Omit<BuildResultEntry, "completedAt"> => ({
+const buildEntry = (phase: "artifact" | "app", transcriptPath: string, step?: string) => ({
   buildKey: `${phase}-key`,
   service: ServiceName.make("web"),
-  phase,
-  ...(step === undefined ? {} : { step }),
-  outcome: "complete",
-  exitCode: 0,
+  ...(phase === "app" ? { phase, step: step ?? "web:app:install" } : { phase }),
+  outcome: "complete" as const,
   durationMs: 1,
   transcriptPath: AbsolutePath.make(transcriptPath),
 });
@@ -207,21 +198,37 @@ test("destroy clears app results and build output only after successful teardown
   const harness = makeHarness({
     stateStore: state.service,
     destroyEffect: Effect.gen(function* () {
-      const bucket = yield* openAppBuildResults(state.service, String(plan.id));
+      const bucket = yield* openAppBuildResults(state.service, BuildOwner.fromPlan(plan));
       atDestroy = (yield* bucket.get) ?? [];
     }).pipe(Effect.orDie),
   });
-  const appDir = join(harness.userDataRoot, "builds", String(plan.id));
+  const appDir = join(harness.userDataRoot, "builds", "owners", BuildOwner.fromPlan(plan).key);
   const transcript = join(appDir, "app", "web", "install.log");
   await mkdir(join(appDir, "app", "web"), { recursive: true });
   await mkdir(join(appDir, "artifact", "web"), { recursive: true });
   await writeFile(join(appDir, "artifact", "web", "image.log"), "image\n");
   await writeFile(transcript, "install\n");
-  const bucket = await Effect.runPromise(openAppBuildResults(state.service, String(plan.id)));
+  const bucket = await Effect.runPromise(openAppBuildResults(state.service, BuildOwner.fromPlan(plan)));
   await Effect.runPromise(
     recordBuildResult(bucket, buildEntry("artifact", join(appDir, "artifact", "web", "image.log"))),
   );
   await Effect.runPromise(recordBuildResult(bucket, buildEntry("app", transcript, "web:app:install")));
+  const other = BuildOwner.root(AbsolutePath.make(join(plan.root, "other-root")));
+  const otherBucket = await Effect.runPromise(openAppBuildResults(state.service, other));
+  const otherTranscript = join(
+    harness.userDataRoot,
+    "builds",
+    "owners",
+    other.key,
+    "app",
+    "web",
+    "install.log",
+  );
+  await mkdir(join(harness.userDataRoot, "builds", "owners", other.key, "app", "web"), { recursive: true });
+  await writeFile(otherTranscript, "B output\n");
+  await Effect.runPromise(
+    recordBuildResult(otherBucket, buildEntry("app", otherTranscript, "web:app:install")),
+  );
 
   // When
   const result = await runDestroyTarget(harness, { volumes: true });
@@ -233,6 +240,8 @@ test("destroy clears app results and build output only after successful teardown
   await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
   const remaining = await Effect.runPromise(bucket.get);
   expect(remaining?.map((entry) => entry.phase)).toEqual(["artifact"]);
+  expect((await Effect.runPromise(otherBucket.get))?.map((entry) => entry.phase)).toEqual(["app"]);
+  expect(await Bun.file(otherTranscript).text()).toBe("B output\n");
 });
 
 test("a failed teardown keeps app results and build transcripts", async () => {
@@ -249,11 +258,11 @@ test("a failed teardown keeps app results and build transcripts", async () => {
       }),
     ),
   });
-  const appDir = join(harness.userDataRoot, "builds", String(plan.id));
+  const appDir = join(harness.userDataRoot, "builds", "owners", BuildOwner.fromPlan(plan).key);
   const transcript = join(appDir, "app", "web", "install.log");
   await mkdir(join(appDir, "app", "web"), { recursive: true });
   await writeFile(transcript, "output\n");
-  const bucket = await Effect.runPromise(openAppBuildResults(state.service, String(plan.id)));
+  const bucket = await Effect.runPromise(openAppBuildResults(state.service, BuildOwner.fromPlan(plan)));
   await Effect.runPromise(recordBuildResult(bucket, buildEntry("app", transcript, "web:app:install")));
 
   // When

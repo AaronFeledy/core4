@@ -55,6 +55,7 @@ import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/comman
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import {
   openAppBuildResults,
   openScratchBuildResults,
@@ -427,13 +428,13 @@ describe("BuildOrchestratorLayer.layer", () => {
           expect.objectContaining({
             taskId: String(web.name),
             transcriptPath: expect.stringContaining(
-              `${sep}${join("builds", String(plan.id), "artifact", String(web.name))}${sep}`,
+              `${sep}${join("builds", "owners", BuildOwner.fromPlan(plan).key, "artifact", String(web.name))}${sep}`,
             ),
           }),
           expect.objectContaining({
             taskId: String(db.name),
             transcriptPath: expect.stringContaining(
-              `${sep}${join("builds", String(plan.id), "artifact", String(db.name))}${sep}`,
+              `${sep}${join("builds", "owners", BuildOwner.fromPlan(plan).key, "artifact", String(db.name))}${sep}`,
             ),
           }),
         ]),
@@ -1743,7 +1744,6 @@ describe("BuildOrchestratorLayer.layer", () => {
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "debian:12.11-slim",
             transcriptPath: AbsolutePath.make("/tmp/legacy-scratch-build.log"),
@@ -1791,7 +1791,6 @@ describe("BuildOrchestratorLayer.layer", () => {
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "ubuntu:24.04",
             transcriptPath: AbsolutePath.make("/tmp/legacy-scratch-different-ref-build.log"),
@@ -2198,7 +2197,6 @@ describe("BuildOrchestratorLayer.layer", () => {
               service: web.name,
               phase: "artifact",
               outcome: "complete",
-              exitCode: 0,
               durationMs: 1,
               artifactRef: "debian:12.11-slim",
               sourceArtifactRef: "debian:12.11-slim",
@@ -2233,7 +2231,13 @@ describe("BuildOrchestratorLayer.layer", () => {
   test("sweeps unreferenced artifact transcripts after a successful phase", async () => {
     await withTempUserRoots(async () => {
       // Given a phase directory left with a stale file and an orphaned service directory.
-      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const phase = join(
+        makeLandoPaths().roots.userDataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+      );
       await mkdir(join(phase, "web"), { recursive: true });
       await mkdir(join(phase, "ghost"), { recursive: true });
       await writeFile(join(phase, "web", "stale.log"), "stale\n");
@@ -2263,7 +2267,13 @@ describe("BuildOrchestratorLayer.layer", () => {
   test("keeps unreferenced artifact transcripts when the phase fails", async () => {
     await withTempUserRoots(async () => {
       // Given a stale transcript and a build that fails.
-      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const phase = join(
+        makeLandoPaths().roots.userDataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+      );
       await mkdir(join(phase, "web"), { recursive: true });
       const stale = join(phase, "web", "stale.log");
       await writeFile(stale, "stale\n");
@@ -2296,7 +2306,13 @@ describe("BuildOrchestratorLayer.layer", () => {
   test("keeps unreferenced artifact transcripts when every step is reused", async () => {
     await withTempUserRoots(async () => {
       // Given a phase that first succeeds and then runs fully from its recorded results.
-      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const phase = join(
+        makeLandoPaths().roots.userDataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+      );
       const stale = join(phase, "web", "stale.log");
       let builds = 0;
       const provider = {
@@ -2782,7 +2798,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       };
       const buildKey = await Effect.runPromise(buildKeyForService(provider, web));
       const root = makeLandoPaths().roots.userDataRoot;
-      const directory = join(root, "builds", String(plan.id), "artifact", "web");
+      const directory = join(root, "builds", "owners", BuildOwner.fromPlan(plan).key, "artifact", "web");
       const olderPath = join(directory, `${buildKey}.log`);
       const newerPath = join(directory, "newer.log");
       await mkdir(directory, { recursive: true });
@@ -2794,13 +2810,12 @@ describe("BuildOrchestratorLayer.layer", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
-          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+          const bucket = yield* openAppBuildResults(stateStore, BuildOwner.fromPlan(plan));
           yield* recordBuildResult(bucket, {
             buildKey,
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "web:test",
             transcriptPath: AbsolutePath.make(olderPath),
@@ -2810,7 +2825,6 @@ describe("BuildOrchestratorLayer.layer", () => {
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "web:newer",
             transcriptPath: AbsolutePath.make(newerPath),
@@ -2844,7 +2858,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
-          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+          const bucket = yield* openAppBuildResults(stateStore, BuildOwner.fromPlan(plan));
           const orchestrator = yield* BuildOrchestrator;
           yield* orchestrator.build(plan);
           const before = yield* store.readRaw(bucket.path);
