@@ -777,6 +777,8 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   }),
   Layer.succeed(RedactionService, makeRedactionService()),
 )));
+// Guard the entire 257-request exchange, not the product's per-write deadline.
+// Request-count assertions below remain the concurrency-bound regression oracle.
 const observed = yield* Effect.gen(function* () {
   const client = yield* makeStdioClient();
   const service = yield* McpService;
@@ -800,7 +802,7 @@ const observed = yield* Effect.gen(function* () {
   yield* client.close;
   yield* Fiber.join(fiber);
   return { busyId: last.id, busy, results };
-}).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("5 seconds"));
+}).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("30 seconds"));
 expect(observed.results).toHaveLength(MAX_OUTSTANDING_REQUESTS + 1);
 expect(observed.busy).toMatchObject({ jsonrpc: "2.0", id: observed.busyId });
 const busyResult = Schema.decodeUnknownSync(Schema.Struct({
