@@ -36,6 +36,10 @@ import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { type AdmittedServices, withAppActivation } from "./app-activation.ts";
 import { haltAndRelaunchApp } from "./app-relaunch.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
+import {
+  openDatabaseCredentialSession,
+  publishDatabaseCredentialWarningsSafely,
+} from "./database-credential-warnings.ts";
 import { publishAndRunAppEvent } from "./events.ts";
 import {
   type GlobalConsumerAdmissionServices,
@@ -122,44 +126,57 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
         ? {}
         : { landofileRouter: target.landofile.document.router }),
     },
-    Effect.gen(function* () {
-      yield* withAcquiredStartOverlays({ ...target, plan: builtPlan }, preparedOverlays, {
-        provider,
-        workerPlan: target.plan,
-        reusePolicy: "adopt",
-        ...(managed === undefined ? {} : { managed }),
-        use: Effect.fnUntraced(function* (applyPlan, prepareGpgHome) {
-          const runtimePlan = projectDebuggerOverlay(applyPlan, preparedOverlays);
-          yield* applyActivation({
+    Effect.scoped(
+      Effect.gen(function* () {
+        const environment = yield* openDatabaseCredentialSession(builtPlan);
+        yield* withAcquiredStartOverlays({ ...target, plan: builtPlan }, preparedOverlays, {
+          provider,
+          workerPlan: target.plan,
+          reusePolicy: "adopt",
+          ...(managed === undefined ? {} : { managed }),
+          use: Effect.fnUntraced(function* (applyPlan, prepareGpgHome) {
+            const runtimePlan = projectDebuggerOverlay(applyPlan, preparedOverlays);
+            yield* applyActivation({
+              provider,
+              plan: runtimePlan,
+              certificates,
+              reconcile: true,
+              completionPlan: readinessPlan,
+              recordedPlan: readinessPlan,
+              ...(environment === undefined ? {} : { environment }),
+              ...(signal === undefined ? {} : { signal }),
+              beforeApply: verifyGlobalConsumerAdmission,
+            });
+            yield* prepareGpgHome;
+            yield* Effect.forEach(services, (service) =>
+              inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
+                Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
+              ),
+            );
+          }),
+        });
+        const ready = yield* completeStartup({
+          policy: "selected-rebuild",
+          builds,
+          selectedPlan: builtPlan,
+          provider,
+          plan: readinessPlan,
+          services: services.map((service) => service.name),
+          initial,
+          ...(signal === undefined ? {} : { signal }),
+        });
+        if (environment !== undefined) {
+          yield* publishDatabaseCredentialWarningsSafely({
             provider,
-            plan: runtimePlan,
-            certificates,
-            reconcile: true,
-            completionPlan: readinessPlan,
-            recordedPlan: readinessPlan,
-            ...(signal === undefined ? {} : { signal }),
-            beforeApply: verifyGlobalConsumerAdmission,
+            plan: readinessPlan,
+            services: ready,
+            session: environment,
+            ...(admitted.placement.plan === undefined ? {} : { previousPlan: admitted.placement.plan }),
           });
-          yield* prepareGpgHome;
-          yield* Effect.forEach(services, (service) =>
-            inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
-              Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
-            ),
-          );
-        }),
-      });
-      const ready = yield* completeStartup({
-        policy: "selected-rebuild",
-        builds,
-        selectedPlan: builtPlan,
-        provider,
-        plan: readinessPlan,
-        services: services.map((service) => service.name),
-        initial,
-        ...(signal === undefined ? {} : { signal }),
-      });
-      return startedServices(yield* collectPlanConnections(readinessPlan, ready));
-    }),
+        }
+        return startedServices(yield* collectPlanConnections(readinessPlan, ready));
+      }),
+    ),
   );
 });
 

@@ -91,6 +91,7 @@
     "./operations/confirmation-prompt": "./src/operations/confirmation-prompt.ts",
     "./operations/connection-collector": "./src/operations/connection-collector.ts",
     "./operations/connection-url": "./src/operations/connection-url.ts",
+    "./operations/database-credentials": "./src/operations/database-credentials.ts",
     "./operations/destroy": "./src/operations/destroy.ts",
     "./operations/ensure-global-services": "./src/operations/ensure-global-services.ts",
     "./operations/event-tooling-command": "./src/operations/event-tooling-command.ts",

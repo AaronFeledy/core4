@@ -249,7 +249,11 @@ import {
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
 import {
+  DatabaseClientCheckResult,
+  DatabaseClientCheckState,
+  DatabaseClientCreds,
   DatabaseConnection,
+  DatabaseLocalCheck,
   ServiceCreds,
   ServiceCredsConfig,
   ServiceCredsDisplay,
@@ -640,6 +644,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceCreds,
   ServiceCredsConfig,
   DatabaseConnection,
+  DatabaseClientCreds,
+  DatabaseClientCheckState,
+  DatabaseClientCheckResult,
+  DatabaseLocalCheck,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
   EventStepPlan,

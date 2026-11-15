@@ -173,3 +173,42 @@ export const classifyLoweredEnvRedaction = (
     wholeToken: [...wholeToken],
   };
 };
+
+export interface CredentialLiteralClassification {
+  readonly substring: ReadonlySet<string>;
+  readonly wholeToken: ReadonlySet<string>;
+  readonly publicValues: ReadonlySet<string>;
+}
+
+/**
+ * The one plan-to-classification step: read the plan's occurrence inventory and tier it, so a
+ * caller that selects credentials later never re-derives the classification itself.
+ */
+export const planCredentialClassification = (plan: RedactionPlan): CredentialLiteralClassification => {
+  const values = planRedactionValues(plan);
+  return {
+    substring: new Set(values.substring),
+    wholeToken: values.wholeTokenValues,
+    publicValues: values.publicValues,
+  };
+};
+
+/**
+ * Tier authored credential literals for redaction. A committed whole-token digest wins; a
+ * substring-classified or default-provenance value never becomes a broad exact-match token.
+ * References are skipped: the caller resolves them and registers the results as substrings.
+ */
+export const classifyCredentialLiterals = (
+  classification: CredentialLiteralClassification,
+  values: ReadonlyArray<EnvironmentValue>,
+): { readonly substring: string[]; readonly wholeToken: string[] } => {
+  const substring = new Set<string>();
+  const wholeToken = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== "string" || !isUsableExactRedactionValue(value)) continue;
+    if (classification.publicValues.has(value) || isPublicDefaultCredential(value)) continue;
+    if (classification.wholeToken.has(value) && !classification.substring.has(value)) wholeToken.add(value);
+    else substring.add(value);
+  }
+  return { substring: [...substring], wholeToken: [...wholeToken] };
+};

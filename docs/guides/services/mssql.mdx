@@ -104,6 +104,8 @@ services:
 
 See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
+`lando start` signs in with the configured administrator password when it started or recreated the database container, or when the planned connection changed since the last apply, and warns when the running server rejects it. An unchanged running database is checked by `lando doctor --app`, `lando restart`, and `lando rebuild`. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
+
 The type ships the `sqlcmd` client task. After start:
 
 ```sh
@@ -132,6 +134,36 @@ Apply the change with `lando rebuild`, then connect through the generated client
 ```sh
 lando sqlcmd -Q "SELECT @@VERSION"
 ```
+
+## Recover when credentials don't match
+
+`creds:` seeds a fresh volume. The image ignores it once `/var/opt/mssql` holds data, so changing `rootPassword` on an existing app changes what Lando's clients send, not the `sa` password the server stores. SQL Server's startup launcher signs in before readiness, so a rejected administrator login fails `lando start` itself; Lando keeps the server's failure and adds the credential recovery advice. `lando restart` and `lando rebuild` check the services they restart, and `lando doctor --app` checks a running app, so a server that was already running and rejects the login still gets a warning from those commands.
+
+Fix it without losing data, in this order:
+
+1. Put `creds.rootPassword` back to the value the volume was created with, then run `lando start`.
+2. To keep the new password, sign in with the old one and change it. Here the service is named `database`, and `-P` with no value prompts:
+
+   ```sh
+   lando exec database -- /opt/mssql-tools18/bin/sqlcmd -S localhost,1433 -U sa -C -P
+   ```
+
+   Then, in that shell, replace `<new-password>`:
+
+   ```sql
+   ALTER LOGIN sa WITH PASSWORD = '<new-password>';
+   GO
+   ```
+
+   Set `creds.rootPassword` to the new value and run `lando start` again.
+3. Only when the data is disposable, start over. This deletes the database:
+
+   ```sh
+   lando destroy -y --volumes
+   lando start
+   ```
+
+Lando never picks option 3 for you. `lando doctor --app` runs the same login check against a running app and reports what it observed.
 
 ## Plan on amd64
 

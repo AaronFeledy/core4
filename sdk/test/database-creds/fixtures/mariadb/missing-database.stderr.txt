@@ -1,0 +1,2 @@
+WARNING: option --ssl-verify-server-cert is disabled, because of an insecure passwordless login.
+ERROR 1044 (42000): Access denied for user 'lando'@'%' to database 'missingdb'
