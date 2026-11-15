@@ -588,8 +588,12 @@
       "DATABASE_FAMILY_DEFAULT_PORTS",
       "DATABASE_FAMILY_ENV_KEYS",
       "DATABASE_FAMILY_LOCAL_CLIENT_ARGS",
+      "DATABASE_LOCAL_CHECK_TIMEOUT_MS",
       "DATABASE_PORT_ENV_KEY",
-      "LANDO_DB_ENV_KEYS"
+      "LANDO_DB_ENV_KEYS",
+      "classifyDatabaseClientResult",
+      "databaseClientEnvironment",
+      "databaseLocalCheck"
     ],
     "./digest": ["canonicalJson", "sha256Hex"],
     "./docs/components": [
@@ -1414,7 +1418,11 @@
       "DataTransferProgress",
       "DataTransferResult",
       "DataTransferSpec",
+      "DatabaseClientCheckResult",
+      "DatabaseClientCheckState",
+      "DatabaseClientCreds",
       "DatabaseConnection",
+      "DatabaseLocalCheck",
       "DatasetApplyOptions",
       "DatasetApplyResult",
       "DatasetArtifactFormat",

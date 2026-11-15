@@ -11,6 +11,7 @@ import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { appConfigFindings, appConfigForReport } from "./doctor-app-config";
 import { certsDoctorStatus, certsSubsystemCheck } from "./doctor-certs-status";
 import type { DoctorSectionId, DoctorSectionResult } from "./doctor-contract";
+import { databaseCredentialsDoctorChecks } from "./doctor-database-credentials";
 import { debuggerHostDoctor } from "./doctor-debugger";
 import { deprecationFindings, doctorDeprecations } from "./doctor-deprecations";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
@@ -89,6 +90,12 @@ export const doctorSections = (input: {
       when: (candidate) => candidate.app === true,
       isolate: false,
       run: listenerDoctorChecks({ budgetMs, redact }),
+    }),
+    runtimeSection({
+      id: "database-credentials",
+      when: (candidate) => candidate.app === true,
+      isolate: false,
+      run: databaseCredentialsDoctorChecks({ budgetMs, redact }),
     }),
     runtimeSection({
       id: "certificate-authority",

@@ -46,6 +46,10 @@ import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { type AdmittedServices, withAppActivation } from "./app-activation.ts";
 import { haltAndRelaunchApp } from "./app-relaunch.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
+import {
+  openDatabaseCredentialSession,
+  publishDatabaseCredentialWarningsSafely,
+} from "./database-credential-warnings.ts";
 import { publishAndRunAppEvent } from "./events.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
@@ -191,64 +195,77 @@ const restartSelectedServices = Effect.fnUntraced(function* (
         ? {}
         : { landofileRouter: target.landofile.document.router }),
     },
-    Effect.gen(function* () {
-      yield* Effect.forEach(
-        [...services].reverse(),
-        (service) =>
-          Effect.gen(function* () {
-            if (signal?.aborted === true) return yield* Effect.interrupt;
-            yield* events.publish(
-              PreServiceStopEvent.make({
-                eventName: "pre-service-stop",
-                appRef: target.app,
-                serviceName: service.name,
-                providerId: target.plan.provider,
-                timestamp: DateTime.nowUnsafe(),
-              }),
-            );
-            yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
-            yield* events.publish(
-              PostServiceStopEvent.make({
-                eventName: "post-service-stop",
-                appRef: target.app,
-                serviceName: service.name,
-                providerId: target.plan.provider,
-                timestamp: DateTime.nowUnsafe(),
-              }),
-            );
-          }),
-        { discard: true },
-      );
+    Effect.scoped(
+      Effect.gen(function* () {
+        const environment = yield* openDatabaseCredentialSession(runtimePlan);
+        yield* Effect.forEach(
+          [...services].reverse(),
+          (service) =>
+            Effect.gen(function* () {
+              if (signal?.aborted === true) return yield* Effect.interrupt;
+              yield* events.publish(
+                PreServiceStopEvent.make({
+                  eventName: "pre-service-stop",
+                  appRef: target.app,
+                  serviceName: service.name,
+                  providerId: target.plan.provider,
+                  timestamp: DateTime.nowUnsafe(),
+                }),
+              );
+              yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
+              yield* events.publish(
+                PostServiceStopEvent.make({
+                  eventName: "post-service-stop",
+                  appRef: target.app,
+                  serviceName: service.name,
+                  providerId: target.plan.provider,
+                  timestamp: DateTime.nowUnsafe(),
+                }),
+              );
+            }),
+          { discard: true },
+        );
 
-      if (signal?.aborted === true) return yield* Effect.interrupt;
-      yield* applyActivation({
-        provider,
-        plan: runtimePlan,
-        certificates,
-        reconcile: false,
-        recordedPlan: appliedPlan,
-        completionPlan: target.plan,
-        forbidRecreate: true,
-        beforeApply: verifyGlobalConsumerAdmission,
-        ...(signal === undefined ? {} : { signal }),
-      });
-      const initial = yield* Effect.forEach(services, (service) =>
-        inspectAppliedService({ provider, plan: target.plan, service: service.name }).pipe(
-          Effect.map((runtime) => [String(service.name), runtime] as const),
-        ),
-      );
-      const ready = yield* completeStartup({
-        policy: "selected-restart",
-        selectedPlan,
-        events,
-        provider,
-        plan: target.plan,
-        services: selected,
-        initial: new Map(initial),
-        ...(signal === undefined ? {} : { signal }),
-      });
-      return startedServices(yield* collectPlanConnections(target.plan, ready));
-    }),
+        if (signal?.aborted === true) return yield* Effect.interrupt;
+        yield* applyActivation({
+          provider,
+          plan: runtimePlan,
+          certificates,
+          reconcile: false,
+          recordedPlan: appliedPlan,
+          completionPlan: target.plan,
+          forbidRecreate: true,
+          beforeApply: verifyGlobalConsumerAdmission,
+          ...(environment === undefined ? {} : { environment }),
+          ...(signal === undefined ? {} : { signal }),
+        });
+        const initial = yield* Effect.forEach(services, (service) =>
+          inspectAppliedService({ provider, plan: target.plan, service: service.name }).pipe(
+            Effect.map((runtime) => [String(service.name), runtime] as const),
+          ),
+        );
+        const ready = yield* completeStartup({
+          policy: "selected-restart",
+          selectedPlan,
+          events,
+          provider,
+          plan: target.plan,
+          services: selected,
+          initial: new Map(initial),
+          ...(signal === undefined ? {} : { signal }),
+        });
+        if (environment !== undefined) {
+          yield* publishDatabaseCredentialWarningsSafely({
+            provider,
+            plan: runtimePlan,
+            services: ready,
+            session: environment,
+            previousPlan: appliedPlan,
+          });
+        }
+        return startedServices(yield* collectPlanConnections(target.plan, ready));
+      }),
+    ),
   );
 
   const postRestart = PostRestartEvent.make({

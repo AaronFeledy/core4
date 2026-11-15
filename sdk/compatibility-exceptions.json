@@ -6470,5 +6470,17 @@
     "changeKind": "property-removed",
     "path": "$.subsystems",
     "justification": "The doctor-check-model refactor replaces per-section report objects with one flat checks array, a provider header, typed skips, and a summary. This is an unreleased wire-shape change (no persisted state); the new Report schema and doctor tests pin the contract."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "enum-widened",
+    "path": "$.checks.items.section",
+    "justification": "GitHub #2278 adds the app-scoped database-credentials section to `lando doctor --app`. Every previous section id remains valid and unchanged; the new value only names the post-readiness login observation. Consumers that enumerate sections must accept the new id, which the doctor section table, --section validation, and the report tests cover."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "enum-widened",
+    "path": "$.skipped.items.section",
+    "justification": "GitHub #2278 adds the app-scoped database-credentials section to `lando doctor --app`. Every previous section id remains valid and unchanged; the new value only names the post-readiness login observation. Consumers that enumerate sections must accept the new id, which the doctor section table, --section validation, and the report tests cover."
   }
 ]

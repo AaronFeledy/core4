@@ -1,0 +1,3 @@
+Sqlcmd: Error: Microsoft ODBC Driver 18 for SQL Server : Login failed for user 'sa'..
+2026-11-15 12:14:27.98 Logon       Error: 18456, Severity: 14, State: 8.
+2026-11-15 12:14:27.98 Logon       Login failed for user 'sa'. Reason: Password did not match that for the login provided. [CLIENT: 127.0.0.1]
