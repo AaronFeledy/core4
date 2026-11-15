@@ -46,6 +46,7 @@ export const providerMemberPolicy = {
   buildArtifact: ["app-output", "effect"],
   pullArtifact: ["lifecycle", "effect"],
   removeArtifact: ["lifecycle", "effect"],
+  listArtifacts: ["metadata", "effect"],
   inspectAppliedFileSync: ["metadata", "effect"],
   prepareFileSyncTargets: ["lifecycle", "effect"],
   quiesceRetainedFileSync: ["lifecycle", "effect"],

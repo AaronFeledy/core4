@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { recordingRequest, runBuild } from "./image-build-user-fixture.ts";
 
 const tag = "lando-build-docker-web-user-key";
-const baseTag = `${tag}-base`;
+const baseTag = "sha256:base-image";
 const scaffold = {
   id: "lando.boot",
   phase: "build",
@@ -111,10 +111,10 @@ describe("artifact build step user switching", () => {
       );
       // Then
       expect(capture.requests.map((entry) => `${entry.method} ${entry.path}`)).toEqual([
-        `POST /build?t=${baseTag}&dockerfile=Dockerfile&forcerm=true`,
-        `GET /images/${baseTag}/json`,
-        `GET /images/${baseTag}/json`,
-        `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
+        "POST /build?labels=%7B%22dev.lando.test%22%3A%22user-fixture%22%7D&dockerfile=Dockerfile&forcerm=true",
+        "GET /images/base-image/json",
+        "GET /images/base-image/json",
+        `POST /build?t=${tag}&labels=%7B%22dev.lando.test%22%3A%22user-fixture%22%7D&dockerfile=Dockerfile&forcerm=true`,
         `GET /images/${tag}/json`,
       ]);
       expect((await capture.dockerfiles())[1]).toBe(
@@ -136,7 +136,7 @@ describe("artifact build step user switching", () => {
       );
       // Then: only the existing final-tag availability check, never a parent inspection.
       expect(capture.requests.map((entry) => `${entry.method} ${entry.path}`)).toEqual([
-        `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
+        `POST /build?t=${tag}&labels=%7B%22dev.lando.test%22%3A%22user-fixture%22%7D&dockerfile=Dockerfile&forcerm=true`,
         `GET /images/${tag}/json`,
       ]);
       expect(await capture.dockerfiles()).toEqual(["FROM debian:12\nRUN compile\n"]);
@@ -205,8 +205,9 @@ describe("artifact build step user switching", () => {
     // Given
     let baseInspectCount = 0;
     const request = (entry: ContainerBuildHttpRequest) => {
-      if (entry.method === "POST") return Effect.succeed({ status: 200, body: "" });
-      if (entry.path.includes("-base")) {
+      if (entry.method === "POST")
+        return Effect.succeed({ status: 200, body: '{"aux":{"ID":"sha256:base-image"}}' });
+      if (entry.path.includes("base-image")) {
         baseInspectCount += 1;
         return Effect.succeed(
           baseInspectCount === 1 ? { status: 200, body: "{}" } : { status: 503, body: "unavailable" },
@@ -225,7 +226,11 @@ describe("artifact build step user switching", () => {
     "fails closed for malformed inherited-user inspection: %s",
     async (body) => {
       // Given
-      const request = () => Effect.succeed({ status: 200, body });
+      const request = (entry: ContainerBuildHttpRequest) =>
+        Effect.succeed({
+          status: 200,
+          body: entry.method === "POST" ? '{"aux":{"ID":"sha256:base-image"}}' : body,
+        });
       // When
       const failure = await Effect.runPromise(
         Effect.flip(runBuild({ artifact, steps: [scaffold], request })),

@@ -249,7 +249,8 @@ const makeScratchForkLayer = (
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => die("buildArtifact"),
     pullArtifact: () => die("pullArtifact"),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: (plan) =>
       Effect.sync(() => {
         if (plan.id === "global") appliedGlobalPlan = plan;

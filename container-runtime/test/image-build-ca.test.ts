@@ -137,7 +137,10 @@ test("packs verified CAs and renders COPY before the owning trust-store RUN", as
       request: (request: ContainerBuildHttpRequest) =>
         Effect.promise(async () => {
           if (request.method === "POST") postBodies.push(await collect(request.stdin));
-          return { status: 200, body: request.method === "GET" ? "{}" : "" };
+          return {
+            status: 200,
+            body: request.method === "GET" ? "{}" : '{"aux":{"ID":"sha256:base-image"}}',
+          };
         }),
     };
 
@@ -149,6 +152,8 @@ test("packs verified CAs and renders COPY before the owning trust-store RUN", as
           service: serviceName,
           plan: plan(service({ kind: "ref", ref: "debian:12" }, [ca])),
           buildKey: "ca-ref",
+          labels: { "dev.lando.test": "ca" },
+          ref: "lando-build-docker-web-ca-ref",
         },
         { providerId, api, sourceEnv: {} },
       ),
@@ -190,7 +195,10 @@ test("adds CA files only to the derived request for authored build plus steps", 
       request: (request: ContainerBuildHttpRequest) =>
         Effect.promise(async () => {
           if (request.method === "POST") postBodies.push(await collect(request.stdin));
-          return { status: 200, body: request.method === "GET" ? "{}" : "" };
+          return {
+            status: 200,
+            body: request.method === "GET" ? "{}" : '{"aux":{"ID":"sha256:base-image"}}',
+          };
         }),
     };
 
@@ -198,6 +206,7 @@ test("adds CA files only to the derived request for authored build plus steps", 
     await Effect.runPromise(
       buildContainerArtifact(
         {
+          labels: { "dev.lando.test": "ca" },
           app: appId,
           service: serviceName,
           plan: plan(
@@ -207,6 +216,7 @@ test("adds CA files only to the derived request for authored build plus steps", 
             ),
           ),
           buildKey: "ca-build",
+          ref: "lando-build-docker-web-ca-build",
         },
         { providerId, api, sourceEnv: {} },
       ),
@@ -254,6 +264,8 @@ test.each([
             service: serviceName,
             plan: plan(service({ kind: "ref", ref: "debian:12" }, [ca])),
             buildKey: "ca-failure",
+            labels: { "dev.lando.test": "ca" },
+            ref: "lando-build-docker-web-ca-failure",
           },
           { providerId, api, sourceEnv: {} },
         ),

@@ -89,10 +89,10 @@ import {
   type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
 import type {
-  ArtifactRef,
   EphemeralRunSpec,
   ExecChunk,
   ExecResult,
+  ProviderArtifactRef,
   ProviderError,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
@@ -1654,7 +1654,7 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
           ),
         ),
       )) satisfies RuntimeProviderShape["copyFromService"],
-    exportArtifact: ((ref: ArtifactRef) =>
+    exportArtifact: ((ref: ProviderArtifactRef) =>
       stream(options, "exportArtifact", {
         method: "GET",
         path: `/images/${encodeURIComponent(ref.ref)}/get`,

@@ -806,7 +806,8 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           return handle;
         }),
       ),
-    gc: () => Effect.sync(() => ({ inspected: scratchSummaries.size, reaped: [], errors: [] })),
+    gc: () =>
+      Effect.sync(() => ({ inspected: scratchSummaries.size, candidates: [], reaped: [], errors: [] })),
   });
 
   const scratchRegistryService = ScratchRegistry.of({

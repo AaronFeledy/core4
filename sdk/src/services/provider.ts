@@ -32,6 +32,10 @@ import type {
   AppPlan,
   AppRef,
   AppliedStateInventory,
+  ArtifactListing,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
   HealthcheckPlan,
@@ -44,6 +48,7 @@ import type {
   PortNumber,
   PortablePath,
   PreparedFileSyncTarget,
+  ProviderArtifactRef,
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
@@ -132,11 +137,18 @@ export interface ProviderVersions {
   readonly bundle?: string;
 }
 
-export interface ArtifactBuildSpec {
+export interface ArtifactBuildRequest {
   readonly app: AppId;
   readonly service: ServiceName;
   readonly plan: AppPlan;
   readonly buildKey: string;
+  /**
+   * The name the produced artifact carries. The engine chooses it per data root, provider, service, and
+   * build key, so it can later remove exactly what it built.
+   */
+  readonly ref: string;
+  /** Engine-chosen labels the provider sets on every image the build produces. */
+  readonly labels: Readonly<Record<string, string>>;
   /**
    * Receives the build's output text in arrival order: unredacted and not aligned to lines. The provider
    * awaits each call before reading further, delivers every call before `buildArtifact` returns, and
@@ -145,11 +157,7 @@ export interface ArtifactBuildSpec {
   readonly onOutput?: (text: string) => Effect.Effect<void, ProviderInternalError>;
 }
 
-export interface ArtifactRef {
-  readonly providerId: ProviderId;
-  readonly ref: string;
-  readonly digest?: string;
-}
+export type { ProviderArtifactRef } from "../schema/artifacts.ts";
 
 export type ArtifactPullPolicy = "always" | "missing" | "never";
 
@@ -482,10 +490,25 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
     readonly buildArtifact: (
-      spec: ArtifactBuildSpec,
-    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-    readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
-    readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+      spec: ArtifactBuildRequest,
+    ) => Effect.Effect<ProviderArtifactRef, ProviderError, Scope.Scope>;
+    readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ProviderArtifactRef, ProviderError>;
+    /**
+     * Removes exactly the requested image ref or ID. With pruneParents, the runtime may also reclaim
+     * dangling parents; otherwise parent pruning is disabled. Never forces and never starts a runtime.
+     * A container conflict is reported as `in-use` with container names; a missing image is `absent`.
+     */
+    readonly removeArtifact: (
+      request: ArtifactRemovalRequest,
+    ) => Effect.Effect<ArtifactRemoval, ProviderError>;
+    /**
+     * Lists images whose labels all match, like the engine's default image listing: tagged images and
+     * dangling untagged leaves, never parents that still have children. Never starts a runtime;
+     * an unreachable runtime fails with ProviderUnavailableError.
+     */
+    readonly listArtifacts: (
+      selector: ArtifactSelector,
+    ) => Effect.Effect<ReadonlyArray<ArtifactListing>, ProviderUnavailableError | ProviderInternalError>;
 
     /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
     readonly inspectAppliedFileSync?: (
@@ -597,10 +620,12 @@ export class RuntimeProvider extends Context.Service<
       target: ExecTarget,
       spec: ServiceCopyOutSpec,
     ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-    readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly exportArtifact: (
+      ref: ProviderArtifactRef,
+    ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
     readonly importArtifact: (
       data: Stream.Stream<Uint8Array, ProviderError>,
-    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+    ) => Effect.Effect<ProviderArtifactRef, ProviderError, Scope.Scope>;
   }
 >()("@lando/core/RuntimeProvider") {}
 

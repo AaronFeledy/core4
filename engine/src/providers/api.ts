@@ -7,7 +7,7 @@
  *
  * The full method surface — `apply`, `start`, `stop`, `restart`, `destroy`,
  * `exec`, `run`, `logs`, `inspect`, `list`, `buildArtifact`, `pullArtifact`,
- * `removeArtifact`, `setup`, `getStatus`, `getVersions`, `isAvailable`, plus
+ * `removeArtifact`, `listArtifacts`, `setup`, `getStatus`, `getVersions`, `isAvailable`, plus
  * capability + identity fields — lands in `@lando/sdk/services` as the
  * planner stabilizes.
  */

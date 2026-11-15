@@ -187,7 +187,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       Effect.sync(() => {
         return { providerId, ref: spec.ref, digest: "sha256:source" };
       }),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: (plan, applyOptions) =>
       Effect.gen(function* () {
         recorded.appliedPlans.push(plan);

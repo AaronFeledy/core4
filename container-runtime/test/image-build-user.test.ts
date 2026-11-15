@@ -18,7 +18,7 @@ import { DateTime, Effect } from "effect";
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("image-build-user-app");
 const serviceName = ServiceName.make("web");
-const baseTag = "lando-build-docker-web-privilege-key-base";
+const baseTag = "sha256:base-image";
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00Z"),
   source: "image-build-user.test.ts",
@@ -70,7 +70,14 @@ const buildWithInspection = (
     extensions: {},
   };
   return buildContainerArtifact(
-    { app: appId, service: serviceName, plan, buildKey: "privilege-key" },
+    {
+      app: appId,
+      service: serviceName,
+      plan,
+      buildKey: "privilege-key",
+      labels: { "dev.lando.test": "user" },
+      ref: "lando-build-docker-web-privilege-key",
+    },
     { providerId, api: { request }, sourceEnv: {} },
   );
 };
@@ -80,7 +87,9 @@ const inspectionEffect = (user: string | undefined) =>
     Effect.succeed({
       status: 200,
       body:
-        entry.method === "POST" ? "" : JSON.stringify({ Config: user === undefined ? {} : { User: user } }),
+        entry.method === "POST"
+          ? '{"aux":{"ID":"sha256:base-image"}}'
+          : JSON.stringify({ Config: user === undefined ? {} : { User: user } }),
     }),
   );
 
@@ -105,7 +114,9 @@ const dockerfileFor = async (user: string | undefined): Promise<string> => {
       return Effect.succeed({
         status: 200,
         body:
-          entry.method === "POST" ? "" : JSON.stringify({ Config: user === undefined ? {} : { User: user } }),
+          entry.method === "POST"
+            ? '{"aux":{"ID":"sha256:base-image"}}'
+            : JSON.stringify({ Config: user === undefined ? {} : { User: user } }),
       });
     }),
   );
@@ -174,7 +185,8 @@ describe("inherited image user inspection through artifact builds", () => {
     });
     let inspectCount = 0;
     const request = (entry: ContainerBuildHttpRequest) => {
-      if (entry.method === "POST") return Effect.succeed({ status: 200, body: "" });
+      if (entry.method === "POST")
+        return Effect.succeed({ status: 200, body: '{"aux":{"ID":"sha256:base-image"}}' });
       inspectCount += 1;
       return inspectCount === 1 ? Effect.succeed({ status: 200, body: "{}" }) : Effect.fail(incoming);
     };
