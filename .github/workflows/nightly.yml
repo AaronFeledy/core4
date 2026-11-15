@@ -491,6 +491,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run e2e guide scenarios
@@ -727,6 +729,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Build test-only pinned MinIO BYO image
@@ -960,6 +964,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Build test-only pinned MinIO BYO image
