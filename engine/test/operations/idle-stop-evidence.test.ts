@@ -14,6 +14,7 @@ import { stopAppForTarget } from "../../src/operations/stop.ts";
 import { resolveTeardownEvidence } from "../../src/providers/applied-state-resolution.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { makeRouterStateStore } from "../subsystems/proxy/router-state-fixture.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
 test.each([
@@ -87,6 +88,7 @@ test.each([
       );
       const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
       const router = makeTraefikRouterService({
+        stateStore: makeRouterStateStore(),
         paths: { platform: "linux", globalAppRoot: paths.globalAppRoot },
         certificateAuthority: makeTestCertificateAuthority(),
         fileSystem: { ...fileSystem, writeSecretAtomic: fileSystem.writeAtomic },

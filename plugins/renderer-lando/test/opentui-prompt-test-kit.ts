@@ -15,9 +15,17 @@ const openTui = openTuiModule satisfies OpenTuiModuleLike<CliRenderer>;
 export const createOpenTuiPromptTestKit = () => {
   const setups: TestSetup[] = [];
 
-  const makeSetup = async (width = 60, height = 12): Promise<TestSetup> => {
+  const makeSetup = async (
+    width = 60,
+    height = 12,
+    options: { readonly kittyKeyboard?: boolean } = {},
+  ): Promise<TestSetup> => {
     const clock = new ManualClock();
-    const setup = { ...(await createTestRenderer({ width, height, clock })), clock };
+    // The driver creates its renderer with `exitOnCtrlC: false`; OpenTUI's own Ctrl+C exit would mask it.
+    const setup = {
+      ...(await createTestRenderer({ width, height, clock, exitOnCtrlC: false, ...options })),
+      clock,
+    };
     setups.push(setup);
     return setup;
   };
@@ -53,10 +61,8 @@ export const createOpenTuiPromptTestKit = () => {
     await testSetup.renderOnce();
   };
 
-  const cleanup = (): void => {
-    for (const testSetup of setups.splice(0)) {
-      testSetup.renderer.destroy();
-    }
+  const cleanup = async (): Promise<void> => {
+    await Promise.all(setups.splice(0).map((testSetup) => testSetup.dispose()));
   };
 
   return { basePrompt, cleanup, flavors, flushInput, makeDriver, makeSetup, openTui, waitForBuild };
@@ -110,8 +116,10 @@ export const makeDestroyFailureFixture = (cancel: boolean) => {
     },
     width: 60,
     height: 12,
-    destroy: async () => {
-      throw destroyFailure;
+    destroy: () => {},
+    // OpenTUI reports a failed terminal restore through `closed`, not through `destroy()`.
+    get closed() {
+      return Promise.reject(destroyFailure);
     },
   };
   const module = makeLifecycleModule(renderer);
@@ -150,9 +158,10 @@ export const makeAbortFixture = () => {
     },
     width: 60,
     height: 12,
-    destroy: async () => {
+    destroy: () => {
       cleanup.renderer += 1;
     },
+    closed: Promise.resolve(),
   };
   const module = makeLifecycleModule(renderer, AbortTestRenderable);
   const driver = createOpenTuiPromptDriver({

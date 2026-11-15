@@ -7,7 +7,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Queue, Stream } from "effect";
 
 import { appSteps } from "../../src/services/build-app-plan.ts";
-import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";
+import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
 
 const healthcheck: HealthcheckPlan = {
   kind: "command",
@@ -132,6 +132,15 @@ const recordingProvider = (
   calls,
   provider: {
     ...TestRuntimeProvider,
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        publications: { status: "unknown" },
+        status: "running",
+        containerId: `${target.service}-1`,
+      }),
     exec: (target, command) => {
       calls.push(`exec:${String(target.service)}:${command.command.join(" ")}`);
       return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
@@ -144,13 +153,13 @@ const recordingProvider = (
   } satisfies RuntimeProviderShape,
 });
 
-test("resolves a service_started gate without inspecting provider state", async () => {
+test("resolves a service_started gate without inspecting the prerequisite", async () => {
   await withTempRoots(async () => {
     // Given
-    let inspectCalls = 0;
+    const inspected: ServiceName[] = [];
     const { calls, provider } = recordingProvider({
       inspect: (target) => {
-        inspectCalls += 1;
+        inspected.push(target.service);
         return TestRuntimeProvider.inspect(target);
       },
     });
@@ -167,7 +176,7 @@ test("resolves a service_started gate without inspecting provider state", async 
     );
 
     // Then
-    expect(inspectCalls).toBe(0);
+    expect(inspected).toEqual([ServiceName.make("web")]);
     expect(calls).toEqual(["build:web:install"]);
   });
 });

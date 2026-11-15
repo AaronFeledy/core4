@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ReadyCommandIndexEntry } from "@lando/engine/cache/command-index";
 import { bindToolingInput, lowerToolingInput } from "@lando/landofile/tooling-input";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { dispatchTool } from "@lando/mcp/dispatch";
@@ -16,6 +17,7 @@ import { mcpRegistryWithToolingEntries } from "../../../../src/cli/commands/meta
 const registry = {
   commandEntries: [
     {
+      kind: "command" as const,
       spec: {
         id: "app:info",
         summary: "Show app info",
@@ -30,7 +32,9 @@ describe("mcpRegistryWithToolingEntries", () => {
   const command = {
     id: "app:greet",
     summary: "Greet",
-    hidden: false,
+    _tag: "Ready",
+    sourceKind: "tooling",
+    visibility: "public",
     input: Result.getOrThrow(
       normalizeToolingInput("greet", {
         flags: {
@@ -41,7 +45,7 @@ describe("mcpRegistryWithToolingEntries", () => {
         args: { target: { required: true, choices: ["dev", "prod"] }, greeting: { default: "hello" } },
       }),
     ),
-  };
+  } satisfies ReadyCommandIndexEntry;
 
   test("projects typed flags when tooling declares input", () => {
     // Given / When
@@ -159,13 +163,27 @@ describe("mcpRegistryWithToolingEntries", () => {
   test("projects visible registered tooling commands into MCP tooling entries", () => {
     // Given / When
     const projected = mcpRegistryWithToolingEntries(registry, [
-      { id: "app:composer", summary: "Run Composer", hidden: false },
-      { id: "app:hidden", summary: "Hidden", hidden: true },
+      {
+        id: "app:composer",
+        summary: "Run Composer",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: Result.getOrThrow(normalizeToolingInput("composer", {})),
+      },
+      {
+        id: "app:hidden",
+        summary: "Hidden",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "internal",
+        input: Result.getOrThrow(normalizeToolingInput("hidden", {})),
+      },
     ]);
     // Then
     expect(projected.commandEntries).toEqual(registry.commandEntries);
     expect(projected.toolingEntries?.map((tooling) => tooling.spec.id)).toEqual(["app:composer"]);
-    expect(projected.toolingEntries?.[0]?.tooling).toBe(true);
+    expect(projected.toolingEntries?.[0]?.kind).toBe("tooling");
   });
 });
 
@@ -175,9 +193,11 @@ for (const stage of ["success", "invalid", "denied", "busy"] as const) {
     const command = {
       id: "app:private",
       summary: "Private tooling",
-      hidden: false,
+      _tag: "Ready",
+      sourceKind: "tooling",
+      visibility: "public",
       input: Result.getOrThrow(normalizeToolingInput("private", { flags: { note: { sensitive: true } } })),
-    };
+    } satisfies ReadyCommandIndexEntry;
     const entry = mcpRegistryWithToolingEntries(registry, [command]).toolingEntries?.[0];
     if (entry === undefined) throw new Error("Missing projection");
     const redaction = makeRedactionService();
@@ -238,9 +258,11 @@ test("actual MCP session rejects unknown tooling top-level names without retaini
   const command = {
     id: "app:private",
     summary: "Private tooling",
-    hidden: false,
+    _tag: "Ready",
+    sourceKind: "tooling",
+    visibility: "public",
     input: Result.getOrThrow(normalizeToolingInput("private", { flags: { note: { sensitive: true } } })),
-  };
+  } satisfies ReadyCommandIndexEntry;
   const entry = mcpRegistryWithToolingEntries(registry, [command]).toolingEntries?.[0];
   if (entry === undefined) throw new Error("Missing projection");
   let executions = 0;
@@ -249,7 +271,7 @@ test("actual MCP session rejects unknown tooling top-level names without retaini
     Effect.scoped(
       Effect.gen(function* () {
         const service = yield* McpService;
-        const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
+        const client = yield* startStdioClient(service.serve({ transport: "stdio", tooling: true }));
         return yield* client.request("tools/call", {
           name: command.id,
           arguments: { flags: { note: canary }, [canary]: "extra" },
@@ -261,7 +283,10 @@ test("actual MCP session rejects unknown tooling top-level names without retaini
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(McpRuntimeConfig, {
-                commandEntries: [entry],
+                cwd: process.cwd(),
+                env: { ...process.env },
+                toolingEntries: [entry],
+                commandEntries: [],
                 defaultAllowlist: [command.id],
                 apps: testAppGenerations(),
               }),
@@ -303,14 +328,16 @@ for (const group of ["flags", "args"] as const) {
       const command = {
         id: "app:private",
         summary: "Private tooling",
-        hidden: false,
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
         input: Result.getOrThrow(
           normalizeToolingInput("private", {
             flags: { note: { sensitive: true } },
             args: { note: { sensitive: true } },
           }),
         ),
-      };
+      } satisfies ReadyCommandIndexEntry;
       const entry = mcpRegistryWithToolingEntries(registry, [command]).toolingEntries?.[0];
       if (entry === undefined) throw new Error("Missing projection");
       const supplied = JSON.parse(

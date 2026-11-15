@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { rebuildApp, renderRebuildAppResult, startApp } from "@lando/core/cli/operations";
+import { rebuildApp, renderRebuildAppResult, startApp, stopApp } from "@lando/core/cli/operations";
 import {
   AbsolutePath,
   AppId,
@@ -12,6 +12,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/core/schema";
 import {
   AppPlanner,
@@ -364,16 +365,29 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
 
 const makeCachedBuildLayer = () => {
   let appBuildCalls = 0;
+  let containerGeneration = 1;
+  let applied: AppPlan | undefined;
   const events: LandoEvent[] = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
     capabilities,
-    apply: () => Effect.succeed({ changed: true }),
+    apply: (plan) =>
+      Effect.sync(() => {
+        applied = { ...plan, identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) } };
+        return { changed: true };
+      }),
+    destroy: () =>
+      Effect.sync(() => {
+        containerGeneration += 1;
+        applied = undefined;
+        return { kind: "destroyed" as const };
+      }),
     inspect: (target) =>
       Effect.succeed({
         app: planWithAppBuild.id,
         service: target.service,
+        containerId: `web-${containerGeneration}`,
         providerId,
         status: "running",
         publications: {
@@ -390,9 +404,12 @@ const makeCachedBuildLayer = () => {
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.sync(() => applied),
+      resolveTeardownEvidence: () =>
+        Effect.sync(() =>
+          applied === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan: applied },
+        ),
+      appliedPlansFor: () => Effect.sync(() => (applied === undefined ? [] : [applied])),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
@@ -574,6 +591,18 @@ describe("lando rebuild", () => {
       expect(harness.appBuildCalls()).toBe(1);
       const skips = harness.events.filter((event) => event._tag === "build-step-skip");
       expect(skips).toContainEqual(expect.objectContaining({ reason: "up-to-date", cached: true }));
+    });
+  });
+
+  test("reruns app build steps after stop removes their container", async () => {
+    await withTempCwd(async () => {
+      const harness = makeCachedBuildLayer();
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+      await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+      expect(harness.appBuildCalls()).toBe(2);
     });
   });
 

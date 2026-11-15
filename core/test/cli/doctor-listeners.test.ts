@@ -2,15 +2,15 @@ import { expect, test } from "bun:test";
 import { ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { Deferred, Effect, Fiber, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
-import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
 import { listenerDoctorChecks } from "../../src/cli/commands/doctor-listeners.ts";
+import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-render-text.ts";
 import {
   DoctorReportSchema,
-  doctorReport,
+  makeDoctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
-import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report-render.ts";
 import {
   listenerOutput,
   listenerProvider,
@@ -19,8 +19,15 @@ import {
   tcpTable,
   withListenerApp,
 } from "./doctor-listeners-fixture.ts";
+import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
 
 const collect = () => listenerDoctorChecks({ budgetMs: 5000, redact: (value) => value });
+
+const asReport = (result: DoctorSectionResult) =>
+  makeDoctorReport({
+    checks: result.checks.map((check) => ({ section: "app-listeners" as const, ...check })),
+    skipped: (result.skipped ?? []).map((skip) => ({ section: "app-listeners" as const, ...skip })),
+  });
 
 test("skips listeners on the idle provider holding the applied app", async () => {
   await withListenerApp(async (plan) => {
@@ -31,9 +38,7 @@ test("skips listeners on the idle provider holding the applied app", async () =>
     });
     const result = await Effect.runPromise(collect().pipe(Effect.provide(listenerRegistry(plan, provider))));
     expect(result.checks).toEqual([]);
-    expect(result.skipped).toMatchObject([
-      { section: "app-listeners", reason: expect.stringContaining("idle") },
-    ]);
+    expect(result.skipped).toMatchObject([{ reason: expect.stringContaining("idle") }]);
   });
 });
 
@@ -78,16 +83,20 @@ test.each([
     const result = await Effect.runPromise(collect().pipe(Effect.provide(listenerRegistry(plan, provider))));
     expect(result.checks).toHaveLength(1);
     expect(result.checks[0]).toMatchObject({
+      subject: `${plan.id}/web:8080`,
       status,
-      providerId: "docker",
-      context: { listenerState, service: "web", port: "8080" },
+      context: { providerId: "docker", listenerState, service: "web", port: "8080" },
     });
-    const text = renderDoctorResult(result);
+    expect(result.checks[0]?.context.bindings).toEqual(
+      address === undefined ? [] : [address === "0100007F" ? "127.0.0.1:8080" : "0.0.0.0:8080"],
+    );
+    const report = asReport(result);
+    const text = renderDoctorReport(report, undefined, { all: true });
     expect(text).toContain(`listenerState: ${listenerState}`);
     if (status === "warn") {
       expect(result.checks[0]?.solutions[0]?.description).toContain("0.0.0.0:8080");
       expect(result.checks[0]?.solutions[0]?.description).toContain("`PORT` and `FLASK_RUN_PORT`");
-      expect(text).toContain("solution[manual]:");
+      expect(text).toContain("0.0.0.0:8080");
     } else {
       expect(result.checks[0]?.solutions).toEqual([]);
       expect(text).not.toContain("readiness still failed");
@@ -96,18 +105,8 @@ test.each([
       expect(text).toContain(
         "No TCP listener was observed on planned port 8080 at this instant. If the application is still starting, rerun `lando doctor --app`.",
       );
-    expect(renderDoctorResultAsNdjson(result)).toContain(`"listenerState":"${listenerState}"`);
-    const summary = buildDoctorReportSummary(
-      {
-        version: "test",
-        provider: { checks: [] },
-        appListeners: result,
-        subsystems: { checks: [] },
-        globalApp: { checks: [] },
-        mcp: { checks: [] },
-      },
-      { all: true },
-    );
+    expect(renderDoctorReportAsNdjson(report)).toContain(`"listenerState":"${listenerState}"`);
+    const summary = buildDoctorReportSummary(report, { all: true });
     expect(
       summary.sections.flatMap((section) => section.rows).find((row) => row.label === "app-listener")?.fields,
     ).toContainEqual({ label: "service", value: "web" });
@@ -119,7 +118,7 @@ test.each(["", "unreadable table"])("skips unavailable observation %j without a 
     const provider = listenerProvider(plan, { execStream: () => listenerOutput(text) });
     const result = await Effect.runPromise(collect().pipe(Effect.provide(listenerRegistry(plan, provider))));
     expect(result.checks).toEqual([]);
-    expect(result.skipped).toMatchObject([{ section: "app-listener:web", status: "skipped" }]);
+    expect(result.skipped).toMatchObject([{ check: "app-listener:web" }]);
   });
 });
 
@@ -170,7 +169,6 @@ test.each(["list", "exec"])("skips provider %s failures without failing doctor",
     });
     const result = await Effect.runPromise(collect().pipe(Effect.provide(listenerRegistry(plan, provider))));
     expect(result.checks).toEqual([]);
-    expect(result.selfChecks).toBeUndefined();
     expect(result.skipped).toHaveLength(1);
   });
 });
@@ -189,17 +187,25 @@ test("selects the applied provider and runs only under --app", async () => {
     const withoutApp = await Effect.runPromise(
       doctorReport({ env: {}, flagProviderId: "lando" }).pipe(Effect.provide(layers)),
     );
-    expect(withoutApp.appListeners).toBeUndefined();
+    expect(withoutApp.checks.some((check) => check.section === "app-listeners")).toBe(false);
     expect(executions).toBe(0);
     const withApp = await Effect.runPromise(
       doctorReport({ env: {}, app: true, flagProviderId: "lando" }).pipe(Effect.provide(layers)),
     );
-    expect(withApp.appListeners?.checks.find((check) => check.name === "app-listener")).toMatchObject({
+    expect(
+      withApp.checks.find((check) => check.section === "app-listeners" && check.name === "app-listener"),
+    ).toMatchObject({
       status: "pass",
-      providerId: "docker",
+      context: { providerId: "docker" },
     });
-    expect(withApp.provider.checks.some((check) => check.name === "app-listener")).toBe(false);
-    expect(Schema.encodeSync(DoctorReportSchema)(withApp).appListeners?.checks).toHaveLength(1);
+    expect(
+      withApp.checks.some((check) => check.section === "provider" && check.name === "app-listener"),
+    ).toBe(false);
+    expect(
+      Schema.encodeSync(DoctorReportSchema)(withApp).checks.filter(
+        (check) => check.section === "app-listeners",
+      ),
+    ).toHaveLength(1);
     expect(renderDoctorReport(withApp)).not.toContain("app-listener: pass");
     expect(renderDoctorReport(withApp, undefined, { all: true })).toContain(
       "app-listeners:\napp-listener: pass",
@@ -261,8 +267,8 @@ test("turns a section budget expiry into a skip, not a doctor failure", async ()
       ),
     );
     expect(result.checks).toEqual([]);
-    expect(result.selfChecks).toBeUndefined();
-    expect(result.skipped?.[0]?.section).toBe("app-listeners");
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped?.[0]?.check).toBeUndefined();
   });
 });
 
@@ -299,7 +305,9 @@ test("keeps multiple waves of bounded reads within the production section budget
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(TestClock.layer())),
     );
-    expect(result.appListeners?.checks.filter((check) => check.name === "app-listener")).toHaveLength(9);
-    expect(result.skipped?.filter((entry) => entry.section.startsWith("app-listener")) ?? []).toEqual([]);
+    expect(
+      result.checks.filter((check) => check.section === "app-listeners" && check.name === "app-listener"),
+    ).toHaveLength(9);
+    expect(result.skipped.filter((entry) => entry.check?.startsWith("app-listener") ?? false)).toEqual([]);
   });
 });

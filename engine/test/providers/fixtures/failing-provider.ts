@@ -32,6 +32,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
     buildArtifact: fail,
     pullArtifact: fail,
     removeArtifact: fail,
+    listArtifacts: () => Effect.fail(availabilityError),
     inspectAppliedFileSync: fail,
     prepareFileSyncTargets: fail,
     quiesceRetainedFileSync: fail,

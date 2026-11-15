@@ -22,7 +22,7 @@ sshAgent:
 
 That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:start`.
 
-The global app builds the sidecar's image from Alpine with `openssh-client` and `socat` baked in. The first build needs network access to fetch the base image and packages. Later starts reuse the built image and cached build layers without downloading packages, so the sidecar can start offline after that first build.
+The global app builds the sidecar's image from Alpine with `openssh-client` and `socat` baked in. The first build needs network access to fetch the base image and packages. Later starts reuse the built image and cached build layers without downloading packages, so the sidecar can start offline after that first build. `lando global:destroy` keeps that image for up to seven days, so a global start in that window reuses it and still works offline. `lando global:destroy --purge` removes it, and the next global start builds it again.
 
 Lando starts the sidecar when a start needs it. You do not start an SSH agent by hand. `lando start`, `lando restart`, and `lando rebuild` check the sidecar's agent first. If it does not answer, whether after `lando poweroff`, a reboot, or a crash, Lando starts the sidecar and waits up to about 30 seconds for the agent under a "Start SSH agent sidecar" progress step. A sidecar whose agent already answers needs no start or wait. Forwarding comes back after a poweroff or reboot without `lando setup` or `lando global:start`.
 

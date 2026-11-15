@@ -14,8 +14,8 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { ArtifactBuildSpec, ArtifactRef, RuntimeProviderShape } from "@lando/sdk/services";
-import { Cause, DateTime, Effect, Exit, Option } from "effect";
+import type { ArtifactBuildRequest, ProviderArtifactRef, RuntimeProviderShape } from "@lando/sdk/services";
+import { Cause, DateTime, Effect, Exit, Option, Schema } from "effect";
 
 /** Output emitted by the Dockerfile step that fails the build. */
 export const BUILD_FAILURE_MARKER = "build-step-output-marker";
@@ -37,11 +37,11 @@ const PLAN_METADATA = {
   runtime: 4 as const,
 };
 
-type OutputSink = NonNullable<ArtifactBuildSpec["onOutput"]>;
+type OutputSink = NonNullable<ArtifactBuildRequest["onOutput"]>;
 
 export interface BuildOutputContractInput {
   readonly provider: RuntimeProviderShape;
-  /** Engine API on the same socket, used only to remove the image a build produced. */
+  /** Engine API on the same socket, used to check intermediate cleanup. */
   readonly api: EngineApiClient;
   readonly providerId: ProviderId;
   /** Providers compute this from the plan service; it makes each run's image tag unique. */
@@ -51,6 +51,8 @@ export interface BuildOutputContractInput {
 type BuildFixture = {
   readonly plan: AppPlan;
   readonly service: ServicePlan;
+  readonly ref: string;
+  readonly labels: Readonly<Record<string, string>>;
   readonly remove: () => Promise<void>;
 };
 
@@ -115,7 +117,11 @@ const buildFixture = async (
     dependsOn: [],
     hostAliases: [],
     metadata: PLAN_METADATA,
-    extensions: {},
+    extensions: {
+      "@lando/core/service-features": {
+        buildSteps: [{ id: "derived", phase: "build", command: "true" }],
+      },
+    },
   };
   const plan: AppPlan = {
     id: appId,
@@ -134,20 +140,39 @@ const buildFixture = async (
   return {
     plan,
     service,
+    ref: `lando-build-test-${crypto.randomUUID()}-output`,
+    labels: { "dev.lando.test": crypto.randomUUID() },
     remove: () => rm(context, { recursive: true, force: true }),
   };
 };
 
-const removeBuiltImage = async (input: BuildOutputContractInput, artifact: ArtifactRef): Promise<void> => {
+const assertBuiltImage = async (input: BuildOutputContractInput, fixture: BuildFixture): Promise<void> => {
   const request = input.api.request;
-  assert.ok(request !== undefined, "the live engine client must expose request for image cleanup");
-  const response = await Effect.runPromise(
-    request({ method: "DELETE", path: `/images/${encodeURIComponent(artifact.ref)}?force=true` }),
-  );
-  assert.ok(
-    response.status >= 200 && response.status < 300,
-    `removing built image ${artifact.ref} failed with HTTP ${response.status}: ${response.body}`,
-  );
+  assert.ok(request !== undefined);
+  const inspected = await Effect.runPromise(request({ method: "GET", path: `/images/${fixture.ref}/json` }));
+  assert.equal(inspected.status, 200);
+  const image = Schema.decodeUnknownSync(
+    Schema.Struct({
+      Id: Schema.String,
+      Config: Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
+    }),
+  )(JSON.parse(inspected.body));
+  for (const [key, value] of Object.entries(fixture.labels)) assert.equal(image.Config.Labels[key], value);
+  assert.deepEqual(await Effect.runPromise(input.provider.listArtifacts({ labels: fixture.labels })), [
+    { id: image.Id, refs: [fixture.ref] },
+  ]);
+  const base = await Effect.runPromise(request({ method: "GET", path: `/images/${fixture.ref}-base/json` }));
+  assert.equal(base.status, 404, "a build with steps must not create a -base tag");
+};
+
+const removeLabeledImage = async (
+  input: BuildOutputContractInput,
+  artifact: ProviderArtifactRef,
+  labels: Readonly<Record<string, string>>,
+): Promise<void> => {
+  const result = await Effect.runPromise(input.provider.removeArtifact({ ...artifact, pruneParents: true }));
+  assert.equal(result.kind, "removed");
+  assert.deepEqual(await Effect.runPromise(input.provider.listArtifacts({ labels })), []);
 };
 
 /**
@@ -164,10 +189,12 @@ export const assertFailedBuildDeliversOutput = async (input: BuildOutputContract
       Effect.exit(
         Effect.scoped(
           input.provider.buildArtifact({
+            labels: fixture.labels,
             app: fixture.plan.id,
             service: fixture.service.name,
             plan: fixture.plan,
             buildKey,
+            ref: fixture.ref,
             onOutput: recordingSink(texts),
           }),
         ),
@@ -187,6 +214,10 @@ export const assertFailedBuildDeliversOutput = async (input: BuildOutputContract
       `build output did not reach the sink: ${JSON.stringify(texts)}`,
     );
   } finally {
+    const removal = await Effect.runPromise(
+      input.provider.removeArtifact({ providerId: input.providerId, ref: fixture.ref, pruneParents: true }),
+    );
+    assert.equal(removal.kind, "absent", "a failed source build must leave no named image");
     await fixture.remove();
   }
 };
@@ -202,15 +233,18 @@ export const assertPassingBuildDeliversOutputInOrder = async (
     const artifact = await Effect.runPromise(
       Effect.scoped(
         input.provider.buildArtifact({
+          labels: fixture.labels,
           app: fixture.plan.id,
           service: fixture.service.name,
           plan: fixture.plan,
           buildKey,
+          ref: fixture.ref,
           onOutput: recordingSink(texts),
         }),
       ),
     );
     try {
+      await assertBuiltImage(input, fixture);
       assert.ok(artifact.ref.length > 0, "a passing build must return a non-empty artifact ref");
       assert.equal(artifact.providerId, input.providerId);
       const output = texts.join("");
@@ -220,7 +254,7 @@ export const assertPassingBuildDeliversOutputInOrder = async (
       assert.ok(second >= 0, `second step output missing: ${JSON.stringify(texts)}`);
       assert.ok(first < second, "build output arrived out of step order");
     } finally {
-      await removeBuiltImage(input, artifact);
+      await removeLabeledImage(input, artifact, fixture.labels);
     }
   } finally {
     await fixture.remove();
@@ -236,10 +270,12 @@ export const assertBuildOutputSinkDoesNotOverlap = async (input: BuildOutputCont
     const artifact = await Effect.runPromise(
       Effect.scoped(
         input.provider.buildArtifact({
+          labels: fixture.labels,
           app: fixture.plan.id,
           service: fixture.service.name,
           plan: fixture.plan,
           buildKey,
+          ref: fixture.ref,
           onOutput: disciplinedSink(state),
         }),
       ),
@@ -250,7 +286,7 @@ export const assertBuildOutputSinkDoesNotOverlap = async (input: BuildOutputCont
       assert.equal(state.active, 0, "every sink call must have exited before the build settled");
       assert.equal(state.maxActive, 1, "the provider entered a sink call while another was still open");
     } finally {
-      await removeBuiltImage(input, artifact);
+      await removeLabeledImage(input, artifact, fixture.labels);
     }
   } finally {
     await fixture.remove();

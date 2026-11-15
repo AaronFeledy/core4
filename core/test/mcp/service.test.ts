@@ -91,9 +91,11 @@ const dispatchAndCollectReplies = Effect.fnUntraced(
 describe("McpService.catalog", () => {
   test("lists the effective allowlist as tools", async () => {
     const config: McpRuntimeConfigShape = {
+      cwd: process.cwd(),
+      env: { ...process.env },
       commandEntries: [
-        { spec: spec("app:info", () => Effect.succeed({})) },
-        { spec: spec("app:destroy", () => Effect.succeed({})) },
+        { kind: "command" as const, spec: spec("app:info", () => Effect.succeed({})) },
+        { kind: "command" as const, spec: spec("app:destroy", () => Effect.succeed({})) },
       ],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(),
@@ -109,8 +111,15 @@ describe("McpService.catalog", () => {
 
   test("lists tooling entries only when tooling is enabled and not denied", async () => {
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: spec("app:info", () => Effect.succeed({})) }],
-      toolingEntries: [{ spec: spec("app:php", () => Effect.succeed({})) } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: spec("app:info", () => Effect.succeed({})) }],
+      toolingEntries: [
+        {
+          kind: "tooling" as const,
+          spec: spec("app:php", () => Effect.succeed({})),
+        } satisfies McpCommandEntry,
+      ],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(),
     };
@@ -133,7 +142,9 @@ describe("McpService.serve", () => {
     const eventLayer = recordingEventLayer(events);
     const runtimeLayer = Layer.mergeAll(eventLayer, redactionLayer());
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: versionSpec }],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: versionSpec }],
       defaultAllowlist: [versionSpec.id],
       apps: testAppGenerations(runtimeLayer),
     };
@@ -201,7 +212,9 @@ describe("McpService.serve", () => {
       ),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: failing }],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: failing }],
       defaultAllowlist: [failing.id],
       apps: testAppGenerations(runtimeLayer),
     };
@@ -251,8 +264,15 @@ describe("McpService.serve", () => {
 
   test("dispatches tooling entries when tooling is enabled", async () => {
     const config: McpRuntimeConfigShape = {
+      cwd: process.cwd(),
+      env: { ...process.env },
       commandEntries: [],
-      toolingEntries: [{ spec: spec("app:php", () => Effect.succeed({})) } satisfies McpCommandEntry],
+      toolingEntries: [
+        {
+          kind: "tooling" as const,
+          spec: spec("app:php", () => Effect.succeed({})),
+        } satisfies McpCommandEntry,
+      ],
       defaultAllowlist: [],
       apps: testAppGenerations(),
     };
@@ -268,12 +288,59 @@ describe("McpService.serve", () => {
     expect(replies[0]).toMatchObject({ ok: true });
   });
 
+  test("a tooling task that shares a built-in id is listed and called as the task", async () => {
+    const ran: string[] = [];
+    const config: McpRuntimeConfigShape = {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [
+        {
+          kind: "command" as const,
+          spec: spec("app:info", () =>
+            Effect.sync(() => {
+              ran.push("built-in");
+              return {};
+            }),
+          ),
+        },
+      ],
+      toolingEntries: [
+        {
+          kind: "tooling" as const,
+          spec: spec("app:info", () =>
+            Effect.sync(() => {
+              ran.push("tooling");
+              return {};
+            }),
+          ),
+        },
+      ],
+      defaultAllowlist: ["app:info"],
+      apps: testAppGenerations(),
+    };
+
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies({
+        config,
+        options: { transport: "stdio", tooling: true },
+        toolId: "app:info",
+      }),
+    );
+
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({ ok: true });
+    expect(ran).toEqual(["tooling"]);
+  });
+
   test("rejects a denied tooling entry when tooling is enabled", async () => {
     let executed = false;
     const config: McpRuntimeConfigShape = {
+      cwd: process.cwd(),
+      env: { ...process.env },
       commandEntries: [],
       toolingEntries: [
         {
+          kind: "tooling" as const,
           spec: spec("app:php", () =>
             Effect.sync(() => {
               executed = true;
@@ -308,7 +375,9 @@ describe("McpService.serve", () => {
       }),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: streaming } satisfies McpCommandEntry],
       defaultAllowlist: ["app:logs"],
       apps: testAppGenerations(),
     };
@@ -347,7 +416,9 @@ describe("McpService.serve", () => {
       }),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: streaming } satisfies McpCommandEntry],
       defaultAllowlist: ["app:logs"],
       apps: testAppGenerations(),
     };
@@ -384,7 +455,9 @@ describe("McpService.serve", () => {
       }),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: streaming } satisfies McpCommandEntry],
       defaultAllowlist: ["app:logs"],
       apps: testAppGenerations(),
     };
@@ -416,7 +489,9 @@ describe("McpService.serve", () => {
       { resultSchema: Schema.Struct({ chunks: Schema.Array(Schema.Number) }) },
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(),
     };
@@ -455,7 +530,9 @@ describe("McpService.serve", () => {
       resultSchema: Schema.Struct({ note: Schema.String }),
     });
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(),
     };
@@ -498,7 +575,9 @@ describe("McpService.serve", () => {
       { resultSchema: Schema.Unknown },
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(),
     };
@@ -520,7 +599,9 @@ describe("McpService.serve", () => {
   test("returns a failure envelope when a command dies", async () => {
     const dying = spec("app:info", () => Effect.die(new Error("boom")));
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: dying } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: dying } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(),
     };
@@ -535,7 +616,9 @@ describe("McpService.serve", () => {
   test("resolves command runtime cwd from per-call appPath", async () => {
     const command = spec("app:info", () => RuntimeCwd.pipe(Effect.map((cwd) => ({ cwd }))));
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: command } satisfies McpCommandEntry],
       defaultAllowlist: ["app:info"],
       apps: testAppGenerations(Layer.succeed(RuntimeCwd, "/session-root")),
     };
@@ -579,7 +662,9 @@ describe("McpService.serve", () => {
       }),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: blocking } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: blocking } satisfies McpCommandEntry],
       defaultAllowlist: ["app:exec"],
       apps: testAppGenerations(),
     };
@@ -620,7 +705,9 @@ describe("McpService.serve", () => {
       ),
     );
     const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: hanging } satisfies McpCommandEntry],
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [{ kind: "command" as const, spec: hanging } satisfies McpCommandEntry],
       defaultAllowlist: ["app:exec"],
       apps: testAppGenerations(),
     };

@@ -2,6 +2,7 @@ import { resolveServiceRef } from "@lando/landofile/tooling-input";
 import {
   type NormalizedToolingStep,
   type NormalizedToolingTask,
+  type ToolingNormalizationSource,
   normalizeToolingTask,
 } from "@lando/landofile/tooling-normalize";
 import { planRedactionValues } from "@lando/redaction/plan-values";
@@ -37,8 +38,7 @@ const shellCommand = (command: string, args: ReadonlyArray<string>): ReadonlyArr
   ...args,
 ];
 
-export interface ToolingSource {
-  readonly path: string;
+export interface ToolingSource extends ToolingNormalizationSource {
   readonly task: string;
 }
 

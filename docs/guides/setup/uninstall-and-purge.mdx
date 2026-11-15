@@ -36,6 +36,8 @@ With `--purge`, Lando removes the container-runtime resources it can prove it ow
 
 Any retained or failed entry fails the purge and preserves the managed runtime, storage, and uninstall state. On the managed `lando` runtime, Lando then confirms that the private installation holds zero containers and zero local volumes. Unlabeled volumes that an earlier Lando build left behind inside that storage count there and block the purge; they do not disappear silently. Recover or remove them explicitly, then rerun. On Docker or system Podman, unlabeled or externally owned volumes stay in that runtime untouched.
 
+`--purge` also removes the images this Lando install built from host Docker and Podman, before it deletes its caches. Images in the managed `lando` runtime go with that runtime's storage. Lando keeps an image that a container still uses or that you tagged with another name, and reports it in the detail of the `running-apps` step. `--keep-data` leaves built images alone.
+
 Only after that check passes, together with the ownership and Windows file-sync guards below, does `--purge` remove the Lando-owned managed VM, runtime service, provider bundle, and file-sync tools. This also removes built-in and residual network configuration inside the verified private installation roots. It does not authorize deletion of unverified networks in system Docker or Podman, or files outside those roots. Purge removes:
 
 - User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)

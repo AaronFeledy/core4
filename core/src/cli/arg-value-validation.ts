@@ -4,15 +4,16 @@ import { commandInputOptionError } from "./command-input-options";
 import { commandSpecForId } from "./compiled-argv";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { runCompiledCommand } from "./compiled-runtime";
+import type { CommandTokens } from "./invocation";
 
 export const rejectCommandCliArgValues = async (
   commandId: string,
-  argv: readonly string[],
+  tokens: CommandTokens,
   context: CliInvocationContext,
 ): Promise<boolean> => {
   const definitions = Object.entries(commandSpecForId(commandId)?.args ?? {});
   if (!definitions.some(([, definition]) => definition.options !== undefined)) return false;
-  const { args } = compiledCommandInputFromArgv(commandId, argv, { context });
+  const { args } = compiledCommandInputFromArgv(commandId, tokens.argv, { tokens, context });
   for (const [field, definition] of definitions) {
     const value = args[field];
     if (value === undefined) continue;

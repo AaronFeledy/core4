@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Predicate, Schema } from "effect";
 
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
@@ -173,6 +173,28 @@ export const ServicePlan = Schema.Union([
   }),
 ]);
 export type ServicePlan = typeof ServicePlan.Type;
+
+/**
+ * Provenance key stamped onto every service a planner feature materialized by
+ * cloning a resolved parent. The writer (planning) and readers (SQL target
+ * resolution, for one) share this key instead of re-spelling it.
+ */
+export const CLONED_SERVICE_PROVENANCE_KEY = "clonedBy" as const;
+
+/**
+ * The parent service a plan was cloned from, or `undefined` for an ordinary
+ * authored service. A clone is a companion of its parent, never a meaningful
+ * target on its own, so consumers that enumerate services for a purpose (SQL
+ * databases, for one) skip the ones this reports.
+ */
+export const clonedServiceParent = (service: {
+  readonly provenance?: Readonly<Record<string, unknown>> | undefined;
+}): string | undefined => {
+  const stamp = service.provenance?.[CLONED_SERVICE_PROVENANCE_KEY];
+  if (!Predicate.isObject(stamp)) return undefined;
+  const from = stamp.from;
+  return typeof from === "string" && from.length > 0 ? from : undefined;
+};
 
 export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
 

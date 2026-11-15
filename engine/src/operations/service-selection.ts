@@ -1,5 +1,5 @@
 import { ServiceNotFoundError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, ServiceName, clonedServiceParent } from "@lando/sdk/schema";
 import { Effect, Graph } from "effect";
 
 const uniqueRequested = (requested: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName> => [
@@ -40,6 +40,16 @@ const validateRequested = (
   return missing === undefined ? Effect.succeed(unique) : Effect.fail(unknownService(plan, missing, unique));
 };
 
+/** A requested parent brings its generated companions into the same selected rebuild. */
+const withCompanions = (plan: AppPlan, requested: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName> => {
+  const named = new Set(requested.map(String));
+  const companions = Object.values(plan.services).flatMap((service) => {
+    const parent = clonedServiceParent(service);
+    return parent !== undefined && named.has(parent) ? [service.name] : [];
+  });
+  return uniqueRequested([...requested, ...companions]);
+};
+
 export const selectInfoPlan = (
   plan: AppPlan,
   requested: ReadonlyArray<ServiceName> | undefined,
@@ -62,7 +72,8 @@ export const selectRebuildPlan = (
   requested: ReadonlyArray<ServiceName> | undefined,
 ): Effect.Effect<AppPlan, ServiceNotFoundError> =>
   validateRequested(plan, requested).pipe(
-    Effect.map((unique) => {
+    Effect.map((validated) => {
+      const unique = withCompanions(plan, validated);
       if (unique.length === 0) return plan;
       const indices = new Map<string, Graph.NodeIndex>();
       const graph = Graph.directed<string, void>((mutable) => {

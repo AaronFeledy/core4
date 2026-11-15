@@ -2,23 +2,13 @@ import { ConfigService } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
-import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor-contract";
-import type { SubsystemRecovery } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 import { resolveSetupNetworkTrust } from "./setup-network-trust";
 
-export interface NetworkTrustDoctorStatus {
-  readonly name: "network-trust";
-  readonly status: DoctorStatus;
-  readonly severity: DoctorSeverity;
-  readonly recovery: SubsystemRecovery;
-  readonly context: Readonly<Record<string, string>>;
-  readonly solutions: ReadonlyArray<DoctorSolution>;
-}
-
 export const networkTrustDoctorStatus = Effect.fnUntraced(function* (
   env: NodeJS.ProcessEnv,
-): Effect.fn.Return<NetworkTrustDoctorStatus, never, ConfigService> {
+): Effect.fn.Return<DoctorFinding, never, ConfigService> {
   const configService = yield* ConfigService;
   const config = yield* configService.load;
   const proxyUrls: ReadonlyArray<string | undefined> = [
@@ -33,7 +23,7 @@ export const networkTrustDoctorStatus = Effect.fnUntraced(function* (
 
   return yield* resolveSetupNetworkTrust(config, env).pipe(
     Effect.match({
-      onFailure: (error): NetworkTrustDoctorStatus => {
+      onFailure: (error): DoctorFinding => {
         const message = redactor.redactString(error.message);
         const remediation = redactor.redactString(error.remediation);
         return warnCheck({
@@ -47,7 +37,7 @@ export const networkTrustDoctorStatus = Effect.fnUntraced(function* (
           solutions: [{ kind: "manual", description: remediation, command: "lando setup" }],
         });
       },
-      onSuccess: (network): NetworkTrustDoctorStatus =>
+      onSuccess: (network): DoctorFinding =>
         passCheckNamed({
           name: "network-trust",
           recovery: "manual",

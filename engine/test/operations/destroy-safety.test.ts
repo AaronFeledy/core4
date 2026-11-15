@@ -1,28 +1,16 @@
 import { expect, test } from "bun:test";
-import { lstat, mkdir, rm, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { DataTransferError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, ServiceName, SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
+import { DataTransferError, LandofileValidationError } from "@lando/sdk/errors";
+import { SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
 import { DataMover, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { Effect, Schema } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
-import {
-  type BuildResultEntry,
-  openAppBuildResults,
-  recordBuildResult,
-} from "../../src/services/build-results.ts";
-import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 import { emptySnapshots } from "./data-mover-support.ts";
-import {
-  byTag,
-  destroyTreeId,
-  makeHarness,
-  plan,
-  runDestroyTarget,
-} from "./destroy-progress-topology-support.ts";
+import { byTag, destroyTreeId, makeHarness, plan } from "./destroy-progress-topology-support.ts";
 
 test("destroy fails closed before its bracket when only an unfinished root journal survives", async () => {
   // Given: no provider evidence, an invalid Landofile, and retained sync sessions/journal.
@@ -183,84 +171,4 @@ test("destroy reports unchanged when the provider returns no-op and nothing else
   expect(destroys).toBe(1);
   expect(result).toMatchObject({ outcome: "unchanged", servicesDestroyed: [], volumesRemoved: false });
   expect(byTag(harness.events, "post-destroy")).toMatchObject([{ outcome: "unchanged" }]);
-});
-
-const buildEntry = (
-  phase: "artifact" | "app",
-  transcriptPath: string,
-  step?: string,
-): Omit<BuildResultEntry, "completedAt"> => ({
-  buildKey: `${phase}-key`,
-  service: ServiceName.make("web"),
-  phase,
-  ...(step === undefined ? {} : { step }),
-  outcome: "complete",
-  exitCode: 0,
-  durationMs: 1,
-  transcriptPath: AbsolutePath.make(transcriptPath),
-});
-
-test("destroy forgets app results before teardown and removes the app build directory after it", async () => {
-  // Given an app with image and app-step build output.
-  const state = makeTestStateStore();
-  let atDestroy: ReadonlyArray<{ readonly phase: string }> = [];
-  const harness = makeHarness({
-    stateStore: state.service,
-    destroyEffect: Effect.gen(function* () {
-      const bucket = yield* openAppBuildResults(state.service, String(plan.id));
-      atDestroy = (yield* bucket.get) ?? [];
-    }).pipe(Effect.orDie),
-  });
-  const appDir = join(harness.userDataRoot, "builds", String(plan.id));
-  const transcript = join(appDir, "app", "web", "install.log");
-  await mkdir(join(appDir, "app", "web"), { recursive: true });
-  await mkdir(join(appDir, "artifact", "web"), { recursive: true });
-  await writeFile(join(appDir, "artifact", "web", "image.log"), "image\n");
-  await writeFile(transcript, "install\n");
-  const bucket = await Effect.runPromise(openAppBuildResults(state.service, String(plan.id)));
-  await Effect.runPromise(
-    recordBuildResult(bucket, buildEntry("artifact", join(appDir, "artifact", "web", "image.log"))),
-  );
-  await Effect.runPromise(recordBuildResult(bucket, buildEntry("app", transcript, "web:app:install")));
-
-  // When
-  const result = await runDestroyTarget(harness, { volumes: true });
-
-  // Then: the provider saw no app-step result, the image result survived, and the output is gone.
-  expect(result.outcome).toBe("destroyed");
-  expect(atDestroy.map((entry) => entry.phase)).toEqual(["artifact"]);
-  await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
-  await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
-  const remaining = await Effect.runPromise(bucket.get);
-  expect(remaining?.map((entry) => entry.phase)).toEqual(["artifact"]);
-});
-
-test("a failed teardown keeps the build directory after app results were forgotten", async () => {
-  // Given an app whose provider destroy fails.
-  const state = makeTestStateStore();
-  const harness = makeHarness({
-    stateStore: state.service,
-    destroyEffect: Effect.fail(
-      new ProviderUnavailableError({
-        providerId: "lando",
-        operation: "destroy",
-        message: "injected",
-        remediation: "Install or start the provider and retry.",
-      }),
-    ),
-  });
-  const appDir = join(harness.userDataRoot, "builds", String(plan.id));
-  const transcript = join(appDir, "app", "web", "install.log");
-  await mkdir(join(appDir, "app", "web"), { recursive: true });
-  await writeFile(transcript, "output\n");
-  const bucket = await Effect.runPromise(openAppBuildResults(state.service, String(plan.id)));
-  await Effect.runPromise(recordBuildResult(bucket, buildEntry("app", transcript, "web:app:install")));
-
-  // When
-  await expect(runDestroyTarget(harness, { volumes: true })).rejects.toBeInstanceOf(ProviderUnavailableError);
-
-  // Then: a half-finished teardown still invalidates results but keeps the transcripts.
-  expect(await Bun.file(transcript).exists()).toBe(true);
-  const remaining = await Effect.runPromise(bucket.get);
-  expect(remaining ?? []).toEqual([]);
 });

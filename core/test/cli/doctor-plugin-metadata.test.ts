@@ -51,8 +51,12 @@ describe("doctor installed-plugin metadata health", () => {
       const report = await withUserDataRoot(userDataRoot, () => runResilientDoctor(SHORT_BUDGET_ENV));
 
       // Then valid metadata produces no metadata-health failure
-      expect(report.provider.checks.length).toBeGreaterThan(0);
-      expect((report.self?.checks ?? []).some((check) => check.section === "plugin-metadata")).toBe(false);
+      expect(report.checks.filter((check) => check.section === "provider").length).toBeGreaterThan(0);
+      expect(
+        report.checks.some(
+          (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
+        ),
+      ).toBe(false);
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
@@ -81,8 +85,15 @@ describe("doctor installed-plugin metadata health", () => {
       );
 
       // Then the metadata failure is attributed, bounded, redacted, and isolated
-      const metadataCheck = (report.self?.checks ?? []).find((check) => check.section === "plugin-metadata");
-      expect(metadataCheck).toMatchObject({ status: "fail", severity: "error", reason: "failure" });
+      const metadataCheck = report.checks.find(
+        (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
+      );
+      expect(metadataCheck).toMatchObject({
+        subject: "@example/[redacted]",
+        status: "fail",
+        severity: "error",
+        context: { reason: "failure" },
+      });
       expect(metadataCheck?.context.pluginId).toBe("@example/[redacted]");
       expect(metadataCheck?.context.pluginPath?.length).toBeLessThanOrEqual(2_000);
       expect((metadataCheck?.context.message ?? "").length).toBeLessThanOrEqual(2_000);
@@ -124,8 +135,11 @@ describe("doctor installed-plugin metadata health", () => {
       const report = await withUserDataRoot(userDataRoot, () => runResilientDoctor(SHORT_BUDGET_ENV));
 
       // Then the invalid manifest is attributed and the report remains schema-valid
-      const metadataCheck = (report.self?.checks ?? []).find((check) => check.section === "plugin-metadata");
+      const metadataCheck = report.checks.find(
+        (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
+      );
       expect(metadataCheck).toMatchObject({
+        subject: pluginName,
         status: "fail",
         severity: "error",
         context: { pluginId: pluginName, failure: "PluginManifestError" },
@@ -149,8 +163,11 @@ describe("doctor installed-plugin metadata health", () => {
       const report = await withUserDataRoot(userDataRoot, () => runResilientDoctor(SHORT_BUDGET_ENV));
 
       // Then the corrupt registry is a structured failure and other sections still answer
-      const metadataCheck = (report.self?.checks ?? []).find((check) => check.section === "plugin-metadata");
+      const metadataCheck = report.checks.find(
+        (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
+      );
       expect(metadataCheck).toMatchObject({
+        subject: "registry",
         status: "fail",
         severity: "error",
         context: { pluginId: "registry" },
@@ -163,7 +180,7 @@ describe("doctor installed-plugin metadata health", () => {
       );
       expect(JSON.stringify(metadataCheck?.solutions)).not.toContain("plugin:remove");
       expect(JSON.stringify(report)).not.toContain("lando plugin list");
-      expect(report.subsystems.checks.length).toBeGreaterThan(0);
+      expect(report.checks.some((check) => check.section === "filesystem-watch")).toBe(true);
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
@@ -181,7 +198,9 @@ describe("doctor installed-plugin metadata health", () => {
     );
     try {
       const report = await withUserDataRoot(root, () => runResilientDoctor(SHORT_BUDGET_ENV));
-      const check = report.self?.checks.find((entry) => entry.section === "plugin-metadata");
+      const check = report.checks.find(
+        (check) => check.name === "doctor-self" && check.context.probe === "plugin-metadata",
+      );
       expect(check?.context.pluginId).toBe("@example/broken");
       expect(check?.context.metadataPath).toBe(join(pluginsRoot, "registry.json"));
       expect(check?.solutions).toContainEqual(

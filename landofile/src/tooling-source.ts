@@ -146,6 +146,7 @@ export const loadFragment = (
         policy: context.loadPolicy,
         pendingSites: context.loadScope.pendingSites,
         recorder: context.recorder,
+        environmentRecorder: context.loadScope.environmentRecorder,
       }).pipe(
         Effect.map((resolved) => ({
           ...resolved,

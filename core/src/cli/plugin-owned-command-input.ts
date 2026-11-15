@@ -5,39 +5,42 @@ import {
   type CommandHelpSpec,
   renderCommandHelp,
 } from "./cli-help";
-import { withCommandRemainderSeparator } from "./command-tail";
 import { parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
+import { specTailKind } from "./flag-claims";
 import { normalizeCliFlagTokens } from "./flag-tokens";
 import { validateCommandCliFlags } from "./flag-value-validation";
+import type { ResultFormat } from "./format-flags";
+import type { CommandTokens } from "./invocation";
 import { pluginFlagDefinitions } from "./plugin-flag-definitions";
+
+/** The lead only: everything before the plugin command's verbatim tail or first `--`. */
+const pluginLead = (tokens: CommandTokens): ReadonlyArray<string> => tokens.argv.slice(0, tokens.tailStart);
 
 export const pluginOwnedCliFlagError = (
   spec: Pick<ExecutableCommandSpec, "id" | "flags" | "strict" | "args">,
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
 ) =>
   validateCommandCliFlags({
     commandId: spec.id,
-    argv,
+    argv: pluginLead(tokens),
     definitions: pluginFlagDefinitions(spec),
     allowUnknownFlags: spec.strict === false,
-    commandTail: spec.strict === false && spec.args?.command !== undefined,
+    ...(specTailKind(spec) === "command" ? { commandTail: { commandName: spec.id } } : {}),
   });
 
 export const pluginOwnedCommandInputFromArgv = (
   spec: Pick<ExecutableCommandSpec, "flags" | "args" | "strict">,
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
+  /** Lando's selected result format; a spec that declares `format` or `json` reads it there. */
+  resultFormat?: ResultFormat,
 ): {
   readonly flags: Readonly<Record<string, unknown>>;
   readonly args: Readonly<Record<string, unknown>>;
   readonly raw: ReadonlyArray<string>;
 } => {
   const flagDefinitions = pluginFlagDefinitions(spec);
-  const commandArgv =
-    spec.strict === false && spec.args?.command !== undefined
-      ? withCommandRemainderSeparator(argv, flagDefinitions)
-      : argv;
-  const normalizedArgv = normalizeCliFlagTokens(commandArgv, flagDefinitions);
-  const { flags, positionals } = parseFlagsAndPositionals(normalizedArgv, flagDefinitions, {
+  const normalizedLead = normalizeCliFlagTokens(pluginLead(tokens), flagDefinitions);
+  const { flags, positionals: leadPositionals } = parseFlagsAndPositionals(normalizedLead, flagDefinitions, {
     strict: spec.strict !== false,
     storeValue: (target, flagName, value, definition) => {
       const specFlag = spec.flags?.[flagName];
@@ -49,6 +52,12 @@ export const pluginOwnedCommandInputFromArgv = (
       setParsedFlag(target, flagName, value, definition);
     },
   });
+  if (resultFormat !== undefined) {
+    if (spec.flags?.format !== undefined) flags.format = resultFormat;
+    if (spec.flags?.json !== undefined) flags.json = resultFormat === "json";
+  }
+  const tail = tokens.argv.slice(tokens.tailStart);
+  const positionals = [...leadPositionals, ...(tail[0] === "--" ? tail.slice(1) : tail)];
   const argNames = Object.keys(spec.args ?? {});
   const args: Record<string, unknown> = {};
   const raw: string[] = [];

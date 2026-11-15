@@ -1,18 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { ToolingCommandLookupError, UnknownCliFlagError } from "@lando/sdk/errors";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import {
+  LandoRuntimeBootstrapError,
+  ToolingCommandLookupError,
+  UnknownCliFlagError,
+} from "@lando/sdk/errors";
 import { type ExecutableCommandInput, type ExecutableCommandSpec, definePlugin } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
-import { Cause, Context, Effect, Exit, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Result, Schema } from "effect";
 import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { setActiveRendererMode, setActiveResultFormat } from "../../src/cli/compiled-runtime.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
+import { specOwnerPolicy } from "../../src/cli/flag-claims.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
+  dispatchPluginUnavailable,
   isPluginOwnedCommandId,
+  pluginFlagDefinitions,
   pluginOwnedCliFlagError,
   pluginOwnedCommandEffect,
   pluginOwnedCommandInputFromArgv,
@@ -74,6 +83,23 @@ const makeExecutableDbImportSpec = (): ExecutableCommandSpec<typeof DbImportResu
     }),
 });
 
+const tokensFor = (
+  spec: Pick<ExecutableCommandSpec, "id" | "flags" | "args" | "strict">,
+  argv: ReadonlyArray<string>,
+) => splitCommandTokens(argv, specOwnerPolicy(spec, pluginFlagDefinitions(spec)), "all").command;
+
+const dispatchForTest = async (
+  spec: Pick<ExecutableCommandSpec, "id" | "flags" | "args" | "strict">,
+  argv: ReadonlyArray<string>,
+  signal: AbortSignal | undefined,
+  catalog: ReturnType<typeof createPluginCommandCatalog>,
+): Promise<boolean> => {
+  const row = await catalog.resolve(spec.id);
+  if (row === undefined || "unavailable" in row || row.spec === undefined)
+    throw new Error(`No loaded plugin row for ${spec.id}.`);
+  return tryPluginOwnedCommand(spec.id, row, tokensFor(spec, argv), signal, catalog);
+};
+
 const silentRenderer = Renderer.of({
   id: "test",
   capabilities: RENDERER_CAPABILITIES_NONE,
@@ -125,8 +151,8 @@ describe("plugin-owned command dispatch", () => {
       ...makeDbImportSpec(),
       args: { command: { type: "string", multiple: true } },
     };
-    expect(pluginOwnedCliFlagError(spec, argv)).toBeUndefined();
-    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+    expect(pluginOwnedCliFlagError(spec, tokensFor(spec, argv))).toBeUndefined();
+    const parsed = pluginOwnedCommandInputFromArgv(spec, tokensFor(spec, argv));
     const input = await Effect.runPromise(validateEventCommandInput(spec, parsed));
     expect(input.flags.host).toBe("db");
     expect(input.args.command).toEqual(tail);
@@ -138,7 +164,7 @@ describe("plugin-owned command dispatch", () => {
       ...makeDbImportSpec(),
       args: { command: { type: "string", multiple: true } },
     };
-    expect(pluginOwnedCliFlagError(spec, ["--hosst=private", "sh"])).toMatchObject({
+    expect(pluginOwnedCliFlagError(spec, tokensFor(spec, ["--hosst=private", "sh"]))).toMatchObject({
       _tag: "UnknownCliFlagError",
       flag: "--hosst",
     });
@@ -189,7 +215,7 @@ describe("plugin-owned command dispatch", () => {
     const stdoutTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
     try {
-      expect(await tryPluginOwnedCommand(spec.id, ["-", "--value=x"], undefined, catalog)).toBe(true);
+      expect(await dispatchForTest(spec, ["-", "--value=x"], undefined, catalog)).toBe(true);
       expect(process.exitCode).toBe(2);
       expect(parsed).toBe(false);
       expect(ran).toBe(false);
@@ -249,7 +275,7 @@ describe("plugin-owned command dispatch", () => {
     const controller = new AbortController();
 
     // When the user interrupts while the parser is pending.
-    const dispatched = tryPluginOwnedCommand("fixture:hang", ["--wait=forever"], controller.signal, catalog);
+    const dispatched = dispatchForTest(spec, ["--wait=forever"], controller.signal, catalog);
     await parsing.promise;
     controller.abort("SIGINT");
 
@@ -383,7 +409,10 @@ describe("plugin-owned command dispatch", () => {
     expect(help).toContain("\n  --label <value>\n");
     expect(help).not.toContain("--label <value...>");
     expect(
-      pluginOwnedCommandInputFromArgv(spec, ["--label", "one", "--label=two", "a.sql", "b.sql"]),
+      pluginOwnedCommandInputFromArgv(
+        spec,
+        tokensFor(spec, ["--label", "one", "--label=two", "a.sql", "b.sql"]),
+      ),
     ).toEqual({ flags: { label: ["one", "two"] }, args: { file: ["a.sql", "b.sql"] }, raw: [] });
   });
 
@@ -392,7 +421,10 @@ describe("plugin-owned command dispatch", () => {
     const spec = makeDbImportSpec();
 
     // When
-    const parsed = pluginOwnedCommandInputFromArgv(spec, ["--host", "db.example", "dump.sql"]);
+    const parsed = pluginOwnedCommandInputFromArgv(
+      spec,
+      tokensFor(spec, ["--host", "db.example", "dump.sql"]),
+    );
     const input = await Effect.runPromise(validateEventCommandInput(spec, parsed));
     const result = {
       imported: true,
@@ -461,13 +493,85 @@ describe("plugin-owned command dispatch", () => {
     const spec = makeStrictDbImportSpec();
     const argv = ["--servce", "database", "dump.sql"];
 
-    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+    const parsed = pluginOwnedCommandInputFromArgv(spec, tokensFor(spec, argv));
     expect(parsed.args.file).toBe("database");
 
-    const error = pluginOwnedCliFlagError(spec, argv);
+    const error = pluginOwnedCliFlagError(spec, tokensFor(spec, argv));
     expect(error).toBeInstanceOf(UnknownCliFlagError);
     if (error instanceof UnknownCliFlagError) {
       expect(error.flag).toBe("--servce");
     }
   });
 });
+
+test("unavailable discovery keeps a close-spelled built-in as an unknown command", async () => {
+  // Given
+  const catalog = createPluginCommandCatalog(undefined, () =>
+    Effect.fail(
+      new LandoRuntimeBootstrapError({
+        stage: "plugins",
+        message: "Discovery broke.",
+        remediation: "Fix it.",
+      }),
+    ),
+  );
+  const unavailable = { _tag: "PluginManifestError", message: "Discovery broke.", remediation: "Fix it." };
+
+  // When / Then
+  expect(
+    await dispatchPluginUnavailable("staart", { unavailable }, { argv: [], tailStart: 0 }, catalog),
+  ).toBe("unknown");
+}, 15_000);
+
+test("unavailable discovery renders its failure for a token no built-in is close to", async () => {
+  // Given
+  const io = createBufferedRendererIO();
+  const context = {
+    ...processInvocationContext(),
+    io,
+    setExitCode: () => undefined,
+  };
+  const catalog = createPluginCommandCatalog(
+    undefined,
+    () =>
+      Effect.fail(
+        new LandoRuntimeBootstrapError({
+          stage: "plugins",
+          message: "Discovery broke.",
+          remediation: "Fix it.",
+        }),
+      ),
+    context,
+  );
+  const unavailable = { _tag: "PluginManifestError", message: "Discovery broke.", remediation: "Fix it." };
+
+  // When
+  const outcome = await dispatchPluginUnavailable(
+    "fixture:first",
+    { unavailable },
+    { argv: [], tailStart: 0 },
+    catalog,
+  );
+
+  // Then
+  expect(outcome).toBe("dispatched");
+  expect(`${io.stdout()}${io.stderr()}`).toContain("Discovery broke.");
+}, 15_000);
+
+test("pluginOwnedCommandEffect still rejects a --help it cannot answer", async () => {
+  // Given a strict plugin spec that declares no help flag
+  const spec = { ...makeExecutableDbImportSpec(), strict: true };
+
+  // When the effect path is handed --help
+  const outcome = await Effect.runPromise(
+    Effect.result(
+      pluginOwnedCommandEffect(spec, ["--help"], false).pipe(Effect.provideService(Renderer, silentRenderer)),
+    ),
+  );
+
+  // Then it fails unknown-flag validation
+  expect(Result.isFailure(outcome) ? outcome.failure : undefined).toMatchObject({
+    _tag: "UnknownCliFlagError",
+    flag: "--help",
+  });
+}, 15_000);

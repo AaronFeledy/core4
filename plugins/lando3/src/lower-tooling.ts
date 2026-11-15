@@ -250,7 +250,7 @@ const lowerTask = (
     report(
       "generated",
       path,
-      "Lando 3 passed -h and --help to this task's command, so the converted task sets wrapper: true.",
+      "Lando 3 passed every argument and flag to this task's command, so the converted task sets wrapper: true.",
       "Remove wrapper: true if the command is a script that does not handle --help.",
     );
   }

@@ -198,7 +198,7 @@ describe("env_file machine-output redaction", () => {
 
     // When
     const result = await Effect.runPromise(
-      dispatchTool({ toolId: "app:config:view" }, dispatchDeps({ spec: viewSpec })),
+      dispatchTool({ toolId: "app:config:view" }, dispatchDeps({ kind: "command" as const, spec: viewSpec })),
     );
 
     // Then

@@ -10,8 +10,11 @@ import {
   rememberLocalIncludePaths,
 } from "@lando/landofile/include-provenance";
 import {
+  getLandofileEnvironmentDependencies,
   getLandofileReferencedFiles,
+  hasLandofileEnvironmentDependencies,
   hasLandofileReferencedFiles,
+  rememberLandofileEnvironmentDependencies,
   rememberLandofileReferencedFiles,
 } from "@lando/landofile/load-expression-provenance";
 import {
@@ -36,6 +39,7 @@ test("copies every remembered provenance entry from a frozen source", () => {
   rememberLandofileReferencedFiles(source, [
     { absolutePath: "/app/config", size: 3, mtimeMs: 1, sha256: "def" },
   ]);
+  rememberLandofileEnvironmentDependencies(source, { _tag: "Names", names: ["APP_ENV"] });
   rememberInternalToolingTasks(source, ["internal"]);
   rememberVersionConstraintEntries(source, [
     { range: ">=4", source: "/app/base.yml", layer: "base", order: 0 },
@@ -67,6 +71,10 @@ test("copies every remembered provenance entry from a frozen source", () => {
   expect(getLandofileReferencedFiles(target)).toEqual([
     { absolutePath: "/app/config", size: 3, mtimeMs: 1, sha256: "def" },
   ]);
+  expect(getLandofileEnvironmentDependencies(target)).toEqual({
+    _tag: "Names",
+    names: ["APP_ENV"],
+  });
   expect(getInternalToolingTasks(target)).toEqual(["internal"]);
   expect(getVersionConstraintEntries(target, "/fallback")).toEqual([
     { range: ">=4", source: "/app/base.yml", layer: "base", order: 0 },
@@ -80,6 +88,7 @@ test("does not invent entries when source provenance is absent", () => {
   expect(hasLocalIncludePaths(target)).toBe(false);
   expect(hasLandofileIncludeSources(target)).toBe(false);
   expect(hasLandofileReferencedFiles(target)).toBe(false);
+  expect(hasLandofileEnvironmentDependencies(target)).toBe(false);
   expect(hasInternalToolingTasks(target)).toBe(false);
   expect(hasVersionConstraintEntries(target)).toBe(false);
   expect(getVersionConstraintEntries(target, "/fallback")).toEqual([
@@ -92,12 +101,15 @@ test("preserves explicitly remembered empty entries", () => {
   rememberLocalIncludePaths(source, []);
   rememberLandofileIncludeSources(source, []);
   rememberLandofileReferencedFiles(source, []);
+  rememberLandofileEnvironmentDependencies(source, { _tag: "Names", names: [] });
   rememberInternalToolingTasks(source, []);
   rememberVersionConstraintEntries(source, []);
   const target = copyLandofileProvenance(source, { ...source });
   expect(hasLocalIncludePaths(target)).toBe(true);
   expect(hasLandofileIncludeSources(target)).toBe(true);
   expect(hasLandofileReferencedFiles(target)).toBe(true);
+  expect(hasLandofileEnvironmentDependencies(target)).toBe(true);
+  expect(getLandofileEnvironmentDependencies(target)).toEqual({ _tag: "Names", names: [] });
   expect(hasInternalToolingTasks(target)).toBe(true);
   expect(hasVersionConstraintEntries(target)).toBe(true);
   expect(getVersionConstraintEntries(target, "/fallback")).toEqual([]);

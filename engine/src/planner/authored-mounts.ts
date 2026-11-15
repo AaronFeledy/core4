@@ -94,7 +94,7 @@ export const compileAuthoredMounts = (
     if (target instanceof LandofileValidationError) return target;
     let store: string;
     if (typeof entry === "string")
-      store = landoServiceStorageName(context.appSlug, context.serviceName, target);
+      store = landoServiceStorageName(context.appSlug, context.storeOwner ?? context.serviceName, target);
     else store = entry.kind === "cache" ? cacheStoreName(target, entry.key) : entry.store;
     const error = add(
       {

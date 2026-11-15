@@ -11,7 +11,7 @@ import { DEBUGGER_HOST_ALIAS } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, ProcessRunner } from "@lando/sdk/services";
 import { Duration, Effect, Option } from "effect";
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
-import type { SubsystemDoctorResult } from "./doctor-subsystems";
+import type { DoctorSectionResult } from "./doctor-contract";
 
 export const debuggerHostDoctor = Effect.fn("Doctor.debuggerHost")(function* (
   redact: (text: string) => string,
@@ -34,12 +34,10 @@ export const debuggerHostDoctor = Effect.fn("Doctor.debuggerHost")(function* (
       checks: [],
       skipped: [
         {
-          section: "debugger-host",
-          status: "skipped",
           reason: "Not on WSL and debugger.host is unset; no debugger discovery was performed.",
         },
       ],
-    } satisfies SubsystemDoctorResult;
+    } satisfies DoctorSectionResult;
   }
   const base = {
     subsystem: "debugger-host",
@@ -61,7 +59,7 @@ export const debuggerHostDoctor = Effect.fn("Doctor.debuggerHost")(function* (
           context: context({ source: "configured-address", networkingMode: "unobserved" }),
         }),
       ],
-    } satisfies SubsystemDoctorResult;
+    } satisfies DoctorSectionResult;
   }
   const providedRunner = yield* Effect.serviceOption(ProcessRunner);
   const providedFs = yield* Effect.serviceOption(FileSystem);
@@ -107,7 +105,7 @@ export const debuggerHostDoctor = Effect.fn("Doctor.debuggerHost")(function* (
           }),
         }),
       ],
-    } satisfies SubsystemDoctorResult;
+    } satisfies DoctorSectionResult;
   }
   const error = result.lastError;
   const typed = error instanceof DebuggerHostUnavailableError ? error : undefined;
@@ -142,5 +140,5 @@ export const debuggerHostDoctor = Effect.fn("Doctor.debuggerHost")(function* (
             solutions: [{ kind: "manual", description: redact(remediation) }],
           }),
     ],
-  } satisfies SubsystemDoctorResult;
+  } satisfies DoctorSectionResult;
 });

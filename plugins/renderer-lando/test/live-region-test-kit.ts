@@ -9,7 +9,11 @@ import {
 } from "../src/opentui/live-region-controller.ts";
 import { resetLiveRegionModuleCacheForTests } from "../src/opentui/live-region-substrate.ts";
 
-type RenderableOptions = { readonly content?: string | FakeStyledText; readonly width?: number };
+type RenderableOptions = {
+  readonly content?: string | FakeStyledText;
+  readonly width?: number;
+  readonly height?: number;
+};
 type FakeChunk = { readonly __isChunk: true; readonly text: string };
 
 class FakeStyledText {
@@ -19,34 +23,64 @@ class FakeStyledText {
 const fakeStyle = (input: string | FakeChunk): FakeChunk =>
   typeof input === "string" ? { __isChunk: true, text: input } : input;
 
+const plainText = (content: string | FakeStyledText | undefined): string | undefined =>
+  typeof content === "string" ? content : content?.chunks.map((chunk) => chunk.text).join("");
+
 export class FakeRenderable {
   readonly children: FakeRenderable[] = [];
-  readonly content: string | undefined;
-  readonly width: number | undefined;
+  #content: FakeStyledText;
+  width: number;
+  height: number;
   destroyCount = 0;
+  parent: FakeRenderable | undefined;
+  /** Set once the renderable is mounted under the fake root, so later tree and content changes are observable. */
+  onChange: (() => void) | undefined;
 
   constructor(_context: unknown, options: RenderableOptions) {
-    this.content =
-      typeof options.content === "string"
-        ? options.content
-        : options.content?.chunks.map((chunk) => chunk.text).join("");
-    this.width = options.width;
+    this.#content = new FakeStyledText([fakeStyle(plainText(options.content) ?? "")]);
+    this.width = options.width ?? 0;
+    this.height = options.height ?? 0;
+  }
+
+  get content(): FakeStyledText {
+    return this.#content;
+  }
+
+  set content(value: FakeStyledText) {
+    this.#content = value;
+    this.onChange?.();
+  }
+
+  get text(): string {
+    return plainText(this.#content) ?? "";
   }
 
   add(child: FakeRenderable): void {
     this.children.push(child);
+    child.parent = this;
+    child.onChange = this.onChange;
+    this.onChange?.();
   }
 
+  /** Like OpenTUI, destroying a renderable detaches it from its parent. */
   destroy(): void {
     this.destroyCount += 1;
+    this.onChange = undefined;
+    const parent = this.parent;
+    if (parent === undefined) return;
+    parent.children.splice(parent.children.indexOf(this), 1);
+    this.parent = undefined;
+    parent.onChange?.();
   }
 }
+
+const footerRows = (footer: FakeRenderable): ReadonlyArray<string> =>
+  footer.children.map((child) => child.text);
 
 export interface FakeRenderer extends LiveRegionRendererLike {
   externalOutputMode: "capture-stdout" | "passthrough";
   readonly terminalWidth: number;
   readonly terminalHeight: number;
-  setCursorPosition(x: number, y: number, visible: boolean): void;
   on(event: "resize", listener: () => void): FakeRenderer;
   off(event: "resize", listener: () => void): FakeRenderer;
 }
@@ -83,7 +117,6 @@ export const createRecordingStdout = (
 
 export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {}) => {
   const calls: string[] = [];
-  const commits: string[] = [];
   const writes: string[] = [];
   const fpsAssignments: number[] = [];
   const footers: FakeRenderable[] = [];
@@ -92,11 +125,12 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
   let liveRequestCount = 0;
   let targetFps = 60;
   let maxFps = 60;
-  let screenMode: "split-footer" | "alternate-screen" | "main-screen" = "split-footer";
+  let screenMode: "split-footer" | "alternate-screen" | "main-screen" = "main-screen";
   let externalOutputMode: "capture-stdout" | "passthrough" = "capture-stdout";
-  let footerHeight = 1;
   let width = 80;
   let height = 24;
+  // Destroy restores the terminal asynchronously; `holdClose` keeps `closed` pending.
+  let closed: Promise<void> = Promise.resolve();
   let capturedStdout: CapturingStdout | undefined;
   const resizeListeners = new Set<() => void>();
   const record = (call: string): void => {
@@ -109,28 +143,20 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
       add: (child) => {
         if (!(child instanceof FakeRenderable)) throw new TypeError("Expected a fake footer renderable.");
         footers.push(child);
-        const lines = child.children.map((line) => line.content ?? "");
-        footerWidths.push(child.width ?? 0);
-        record(`footer:${lines.join("|")}`);
+        const recordFooter = (): void => {
+          footerWidths.push(child.width);
+          record(`footer:${footerRows(child).join("|")}`);
+        };
+        child.onChange = recordFooter;
+        for (const row of child.children) row.onChange = recordFooter;
+        recordFooter();
       },
-    },
-    writeToScrollback: (writer) => {
-      const snapshot = writer({ width, renderContext: renderer });
-      if (!(snapshot.root instanceof FakeRenderable)) {
-        throw new TypeError("Expected a fake scrollback renderable.");
-      }
-      const text = snapshot.root.content ?? "";
-      commits.push(text);
-      record(`scrollback:${text}`);
     },
     requestLive: () => {
       liveRequestCount += 1;
     },
     dropLive: () => {
       liveRequestCount -= 1;
-    },
-    get liveRequestCount() {
-      return liveRequestCount;
     },
     get targetFps() {
       return targetFps;
@@ -173,7 +199,6 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     get terminalHeight() {
       return height;
     },
-    setCursorPosition: (x, y, visible) => record(`cursor:${x},${y}:${String(visible)}`),
     on: (event, listener) => {
       if (event === "resize") resizeListeners.add(listener);
       return renderer;
@@ -182,15 +207,20 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
       if (event === "resize") resizeListeners.delete(listener);
       return renderer;
     },
-    get footerHeight() {
-      return footerHeight;
-    },
-    set footerHeight(value: number) {
-      footerHeight = value;
-    },
-    resetSplitFooterForReplay: ({ clearSavedLines }) => record(`reset:${String(clearSavedLines)}`),
     destroy: () => {
       destroyCount += 1;
+    },
+    get isDestroyed() {
+      return destroyCount > 0;
+    },
+    get closed() {
+      return closed;
+    },
+    suspend: async () => {
+      record("suspend");
+    },
+    resume: async () => {
+      record("resume");
     },
   };
 
@@ -215,7 +245,6 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
 
   const fixture = {
     calls,
-    commits,
     writes,
     fpsAssignments,
     footers,
@@ -228,7 +257,15 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
     set stdout(value: CapturingStdout | undefined) {
       capturedStdout = value;
     },
-    state: () => ({ destroyCount, footerHeight, liveRequestCount, maxFps, screenMode, targetFps }),
+    state: () => ({ destroyCount, liveRequestCount, maxFps, screenMode, targetFps }),
+    /** Keeps `renderer.closed` pending until the returned release runs. */
+    holdClose: (): (() => void) => {
+      let release: () => void = () => {};
+      closed = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return release;
+    },
     emitResize: (nextWidth = 42, nextHeight = 12) => {
       width = nextWidth;
       height = nextHeight;
@@ -240,6 +277,11 @@ export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {})
       }
     },
     resizeListenerCount: () => resizeListeners.size,
+    /** Rows of the footer currently mounted on the fake root. */
+    footerText: (): string => {
+      const footer = footers.at(-1);
+      return footer === undefined || footer.destroyCount > 0 ? "" : footerRows(footer).join("|");
+    },
   };
   return fixture;
 };

@@ -14,7 +14,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("ref-user-build-app");
 const serviceName = ServiceName.make("web");
 const tag = "lando-build-docker-web-user-key";
-const baseTag = `${tag}-base`;
+const baseTag = "sha256:base-image";
 const runtimeUser = "runtime-only";
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00Z"),
@@ -85,8 +85,9 @@ const run = async (withRootStep: boolean, inheritedUser = "app:staff") => {
   const requests: ContainerBuildHttpRequest[] = [];
   const request = (entry: ContainerBuildHttpRequest) => {
     requests.push(entry);
-    if (entry.method === "POST") return Effect.succeed({ status: 200, body: "" });
-    if (entry.path === `/images/${baseTag}/json`) {
+    if (entry.method === "POST")
+      return Effect.succeed({ status: 200, body: JSON.stringify({ aux: { ID: baseTag } }) });
+    if (entry.path === "/images/base-image/json") {
       return Effect.succeed({ status: 200, body: JSON.stringify({ Config: { User: inheritedUser } }) });
     }
     if (entry.path.includes("debian")) {
@@ -96,7 +97,14 @@ const run = async (withRootStep: boolean, inheritedUser = "app:staff") => {
   };
   await Effect.runPromise(
     buildContainerArtifact(
-      { app: appId, service: serviceName, plan: plan(withRootStep), buildKey: "user-key" },
+      {
+        app: appId,
+        service: serviceName,
+        plan: plan(withRootStep),
+        buildKey: "user-key",
+        ref: tag,
+        labels: { "dev.lando.test": "ref-user" },
+      },
       { providerId, api: { request }, sourceEnv: {} },
     ),
   );
@@ -114,10 +122,10 @@ test("materializes a digest-pinned base before inherited-user inspection", async
 
   // Then
   expect(first.paths).toEqual([
-    `POST /build?t=${baseTag}&dockerfile=Dockerfile&forcerm=true`,
-    `GET /images/${baseTag}/json`,
-    `GET /images/${baseTag}/json`,
-    `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
+    "POST /build?dockerfile=Dockerfile&forcerm=true",
+    "GET /images/base-image/json",
+    "GET /images/base-image/json",
+    `POST /build?t=${tag}&labels=%7B%22dev.lando.test%22%3A%22ref-user%22%7D&dockerfile=Dockerfile&forcerm=true`,
     `GET /images/${tag}/json`,
   ]);
   expect(first.dockerfiles).toEqual([
@@ -147,10 +155,10 @@ test("inspects a referenced parent for an authored service user even without ste
 
   // Then
   expect(result.paths).toEqual([
-    `POST /build?t=${baseTag}&dockerfile=Dockerfile&forcerm=true`,
-    `GET /images/${baseTag}/json`,
-    `GET /images/${baseTag}/json`,
-    `POST /build?t=${tag}&dockerfile=Dockerfile&forcerm=true`,
+    "POST /build?dockerfile=Dockerfile&forcerm=true",
+    "GET /images/base-image/json",
+    "GET /images/base-image/json",
+    `POST /build?t=${tag}&labels=%7B%22dev.lando.test%22%3A%22ref-user%22%7D&dockerfile=Dockerfile&forcerm=true`,
     `GET /images/${tag}/json`,
   ]);
   expect(result.dockerfiles).toEqual([

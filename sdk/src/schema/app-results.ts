@@ -97,6 +97,27 @@ export const RebuildAppResult = Schema.Struct({
 });
 export type RebuildAppResult = typeof RebuildAppResult.Type;
 
+export const BuiltImageCleanup = Schema.Struct({
+  removed: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))).annotate({
+    description: "Number of built images removed.",
+  }),
+  released: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))).annotate({
+    description: "Number of built images retained for reuse after releasing their owner.",
+  }),
+  inUse: Schema.Array(
+    Schema.Struct({
+      ref: Schema.String.annotate({ description: "Image name or ID retained because it is in use." }),
+      containers: Schema.Array(Schema.String).annotate({
+        description: "Names of containers using the image; may be empty.",
+      }),
+      reason: Schema.String.annotate({
+        description: "The runtime's explanation of what still uses the image.",
+      }),
+    }),
+  ).annotate({ description: "Built images retained because they are in use." }),
+}).annotate({ description: "Built-image cleanup and retention outcomes." });
+export type BuiltImageCleanup = typeof BuiltImageCleanup.Type;
+
 export const DestroyAppResult = Schema.Struct({
   app: Schema.String.annotate({
     description: "Name of the destroyed app; when only applied state remains, its app id or root.",
@@ -114,6 +135,9 @@ export const DestroyAppResult = Schema.Struct({
   }),
   landofileEvents: StopAppResult.fields.landofileEvents,
   shutdownObservations: StopAppResult.fields.shutdownObservations,
+  builtImages: Schema.optionalKey(BuiltImageCleanup).annotate({
+    description: "Built-image cleanup outcomes, when cleanup was attempted.",
+  }),
 }).annotate({
   description: "Resources removed and lifecycle-step outcomes returned after destroying an app.",
 });

@@ -12,7 +12,8 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { type Context, Deferred, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 
-import { type DoctorCheck, doctor, renderDoctorResult } from "../../src/cli/commands/doctor.ts";
+import { doctor } from "../../src/cli/commands/doctor.ts";
+import type { DoctorCheck } from "../../src/cli/commands/doctor-contract.ts";
 import { type SetupReadinessStep, writeSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
 
 interface RuntimeServiceTestProvider extends RuntimeProviderShape {
@@ -91,8 +92,8 @@ describe("meta:doctor runtime-service check", () => {
     const check = await runtimeServiceCheck(provider);
 
     expect(check.status).toBe("pass");
-    expect(check.runtime.running).toBe(true);
-    expect(check.runtime.version).toBe("0.0.0-test");
+    expect(check.runtime?.running).toBe(true);
+    expect(check.runtime?.version).toBe("0.0.0-test");
     expect(check.context.runtimeRunning).toBe("true");
     expect(check.context.socketReachable).toBe("true");
     expect(check.context.ownedServiceProcess).toBe("true");
@@ -109,7 +110,7 @@ describe("meta:doctor runtime-service check", () => {
     const check = await runtimeServiceCheck(provider);
 
     expect(check.status).toBe("pass");
-    expect(check.runtime.running).toBe(false);
+    expect(check.runtime?.running).toBe(false);
     expect(check.context.runtimeRunning).toBe("false");
     expect(check.context.socketReachable).toBe("false");
     expect(check.context.ownedServiceProcess).toBe("false");
@@ -126,7 +127,7 @@ describe("meta:doctor runtime-service check", () => {
     const check = await runtimeServiceCheck(provider);
 
     expect(check.status).toBe("pass");
-    expect(check.runtime.running).toBe(true);
+    expect(check.runtime?.running).toBe(true);
     expect(check.context.runtimeRunning).toBe("true");
     expect(check.context.socketReachable).toBe("true");
     expect(check.context.ownedServiceProcess).toBe("false");
@@ -157,7 +158,9 @@ describe("meta:doctor runtime-service check", () => {
 
     // Then
     expect(detailedStatusReads).toBe(0);
-    expect((result.selfChecks ?? []).map((entry) => entry.section)).not.toContain("provider-status");
+    expect(
+      result.checks.filter((entry) => entry.name === "doctor-self").map((entry) => entry.context.probe),
+    ).not.toContain("provider-status");
   });
 
   test("skips detailed managed status after the primary status probe times out", async () => {
@@ -190,7 +193,9 @@ describe("meta:doctor runtime-service check", () => {
 
     // Then
     expect(detailedStatusReads).toBe(0);
-    expect((result.selfChecks ?? []).map((entry) => entry.section)).toContain("provider-status");
+    expect(
+      result.checks.filter((entry) => entry.name === "doctor-self").map((entry) => entry.context.probe),
+    ).toContain("provider-status");
   });
 
   test("records detailed managed status failure while falling back after primary success", async () => {
@@ -206,8 +211,10 @@ describe("meta:doctor runtime-service check", () => {
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
 
     // Then
-    expect(result.checks.find((entry) => entry.name === "runtime-service")?.runtime.running).toBe(true);
-    expect((result.selfChecks ?? []).map((entry) => entry.section)).toContain("runtime-service-status");
+    expect(result.checks.find((entry) => entry.name === "runtime-service")?.runtime?.running).toBe(true);
+    expect(
+      result.checks.filter((entry) => entry.name === "doctor-self").map((entry) => entry.context.probe),
+    ).toContain("runtime-service-status");
   });
 
   test("warns with remediation on orphan pid", async () => {
@@ -253,7 +260,7 @@ describe("meta:doctor runtime-service check", () => {
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const selected = result.checks.find((entry) => entry.name === "selected-provider");
     expect(selected?.status).toBe("warn");
-    expect(selected?.context.orphanPids).toBe("4242");
+    expect(selected?.context.orphanPids).toEqual(["4242"]);
     expect(selected?.solutions[0]?.command).toBe("kill 4242");
     expect(selected?.solutions[0]?.description).not.toContain("before retrying");
   });
@@ -323,15 +330,12 @@ describe("meta:doctor runtime-service check", () => {
         doctor().pipe(Effect.provide(buildLayers(provider, { userDataRoot: AbsolutePath.make(dataRoot) }))),
       );
       const check = result.checks.find((candidate) => candidate.name === "runtime-service");
-      const text = renderDoctorResult(result);
 
       expect(check?.context.lastRecordedSocketPath).toBe(
         "/home/u/.local/share/lando/runtime/run/podman.sock?token=[redacted]&X-Amz-Signature=[redacted]",
       );
-      expect(text).toContain("lastRecordedSocketPath:");
-      expect(text).toContain("[redacted]");
-      expect(text).not.toContain("ABC123");
-      expect(text).not.toContain("deadbeef");
+      expect(JSON.stringify(result)).not.toContain("ABC123");
+      expect(JSON.stringify(result)).not.toContain("deadbeef");
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

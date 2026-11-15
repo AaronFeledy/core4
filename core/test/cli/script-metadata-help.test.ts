@@ -8,19 +8,50 @@ import { discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { Effect, Result } from "effect";
 import { renderToolingHelp } from "../../src/cli/cli-help.ts";
-import {
-  type ToolingRoute,
-  resolveToolingRoute,
-  toolingHelpRequested,
-} from "../../src/cli/tooling-router.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
+import { ownerPolicy } from "../../src/cli/invocation-owner.ts";
+import { type ToolingRoute, resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { CliInvocation, processInvocationDefaults } from "../../src/runtime/invocation-context";
+
+const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
+  switch (route._tag) {
+    case "tooling":
+    case "bun-script":
+      return splitCommandTokens(argv, ownerPolicy({ kind: "tooling", route })).help;
+    case "built-in":
+    case "plugin":
+    case "not-tooling":
+    case "alias-disabled":
+    case "cache-miss":
+    case "unknown-tooling":
+      return false;
+    default:
+      return route satisfies never;
+  }
+};
 
 const cli = resolve(import.meta.dirname, "../../bin/lando.ts");
+const invocationEnv = (root: string, cacheRoot: string) => ({
+  ...process.env,
+  NO_COLOR: "1",
+  LANDO_USER_CACHE_ROOT: cacheRoot,
+  LANDO_USER_DATA_ROOT: join(root, "data"),
+  LANDO_USER_CONF_ROOT: join(root, "conf"),
+});
+const fixtureRoute = (root: string, cacheRoot: string, token: string) =>
+  resolveToolingRoute(token, { cwd: root, cacheRoot }).pipe(
+    Effect.provideService(CliInvocation, {
+      ...processInvocationDefaults,
+      cwd: root,
+      env: invocationEnv(root, cacheRoot),
+    }),
+  );
 test.each([
   { argv: ["--help"], marker: null, exit: 0 },
   { argv: ["-h"], marker: null, exit: 0 },
   { argv: ["value", "--help"], marker: null, exit: 0 },
   { argv: ["--", "--help"], marker: "first=--help\nsecond=\n", exit: 0 },
-  { argv: ["--version", "--format=json"], marker: null, exit: 1 },
+  { argv: ["--version", "--format=json"], marker: null, exit: 2 },
   { argv: ["--version", "2.0"], marker: "first=--version\nsecond=2.0\n", exit: 0 },
 ])(
   "answers raw script help without executing except after --: $argv",
@@ -99,6 +130,7 @@ const withScript = async (cached: boolean, run: (root: string, cacheRoot: string
       writeAppCommandCacheStrict({
         cwd: root,
         cacheRoot,
+        env: invocationEnv(root, cacheRoot),
         landofile: { name: "help", ...(cached ? { commandAliases: { custom: { hi: "app:greet" } } } : {}) },
         entries: compileBunShellScriptCommands(scripts),
       }),
@@ -116,7 +148,7 @@ test.each([true, false])("carries normalized script help metadata when cached=%s
     const tokens = cached ? ["greet", "app:greet", "hi"] : ["greet", "app:greet"];
     // When
     const routes = await Promise.all(
-      tokens.map((token) => Effect.runPromise(resolveToolingRoute(token, { cwd: root, cacheRoot }))),
+      tokens.map((token) => Effect.runPromise(fixtureRoute(root, cacheRoot, token))),
     );
     // Then
     for (const route of routes) {
@@ -126,16 +158,19 @@ test.each([true, false])("carries normalized script help metadata when cached=%s
         name: "greet",
         summary: "Greet a target",
         hidden: false,
-        service: ":host",
         appRoot: root,
         relativePath: "greet.bun.sh",
-        runs: { kind: "script", path: ".lando/scripts/greet.bun.sh" },
-        input: {
-          flags: [{ name: "name", alias: "n", default: "world", boolean: false, required: false }],
-          args: [{ name: "target", order: 0, required: true }],
+        availability: {
+          _tag: "Ready",
+          service: ":host",
+          runs: { kind: "script", path: ".lando/scripts/greet.bun.sh" },
+          input: {
+            flags: [{ name: "name", alias: "n", default: "world", boolean: false, required: false }],
+            args: [{ name: "target", order: 0, required: true }],
+          },
         },
       });
-      expect(toolingHelpRequested(route, ["--help"])).toBe(true);
+      expect(helpRequested(route, ["--help"])).toBe(true);
     }
   });
 });
@@ -150,7 +185,7 @@ test.each([
     // Given: invalid Landofile and unrelated script rule out planning or full inventory discovery.
     await withScript(cached, async (root, cacheRoot) => {
       await writeFile(join(root, ".lando/scripts/unrelated.bun.sh"), "invalid front matter");
-      const route = await Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot }));
+      const route = await Effect.runPromise(fixtureRoute(root, cacheRoot, "greet"));
       if (route._tag !== "bun-script") throw new Error(`Expected script, got ${route._tag}`);
       const expected = renderToolingHelp(
         { ...route, id: route.commandId, source: "bun-script" },
@@ -164,13 +199,7 @@ test.each([
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
-        env: {
-          ...process.env,
-          NO_COLOR: "1",
-          LANDO_USER_CACHE_ROOT: cacheRoot,
-          LANDO_USER_DATA_ROOT: join(root, "data"),
-          LANDO_USER_CONF_ROOT: join(root, "conf"),
-        },
+        env: invocationEnv(root, cacheRoot),
       });
       const [code, stdout, stderr] = await Promise.all([
         child.exited,
@@ -238,18 +267,29 @@ test.each([
           normalizeToolingInput("greet", { args: { target: { required: true } } }),
           (error) => error,
         );
-  const route: ToolingRoute = {
-    _tag: "bun-script",
+  const metadata = {
+    _tag: "bun-script" as const,
     commandId: "app:greet",
     name: "greet",
     summary: "Greet",
     hidden: overrides.hidden ?? false,
-    ...(overrides.disabled ? { disabled: true as const } : {}),
     appRoot: "/app",
-    ...(input === undefined ? {} : { input }),
+    availability: {
+      _tag: "Ready" as const,
+      input: input ?? Result.getOrThrow(normalizeToolingInput("greet", {})),
+    },
   };
+  const route: ToolingRoute = overrides.disabled
+    ? {
+        ...metadata,
+        availability: {
+          _tag: "Disabled",
+          source: { path: "/app/.lando/scripts/greet.bun.sh", task: "greet" },
+        },
+      }
+    : metadata;
   // When
-  const requested = toolingHelpRequested(route, argv);
+  const requested = helpRequested(route, argv);
   // Then
   expect(requested).toBe(expected);
 });
@@ -262,9 +302,9 @@ test("retains a newly discovered disabled script route for typed runtime refusal
       declared.replace("# desc:", "# disabled: true\n# desc:"),
     );
     // When
-    const route = await Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot }));
+    const route = await Effect.runPromise(fixtureRoute(root, cacheRoot, "greet"));
     // Then
-    expect(route).toMatchObject({ _tag: "bun-script", hidden: true, disabled: true });
-    expect(toolingHelpRequested(route, ["--help"])).toBe(true);
+    expect(route).toMatchObject({ _tag: "bun-script", hidden: false, availability: { _tag: "Disabled" } });
+    expect(helpRequested(route, ["--help"])).toBe(true);
   });
 });

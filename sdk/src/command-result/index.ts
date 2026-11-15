@@ -27,12 +27,19 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
 
 export { internalErrorRemediation, normalizeDefect, taggedErrorJson } from "./diagnostic.ts";
+export {
+  type ToolingDiagnostic,
+  boundedDiagnosticSummary,
+  projectToolingDiagnostic,
+} from "./tooling-diagnostic.ts";
 
 import { JsonProjectionError } from "../errors/command.ts";
+import { ToolingCompileError } from "../errors/tooling.ts";
 import { emitYamlDocument } from "../yaml/document.ts";
 import { encodeStreamFrame } from "./frames.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
 import { encodeRedactedJson } from "./redacted-json.ts";
+import { projectToolingDiagnostic } from "./tooling-diagnostic.ts";
 
 export {
   type EncodeStreamChunkFrameOptions,
@@ -92,6 +99,12 @@ const isJsonProjectionError = (error: unknown): error is JsonProjectionError =>
 const encodeCommandEnvelope = Effect.fnUntraced(function* (
   options: EncodeCommandResultOptions,
 ): Effect.fn.Return<unknown, unknown> {
+  const projectError = (error: unknown) => {
+    const diagnostic = taggedErrorJson(error);
+    return Schema.is(Schema.Struct(ToolingCompileError.fields))(diagnostic)
+      ? projectToolingDiagnostic(diagnostic, options.redactor)
+      : diagnostic;
+  };
   const base = {
     apiVersion: "v4" as const,
     command: options.command,
@@ -131,11 +144,11 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
               }
             : {}),
           error: {
-            ...taggedErrorJson(options.outcome.error),
+            ...projectError(options.outcome.error),
             ...(options.outcome.additionalErrors.length
               ? {
                   additionalErrors: options.outcome.additionalErrors.map(({ role, error }) => ({
-                    ...taggedErrorJson(error),
+                    ...projectError(error),
                     role,
                   })),
                 }

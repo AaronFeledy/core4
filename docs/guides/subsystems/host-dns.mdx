@@ -32,14 +32,15 @@ lando doctor
 
 Doctor's `host-dns` check probes `lando-doctor-probe.<domain>` using your configured `proxy.defaultDomain` (default `lndo.site`). It passes only when the answer is nonempty and every address is `127.0.0.1`. If it fails, add a local DNS rule for that domain and run `lando doctor` again.
 
-For a script, read the DNS observations in the JSON report instead of parsing terminal text:
+For a script, read the DNS observations in the JSON report instead of parsing terminal text. The `host-dns` check is the `result.checks` entry in section `subsystems`:
 
 <Guide>
   <Scenario id="inspect-host-dns" render>
     <Step name="inspect">
       <Run runtime="library" displayCode="lando doctor --format=json" code={`const run = yield* context.runCli(["doctor", "--format=json"]);
 const report = JSON.parse(run.stdout);
-expect(report.result.subsystems.checks).toContainEqual(expect.objectContaining({
+expect(report.result.checks).toContainEqual(expect.objectContaining({
+  section: "subsystems",
   name: "host-dns",
   context: expect.objectContaining({ dnsHostname: expect.any(String), dnsResolved: expect.any(String) }),
 }));`} />

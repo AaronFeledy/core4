@@ -134,7 +134,7 @@ describe("ScratchAppServiceLayer.layer", () => {
         if (result.acquired._tag === "Failure")
           expect(result.acquired.failure._tag).toBe("ScratchSourceUnresolvedError");
         expect(result.listed).toEqual([]);
-        expect(result.gc).toEqual({ inspected: 0, reaped: [], errors: [] });
+        expect(result.gc).toEqual({ inspected: 0, candidates: [], reaped: [], errors: [] });
         for (const outcome of [result.resolved, result.started, result.stopped, result.destroyed]) {
           expect(outcome._tag).toBe("Failure");
           if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchAppNotFoundError");

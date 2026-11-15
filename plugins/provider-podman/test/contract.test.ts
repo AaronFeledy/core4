@@ -350,6 +350,11 @@ const makeFakeApi = () => {
             ),
           };
         }
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          return { status: 404, body: JSON.stringify({ message: "No such image" }) };
+        }
+        if (request.method === "GET" && request.path.startsWith("/images/json?"))
+          return { status: 200, body: "[]" };
         return {
           status: 500,
           body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),
@@ -571,6 +576,11 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           artifacts.set(ref, await collectAsyncBytes(request.stdin));
           return { status: 200, body: JSON.stringify({ ref }) };
         }
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          return { status: 404, body: JSON.stringify({ message: "No such image" }) };
+        }
+        if (request.method === "GET" && request.path.startsWith("/images/json?"))
+          return { status: 200, body: "[]" };
         return {
           status: 500,
           body: JSON.stringify({ message: `unhandled ${request.method} ${request.path}` }),

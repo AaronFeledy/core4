@@ -22,7 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import {
-  type ArtifactBuildSpec,
+  type ArtifactBuildRequest,
   type ArtifactPullPolicy,
   type ArtifactPullSpec,
   type BuildOptions,
@@ -53,13 +53,14 @@ const stateStoreLayer = Layer.suspend(() => Layer.succeed(StateStore, makeTestSt
 
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
+import {
+  artifactOwnerKey,
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
-import {
-  openAppBuildResults,
-  openScratchBuildResults,
-  recordBuildResult,
-} from "../../src/services/build-results.ts";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -104,6 +105,14 @@ const plan: AppPlan = {
   metadata,
   extensions: {},
 };
+
+const companionOf = (parent: ServicePlan): ServicePlan => ({
+  ...parent,
+  name: ServiceName.make(`${String(parent.name)}-schedule`),
+  primary: false,
+  dependsOn: [{ service: parent.name, condition: "service_started", required: true }],
+  provenance: { clonedBy: { feature: "test.clone", from: String(parent.name) } },
+});
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => Predicate.isObject(value);
 
@@ -322,7 +331,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     let maxActive = 0;
     const provider = {
       ...TestRuntimeProvider,
-      buildArtifact: Effect.fnUntraced(function* (spec: ArtifactBuildSpec) {
+      buildArtifact: Effect.fnUntraced(function* (spec: ArtifactBuildRequest) {
         expect(spec.app).toBe(concurrentPlan.id);
         expect(spec.plan).toBe(concurrentPlan);
         expect(spec.buildKey).toBeString();
@@ -391,7 +400,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     await withTempUserRoots(async () => {
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.succeed({ providerId, ref: `${spec.service}:test` }),
       };
 
@@ -419,13 +428,13 @@ describe("BuildOrchestratorLayer.layer", () => {
           expect.objectContaining({
             taskId: String(web.name),
             transcriptPath: expect.stringContaining(
-              `${sep}${join("builds", String(plan.id), "artifact", String(web.name))}${sep}`,
+              `${sep}${join("builds", "owners", BuildOwner.fromPlan(plan).key, "artifact", String(web.name))}${sep}`,
             ),
           }),
           expect.objectContaining({
             taskId: String(db.name),
             transcriptPath: expect.stringContaining(
-              `${sep}${join("builds", String(plan.id), "artifact", String(db.name))}${sep}`,
+              `${sep}${join("builds", "owners", BuildOwner.fromPlan(plan).key, "artifact", String(db.name))}${sep}`,
             ),
           }),
         ]),
@@ -490,13 +499,16 @@ describe("BuildOrchestratorLayer.layer", () => {
         .sort(),
     ).toEqual([
       ["db", "Build db aborted"],
-      ["web", "Build web failed"],
+      ["web", "Build web aborted"],
     ]);
     expect(
       result.events
         .filter((event) => event._tag === "build-step-skip")
         .map((event) => [event.serviceName, event.reason]),
-    ).toEqual([["db", "phase-aborted"]]);
+    ).toEqual([
+      ["web", "phase-aborted"],
+      ["db", "phase-aborted"],
+    ]);
     expect(result.events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
       succeeded: 0,
       failed: 2,
@@ -585,7 +597,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const siblingStarted = Deferred.makeUnsafe<void>();
     const provider = {
       ...TestRuntimeProvider,
-      buildArtifact: (spec: ArtifactBuildSpec) => {
+      buildArtifact: (spec: ArtifactBuildRequest) => {
         calls.push(String(spec.service));
         return spec.service === ServiceName.make("web")
           ? Deferred.await(siblingStarted).pipe(Effect.andThen(Effect.fail(failure)))
@@ -609,6 +621,126 @@ describe("BuildOrchestratorLayer.layer", () => {
       message: "build failed",
       remediation: failure.remediation,
     });
+  });
+
+  test.each([
+    ["parent", true],
+    ["companion", false],
+  ] as const)(
+    "starts a companion build only after its parent build finishes when the %s is listed first",
+    async (_first, parentFirst) => {
+      // Given a companion cloned from web and a parent build the test holds open.
+      const parentStarted = Deferred.makeUnsafe<void>();
+      const parentFinished = Deferred.makeUnsafe<void>();
+      const releaseParent = Deferred.makeUnsafe<void>();
+      const started: string[] = [];
+      const companion = companionOf(web);
+      const companionPlan: AppPlan = {
+        ...plan,
+        services: parentFirst
+          ? { [web.name]: web, [companion.name]: companion }
+          : { [companion.name]: companion, [web.name]: web },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildRequest) =>
+          Effect.gen(function* () {
+            if (spec.service === web.name) {
+              started.push(String(spec.service));
+              yield* Deferred.succeed(parentStarted, undefined);
+              yield* Deferred.await(releaseParent);
+              yield* Deferred.succeed(parentFinished, undefined);
+              return { providerId, ref: `${spec.service}:test` };
+            }
+            // Then the companion's build only ever starts once the parent's build has finished.
+            expect(yield* Deferred.isDone(parentFinished)).toBe(true);
+            started.push(String(spec.service));
+            return { providerId, ref: `${spec.service}:test` };
+          }),
+      };
+
+      // When the parent build is held open.
+      const builtPlan = await Effect.runPromise(
+        Effect.gen(function* () {
+          const orchestrator = yield* BuildOrchestrator;
+          const fiber = yield* Effect.forkChild(orchestrator.build(companionPlan));
+          yield* Deferred.await(parentStarted);
+          expect(started).toEqual([String(web.name)]);
+          yield* Deferred.succeed(releaseParent, undefined);
+          return yield* Fiber.join(fiber);
+        }).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then both build, the companion after the parent, and the plan keeps its service order.
+      expect(started).toEqual([String(web.name), String(companion.name)]);
+      expect(Object.keys(builtPlan.services)).toEqual(Object.keys(companionPlan.services));
+    },
+  );
+
+  test("reports a companion as aborted when its parent build fails", async () => {
+    // Given a companion cloned from web and a parent build the test fails.
+    const parentStarted = Deferred.makeUnsafe<void>();
+    const releaseFailure = Deferred.makeUnsafe<void>();
+    const started: string[] = [];
+    const failure = new ProviderInternalError({
+      providerId: "test",
+      operation: "buildArtifact",
+      message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
+    });
+    const companion = companionOf(web);
+    const companionPlan: AppPlan = {
+      ...plan,
+      services: { [web.name]: web, [companion.name]: companion },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: (spec: ArtifactBuildRequest) =>
+        spec.service === web.name
+          ? Deferred.succeed(parentStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseFailure)),
+              Effect.andThen(Effect.fail(failure)),
+            )
+          : Effect.sync(() => {
+              started.push(String(spec.service));
+              return { providerId, ref: `${spec.service}:test` };
+            }),
+    };
+
+    // When the parent build fails.
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const fiber = yield* Effect.forkChild(Effect.flip(orchestrator.build(companionPlan)));
+          yield* Deferred.await(parentStarted);
+          const companionAttempts = [...started];
+          yield* Deferred.succeed(releaseFailure, undefined);
+          const error = yield* Fiber.join(fiber);
+          return { error, companionAttempts, events: [...(yield* Queue.clear(queue))] };
+        }),
+      ).pipe(Effect.provide(layer(provider))),
+    );
+
+    // Then the companion never builds and is settled the way an undispatched task is.
+    expect(result.companionAttempts).toEqual([]);
+    expect(result.error).toMatchObject({
+      _tag: "ProviderInternalError",
+      operation: "buildArtifact",
+      message: "build failed",
+    });
+    expect(
+      result.events
+        .filter((event) => event._tag === "task.fail")
+        .map((event) => [event.taskId, event.summary])
+        .sort(),
+    ).toEqual([
+      [String(web.name), `Build ${String(web.name)} failed`],
+      [String(companion.name), `Build ${String(companion.name)} aborted`],
+    ]);
   });
 
   test.each([
@@ -672,7 +804,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       ...TestRuntimeProvider,
       capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
       pullArtifact: () => Effect.succeed({ providerId, ref: "php:8.2-apache-bookworm", digest: baseDigest }),
-      buildArtifact: (spec: ArtifactBuildSpec) =>
+      buildArtifact: (spec: ArtifactBuildRequest) =>
         Effect.sync(() => {
           keys.push(spec.buildKey);
           return { providerId, ref: `php-derived:${keys.length}` };
@@ -739,7 +871,7 @@ describe("BuildOrchestratorLayer.layer", () => {
         capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
         pullArtifact: () =>
           Effect.succeed({ providerId, ref: "php:8.2-apache-bookworm", digest: baseDigest }),
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             builds.push(spec.buildKey);
             return {
@@ -821,7 +953,7 @@ describe("BuildOrchestratorLayer.layer", () => {
           if (refreshing && spec.policy !== "never") return Effect.fail(failure);
           return Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:local" });
         },
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             builds.push(spec.buildKey);
             return { providerId, ref: `php-derived:${builds.length}`, digest: "sha256:derived-1" };
@@ -1609,13 +1741,14 @@ describe("BuildOrchestratorLayer.layer", () => {
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
           const buildKey = yield* buildKeyForService(provider, artifactPlan.services[web.name] ?? web);
-          const bucket = yield* openScratchBuildResults(stateStore);
-          yield* recordBuildResult(bucket, {
+          const bucket = yield* openArtifactBuildResults(stateStore);
+          yield* recordArtifactBuildResult(bucket, {
+            owner: BuildOwner.fromPlan(artifactPlan).key,
+            providerId: String(providerId),
             buildKey,
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "debian:12.11-slim",
             transcriptPath: AbsolutePath.make("/tmp/legacy-scratch-build.log"),
@@ -1657,13 +1790,14 @@ describe("BuildOrchestratorLayer.layer", () => {
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
           const buildKey = yield* buildKeyForService(provider, artifactPlan.services[web.name] ?? web);
-          const bucket = yield* openScratchBuildResults(stateStore);
-          yield* recordBuildResult(bucket, {
+          const bucket = yield* openArtifactBuildResults(stateStore);
+          yield* recordArtifactBuildResult(bucket, {
+            owner: BuildOwner.fromPlan(artifactPlan).key,
+            providerId: String(providerId),
             buildKey,
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "ubuntu:24.04",
             transcriptPath: AbsolutePath.make("/tmp/legacy-scratch-different-ref-build.log"),
@@ -1723,7 +1857,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       };
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             calls.push(String(spec.service));
             return { providerId, ref: `${spec.service}:test` };
@@ -1780,7 +1914,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       });
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             calls.push(String(spec.service));
             return { providerId, ref: `${spec.service}:test` };
@@ -1808,7 +1942,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const retryCalls: string[] = [];
       const failingProvider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) => {
+        buildArtifact: (spec: ArtifactBuildRequest) => {
           retryCalls.push(String(spec.service));
           return retryCalls.length === 1
             ? Effect.fail(failure)
@@ -1904,7 +2038,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const buildPlan: AppPlan = { ...plan, services: { [built.name]: built } };
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           (spec.onOutput === undefined
             ? Effect.die("onOutput was not supplied")
             : spec.onOutput("Step 1: build-output-secret\n")
@@ -1962,7 +2096,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       });
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           (spec.onOutput === undefined
             ? Effect.die("onOutput was not supplied")
             : spec.onOutput("first line\nsecond line\n")
@@ -2064,13 +2198,14 @@ describe("BuildOrchestratorLayer.layer", () => {
           Effect.gen(function* () {
             const stateStore = yield* StateStore;
             const buildKey = yield* buildKeyForService(provider, scratchPlan.services[web.name] ?? web);
-            const bucket = yield* openScratchBuildResults(stateStore);
-            yield* recordBuildResult(bucket, {
+            const bucket = yield* openArtifactBuildResults(stateStore);
+            yield* recordArtifactBuildResult(bucket, {
+              owner: BuildOwner.fromPlan(scratchPlan).key,
+              providerId: String(providerId),
               buildKey,
               service: web.name,
               phase: "artifact",
               outcome: "complete",
-              exitCode: 0,
               durationMs: 1,
               artifactRef: "debian:12.11-slim",
               sourceArtifactRef: "debian:12.11-slim",
@@ -2105,14 +2240,20 @@ describe("BuildOrchestratorLayer.layer", () => {
   test("sweeps unreferenced artifact transcripts after a successful phase", async () => {
     await withTempUserRoots(async () => {
       // Given a phase directory left with a stale file and an orphaned service directory.
-      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const phase = join(
+        makeLandoPaths().roots.userDataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+      );
       await mkdir(join(phase, "web"), { recursive: true });
       await mkdir(join(phase, "ghost"), { recursive: true });
       await writeFile(join(phase, "web", "stale.log"), "stale\n");
       await writeFile(join(phase, "ghost", "stale.log"), "stale\n");
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.succeed({ providerId, ref: `${spec.service}:test` }),
       };
 
@@ -2135,7 +2276,13 @@ describe("BuildOrchestratorLayer.layer", () => {
   test("keeps unreferenced artifact transcripts when the phase fails", async () => {
     await withTempUserRoots(async () => {
       // Given a stale transcript and a build that fails.
-      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const phase = join(
+        makeLandoPaths().roots.userDataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+      );
       await mkdir(join(phase, "web"), { recursive: true });
       const stale = join(phase, "web", "stale.log");
       await writeFile(stale, "stale\n");
@@ -2168,12 +2315,18 @@ describe("BuildOrchestratorLayer.layer", () => {
   test("keeps unreferenced artifact transcripts when every step is reused", async () => {
     await withTempUserRoots(async () => {
       // Given a phase that first succeeds and then runs fully from its recorded results.
-      const phase = join(makeLandoPaths().roots.userDataRoot, "builds", String(plan.id), "artifact");
+      const phase = join(
+        makeLandoPaths().roots.userDataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+      );
       const stale = join(phase, "web", "stale.log");
       let builds = 0;
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             builds += 1;
             return { providerId, ref: `${spec.service}:test` };
@@ -2513,7 +2666,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       };
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           (spec.onOutput === undefined
             ? Effect.die("onOutput was not supplied")
             : spec.onOutput("argpass-hunter2 http://arguser:argpass-hunter2@127.0.0.1:3128\n")
@@ -2647,14 +2800,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       const store = makeTestStateStore();
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           spec.service === web.name
             ? Effect.die("a reused step must not build")
             : Effect.succeed({ providerId, ref: `${spec.service}:test` }),
       };
       const buildKey = await Effect.runPromise(buildKeyForService(provider, web));
       const root = makeLandoPaths().roots.userDataRoot;
-      const directory = join(root, "builds", String(plan.id), "artifact", "web");
+      const directory = join(root, "builds", "owners", BuildOwner.fromPlan(plan).key, "artifact", "web");
       const olderPath = join(directory, `${buildKey}.log`);
       const newerPath = join(directory, "newer.log");
       await mkdir(directory, { recursive: true });
@@ -2666,29 +2819,31 @@ describe("BuildOrchestratorLayer.layer", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
-          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
-          yield* recordBuildResult(bucket, {
+          const bucket = yield* openArtifactBuildResults(stateStore);
+          yield* recordArtifactBuildResult(bucket, {
+            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            providerId: String(providerId),
             buildKey,
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "web:test",
             transcriptPath: AbsolutePath.make(olderPath),
           });
-          yield* recordBuildResult(bucket, {
+          yield* recordArtifactBuildResult(bucket, {
+            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            providerId: String(providerId),
             buildKey: "newer-key",
             service: web.name,
             phase: "artifact",
             outcome: "complete",
-            exitCode: 0,
             durationMs: 1,
             artifactRef: "web:newer",
             transcriptPath: AbsolutePath.make(newerPath),
           });
           const built = yield* (yield* BuildOrchestrator).build(plan);
-          const entries = (yield* bucket.get) ?? [];
+          const entries = (yield* bucket.get)?.results ?? [];
           return { artifact: built.services[web.name]?.artifact, entries };
         }).pipe(Effect.provide(layer(provider, injected))),
       );
@@ -2701,14 +2856,14 @@ describe("BuildOrchestratorLayer.layer", () => {
     });
   });
 
-  test("a warm artifact start writes no build-results bytes", async () => {
+  test("a warm artifact start updates last use without replacing the produced artifact", async () => {
     await withTempUserRoots(async () => {
       // Given a plan whose artifact results are already recorded.
       const store = makeTestStateStore();
       const injected = Layer.succeed(StateStore, store.service);
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.succeed({ providerId, ref: `${spec.service}:test` }),
       };
 
@@ -2716,19 +2871,32 @@ describe("BuildOrchestratorLayer.layer", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
-          const bucket = yield* openAppBuildResults(stateStore, String(plan.id));
+          const bucket = yield* openArtifactBuildResults(stateStore);
           const orchestrator = yield* BuildOrchestrator;
           yield* orchestrator.build(plan);
-          const before = yield* store.readRaw(bucket.path);
+          yield* bucket.update((index) => ({
+            results: (index?.results ?? []).map((entry) => ({
+              ...entry,
+              completedAt: DateTime.makeUnsafe("2000-01-01T00:00:00Z"),
+            })),
+            claims: index?.claims ?? [],
+          }));
+          const before = yield* bucket.get;
           yield* orchestrator.build(plan);
-          const after = yield* store.readRaw(bucket.path);
+          const after = yield* bucket.get;
           return { before, after };
         }).pipe(Effect.provide(layer(provider, injected))),
       );
 
-      // Then the index was read but not rewritten.
+      // Services reuse their results concurrently and a reused entry moves last, so only each
+      // service's produced ref is stable, not the order across services.
+      const refs = (index: typeof result.before) =>
+        (index?.results ?? []).map((entry) => entry.artifactRef).sort();
       expect(result.before).not.toBeNull();
-      expect(result.after).toEqual(result.before);
+      expect(refs(result.after)).toEqual(refs(result.before));
+      expect(result.after?.results.map((entry) => DateTime.toEpochMillis(entry.completedAt))).not.toEqual(
+        result.before?.results.map((entry) => DateTime.toEpochMillis(entry.completedAt)),
+      );
     });
   });
 });

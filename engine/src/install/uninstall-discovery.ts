@@ -2,8 +2,10 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { AppId, AppPlan } from "@lando/sdk/schema";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import type { DiscoveredApp } from "../operations/uninstall.ts";
+import { artifactBuildStoreKey } from "../services/build-artifact-name.ts";
+import { cleanupUninstallBuiltImages } from "./uninstall-built-images.ts";
 import { UninstallResourceCleanupError, uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
 import { assertManagedStorageResolved } from "./uninstall-managed-storage.ts";
 import { cleanupUninstallResources } from "./uninstall-resource-cleanup.ts";
@@ -127,9 +129,17 @@ export const makeCleanupDiscoveredApps =
     platform: NodeJS.Platform = process.platform,
     seams: UninstallRuntimeSeams = {},
   ) =>
-  async (_apps: readonly DiscoveredApp[]): Promise<void> => {
+  async (
+    _apps: readonly DiscoveredApp[],
+    userCacheRoot = makeLandoPaths().roots.userCacheRoot,
+  ): Promise<string> => {
     const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec, seams });
     if (platform === "win32") await assertUninstallSyncSafe({ userDataRoot, runtimes, exec });
     for (const runtime of runtimes) await cleanupUninstallResources(exec, runtime);
     for (const runtime of runtimes) await assertManagedStorageResolved(exec, runtime);
+    const store = await Effect.runPromise(artifactBuildStoreKey(userCacheRoot));
+    const details: string[] = [];
+    for (const runtime of runtimes.filter((runtime) => !runtime.managed))
+      details.push(await cleanupUninstallBuiltImages(exec, runtime, store));
+    return details.join(" ");
   };

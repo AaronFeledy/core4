@@ -8,11 +8,11 @@ import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest
 import type { HelpAliasPolicy } from "./help-names";
 import { typeableName } from "./help-names";
 import type { PluginCommandRow } from "./plugin-command-catalog";
+import { type ToolingAvailability, normalizedToolingRoute } from "./tooling-route";
 
-export interface CommandCatalogEntry {
+interface CommandCatalogIdentity {
   readonly id: string;
   readonly summary: string;
-  readonly source: "built-in" | "plugin" | "tooling";
   readonly hidden: boolean;
   readonly tokens: readonly string[];
   readonly primary: string;
@@ -20,8 +20,12 @@ export interface CommandCatalogEntry {
   readonly plugin?: PluginCommandRow;
   readonly mcpAllowed?: boolean;
   readonly deferred?: DeferredCommandPlan;
-  readonly loadError?: AppCommandIndexPayload["entries"][number]["loadError"];
 }
+export type CommandCatalogEntry = CommandCatalogIdentity &
+  (
+    | { readonly source: "built-in" | "plugin" }
+    | { readonly source: "tooling"; readonly availability: ToolingAvailability }
+  );
 export interface CommandCatalog {
   readonly entries: readonly CommandCatalogEntry[];
   readonly byToken: ReadonlyMap<string, CommandCatalogEntry>;
@@ -106,9 +110,9 @@ export const buildCommandCatalog = (
       add({
         id: command.id,
         summary: command.summary,
-        ...(command.loadError === undefined ? {} : { loadError: command.loadError }),
+        availability: normalizedToolingRoute(command, cache?.aliasPolicy).availability,
         source: "tooling",
-        hidden: command.hidden,
+        hidden: command.visibility === "internal",
         tokens: [],
         primary: command.id,
         extras: [],

@@ -24,13 +24,19 @@ export const buildLandofileLoadScope = Effect.fnUntraced(function* (
   layers: readonly { readonly file: string; readonly value: unknown }[],
   env: Readonly<Record<string, string>> = hostExpressionEnvironment(),
   pendingSites: ParsedPendingSite[] = [],
+  environmentRecorder?: import("../environment-dependencies.ts").EnvironmentRecorder,
 ) {
   const merged = mergeLandofiles(
     layers.map(({ value }) =>
       isPlainRecord(value) && Object.hasOwn(value, "recipe") ? { recipe: value.recipe } : {},
     ),
   );
-  return { env, recipe: recipeOptionScope(merged), pendingSites };
+  return {
+    env,
+    recipe: recipeOptionScope(merged),
+    pendingSites,
+    ...(environmentRecorder === undefined ? {} : { environmentRecorder }),
+  };
 });
 
 export const materializeLandofileLayer = Effect.fnUntraced(function* (

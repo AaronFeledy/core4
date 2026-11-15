@@ -11,6 +11,10 @@ import { Schema } from "effect";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 
+/**
+ * Capture compilation inputs. `env` must be the raw captured snapshot (string
+ * values only), never the dependency-recording view from `recordEnvironment`.
+ */
 export const captureCompilationContext = (
   appRoot: string,
   env: Readonly<Record<string, string>> = hostExpressionEnvironment(),

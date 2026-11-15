@@ -32,21 +32,7 @@ import { Context, Effect, Fiber, type Layer, Predicate, Schema } from "effect";
 import { serviceLayer } from "../../mcp-command-executor";
 import { CliInvocation } from "../../runtime/invocation-context";
 import type { LandoCommandSpec } from "../spec/command-base";
-import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
-import { renderDoctorChecksAsNdjson, sectionCheckEventPayload } from "./doctor-ndjson";
-import { renderSectionCheck } from "./doctor-section-render";
-
-export interface McpDoctorCheck {
-  readonly name: "mcp";
-  readonly status: DoctorStatus;
-  readonly severity: DoctorSeverity;
-  readonly context: Readonly<Record<string, string>>;
-  readonly solutions: ReadonlyArray<DoctorSolution>;
-}
-
-export interface McpDoctorResult {
-  readonly checks: ReadonlyArray<McpDoctorCheck>;
-}
+import type { DoctorFinding, DoctorSectionResult, DoctorSolution } from "./doctor-contract";
 
 /**
  * A deterministic fake secret planted in the canary result to prove the
@@ -68,7 +54,7 @@ const canarySpec: LandoCommandSpec = {
   redactionTokens: () => [MCP_DOCTOR_CANARY_SECRET],
 };
 
-const canaryEntry: McpCommandEntry = { spec: canarySpec };
+const canaryEntry = { spec: canarySpec, kind: "command" } satisfies McpCommandEntry;
 
 export const isMcpDefaultAllowlistFresh = (ids: ReadonlyArray<string>): boolean => {
   const expected = computeMcpDefaultAllowlist(MCP_DEFAULT_ALLOWLIST.map((id) => ({ id, mcpAllowed: true })));
@@ -119,7 +105,7 @@ const mcpDoctorSolutions = (signals: McpDoctorSignals): ReadonlyArray<DoctorSolu
  * failing signals and a remediation.
  */
 export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Return<
-  McpDoctorResult,
+  DoctorSectionResult,
   never,
   RedactionService
 > {
@@ -163,6 +149,8 @@ export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Re
       Effect.provideService(
         McpRuntimeConfig,
         McpRuntimeConfig.of({
+          env: (yield* CliInvocation).env,
+          cwd: (yield* CliInvocation).cwd,
           commandEntries: [canaryEntry],
           defaultAllowlist: [CANARY_TOOL_ID],
           apps: Effect.succeed(singleAppGenerations(Context.make(RedactionService, redaction))),
@@ -193,7 +181,7 @@ export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Re
     context.allowlistError = redactor.redactString(String(allowlistFreshResult.failure));
   if (canaryError !== undefined) context.canaryError = canaryError;
 
-  const check: McpDoctorCheck = {
+  const check: DoctorFinding = {
     name: "mcp",
     status: passed ? "pass" : "fail",
     severity: passed ? "info" : "error",
@@ -206,31 +194,3 @@ export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Re
 });
 
 export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionService.layer;
-
-export const renderMcpDoctorResult = (result: McpDoctorResult): string =>
-  result.checks.flatMap((check) => renderSectionCheck(check)).join("\n");
-
-const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
-  "allowlistFresh",
-  "allowlistSize",
-  "catalogGenerated",
-  "catalogTools",
-  "canaryRoundTrip",
-  "canaryRedacted",
-  "allowlistError",
-  "canaryError",
-];
-
-export interface McpDoctorNdjsonOptions {
-  readonly now?: Date;
-}
-
-export const renderMcpDoctorResultAsNdjson = (
-  result: McpDoctorResult,
-  options: McpDoctorNdjsonOptions = {},
-): string =>
-  renderDoctorChecksAsNdjson({
-    checks: result.checks,
-    now: options.now,
-    checkEventPayload: (check) => sectionCheckEventPayload(check, CONTEXT_KEY_ORDER),
-  });

@@ -14,6 +14,7 @@ import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -152,6 +153,7 @@ const makeDeps = (
   store: ReturnType<typeof memoryFiles>,
   classifyOverride: ClassifyOverride,
 ): TraefikProxyDependencies => ({
+  stateStore: makeAckStore([]),
   probeForward: () => Effect.succeed({ kind: "success" }),
   certificateAuthority: makeTestCertificateAuthority(),
   fileSystem: store.fileSystem,
@@ -361,6 +363,7 @@ describe("setup try-list probe walk", () => {
     const probed: number[] = [];
     const service = makeTraefikRouterService({
       probeForward: () => Effect.succeed({ kind: "success" }),
+      stateStore: makeAckStore([]),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,

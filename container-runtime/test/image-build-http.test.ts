@@ -111,7 +111,7 @@ test("returns the first digest when build output mixes malformed lines and JSON 
     }),
   );
   // Then
-  expect(digest).toBe("sha256:first");
+  expect(digest).toEqual({ digest: "sha256:first" });
 });
 
 test("returns the first build error when invalid lines precede multiple error frames", () => {
@@ -411,8 +411,8 @@ test("delivers identical output through the buffered fallback", async () => {
   // Then
   expect(streamed).toEqual(["STEP 1/2\n", "abc: Pulling fs layer\n"]);
   expect(buffered).toEqual(streamed);
-  expect(bufferedDigest).toBe("sha256:digest");
-  expect(streamedDigest).toBe("sha256:digest");
+  expect(bufferedDigest).toEqual({ digest: "sha256:digest" });
+  expect(streamedDigest).toEqual({ digest: "sha256:digest" });
 });
 
 test("delivers output from every daemon build of an artifact in order", async () => {
@@ -449,7 +449,12 @@ test("delivers output from every daemon build of an artifact in order", async ()
       Effect.succeed({ status: 200, body: request.method === "GET" ? "{}" : "" });
     const stream = (request: { readonly method: "GET" | "POST"; readonly path: `/${string}` }) => {
       posted.push(request.path);
-      return Stream.make(jsonFrame({ stream: request.path.includes("-base") ? "base\n" : "derived\n" }));
+      return Stream.make(
+        jsonFrame({
+          stream: new URL(request.path, "http://engine").searchParams.has("t") ? "derived\n" : "base\n",
+          aux: { ID: "sha256:base-image" },
+        }),
+      );
     };
 
     // When
@@ -460,6 +465,8 @@ test("delivers output from every daemon build of an artifact in order", async ()
           service: serviceName,
           plan: plan(servicePlan),
           buildKey: "two-builds",
+          labels: { "dev.lando.test": "http" },
+          ref: "lando-build-docker-web-two-builds",
           onOutput: (text) =>
             Effect.sync(() => {
               outputs.push(text);
@@ -505,7 +512,12 @@ test("keeps the source-image naming build out of the forwarded output", async ()
     Effect.succeed({ status: 200, body: request.method === "GET" ? '{"Config":{"User":""}}' : "" });
   const stream = (request: { readonly method: "GET" | "POST"; readonly path: `/${string}` }) => {
     posted.push(request.path);
-    return Stream.make(jsonFrame({ stream: request.path.includes("-base") ? "base\n" : "derived\n" }));
+    return Stream.make(
+      jsonFrame({
+        stream: new URL(request.path, "http://engine").searchParams.has("t") ? "derived\n" : "base\n",
+        aux: { ID: "sha256:base-image" },
+      }),
+    );
   };
 
   // When
@@ -516,6 +528,8 @@ test("keeps the source-image naming build out of the forwarded output", async ()
         service: serviceName,
         plan: plan(servicePlan),
         buildKey: "named-source",
+        labels: { "dev.lando.test": "http" },
+        ref: "lando-build-docker-web-named-source",
         onOutput: (text) =>
           Effect.sync(() => {
             outputs.push(text);
@@ -537,7 +551,7 @@ test("succeeds without an output sink", async () => {
   );
 
   // Then
-  expect(digest).toBe("sha256:only");
+  expect(digest).toEqual({ digest: "sha256:only" });
 });
 
 test("redacts proxy credentials from the build source environment in an HTTP reason", async () => {
@@ -602,6 +616,8 @@ test("redacts proxy credentials carried in artifact build args", async () => {
             service: serviceName,
             plan: plan(servicePlan),
             buildKey: "proxy-args",
+            labels: { "dev.lando.test": "http" },
+            ref: "lando-build-docker-web-proxy-args",
           },
           { providerId, api: { request }, sourceEnv: {} },
         ),

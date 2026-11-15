@@ -152,6 +152,34 @@ Named input preserves the difference between omission, an empty string, and bool
 
 For a CLI call, `$1` through `$9` retain the original physical tokens after Lando's global-option handling, not a reordered or default-filled list. In `lando greet prod release -n team --loud`, `$1` is `prod`. Defaults exist in the named inputs, not in those numeric parameters. Prefer named environment variables or `LANDO_INPUT` for declared inputs so the script also works for named-map callers. Without declarations, the JSON maps are empty; see [Pass arguments](#pass-arguments) for raw CLI tokens.
 
+### Use a flag name Lando also has
+
+Lando's own flags are `--format`, `--json`, `-j`, `--jq`, `--renderer`, `--verbose`, `--debug`, `--log-level`, and `--trace`. Before the command name they're always Lando's. After the name, a flag your script declares is the script's, even when the spelling matches. Save this as `.lando/scripts/report.bun.sh`:
+
+```sh
+# ---
+# desc: Print a report in the chosen format
+# flags:
+#   format:
+#     description: Report format
+#     default: text
+# ---
+echo "format=$LANDO_FLAG_FORMAT"
+```
+
+```sh
+lando report --format=csv
+lando --format=json report --format=csv
+```
+
+The first prints `format=csv`. The second also gives the script `csv`, and Lando wraps the run in its JSON envelope with `format=csv` in `result.stdout`. `lando report --help` ends with the reminder:
+
+```
+`--format` after `report` is this command's flag. Put Lando's own before the name, as in `lando --format=<value> report`.
+```
+
+Lando flags the script doesn't declare stay Lando's after the name, so `lando report --format=csv --verbose` still turns on Lando's verbose output.
+
 ## Mark sensitive inputs
 
 Add `sensitive: true` to any flag or argument that may carry a private value, even if its name is innocuous. Save this as `.lando/scripts/show-note.bun.sh`:
@@ -251,11 +279,15 @@ Your own shell runs `git` before Lando sees the line, so the script receives the
 
 Bun Shell does not expand `$@` or `$#`, so name each argument you need with `$1`, `$2`, and so on. A script that uses `$@`, `$#`, or another form Bun Shell can't run fails before it starts; see [Write host commands in Bun Shell syntax](#write-host-commands-in-bun-shell-syntax).
 
-Lando reads its own global flags, such as `--format` and `--verbose`, anywhere on the line. Put `--` in front when the script should get them instead:
+Lando has flags of its own, such as `--format` and `--verbose`. When your script needs one of those names, declare it: a declared flag is the script's after the command name. See [Use a flag name Lando also has](#use-a-flag-name-lando-also-has).
+
+A script that doesn't declare the flag leaves it to Lando anywhere before the first `--`. Put `--` in front for a one-off when the script should get it instead:
 
 ```sh
 lando stamp -- --format=json
 ```
+
+Here `$1` is `--format=json`. Without the `--`, Lando would print its JSON envelope and the script would get no argument.
 
 ## Feed a script stdin
 
@@ -491,7 +523,7 @@ lando stamp abc1234
 ## Build, stamp, and seed an env file
 
 <Guide>
-  <Scenario id="raw-script-help-does-not-run" render={false} reason="Both help spellings on an undeclared script must leave its marker absent">
+  <Scenario id="raw-script-help-does-not-run" render={false} reason="An undeclared script leaves help and Lando flags to Lando until a leading separator">
     <Step name="prepare-raw-script">
       <UseFixture name="raw-help" />
     </Step>
@@ -502,12 +534,18 @@ lando stamp abc1234
       <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
     </Step>
     <Step name="refuse-lone-script-version">
-      <Verify command="lando wipe --version --format=json" expectExit={1} expect={{ stdout: { regex: "ToolingInputError[\\s\\S]*\"field\":\\s*\"version\"" } }} />
+      <Verify command="lando wipe --version --format=json" expectExit={2} expect={{ stdout: { regex: "ToolingInputError[\\s\\S]*\"field\":\\s*\"version\"" } }} />
       <Verify command="lando check-marker" expect={{ stdout: "absent\n" }} />
     </Step>
     <Step name="forward-help-after-separator">
       <Run command="lando wipe -- --help" />
       <Verify file="raw-help/marker" expect={{ regex: "^first=--help\nsecond=\n$" }} />
+    </Step>
+    <Step name="forward-lando-flag-after-separator">
+      <Verify command="lando wipe one --format=json" expect={{ stdout: { regex: "\"command\":\"app:wipe\"[\\s\\S]*\"exitCode\":0" } }} />
+      <Verify file="raw-help/marker" expect={{ regex: "^first=one\nsecond=\n$" }} />
+      <Run command="lando wipe -- --format=json" />
+      <Verify file="raw-help/marker" expect={{ regex: "^first=--format=json\nsecond=\n$" }} />
     </Step>
     <Step name="cleanup-raw-script">
       <Cleanup />
@@ -585,6 +623,26 @@ lando stamp abc1234
       <Verify file="declared-inputs/last-input.json" expect={{ regex: "^\\{\"flags\":\\{\"name\":\"team\",\"loud\":true\\},\"args\":\\{\"target\":\"prod\",\"label\":\"release\"\\}\\}\\n$" }} />
     </Step>
     <Step name="cleanup-declared-inputs">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="declared-flag-shares-a-lando-flag-name" render>
+    <Step name="prepare-report-script">
+      <UseFixture name="declared-inputs" />
+    </Step>
+    <Step name="give-the-script-its-declared-flag">
+      <Verify command="lando report --format=csv" expect={{ stdout: "format=csv\n" }} />
+      <Verify command="lando report" expect={{ stdout: "format=text\n" }} />
+    </Step>
+    <Step name="keep-lando-format-before-the-name">
+      <Verify command="lando --format=json report --format=csv" expect={{ stdout: { regex: "\"command\":\"app:report\"[\\s\\S]*\"stdout\":\"format=csv\\\\n\"" } }} />
+      <Verify command="lando --format=json report" expect={{ stdout: { regex: "\"stdout\":\"format=text\\\\n\"" } }} />
+    </Step>
+    <Step name="name-the-flag-in-help">
+      <Verify command="lando report --help" expect={{ stdout: { regex: "`--format` after `report` is this command.s flag\\. Put Lando.s own before the name, as in `lando --format=<value> report`\\." } }} />
+    </Step>
+    <Step name="cleanup-report-script">
       <Cleanup />
     </Step>
   </Scenario>

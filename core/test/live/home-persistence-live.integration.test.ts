@@ -228,7 +228,7 @@ test.skipIf(socket === undefined)(
       throw error;
     } finally {
       try {
-        await lando(["destroy", "--yes", "--volumes", "--format=json"]);
+        await lando(["destroy", "--yes", "--volumes", "--purge-caches", "--format=json"]);
       } finally {
         // A failed cleanup assertion must not leave this test's retained stores or build images behind.
         const filters = encodeURIComponent(JSON.stringify({ label: [`dev.lando.volume-owner=${root}`] }));
@@ -246,12 +246,11 @@ test.skipIf(socket === undefined)(
           .flatMap((image) => image.RepoTags ?? [])
           .filter((tag) =>
             persistedHomes.some(({ service }) =>
-              tag
-                .replace(/^(localhost|docker.io\/library)\//u, "")
-                .startsWith(`lando-build-${providerId}-${service}-`),
+              new RegExp(`^lando-build-[0-9a-f]{8}-${providerId}-${service}-`, "u").test(
+                tag.replace(/^(localhost|docker.io\/library)\//u, ""),
+              ),
             ),
-          )
-          .sort((left, right) => Number(left.includes("-base:")) - Number(right.includes("-base:")));
+          );
         const pulledTags = afterImages
           .filter((image) => !beforeImages.has(image.Id))
           .flatMap((image) =>

@@ -145,6 +145,8 @@ const imageInspectAndPullResponse = (
   images: Set<string>,
   request: DockerHttpRequest,
 ): DockerHttpResponse | undefined => {
+  if (request.method === "GET" && request.path.startsWith("/images/json?"))
+    return { status: 200, body: "[]" };
   if (request.method === "GET" && request.path.startsWith("/images/") && request.path.endsWith("/json")) {
     const ref = decodeURIComponent(request.path.slice("/images/".length, -"/json".length));
     if (!images.has(ref)) {
@@ -420,6 +422,9 @@ const makeFakeApi = () => {
           return { status: 200, body: JSON.stringify(containers) };
         }
 
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          return { status: 404, body: JSON.stringify({ message: "No such image" }) };
+        }
         return {
           status: 500,
           body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),
@@ -653,6 +658,9 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const ref = `imported:${artifactCount}`;
           artifacts.set(ref, await collectAsyncBytes(request.stdin));
           return { status: 200, body: JSON.stringify({ ref }) };
+        }
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          return { status: 404, body: JSON.stringify({ message: "No such image" }) };
         }
         return {
           status: 500,

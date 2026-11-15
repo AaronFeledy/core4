@@ -42,6 +42,8 @@ export const runBuild = (input: {
       app: appId,
       service: serviceName,
       buildKey: "user-key",
+      labels: { "dev.lando.test": "user-fixture" },
+      ref: "lando-build-docker-web-user-key",
       plan: {
         id: appId,
         name: "User Build App",
@@ -77,7 +79,11 @@ export const recordingRequest = (user: string | undefined) => {
       requests.push(entry);
       return Effect.succeed({
         status: 200,
-        body: JSON.stringify({ Config: user === undefined ? {} : { User: user } }),
+        body: JSON.stringify(
+          entry.method === "POST"
+            ? { aux: { ID: "sha256:base-image" } }
+            : { Config: user === undefined ? {} : { User: user } },
+        ),
       });
     },
     dockerfiles: () => Promise.all(requests.filter((entry) => entry.method === "POST").map(dockerfileFrom)),

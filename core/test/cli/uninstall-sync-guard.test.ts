@@ -192,6 +192,18 @@ describe("uninstall purge sync guard", () => {
           [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume-selector", "--format", "{{.Name}}"],
           [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume", "--format", "{{.Name}}"],
           ...(runtime === "managed" ? [[...prefix, "system", "df", "--format", "json"]] : []),
+          ...(runtime === "managed"
+            ? []
+            : [
+                [
+                  "images",
+                  "--no-trunc",
+                  "--filter",
+                  expect.stringMatching(/^label=dev\.lando\.build-store=[a-f0-9]{8}$/u),
+                  "--format",
+                  "{{.ID}}",
+                ],
+              ]),
         ]);
       } finally {
         rmSync(fixture.root, { recursive: true, force: true });

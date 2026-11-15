@@ -120,6 +120,7 @@ import type { LandoEvent } from "../services/events.ts";
 export type {
   AppRemoteEntry,
   AppRemoteMutationResult,
+  BuiltImageCleanup,
   DestroyAppResult,
   EndpointRef,
   ExecAppResult,

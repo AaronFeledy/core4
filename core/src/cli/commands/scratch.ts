@@ -141,6 +141,7 @@ export const ScratchStartResultSchema = Schema.Struct({
 
 export const ScratchGcReportResultSchema = Schema.Struct({
   inspected: Schema.Number,
+  candidates: Schema.Array(Schema.String),
   reaped: Schema.Array(Schema.String),
   errors: Schema.Array(Schema.String),
 });
@@ -366,6 +367,8 @@ export const scratchGc = (
 export const renderScratchGcReport = (report: ScratchGcReport): string =>
   [
     `inspected: ${report.inspected}`,
+    `candidates: ${report.candidates.length}`,
+    ...report.candidates.map((id) => `  ${id}`),
     `reaped: ${report.reaped.length}`,
     `errors: ${report.errors.length}`,
   ].join("\n");

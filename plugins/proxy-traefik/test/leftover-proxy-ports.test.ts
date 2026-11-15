@@ -138,7 +138,7 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
     // Then: a single report lists both ports in HTTP-then-TLS order.
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.context.ports).toBe(`${TRAEFIK_HTTP_PORT},${TRAEFIK_HTTPS_PORT}`);
+    expect(reports[0]?.context.ports).toEqual([String(TRAEFIK_HTTP_PORT), String(TRAEFIK_HTTPS_PORT)]);
   });
 
   test("reports leftover TLS without listing the free HTTP port", async () => {
@@ -153,7 +153,7 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
     // Then: the report names only the TLS port.
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.context.ports).toBe(String(TRAEFIK_HTTPS_PORT));
+    expect(reports[0]?.context.ports).toEqual([String(TRAEFIK_HTTPS_PORT)]);
     expect(reports[0]?.context.ports).not.toContain(String(TRAEFIK_HTTP_PORT));
   });
 
@@ -274,7 +274,7 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
     // Then: one warn names only the persisted HTTP port.
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.context.ports).toBe(String(chosenPair.httpPort));
+    expect(reports[0]?.context.ports).toEqual([String(chosenPair.httpPort)]);
     expect(reports[0]?.context.ports).not.toContain(String(TRAEFIK_HTTP_PORT));
   });
 
@@ -290,7 +290,7 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
     // Then: a single report lists both persisted ports in HTTP-then-TLS order.
     expect(reports).toHaveLength(1);
-    expect(reports[0]?.context.ports).toBe(`${chosenPair.httpPort},${chosenPair.httpsPort}`);
+    expect(reports[0]?.context.ports).toEqual([String(chosenPair.httpPort), String(chosenPair.httpsPort)]);
   });
 
   test("does not warn when leftover is only on last-fallback ports", async () => {
@@ -357,7 +357,7 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
       // Then: leftover is the persisted HTTP port, not last-fallback 38080.
       expect(reports).toHaveLength(1);
-      expect(reports[0]?.context.ports).toBe("8080");
+      expect(reports[0]?.context.ports).toEqual(["8080"]);
       expect(reports[0]?.context.ports).not.toContain(String(TRAEFIK_HTTP_PORT));
     } finally {
       acquisition.cleanup();
@@ -386,7 +386,7 @@ describe("makeLeftoverProxyPortsCheck", () => {
 
       // Then: leftover is the bind hop, not the advertised 80/443 listen ports.
       expect(reports).toHaveLength(1);
-      expect(reports[0]?.context.ports).toBe("8080");
+      expect(reports[0]?.context.ports).toEqual(["8080"]);
     } finally {
       acquisition.cleanup();
     }
@@ -410,7 +410,7 @@ describe("makeLeftoverProxyPortsCheck", () => {
         runtimeStatus: "other-data-root-forwarder",
         runtime: { running: true },
       });
-      expect(reports[0]?.context.ports).toBe(String(TRAEFIK_HTTP_PORT));
+      expect(reports[0]?.context.ports).toEqual([String(TRAEFIK_HTTP_PORT)]);
       expect(reports[0]?.context.ownerRuntimeBinDir).toBe(ownerBin);
       const remediation = joinedSolutions(reports[0]?.solutions ?? []);
       expect(remediation).toContain("Another Lando data root");
@@ -451,9 +451,9 @@ describe("makeLeftoverProxyPortsCheck", () => {
     const reports = await runCheck(readers);
     expect(reports).toHaveLength(2);
     expect(reports[0]?.runtimeStatus).toBe("leftover-rootlessport");
-    expect(reports[0]?.context.ports).toBe(String(TRAEFIK_HTTP_PORT));
+    expect(reports[0]?.context.ports).toEqual([String(TRAEFIK_HTTP_PORT)]);
     expect(reports[1]?.runtimeStatus).toBe("other-data-root-forwarder");
-    expect(reports[1]?.context.ports).toBe(String(TRAEFIK_HTTPS_PORT));
+    expect(reports[1]?.context.ports).toEqual([String(TRAEFIK_HTTPS_PORT)]);
     const otherRemediation = joinedSolutions(reports[1]?.solutions ?? []);
     expect(otherRemediation).not.toContain("lando global:stop");
   });

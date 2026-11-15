@@ -90,6 +90,7 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   buildArtifact: () => Effect.fail(unsupportedProviderOperation("buildArtifact")),
   pullArtifact: () => Effect.fail(unsupportedProviderOperation("pullArtifact")),
   removeArtifact: () => Effect.fail(unsupportedProviderOperation("removeArtifact")),
+  listArtifacts: () => Effect.fail(unsupportedProviderOperation("listArtifacts")),
   apply: () => Effect.fail(unsupportedProviderOperation("apply")),
   start: () => Effect.fail(unsupportedProviderOperation("start")),
   stop: () => Effect.fail(unsupportedProviderOperation("stop")),

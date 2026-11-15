@@ -1,11 +1,15 @@
 import { expect, test } from "bun:test";
-import { access, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { ScratchAppService } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
-import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
+import { BuildOwner, openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 import { runDestroy, seedScratchPlan, withDestroyFixture } from "./destroy-fixture.ts";
 
@@ -47,23 +51,38 @@ test("explicit scratch destroy nests standard events and removes its snapshots b
   });
 });
 
-test("scratch destroy removes its build output and per-app index and leaves the shared index", async () => {
-  // Given a scratch app with recorded app-step output and a shared image index.
+test("scratch destroy clears app output and releases only its own built image", async () => {
   await withDestroyFixture({}, async (f) => {
     const dataRoot = process.env.LANDO_USER_DATA_ROOT ?? "";
-    const cacheRoot = process.env.LANDO_USER_CACHE_ROOT ?? "";
     const appDir = join(dataRoot, "builds", "scratch", f.id);
     const transcript = join(appDir, "app", "web", "install.log");
     await mkdir(join(appDir, "app", "web"), { recursive: true });
     await writeFile(transcript, "output\n");
-    const shared = join(cacheRoot, "scratch-build-results.bin");
-    await writeFile(shared, "shared-index");
-    const bucket = await Effect.runPromise(openAppBuildResults(f.stateStore, f.id));
+    const artifacts = await Effect.runPromise(openArtifactBuildResults(f.stateStore));
+    for (const owner of [f.id, "scratch-sibling"])
+      await Effect.runPromise(
+        recordArtifactBuildResult(artifacts, {
+          owner,
+          providerId: "lando",
+          phase: "artifact",
+          service: ServiceName.make("web"),
+          buildKey: "image",
+          artifactRef: "shared-image",
+          artifactOrigin: "build",
+          outcome: "complete",
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(transcript),
+        }),
+      );
+    const bucket = await Effect.runPromise(
+      openAppBuildResults(f.stateStore, BuildOwner.scratch(AppId.make(f.id))),
+    );
     await Effect.runPromise(
       recordBuildResult(bucket, {
         buildKey: "app-key",
         service: ServiceName.make("web"),
         phase: "app",
+        step: "web:app:install",
         outcome: "complete",
         exitCode: 0,
         durationMs: 1,
@@ -74,11 +93,13 @@ test("scratch destroy removes its build output and per-app index and leaves the 
     // When explicit destroy completes.
     await runDestroy(f);
 
-    // Then only this scratch id's output is gone; the shared image index is untouched.
     await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await Effect.runPromise(bucket.exists)).toBe(false);
-    expect(await readFile(shared, "utf8")).toBe("shared-index");
+    const results = (await Effect.runPromise(artifacts.get))?.results;
+    expect(results?.find((entry) => entry.owner === f.id)?.releasedAt).toBeDefined();
+    expect(results?.find((entry) => entry.owner === "scratch-sibling")?.releasedAt).toBeUndefined();
+    expect(results?.map((entry) => entry.owner)).toEqual(["scratch-sibling", f.id]);
   });
 });
 

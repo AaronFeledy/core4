@@ -10,13 +10,24 @@ import { resolve } from "node:path";
 
 import type { OperationDiscovery } from "@lando/landofile/operation-discovery";
 import { Context, Effect, type Scope } from "effect";
-
+import type { McpCommandOwner } from "./catalog";
+import type { McpDiagnostic } from "./diagnostics";
 import type { McpCommandEntry } from "./registry";
 
 /** One command id's owner in a generation: projected for MCP, or failed while loading. */
 export type McpGenerationCommand =
-  | { readonly _tag: "Eligible"; readonly entry: McpCommandEntry }
-  | { readonly _tag: "Failed"; readonly commandId: string; readonly error: unknown };
+  | {
+      readonly _tag: "Eligible";
+      readonly entry: Extract<McpCommandEntry, { readonly kind: "command" }>;
+      readonly diagnostics?: readonly Pick<McpDiagnostic, "_tag" | "message" | "remediation">[];
+    }
+  | {
+      readonly _tag: "Failed";
+      readonly commandId: string;
+      readonly error: unknown;
+      readonly owner?: Extract<McpCommandOwner, { readonly kind: "command" }>;
+      readonly diagnostic?: Pick<McpDiagnostic, "_tag" | "message" | "remediation">;
+    };
 
 export interface McpAppGeneration {
   /** Canonical app root the selection belongs to, or the directory itself outside any app. */
@@ -73,7 +84,7 @@ export const singleAppGenerations = <Services>(
 export const generationEntries = (
   generation: McpAppGeneration,
   sessionIds: ReadonlySet<string>,
-): ReadonlyArray<McpCommandEntry> =>
+): ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>> =>
   [...generation.commands.values()].flatMap((command) =>
     command._tag === "Eligible" && !sessionIds.has(command.entry.spec.id) ? [command.entry] : [],
   );

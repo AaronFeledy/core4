@@ -51,6 +51,14 @@ export const prefetchLiveRegionModule = (loadModule: LiveRegionModuleLoader = lo
   void cachedModule.catch(recordOpenTuiSubstrateFailure);
 };
 
+/** Destroys the renderer and waits until OpenTUI restores the terminal and flushes its output. */
+export const closeRenderer = async (
+  renderer: Pick<LiveRegionRendererLike, "destroy" | "closed">,
+): Promise<void> => {
+  renderer.destroy();
+  await renderer.closed;
+};
+
 export const resetLiveRegionModuleCacheForTests = (): void => {
   cachedModule = undefined;
 };
@@ -81,7 +89,11 @@ export async function acquireLiveRegionSubstrate(
         screenMode: "alternate-screen",
         clearOnShutdown: false,
         exitOnCtrlC: false,
+        // Lando owns signals and tears the renderer down through the controller; OpenTUI's own
+        // SIGINT handler would destroy it underneath a live paint.
+        exitSignals: [],
         externalOutputMode: "passthrough",
+        useMouse: false,
         stdout: options.noColor === true ? monochromePromptTerminal(options.stdout) : options.stdout,
         ...(options.noColor === true ? { backgroundColor: module.RGBA.defaultBackground() } : {}),
         remote: false,
@@ -93,7 +105,7 @@ export async function acquireLiveRegionSubstrate(
   } catch (cause) {
     recordOpenTuiSubstrateFailure(cause);
     try {
-      renderer?.destroy();
+      if (renderer !== undefined) await closeRenderer(renderer);
     } catch (cleanupCause) {
       recordOpenTuiSubstrateFailure(
         cleanupCause instanceof Error

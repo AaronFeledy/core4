@@ -64,13 +64,23 @@ const writeFreshCache = async (
 ): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: fixture.env,
       landofile: {
         name: "native-help",
         ...(commandAliases === undefined
           ? { commandAliases: { custom: { hi: "app:greet" } } }
           : { commandAliases }),
       },
-      entries: [{ id: "app:greet", summary: "Echo hello", hidden: false }],
+      entries: [
+        {
+          id: "app:greet",
+          summary: "Echo hello",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
     }),
@@ -248,3 +258,5 @@ describe("cwd-aware THIS APP overlay", () => {
     }
   });
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

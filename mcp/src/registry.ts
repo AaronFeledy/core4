@@ -40,7 +40,7 @@ export interface McpCommandSpec {
 /** A single command projected as an MCP tool. */
 export type McpPluginProvenance = "bundled" | "system" | "user" | "app" | "explicit";
 
-export interface McpCommandEntry {
+export type McpCommandEntry = {
   readonly spec: McpCommandSpec;
   readonly plugin?: {
     readonly name: string;
@@ -49,9 +49,7 @@ export interface McpCommandEntry {
     /** Discovery tier the selected contribution came from. */
     readonly provenance?: McpPluginProvenance;
   };
-  /** True only for tooling-task tools (projection); false for command tools. */
-  readonly tooling?: boolean;
-}
+} & ({ readonly kind: "command" } | { readonly kind: "tooling" });
 
 /**
  * The FlagSpec/ArgSpec view the derivation reads. `LandoCommandSpec.flags` /

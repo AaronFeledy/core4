@@ -63,6 +63,8 @@ export const withProviderErrorRedaction = (
     buildArtifact: (spec) => effect(runtime.buildArtifact(spec)),
     pullArtifact: (spec) => effect(runtime.pullArtifact(spec)),
     removeArtifact: (ref) => effect(runtime.removeArtifact(ref)),
+    listArtifacts: (selector) =>
+      runtime.listArtifacts(selector).pipe(mapFailures((error) => redactProviderError(error, redactor))),
     ...(inspectAppliedFileSync === undefined
       ? {}
       : { inspectAppliedFileSync: (plan) => effect(inspectAppliedFileSync.call(runtime, plan)) }),

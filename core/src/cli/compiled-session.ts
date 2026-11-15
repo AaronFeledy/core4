@@ -15,6 +15,8 @@ export type { JsonControl };
 export interface CompiledCommandInput {
   readonly argv: ReadonlyArray<string>;
   readonly parsedArgv?: ReadonlyArray<string>;
+  /** How many positionals precede the `--` the user typed before a command tail; absent when none was typed. */
+  readonly separatorAt?: number;
   readonly flags: Record<string, unknown>;
   readonly args: Record<string, unknown>;
   readonly rendererMode?: RendererMode;

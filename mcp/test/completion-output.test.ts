@@ -23,7 +23,9 @@ describe("MCP trustworthy completion and final output", () => {
           return reply;
         }),
       ).pipe(
-        Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] })),
+        Effect.provide(
+          serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+        ),
         Effect.timeout("5 seconds"),
       ),
     );
@@ -57,7 +59,9 @@ describe("MCP trustworthy completion and final output", () => {
           return reply;
         }),
       ).pipe(
-        Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] })),
+        Effect.provide(
+          serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+        ),
         Effect.timeout("5 seconds"),
       ),
     );
@@ -75,6 +79,7 @@ describe("MCP trustworthy completion and final output", () => {
           const left = yield* Deferred.make<void>();
           const right = yield* Deferred.make<void>();
           const entries = ["left", "right"].map((name) => ({
+            kind: "command" as const,
             spec: {
               id: `app:${name}`,
               summary: name,
@@ -139,7 +144,9 @@ describe("MCP trustworthy completion and final output", () => {
           return reply;
         }),
       ).pipe(
-        Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] })),
+        Effect.provide(
+          serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+        ),
         Effect.timeout("5 seconds"),
       ),
     );
@@ -194,7 +201,9 @@ describe("MCP trustworthy completion and final output", () => {
           return { reply, notifications };
         }),
       ).pipe(
-        Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] })),
+        Effect.provide(
+          serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+        ),
         Effect.timeout("5 seconds"),
       ),
     );

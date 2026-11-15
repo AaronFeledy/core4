@@ -14,6 +14,7 @@ import * as providerLando from "@lando/provider-lando";
 import * as providerPodman from "@lando/provider-podman";
 import * as proxyTraefik from "@lando/proxy-traefik";
 import * as rendererLando from "@lando/renderer-lando";
+import * as schedulePlugin from "@lando/schedule";
 import { ConfigTranslateInput } from "@lando/sdk/schema";
 import { ConfigService, Logger } from "@lando/sdk/services";
 import * as secretStoreOnePassword from "@lando/secret-store-1password";
@@ -42,6 +43,7 @@ const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   templateHandlebars.plugin,
   templateMustache.plugin,
   sqlPlugin.plugin,
+  schedulePlugin.plugin,
   lando4.plugin,
   lando3.plugin,
 ];
@@ -53,7 +55,7 @@ const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/rendere
 
 describe("bundled plugin descriptor tables", () => {
   test("exports every bundled plugin descriptor in ship-list order", async () => {
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(16);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(17);
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );

@@ -77,12 +77,24 @@ test("provider-podman buildArtifact uses the Podman build API seam", async () =>
   );
 
   const artifact = await Effect.runPromise(
-    Effect.scoped(provider.buildArtifact({ app: appId, service: serviceName, plan, buildKey: "podman-key" })),
+    Effect.scoped(
+      provider.buildArtifact({
+        labels: { "dev.lando.test": crypto.randomUUID() },
+        app: appId,
+        service: serviceName,
+        plan,
+        buildKey: "podman-key",
+        ref: "lando-build-podman-web-podman-key",
+      }),
+    ),
   );
 
   expect(artifact).toEqual({ providerId, ref: "lando-build-podman-web-podman-key" });
   expect(requests[0]).toStartWith("POST ");
   expect(requests[0]).toContain("/build?t=lando-build-podman-web-podman-key");
+  expect(await Effect.runPromise(provider.removeArtifact(artifact))).toEqual({ kind: "removed" });
+  expect(requests.at(-1)).toStartWith("DELETE ");
+  expect(requests).toHaveLength(3);
 });
 
 test("provider-podman pullArtifact uses the Podman pull stream seam", async () => {
