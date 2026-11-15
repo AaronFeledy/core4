@@ -285,9 +285,10 @@ export interface LoadLandofileTsOptions {
   readonly environmentRecorder?: EnvironmentRecorder;
 }
 
-// Any of these can reach the environment without going through ctx.env.
+// Any of these can reach the environment without going through ctx.env. The import scan does not
+// report CommonJS loads, so `require` counts too.
 const AMBIENT_ENVIRONMENT_REFERENCE =
-  /\bprocess\b|\bBun\b|\bimport\s*\.\s*meta\b|\bglobalThis\b|\bimport\s*\(/u;
+  /\bprocess\b|\bBun\b|\bimport\s*\.\s*meta\b|\bglobalThis\b|\bimport\s*\(|\brequire\b/u;
 // Modules Lando supplies to author code; they do not read the environment while a Landofile loads.
 const HOST_SUPPLIED_MODULE = /^(?:@lando\/sdk|effect)(?:\/|$)/u;
 const LOCAL_MODULE_SUFFIXES = ["", ".ts", ".tsx", ".mts", ".js", ".mjs", "/index.ts", "/index.js"] as const;

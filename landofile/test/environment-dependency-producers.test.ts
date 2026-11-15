@@ -165,6 +165,14 @@ describe("typescript producer records ctx.env reads", () => {
       dependencies: { _tag: "Complete" },
     },
     {
+      name: "a local helper that requires another module makes the load depend on everything",
+      header: `import { tag } from "./helper.ts";\n`,
+      read: "tag(ctx.env)",
+      helper:
+        'require("node:path");\nexport const tag = (env: Record<string, string | undefined>) => env.MISSING_TAG;\n',
+      dependencies: { _tag: "Complete" },
+    },
+    {
       name: "a local helper given ctx.env keeps the recorded names",
       header: `import type { LandofileContext } from "@lando/sdk/landofile";\nimport { tag } from "./helper";\n`,
       read: "tag(ctx.env)",
