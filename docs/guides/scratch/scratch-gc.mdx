@@ -25,7 +25,7 @@ lando scratch:gc
 lando scratch:list
 ```
 
-`lando scratch:gc` is the alias of `apps:scratch:gc`. The report prints `inspected`, `reaped`, and `errors` counts.
+`lando scratch:gc` is the alias of `apps:scratch:gc`. The report prints how many scratch ids it inspected, then lists the candidate ids `--prune` would remove, then the `reaped` and `errors` counts. With `--format=json` the same report is the `inspected`, `candidates`, `reaped`, and `errors` fields.
 
 Without `--prune`, Lando only inspects and reports scratch state. Provider resources, scratch directories, and registry entries stay unchanged.
 
@@ -37,15 +37,15 @@ GC never starts a runtime. A stopped or unreachable runtime is skipped, so its s
 
 ## Prune
 
-Warning: `--prune` deletes. Run the dry run above first and read the counts.
+Warning: `--prune` deletes. Run the dry run above first and read the candidate list.
 
 ```sh
 lando scratch:gc --prune
 ```
 
-`--prune` removes orphaned scratch ids: provider resources, the scratch directory, and the registry entry. Each provider resource is deleted through the provider that owns it, matched by scratch identity; a volume goes only if the generation Lando observed still matches at delete time. Anything that doesn't match stays put.
+`--prune` removes orphaned scratch ids: provider resources, the scratch directory, saved build output, and the registry entry. Each provider resource is deleted through the provider that owns it, matched by scratch identity; a volume goes only if the generation Lando observed still matches at delete time. Anything that doesn't match stays put.
 
-Prune is safe to repeat. A second `--prune` should report no remaining work.
+Prune is safe to repeat. A second `--prune` should report no remaining work. A scratch app that is still starting holds its own lock, so GC waits for that start to finish, checks the id again, and leaves it alone once it is running.
 
 If a provider scan or removal fails, GC reports the failure instead of treating the scan as empty. Fix the cause, then run it again.
 
@@ -55,6 +55,7 @@ Orphans include:
 - a provider resource tagged with a scratch id that is gone from the registry
 - a foreground registry entry whose owner process is gone
 - a scratch whose destroy failed partway, even if its owner is still running or it was detached
+- saved build output for a scratch id that is gone from the registry
 
 To remove one known scratch instead of scanning for orphans, replace `<id>` with
 its id from `lando scratch:list` and run:
@@ -62,6 +63,8 @@ its id from `lando scratch:list` and run:
 ```sh
 lando scratch:destroy <id>
 ```
+
+Destroying a scratch app keeps the newest image Lando built for each of its services for up to seven days, the same way `lando destroy` does. The next scratch app of the same stack reuses those images instead of building them again.
 
 ## Next
 

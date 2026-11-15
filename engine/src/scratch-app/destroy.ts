@@ -26,10 +26,7 @@ import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
 import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
-import {
-  removeBuildTranscripts,
-  warnBuildOutputCleanupFailure,
-} from "../services/build-transcript-cleanup.ts";
+import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
 import { ScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -140,18 +137,22 @@ export const makeScratchReaper = Effect.gen(function* () {
               }),
             });
         // teardown succeeded: the destroyed container's build output is stale.
-        yield* clearAppBuildResults(stateStore, BuildOwner.scratch(AppId.make(input.id))).pipe(
+        const buildOwner = BuildOwner.scratch(AppId.make(input.id));
+        yield* (
+          Option.isSome(paths)
+            ? removeAppBuildOutput(buildOwner, scratchProviderId, undefined, {
+                images: "release",
+              }).pipe(
+                Effect.provideService(PathsService, paths.value),
+                Effect.provideService(StateStore, stateStore),
+                Effect.provideService(RuntimeProviderRegistry, providers),
+              )
+            : clearAppBuildResults(stateStore, buildOwner)
+        ).pipe(
           Effect.catch((failure) =>
             warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
           ),
         );
-        if (Option.isSome(paths)) {
-          yield* removeBuildTranscripts({
-            providerId: scratchProviderId,
-            userDataRoot: paths.value.roots.userDataRoot,
-            owner: BuildOwner.scratch(AppId.make(input.id)),
-          });
-        }
         yield* events.publish(
           PostDestroyEvent.make({ app, evidence, outcome, timestamp: DateTime.nowUnsafe() }),
         );
