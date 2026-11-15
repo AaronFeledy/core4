@@ -2888,10 +2888,12 @@ describe("BuildOrchestratorLayer.layer", () => {
         }).pipe(Effect.provide(layer(provider, injected))),
       );
 
+      // Services reuse their results concurrently and a reused entry moves last, so only each
+      // service's produced ref is stable, not the order across services.
+      const refs = (index: typeof result.before) =>
+        (index?.results ?? []).map((entry) => entry.artifactRef).sort();
       expect(result.before).not.toBeNull();
-      expect(result.after?.results.map((entry) => entry.artifactRef)).toEqual(
-        result.before?.results.map((entry) => entry.artifactRef),
-      );
+      expect(refs(result.after)).toEqual(refs(result.before));
       expect(result.after?.results.map((entry) => DateTime.toEpochMillis(entry.completedAt))).not.toEqual(
         result.before?.results.map((entry) => DateTime.toEpochMillis(entry.completedAt)),
       );
