@@ -14,6 +14,8 @@ export const withBuiltArtifactsLock = Effect.fnUntraced(function* <A, E, R>(body
     "built-artifacts",
     "built-artifacts",
   );
+  // The access worker must outlive the lock scope: the release finalizer verifies the lock file
+  // through it, and on Windows a closed worker fails that check and leaves the lock behind.
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const access = yield* PrivateFileAccessService;
@@ -37,6 +39,6 @@ export const withBuiltArtifactsLock = Effect.fnUntraced(function* <A, E, R>(body
         (held) => held.release,
       );
       return yield* body;
-    }).pipe(Effect.provide(PrivateFileAccessService.layer)),
-  );
+    }),
+  ).pipe(Effect.provide(PrivateFileAccessService.layer));
 });
