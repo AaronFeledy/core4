@@ -285,10 +285,14 @@ export interface LoadLandofileTsOptions {
   readonly environmentRecorder?: EnvironmentRecorder;
 }
 
+const AMBIENT_ENVIRONMENT_REFERENCE = /\bprocess\b|\bBun\s*\.\s*env\b|\bimport\.meta\.env\b/u;
+
 export const loadLandofileTs = Effect.fnUntraced(function* (
   options: LoadLandofileTsOptions,
 ): Effect.fn.Return<unknown, LandofileSandboxError | LandofileTimeoutError | LandofileParseError> {
   yield* sandboxScan(options.filePath, options.appRoot, options.content);
+  // Reads that bypass ctx.env cannot be recorded, so the load depends on the whole environment.
+  if (AMBIENT_ENVIRONMENT_REFERENCE.test(options.content)) options.environmentRecorder?.recordComplete();
   const timeoutMs = options.timeoutMs ?? resolveTimeoutMs(options.env);
   const env =
     options.environmentRecorder?.view ??

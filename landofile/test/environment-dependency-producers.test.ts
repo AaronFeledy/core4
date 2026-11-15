@@ -141,14 +141,25 @@ describe("expression producer records deferred and resolved env members", () => 
 
 describe("typescript producer records ctx.env reads", () => {
   // Loading author code registers process-wide host modules, so it runs in a child process.
-  test("factory reads through the recorder view", async () => {
+  test.each([
+    {
+      name: "factory reads through the recorder view",
+      read: "ctx.env.MISSING_TAG",
+      dependencies: { _tag: "Names", names: ["APP_NAME", "MISSING_TAG"] },
+    },
+    {
+      name: "a process.env read cannot be recorded, so the load depends on everything",
+      read: "process.env.MISSING_TAG",
+      dependencies: { _tag: "Complete" },
+    },
+  ])("$name", async ({ read, dependencies }) => {
     const dir = await mkdtemp(join(tmpdir(), "lando-env-deps-"));
     const filePath = join(dir, ".lando.ts");
     await writeFile(
       filePath,
       `export default (ctx: { env: Record<string, string | undefined> }) => ({
   name: ctx.env.APP_NAME ?? "fallback",
-  tag: ctx.env.MISSING_TAG,
+  tag: ${read},
 });
 `,
     );
@@ -182,7 +193,7 @@ describe("typescript producer records ctx.env reads", () => {
     expect(JSON.parse(stdout)).toEqual({
       value: { name: "from-env" },
       hasTag: true,
-      dependencies: { _tag: "Names", names: ["APP_NAME", "MISSING_TAG"] },
+      dependencies,
     });
   });
 });
