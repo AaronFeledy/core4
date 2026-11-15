@@ -285,14 +285,57 @@ export interface LoadLandofileTsOptions {
   readonly environmentRecorder?: EnvironmentRecorder;
 }
 
-const AMBIENT_ENVIRONMENT_REFERENCE = /\bprocess\b|\bBun\s*\.\s*env\b|\bimport\.meta\.env\b/u;
+// Any of these can reach the environment without going through ctx.env.
+const AMBIENT_ENVIRONMENT_REFERENCE =
+  /\bprocess\b|\bBun\b|\bimport\s*\.\s*meta\b|\bglobalThis\b|\bimport\s*\(/u;
+// Modules Lando supplies to author code; they do not read the environment while a Landofile loads.
+const HOST_SUPPLIED_MODULE = /^(?:@lando\/sdk|effect)(?:\/|$)/u;
+const LOCAL_MODULE_SUFFIXES = ["", ".ts", ".tsx", ".mts", ".js", ".mjs", "/index.ts", "/index.js"] as const;
+
+const localModuleSource = async (
+  specifier: string,
+): Promise<{ path: string; content: string } | undefined> => {
+  for (const suffix of LOCAL_MODULE_SUFFIXES) {
+    const file = Bun.file(specifier + suffix);
+    if (await file.exists()) return { path: specifier + suffix, content: await file.text() };
+  }
+  return undefined;
+};
+
+/**
+ * Whether the Landofile or a local module it imports can read the environment outside ctx.env.
+ * Package imports other than the host-supplied modules count as reading it: Lando cannot inspect them.
+ */
+const readsAmbientEnvironment = async (
+  filePath: string,
+  content: string,
+  seen: Set<string> = new Set(),
+): Promise<boolean> => {
+  if (seen.has(filePath)) return false;
+  seen.add(filePath);
+  if (AMBIENT_ENVIRONMENT_REFERENCE.test(content)) return true;
+  for (const entry of scanImports(content)) {
+    if (HOST_SUPPLIED_MODULE.test(entry.path)) continue;
+    if (!isRelative(entry.path)) return true;
+    const local = await localModuleSource(resolve(dirname(filePath), entry.path));
+    if (local === undefined || (await readsAmbientEnvironment(local.path, local.content, seen))) return true;
+  }
+  return false;
+};
 
 export const loadLandofileTs = Effect.fnUntraced(function* (
   options: LoadLandofileTsOptions,
 ): Effect.fn.Return<unknown, LandofileSandboxError | LandofileTimeoutError | LandofileParseError> {
   yield* sandboxScan(options.filePath, options.appRoot, options.content);
   // Reads that bypass ctx.env cannot be recorded, so the load depends on the whole environment.
-  if (AMBIENT_ENVIRONMENT_REFERENCE.test(options.content)) options.environmentRecorder?.recordComplete();
+  // A module graph Lando cannot analyze counts as reading the environment.
+  if (
+    options.environmentRecorder !== undefined &&
+    (yield* Effect.tryPromise(() => readsAmbientEnvironment(options.filePath, options.content)).pipe(
+      Effect.orElseSucceed(() => true),
+    ))
+  )
+    options.environmentRecorder.recordComplete();
   const timeoutMs = options.timeoutMs ?? resolveTimeoutMs(options.env);
   const env =
     options.environmentRecorder?.view ??

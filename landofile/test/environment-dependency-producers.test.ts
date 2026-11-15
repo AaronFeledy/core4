@@ -152,18 +152,50 @@ describe("typescript producer records ctx.env reads", () => {
       read: "process.env.MISSING_TAG",
       dependencies: { _tag: "Complete" },
     },
-  ])("$name", async ({ read, dependencies }) => {
-    const dir = await mkdtemp(join(tmpdir(), "lando-env-deps-"));
-    const filePath = join(dir, ".lando.ts");
-    await writeFile(
-      filePath,
-      `export default (ctx: { env: Record<string, string | undefined> }) => ({
+    {
+      name: "a bracketed Bun env read cannot be recorded either",
+      read: `Bun["env"].MISSING_TAG`,
+      dependencies: { _tag: "Complete" },
+    },
+    {
+      name: "a local helper that reads process.env makes the load depend on everything",
+      header: `import { tag } from "./helper.ts";\n`,
+      read: "tag(ctx.env)",
+      helper: "export const tag = (_env: Record<string, string | undefined>) => process.env.MISSING_TAG;\n",
+      dependencies: { _tag: "Complete" },
+    },
+    {
+      name: "a local helper given ctx.env keeps the recorded names",
+      header: `import type { LandofileContext } from "@lando/sdk/landofile";\nimport { tag } from "./helper";\n`,
+      read: "tag(ctx.env)",
+      helper: "export const tag = (env: Record<string, string | undefined>) => env.MISSING_TAG;\n",
+      dependencies: { _tag: "Names", names: ["APP_NAME", "MISSING_TAG"] },
+    },
+  ])(
+    "$name",
+    async ({
+      header,
+      read,
+      helper,
+      dependencies,
+    }: {
+      header?: string;
+      read: string;
+      helper?: string;
+      dependencies: unknown;
+    }) => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-env-deps-"));
+      const filePath = join(dir, ".lando.ts");
+      if (helper !== undefined) await writeFile(join(dir, "helper.ts"), helper);
+      await writeFile(
+        filePath,
+        `${header ?? ""}export default (ctx: { env: Record<string, string | undefined> }) => ({
   name: ctx.env.APP_NAME ?? "fallback",
   tag: ${read},
 });
 `,
-    );
-    const script = `
+      );
+      const script = `
       const { Effect } = await import("effect");
       const { recordEnvironment } = await import(${JSON.stringify(resolve(import.meta.dirname, "../src/environment-dependencies.ts"))});
       const { loadLandofileTs } = await import(${JSON.stringify(resolve(import.meta.dirname, "../src/ts-loader.ts"))});
@@ -179,23 +211,24 @@ describe("typescript producer records ctx.env reads", () => {
       }));
       console.log(JSON.stringify({ value, hasTag: Object.hasOwn(value, "tag"), dependencies: recorder.dependencies() }));
     `;
-    const child = Bun.spawn([process.execPath, "--eval", script], {
-      cwd: resolve(import.meta.dirname, ".."),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [exit, stdout, stderr] = await Promise.all([
-      child.exited,
-      child.stdout.text(),
-      child.stderr.text(),
-    ]);
-    expect(exit, stderr).toBe(0);
-    expect(JSON.parse(stdout)).toEqual({
-      value: { name: "from-env" },
-      hasTag: true,
-      dependencies,
-    });
-  });
+      const child = Bun.spawn([process.execPath, "--eval", script], {
+        cwd: resolve(import.meta.dirname, ".."),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [exit, stdout, stderr] = await Promise.all([
+        child.exited,
+        child.stdout.text(),
+        child.stderr.text(),
+      ]);
+      expect(exit, stderr).toBe(0);
+      expect(JSON.parse(stdout)).toEqual({
+        value: { name: "from-env" },
+        hasTag: true,
+        dependencies,
+      });
+    },
+  );
 });
 
 describe("raw env vs view separation", () => {
