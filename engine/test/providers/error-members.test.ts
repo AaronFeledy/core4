@@ -37,10 +37,10 @@ test.each(Object.entries(providerMemberPolicy).filter(([, [, errors]]) => errors
     // Then
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isSuccess(result)) throw new Error(`Expected ${member} to fail`);
-    const original = member === "isAvailable" ? availabilityError : memberError;
+    const original = member === "isAvailable" || member === "listArtifacts" ? availabilityError : memberError;
     await assertRedactedError(result.failure, original);
     const encoded =
-      member === "isAvailable"
+      member === "isAvailable" || member === "listArtifacts"
         ? Schema.encodeUnknownSync(ProviderUnavailableError)(result.failure)
         : Schema.encodeUnknownSync(ServiceStartError)(result.failure);
     expect(JSON.stringify(encoded)).not.toContain(canary);

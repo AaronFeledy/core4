@@ -420,6 +420,7 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
   const testSnapshotBytes = new Map<string, Uint8Array>();
   const testServicePathBytes = new Map<string, Uint8Array>();
   const testArtifactBytes = new Map<string, Uint8Array>();
+  const testBuiltArtifacts = new Map<string, Readonly<Record<string, string>>>();
   let testArtifactImportCount = 0;
   const testAppliedEnvironments = new Map<string, ReadonlyMap<string, Readonly<Record<string, string>>>>();
 
@@ -437,7 +438,11 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
     getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
-    buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),
+    buildArtifact: (spec) =>
+      Effect.sync(() => {
+        testBuiltArtifacts.set(spec.ref, spec.labels);
+        return { providerId: TEST_PROVIDER_ID, ref: spec.ref };
+      }),
     pullArtifact: (spec) => {
       const digest = spec.ref.includes("@") ? spec.ref.slice(spec.ref.lastIndexOf("@") + 1) : undefined;
       return Effect.succeed({
@@ -446,7 +451,20 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
         ...(digest === undefined ? {} : { digest }),
       });
     },
-    removeArtifact: (_ref) => Effect.void,
+    listArtifacts: (selector) =>
+      Effect.sync(() =>
+        [...testBuiltArtifacts.entries()]
+          .filter(([, labels]) =>
+            Object.entries(selector.labels).every(([key, value]) => labels[key] === value),
+          )
+          .map(([ref]) => ({ id: ref, refs: [ref] })),
+      ),
+    removeArtifact: (ref) =>
+      Effect.sync(() => {
+        const built = testBuiltArtifacts.delete(ref.ref);
+        const imported = testArtifactBytes.delete(ref.ref);
+        return built || imported ? { kind: "removed" as const } : { kind: "absent" as const };
+      }),
 
     apply: (plan, options) =>
       Effect.forEach(Object.values(plan.services), (service) =>

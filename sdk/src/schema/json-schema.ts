@@ -163,6 +163,7 @@ import {
   ServicePlan,
 } from "./app-plan.ts";
 import {
+  BuiltImageCleanup,
   DestroyAppOutcome,
   DestroyAppResult,
   ExecAppResult,
@@ -177,7 +178,16 @@ import {
   StopAppResult,
   ToolingResult,
 } from "./app-results.ts";
-import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
+import {
+  ArtifactBuildSpec,
+  ArtifactListing,
+  ArtifactRef,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
+  BuildScript,
+  ProviderArtifactRef,
+} from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandContribution } from "./command-contribution.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
@@ -695,6 +705,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostTerminal,
   AppRef,
   ArtifactRef,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
+  ArtifactListing,
+  ProviderArtifactRef,
   ArtifactBuildSpec,
   ArtifactManifestEntry,
   BuildScript,
@@ -916,6 +931,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   RestartAppResult,
   RebuildAppResult,
   DestroyAppResult,
+  BuiltImageCleanup,
   DestroyAppOutcome,
   InfoAppAgentEnv,
   InfoAppHostProxy,

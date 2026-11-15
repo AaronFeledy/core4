@@ -121,8 +121,8 @@ describe("apps:scratch:* command operations", () => {
 
   test("gc reports the current empty orphan-reap result", async () => {
     const result = await runScratch(scratchGc({ prune: true }));
-    expect(result).toEqual({ inspected: 0, reaped: [], errors: [] });
-    expect(renderScratchGcReport(result)).toBe("inspected: 0\nreaped: 0\nerrors: 0");
+    expect(result).toEqual({ inspected: 0, candidates: [], reaped: [], errors: [] });
+    expect(renderScratchGcReport(result)).toBe("inspected: 0\ncandidates: 0\nreaped: 0\nerrors: 0");
   });
 
   test("id-addressed operations return ScratchAppNotFoundError for unknown ids", async () => {
@@ -157,7 +157,7 @@ describe("apps:scratch:* source CLI routing", () => {
   test("scratch gc alias routes to the real orphan-reap seam", async () => {
     const result = await runSource(["scratch:gc"]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("inspected: 0\nreaped: 0\nerrors: 0\n");
+    expect(result.stdout).toBe("inspected: 0\ncandidates: 0\nreaped: 0\nerrors: 0\n");
   }, 30_000);
 
   test("scratch start accepts --detach and returns the current source resolver error", async () => {

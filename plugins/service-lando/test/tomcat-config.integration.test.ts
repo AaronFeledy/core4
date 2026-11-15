@@ -70,18 +70,19 @@ describe("Tomcat paired catalog configuration live compatibility", () => {
                 );
                 const buildKey = yield* buildKeyForService(provider, service);
                 const artifact = yield* Effect.acquireRelease(
-                  provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey }),
+                  provider.buildArtifact({
+                    labels: { "dev.lando.test": crypto.randomUUID() },
+                    app: plan.id,
+                    service: service.name,
+                    plan,
+                    buildKey,
+                    ref: `lando-build-test-${crypto.randomUUID()}-${service.name}`,
+                  }),
                   (built) =>
                     Effect.orDie(
                       Effect.gen(function* () {
-                        if (api.request === undefined)
-                          throw new TypeError("Image cleanup requires provider requests");
-                        const result = yield* api.request({
-                          method: "DELETE",
-                          path: `/images/${encodeURIComponent(built.ref)}`,
-                        });
-                        if (result.status !== 200 && result.status !== 204 && result.status !== 404)
-                          throw new TypeError(`Image cleanup failed: HTTP ${result.status}`);
+                        const result = yield* provider.removeArtifact({ ...built, pruneParents: true });
+                        expect(result.kind).toBe("removed");
                       }),
                     ),
                 );

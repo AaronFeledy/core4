@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { dirname, join } from "node:path";
 
 import { buildKeyForService } from "@lando/engine/services/build-key";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -21,6 +20,7 @@ import { DateTime, Effect, Schema } from "effect";
 import { NODE_FEATURE_ID, node22ServiceType, nodeServiceFeature } from "../src/services/node.ts";
 import { PHP_FEATURE_ID, php83ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { runBuiltImage } from "./support/run-built-image.ts";
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
@@ -32,39 +32,6 @@ const metadata = {
 const planMetadata = {
   ...metadata,
   resolvedAt: DateTime.makeUnsafe(metadata.resolvedAt),
-};
-
-const runBuiltImage = async (
-  runtimeRoot: string,
-  image: string,
-  command: ReadonlyArray<string>,
-): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
-  const proc = Bun.spawn(
-    [
-      join(runtimeRoot, "bin", "podman"),
-      "--root",
-      join(runtimeRoot, "storage"),
-      "--runroot",
-      join(runtimeRoot, "run"),
-      "--config",
-      join(runtimeRoot, "config"),
-      "run",
-      "--rm",
-      image,
-      ...command,
-    ],
-    {
-      env: { ...process.env, CONTAINERS_CONF: join(runtimeRoot, "config", "containers.conf") },
-      stderr: "pipe",
-      stdout: "pipe",
-    },
-  );
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
 };
 
 const decodeService = (appId: AppId, raw: Record<string, unknown>): ServiceConfig => {
@@ -142,12 +109,20 @@ describe("catalog package installs — live provider", () => {
 
       // When the artifact is built,
       const artifact = await Effect.runPromise(
-        Effect.scoped(provider.buildArtifact({ app: plan.id, service: serviceName, plan, buildKey })),
+        Effect.scoped(
+          provider.buildArtifact({
+            labels: { "dev.lando.test": crypto.randomUUID() },
+            app: plan.id,
+            service: serviceName,
+            plan,
+            buildKey,
+            ref: `lando-build-test-${crypto.randomUUID()}-node`,
+          }),
+        ),
       );
       try {
-        const runtimeRoot = dirname(dirname(socket.socketPath));
-        const listed = await runBuiltImage(runtimeRoot, artifact.ref, ["npm", "ls", "-g", "--depth=0"]);
-        const invoked = await runBuiltImage(runtimeRoot, artifact.ref, ["cowsay", "moo"]);
+        const listed = await runBuiltImage(socket.socketPath, artifact.ref, ["npm", "ls", "-g", "--depth=0"]);
+        const invoked = await runBuiltImage(socket.socketPath, artifact.ref, ["cowsay", "moo"]);
 
         // Then the package is installed and callable by name.
         expect(listed.exitCode, listed.stderr).toBe(0);
@@ -155,7 +130,9 @@ describe("catalog package installs — live provider", () => {
         expect(invoked.exitCode, invoked.stderr).toBe(0);
         expect(invoked.stdout).toContain("moo");
       } finally {
-        await Effect.runPromise(provider.removeArtifact(artifact));
+        expect(
+          (await Effect.runPromise(provider.removeArtifact({ ...artifact, pruneParents: true }))).kind,
+        ).toBe("removed");
       }
     },
     600_000,
@@ -183,12 +160,20 @@ describe("catalog package installs — live provider", () => {
 
       // When the artifact is built,
       const artifact = await Effect.runPromise(
-        Effect.scoped(provider.buildArtifact({ app: plan.id, service: serviceName, plan, buildKey })),
+        Effect.scoped(
+          provider.buildArtifact({
+            labels: { "dev.lando.test": crypto.randomUUID() },
+            app: plan.id,
+            service: serviceName,
+            plan,
+            buildKey,
+            ref: `lando-build-test-${crypto.randomUUID()}-composer`,
+          }),
+        ),
       );
       try {
-        const runtimeRoot = dirname(dirname(socket.socketPath));
-        const version = await runBuiltImage(runtimeRoot, artifact.ref, ["phpcs", "--version"]);
-        const shown = await runBuiltImage(runtimeRoot, artifact.ref, [
+        const version = await runBuiltImage(socket.socketPath, artifact.ref, ["phpcs", "--version"]);
+        const shown = await runBuiltImage(socket.socketPath, artifact.ref, [
           "sh",
           "-c",
           "COMPOSER_HOME=/usr/local/composer COMPOSER_ALLOW_SUPERUSER=1 composer global show",
@@ -200,7 +185,9 @@ describe("catalog package installs — live provider", () => {
         expect(shown.exitCode, shown.stderr).toBe(0);
         expect(shown.stdout).toContain("squizlabs/php_codesniffer");
       } finally {
-        await Effect.runPromise(provider.removeArtifact(artifact));
+        expect(
+          (await Effect.runPromise(provider.removeArtifact({ ...artifact, pruneParents: true }))).kind,
+        ).toBe("removed");
       }
     },
     600_000,

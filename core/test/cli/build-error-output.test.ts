@@ -19,6 +19,8 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
       app,
       service,
       buildKey: "build-output",
+      labels: { "dev.lando.test": "build-error-output" },
+      ref: "lando-build-test-error-output",
       plan: {
         id: app,
         name: "test",

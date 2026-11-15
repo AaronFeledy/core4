@@ -24,7 +24,11 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
-import { BuildOwner, openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "@lando/engine/services/build-artifact-results";
+import { BuildOwner } from "@lando/engine/services/build-results";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
@@ -188,7 +192,8 @@ const makeLogsLayer = (
           remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
     stop: () => Effect.void,
@@ -873,9 +878,12 @@ describe("lando logs", () => {
       );
       await mkdir(dirname(transcript), { recursive: true });
       await writeFile(transcript, "built image\n");
-      const bucket = await Effect.runPromise(openAppBuildResults(state.service, BuildOwner.fromPlan(plan)));
+      const bucket = await Effect.runPromise(openArtifactBuildResults(state.service));
       await Effect.runPromise(
-        recordBuildResult(bucket, {
+        recordArtifactBuildResult(bucket, {
+          owner: BuildOwner.fromPlan(plan).key,
+          providerId: String(plan.provider),
+          artifactRef: "web:built",
           buildKey: "image",
           service: web.name,
           phase: "artifact",

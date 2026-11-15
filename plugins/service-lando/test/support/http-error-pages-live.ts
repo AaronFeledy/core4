@@ -266,7 +266,9 @@ export const startErrorPageStack = async ({
   const stop = async () => {
     await Effect.runPromise(Effect.result(bringDown(activePlan, { api })));
     for (const artifact of built) {
-      await Effect.runPromise(Effect.result(provider.removeArtifact(artifact)));
+      expect(
+        (await Effect.runPromise(provider.removeArtifact({ ...artifact, pruneParents: true }))).kind,
+      ).toBe("removed");
     }
     await rm(root, { recursive: true, force: true });
   };
@@ -281,7 +283,16 @@ export const startErrorPageStack = async ({
     for (const service of services) {
       const buildKey = await Effect.runPromise(buildKeyForService(provider, service));
       const artifact = await Effect.runPromise(
-        Effect.scoped(provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey })),
+        Effect.scoped(
+          provider.buildArtifact({
+            labels: { "dev.lando.test": crypto.randomUUID() },
+            app: plan.id,
+            service: service.name,
+            plan,
+            buildKey,
+            ref: `lando-build-test-${crypto.randomUUID()}-${service.name}`,
+          }),
+        ),
       );
       built.push(artifact);
       derived.push({ ...service, artifact: { kind: "ref", ref: artifact.ref } });

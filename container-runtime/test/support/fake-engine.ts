@@ -9,7 +9,7 @@ import {
 } from "../../src/data-plane.ts";
 import { FakeAssets } from "./fake-engine-assets.ts";
 import { FakeContainers } from "./fake-engine-containers.ts";
-import { Filters, type Operation, route } from "./fake-engine-routes.ts";
+import { Filters, type Operation, matchesLabels, route } from "./fake-engine-routes.ts";
 import {
   type ContainerConfig,
   FakeEngineContractError,
@@ -124,6 +124,7 @@ export class FakeEngine implements DataPlaneApiClient {
           return Effect.sync(() => (this.assets.images.delete(name) ? json(200, []) : missing(name)));
         case "image.list": {
           const references = filters().reference ?? [];
+          const labels = filters().label ?? [];
           const images = [...this.assets.images.entries()]
             .map(([ref, image]) => ({
               Created: 0,
@@ -133,10 +134,11 @@ export class FakeEngine implements DataPlaneApiClient {
             }))
             .filter(
               (image) =>
-                references.length === 0 ||
-                references.some((pattern) =>
-                  image.RepoTags.some((tag) => tag.startsWith(pattern.replace(/\*$/u, ""))),
-                ),
+                matchesLabels(labels, image.Labels ?? {}) &&
+                (references.length === 0 ||
+                  references.some((pattern) =>
+                    image.RepoTags.some((tag) => tag.startsWith(pattern.replace(/\*$/u, ""))),
+                  )),
             );
           return Effect.succeed(json(200, images));
         }

@@ -273,7 +273,7 @@ lando apps:gc --prune --volumes
 ```
 
 Lando asks once, listing the roots and what it deletes or keeps. Add
-`--purge-caches` to delete cache volumes, or `--purge` to delete data and
+`--purge-caches` to delete cache volumes and built images, or `--purge` to delete data and
 catalogued snapshots too. Scripts must pass `--yes` to confirm. Before it asks,
 pruning starts the managed runtime that holds the reported resources when it is
 idle or its status is unknown, the same way `lando destroy` does, so the

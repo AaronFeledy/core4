@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { DateTime, Effect, Schema } from "effect";
+import {
+  ArtifactBuildResult,
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
 import { BuildOwner } from "../../src/services/build-owner.ts";
 import {
   type AppBuildResult,
-  type ArtifactBuildResult,
   BuildResultEntry,
   clearAppBuildResults,
   findCompleteBuildResult,
   markBuildResultUsed,
   openAppBuildResults,
-  openScratchBuildResults,
   recordBuildResult,
 } from "../../src/services/build-results.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -19,28 +22,17 @@ const completedAt = DateTime.makeUnsafe("2026-07-12T15:00:00.000Z");
 const requiredEntry = {
   buildKey: "a".repeat(64),
   service: ServiceName.make("web"),
-  phase: "artifact",
+  phase: "app",
+  step: "web:app:install",
+  containerId: "web-1",
   outcome: "complete",
   durationMs: 12,
-  artifactRef: "web:test",
   transcriptPath: AbsolutePath.make("/tmp/lando/builds/web.log"),
   completedAt,
 } as const;
 
 const owner = BuildOwner.root(AbsolutePath.make("/tmp/myapp"));
-function recorded(overrides: Partial<AppBuildResult> & { phase: "app"; step: string }): AppBuildResult;
-function recorded(overrides: Partial<ArtifactBuildResult> & { phase?: "artifact" }): ArtifactBuildResult;
-function recorded(
-  overrides:
-    | (Partial<AppBuildResult> & { phase: "app"; step: string })
-    | (Partial<ArtifactBuildResult> & { phase?: "artifact" }),
-): BuildResultEntry {
-  if (overrides.phase === "app") {
-    const { artifactRef: _, ...common } = requiredEntry;
-    return { ...common, ...overrides, phase: "app", step: overrides.step };
-  }
-  return { ...requiredEntry, ...overrides };
-}
+const recorded = (overrides: Partial<AppBuildResult>): AppBuildResult => ({ ...requiredEntry, ...overrides });
 
 const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(effect);
 
@@ -58,15 +50,25 @@ describe("BuildResultEntry", () => {
   });
 
   test("rejects an app step identity on an artifact entry", () => {
-    expect(Schema.is(BuildResultEntry)(requiredEntry)).toBe(true);
-    expect(Schema.is(BuildResultEntry)({ ...requiredEntry, step: "web:app:install" })).toBe(false);
+    const { step: _, containerId: __, ...common } = requiredEntry;
+    const artifact = {
+      ...common,
+      phase: "artifact",
+      owner: owner.key,
+      providerId: "test",
+      artifactRef: "web:test",
+    };
+    expect(Schema.is(ArtifactBuildResult)(artifact)).toBe(true);
+    expect(Schema.is(ArtifactBuildResult)({ ...artifact, step: "web:app:install" })).toBe(false);
   });
 
   test("returns the newest matching complete result", () => {
-    const { artifactRef: _, ...older } = requiredEntry;
-    const newer = { ...requiredEntry, artifactRef: "web:newer" };
+    const older = requiredEntry;
+    const newer = { ...requiredEntry, transcriptPath: AbsolutePath.make("/tmp/newer.log") };
     expect(
       findCompleteBuildResult([older, newer], {
+        step: requiredEntry.step,
+        containerId: requiredEntry.containerId,
         buildKey: requiredEntry.buildKey,
         service: requiredEntry.service,
         phase: requiredEntry.phase,
@@ -81,6 +83,8 @@ describe("BuildResultEntry", () => {
 
     // When
     const found = findCompleteBuildResult([success, failure], {
+      step: requiredEntry.step,
+      containerId: requiredEntry.containerId,
       buildKey: requiredEntry.buildKey,
       service: requiredEntry.service,
       phase: requiredEntry.phase,
@@ -93,10 +97,12 @@ describe("BuildResultEntry", () => {
   test("returns a newer success recorded after a failure", () => {
     // Given
     const failure = { ...requiredEntry, outcome: "fail" as const };
-    const success = { ...requiredEntry, artifactRef: "web:newer" };
+    const success = { ...requiredEntry, transcriptPath: AbsolutePath.make("/tmp/newer.log") };
 
     // When
     const found = findCompleteBuildResult([failure, success], {
+      step: requiredEntry.step,
+      containerId: requiredEntry.containerId,
       buildKey: requiredEntry.buildKey,
       service: requiredEntry.service,
       phase: requiredEntry.phase,
@@ -213,7 +219,7 @@ describe("BuildResultEntry", () => {
   test("keeps a step's newest entry when other steps fill the overall cap", async () => {
     // Given one step that recorded a single key and never ran again.
     const store = makeTestStateStore();
-    const bucket = await run(openScratchBuildResults(store.service));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     await run(
       recordBuildResult(bucket, recorded({ phase: "app", step: "web:app:install", buildKey: "stable" })),
     );
@@ -246,7 +252,7 @@ describe("BuildResultEntry", () => {
   test("caps the index at the newest 500 entries", async () => {
     // Given 501 recorded results whose identities are all distinct.
     const store = makeTestStateStore();
-    const bucket = await run(openScratchBuildResults(store.service));
+    const bucket = await run(openAppBuildResults(store.service, owner));
     await run(
       Effect.forEach(
         Array.from({ length: 501 }, (_, index) => index),
@@ -275,10 +281,22 @@ describe("BuildResultEntry", () => {
 
 describe("clearAppBuildResults", () => {
   test("keeps artifact results and removes app-phase results", async () => {
-    // Given an app index with one artifact and one app result.
     const store = makeTestStateStore();
     const bucket = await run(openAppBuildResults(store.service, owner));
-    await run(recordBuildResult(bucket, recorded({})));
+    const artifacts = await run(openArtifactBuildResults(store.service));
+    await run(
+      recordArtifactBuildResult(artifacts, {
+        owner: owner.key,
+        providerId: "test",
+        phase: "artifact",
+        buildKey: requiredEntry.buildKey,
+        service: requiredEntry.service,
+        outcome: "complete",
+        artifactRef: "web:test",
+        durationMs: 1,
+        transcriptPath: requiredEntry.transcriptPath,
+      }),
+    );
     await run(
       recordBuildResult(bucket, recorded({ phase: "app", step: "web:app:install", buildKey: "app-key" })),
     );
@@ -286,8 +304,8 @@ describe("clearAppBuildResults", () => {
     // When
     await run(clearAppBuildResults(store.service, owner));
 
-    // Then only the image result that survives destroy is left.
-    const entries = await run(bucket.get);
+    expect(await run(bucket.exists)).toBe(false);
+    const entries = (await run(artifacts.get))?.results;
     expect(entries).toHaveLength(1);
     expect(entries?.[0]).toMatchObject({ phase: "artifact", buildKey: requiredEntry.buildKey });
   });

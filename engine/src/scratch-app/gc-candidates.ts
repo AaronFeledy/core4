@@ -15,21 +15,16 @@ export const scratchGcCandidates = (
   entries: readonly ScratchRegistryEntry[],
   directoryIds: readonly string[],
   providerIds: readonly string[],
+  buildDirectoryIds: readonly string[],
 ): { readonly inspected: number; readonly candidates: readonly string[] } => {
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const dirIds = new Set(directoryIds);
-  const labelIds = new Set(providerIds);
-  const allIds = [...new Set([...byId.keys(), ...dirIds, ...labelIds])].sort();
+  const allIds = [...new Set([...byId.keys(), ...dirIds, ...providerIds, ...buildDirectoryIds])].sort();
   const candidates = allIds.filter((id) => {
     const entry = byId.get(id);
-    const hasRegistry = entry !== undefined;
-    const hasDir = dirIds.has(id);
-    const registryStale = hasRegistry && !hasDir;
-    const directoryOrphan = hasDir && !hasRegistry;
-    const providerLabelOrphan = labelIds.has(id) && !hasRegistry;
-    const deadOwner = entry !== undefined && ownerPidIsDead(entry);
-    const cleanupPending = entry?.status === "destroyed-pending-cleanup";
-    return cleanupPending || registryStale || directoryOrphan || providerLabelOrphan || deadOwner;
+    if (entry === undefined) return true;
+    const deadOwner = ownerPidIsDead(entry);
+    return entry.status === "destroyed-pending-cleanup" || !dirIds.has(id) || deadOwner;
   });
   return { inspected: allIds.length, candidates };
 };

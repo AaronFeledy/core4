@@ -6,6 +6,7 @@ import { Cause, type Context, Effect, Exit } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import type { PreparedCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
+import { HeldAppLockKeys } from "../operations/app-mutation-lock.ts";
 import {
   type GlobalConsumerAdmissionServices,
   requiresGlobalConsumerAdmission,
@@ -19,6 +20,7 @@ import {
   projectDebuggerOverlay,
 } from "../subsystems/start-overlay-registry.ts";
 import type { makeScratchReaper } from "./destroy.ts";
+import type { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import type { ScratchRegistry } from "./registry.ts";
 
 export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function* (
@@ -125,6 +127,7 @@ export const withScratchAcquisition = <A, E, R>(
     readonly fileSystem: typeof FileSystem.Service;
     readonly reap: Effect.Success<typeof makeScratchReaper>;
     readonly retainedIds: ReadonlySet<string>;
+    readonly withLock: Effect.Success<typeof makeScratchLifecycleLock>;
   },
 ) =>
   Effect.uninterruptibleMask((restore) =>
@@ -159,17 +162,27 @@ export const withScratchAcquisition = <A, E, R>(
       );
       if (!request.detached) {
         yield* Effect.addFinalizer(() =>
-          services.registry.get(id).pipe(
-            Effect.catch(() => Effect.succeed(undefined)),
-            Effect.flatMap((entry) =>
-              entry !== undefined
-                ? Effect.succeed(!entry.detached)
-                : services.fileSystem.exists(instanceRoot).pipe(Effect.catch(() => Effect.succeed(true))),
+          services
+            .withLock(
+              { id, instanceRoot },
+              services.registry.get(id).pipe(
+                Effect.catch(() => Effect.succeed(undefined)),
+                Effect.flatMap((entry) =>
+                  entry !== undefined
+                    ? Effect.succeed(!entry.detached)
+                    : services.fileSystem.exists(instanceRoot).pipe(Effect.catch(() => Effect.succeed(true))),
+                ),
+                Effect.flatMap((owned) =>
+                  owned && !services.retainedIds.has(id) ? cleanup("scope-close") : Effect.void,
+                ),
+              ),
+            )
+            .pipe(
+              Effect.provideService(HeldAppLockKeys, new Set()),
+              Effect.catchCause((cause) =>
+                Effect.logWarning(`Unable to reap scratch app ${id} during cleanup: ${Cause.pretty(cause)}`),
+              ),
             ),
-            Effect.flatMap((owned) =>
-              owned && !services.retainedIds.has(id) ? cleanup("scope-close") : Effect.void,
-            ),
-          ),
         );
       }
       return result;

@@ -1177,7 +1177,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      fail-fast: false");
     expect(providerIntegration).toContain("          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}");
     expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
-    expect(providerIntegration).toContain("    timeout-minutes: 35");
+    expect(providerIntegration).toContain("    timeout-minutes: 50");
     expect(providerIntegrationGate).toContain(
       "    needs: [selection, provider-integration-linux-x64-runner]",
     );

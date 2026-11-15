@@ -32,6 +32,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
 import {
@@ -179,6 +180,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     }),
   );
   const dependencies = Layer.mergeAll(
+    PrivateFileAccessService.layer,
     testEnvironmentResolverLayer,
     FileSystem.layer,
     Layer.succeed(PathsService, makeLandoPaths()),

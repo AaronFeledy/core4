@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { type PodmanApiClient, type PodmanHttpRequest, makeRuntimeProvider } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -73,14 +74,59 @@ test("provider-lando buildArtifact uses the managed Podman build API seam", asyn
   );
 
   const artifact = await runScoped(
-    provider.buildArtifact({ app: appId, service: serviceName, plan, buildKey: "lando-key" }),
+    provider.buildArtifact({
+      labels: { "dev.lando.test": crypto.randomUUID() },
+      app: appId,
+      service: serviceName,
+      plan,
+      buildKey: "lando-key",
+      ref: "chosen-by-engine:lando",
+    }),
   );
 
-  expect(artifact).toEqual({ providerId, ref: "lando-build-lando-web-lando-key" });
+  expect(artifact).toEqual({ providerId, ref: "chosen-by-engine:lando" });
   expect(requests[0]?.method).toBe("POST");
-  expect(requests[0]?.path).toContain("/build?t=lando-build-lando-web-lando-key");
+  expect(requests[0]?.path).toContain("/build?t=chosen-by-engine%3Alando");
   expect(requests[1]).toEqual({
     method: "GET",
-    path: "/images/lando-build-lando-web-lando-key/json",
+    path: "/images/chosen-by-engine%3Alando/json",
   });
+  expect(await Effect.runPromise(provider.removeArtifact(artifact))).toEqual({ kind: "removed" });
+  expect(requests.slice(2).every((request) => request.method === "DELETE")).toBe(true);
+});
+
+test("artifact removal reports a stopped managed runtime without starting it", async () => {
+  let running = true;
+  const offline = new ProviderUnavailableError({
+    providerId,
+    operation: "request",
+    message: "socket refused",
+    remediation: "Start the runtime.",
+  });
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({
+      platform: "linux",
+      sanitizeAppliedPlan: stripHostProxyRunLando,
+      podmanApi: {
+        info: Effect.suspend(() =>
+          running
+            ? Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } })
+            : Effect.fail(offline),
+        ),
+        ping: Effect.suspend(() => (running ? Effect.void : Effect.fail(offline))),
+        request: () => Effect.fail(offline),
+      },
+      providerSocketPath: "/unused/socket",
+      providerPidPath: "/unused/pid",
+      runtimeStorageDir: "/unused/storage",
+      runtimeRunDir: "/unused/run",
+      runtimeConfigDir: "/unused/config",
+      runtimeLock: () => Effect.die("removal must not acquire the runtime launch lock"),
+    }),
+  );
+  running = false;
+  const failure = await Effect.runPromise(
+    Effect.flip(provider.removeArtifact({ providerId, ref: "test:offline" })),
+  );
+  expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "removeArtifact" });
 });

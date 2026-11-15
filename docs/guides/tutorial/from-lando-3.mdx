@@ -176,7 +176,7 @@ Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Bundled recipe 
 | `lando shellenv` | Nothing. It prints a profile snippet | Your profiles and `PATH` until you paste it |
 | `lando update` | The recorded Lando 4 binary, the install record, and a backup beside it | Any executable the record doesn't match |
 | `lando uninstall --yes` | Entries in the install record | Unrecorded executables, `~/.lando`, and Lando 3 containers and volumes |
-| `lando uninstall --purge --yes` | The above, labeled Lando containers including Lando 3 leftovers, Lando 4's data, cache, and config roots, and this install's `LANDO4` shellenv block | The Lando 3 `LANDO` shellenv block, `LANDO4` blocks for other data roots, and every line you wrote |
+| `lando uninstall --purge --yes` | The above, labeled Lando containers including Lando 3 leftovers, the images this install built, Lando 4's data, cache, and config roots, and this install's `LANDO4` shellenv block | The Lando 3 `LANDO` shellenv block, `LANDO4` blocks for other data roots, and every line you wrote |
 | `lando doctor` | Nothing. The shadow check never runs or opens another executable | Everything |
 | `lando app:config:translate --from lando3 --write` | Landofile layers in that app, each replaced file kept as `<file>.bak.<sha256>` | Lando 3 containers, volumes, and `~/.lando` |
 

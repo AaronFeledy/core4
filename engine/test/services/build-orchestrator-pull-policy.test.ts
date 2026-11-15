@@ -14,7 +14,7 @@ import {
   type ServicePullPolicy,
 } from "@lando/sdk/schema";
 import {
-  type ArtifactBuildSpec,
+  type ArtifactBuildRequest,
   type ArtifactPullSpec,
   BuildOrchestrator,
   PathsService,
@@ -201,7 +201,7 @@ describe("BuildOrchestrator pull_policy acquisition", () => {
         const builds: string[] = [];
         const provider = {
           ...TestRuntimeProvider,
-          buildArtifact: (spec: ArtifactBuildSpec) =>
+          buildArtifact: (spec: ArtifactBuildRequest) =>
             Effect.sync(() => {
               builds.push(String(spec.service));
               return { providerId, ref: `${spec.service}:built` };

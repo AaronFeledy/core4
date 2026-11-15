@@ -6,12 +6,8 @@ import { BuildOrchestrator, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema, Stream } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
-import {
-  BuildOwner,
-  clearAppBuildResults,
-  openAppBuildResults,
-  openScratchBuildResults,
-} from "../../src/services/build-results.ts";
+import { openArtifactBuildResults } from "../../src/services/build-artifact-results.ts";
+import { BuildOwner, clearAppBuildResults, openAppBuildResults } from "../../src/services/build-results.ts";
 import {
   removeBuildTranscripts,
   sweepAppBuildTranscripts,
@@ -98,8 +94,8 @@ test("scratch instances isolate app output while retaining shared artifact evide
         const beforeA = yield* bucketA.get;
         const beforeB = yield* bucketB.get;
         yield* clearAppBuildResults(state, BuildOwner.fromPlan(a));
-        const shared = yield* openScratchBuildResults(state);
-        return { beforeA, beforeB, afterB: yield* bucketB.get, artifacts: yield* shared.get };
+        const shared = yield* openArtifactBuildResults(state);
+        return { beforeA, beforeB, afterB: yield* bucketB.get, artifacts: (yield* shared.get)?.results };
       }).pipe(Effect.provide(makeLayer(provider))),
     );
 
@@ -108,7 +104,7 @@ test("scratch instances isolate app output while retaining shared artifact evide
     expect(result.beforeA?.[0]?.transcriptPath).toContain(join("builds", "scratch", "scratch-a"));
     expect(result.beforeB?.[0]?.transcriptPath).toContain(join("builds", "scratch", "scratch-b"));
     expect(result.afterB).toEqual(result.beforeB);
-    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts).toHaveLength(2);
     expect(result.artifacts?.[0]).toMatchObject({ phase: "artifact", artifactRef: "test/web:latest" });
   });
 });

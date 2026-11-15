@@ -179,6 +179,7 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
   await Effect.runPromise(
     buildContainerArtifact(
       {
+        labels: { "dev.lando.test": "build" },
         app: appId,
         service: serviceName,
         plan: plan(
@@ -195,6 +196,7 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
           }),
         ),
         buildKey: "run-forms",
+        ref: "lando-build-docker-web-run-forms",
       },
       providerOptions,
     ),
@@ -209,6 +211,7 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
     Effect.flip(
       buildContainerArtifact(
         {
+          labels: { "dev.lando.test": "build" },
           app: appId,
           service: serviceName,
           plan: plan(
@@ -222,6 +225,7 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
             }),
           ),
           buildKey: "bad-base",
+          ref: "lando-build-docker-web-bad-base",
         },
         providerOptions,
       ),
@@ -239,7 +243,13 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
     request: (request: ContainerBuildHttpRequest) =>
       Effect.promise(async () => {
         if (request.method === "POST") bodies.push(new TextDecoder().decode(await collect(request.stdin)));
-        return { status: 200, body: '{"Config":{"User":"app:staff"}}' };
+        return {
+          status: 200,
+          body:
+            request.method === "POST"
+              ? '{"aux":{"ID":"sha256:base-image"}}'
+              : '{"Config":{"User":"app:staff"}}',
+        };
       }),
   };
   const authored = service({
@@ -261,7 +271,14 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
   // When
   await Effect.runPromise(
     buildContainerArtifact(
-      { app: appId, service: serviceName, plan: plan(authored), buildKey: "authored-build-step" },
+      {
+        app: appId,
+        service: serviceName,
+        plan: plan(authored),
+        buildKey: "authored-build-step",
+        labels: { "dev.lando.test": "build" },
+        ref: "lando-build-docker-web-authored-build-step",
+      },
       { providerId, api, sourceEnv: {} },
     ),
   );
@@ -292,7 +309,14 @@ test("buildContainerArtifact pins a resolved base digest in derived Dockerfiles"
   // When
   await Effect.runPromise(
     buildContainerArtifact(
-      { app: appId, service: serviceName, plan: plan(derived), buildKey: "resolved-base" },
+      {
+        app: appId,
+        service: serviceName,
+        plan: plan(derived),
+        buildKey: "resolved-base",
+        labels: { "dev.lando.test": "build" },
+        ref: "lando-build-docker-web-resolved-base",
+      },
       { providerId, api, sourceEnv: {} },
     ),
   );
@@ -319,6 +343,7 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
     Effect.flip(
       buildContainerArtifact(
         {
+          labels: { "dev.lando.test": "build" },
           app: appId,
           service: serviceName,
           plan: plan(
@@ -332,6 +357,7 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
             }),
           ),
           buildKey: "secret-error",
+          ref: "lando-build-docker-web-secret-error",
         },
         { providerId, api, sourceEnv: {} },
       ),
@@ -363,6 +389,7 @@ test("buildContainerArtifact keeps a build error readable when it contains an or
     Effect.flip(
       buildContainerArtifact(
         {
+          labels: { "dev.lando.test": "build" },
           app: appId,
           service: serviceName,
           plan: plan(
@@ -376,6 +403,7 @@ test("buildContainerArtifact keeps a build error readable when it contains an or
             }),
           ),
           buildKey: "ordinary-arg",
+          ref: "lando-build-docker-web-ordinary-arg",
         },
         { providerId, api, sourceEnv: {} },
       ),
@@ -406,6 +434,7 @@ test("injects the inline Dockerfile into the packed context and preserves real c
   await Effect.runPromise(
     buildContainerArtifact(
       {
+        labels: { "dev.lando.test": "build" },
         app: appId,
         service: serviceName,
         plan: plan(
@@ -418,6 +447,7 @@ test("injects the inline Dockerfile into the packed context and preserves real c
           }),
         ),
         buildKey: "inline-preserves-context",
+        ref: "lando-build-docker-web-inline-preserves-context",
       },
       { providerId, api, sourceEnv: {} },
     ),
@@ -454,6 +484,7 @@ test("uses a root-owned inline Dockerfile when the context contains a .lando sym
   await Effect.runPromise(
     buildContainerArtifact(
       {
+        labels: { "dev.lando.test": "build" },
         app: appId,
         service: serviceName,
         plan: plan(
@@ -466,6 +497,7 @@ test("uses a root-owned inline Dockerfile when the context contains a .lando sym
           }),
         ),
         buildKey: "inline-symlink-parent",
+        ref: "lando-build-docker-web-inline-symlink-parent",
       },
       { providerId, api, sourceEnv: {} },
     ),
@@ -496,6 +528,7 @@ test("points the daemon dockerfile param at the Lando owned path", async () => {
   await Effect.runPromise(
     buildContainerArtifact(
       {
+        labels: { "dev.lando.test": "build" },
         app: appId,
         service: serviceName,
         plan: plan(
@@ -508,6 +541,7 @@ test("points the daemon dockerfile param at the Lando owned path", async () => {
           }),
         ),
         buildKey: "inline-daemon-path",
+        ref: "lando-build-docker-web-inline-daemon-path",
       },
       { providerId, api, sourceEnv: {} },
     ),
@@ -534,6 +568,7 @@ test("drops a colliding user entry at the Lando owned path", async () => {
   await Effect.runPromise(
     buildContainerArtifact(
       {
+        labels: { "dev.lando.test": "build" },
         app: appId,
         service: serviceName,
         plan: plan(
@@ -546,6 +581,7 @@ test("drops a colliding user entry at the Lando owned path", async () => {
           }),
         ),
         buildKey: "inline-collision",
+        ref: "lando-build-docker-web-inline-collision",
       },
       { providerId, api, sourceEnv: {} },
     ),
@@ -575,6 +611,7 @@ test("builds from the packed context unchanged when specInline is absent", async
   await Effect.runPromise(
     buildContainerArtifact(
       {
+        labels: { "dev.lando.test": "build" },
         app: appId,
         service: serviceName,
         plan: plan(
@@ -587,6 +624,7 @@ test("builds from the packed context unchanged when specInline is absent", async
           }),
         ),
         buildKey: "file-spec-regression",
+        ref: "lando-build-docker-web-file-spec-regression",
       },
       { providerId, api, sourceEnv: {} },
     ),

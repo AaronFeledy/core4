@@ -1,5 +1,5 @@
 import type { SummaryTone } from "@lando/renderer/summary";
-import type { StartedService } from "@lando/sdk/schema";
+import type { BuiltImageCleanup, StartedService } from "@lando/sdk/schema";
 import { scopedConnectionText } from "./connection-summary";
 
 export const summaryToneFromTable = (
@@ -77,4 +77,24 @@ export const volumesTrailer = (removed: boolean, snapshotsRemoved = 0): string =
   if (snapshotsRemoved === 0) return removed ? "volumes removed" : "volumes preserved";
   const snapshots = `${snapshotsRemoved} snapshot${snapshotsRemoved === 1 ? "" : "s"}`;
   return removed ? `volumes and ${snapshots} removed` : `${snapshots} removed`;
+};
+
+const builtImages = (count: number): string => `${count} built image${count === 1 ? "" : "s"}`;
+
+export const builtImageCleanupLines = (
+  cleanup: BuiltImageCleanup | undefined,
+  purgeFlag = "--purge-caches",
+): readonly string[] => {
+  if (cleanup === undefined) return [];
+  const lines: string[] = [];
+  if (cleanup.released !== 0)
+    lines.push(
+      `Kept ${builtImages(cleanup.released)} for reuse for up to 7 days; ${purgeFlag} removes ${cleanup.released === 1 ? "it" : "them"}.`,
+    );
+  if (cleanup.removed !== 0) lines.push(`Removed ${builtImages(cleanup.removed)}.`);
+  for (const image of cleanup.inUse)
+    lines.push(
+      `Kept image ${image.ref}: ${image.containers.length === 0 ? "in use" : `used by container ${image.containers.join(", ")}`}.`,
+    );
+  return lines;
 };

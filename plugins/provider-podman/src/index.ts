@@ -22,7 +22,9 @@ import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-run
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
+import { listContainerArtifacts } from "@lando/container-runtime/image-list";
 import { pullImage } from "@lando/container-runtime/image-pull";
+import { removeContainerArtifact } from "@lando/container-runtime/image-remove";
 import {
   type ResolveContainerHelper,
   makeProviderLogSourceBinding,
@@ -839,7 +841,8 @@ const assembleRuntimeProvider = (
           })),
         ),
       ),
-      removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
+      removeArtifact: (request) => removeContainerArtifact(podmanApi, request, PODMAN_CTX),
+      listArtifacts: (selector) => listContainerArtifacts(podmanApi, selector, PODMAN_CTX),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
