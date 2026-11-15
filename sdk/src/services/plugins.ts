@@ -5,7 +5,6 @@ import type {
   PluginManifestError,
   ServiceTypeCollisionError,
   ServiceTypeError,
-  ToolingCompileError,
 } from "../errors/index.ts";
 import type {
   AbsoluteContainerPath,
@@ -22,8 +21,11 @@ import type {
   ServiceName,
   ToolingTaskShape,
 } from "../schema/index.ts";
+import type { RegisteredCommand } from "../schema/registered-command.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
+
+export type { RegisteredCommand } from "../schema/registered-command.ts";
 
 export class PluginRegistry extends Context.Service<
   PluginRegistry,
@@ -178,32 +180,6 @@ export interface ServiceType {
   readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }
-
-type RegisteredCommandIdentity = {
-  readonly id: string;
-  readonly summary: string;
-  readonly hidden: boolean;
-};
-
-/** Availability is independent of internal visibility; unavailable diagnostics are storage-bounded. */
-export type RegisteredCommand = RegisteredCommandIdentity &
-  (
-    | {
-        readonly _tag: "Ready";
-        readonly input: import("../schema/tooling-input.ts").ToolingInputDeclaration;
-        readonly runs?: import("../schema/tooling-run-summary.ts").ToolingRunSummary;
-      }
-    | { readonly _tag: "Disabled"; readonly source: { readonly path: string; readonly task: string } }
-    | {
-        readonly _tag: "Unavailable";
-        readonly diagnostic:
-          | Pick<
-              ToolingCompileError,
-              "_tag" | "tool" | "source" | "message" | "remediation" | "issues" | "omittedIssueCount"
-            >
-          | { readonly _tag: string; readonly message: string; readonly remediation?: string };
-      }
-  );
 
 export class CommandRegistry extends Context.Service<
   CommandRegistry,

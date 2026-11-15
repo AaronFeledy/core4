@@ -114,15 +114,6 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
-  test("matches registered command availability arms and visibility identity", () => {
-    const aliases = serviceSourceFiles.flatMap((source) =>
-      source.statements.filter(ts.isTypeAliasDeclaration),
-    );
-    for (const [name, signature] of Object.entries(publicSurface.registeredCommandTypes)) {
-      const alias = aliases.find((statement) => statement.name.text === name);
-      expect(normalizeSignature(alias?.type.getText() ?? "")).toBe(normalizeSignature(signature));
-    }
-  });
   test("matches router contribution fields", () => {
     expect(Object.keys(RouterServiceContribution.fields).sort()).toEqual(
       publicSurface.routerContributionFields,

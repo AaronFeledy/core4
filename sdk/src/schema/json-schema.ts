@@ -472,6 +472,7 @@ import {
   RecipeSourceOption,
   RecipeSourcePrompt,
 } from "./recipe-source.ts";
+import { RegisteredCommand } from "./registered-command.ts";
 import {
   AppRemoteEntry,
   AppRemoteMutationResult,
@@ -773,6 +774,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingInputDeclaration,
   ToolingRunSummary,
   ToolingRunTarget,
+  RegisteredCommand,
   ToolingInputValues,
   ToolingInvocationInput,
   ServiceConfigInput,
