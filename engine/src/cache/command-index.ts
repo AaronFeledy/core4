@@ -4,31 +4,67 @@ import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
+import type { ToolingDiagnostic } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import type { LandofileShape, ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
 import { canonicalCacheJson } from "./canonical.ts";
 import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 9n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 13n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
 export const COMMAND_INDEX_HEADER_BYTES = 12;
 const VERSION_OFFSET = 4;
 
-export interface CommandIndexEntry {
+interface CommandIdentity {
   readonly id: string;
   readonly summary: string;
-  readonly hidden: boolean;
-  readonly disabled?: true;
+  readonly sourceKind: "tooling" | "bun-script";
+  readonly visibility: "public" | "internal";
+}
+
+export interface ReadyCommandIndexEntry extends CommandIdentity {
+  readonly _tag: "Ready";
+  readonly diagnostic?: never;
   readonly service?: string;
-  readonly source?: "bun-script";
-  readonly input?: ToolingInputDeclaration;
+  readonly input: ToolingInputDeclaration;
   readonly wrapper?: true;
   readonly runs?: ToolingRunSummary;
-  readonly loadError?: { readonly _tag: string; readonly message: string; readonly remediation?: string };
 }
+
+export interface DisabledCommandIndexEntry extends CommandIdentity {
+  readonly _tag: "Disabled";
+  readonly input?: never;
+  readonly service?: never;
+  readonly wrapper?: never;
+  readonly runs?: never;
+  readonly diagnostic?: never;
+  readonly source: { readonly path: string; readonly task: string };
+}
+
+export type CommandLoadError =
+  | ToolingDiagnostic
+  | {
+      readonly _tag: string;
+      readonly message: string;
+      readonly remediation?: string;
+    };
+
+export interface UnavailableCommandIndexEntry extends CommandIdentity {
+  readonly _tag: "Unavailable";
+  readonly input?: never;
+  readonly service?: never;
+  readonly wrapper?: never;
+  readonly runs?: never;
+  readonly diagnostic: CommandLoadError;
+}
+
+export type CommandIndexEntry =
+  | ReadyCommandIndexEntry
+  | DisabledCommandIndexEntry
+  | UnavailableCommandIndexEntry;
 
 interface CommandAliasPolicy {
   readonly enabled: boolean;
@@ -51,6 +87,7 @@ export interface AppCommandIndexPayload {
   readonly landoVersion: string;
   readonly appName: string;
   readonly sourceFile: string;
+  readonly sourceEnvironment: CommandEnvironment;
   readonly sourceContentHash?: string;
   readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
   readonly sourceReferencedFiles?: ReadonlyArray<LandofileReferencedFile>;
@@ -66,6 +103,37 @@ export interface AppCommandIndexPayload {
 }
 
 const stableFingerprint = (value: unknown): string => sha256Hex(canonicalCacheJson(value));
+
+export type CommandEnvironment =
+  | { readonly _tag: "Names"; readonly names: readonly string[]; readonly hash: string }
+  | { readonly _tag: "Complete"; readonly hash: string };
+
+export const commandEnvironmentHash = (
+  dependencies:
+    | Omit<Extract<CommandEnvironment, { readonly _tag: "Names" }>, "hash">
+    | { readonly _tag: "Complete" },
+  env: Readonly<Record<string, string | undefined>>,
+): string => {
+  switch (dependencies._tag) {
+    case "Names":
+      return stableFingerprint(
+        dependencies.names.map((name) => [name, Object.hasOwn(env, name), env[name] ?? null]),
+      );
+    case "Complete":
+      return deriveAppCommandEnvironmentHash(env);
+    default:
+      return dependencies satisfies never;
+  }
+};
+
+// Hash the incoming snapshot, before config loading augments it. Entries preserve
+// present undefined values separately from absent keys and empty strings.
+export const deriveAppCommandEnvironmentHash = (env: Readonly<Record<string, string | undefined>>): string =>
+  stableFingerprint(
+    Object.keys(env)
+      .sort()
+      .map((key) => [key, env[key] ?? null]),
+  );
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
   stableFingerprint({

@@ -13,6 +13,8 @@ test("MCP builds once per runtime, reuses it for nested provide, and builds fres
       Layer.mergeAll(
         TestMcpCommandExecutor,
         Layer.succeed(McpRuntimeConfig, {
+          cwd: process.cwd(),
+          env: { ...process.env },
           commandEntries: [],
           defaultAllowlist: [],
           apps: testAppGenerations(),

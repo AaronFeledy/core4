@@ -8,8 +8,11 @@ import {
   rememberLocalIncludePaths,
 } from "./include-provenance.ts";
 import {
+  getLandofileEnvironmentDependencies,
   getLandofileReferencedFiles,
+  hasLandofileEnvironmentDependencies,
   hasLandofileReferencedFiles,
+  rememberLandofileEnvironmentDependencies,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
 import { copyOrigins } from "./pipeline/origins.ts";
@@ -38,6 +41,9 @@ export const copyLandofileProvenance = <T extends object>(from: object, to: T): 
   }
   if (hasLandofileReferencedFiles(from)) {
     rememberLandofileReferencedFiles(to, getLandofileReferencedFiles(from));
+  }
+  if (hasLandofileEnvironmentDependencies(from)) {
+    rememberLandofileEnvironmentDependencies(to, getLandofileEnvironmentDependencies(from));
   }
   if (hasInternalToolingTasks(from)) rememberInternalToolingTasks(to, getInternalToolingTasks(from));
   if (hasVersionConstraintEntries(from)) {

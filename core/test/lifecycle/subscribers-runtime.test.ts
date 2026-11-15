@@ -651,7 +651,9 @@ describe("subscriber runtime integration", () => {
           const events = yield* EventService;
           const redaction = yield* RedactionService;
           const config: McpRuntimeConfigShape = McpRuntimeConfig.of({
-            commandEntries: [{ spec: versionSpec }],
+            env: {},
+            cwd: "/",
+            commandEntries: [{ kind: "command", spec: versionSpec }],
             defaultAllowlist: [versionSpec.id],
             apps: testAppGenerations(Layer.succeed(EventService, events)),
           });

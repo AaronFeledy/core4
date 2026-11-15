@@ -7,13 +7,17 @@ import { survivingSites } from "../compiled-sites.ts";
 import { composeKeyRejectedError, firstComposeRejection } from "../compose/rejections.ts";
 import { copyLandofileProvenance } from "../copy-provenance.ts";
 import { decodedPendingSites } from "../decoded-sites.ts";
+import { unionEnvironmentDependencies } from "../environment-dependencies.ts";
 import type { LandofileRelaxedRead } from "../include-context.ts";
 import { includeAcquisitionView } from "../include-layer-overlays.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "../include-provenance.ts";
 import { prepareIncludeAcquisition } from "../load-acquisition.ts";
 import type { LandofileLoadPolicy } from "../load-expression-file.ts";
 import {
+  getLandofileEnvironmentDependencies,
   getLandofileReferencedFiles,
+  hasLandofileEnvironmentDependencies,
+  rememberLandofileEnvironmentDependencies,
   rememberLandofileReferencedFiles,
 } from "../load-expression-provenance.ts";
 import { type LoadFailureRecorder, createLoadFailureRecorder, finishLoadStage } from "../load-failures.ts";
@@ -212,6 +216,14 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
   });
   rememberOrigins(assembled, defaults.origins);
+  const envDeps = unionEnvironmentDependencies(
+    ...(hasLandofileEnvironmentDependencies(assembled)
+      ? [getLandofileEnvironmentDependencies(assembled)]
+      : []),
+    ...(hasLandofileEnvironmentDependencies(value) ? [getLandofileEnvironmentDependencies(value)] : []),
+    ...(scope.environmentRecorder === undefined ? [] : [scope.environmentRecorder.dependencies()]),
+  );
+  rememberLandofileEnvironmentDependencies(assembled, envDeps);
   copyLandofileProvenance(assembled, compiled.document);
   return copyLandofileProvenance(assembled, compiled);
 });

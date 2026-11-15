@@ -251,8 +251,16 @@ test.each([true, false])("reserved scratch include task with internal=%s", async
     expect(snapshot.resolved?.document.tooling).toHaveProperty(["scratch:check"]);
     expect(getInternalToolingTasks(snapshot.resolved ?? {}).includes("scratch:check")).toBe(internal);
     expect(result.valid).toBe(internal);
-    expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual(
-      internal ? [] : [{ rule: "landofile.tooling", path: ["tooling", "scratch:check"] }],
+    expect(result.violations.map(({ rule, path, source }) => ({ rule, path, source }))).toEqual(
+      internal
+        ? []
+        : [
+            {
+              rule: "landofile.tooling",
+              path: ["tooling", "scratch:check"],
+              source: { file: join(root, "tasks.yml"), layer: "canonical", path: ["tooling", "check"] },
+            },
+          ],
     );
   } finally {
     await rm(root, { recursive: true, force: true });

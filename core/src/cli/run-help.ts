@@ -1,10 +1,6 @@
 import { ToolingDisabledError } from "@lando/sdk/errors";
 import { Effect, Exit, Layer } from "effect";
-import {
-  CliInvocation,
-  type CliInvocationContext,
-  processInvocationDefaults,
-} from "../runtime/invocation-context";
+import { CliInvocation, type CliInvocationContext } from "../runtime/invocation-context";
 import { resolveBuiltInCommand } from "./built-in-command-registry";
 import {
   type HelpTopic,
@@ -38,7 +34,8 @@ import { pluginHelpRows, printPluginTopicHelp, tryPluginCommandHelp } from "./pl
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { toolingMetadataStatus } from "./tooling-cache-status";
 import { readCliAppCommandCache } from "./tooling-command-cache";
-import { resolveToolingRoute, toolingRouteFailure, unavailableScriptError } from "./tooling-router";
+import { resolveToolingRoute, toolingRouteFailure } from "./tooling-router";
+import { unavailableToolingError } from "./tooling-unavailable";
 import { unknownCommandError } from "./unknown-command-error";
 
 const readHelpCache = async (context?: CliInvocationContext) => {
@@ -188,10 +185,13 @@ export const dispatchHelpTarget = async (
   if (isHelpTopic(token)) return printTopicHelp(token, catalog);
   const helpCommand = resolveBuiltInCommand(token);
   if (helpCommand?.spec.id === token) return printCommandHelp(helpCommand, catalog.context);
+  // Honor catalog context when present; otherwise the CliInvocation Reference default
+  // (live getters) remains the direct-embedder fallback — never re-read ambient host env here.
+  const resolve = interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal);
   const resolutionExit = await Effect.runPromiseExit(
-    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal).pipe(
-      Effect.provideService(CliInvocation, catalog.context ?? processInvocationDefaults),
-    ),
+    catalog.context === undefined
+      ? resolve
+      : resolve.pipe(Effect.provideService(CliInvocation, catalog.context)),
   );
   if (Exit.isFailure(resolutionExit)) throw resolutionExit.cause;
   const resolution = resolutionExit.value;
@@ -203,31 +203,38 @@ export const dispatchHelpTarget = async (
       switch (route._tag) {
         case "tooling":
         case "bun-script": {
-          const unavailable = await Effect.runPromise(unavailableScriptError(route));
-          if (unavailable !== undefined && !route.disabled)
-            return renderAliasResolutionFailure(unavailable, catalog.context, route.commandId);
-          if (!route.disabled)
-            return printToolingHelp(
-              {
-                ...route,
-                id: route.commandId,
-                ...(route._tag === "bun-script" ? { source: route._tag } : {}),
-              },
-              route.aliasPolicy,
-              catalog.context,
-            );
-          return renderPreCommandFailure({
-            ...(catalog.context === undefined ? {} : { context: catalog.context }),
-            commandId: route.commandId,
-            error: new ToolingDisabledError({
-              message: `Tooling command ${escapeDiagnosticText(route.commandId)} is disabled.`,
-              tool: route.name,
-              source: { path: route.sourcePath ?? "<cached tooling>", task: route.name },
-              remediation: "Enable this task in the app's tooling definition before running it.",
-            }),
-            rendererMode: activeRendererMode,
-            resultFormat: activeResultFormat,
-          });
+          switch (route.availability._tag) {
+            case "Disabled":
+              return renderPreCommandFailure({
+                ...(catalog.context === undefined ? {} : { context: catalog.context }),
+                commandId: route.commandId,
+                error: new ToolingDisabledError({
+                  message: `Tooling command ${escapeDiagnosticText(route.commandId)} is disabled.`,
+                  tool: route.name,
+                  source: route.availability.source,
+                  remediation: "Enable this task in the app's tooling definition before running it.",
+                }),
+                rendererMode: activeRendererMode,
+                resultFormat: activeResultFormat,
+              });
+            case "Ready":
+            case "Unavailable": {
+              const unavailable = await Effect.runPromise(unavailableToolingError(route));
+              if (unavailable !== undefined)
+                return renderAliasResolutionFailure(unavailable, catalog.context, route.commandId);
+              return printToolingHelp(
+                {
+                  ...route,
+                  id: route.commandId,
+                  ...(route._tag === "bun-script" ? { source: route._tag } : {}),
+                },
+                route.aliasPolicy,
+                catalog.context,
+              );
+            }
+            default:
+              return route.availability satisfies never;
+          }
         }
         case "built-in":
           return printCommandHelp(route.entry, catalog.context);

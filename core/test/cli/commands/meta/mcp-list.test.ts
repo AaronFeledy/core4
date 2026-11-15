@@ -34,7 +34,7 @@ describe("buildMcpListResult", () => {
       { spec: { id: "app:info", summary: "Show app info" } },
       { spec: { id: "app:logs", summary: "Show logs" } },
     ];
-    const toolingEntries = [{ spec: { id: "tool:x", summary: "x" }, tooling: true }];
+    const toolingEntries = [{ kind: "tooling" as const, spec: { id: "tool:x", summary: "x" } }];
 
     // When: an extra command is allowed.
     const allowed = buildMcpListResult({

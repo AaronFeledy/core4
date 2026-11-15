@@ -45,4 +45,4 @@ lando composer --version
 lando app:composer --version
 ```
 
-Both forms use the same route. The router reads the app command index before provider-backed execution starts, and on the host CLI it rebuilds that index first when the Landofile, an include, or a script changed, or when Lando was upgraded. You do not run `lando app:cache:refresh`, `lando start`, or `lando rebuild` for discovery. After routing, the normal tooling path still enforces version, provider, environment, and runtime policies.
+Both forms use the same route. The router reads the app command index before provider-backed execution starts, and on the host CLI it rebuilds that index first when the Landofile, an include, a script, or an environment variable the Landofile reads changed, or when Lando was upgraded. You do not run `lando app:cache:refresh`, `lando start`, or `lando rebuild` for discovery. After routing, the normal tooling path still enforces version, provider, environment, and runtime policies.

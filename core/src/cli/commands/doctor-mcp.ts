@@ -54,7 +54,7 @@ const canarySpec: LandoCommandSpec = {
   redactionTokens: () => [MCP_DOCTOR_CANARY_SECRET],
 };
 
-const canaryEntry: McpCommandEntry = { spec: canarySpec };
+const canaryEntry = { spec: canarySpec, kind: "command" } satisfies McpCommandEntry;
 
 export const isMcpDefaultAllowlistFresh = (ids: ReadonlyArray<string>): boolean => {
   const expected = computeMcpDefaultAllowlist(MCP_DEFAULT_ALLOWLIST.map((id) => ({ id, mcpAllowed: true })));
@@ -149,6 +149,8 @@ export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Re
       Effect.provideService(
         McpRuntimeConfig,
         McpRuntimeConfig.of({
+          env: (yield* CliInvocation).env,
+          cwd: (yield* CliInvocation).cwd,
           commandEntries: [canaryEntry],
           defaultAllowlist: [CANARY_TOOL_ID],
           apps: Effect.succeed(singleAppGenerations(Context.make(RedactionService, redaction))),

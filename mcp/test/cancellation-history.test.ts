@@ -20,6 +20,7 @@ test("completed request cancellation state remains harmless after 512 requests a
         serverLayer({
           commandEntries: [
             {
+              kind: "command" as const,
               spec: {
                 id: "app:info",
                 summary: "Info",

@@ -169,6 +169,7 @@ export * from "./recipe-provenance.ts";
 export * from "./recipe-snapshot.ts";
 export * from "./recipe-source.ts";
 export { RecipeSourceCompileError } from "./recipe-source-error.ts";
+export * from "./registered-command.ts";
 export * from "./remote-sync.ts";
 export * from "./renderer-capabilities.ts";
 export * from "./renderer-mode.ts";

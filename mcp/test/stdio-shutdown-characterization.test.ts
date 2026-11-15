@@ -23,7 +23,8 @@ test("EOF closes after completed correlated requests without additional replies"
   );
   // Then completed replies remain intact and shutdown adds no output.
   expect(observed.first).toMatchObject({ result: { tools: [] } });
-  expect(observed.second).toMatchObject({ result: { resources: [] } });
+  // Every session advertises the static diagnostics resource, even with no app commands.
+  expect(observed.second).toMatchObject({ result: { resources: [{ uri: "lando://diagnostics" }] } });
   expect(observed.exit._tag).toBe("Success");
   expect(observed.messages).toEqual(observed.beforeClose);
   expect(observed.messages.filter((message) => message.id === observed.first.id)).toHaveLength(1);
@@ -63,7 +64,7 @@ for (const shutdown of ["EOF", "interrupt"] as const) {
           const service = yield* McpService.pipe(
             Effect.provide(
               serverLayer({
-                commandEntries: [{ spec }],
+                commandEntries: [{ kind: "command" as const, spec }],
                 defaultAllowlist: [spec.id],
                 apps: testAppGenerations(
                   Layer.effectDiscard(

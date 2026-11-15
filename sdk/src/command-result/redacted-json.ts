@@ -2,7 +2,7 @@ import { REDACTED, type Redactor } from "@lando/sdk/secrets";
 
 const maskedToken = JSON.stringify(REDACTED);
 
-const redactStringToken = (token: string, redactor: Redactor): string => {
+const redactStringToken = (token: string, redactor: Pick<Redactor, "redactString">): string => {
   try {
     const decoded: unknown = JSON.parse(token);
     if (typeof decoded !== "string") return maskedToken;
@@ -18,7 +18,7 @@ const redactStringToken = (token: string, redactor: Redactor): string => {
 
 // Serialize first to retain JSON's toJSON, omission, and array semantics. Only
 // string tokens enter redaction; primitive values and JSON punctuation stay intact.
-export const encodeRedactedJson = (value: unknown, redactor: Redactor): string => {
+export const encodeRedactedJson = (value: unknown, redactor: Pick<Redactor, "redactString">): string => {
   const json = JSON.stringify(value);
   if (json === undefined) throw new Error("Expected a JSON document.");
   const parts: string[] = [];

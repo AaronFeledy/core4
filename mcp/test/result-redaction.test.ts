@@ -11,6 +11,7 @@ test.each([true, false])("masks overlap without retaining tokens (ok=%j)", async
   const sourceEnv = { API_SECRET: "environment-canary" };
   const redactor = await Effect.runPromise(service.forProfile("secrets", { sourceEnv }));
   const entry = {
+    kind: "command" as const,
     spec: {
       id: "app:overlap",
       summary: "Return overlapping secrets",
@@ -62,6 +63,7 @@ test("keeps a published default credential while masking a registered secret", a
     note: "private-registered-value",
   };
   const entry = {
+    kind: "command" as const,
     spec: {
       id: "app:info",
       summary: "Return app info credentials",

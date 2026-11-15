@@ -24,9 +24,10 @@ test("interrupts an in-flight call, publishes Interrupted, and emits no duplicat
         };
         const service = yield* McpService.pipe(
           Effect.provide(
-            serverLayer({ commandEntries: [{ spec: command }], defaultAllowlist: [command.id] }).pipe(
-              Layer.provide(eventLayer(events)),
-            ),
+            serverLayer({
+              commandEntries: [{ kind: "command" as const, spec: command }],
+              defaultAllowlist: [command.id],
+            }).pipe(Layer.provide(eventLayer(events))),
           ),
         );
         const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
@@ -65,6 +66,7 @@ test("does not send a cancellation reply after a completed request is cancelled"
         serverLayer({
           commandEntries: [
             {
+              kind: "command" as const,
               spec: {
                 id: "app:info",
                 summary: "Info",
@@ -103,6 +105,7 @@ test("does not poison a reused request id when a late cancellation arrives", asy
         serverLayer({
           commandEntries: [
             {
+              kind: "command" as const,
               spec: {
                 id: "app:info",
                 summary: "Info",
@@ -141,7 +144,10 @@ test("does not start semaphore-waiting work when cancellation arrives before exe
         };
         const service = yield* McpService.pipe(
           Effect.provide(
-            serverLayer({ commandEntries: [{ spec: command }], defaultAllowlist: [command.id] }),
+            serverLayer({
+              commandEntries: [{ kind: "command" as const, spec: command }],
+              defaultAllowlist: [command.id],
+            }),
           ),
         );
         const client = yield* startStdioClient(service.serve({ transport: "stdio", maxConcurrent: 1 }));

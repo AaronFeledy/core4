@@ -15,6 +15,8 @@ import {
 } from "@lando/sdk/errors";
 import { Clock, Duration, Effect, Predicate } from "effect";
 import { importAuthorModule, missingPackageRemediation } from "./author-modules.ts";
+import type { EnvironmentRecorder } from "./environment-dependencies.ts";
+import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 
 export const DEFAULT_TS_TIMEOUT_MS = 5000;
 export const TS_TIMEOUT_ENV = "LANDO_LANDOFILE_TS_TIMEOUT_MS";
@@ -165,8 +167,8 @@ export const sandboxScan = (
     return Effect.void;
   });
 
-export const resolveTimeoutMs = (): number => {
-  const raw = process.env[TS_TIMEOUT_ENV];
+export const resolveTimeoutMs = (env: Readonly<Record<string, string | undefined>> = process.env): number => {
+  const raw = env[TS_TIMEOUT_ENV];
   if (raw === undefined || raw === "") return DEFAULT_TS_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TS_TIMEOUT_MS;
@@ -184,19 +186,27 @@ export interface LandofileContext {
   };
 }
 
-const buildContext = (filePath: string): LandofileContext => {
+const buildContext = (
+  filePath: string,
+  env: Readonly<Record<string, string | undefined>>,
+): LandofileContext => {
   const platform = process.platform;
   const isWsl = normalizeHostPlatform() === "wsl";
   return {
     cwd: dirname(filePath),
-    env: process.env,
+    // Read-only captured snapshot; prefer ctx.env over process.env so reads are tracked.
+    env,
     host: { os: platform, arch: process.arch, platform, isWsl },
   };
 };
 
 const isModuleObject: (value: unknown) => value is object = Predicate.isObjectOrArray;
 
-const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown> => {
+const unwrapDefault = async (
+  filePath: string,
+  module: unknown,
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<unknown> => {
   if (!isModuleObject(module)) {
     throw new LandofileParseError({
       message: `Programmatic Landofile at ${filePath} did not export a module object.`,
@@ -217,7 +227,7 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
     });
   }
   if (typeof exported === "function") {
-    const ctx = buildContext(filePath);
+    const ctx = buildContext(filePath, env);
     const result = (exported as (ctx: LandofileContext) => unknown)(ctx);
     return await resolveTsModuleResult(result);
   }
@@ -235,12 +245,15 @@ export const resolveTsModuleResult = async (result: unknown): Promise<unknown> =
   return result;
 };
 
-const evaluateImport = Effect.fnUntraced(function* (filePath: string) {
+const evaluateImport = Effect.fnUntraced(function* (
+  filePath: string,
+  env: Readonly<Record<string, string | undefined>>,
+) {
   const importTime = yield* Clock.currentTimeMillis;
   return yield* Effect.tryPromise({
     try: async () => {
       const module = await importAuthorModule(`${filePath}?t=${importTime}`);
-      return await unwrapDefault(filePath, module);
+      return await unwrapDefault(filePath, module, env);
     },
     catch: (cause) =>
       cause instanceof LandofileParseError
@@ -263,14 +276,74 @@ export interface LoadLandofileTsOptions {
   readonly appRoot: string;
   readonly content: string;
   readonly timeoutMs?: number;
+  /**
+   * Captured host environment. When `environmentRecorder` is set, `ctx.env` is
+   * its read-only view so factory reads are tracked; otherwise a frozen copy of
+   * this snapshot (default: captured via `hostExpressionEnvironment()`).
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly environmentRecorder?: EnvironmentRecorder;
 }
+
+// Any of these can reach the environment without going through ctx.env. The import scan does not
+// report CommonJS loads, so `require` counts too.
+const AMBIENT_ENVIRONMENT_REFERENCE =
+  /\bprocess\b|\bBun\b|\bimport\s*\.\s*meta\b|\bglobalThis\b|\bimport\s*\(|\brequire\b/u;
+// Modules Lando supplies to author code; they do not read the environment while a Landofile loads.
+const HOST_SUPPLIED_MODULE = /^(?:@lando\/sdk|effect)(?:\/|$)/u;
+const LOCAL_MODULE_SUFFIXES = ["", ".ts", ".tsx", ".mts", ".js", ".mjs", "/index.ts", "/index.js"] as const;
+
+const localModuleSource = async (
+  specifier: string,
+): Promise<{ path: string; content: string } | undefined> => {
+  for (const suffix of LOCAL_MODULE_SUFFIXES) {
+    const file = Bun.file(specifier + suffix);
+    if (await file.exists()) return { path: specifier + suffix, content: await file.text() };
+  }
+  return undefined;
+};
+
+/**
+ * Whether the Landofile or a local module it imports can read the environment outside ctx.env.
+ * Package imports other than the host-supplied modules count as reading it: Lando cannot inspect them.
+ */
+const readsAmbientEnvironment = async (
+  filePath: string,
+  content: string,
+  seen: Set<string> = new Set(),
+): Promise<boolean> => {
+  if (seen.has(filePath)) return false;
+  seen.add(filePath);
+  if (AMBIENT_ENVIRONMENT_REFERENCE.test(content)) return true;
+  for (const entry of scanImports(content)) {
+    if (HOST_SUPPLIED_MODULE.test(entry.path)) continue;
+    if (!isRelative(entry.path)) return true;
+    const local = await localModuleSource(resolve(dirname(filePath), entry.path));
+    if (local === undefined || (await readsAmbientEnvironment(local.path, local.content, seen))) return true;
+  }
+  return false;
+};
 
 export const loadLandofileTs = Effect.fnUntraced(function* (
   options: LoadLandofileTsOptions,
 ): Effect.fn.Return<unknown, LandofileSandboxError | LandofileTimeoutError | LandofileParseError> {
   yield* sandboxScan(options.filePath, options.appRoot, options.content);
-  const timeoutMs = options.timeoutMs ?? resolveTimeoutMs();
-  return yield* Effect.timeoutOrElse(evaluateImport(options.filePath), {
+  // Reads that bypass ctx.env cannot be recorded, so the load depends on the whole environment.
+  // A module graph Lando cannot analyze counts as reading the environment.
+  if (
+    options.environmentRecorder !== undefined &&
+    (yield* Effect.tryPromise(() => readsAmbientEnvironment(options.filePath, options.content)).pipe(
+      Effect.orElseSucceed(() => true),
+    ))
+  )
+    options.environmentRecorder.recordComplete();
+  const timeoutMs = options.timeoutMs ?? resolveTimeoutMs(options.env);
+  const env =
+    options.environmentRecorder?.view ??
+    Object.freeze({
+      ...(options.env !== undefined ? hostExpressionEnvironment(options.env) : hostExpressionEnvironment()),
+    });
+  return yield* Effect.timeoutOrElse(evaluateImport(options.filePath, env), {
     duration: Duration.millis(timeoutMs),
     orElse: () =>
       Effect.fail(

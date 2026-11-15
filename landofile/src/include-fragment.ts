@@ -53,6 +53,7 @@ export const parseFragment = (
         policy: fragment.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
         pendingSites: ctx.pendingSites,
         recorder: ctx.recorder,
+        environmentRecorder: ctx.loadScope?.environmentRecorder,
         ...(fragment.kind === "compose" ? { defaultServiceType: "compose" } : {}),
       }).pipe(
         Effect.map((resolved) => ({

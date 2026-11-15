@@ -29,6 +29,7 @@ import type { Context } from "effect";
 import { Clock, Effect, Schema } from "effect";
 import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
 import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { CORE_VERSION } from "../version.ts";
 import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
 import { appPlanCachePath } from "./paths.ts";
@@ -37,7 +38,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 52n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 53n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -234,13 +235,17 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   }
 };
 
-const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>): boolean => {
+const versionConstraintsUsable = (
+  entries: ReadonlyArray<VersionConstraintEntry>,
+  env: Readonly<Record<string, string | undefined>>,
+): boolean => {
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   if (evaluation.invalid.length > 0) return false;
-  return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
+  return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(env);
 };
 
 export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly cacheRoot: string;
   readonly appName: string;
@@ -269,7 +274,13 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   if (payload === null) return null;
   if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
   if (!isVersionConstraintEntryArray(payload.versionConstraints)) return null;
-  if (!versionConstraintsUsable(payload.versionConstraints)) return null;
+  if (
+    !versionConstraintsUsable(
+      payload.versionConstraints,
+      input.env ?? (yield* HostExecutionDefaults)?.env ?? { ...process.env },
+    )
+  )
+    return null;
   if (!Schema.is(Schema.Array(ShadowHostCheck))(payload.shadowHostChecks)) return null;
   for (const check of payload.shadowHostChecks) {
     if ((yield* canShadowHostPath(check.path, input.fileSystem)) !== check.shadowed) return null;

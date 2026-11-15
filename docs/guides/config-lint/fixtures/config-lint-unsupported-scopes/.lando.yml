@@ -1,0 +1,18 @@
+# lando-lint: expect-invalid deps is a refused tooling key and the commands read deferred invocation scopes
+name: lint-unsupported-scopes
+tooling:
+  stamp:
+    description: Reads a scope Lando does not provide yet
+    service: ":host"
+    cmd: echo "built {{ timestamp.now }}"
+  hash:
+    description: Reads another one from a step
+    service: ":host"
+    cmds:
+      - echo "{{ checksum.sources }}"
+  build:
+    description: Declares a refused task key
+    service: ":host"
+    deps:
+      - stamp
+    cmd: echo build

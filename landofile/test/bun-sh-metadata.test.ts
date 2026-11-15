@@ -59,31 +59,43 @@ test("uses portable environment suffixes independently for flags and arguments",
   expect(result.inputEnvSuffixes).toEqual({ flags: { "a.é-b": "A___B" }, args: { "a.é-b": "A___B" } });
 });
 
-const conflictingMetadata: readonly BunShellScriptFrontMatter[] = [
-  { flags: { "dry-run": {}, dry_run: {} } },
-  { args: { release: {}, RELEASE: {} } },
-  { flags: { a: { alias: "b" }, b: {} } },
-  { flags: { a: { required: true, default: "x" } } },
-  { flags: { a: { boolean: true, default: "true" } } },
-  { flags: { a: { boolean: true, choices: ["x"] } } },
-  { flags: { a: { default: "x", choices: ["y"] } } },
-  { args: { a: { order: 0 }, b: {} } },
-  { args: { a: { order: 0 }, b: { order: 0 } } },
-  { args: { a: {}, b: { required: true } } },
-  { args: { a: { required: true, default: "x" } } },
-];
-test.each(conflictingMetadata)("rejects conflicting metadata with script provenance: %j", (frontMatter) => {
-  // Given
-  const input = script(frontMatter);
-  // When
-  const result = normalizeBunShellScript(input);
-  // Then
-  expect(Result.isFailure(result)).toBe(true);
-  if (Result.isFailure(result)) {
-    expect(result.failure).toBeInstanceOf(BunShellScriptFrontMatterError);
-    expect(result.failure.path).toBe(input.path);
-  }
-});
+const conflictingMetadata: readonly (readonly [BunShellScriptFrontMatter, readonly (string | number)[][]])[] =
+  [
+    [{ flags: { "dry-run": {}, dry_run: {} } }, [["flags", "dry_run"]]],
+    [{ args: { release: {}, RELEASE: {} } }, [["args", "RELEASE"]]],
+    [{ flags: { a: { alias: "b" }, b: {} } }, [["flags", "a", "alias"]]],
+    [{ flags: { a: { required: true, default: "x" } } }, [["flags", "a", "default"]]],
+    [{ flags: { a: { boolean: true, default: "true" } } }, [["flags", "a", "default"]]],
+    [{ flags: { a: { boolean: true, choices: ["x"] } } }, [["flags", "a", "choices"]]],
+    [{ flags: { a: { default: "x", choices: ["y"] } } }, [["flags", "a", "default"]]],
+    [{ args: { a: { order: 0 }, b: {} } }, [["args", "b", "order"]]],
+    [{ args: { a: { order: 0 }, b: { order: 0 } } }, [["args", "b", "order"]]],
+    [{ args: { a: {}, b: { required: true } } }, [["args", "b", "order"]]],
+    [{ args: { a: { required: true, default: "x" } } }, [["args", "a", "default"]]],
+    [
+      { flags: { a: { alias: "b" }, b: {} }, args: { x: { required: true, default: "hidden" } } },
+      [
+        ["flags", "a", "alias"],
+        ["args", "x", "default"],
+      ],
+    ],
+  ];
+test.each(conflictingMetadata)(
+  "rejects conflicting metadata with script provenance: %j",
+  (frontMatter, paths) => {
+    // Given
+    const input = script(frontMatter);
+    // When
+    const result = normalizeBunShellScript(input);
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(BunShellScriptFrontMatterError);
+      expect(result.failure.path).toBe(input.path);
+      expect(result.failure.issues?.map((issue) => issue.path)).toEqual([...paths]);
+    }
+  },
+);
 
 test("preserves explicit positional ordering from shared tooling semantics", () => {
   // Given

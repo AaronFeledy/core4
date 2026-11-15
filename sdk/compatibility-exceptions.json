@@ -1,5 +1,11 @@
 [
   {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.checks.items.details.anyOf",
+    "justification": "Tooling diagnostics add optional reason and related locations to nested ValidationIssue values, and optional related locations to ConfigLintViolation. The doctor detail variants, discriminators, and existing required fields are unchanged; all previous detail values remain accepted. Focused schema round-trip tests cover the new diagnostic fields. The conservative checker cannot classify this additive change through the details union."
+  },
+  {
     "surface": "schema:PluginDoctorReport",
     "changeKind": "unsupported-keyword",
     "path": "$.context.additionalProperties",

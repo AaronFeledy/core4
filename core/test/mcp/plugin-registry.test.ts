@@ -150,6 +150,7 @@ test("dispatch refuses app:remote:tether even when registered and allowed", asyn
   // Given a registry and effective allowlist that both contain tether
   let executed = 0;
   const entry: McpCommandEntry = {
+    kind: "command" as const,
     spec: {
       id: tether,
       summary: "Tether fixture",

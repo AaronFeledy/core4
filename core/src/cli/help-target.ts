@@ -8,6 +8,7 @@ import {
 } from "../runtime/invocation-context";
 import { emitResultLine } from "./compiled-runtime";
 import { HelpCommandTargetDescriptor } from "./help-command-descriptor";
+import { publishHelpDescriptor } from "./help-publication";
 import { helpRedactor } from "./help-redaction";
 
 export const HelpTargetResult = Schema.Struct({
@@ -32,7 +33,12 @@ export const printMachineHelpTarget = (
         resultSchema: HelpTargetResult,
         outcome: {
           _tag: "success",
-          value: { version: CORE_VERSION, platform: process.platform, arch: process.arch, target },
+          value: {
+            version: CORE_VERSION,
+            platform: process.platform,
+            arch: process.arch,
+            target: publishHelpDescriptor(target, redactor),
+          },
         },
         redactor,
         format,

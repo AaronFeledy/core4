@@ -1,7 +1,5 @@
 import { Schema, SchemaIssue } from "effect";
 import { authoringSource, directiveValue, isSemanticSite } from "./authoring-issue-metadata.ts";
-import { ConfigLintRuleId } from "./config-lint-rules.ts";
-import { LandofileLayer } from "./landofile-reference.ts";
 import { validationExpectation } from "./validation-expectation.ts";
 import { schemaIssueKind } from "./validation-issue-kind.ts";
 import {
@@ -13,75 +11,12 @@ import {
   propertyNames,
   valueAt,
 } from "./validation-issue-projection.ts";
+import { ValidationIssue, type ValidationIssuePath } from "./validation-issue-schema.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
 
+export { ValidationIssue, ValidationIssuePath, ValidationIssueSource } from "./validation-issue-schema.ts";
 export { closestKeys, suggestionForUnknownKey } from "./validation-key-suggestion.ts";
-
-/**
- * Location of a validation issue inside an authored document: object keys
- * as strings, array positions as numbers. The empty path is the document
- * root.
- */
-export const ValidationIssuePath = Schema.Array(Schema.Union([Schema.String, Schema.Number])).annotate({
-  description:
-    "Location of the issue: object keys as strings, array positions as numbers. Empty for the document root.",
-});
-export type ValidationIssuePath = typeof ValidationIssuePath.Type;
-
-/**
- * One problem found while validating an authored file (Landofile, include,
- * recipe manifest, global config). Every validator reports issues in this
- * shape, so text output, JSON envelopes, MCP results, editors, and Standard
- * Schema consumers agree on where a problem is and what it is.
- */
-export const ValidationIssueSource = Schema.Union([
-  Schema.Struct({
-    file: Schema.String.annotate({ description: "Authored Landofile or fragment containing the value." }),
-    layer: LandofileLayer.annotate({ description: "Root layer that contributed the authored value." }),
-    path: ValidationIssuePath.annotate({
-      description: "Original authored path before alias canonicalization or list relocation.",
-    }),
-  }),
-  Schema.Struct({
-    layer: Schema.Literals(["config-file", "config-drop-in"]),
-    file: Schema.String,
-    path: ValidationIssuePath,
-  }),
-  Schema.Struct({
-    layer: Schema.Literal("script"),
-    file: Schema.String,
-    path: ValidationIssuePath,
-  }),
-  Schema.Struct({
-    layer: Schema.Literal("env"),
-    variable: Schema.String,
-    path: ValidationIssuePath,
-  }),
-  Schema.Struct({ layer: Schema.Literal("host"), path: ValidationIssuePath }),
-  Schema.Struct({ layer: Schema.Literal("default"), path: ValidationIssuePath }),
-]);
-export type ValidationIssueSource = typeof ValidationIssueSource.Type;
-
-export const ValidationIssue = Schema.Struct({
-  rule: Schema.optionalKey(ConfigLintRuleId).annotate({
-    description:
-      "Registered diagnostic rule identifier. Plugins must use a registered identifier or omit rule.",
-  }),
-  path: ValidationIssuePath,
-  kind: Schema.optionalKey(Schema.Literals(["type", "value", "missing", "unexpected"])).annotate({
-    description:
-      "Decoder classification: type means the value has the wrong JSON kind for every accepted form; value means the kind fits but a literal, enum, range, pattern, or other check rejects it; missing means a required key is absent; unexpected means the key is not allowed. Omitted when unknown.",
-  }),
-  message: Schema.String.annotate({ description: "Human-readable description of the problem." }),
-  suggestion: Schema.optionalKey(Schema.String).annotate({
-    description: "Likely fix, such as the closest allowed key for an unknown key.",
-  }),
-  source: Schema.optionalKey(ValidationIssueSource).annotate({
-    description: "Physical source of the effective value, when known.",
-  }),
-}).annotate({ identifier: "ValidationIssue" });
-export type ValidationIssue = typeof ValidationIssue.Type;
 
 const PATH_TEXT = /^(?:[A-Za-z_][A-Za-z0-9_-]*)(?:\.(?:[A-Za-z_][A-Za-z0-9_-]*)|\[\d+\])*$/;
 

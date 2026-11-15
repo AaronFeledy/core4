@@ -72,8 +72,10 @@ import {
 import { dispatchPluginUnavailable, tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveTopLevelAliases } from "./spec/command-spec";
+import { refuseToolingInvocation } from "./tooling-refusal";
 import { toolingTypeableName } from "./tooling-route";
-import { toolingRouteFailure, toolingVersionRequested, unavailableScriptError } from "./tooling-router";
+import { toolingRouteFailure, toolingVersionRequested } from "./tooling-router";
+import { unavailableToolingError } from "./tooling-unavailable";
 import { setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
@@ -186,17 +188,35 @@ const runCompiledCli = async (
   const split = splitInvocation(rawArgv, head, policy);
   onLandoGlobals(split.globals);
   const tokens = split.command;
+  if (owner.kind === "tooling" && owner.refusal !== undefined) {
+    await refuseToolingInvocation({
+      route: owner.route,
+      refusal: owner.refusal,
+      split,
+      head,
+      rawArgv,
+      context,
+      configGlobals,
+    });
+    return;
+  }
   const toolingTaskName =
     owner.kind === "tooling"
       ? toolingTypeableName(owner.route.commandId, owner.route.aliasPolicy).primary
       : undefined;
-  const toolingOwnership =
-    owner.kind === "tooling" &&
-    owner.route.disabled !== true &&
-    owner.route.wrapper !== true &&
-    toolingTaskName !== undefined
-      ? { taskName: toolingTaskName }
-      : undefined;
+  let toolingOwnership: { readonly taskName: string } | undefined;
+  if (owner.kind === "tooling" && toolingTaskName !== undefined) {
+    switch (owner.route.availability._tag) {
+      case "Ready":
+        if (owner.route.availability.wrapper !== true) toolingOwnership = { taskName: toolingTaskName };
+        break;
+      case "Disabled":
+      case "Unavailable":
+        break;
+      default:
+        return owner.route.availability satisfies never;
+    }
+  }
   const commandAbsent = owner.kind === "none" && tokens.argv.length === 0 && split.controls.length === 0;
   if (
     await applyInvocationSelections(split.globals, context, configGlobals, {
@@ -393,9 +413,8 @@ const runCompiledCli = async (
     case "tooling": {
       const route = owner.route;
       if (split.help) {
-        const unavailable = await Effect.runPromise(unavailableScriptError(route));
-        if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
-        else if (unavailable !== undefined)
+        const unavailable = await Effect.runPromise(unavailableToolingError(route));
+        if (unavailable !== undefined)
           await renderAliasResolutionFailure(unavailable, context, route.commandId);
         else
           await printToolingHelp(
@@ -410,6 +429,11 @@ const runCompiledCli = async (
         return;
       }
       if (toolingVersionRequested(route, tokens.argv)) {
+        const unavailable = await Effect.runPromise(unavailableToolingError(route));
+        if (unavailable !== undefined) {
+          await renderAliasResolutionFailure(unavailable, context, route.commandId);
+          return;
+        }
         const name = toolingTaskName ?? route.commandId;
         await renderPreCommandFailure({
           context,

@@ -120,6 +120,14 @@ execution. Re-resolve the command and review its new declaration before retrying
 Description-only and body-only changes keep the revision compatible. A direct
 call without a retained revision uses the invocation-authoritative declaration.
 
+A task whose declaration contradicts itself fails `app.tooling` with
+`ToolingCompileError` before anything runs. Its `issues` array holds one
+`ValidationIssue` per finding: a stable `reason` such as `alias-collision`, the
+effective `path`, a `suggestion` for that rule, and `related` locations for a
+conflict. Branch on `reason` instead of parsing `message`. `omittedIssueCount`
+counts findings a bounded diagnostic left out, and `source`, when present, names
+the file and task. Other tasks on the same handle keep working.
+
 App handles retain their resolved Landofile and plan, so a revision check is
 not a request to reload files behind the handle. Resolve a new handle when you
 want edited configuration. See

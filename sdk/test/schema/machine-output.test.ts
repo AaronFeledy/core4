@@ -65,6 +65,24 @@ describe("CommandWarning", () => {
   test("rejects a missing message", () => {
     expect(() => Schema.decodeUnknownSync(CommandWarning)({ code: "x" })).toThrow(Schema.SchemaError);
   });
+
+  test("keeps only code, message, remediation, and context", () => {
+    const warning = {
+      code: "LANDO_TOOLING_INVALID",
+      message: "Task deploy is unavailable.",
+      remediation: "Fix the tooling declaration.",
+      context: { path: ".lando.yml", task: "deploy" },
+    };
+    expect(Schema.decodeUnknownSync(CommandWarning)(Schema.encodeSync(CommandWarning)(warning))).toEqual(
+      warning,
+    );
+    expect(Object.keys(Schema.encodeSync(CommandWarning)(warning)).sort()).toEqual([
+      "code",
+      "context",
+      "message",
+      "remediation",
+    ]);
+  });
 });
 
 describe("CommandResultEnvelope", () => {

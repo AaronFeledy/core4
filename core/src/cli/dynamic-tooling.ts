@@ -138,7 +138,18 @@ const runDynamicBunShellTooling = async (
   context?: CliInvocationContext,
 ): Promise<void> => {
   if (parentSignal?.aborted) return;
-  const { name, appRoot, relativePath, input } = route;
+  const { name, appRoot, relativePath } = route;
+  let input: ToolingInputDeclaration | undefined;
+  switch (route.availability._tag) {
+    case "Ready":
+      input = route.availability.input;
+      break;
+    case "Disabled":
+    case "Unavailable":
+      break;
+    default:
+      return route.availability satisfies never;
+  }
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name, context);
   if (await emitJsonListModeIfRequested(ToolingResult, context)) return;
@@ -298,7 +309,17 @@ export const routeResolvedTooling = async (
         })
       )
         return true;
-      await runDynamicTooling([route.name, ...argv], signal, route.input, context);
+      switch (route.availability._tag) {
+        case "Ready":
+          await runDynamicTooling([route.name, ...argv], signal, route.availability.input, context);
+          break;
+        case "Disabled":
+        case "Unavailable":
+          await runDynamicTooling([route.name, ...argv], signal, undefined, context);
+          break;
+        default:
+          return route.availability satisfies never;
+      }
       return true;
     default:
       return assertNever(route);

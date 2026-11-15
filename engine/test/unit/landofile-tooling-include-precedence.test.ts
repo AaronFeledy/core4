@@ -6,6 +6,7 @@ import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -104,10 +105,12 @@ describe("tooling include precedence", () => {
       },
       appRoot,
     );
-    const commands = compileToolingCommands(resolved.document);
+    const commands = compileToolingCommands(resolved.document, createRedactor("secrets").redactString, {
+      sourcePath: appRoot,
+    });
 
     // Then the root winner is not hidden by stale include provenance
     expect(resolved.document.tooling?.build?.cmd).toBe("root");
-    expect(commands.find((command) => command.id === "app:build")?.hidden).toBe(false);
+    expect(commands.find((command) => command.id === "app:build")?.visibility).toBe("public");
   });
 });

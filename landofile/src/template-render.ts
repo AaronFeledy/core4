@@ -29,6 +29,7 @@ import type { TemplateEngine } from "@lando/sdk/template";
  */
 import { Effect } from "effect";
 
+import type { EnvironmentRecorder } from "./environment-dependencies.ts";
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 
 /** A resolved set of template engines, keyed by engine id. */
@@ -130,6 +131,11 @@ export interface RenderLandofileTemplateOptions {
   readonly registry?: TemplateEngineRegistry;
   /** Override the render context (default: env-only, app level). */
   readonly context?: TemplateRenderContext;
+  /**
+   * When set, `context.env` (or the default env) is the recorder view so template
+   * reads record environment dependencies. Pass the raw env only when no recorder.
+   */
+  readonly environmentRecorder?: EnvironmentRecorder;
 }
 
 /**
@@ -167,11 +173,17 @@ export const renderLandofileTemplate = (
     );
   }
 
+  const base = options.context ?? defaultRenderContext();
+  const env =
+    options.environmentRecorder === undefined
+      ? base.env
+      : (options.environmentRecorder.view as Readonly<Record<string, string>>);
+  const context: TemplateRenderContext = { ...base, env };
   return engine.compile({ id: filePath, source: blanked }).pipe(
     mapFailures((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
     Effect.flatMap((compiled) =>
       engine
-        .render(compiled, options.context ?? defaultRenderContext())
+        .render(compiled, context)
         .pipe(
           mapFailures((error) => parseError(filePath, error.message, error.line, error.column, error.cause)),
         ),

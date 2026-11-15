@@ -1,3 +1,4 @@
+import type { EnvironmentDependencies } from "@lando/landofile/environment-dependencies";
 import { type AppFeatureError, AppFeatureSelectorMatchedNothingError } from "@lando/sdk/errors";
 import {
   type ExpressionContext,
@@ -31,6 +32,7 @@ export const snapshotAppFeatureEnv = (
 ): {
   readonly env: Readonly<Record<string, string>>;
   readonly bindings: Readonly<Record<string, string | null>>;
+  readonly dependencies: EnvironmentDependencies;
 } => {
   const snapshot = Object.freeze({ ...env });
   const names = new Set<string>();
@@ -38,11 +40,13 @@ export const snapshotAppFeatureEnv = (
     const expression = feature.definition.selectors?.fromConfig;
     if (expression === undefined) continue;
     const parsed = parseExpressionEither(expression, { filePath: "<app-feature-selector>" });
-    if (Result.isFailure(parsed)) continue;
+    if (Result.isFailure(parsed))
+      return { env: snapshot, bindings: snapshot, dependencies: { _tag: "Complete" } };
     const dependencies = expressionScopeMembers(parsed.success, "env");
     if (!dependencies.analyzable)
       return {
         env: snapshot,
+        dependencies: { _tag: "Complete" },
         bindings: Object.fromEntries(
           Object.keys(snapshot)
             .sort()
@@ -53,9 +57,11 @@ export const snapshotAppFeatureEnv = (
     for (const segment of parsed.success.segments)
       if (segment.kind === "ShellParamSegment") names.add(segment.name);
   }
+  const sortedNames = [...names].sort();
   return {
     env: snapshot,
-    bindings: Object.fromEntries([...names].sort().map((name) => [name, snapshot[name] ?? null])),
+    dependencies: { _tag: "Names", names: sortedNames },
+    bindings: Object.fromEntries(sortedNames.map((name) => [name, snapshot[name] ?? null])),
   };
 };
 
