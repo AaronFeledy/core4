@@ -141,7 +141,7 @@ The installed executable and npm bin name is `lando4` (`lando4.exe` on Windows) 
 
 The compiled binary has no Bun, Node, or package-manager prerequisite. Runtime bundles and host helper binaries such as Mutagen remain verified on-demand downloads under Lando-owned data paths, not embedded main-binary assets. The in-container helper is the exception: it is embedded (§17.3). The library package assumes a consuming Bun runtime.
 
-Installers MUST resolve platform and channel, verify the signed manifest and artifact, install into the configured or Lando user-data bin directory, and offer matching `lando4 shellenv` output. Setup runs only on explicit `--setup` or `LANDO_AUTO_SETUP=1`; first launch otherwise invites `lando4 setup` and exits successfully. `lando4 uninstall` MUST be confirmed, idempotent, ownership-bounded, and MUST NOT remove provider-owned runtimes or resources.
+Installers MUST resolve platform and channel, verify the signed manifest and artifact, install into the configured or Lando user-data bin directory, and offer matching `lando4 shellenv` output. Setup runs only on explicit `--setup` or `LANDO_AUTO_SETUP=1`; first launch otherwise invites `lando4 setup` and exits successfully. `lando4 uninstall` MUST be confirmed, idempotent, ownership-bounded, and MUST NOT remove provider-owned runtimes or resources. `--purge` removes the containers, networks, and volumes Lando owns and, on the host Docker and Podman runtimes, every image labeled with the purged data root's build store (§6.13.3) before it deletes the cache root; it keeps an image a container still uses or another name tags, reports it, and fails only on a removal or listing error, which keeps the cache root.
 
 ### 17.8 CI release workflow
 
