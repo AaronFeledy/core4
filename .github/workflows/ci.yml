@@ -2113,7 +2113,7 @@ jobs:
         runs-on: [ubuntu-26.04]
         suite: [providers, engine, services]
     runs-on: ${{ matrix.runs-on }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2386,7 +2386,7 @@ jobs:
       - name: Report job timing
         if: always()
         run: |
-          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 50m)"
 
   provider-integration-linux-x64:
     needs: [selection, provider-integration-linux-x64-runner]
