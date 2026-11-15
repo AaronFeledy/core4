@@ -130,6 +130,49 @@ test("diagnostics redact before the total UTF-8 bound and omit whole locations w
   expect(JSON.stringify(result)).not.toContain(secret);
 });
 
+test("a redaction token that matches a schema literal does not fail the read", () => {
+  const records: readonly McpDiagnostic[] = [
+    {
+      commandId: "app:deploy",
+      kind: "tooling",
+      _tag: "ToolingCompileError",
+      message: "Invalid tooling flag",
+    },
+    { commandId: "fixture:load", kind: "plugin", _tag: "PluginLoadError", message: "tooling plugin failed" },
+  ];
+  const result = boundDiagnostics(
+    1,
+    records,
+    createStandaloneRedactor("secrets", { authoritativeTokens: ["tooling"] }),
+  );
+  expect(result.omittedDiagnosticCount).toBe(0);
+  expect(result.diagnostics.map((record) => [record.commandId, record.kind, record.message])).toEqual([
+    ["app:deploy", "tooling", "Invalid [redacted] flag"],
+    ["fixture:load", "plugin", "[redacted] plugin failed"],
+  ]);
+});
+
+test("a tooling diagnostic that fills its own budget still publishes inside the document bound", () => {
+  // 1,933-byte messages keep all eight issues in a ~16,305-byte projection, inside the wrapper overhead.
+  const issues = Array.from({ length: 8 }, (_, index) => ({
+    path: ["tooling", "packed", "flags", `f${index}`],
+    message: "x".repeat(1933),
+    reason: "alias-collision",
+  }));
+  const result = boundDiagnostics(
+    7,
+    [{ commandId: "app:packed", kind: "tooling", _tag: "ToolingCompileError", message: "Packed", issues }],
+    createStandaloneRedactor("secrets"),
+  );
+  const [record] = result.diagnostics;
+  expect(result.omittedDiagnosticCount).toBe(0);
+  expect(record?.message).toBe("Packed");
+  expect(record?.remediation).toBe("Correct the tooling task definition and retry the command.");
+  expect((record?.issues ?? []).length + (record?.omittedIssueCount ?? 0)).toBe(8);
+  expect(record?.omittedIssueCount).toBeGreaterThan(0);
+  expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(16 * 1024);
+});
+
 test("removing a tooling task does not grant its implicit allowance to a selected external plugin", async () => {
   const spec = {
     id: "fixture:replaced",

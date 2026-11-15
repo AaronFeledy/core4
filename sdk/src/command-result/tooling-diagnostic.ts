@@ -33,11 +33,16 @@ export const boundedDiagnosticSummary = (
   return "...";
 };
 
-/** Disclose only this allowlisted contract, after binding all known secrets to the required redactor. */
+/**
+ * Disclose only this allowlisted contract, after binding all known secrets to the required redactor.
+ * `maxBytes` narrows the 16 KiB aggregate bound for a carrier that wraps the diagnostic.
+ */
 export const projectToolingDiagnostic = (
   diagnostic: ToolingDiagnostic,
   redactor: Pick<Redactor, "redactString">,
+  options: { readonly maxBytes?: number } = {},
 ): ToolingDiagnostic => {
+  const maxBytes = Math.min(options.maxBytes ?? MAX_BYTES, MAX_BYTES);
   const text = (value: string) => redactor.redactString(value);
   const path = (value: ValidationIssuePath) =>
     value.map((segment) => (typeof segment === "string" ? text(segment) : segment));
@@ -88,7 +93,7 @@ export const projectToolingDiagnostic = (
         }),
   };
   // Never shorten filenames or identities into plausible but false locations.
-  let result = serializedBytes(withSource, redactor) <= MAX_BYTES ? withSource : summary;
+  let result = serializedBytes(withSource, redactor) <= maxBytes ? withSource : summary;
   for (const issue of diagnostic.issues) {
     if (result.issues.length === MAX_ISSUES) break;
     const sanitized: ValidationIssue = {
@@ -105,7 +110,7 @@ export const projectToolingDiagnostic = (
       issues: [...result.issues, sanitized],
       omittedIssueCount: result.omittedIssueCount - 1,
     };
-    if (serializedBytes(candidate, redactor) <= MAX_BYTES) result = candidate;
+    if (serializedBytes(candidate, redactor) <= maxBytes) result = candidate;
   }
   return {
     _tag: result._tag,
