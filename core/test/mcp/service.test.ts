@@ -288,6 +288,50 @@ describe("McpService.serve", () => {
     expect(replies[0]).toMatchObject({ ok: true });
   });
 
+  test("a tooling task that shares a built-in id is listed and called as the task", async () => {
+    const ran: string[] = [];
+    const config: McpRuntimeConfigShape = {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      commandEntries: [
+        {
+          kind: "command" as const,
+          spec: spec("app:info", () =>
+            Effect.sync(() => {
+              ran.push("built-in");
+              return {};
+            }),
+          ),
+        },
+      ],
+      toolingEntries: [
+        {
+          kind: "tooling" as const,
+          spec: spec("app:info", () =>
+            Effect.sync(() => {
+              ran.push("tooling");
+              return {};
+            }),
+          ),
+        },
+      ],
+      defaultAllowlist: ["app:info"],
+      apps: testAppGenerations(),
+    };
+
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies({
+        config,
+        options: { transport: "stdio", tooling: true },
+        toolId: "app:info",
+      }),
+    );
+
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({ ok: true });
+    expect(ran).toEqual(["tooling"]);
+  });
+
   test("rejects a denied tooling entry when tooling is enabled", async () => {
     let executed = false;
     const config: McpRuntimeConfigShape = {
