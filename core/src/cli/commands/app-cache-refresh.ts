@@ -47,6 +47,7 @@ import { CliInvocation } from "../../runtime/invocation-context";
 import { loadUserLandofile } from "../app-resolution";
 import { commandAliasRegistrationError } from "../command-alias-policy";
 import { BUILT_IN_COMMAND_IDS } from "../generated/command-ids";
+import { isToolingDiagnostic } from "../tooling-unavailable";
 
 export interface AppCacheRefreshOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
@@ -175,7 +176,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
     .flatMap((entry) => {
       if (entry.sourceKind !== "tooling" || entry._tag !== "Unavailable") return [];
       const diagnostic = entry.diagnostic;
-      if (!("issues" in diagnostic)) return [];
+      if (!isToolingDiagnostic(diagnostic)) return [];
       const task = entry.id.slice("app:".length);
       return [
         {
