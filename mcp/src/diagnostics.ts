@@ -1,4 +1,4 @@
-import { projectToolingDiagnostic } from "@lando/sdk/command-result";
+import { boundedDiagnosticSummary, projectToolingDiagnostic } from "@lando/sdk/command-result";
 import { ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
@@ -69,8 +69,10 @@ const redactRecord = (record: McpDiagnostic, redactor: Redactor): McpDiagnostic 
   const text = (value: string) => redactor.redactString(value);
   return {
     ...record,
-    message: text(record.message),
-    ...(record.remediation === undefined ? {} : { remediation: text(record.remediation) }),
+    message: boundedDiagnosticSummary(text(record.message), redactor),
+    ...(record.remediation === undefined
+      ? {}
+      : { remediation: boundedDiagnosticSummary(text(record.remediation), redactor) }),
     ...(record.source === undefined
       ? {}
       : { source: { path: text(record.source.path), task: text(record.source.task) } }),

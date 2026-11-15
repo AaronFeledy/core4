@@ -22,6 +22,7 @@ import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest
 import { HelpCommandDescriptor, toolingHelpFields } from "./help-command-descriptor";
 import { commandHelpInput } from "./help-command-input";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
+import { publishHelpCatalog } from "./help-publication";
 import { helpRedactor, redactHelpText } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
@@ -204,7 +205,10 @@ export const printHelpCatalogJson = (
       const line = yield* encodeCommandResult({
         command: HELP_CATALOG_COMMAND,
         resultSchema: HelpCatalogResult,
-        outcome: { _tag: "success", value: buildHelpCatalog(cache, metadata, plugins) },
+        outcome: {
+          _tag: "success",
+          value: publishHelpCatalog(buildHelpCatalog(cache, metadata, plugins), redactor),
+        },
         redactor,
         format,
       });

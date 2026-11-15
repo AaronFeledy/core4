@@ -4,6 +4,7 @@ import { boundDiagnostics, pluginDiagnostics } from "@lando/mcp/service";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { Effect, Option } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
+import { publishDiagnosticSummary } from "../../diagnostic-publication";
 import { buildMcpListResult } from "./mcp-list";
 import {
   type McpCommandRegistry,
@@ -60,7 +61,10 @@ export const listMcpCatalog = Effect.fnUntraced(function* (
     deny: options.deny,
     tooling: options.tooling,
     diagnostics: [
-      ...(registry.generation === undefined ? (registry.diagnostics ?? []) : diagnostics.diagnostics),
+      ...(registry.generation === undefined
+        ? (registry.diagnostics ?? []).map((record) => publishDiagnosticSummary(record, redactor))
+        : []),
+      ...diagnostics.diagnostics,
       ...pendingAllowanceDiagnostics(
         pending.filter((id) => !policy.deny.has(id)),
         redactor,
