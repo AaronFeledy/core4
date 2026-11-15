@@ -1,5 +1,5 @@
 import { isMcpDestructiveCommand } from "@lando/mcp/allowlist";
-import { computeEffectiveAllowlist } from "@lando/mcp/catalog";
+import { computeEffectiveAllowlist, selectMcpOwners } from "@lando/mcp/catalog";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { McpDiagnostic } from "@lando/mcp/service";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
@@ -78,9 +78,12 @@ export const buildMcpListResult = (input: BuildMcpListResultInput): McpListResul
   });
   const toolsById = new Map<string, McpListTool>();
 
-  for (const entry of [...input.commandEntries, ...toolingEntries]) {
+  for (const entry of selectMcpOwners([
+    ...input.commandEntries.map((entry) => ({ ...entry, kind: "command" as const })),
+    ...toolingEntries.map((entry) => ({ ...entry, kind: "tooling" as const })),
+  ])) {
     const id = entry.spec.id;
-    if (effective.ids.has(id) && !toolsById.has(id)) {
+    if (effective.ids.has(id)) {
       toolsById.set(id, {
         id,
         summary: entry.spec.summary,

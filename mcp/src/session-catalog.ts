@@ -4,7 +4,12 @@ import * as McpSchema from "effect/ai/McpSchema";
 import type * as McpServer from "effect/ai/McpServer";
 
 import { type McpAppGeneration, generationEntries } from "./apps";
-import { type McpAllowPolicy, isMcpEntryAuthorized, isMcpToolingAuthorized } from "./catalog";
+import {
+  type McpAllowPolicy,
+  isMcpEntryAuthorized,
+  isMcpToolingAuthorized,
+  selectMcpOwners,
+} from "./catalog";
 import {
   type McpDiagnostic,
   type McpDiagnostics,
@@ -114,7 +119,7 @@ export const makeSessionCatalog = Effect.fnUntraced(function* (input: {
     return previous === undefined ? ("added" as const) : ("changed" as const);
   });
 
-  for (const entry of input.entries)
+  for (const entry of selectMcpOwners(input.entries))
     if (authorized(entry)) setVariant(entry.spec.id, SESSION_VARIANT, makeToolVariant(entry, undefined));
 
   const update = Effect.fnUntraced(function* (value: {

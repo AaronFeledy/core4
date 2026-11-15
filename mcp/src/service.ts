@@ -18,6 +18,7 @@ import {
   computeEffectiveAllowlist,
   isMcpEntryAuthorized,
   makeMcpAllowPolicy,
+  selectMcpOwners,
   toDescriptor,
 } from "./catalog";
 import type { McpDiagnostic, McpToolingCatalog } from "./diagnostics";
@@ -79,7 +80,7 @@ const sessionAllowPolicy = (
   });
 
 const catalogOf = (entries: ReadonlyArray<McpCommandEntry>, policy: McpAllowPolicy): McpCatalog => ({
-  tools: entries
+  tools: selectMcpOwners(entries)
     .filter((entry) => isMcpEntryAuthorized(policy, entry))
     .map((entry) => toDescriptor(entry.spec))
     .sort((left, right) => left.toolId.localeCompare(right.toolId)),
@@ -169,7 +170,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           payloadValues,
           handleMemoryPressure: onMemoryPressure,
           deps: {
-            registry: new Map(entries.map((entry) => [entry.spec.id, entry])),
+            registry: new Map(selectMcpOwners(entries).map((entry) => [entry.spec.id, entry])),
             effective: allowlist.ids,
             allowlistSource: options.tooling === true ? `${allowlist.source}+tooling` : allowlist.source,
             redactor,

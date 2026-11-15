@@ -19,6 +19,7 @@ import {
   isMcpEntryAuthorized,
   isMcpIdAuthorizable,
   isMcpToolingAuthorized,
+  selectMcpOwners,
 } from "./catalog";
 import type { McpDispatchDeps, McpToolSelection } from "./dispatch";
 import { mcpToolNotAllowedError } from "./dispatch-outcome";
@@ -59,7 +60,10 @@ export const selectCallOwner = Effect.fnUntraced(function* (
   const { toolId } = call;
   // No owner of a denied or never-allowed id can run, so its app is never built.
   // A tooling task shadows a same-id command here exactly as it does in tools/list and dispatch.
-  const knownOwner = session.catalog.toolingOwner(toolId) ?? session.sessionOwners.get(toolId);
+  const knownOwner = selectMcpOwners<McpCommandEntry>([
+    session.sessionOwners.get(toolId),
+    session.catalog.toolingOwner(toolId),
+  ])[0];
   let authorizable: boolean;
   switch (knownOwner?.kind) {
     case "tooling":
@@ -88,7 +92,10 @@ export const selectCallOwner = Effect.fnUntraced(function* (
   }
   const { generation, publication } = leased.value;
   call.published(generation.key, publication);
-  const sessionOwner = session.catalog.toolingOwner(toolId) ?? session.sessionOwners.get(toolId);
+  const sessionOwner = selectMcpOwners<McpCommandEntry>([
+    session.sessionOwners.get(toolId),
+    session.catalog.toolingOwner(toolId),
+  ])[0];
   const owner =
     sessionOwner === undefined
       ? generation.commands.get(toolId)

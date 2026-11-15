@@ -11,7 +11,7 @@ import * as McpSchema from "effect/ai/McpSchema";
 import * as McpServer from "effect/ai/McpServer";
 import { stringifyBoundedJson } from "./bounded-json";
 import { type McpCallSelectionDeps, type McpCallTarget, selectCallOwner } from "./call-selection";
-import type { McpAllowPolicy } from "./catalog";
+import { type McpAllowPolicy, selectMcpOwners } from "./catalog";
 import { confirmationPrompt } from "./confirmation";
 import type { McpDispatchDeps, McpNotify } from "./dispatch";
 import { dispatchTool, registerToolInputRedaction } from "./dispatch";
@@ -105,7 +105,10 @@ export const serveSession = Effect.fnUntraced(
                   message,
                 });
               });
-              const currentEntry = catalog.toolingOwner(toolId) ?? session.deps.registry.get(toolId);
+              const currentEntry = selectMcpOwners([
+                session.deps.registry.get(toolId),
+                catalog.toolingOwner(toolId),
+              ])[0];
               const registry =
                 currentEntry === undefined
                   ? session.deps.registry
