@@ -27,7 +27,8 @@
     "./testing": "./src/testing.ts",
     "./private-file-access": "./src/private-file-access.ts",
     "./service": "./src/service.ts",
-    "./volume-initialization": "./src/volume-initialization.ts"
+    "./volume-initialization": "./src/volume-initialization.ts",
+    "./volume-lock": "./src/volume-lock.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "state-store"],

@@ -22,6 +22,21 @@ export const DATABASE_FAMILY_DEFAULT_PORTS = {
   mssql: 1433,
 } as const satisfies Record<DatabaseFamily, number>;
 
+/**
+ * Arguments every Lando-generated client of a family passes before caller arguments when it
+ * connects to 127.0.0.1 inside the database container. MariaDB 11.4+ clients disable server
+ * certificate verification on their own for a `MYSQL_PWD` login and warn on every run, so
+ * MariaDB clients state that choice explicitly; TLS stays available. MySQL clients reject the
+ * option, and remote connections keep verifying the server.
+ */
+export const DATABASE_FAMILY_LOCAL_CLIENT_ARGS = {
+  mysql: [],
+  mariadb: ["--skip-ssl-verify-server-cert"],
+  postgres: [],
+  mongodb: [],
+  mssql: [],
+} as const satisfies Record<DatabaseFamily, readonly string[]>;
+
 /** Native aliases must agree, not override each other; only the service type reads them. */
 export const DATABASE_FAMILY_ENV_KEYS = {
   mysql: {

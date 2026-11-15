@@ -39,6 +39,11 @@ test.each([
       expect(task?.cmd).toContain("applied-user");
       expect(task?.cmd).toContain("applied-db");
     }
+    if (family === "mariadb") {
+      expect(task?.cmd).toContain("--skip-ssl-verify-server-cert");
+    } else {
+      expect(task?.cmd ?? []).not.toContain("--skip-ssl-verify-server-cert");
+    }
   }
   expect(
     definition?.toolingForConnection?.(ServiceName.make("existing-db"), {

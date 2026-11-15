@@ -48,6 +48,7 @@ const OPTIONAL_FIELDS = [
   "fileSyncTargets",
   "hostProxy",
   "serviceInit",
+  "volumeArchive",
 ] as const;
 
 const COMPOSE_PRESERVED_PATH_KEYS = ["depends_on.*.restart", "healthcheck.start_interval"] as const;
@@ -164,7 +165,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(38);
+    expect(actual).toHaveLength(39);
   });
 
   test("defaults architectureEmulation to false when omitted", () => {

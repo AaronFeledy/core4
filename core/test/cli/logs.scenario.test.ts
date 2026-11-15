@@ -232,6 +232,8 @@ const makeLogsLayer = (
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),
     copyFromService: () => Stream.die("not used"),
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.die("not used"),
     importArtifact: () => Effect.die("not used"),
   };
