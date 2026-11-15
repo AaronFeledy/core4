@@ -744,6 +744,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: [],
         volumesRemoved: false,
         snapshotsRemoved: 0,
+        builtImages: { removed: 0, released: 0, inUse: [] },
       });
       expect(harness.destroyCalls).toEqual([]);
       expect(harness.desiredLoads).toEqual([]);
@@ -888,6 +889,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: [],
         volumesRemoved: false,
         snapshotsRemoved: 0,
+        builtImages: { removed: 0, released: 0, inUse: [] },
       });
       expect(second).toEqual(first);
       expect(harness.destroyCalls).toEqual([]);
@@ -947,6 +949,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: [],
         volumesRemoved: true,
         snapshotsRemoved: 0,
+        builtImages: { removed: 0, released: 0, inUse: [] },
       });
       expect(harness.removedVolumes).toEqual([{ store: "database", generation: "generation-database" }]);
     });

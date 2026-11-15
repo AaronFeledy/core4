@@ -7,6 +7,8 @@ import { producedImagePresent } from "../../src/services/build-artifact-cache.ts
 import type { ArtifactBuildResult } from "../../src/services/build-results.ts";
 
 const complete: ArtifactBuildResult = {
+  owner: "owner",
+  providerId: "test",
   phase: "artifact",
   buildKey: "produced-image-key",
   service: ServiceName.make("web"),

@@ -32,9 +32,9 @@ const makeLayer = (selected: string[]) => {
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([plan.provider]),
         capabilities: Effect.succeed(fallback.capabilities),
-        select: () =>
+        select: (target) =>
           Effect.sync(() => {
-            selected.push("registry");
+            if (typeof target !== "string") selected.push("registry");
             return fallback;
           }),
       }),

@@ -4,6 +4,11 @@ import { Effect } from "effect";
 
 import { planDesiredApp } from "../landofile/app-resolution.ts";
 import { appSteps } from "../services/build-app-plan.ts";
+import {
+  type ArtifactBuildResult,
+  artifactOwnerKey,
+  openArtifactBuildResults,
+} from "../services/build-artifact-results.ts";
 import { BuildOwner } from "../services/build-owner.ts";
 import { type BuildResultEntry, openAppBuildResults } from "../services/build-results.ts";
 import { makeBuildTranscriptAppDir, readBuildTranscriptLines } from "../services/build-transcript.ts";
@@ -21,16 +26,20 @@ export type BuildLogsAppResult = LogsAppResult & {
 };
 
 const latestEntryFor = (
-  entries: ReadonlyArray<BuildResultEntry>,
-  input: Pick<BuildResultEntry, "service" | "phase"> & { readonly step?: string },
-): BuildResultEntry | undefined => {
+  entries: ReadonlyArray<BuildResultEntry | ArtifactBuildResult>,
+  input: {
+    readonly service: BuildResultEntry["service"];
+    readonly phase: "app" | "artifact";
+    readonly step?: string;
+  },
+): BuildResultEntry | ArtifactBuildResult | undefined => {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (
       entry !== undefined &&
       entry.service === input.service &&
       entry.phase === input.phase &&
-      entry.step === input.step
+      (entry.phase === "app" ? entry.step : undefined) === input.step
     ) {
       return entry;
     }
@@ -56,7 +65,12 @@ export const buildLogsApp = Effect.fn("AppOperation.buildLogs")(function* (
   // `lando logs` plans the app in the current directory, which is never a scratch app.
   const owner = BuildOwner.fromPlan(plan);
   const bucket = yield* openAppBuildResults(stateStore, owner);
-  const entries = (yield* bucket.get) ?? [];
+  const entries = [
+    ...((yield* bucket.get) ?? []),
+    ...((yield* (yield* openArtifactBuildResults(stateStore)).get)?.results ?? []).filter(
+      (entry) => entry.owner === artifactOwnerKey(owner),
+    ),
+  ];
   const appDir = makeBuildTranscriptAppDir({
     userDataRoot: paths.roots.userDataRoot,
     owner,
@@ -64,7 +78,7 @@ export const buildLogsApp = Effect.fn("AppOperation.buildLogs")(function* (
   const lines: LogsAppLine[] = [];
   const steps = appSteps(plan);
 
-  const append = Effect.fnUntraced(function* (entry: BuildResultEntry, source: string) {
+  const append = Effect.fnUntraced(function* (entry: BuildResultEntry | ArtifactBuildResult, source: string) {
     const transcript = yield* readBuildTranscriptLines({
       providerId: String(plan.provider),
       userDataRoot: paths.roots.userDataRoot,

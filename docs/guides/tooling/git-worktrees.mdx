@@ -147,7 +147,8 @@ lando apps:gc --prune --volumes
 lando doctor
 ```
 
-Add `--purge-caches` to delete cache volumes too. For only this worktree, use
+Add `--purge-caches` to delete cache volumes and built images too. Without it,
+Lando keeps the newest image it built for each service for up to seven days. For only this worktree, use
 `lando destroy --root /path/to/shop-feature --volumes` instead.
 
 <Guide>

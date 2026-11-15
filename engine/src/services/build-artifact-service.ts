@@ -1,14 +1,19 @@
-import { redactProviderError } from "@lando/redaction/provider-error";
 import { mapFailures } from "@lando/sdk/command-result";
-import { ArtifactBuildError, ProviderInternalError } from "@lando/sdk/errors";
+import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { EventService, PathsService, RuntimeProviderShape, StateStore } from "@lando/sdk/services";
+import {
+  type EventService,
+  PathsService,
+  type RuntimeProviderShape,
+  type StateStore,
+} from "@lando/sdk/services";
 import { Cause, type Context, DateTime, Effect, Exit } from "effect";
-import { buildAppKind, isScratchPlan } from "./build-app-kind.ts";
 import {
   buildStepFor,
   producedImagePresent,
+  serviceWithCachedArtifact,
   serviceWithResolvedDigest,
+  sourceArtifactReceipt,
   sourceIdentityMatches,
 } from "./build-artifact-cache.ts";
 import {
@@ -16,19 +21,21 @@ import {
   publishArtifactBuildStepSkip,
   redactedBuildContext,
 } from "./build-artifact-events.ts";
-import { runProviderBuild, serviceWithArtifact } from "./build-artifact-runner.ts";
+import { artifactBuildFailure } from "./build-artifact-failure.ts";
+import { withBuiltArtifactsLock } from "./build-artifact-lock.ts";
+import { BUILT_ARTIFACT_STORE_LABEL, artifactBuildName } from "./build-artifact-name.ts";
+import { openArtifactBuildRecording } from "./build-artifact-recording.ts";
+import {
+  type ArtifactBuildResult,
+  artifactOwnerKey,
+  openArtifactBuildResults,
+  useArtifactBuildResult,
+} from "./build-artifact-results.ts";
+import { dispatchesArtifactBuild, runProviderBuild, serviceWithArtifact } from "./build-artifact-runner.ts";
 import { artifactBuildStepsFor } from "./build-key.ts";
 import { BuildOwner } from "./build-owner.ts";
 import type { BuildRedaction } from "./build-redaction.ts";
-import { buildFailureRemediation, buildRemediationSuffix } from "./build-remediation.ts";
-import {
-  buildResultsError,
-  findCompleteBuildResult,
-  markBuildResultUsed,
-  openAppBuildResults,
-  openScratchBuildResults,
-  recordBuildResult,
-} from "./build-results.ts";
+import { buildResultsError } from "./build-results.ts";
 import { openBuildStepOutput } from "./build-step-output.ts";
 import type { BuildTaskProgress } from "./build-task-progress.ts";
 import { buildTranscriptExists, makeBuildTranscriptPath } from "./build-transcript.ts";
@@ -56,6 +63,9 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
   readonly redaction: BuildRedaction;
   readonly service: ServicePlan;
   readonly stateStore: Context.Service.Shape<typeof StateStore>;
+  readonly storeKey: string;
+  readonly cachedArtifacts: readonly ArtifactBuildResult[];
+  readonly activity: { dispatched: boolean; dropped: boolean };
 }) {
   const { events, paths, progress, provider, plan, redaction, service, stateStore } = input;
   return yield* Effect.scoped(
@@ -74,49 +84,65 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
           ? plan
           : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
       const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
-      const started = performance.now();
-      const bucket = yield* (
-        isScratchPlan(plan)
-          ? openScratchBuildResults(stateStore)
-          : openAppBuildResults(stateStore, BuildOwner.fromPlan(plan))
-      ).pipe(mapFailures((cause) => buildResultsError(provider.id, cause)));
-      const cached = yield* bucket.get.pipe(mapFailures((cause) => buildResultsError(provider.id, cause)));
-      if (!input.refresh && service.pullPolicy !== "build") {
-        const complete = findCompleteBuildResult(cached ?? [], {
-          buildKey: step.buildKey,
-          phase: step.phase,
-          service: service.name,
-        });
-        if (
-          complete?.artifactRef !== undefined &&
-          sourceIdentityMatches(complete, service, sourceArtifact) &&
-          (yield* producedImagePresent(provider, complete))
-        ) {
-          // The output that is in use must be the newest entry: never age out a key the app runs.
-          yield* markBuildResultUsed(bucket, complete).pipe(
-            mapFailures((cause) => buildResultsError(provider.id, cause)),
-          );
+      const owner = artifactOwnerKey(BuildOwner.fromPlan(plan));
+      const bucket = yield* openArtifactBuildResults(stateStore).pipe(
+        mapFailures((cause) => buildResultsError(provider.id, cause)),
+      );
+      if (
+        !input.refresh &&
+        service.pullPolicy !== "build" &&
+        input.cachedArtifacts.some(
+          (entry) =>
+            entry.providerId === provider.id &&
+            entry.service === service.name &&
+            entry.buildKey === step.buildKey &&
+            entry.outcome === "complete",
+        )
+      ) {
+        const hit = yield* withBuiltArtifactsLock(
+          useArtifactBuildResult(
+            bucket,
+            { owner, providerId: String(provider.id), buildKey: step.buildKey, service: service.name },
+            (candidate) =>
+              sourceIdentityMatches(candidate, service, sourceArtifact)
+                ? producedImagePresent(provider, candidate)
+                : Effect.succeed(false),
+          ),
+        ).pipe(
+          Effect.provideService(PathsService, paths),
+          mapFailures((cause) => buildResultsError(provider.id, cause)),
+        );
+        if (hit !== undefined) {
+          const complete = hit.entry;
+          input.activity.dropped ||= hit.dropped.length > 0;
           // A cache hit advertises the transcript recorded by the run that produced it and opens nothing.
           const recordedTranscript = (yield* buildTranscriptExists(complete.transcriptPath))
             ? complete.transcriptPath
             : undefined;
           yield* progress.startTask(service, recordedTranscript);
           yield* publishArtifactBuildStepSkip(events, context, step);
-          const digest =
-            complete.artifactDigest ??
-            (service.artifact?.kind === "ref" && service.artifact.ref === complete.artifactRef
-              ? service.artifact.digest
-              : undefined);
-          const cachedService = serviceWithArtifact(service, {
-            providerId: plan.provider,
-            ref: complete.artifactRef,
-            ...(digest === undefined ? {} : { digest }),
-            ...(complete.artifactOrigin === undefined ? {} : { origin: complete.artifactOrigin }),
-          });
           yield* progress.completeTask(service, `${String(service.name)} cached`);
-          return { service: cachedService, dispatched: false };
+          return { service: serviceWithCachedArtifact(service, complete), dispatched: false };
         }
       }
+
+      const builds = dispatchesArtifactBuild(resolvedService);
+      const ref = artifactBuildName(input.storeKey, provider.id, service.name, step.buildKey);
+      const intendedRef =
+        !builds && resolvedService.artifact?.kind === "ref" ? resolvedService.artifact.ref : ref;
+      const receipt = {
+        owner,
+        providerId: String(provider.id),
+        buildKey: step.buildKey,
+        service: service.name,
+        phase: "artifact" as const,
+        artifactRef: intendedRef,
+        transcriptPath,
+        ...(builds ? { artifactOrigin: "build" as const } : {}),
+      };
+      const recording = yield* openArtifactBuildRecording(bucket, receipt, input.activity).pipe(
+        Effect.provideService(PathsService, paths),
+      );
 
       // Open the recorder before announcing the task so the advertised transcript is being written.
       const output = yield* openBuildStepOutput({
@@ -138,11 +164,14 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
         timestamp: yield* timestamp,
       });
 
+      if (builds) yield* recording.dispatch;
       const artifact = yield* runProviderBuild({
+        labels: { [BUILT_ARTIFACT_STORE_LABEL]: input.storeKey },
         provider,
         plan: resolvedPlan,
         service: resolvedService,
         buildKey: step.buildKey,
+        ref,
         ...(sourceArtifact === undefined ? {} : { resolvedSource: sourceArtifact }),
         onOutput: (text) =>
           output.write("stdout", encoder.encode(text)).pipe(
@@ -165,42 +194,14 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
         Effect.tapError((failure) =>
           output.end.pipe(Effect.andThen(output.note(`Error: ${failure.message}`)), Effect.ignore),
         ),
-        mapFailures((failure) => {
-          if (failure._tag !== "ArtifactBuildError") {
-            return redactProviderError(failure, redaction.redactor);
-          }
-          const outputTail = output.tail();
-          return redactProviderError(
-            new ArtifactBuildError({
-              providerId: failure.providerId,
-              operation: failure.operation,
-              message: failure.message,
-              ...(failure.details === undefined ? {} : { details: failure.details }),
-              ...(failure.cause === undefined ? {} : { cause: failure.cause }),
-              service: String(service.name),
-              transcriptPath,
-              ...(outputTail === undefined ? {} : { outputTail }),
-              remediation: buildFailureRemediation(
-                failure.remediation,
-                buildRemediationSuffix(buildAppKind(plan), String(service.name), transcriptPath),
-              ),
-            }),
-            redaction.redactor,
-          );
-        }),
-        Effect.tapError(() =>
-          recordBuildResult(bucket, {
-            buildKey: step.buildKey,
-            service: service.name,
-            phase: step.phase,
-            outcome: "fail",
-            durationMs: performance.now() - started,
+        mapFailures((failure) =>
+          artifactBuildFailure(failure, {
+            redactor: redaction.redactor,
+            plan,
+            service: String(service.name),
             transcriptPath,
-          }).pipe(
-            mapFailures((cause) => buildResultsError(provider.id, cause)),
-            Effect.exit,
-            Effect.asVoid,
-          ),
+            outputTail: output.tail(),
+          }),
         ),
       );
       if (resolvedService.artifact?.kind === "ref" && artifactBuildStepsFor(resolvedService).length === 0) {
@@ -209,27 +210,14 @@ export const buildService = Effect.fn("BuildOrchestrator.buildService")(function
         );
       }
       yield* output.end;
-      yield* recordBuildResult(bucket, {
-        buildKey: step.buildKey,
-        service: service.name,
-        phase: step.phase,
-        outcome: "complete",
-        durationMs: performance.now() - started,
-        artifactRef: artifact.ref,
-        ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
-        ...(artifact.origin === undefined ? {} : { artifactOrigin: artifact.origin }),
-        ...(service.artifact?.kind !== "ref"
-          ? {}
-          : {
-              sourceArtifactRef: service.artifact.ref,
-              ...(sourceArtifact?.digest === undefined
-                ? service.artifact.digest === undefined
-                  ? {}
-                  : { sourceArtifactDigest: service.artifact.digest }
-                : { sourceArtifactDigest: sourceArtifact.digest }),
-            }),
-        transcriptPath,
-      }).pipe(mapFailures((cause) => buildResultsError(provider.id, cause)));
+      yield* recording
+        .complete({
+          artifactRef: artifact.ref,
+          ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
+          ...(artifact.origin === undefined ? {} : { artifactOrigin: artifact.origin }),
+          ...sourceArtifactReceipt(service, sourceArtifact),
+        })
+        .pipe(mapFailures((cause) => buildResultsError(provider.id, cause)));
 
       yield* events.publish({
         _tag: "post-build",

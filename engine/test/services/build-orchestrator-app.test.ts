@@ -14,7 +14,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import {
-  type ArtifactBuildSpec,
+  type ArtifactBuildRequest,
   BuildOrchestrator,
   EventService,
   PathsService,
@@ -377,7 +377,7 @@ describe("BuildOrchestrator artifact phase", () => {
     });
     const provider = {
       ...TestRuntimeProvider,
-      buildArtifact: (spec: ArtifactBuildSpec) => {
+      buildArtifact: (spec: ArtifactBuildRequest) => {
         calls.push(String(spec.service));
         if (spec.service === ServiceName.make("appserver")) {
           return Effect.sleep("20 millis").pipe(Effect.andThen(Effect.fail(failure)));

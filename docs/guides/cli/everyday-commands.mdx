@@ -131,7 +131,8 @@ Already-pulled images can still work without registry access; see
 ## Rebuild a missing Lando-built image
 
 Lando never pulls an image it built for a service, because no registry has it.
-If that image is gone, for example after you prune images, `lando start` fails
+If that image is gone, for example after you prune images with your engine's
+own tools, `lando start` fails
 before creating the container, names the service and the image, and suggests
 the fix. Run it from the app directory:
 
@@ -159,7 +160,19 @@ A mutating command that shells out to another `lando` mutate on the same app reu
 Run it again with `--volumes` when you want those named volumes gone; Lando removes them from what the provider
 still holds, and reports `unchanged` when there is nothing left to remove.
 
-Once the teardown succeeds, `destroy` also removes the app's saved build output. Only this folder's output goes: another checkout that uses the same app name keeps its own. The next `lando start` creates new containers, so it runs the `build.app` steps again. A built image that still exists is reused, not rebuilt. A destroy that fails partway keeps the saved build output, so `lando logs --build` still prints it.
+Once the teardown succeeds, `destroy` also removes the app's saved build output. Only this folder's output goes: another checkout that uses the same app name keeps its own. A destroy that fails partway keeps the saved build output, so `lando logs --build` still prints it.
+
+`destroy` keeps the newest image Lando built for each service for up to seven days. Across all your apps, Lando holds at most ten images this way. A `lando start` in that window reuses the image without building it again. The `build.app` steps still run again in the new containers, so they need whatever those steps download. To remove the kept images right away, add `--purge-caches`.
+
+Lando never removes an image a container still uses, whether or not Lando manages that container, and it never removes images you pulled.
+
+The destroy summary tells you what happened to the built images, with lines like these:
+
+- `Kept 2 built images for reuse for up to 7 days; --purge-caches removes them.`
+- `Removed 3 built images.`
+- `Kept image <name>: used by container <name>.`
+
+With `--format=json`, read `result.builtImages`. `removed` counts the images removed and `released` counts the ones kept for reuse. Each `inUse` entry has the image's `ref`, the `containers` that use it, and the runtime's `reason`.
 
 Snapshots stay with plain `destroy` and `--volumes`. **`--purge` also deletes this folder's catalogued snapshots and their provider-stored data**, even when an earlier destroy left only ownership inventory. Selection uses the volume owner's canonical app root, not the app name, so another worktree's snapshots stay untouched. Native data is removed through the provider that recorded each snapshot; a failed deletion leaves its catalog entry available for retry.
 
@@ -185,7 +198,10 @@ app yet, run `lando apps:gc --prune` without `--volumes`. It removes everything
 else selected by your flags and keeps data volumes, file-sync copies, and their
 ownership journals. Requesting `--volumes` fails that root before deletion.
 Otherwise, add `--volumes` to delete data volumes and file-sync copies
-of app files; add `--purge-caches` to delete caches. Data you keep by leaving off
+of app files; add `--purge-caches` to delete caches. Pruning keeps the newest
+image Lando built for each service for up to seven days, the same way
+`lando destroy` does, and `--purge-caches` removes those images right away.
+Data you keep by leaving off
 `--volumes` is listed in the result. A failed root doesn't prevent the others from
 being cleaned up, but makes the command exit nonzero.
 

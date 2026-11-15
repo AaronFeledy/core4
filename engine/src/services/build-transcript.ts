@@ -51,6 +51,9 @@ export const makeBuildTranscriptAppDir = (input: BuildTranscriptLocationInput): 
     ),
   );
 
+export const makeScratchBuildTranscriptDir = (userDataRoot: string): AbsolutePath =>
+  AbsolutePath.make(join(userDataRoot, "builds", "scratch"));
+
 export const makeBuildTranscriptPhaseDir = (input: BuildTranscriptPhaseInput): AbsolutePath =>
   AbsolutePath.make(join(makeBuildTranscriptAppDir(input), input.phase));
 

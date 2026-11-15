@@ -10,12 +10,9 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Fiber, Queue, Stream } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { appSteps } from "../../src/services/build-app-plan.ts";
+import { openArtifactBuildResults } from "../../src/services/build-artifact-results.ts";
 import { BuildOwner } from "../../src/services/build-owner.ts";
-import {
-  openAppBuildResults,
-  openScratchBuildResults,
-  recordBuildResult,
-} from "../../src/services/build-results.ts";
+import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
 
 test("waits for an app-step dependency before dispatching its dependent", async () => {
@@ -694,11 +691,11 @@ test("treats a user app named scratch-* as a user app", async () => {
             Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.buildApp(plan)),
           );
           const appBucket = yield* openAppBuildResults(stateStore, BuildOwner.fromPlan(plan));
-          const scratchBucket = yield* openScratchBuildResults(stateStore);
+          const scratchBucket = yield* openArtifactBuildResults(stateStore);
           return {
             error,
             appEntries: (yield* appBucket.get) ?? [],
-            scratchEntries: (yield* scratchBucket.get) ?? [],
+            scratchEntries: (yield* scratchBucket.get)?.results ?? [],
           };
         }),
       ).pipe(Effect.provide(makeLayer(provider))),

@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
-import { DateTime, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 import {
-  AppBuildResult,
-  BuildResultEntry,
-  findCompleteBuildResult,
-} from "../../src/services/build-results.ts";
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+  useArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
+import { AppBuildResult, findCompleteBuildResult } from "../../src/services/build-results.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const entry = {
   buildKey: "install-key",
@@ -72,12 +74,17 @@ test.each(["complete", "fail"] as const)(
   },
 );
 
-test("unknown app identity misses without discarding artifact evidence", () => {
+test("unknown app identity misses without discarding artifact evidence", async () => {
   const { step: _, exitCode: _exit, ...artifactFields } = entry;
-  const legacyArtifact = { ...artifactFields, phase: "artifact" as const, artifactRef: "web:built" };
-  const entries = Schema.decodeUnknownSync(Schema.Array(BuildResultEntry))([
+  const artifactEntry = {
+    ...artifactFields,
+    owner: "owner",
+    providerId: "test",
+    phase: "artifact" as const,
+    artifactRef: "web:built",
+  };
+  const entries = Schema.decodeUnknownSync(Schema.Array(AppBuildResult))([
     { ...entry, completedAt: DateTime.formatIso(entry.completedAt) },
-    { ...legacyArtifact, completedAt: DateTime.formatIso(entry.completedAt) },
   ]);
 
   const app = findCompleteBuildResult(entries, {
@@ -87,12 +94,10 @@ test("unknown app identity misses without discarding artifact evidence", () => {
     step: entry.step,
     containerId: "web-1",
   });
-  const artifact = findCompleteBuildResult(entries, {
-    buildKey: entry.buildKey,
-    service: entry.service,
-    phase: "artifact",
-  });
+  const bucket = await Effect.runPromise(openArtifactBuildResults(makeTestStateStore().service));
+  await Effect.runPromise(recordArtifactBuildResult(bucket, artifactEntry));
+  const artifact = await Effect.runPromise(useArtifactBuildResult(bucket, artifactEntry));
 
   expect(app).toBeUndefined();
-  expect(artifact?.artifactRef).toBe("web:built");
+  expect(artifact?.entry.artifactRef).toBe("web:built");
 });

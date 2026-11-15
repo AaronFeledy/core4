@@ -13,11 +13,11 @@ import {
   appStepProviderFailureMessage,
 } from "./build-app-step-runner.ts";
 import { buildFailureRemediation, buildRemediationSuffix } from "./build-remediation.ts";
-import type { AppBuildResult, BuildResultEntry } from "./build-results.ts";
+import type { AppBuildResult } from "./build-results.ts";
 
 export interface AppBuildCache {
-  readonly bucket: StateBucket<readonly BuildResultEntry[]>;
-  readonly entries: readonly BuildResultEntry[];
+  readonly bucket: StateBucket<readonly AppBuildResult[]>;
+  readonly entries: readonly AppBuildResult[];
 }
 export interface AppBuildAttempt {
   readonly transcriptPath: AbsolutePath;

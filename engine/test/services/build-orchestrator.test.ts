@@ -22,7 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import {
-  type ArtifactBuildSpec,
+  type ArtifactBuildRequest,
   type ArtifactPullPolicy,
   type ArtifactPullSpec,
   type BuildOptions,
@@ -53,14 +53,14 @@ const stateStoreLayer = Layer.suspend(() => Layer.succeed(StateStore, makeTestSt
 
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
+import {
+  artifactOwnerKey,
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import { BuildOwner } from "../../src/services/build-owner.ts";
-import {
-  openAppBuildResults,
-  openScratchBuildResults,
-  recordBuildResult,
-} from "../../src/services/build-results.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -331,7 +331,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     let maxActive = 0;
     const provider = {
       ...TestRuntimeProvider,
-      buildArtifact: Effect.fnUntraced(function* (spec: ArtifactBuildSpec) {
+      buildArtifact: Effect.fnUntraced(function* (spec: ArtifactBuildRequest) {
         expect(spec.app).toBe(concurrentPlan.id);
         expect(spec.plan).toBe(concurrentPlan);
         expect(spec.buildKey).toBeString();
@@ -400,7 +400,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     await withTempUserRoots(async () => {
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.succeed({ providerId, ref: `${spec.service}:test` }),
       };
 
@@ -499,13 +499,16 @@ describe("BuildOrchestratorLayer.layer", () => {
         .sort(),
     ).toEqual([
       ["db", "Build db aborted"],
-      ["web", "Build web failed"],
+      ["web", "Build web aborted"],
     ]);
     expect(
       result.events
         .filter((event) => event._tag === "build-step-skip")
         .map((event) => [event.serviceName, event.reason]),
-    ).toEqual([["db", "phase-aborted"]]);
+    ).toEqual([
+      ["web", "phase-aborted"],
+      ["db", "phase-aborted"],
+    ]);
     expect(result.events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
       succeeded: 0,
       failed: 2,
@@ -594,7 +597,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const siblingStarted = Deferred.makeUnsafe<void>();
     const provider = {
       ...TestRuntimeProvider,
-      buildArtifact: (spec: ArtifactBuildSpec) => {
+      buildArtifact: (spec: ArtifactBuildRequest) => {
         calls.push(String(spec.service));
         return spec.service === ServiceName.make("web")
           ? Deferred.await(siblingStarted).pipe(Effect.andThen(Effect.fail(failure)))
@@ -640,7 +643,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       };
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.gen(function* () {
             if (spec.service === web.name) {
               started.push(String(spec.service));
@@ -693,7 +696,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     };
     const provider = {
       ...TestRuntimeProvider,
-      buildArtifact: (spec: ArtifactBuildSpec) =>
+      buildArtifact: (spec: ArtifactBuildRequest) =>
         spec.service === web.name
           ? Deferred.succeed(parentStarted, undefined).pipe(
               Effect.andThen(Deferred.await(releaseFailure)),
@@ -801,7 +804,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       ...TestRuntimeProvider,
       capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
       pullArtifact: () => Effect.succeed({ providerId, ref: "php:8.2-apache-bookworm", digest: baseDigest }),
-      buildArtifact: (spec: ArtifactBuildSpec) =>
+      buildArtifact: (spec: ArtifactBuildRequest) =>
         Effect.sync(() => {
           keys.push(spec.buildKey);
           return { providerId, ref: `php-derived:${keys.length}` };
@@ -868,7 +871,7 @@ describe("BuildOrchestratorLayer.layer", () => {
         capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
         pullArtifact: () =>
           Effect.succeed({ providerId, ref: "php:8.2-apache-bookworm", digest: baseDigest }),
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             builds.push(spec.buildKey);
             return {
@@ -950,7 +953,7 @@ describe("BuildOrchestratorLayer.layer", () => {
           if (refreshing && spec.policy !== "never") return Effect.fail(failure);
           return Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:local" });
         },
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             builds.push(spec.buildKey);
             return { providerId, ref: `php-derived:${builds.length}`, digest: "sha256:derived-1" };
@@ -1738,8 +1741,10 @@ describe("BuildOrchestratorLayer.layer", () => {
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
           const buildKey = yield* buildKeyForService(provider, artifactPlan.services[web.name] ?? web);
-          const bucket = yield* openScratchBuildResults(stateStore);
-          yield* recordBuildResult(bucket, {
+          const bucket = yield* openArtifactBuildResults(stateStore);
+          yield* recordArtifactBuildResult(bucket, {
+            owner: BuildOwner.fromPlan(artifactPlan).key,
+            providerId: String(providerId),
             buildKey,
             service: web.name,
             phase: "artifact",
@@ -1785,8 +1790,10 @@ describe("BuildOrchestratorLayer.layer", () => {
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
           const buildKey = yield* buildKeyForService(provider, artifactPlan.services[web.name] ?? web);
-          const bucket = yield* openScratchBuildResults(stateStore);
-          yield* recordBuildResult(bucket, {
+          const bucket = yield* openArtifactBuildResults(stateStore);
+          yield* recordArtifactBuildResult(bucket, {
+            owner: BuildOwner.fromPlan(artifactPlan).key,
+            providerId: String(providerId),
             buildKey,
             service: web.name,
             phase: "artifact",
@@ -1850,7 +1857,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       };
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             calls.push(String(spec.service));
             return { providerId, ref: `${spec.service}:test` };
@@ -1907,7 +1914,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       });
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             calls.push(String(spec.service));
             return { providerId, ref: `${spec.service}:test` };
@@ -1935,7 +1942,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const retryCalls: string[] = [];
       const failingProvider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) => {
+        buildArtifact: (spec: ArtifactBuildRequest) => {
           retryCalls.push(String(spec.service));
           return retryCalls.length === 1
             ? Effect.fail(failure)
@@ -2031,7 +2038,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const buildPlan: AppPlan = { ...plan, services: { [built.name]: built } };
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           (spec.onOutput === undefined
             ? Effect.die("onOutput was not supplied")
             : spec.onOutput("Step 1: build-output-secret\n")
@@ -2089,7 +2096,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       });
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           (spec.onOutput === undefined
             ? Effect.die("onOutput was not supplied")
             : spec.onOutput("first line\nsecond line\n")
@@ -2191,8 +2198,10 @@ describe("BuildOrchestratorLayer.layer", () => {
           Effect.gen(function* () {
             const stateStore = yield* StateStore;
             const buildKey = yield* buildKeyForService(provider, scratchPlan.services[web.name] ?? web);
-            const bucket = yield* openScratchBuildResults(stateStore);
-            yield* recordBuildResult(bucket, {
+            const bucket = yield* openArtifactBuildResults(stateStore);
+            yield* recordArtifactBuildResult(bucket, {
+              owner: BuildOwner.fromPlan(scratchPlan).key,
+              providerId: String(providerId),
               buildKey,
               service: web.name,
               phase: "artifact",
@@ -2244,7 +2253,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       await writeFile(join(phase, "ghost", "stale.log"), "stale\n");
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.succeed({ providerId, ref: `${spec.service}:test` }),
       };
 
@@ -2317,7 +2326,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       let builds = 0;
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.sync(() => {
             builds += 1;
             return { providerId, ref: `${spec.service}:test` };
@@ -2657,7 +2666,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       };
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           (spec.onOutput === undefined
             ? Effect.die("onOutput was not supplied")
             : spec.onOutput("argpass-hunter2 http://arguser:argpass-hunter2@127.0.0.1:3128\n")
@@ -2791,7 +2800,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       const store = makeTestStateStore();
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           spec.service === web.name
             ? Effect.die("a reused step must not build")
             : Effect.succeed({ providerId, ref: `${spec.service}:test` }),
@@ -2810,8 +2819,10 @@ describe("BuildOrchestratorLayer.layer", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
-          const bucket = yield* openAppBuildResults(stateStore, BuildOwner.fromPlan(plan));
-          yield* recordBuildResult(bucket, {
+          const bucket = yield* openArtifactBuildResults(stateStore);
+          yield* recordArtifactBuildResult(bucket, {
+            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            providerId: String(providerId),
             buildKey,
             service: web.name,
             phase: "artifact",
@@ -2820,7 +2831,9 @@ describe("BuildOrchestratorLayer.layer", () => {
             artifactRef: "web:test",
             transcriptPath: AbsolutePath.make(olderPath),
           });
-          yield* recordBuildResult(bucket, {
+          yield* recordArtifactBuildResult(bucket, {
+            owner: artifactOwnerKey(BuildOwner.fromPlan(plan)),
+            providerId: String(providerId),
             buildKey: "newer-key",
             service: web.name,
             phase: "artifact",
@@ -2830,7 +2843,7 @@ describe("BuildOrchestratorLayer.layer", () => {
             transcriptPath: AbsolutePath.make(newerPath),
           });
           const built = yield* (yield* BuildOrchestrator).build(plan);
-          const entries = (yield* bucket.get) ?? [];
+          const entries = (yield* bucket.get)?.results ?? [];
           return { artifact: built.services[web.name]?.artifact, entries };
         }).pipe(Effect.provide(layer(provider, injected))),
       );
@@ -2843,14 +2856,14 @@ describe("BuildOrchestratorLayer.layer", () => {
     });
   });
 
-  test("a warm artifact start writes no build-results bytes", async () => {
+  test("a warm artifact start updates last use without replacing the produced artifact", async () => {
     await withTempUserRoots(async () => {
       // Given a plan whose artifact results are already recorded.
       const store = makeTestStateStore();
       const injected = Layer.succeed(StateStore, store.service);
       const provider = {
         ...TestRuntimeProvider,
-        buildArtifact: (spec: ArtifactBuildSpec) =>
+        buildArtifact: (spec: ArtifactBuildRequest) =>
           Effect.succeed({ providerId, ref: `${spec.service}:test` }),
       };
 
@@ -2858,19 +2871,30 @@ describe("BuildOrchestratorLayer.layer", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const stateStore = yield* StateStore;
-          const bucket = yield* openAppBuildResults(stateStore, BuildOwner.fromPlan(plan));
+          const bucket = yield* openArtifactBuildResults(stateStore);
           const orchestrator = yield* BuildOrchestrator;
           yield* orchestrator.build(plan);
-          const before = yield* store.readRaw(bucket.path);
+          yield* bucket.update((index) => ({
+            results: (index?.results ?? []).map((entry) => ({
+              ...entry,
+              completedAt: DateTime.makeUnsafe("2000-01-01T00:00:00Z"),
+            })),
+            claims: index?.claims ?? [],
+          }));
+          const before = yield* bucket.get;
           yield* orchestrator.build(plan);
-          const after = yield* store.readRaw(bucket.path);
+          const after = yield* bucket.get;
           return { before, after };
         }).pipe(Effect.provide(layer(provider, injected))),
       );
 
-      // Then the index was read but not rewritten.
       expect(result.before).not.toBeNull();
-      expect(result.after).toEqual(result.before);
+      expect(result.after?.results.map((entry) => entry.artifactRef)).toEqual(
+        result.before?.results.map((entry) => entry.artifactRef),
+      );
+      expect(result.after?.results.map((entry) => DateTime.toEpochMillis(entry.completedAt))).not.toEqual(
+        result.before?.results.map((entry) => DateTime.toEpochMillis(entry.completedAt)),
+      );
     });
   });
 });

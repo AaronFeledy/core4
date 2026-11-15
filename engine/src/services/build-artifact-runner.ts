@@ -1,7 +1,7 @@
 import { retainCreateArtifactIdentity } from "@lando/container-runtime/create-fingerprint";
 import type { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ArtifactRef as PlannedArtifactRef, ServicePlan } from "@lando/sdk/schema";
-import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import type { ProviderArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Predicate } from "effect";
 
 import { artifactBuildStepsFor } from "./build-key.ts";
@@ -26,7 +26,9 @@ interface ProviderBuildInput {
   readonly plan: AppPlan;
   readonly service: ServicePlan;
   readonly buildKey: string;
-  readonly resolvedSource?: ArtifactRef;
+  readonly ref: string;
+  readonly labels: Readonly<Record<string, string>>;
+  readonly resolvedSource?: ProviderArtifactRef;
   readonly onOutput?: (text: string) => Effect.Effect<void, ProviderInternalError>;
 }
 
@@ -34,14 +36,17 @@ interface ProviderBuildInput {
  * A provider artifact plus its planned provenance. `origin: "build"` is set only for an image the
  * provider produced, so bring-up never contacts a registry for it; an acquired source ref has none.
  */
-export type RealizedArtifact = ArtifactRef & Pick<PlannedArtifactRef, "origin">;
+export type RealizedArtifact = ProviderArtifactRef & Pick<PlannedArtifactRef, "origin">;
+
+export const dispatchesArtifactBuild = (service: ServicePlan): boolean =>
+  service.artifact?.kind !== "ref" || artifactBuildStepsFor(service).length > 0;
 
 export const runProviderBuild = Effect.fn("RuntimeProvider.buildArtifact")(function* (
   input: ProviderBuildInput,
 ): Effect.fn.Return<RealizedArtifact, ProviderError> {
   const { provider, plan, service, buildKey, resolvedSource } = input;
   const artifact = service.artifact;
-  if (artifact?.kind === "ref" && artifactBuildStepsFor(service).length === 0) {
+  if (artifact?.kind === "ref" && !dispatchesArtifactBuild(service)) {
     if (resolvedSource !== undefined) {
       return resolvedSource.digest !== undefined || artifact.digest === undefined
         ? resolvedSource
@@ -64,6 +69,8 @@ export const runProviderBuild = Effect.fn("RuntimeProvider.buildArtifact")(funct
       service: service.name,
       plan,
       buildKey,
+      ref: input.ref,
+      labels: input.labels,
       ...(input.onOutput === undefined ? {} : { onOutput: input.onOutput }),
     }),
   );

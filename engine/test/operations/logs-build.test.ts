@@ -18,11 +18,12 @@ import { Cause, Effect, Layer, Option, Schema } from "effect";
 
 import { buildLogsApp } from "../../src/operations/logs-build.ts";
 import {
-  BuildOwner,
-  markBuildResultUsed,
-  openAppBuildResults,
-  recordBuildResult,
-} from "../../src/services/build-results.ts";
+  artifactOwnerKey,
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+  useArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
+import { BuildOwner, openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { currentTestPlan } from "../current-plan.ts";
@@ -92,24 +93,33 @@ const seed = async (
 ) => {
   const owner = BuildOwner.fromPlan(plan);
   const bucket = await Effect.runPromise(openAppBuildResults(state, owner));
+  const artifacts = await Effect.runPromise(openArtifactBuildResults(state));
   for (const input of inputs) {
     const path = transcriptPath(userDataRoot, owner, input.phase, input.name);
     if (input.body !== undefined) {
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, input.body);
     }
+    const common = {
+      buildKey: input.name,
+      service: ServiceName.make("web"),
+      outcome: "complete" as const,
+      durationMs: 1,
+      transcriptPath: path,
+    };
     await Effect.runPromise(
-      recordBuildResult(bucket, {
-        buildKey: input.name,
-        service: ServiceName.make("web"),
-        ...(input.phase === "app" ? { phase: "app", step: input.step } : { phase: "artifact" }),
-        outcome: "complete",
-        durationMs: 1,
-        transcriptPath: path,
-      }),
+      input.phase === "app"
+        ? recordBuildResult(bucket, { ...common, phase: "app", step: input.step }).pipe(Effect.asVoid)
+        : recordArtifactBuildResult(artifacts, {
+            ...common,
+            phase: "artifact",
+            owner: artifactOwnerKey(owner),
+            providerId: String(plan.provider),
+            artifactRef: `image:${input.name}`,
+          }).pipe(Effect.asVoid),
     );
   }
-  return bucket;
+  return artifacts;
 };
 
 describe("buildLogsApp", () => {
@@ -228,10 +238,10 @@ describe("buildLogsApp", () => {
         ],
         root,
       );
-      const entries = (await Effect.runPromise(bucket.get)) ?? [];
+      const entries = (await Effect.runPromise(bucket.get))?.results ?? [];
       const used = entries.find((entry) => entry.buildKey === "six");
       if (used === undefined) throw new TypeError("older key is missing");
-      await Effect.runPromise(markBuildResultUsed(bucket, used));
+      await Effect.runPromise(useArtifactBuildResult(bucket, used));
 
       // When
       const result = await Effect.runPromise(

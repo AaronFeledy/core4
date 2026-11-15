@@ -5,8 +5,11 @@ import { ProviderInternalError } from "@lando/sdk/errors";
 import { PathsService, StateStore, type StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { recordCommandWarning } from "../landofile/command-warnings.ts";
+import { withBuiltArtifactsLock } from "./build-artifact-lock.ts";
+import { openArtifactBuildResults, removeArtifactBuildResults } from "./build-artifact-results.ts";
+import { cleanupBuiltImages } from "./build-image-cleanup.ts";
 import type { BuildOwner } from "./build-owner.ts";
-import { clearAppBuildResults, openAppBuildResults, openScratchBuildResults } from "./build-results.ts";
+import { clearAppBuildResults, openAppBuildResults } from "./build-results.ts";
 import {
   buildTranscriptError,
   isMissing,
@@ -22,11 +25,23 @@ export interface RemoveBuildTranscriptsInput {
   readonly providerId?: string;
 }
 
-export const removeAppBuildOutput = Effect.fnUntraced(function* (owner: BuildOwner, providerId: string) {
+export const removeAppBuildOutput = Effect.fnUntraced(function* (
+  owner: BuildOwner,
+  providerId: string,
+  scopedProviderId: string | undefined,
+  options: { readonly images: "release" | "remove" },
+) {
   const stateStore = yield* StateStore;
   const paths = yield* PathsService;
+  const cleanup = yield* withBuiltArtifactsLock(
+    removeArtifactBuildResults(yield* openArtifactBuildResults(stateStore), owner, {
+      ...options,
+      ...(scopedProviderId === undefined ? {} : { providerId: scopedProviderId }),
+    }),
+  );
   yield* clearAppBuildResults(stateStore, owner);
   yield* removeBuildTranscripts({ owner, providerId, userDataRoot: paths.roots.userDataRoot });
+  return yield* cleanupBuiltImages(cleanup);
 });
 
 interface SweepBuildTranscriptsInput extends RemoveBuildTranscriptsInput {
@@ -185,13 +200,12 @@ const sweepBuildTranscripts = Effect.fnUntraced(function* (input: SweepBuildTran
 /** Sweep the phase directory an index this app owns uses. Best effort: never fails the build. */
 export const sweepAppBuildTranscripts = (input: SweepAppBuildTranscriptsInput): Effect.Effect<void> =>
   Effect.gen(function* () {
-    // Only a scratch plan's image phase shares its index; every app phase uses the per-app index.
+    // Another owner's reused record keeps pointing at this owner's artifact transcript, so every
+    // owner's records count as references here.
     const entries =
-      (yield* (
-        input.phase === "artifact" && input.owner.kind === "scratch"
-          ? openScratchBuildResults(input.stateStore)
-          : openAppBuildResults(input.stateStore, input.owner)
-      ).pipe(Effect.flatMap((bucket) => bucket.get))) ?? [];
+      input.phase === "artifact"
+        ? ((yield* (yield* openArtifactBuildResults(input.stateStore)).get)?.results ?? [])
+        : ((yield* (yield* openAppBuildResults(input.stateStore, input.owner)).get) ?? []);
     yield* sweepBuildTranscripts({ ...input, entries });
   }).pipe(
     Effect.catch((failure) =>

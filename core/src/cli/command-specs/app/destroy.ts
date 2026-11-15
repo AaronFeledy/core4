@@ -26,7 +26,7 @@ const destroyConfirmation = (
     "containers",
     ...(deletes.volumes ? ["data volumes"] : []),
     ...(deletes.snapshots ? ["snapshots"] : []),
-    ...(deletes.caches ? ["cache volumes"] : []),
+    ...(deletes.caches ? ["cache volumes and built images"] : []),
   ];
   const list = items.length === 1 ? items[0] : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
   const subject = root === undefined ? `this app's ${list}` : `the ${list} left by ${root}`;
@@ -83,7 +83,7 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
       default: false,
     }),
     "purge-caches": Flags.boolean({
-      description: "Remove cache storage volumes.",
+      description: "Remove cache storage volumes and built images.",
       default: false,
     }),
     yes: yesFlag("Skip the confirmation prompt."),
