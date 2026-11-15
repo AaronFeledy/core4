@@ -26,7 +26,7 @@ const destroyConfirmation = (
     "containers",
     ...(deletes.volumes ? ["data volumes"] : []),
     ...(deletes.snapshots ? ["snapshots"] : []),
-    ...(deletes.caches ? ["cache volumes and built images"] : []),
+    ...(deletes.caches ? ["cache volumes", "built images"] : []),
   ];
   const list = items.length === 1 ? items[0] : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
   const subject = root === undefined ? `this app's ${list}` : `the ${list} left by ${root}`;

@@ -20,22 +20,22 @@ describe("lifecycle confirmation boundary", () => {
     },
     {
       flags: { root: confirmationRoot, "purge-caches": true },
-      message: `Delete the containers and cache volumes left by ${confirmationRoot}? Named data volumes are kept.`,
+      message: `Delete the containers, cache volumes and built images left by ${confirmationRoot}? Named data volumes are kept.`,
     },
     { flags: {}, message: "Delete this app's containers? Named data volumes are kept." },
     { flags: { volumes: true }, message: "Delete this app's containers and data volumes?" },
     {
       flags: { "purge-caches": true },
-      message: "Delete this app's containers and cache volumes? Named data volumes are kept.",
+      message: "Delete this app's containers, cache volumes and built images? Named data volumes are kept.",
     },
     { flags: { purge: true }, message: "Delete this app's containers, data volumes and snapshots?" },
     {
       flags: { volumes: true, "purge-caches": true },
-      message: "Delete this app's containers, data volumes and cache volumes?",
+      message: "Delete this app's containers, data volumes, cache volumes and built images?",
     },
     {
       flags: { purge: true, "purge-caches": true },
-      message: "Delete this app's containers, data volumes, snapshots and cache volumes?",
+      message: "Delete this app's containers, data volumes, snapshots, cache volumes and built images?",
     },
   ])(
     "destroy confirmation leads with what it deletes and declines before engine access: $message",
