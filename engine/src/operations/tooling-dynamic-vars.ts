@@ -123,6 +123,8 @@ export const makeDynamicToolingVarResolver = (input: {
       mapFailures((error) =>
         error._tag === "ToolingCompileError"
           ? new ToolingCompileError({
+              issues: error.issues,
+              omittedIssueCount: error.omittedIssueCount,
               tool: error.tool,
               message: `${site}: ${error.message}`,
               remediation: error.remediation,

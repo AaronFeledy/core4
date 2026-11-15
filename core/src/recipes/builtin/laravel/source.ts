@@ -13,7 +13,8 @@ const serverEnvironment = {
 export const source = {
   id: "laravel",
   title: "Laravel",
-  description: "Laravel with PHP, MariaDB, PostgreSQL or SQLite, Redis, and an optional queue worker.",
+  description:
+    "Laravel with PHP, MariaDB, PostgreSQL or SQLite, Redis, an optional queue worker, and an optional scheduler job.",
   version: "0.1.0",
   authors: ["Lando Core Team"],
   tags: ["laravel", "php"],
@@ -27,6 +28,11 @@ export const source = {
     composer: composerOption,
     webroot: webrootOption("public"),
     worker: { type: { kind: "boolean" }, default: false, prompt: { message: "Add a queue worker service?" } },
+    scheduler: {
+      type: { kind: "boolean" },
+      default: false,
+      prompt: { message: "Run Laravel's task scheduler every minute?" },
+    },
   },
   config: {
     runtime: 4,
@@ -69,6 +75,23 @@ export const source = {
             dependsOn: ["cache"],
             environment: { DB_CONNECTION: "sqlite" },
             appMount: { target: "/app", includes: ["vendor"] },
+          },
+        },
+      },
+    },
+    {
+      when: "{{ options.scheduler }}",
+      config: {
+        services: {
+          appserver: {
+            schedule: [
+              {
+                name: "laravel-scheduler",
+                every: "* * * * *",
+                run: ["php", "/app/artisan", "schedule:run"],
+                user: "www-data",
+              },
+            ],
           },
         },
       },

@@ -16,8 +16,7 @@ import { ServiceExecError } from "@lando/sdk/errors";
 import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { type Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
-import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
+import { doctor } from "../../src/cli/commands/doctor.ts";
 import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import {
   buildHostProxyAllowlistDoctorCheck,
@@ -25,6 +24,7 @@ import {
 } from "../../src/cli/commands/doctor-host-proxy-allowlist.ts";
 import { HostProxyDoctorFileSystem } from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
 import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];
@@ -161,26 +161,10 @@ describe("meta:doctor host-proxy transport reachability", () => {
     });
     expect(hostProxyAllowlistFreshness(["app:open", "app:info"], commands).fresh).toBe(false);
     expect(hostProxyAllowlistFreshness(["app:info", "app:open", "app:open"], commands).fresh).toBe(false);
-    expect(
-      buildHostProxyAllowlistDoctorCheck(freshness, {
-        provider: {
-          id: TestRuntimeProvider.id,
-          displayName: TestRuntimeProvider.displayName,
-          version: TestRuntimeProvider.version,
-        },
-        providerKind: "user-installed",
-        runtimeStatus: "ready",
-        runtime: { running: true },
-        selection: {
-          providerId: TestRuntimeProvider.id,
-          source: "default",
-          inputs: { capabilityDefault: TestRuntimeProvider.id },
-        },
-      }),
-    ).toMatchObject({
+    expect(buildHostProxyAllowlistDoctorCheck(freshness)).toMatchObject({
       name: "host-proxy-allowlist",
       status: "warn",
-      context: { freshness: "stale", missing: "app:info", unexpected: "removed:command" },
+      context: { freshness: "stale", missing: ["app:info"], unexpected: ["removed:command"] },
       solutions: [{ command: "bun run codegen:host-proxy-allowlist" }],
     });
   });
@@ -295,6 +279,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
 
     // Then
     expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      subject: appId,
       status: "pass",
       context: { appId, transport: "unix-socket", reachability: "reachable" },
     });
@@ -426,14 +411,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
       const { checks } = await Effect.runPromise(
         hostProxyTransportDoctorChecks({
           provider: TestRuntimeProvider,
-          providerKind: "user-installed",
-          runtimeStatus: "ready",
-          runtime: { running: true },
-          selection: {
-            providerId: TestRuntimeProvider.id,
-            source: "default",
-            inputs: { capabilityDefault: TestRuntimeProvider.id },
-          },
         }).pipe(
           Effect.provide(HostProxyDoctorFileSystem.layer),
           Effect.provide(
@@ -486,12 +463,10 @@ describe("meta:doctor host-proxy transport reachability", () => {
         },
       ],
     });
-    const text = renderDoctorResult(result);
-    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date(0) });
-    expect(text).toContain("host-proxy-state: warn");
-    expect(text).toContain("workerState: unreadable");
-    expect(text).not.toContain(secret);
-    expect(ndjson).not.toContain(secret);
+    const json = JSON.stringify(result);
+    expect(json).toContain("host-proxy-state");
+    expect(json).toContain("workerState");
+    expect(json).not.toContain(secret);
   });
 
   test("skips a pre-upgrade TCP worker without probe metadata", async () => {
@@ -542,19 +517,10 @@ describe("meta:doctor host-proxy transport reachability", () => {
     const check = result.checks.find((candidate) => candidate.name === "host-proxy-transport");
     expect(check).toBeUndefined();
     expect(result.skipped).toContainEqual({
-      section: "host-proxy-transport:demo",
-      status: "skipped",
+      check: "host-proxy-transport:demo",
       reason: "pre-upgrade-record",
     });
-
-    const text = renderDoctorResult(result);
-    const ndjson = renderDoctorResultAsNdjson(result, {
-      now: new Date("1970-01-01T00:00:00.000Z"),
-    });
-    expect(text).not.toContain("host-proxy-transport: pass");
-    expect(ndjson).toContain('"event":"doctor.check"');
-    expect(text).not.toContain(controlToken);
-    expect(ndjson).not.toContain(controlToken);
+    expect(JSON.stringify(result)).not.toContain(controlToken);
   });
 
   test("rejects a persisted TCP alias that does not match the provider gateway", async () => {
@@ -663,11 +629,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
 
     // Then
     const json = JSON.stringify(result);
-    const text = renderDoctorResult(result);
-    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date(0) });
     expect(json).not.toContain(secret);
-    expect(text).not.toContain(secret);
-    expect(ndjson).not.toContain(secret);
     expect(json).toContain("[redacted]");
   });
 
@@ -822,12 +784,10 @@ describe("meta:doctor host-proxy transport reachability", () => {
       severity: "warn",
       context: { workerState: "malformed" },
     });
-    const text = renderDoctorResult(result);
-    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date(0) });
-    expect(text).toContain("host-proxy-state: warn");
-    expect(text).toContain("workerState: malformed");
-    expect(text).not.toContain(secret);
-    expect(ndjson).not.toContain(secret);
+    const json = JSON.stringify(result);
+    expect(json).toContain("host-proxy-state");
+    expect(json).toContain("workerState");
+    expect(json).not.toContain(secret);
   });
 
   test("treats a schema-valid app:open error envelope as transport reachability proof", async () => {
@@ -1104,8 +1064,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toBeUndefined();
     expect(result.skipped).toContainEqual({
-      section: "host-proxy-transport:demo",
-      status: "skipped",
+      check: "host-proxy-transport:demo",
       reason: "provider-mismatch",
     });
     expect(execCalls).toBe(0);
@@ -1147,8 +1106,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toBeUndefined();
     expect(result.skipped).toContainEqual({
-      section: `host-proxy-transport:${appId}`,
-      status: "skipped",
+      check: `host-proxy-transport:${appId}`,
       reason: "pre-upgrade-record",
     });
   });
@@ -1213,25 +1171,17 @@ describe("meta:doctor host-proxy transport reachability", () => {
     const { checks } = await Effect.runPromise(
       hostProxyTransportDoctorChecks({
         provider: TestRuntimeProvider,
-        providerKind: "user-installed",
-        runtimeStatus: "ready",
-        runtime: { running: true },
-        selection: {
-          providerId: TestRuntimeProvider.id,
-          source: "default",
-          inputs: { capabilityDefault: TestRuntimeProvider.id },
-        },
         limits: { maxWorkers: 2, maxProbeServices: 8, budgetMs: 1_000 },
       }).pipe(Effect.provide(hostProxyDoctorLayer(root))),
     );
 
     // Then
-    expect(
-      checks.filter((check) => check.name === "host-proxy-state").map((check) => check.context.statePath),
-    ).toEqual([
-      join(paths.hostProxyRunRoot, "worker-a", "worker.json"),
-      join(paths.hostProxyRunRoot, "worker-b", "worker.json"),
-    ]);
+    expect(checks.filter((check) => check.name === "host-proxy-state").map((check) => check.subject)).toEqual(
+      [
+        join(paths.hostProxyRunRoot, "worker-a", "worker.json"),
+        join(paths.hostProxyRunRoot, "worker-b", "worker.json"),
+      ],
+    );
   });
 
   test("caps workers using locale-independent code-point order", async () => {
@@ -1248,14 +1198,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
     const { checks } = await Effect.runPromise(
       hostProxyTransportDoctorChecks({
         provider: TestRuntimeProvider,
-        providerKind: "user-installed",
-        runtimeStatus: "ready",
-        runtime: { running: true },
-        selection: {
-          providerId: TestRuntimeProvider.id,
-          source: "default",
-          inputs: { capabilityDefault: TestRuntimeProvider.id },
-        },
         limits: { maxWorkers: 1, maxProbeServices: 8, budgetMs: 1_000 },
       }).pipe(Effect.provide(hostProxyDoctorLayer(root))),
     );
@@ -1341,8 +1283,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
       Array.from({ length: 8 }, (_, index) => `service-${String(index).padStart(2, "0")}`),
     );
     expect(result.skipped).toContainEqual({
-      section: "host-proxy-transport:demo",
-      status: "skipped",
+      check: "host-proxy-transport:demo",
       reason: "probe-service-cap-exhausted",
     });
   });
@@ -1427,24 +1368,26 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toBeUndefined();
     expect(result.skipped).toContainEqual({
-      section: "host-proxy-transport:demo",
-      status: "skipped",
+      check: "host-proxy-transport:demo",
       reason: "probe-services-inconclusive",
     });
     expect(calls).toEqual(["stopped", "unavailable"]);
     const report = await Effect.runPromise(
       collectDoctorReport({
         options: { env: {} },
-        provider: Effect.succeed(result),
-        deprecations: Effect.succeed({ entries: [] }),
-        certs: Effect.succeed(UNRESOLVED_CERTS_STATUS),
+        contexts: {},
+        table: [independentSection({ id: "provider", run: Effect.succeed(result) })],
       }).pipe(Effect.provideService(ConfigService, buildConfigService(root))),
     );
     const encoded = Schema.encodeSync(DoctorReportSchema)(report);
-    expect(encoded.provider.checks.some((check) => check.name === "host-proxy-transport")).toBe(false);
+    expect(
+      encoded.checks
+        .filter((check) => check.section === "provider")
+        .some((check) => check.name === "host-proxy-transport"),
+    ).toBe(false);
     expect(encoded.skipped).toContainEqual({
-      section: "host-proxy-transport:demo",
-      status: "skipped",
+      section: "provider",
+      check: "host-proxy-transport:demo",
       reason: "probe-services-inconclusive",
     });
   });
@@ -1593,14 +1536,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
         const fiber = yield* Effect.forkChild(
           hostProxyTransportDoctorChecks({
             provider,
-            providerKind: "user-installed",
-            runtimeStatus: "ready",
-            runtime: { running: true },
-            selection: {
-              providerId: TestRuntimeProvider.id,
-              source: "default",
-              inputs: { capabilityDefault: TestRuntimeProvider.id },
-            },
             limits: { maxWorkers: 32, maxProbeServices: 8, budgetMs: 25 },
           }),
         );
@@ -1614,8 +1549,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({ name: "host-proxy-state", status: "warn" });
     expect(skipped).toContainEqual({
-      section: "host-proxy",
-      status: "skipped",
       reason: "worker-budget-exhausted",
     });
   });
@@ -1643,14 +1576,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
         const fiber = yield* Effect.forkChild(
           hostProxyTransportDoctorChecks({
             provider: TestRuntimeProvider,
-            providerKind: "user-installed",
-            runtimeStatus: "ready",
-            runtime: { running: true },
-            selection: {
-              providerId: TestRuntimeProvider.id,
-              source: "default",
-              inputs: { capabilityDefault: TestRuntimeProvider.id },
-            },
             limits: { maxWorkers: 32, maxProbeServices: 8, budgetMs: 25 },
           }),
         );
@@ -1672,8 +1597,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
     expect(checks.some((check) => check.name === "host-proxy-state")).toBe(false);
     expect(checks.some((check) => check.name === "host-proxy-transport")).toBe(false);
     expect(skipped).toContainEqual({
-      section: "host-proxy",
-      status: "skipped",
       reason: "worker-root-budget-exhausted",
     });
   });

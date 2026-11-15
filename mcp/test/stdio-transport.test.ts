@@ -14,7 +14,11 @@ const spec = {
   run: (input: { readonly args: Record<string, unknown> }) =>
     Effect.succeed({ service: input.args.service ?? "appserver" }),
 };
-const layer = serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id], version: "4.0.0-test" });
+const layer = serverLayer({
+  commandEntries: [{ kind: "command" as const, spec }],
+  defaultAllowlist: [spec.id],
+  version: "4.0.0-test",
+});
 
 test.each(["2025-06-18", "2025-03-26", "2024-11-05"])(
   "negotiates %s, lists tools with outputSchema, and closes on EOF",
@@ -101,7 +105,12 @@ test("writes MCP-shaped progress notifications with increasing tokens and skips 
         return yield* client.messages;
       }),
     ).pipe(
-      Effect.provide(serverLayer({ commandEntries: [{ spec: streaming }], defaultAllowlist: [spec.id] })),
+      Effect.provide(
+        serverLayer({
+          commandEntries: [{ kind: "command" as const, spec: streaming }],
+          defaultAllowlist: [spec.id],
+        }),
+      ),
     ),
   );
   expect(messages.filter((message) => message.method === "notifications/progress")).toEqual([
@@ -134,6 +143,7 @@ test("denied tools are absent from tools/list and rejected as unknown without ex
         serverLayer({
           commandEntries: [
             {
+              kind: "command" as const,
               spec: {
                 ...spec,
                 run: () =>

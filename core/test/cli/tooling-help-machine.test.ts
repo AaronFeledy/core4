@@ -28,8 +28,15 @@ const withHelpApp = async (
       writeAppCommandCacheStrict({
         cwd: root,
         cacheRoot,
+        env: {
+          ...process.env,
+          LANDO_USER_CACHE_ROOT: cacheRoot,
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+        },
         landofile: { name: "machine-help" },
         entries: compileInspectedAppCommands({
+          sourcePath: root,
           landofile: { name: "machine-help" },
           inspection: scripts,
           redact: createRedactor("secrets").redactString,
@@ -203,4 +210,25 @@ test.each([{ argv: ["probe", "--help"] }, { argv: ["help", "app:probe"] }])(
       expect(await Bun.file(join(root, "executed")).exists()).toBe(false);
     });
   },
+);
+
+test.each([
+  { command: "info", afterName: "until-separator", commandOwned: [] },
+  { command: "logs", afterName: "until-separator", commandOwned: ["--tail"] },
+  { command: "exec", afterName: "command-tail", commandOwned: [] },
+  { command: "bun", afterName: "none", commandOwned: [] },
+] as const)(
+  "machine help carries the flag placement for $command",
+  async ({ command, afterName, commandOwned }) => {
+    await withHelpApp({ cached: true, hidden: false }, async (root, cacheRoot) => {
+      const result = await runHelp(root, cacheRoot, ["help", command]);
+
+      expect(result.code, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).result.target.landoFlags).toEqual({
+        afterName,
+        commandOwned,
+      });
+    });
+  },
+  30_000,
 );

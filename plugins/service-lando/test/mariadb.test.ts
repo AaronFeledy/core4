@@ -186,7 +186,17 @@ describe("mariadb ServiceType", () => {
       description: "Open the MariaDB client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
-      cmd: ["mariadb", "-h", "127.0.0.1", "-P", "3306", "-u", authoredCreds.user, authoredCreds.database],
+      cmd: [
+        "mariadb",
+        "-h",
+        "127.0.0.1",
+        "-P",
+        "3306",
+        "-u",
+        authoredCreds.user,
+        "--skip-ssl-verify-server-cert",
+        authoredCreds.database,
+      ],
       env: { MYSQL_PWD: authoredCreds.password },
     });
   });
@@ -204,7 +214,7 @@ describe("mariadb ServiceType", () => {
       command: [
         "sh",
         "-c",
-        'MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --skip-ssl-verify-server-cert --silent',
         "mariadb-healthcheck",
         "3306",
       ],

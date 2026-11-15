@@ -15,6 +15,7 @@ import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-pr
 import { PROXYD_CANDIDATES, SOCKET_UNIT_PATHS } from "../src/socket-proxy-install.ts";
 import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 import { routeOwner } from "./route-owner-fixture.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
@@ -116,6 +117,7 @@ describe("acquisition authority ports", () => {
     const store = memoryFiles();
     const runtime = makeApplyRuntime(store.files);
     const service = makeTraefikRouterService({
+      stateStore: makeAckStore([]),
       readTraefikState: () => Effect.succeed("running"),
       httpClient: runtime.httpClient,
       probeForward: () => Effect.succeed({ kind: "success" }),
@@ -167,6 +169,7 @@ describe("acquisition authority ports", () => {
     const runtime = makeApplyRuntime(store.files);
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      stateStore: makeAckStore([]),
       readTraefikState: () => Effect.succeed("running"),
       httpClient: runtime.httpClient,
       probeForward: () => Effect.succeed({ kind: "success" }),
@@ -235,6 +238,7 @@ describe("stale socketsActive restart", () => {
     const privilege = makePrivilege();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      stateStore: makeAckStore([]),
       readTraefikState: () => Effect.succeed("running"),
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),

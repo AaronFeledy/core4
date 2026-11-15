@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { APP_CONFIG_MCP_UNSAFE_IDS } from "@lando/mcp/allowlist";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -25,7 +26,8 @@ import {
 } from "../../../../src/cli/commands/meta/mcp.ts";
 import { runCli } from "../../../../src/cli/index.ts";
 
-const entry = (id: string, summary: string): McpCommandEntry => ({
+const entry = (id: string, summary: string): Extract<McpCommandEntry, { readonly kind: "command" }> => ({
+  kind: "command" as const,
   spec: { id, summary } as McpCommandEntry["spec"],
 });
 
@@ -231,7 +233,7 @@ describe("mcpRegistryFromBuiltIns", () => {
     const spec = entry("app:info", "Show app info").spec;
     const registry = mcpRegistryFromBuiltIns([{ spec }]);
 
-    expect(registry).toEqual({ commandEntries: [{ spec }] });
+    expect(registry).toEqual({ commandEntries: [{ kind: "command", spec }] });
   });
 
   test("projects app config as constrained MCP read tools and omits the umbrella", () => {
@@ -276,7 +278,14 @@ describe("mcpListResult", () => {
     const result = await Effect.runPromise(
       mcpListResult(
         mcpRegistryWithToolingEntries(registry, [
-          { id: "app:composer", summary: "Run Composer", hidden: false },
+          {
+            id: "app:composer",
+            summary: "Run Composer",
+            _tag: "Ready",
+            sourceKind: "tooling",
+            visibility: "public",
+            input: Result.getOrThrow(normalizeToolingInput("composer", {})),
+          },
         ]),
         {},
       ).pipe(Effect.provide(configLayer({ tooling: true }))),

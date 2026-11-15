@@ -193,7 +193,7 @@ Place `{{ raw }}` alone in an unquoted argument word after the executable. Its e
 
 Data binding is refused inside backticks, here-documents, arithmetic, parameter expansions, and dollar-prefixed quotes. It also cannot make an argument safe for a program that interprets code: `sh -c "{{ flags.code }}"` still executes the supplied code. See [Use inputs in the command](../tooling/flags-and-args.mdx#use-inputs-in-the-command) for empty-word rules, forwarding, and complete examples.
 
-The invocation scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` are not implemented. A reference fails loading with `NotImplementedError` naming the scope, authored path, and available alternatives.
+The invocation scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` are not implemented. A reference fails loading with `NotImplementedError` naming the scope, authored path, and available alternatives. `lando app:config:lint` lists every such reference at its path, line, and column.
 
 ## Keep `${VAR}` and `{{` as text
 

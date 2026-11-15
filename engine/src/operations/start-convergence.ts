@@ -74,19 +74,22 @@ export const servicesHaltWillRemove = Effect.fn("AppOperation.servicesHaltWillRe
 /**
  * Removes service containers this app owns that its desired plan no longer names.
  *
- * Runs only for whole-app starts. Every candidate is ownership-prevalidated before anything is
- * removed, so a contradictory container fails closed with nothing changed. Completed removals stay
- * committed even when a later removal or the apply fails; a retry rediscovers the rest from labels.
+ * Runs only for whole-app starts. The caller passes the app's pre-apply observations, so start
+ * pays one list round trip for convergence and its own before/after comparison. Every candidate
+ * is ownership-prevalidated before anything is removed, so a contradictory container fails
+ * closed with nothing changed. Completed removals stay committed even when a later removal or
+ * the apply fails; a retry rediscovers the rest from labels.
  */
 export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedServices")(function* <
   AdmissionE,
   AdmissionR,
 >(
   plan: AppPlan,
-  provider: Pick<RuntimeProviderShape, "list" | "removeObservedService">,
+  provider: Pick<RuntimeProviderShape, "removeObservedService">,
   execution: {
     readonly app: AppRef;
     readonly events: EventService["Service"];
+    readonly observations: ReadonlyArray<ServiceRuntimeInfo>;
     readonly verifyAdmission: Effect.Effect<void, AdmissionE, AdmissionR>;
   },
 ): Effect.fn.Return<
@@ -96,7 +99,7 @@ export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedSe
 > {
   const desired = new Set(Object.values(plan.services).map((service) => String(service.name)));
   const appRoot = planAppIdentity(plan).appRoot;
-  const observations = yield* provider.list({ app: plan.id, includeUnplanned: true });
+  const observations = execution.observations;
   const candidates = observations
     .filter(
       (observation) =>

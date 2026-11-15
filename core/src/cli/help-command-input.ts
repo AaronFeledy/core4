@@ -1,19 +1,9 @@
 import type { ExecutableCommandFlagSpec, ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { argStdioDescription } from "./arg-stdio";
 import type { OclifFlagDefinition } from "./compiled-argv";
+import { UNIVERSAL_FORMAT_FLAG_NAMES } from "./format-flags";
 import type { HelpCommandInput } from "./help-command-descriptor";
 import type { FlagDefinition } from "./spec/metadata";
-
-const universalFlags = new Set([
-  "format",
-  "json",
-  "jq",
-  "renderer",
-  "verbose",
-  "log-level",
-  "debug",
-  "trace",
-]);
 
 type HelpFlag = ExecutableCommandFlagSpec &
   Pick<FlagDefinition, "char" | "aliases"> & {
@@ -28,7 +18,7 @@ export const commandHelpInput = (
   spellings?: Readonly<Record<string, OclifFlagDefinition>>,
 ): HelpCommandInput => ({
   flags: Object.entries(spec.flags ?? {})
-    .filter(([name]) => !universalFlags.has(name))
+    .filter(([name]) => !UNIVERSAL_FORMAT_FLAG_NAMES.has(name))
     .map(([name, flag]) => {
       const char = flag.char ?? spellings?.[name]?.char;
       const type = flag.type !== "boolean" && flag.valueType === "integer" ? "integer" : flag.type;

@@ -1,60 +1,65 @@
-import type { StateStoreError } from "@lando/sdk/errors";
+import { ProviderInternalError, type StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
+import type { BuildOwner } from "./build-owner.ts";
 
-// Version 2 records `artifactOrigin`; version 1 entries cannot tell a produced image from an acquired
-// source ref. Version 3 follows transcript redaction: entries recorded earlier can point at transcripts
-// that were written unredacted, so they are discarded and their steps run once more.
-const BUILD_RESULTS_VERSION = 3;
+export { BuildOwner } from "./build-owner.ts";
+
+export const buildResultsError = (providerId: string, cause: unknown) =>
+  new ProviderInternalError({
+    providerId,
+    operation: "buildResults",
+    message: "Unable to access the build-results cache.",
+    cause,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
+  });
+
+const BUILD_RESULTS_VERSION = 5;
 const KEEP_BUILD_KEYS = 5;
 const KEEP_ENTRIES = 500;
 
-export const BuildResultEntry = Schema.Struct({
+const commonFields = {
   buildKey: Schema.String,
   service: ServiceName,
-  phase: Schema.Literals(["artifact", "app"]),
-  /** `BuildStep.id` for an app step; absent for an artifact step. */
-  step: Schema.optionalKey(Schema.String),
   outcome: Schema.Literals(["complete", "fail"]),
-  exitCode: Schema.Number,
   durationMs: Schema.Number,
-  artifactRef: Schema.optionalKey(Schema.String),
-  artifactDigest: Schema.optionalKey(Schema.String),
-  /** `build` when the provider produced `artifactRef`; absent when the result is an acquired source ref. */
-  artifactOrigin: Schema.optionalKey(Schema.Literal("build")),
-  sourceArtifactRef: Schema.optionalKey(Schema.String),
-  sourceArtifactDigest: Schema.optionalKey(Schema.String),
   transcriptPath: AbsolutePath,
   completedAt: Schema.DateTimeUtcFromString,
+};
+
+import { ArtifactBuildResult } from "./build-artifact-results.ts";
+
+export { ArtifactBuildResult } from "./build-artifact-results.ts";
+
+export const AppBuildResult = Schema.Struct({
+  ...commonFields,
+  phase: Schema.Literal("app"),
+  step: Schema.String,
+  containerId: Schema.optionalKey(Schema.String),
+  invalidated: Schema.optionalKey(Schema.Literal(true)),
+  exitCode: Schema.optionalKey(Schema.Number),
+  artifactRef: Schema.optionalKey(Schema.Never),
+  artifactDigest: Schema.optionalKey(Schema.Never),
+  artifactOrigin: Schema.optionalKey(Schema.Never),
+  sourceArtifactRef: Schema.optionalKey(Schema.Never),
+  sourceArtifactDigest: Schema.optionalKey(Schema.Never),
 });
+export type AppBuildResult = typeof AppBuildResult.Type;
+export const BuildResultEntry = Schema.Union([ArtifactBuildResult, AppBuildResult]);
 export type BuildResultEntry = typeof BuildResultEntry.Type;
 
-const BuildResultEntries = Schema.Array(BuildResultEntry);
-
-export const openScratchBuildResults = (
-  stateStore: StateStoreShape,
-): Effect.Effect<StateBucket<ReadonlyArray<BuildResultEntry>>, StateStoreError> =>
-  stateStore.open({
-    root: "userCache",
-    key: "scratch-build-results.bin",
-    schema: BuildResultEntries,
-    version: BUILD_RESULTS_VERSION,
-    codec: "binary",
-    lock: "advisory",
-    onCorrupt: "quarantine",
-    onVersionMismatch: "discard",
-    default: [],
-  });
+const BuildResultEntries = Schema.Array(AppBuildResult);
 
 export const openAppBuildResults = (
   stateStore: StateStoreShape,
-  appId: string,
-): Effect.Effect<StateBucket<ReadonlyArray<BuildResultEntry>>, StateStoreError> =>
+  owner: BuildOwner,
+): Effect.Effect<StateBucket<ReadonlyArray<AppBuildResult>>, StateStoreError> =>
   stateStore.open({
     root: "userCache",
-    namespace: "build-results",
-    key: `${appId}.bin`,
+    namespace: "build-results-owned",
+    key: `${owner.kind}-${owner.key}.bin`,
     schema: BuildResultEntries,
     version: BUILD_RESULTS_VERSION,
     codec: "binary",
@@ -64,54 +69,70 @@ export const openAppBuildResults = (
     default: [],
   });
 
-export const findCompleteBuildResult = (
-  entries: ReadonlyArray<BuildResultEntry>,
-  input: Pick<BuildResultEntry, "buildKey" | "phase" | "service"> & { readonly step?: string },
-): BuildResultEntry | undefined => {
+type AppLookup = Pick<AppBuildResult, "buildKey" | "service" | "phase" | "step"> & {
+  readonly containerId: string | undefined;
+};
+
+export const invalidateAppBuildResult = (
+  bucket: StateBucket<ReadonlyArray<AppBuildResult>>,
+  input: AppLookup,
+): Effect.Effect<void, StateStoreError> =>
+  bucket.mutate((current) => {
+    const entries = current ?? [];
+    const updated = entries.map((entry) =>
+      entry.phase === "app" &&
+      identityOf(entry) === identityOf(input) &&
+      entry.outcome === "complete" &&
+      !entry.invalidated
+        ? { ...entry, invalidated: true as const }
+        : entry,
+    );
+    return Effect.succeed(
+      updated.every((entry, index) => entry === entries[index])
+        ? { _tag: "Keep" as const, result: undefined }
+        : { _tag: "Set" as const, value: updated, result: undefined },
+    );
+  });
+
+export function findCompleteBuildResult(
+  entries: ReadonlyArray<AppBuildResult>,
+  input: AppLookup,
+): AppBuildResult | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (
-      entry !== undefined &&
-      entry.buildKey === input.buildKey &&
-      entry.phase === input.phase &&
-      entry.service === input.service &&
-      entry.step === input.step
-    ) {
+    if (entry !== undefined && identityOf(entry) === identityOf(input)) {
       // Only the latest recorded attempt counts: a newer failure hides an older success.
-      return entry.outcome === "complete" ? entry : undefined;
+      if (entry.outcome !== "complete" || entry.buildKey !== input.buildKey) return undefined;
+      return entry.phase === "app" &&
+        !entry.invalidated &&
+        input.containerId &&
+        entry.containerId === input.containerId
+        ? entry
+        : undefined;
     }
   }
   return undefined;
-};
+}
 
-/** Drop every app-phase entry; a build.app result only describes the container it ran in. */
 export const clearAppBuildResults = Effect.fnUntraced(function* (
   stateStore: StateStoreShape,
-  appId: string,
+  owner: BuildOwner,
 ): Effect.fn.Return<void, StateStoreError> {
-  const bucket = yield* openAppBuildResults(stateStore, appId);
-  yield* bucket.mutate((current) => {
-    const entries = current ?? [];
-    const kept = entries.filter((entry) => entry.phase !== "app");
-    if (kept.length === entries.length) return Effect.succeed({ _tag: "Keep" as const, result: undefined });
-    return Effect.succeed(
-      kept.length === 0
-        ? { _tag: "Remove" as const, result: undefined }
-        : { _tag: "Set" as const, value: kept, result: undefined },
-    );
-  });
+  const bucket = yield* openAppBuildResults(stateStore, owner);
+  yield* bucket.remove;
 });
 
-const identityOf = (entry: BuildResultEntry): string =>
+type BuildResultIdentity = Pick<AppBuildResult, "service" | "phase" | "step" | "buildKey">;
+const identityOf = (entry: BuildResultIdentity): string =>
   `${entry.service}\u0000${entry.phase}\u0000${entry.step ?? ""}`;
 
-const resultKeyOf = (entry: BuildResultEntry): string => `${identityOf(entry)}\u0000${entry.buildKey}`;
+const resultKeyOf = (entry: BuildResultIdentity): string => `${identityOf(entry)}\u0000${entry.buildKey}`;
 
 /**
  * Apply the overall backstop without evicting a step's newest entry while it still has older keys:
  * an unchanged step's only entry may be the oldest entry recorded.
  */
-const capBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArray<BuildResultEntry> => {
+const capBuildResults = (entries: ReadonlyArray<AppBuildResult>): ReadonlyArray<AppBuildResult> => {
   if (entries.length <= KEEP_ENTRIES) return entries;
   // `entries` is in recording order, so scanning backwards finds each identity's newest entry.
   const newest = new Set<string>();
@@ -144,8 +165,8 @@ const capBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArra
  * One entry per (service, phase, step, buildKey): a re-run replaces that key's earlier attempt.
  * Each step identity keeps its five most recently recorded build keys; 500 entries is the backstop.
  */
-const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyArray<BuildResultEntry> => {
-  const latest = new Map<string, BuildResultEntry>();
+const rotateBuildResults = (entries: ReadonlyArray<AppBuildResult>): ReadonlyArray<AppBuildResult> => {
+  const latest = new Map<string, AppBuildResult>();
   for (const entry of entries) {
     const key = resultKeyOf(entry);
     // Re-inserting moves the key to the end, so map order is recording order.
@@ -167,8 +188,8 @@ const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyA
 };
 
 export const recordBuildResult = Effect.fnUntraced(function* (
-  bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
-  entry: Omit<BuildResultEntry, "completedAt">,
+  bucket: StateBucket<ReadonlyArray<AppBuildResult>>,
+  entry: Omit<AppBuildResult, "completedAt">,
 ): Effect.fn.Return<void, StateStoreError> {
   const completedAt = yield* DateTime.now;
   yield* bucket.update((current) => rotateBuildResults([...(current ?? []), { ...entry, completedAt }]));
@@ -179,11 +200,11 @@ export const recordBuildResult = Effect.fnUntraced(function* (
  * rotation keeps it and `logs --build` prints the output that is actually in use. A hit that is
  * already newest writes nothing.
  */
-export const markBuildResultUsed = Effect.fnUntraced(function* (
-  bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
-  used: BuildResultEntry,
-): Effect.fn.Return<void, StateStoreError> {
-  yield* bucket.mutate((current) => {
+export const markBuildResultUsed = (
+  bucket: StateBucket<ReadonlyArray<AppBuildResult>>,
+  used: AppBuildResult,
+): Effect.Effect<void, StateStoreError> =>
+  bucket.mutate((current) => {
     const entries = current ?? [];
     const key = resultKeyOf(used);
     const index = entries.findIndex((entry) => resultKeyOf(entry) === key);
@@ -205,4 +226,3 @@ export const markBuildResultUsed = Effect.fnUntraced(function* (
       result: undefined,
     });
   });
-});

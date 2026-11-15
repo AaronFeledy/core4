@@ -31,6 +31,7 @@ export const Filters = Schema.fromJsonString(
     label: Schema.optionalKey(Schema.Array(Schema.String)),
     volume: Schema.optionalKey(Schema.Array(Schema.String)),
     reference: Schema.optionalKey(Schema.Array(Schema.String)),
+    ancestor: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
 );
 

@@ -1,4 +1,4 @@
-import type { DatabaseFamily } from "@lando/sdk/database-creds";
+import { DATABASE_FAMILY_LOCAL_CLIENT_ARGS, type DatabaseFamily } from "@lando/sdk/database-creds";
 // allow: SIZE_OK — Declarative family switches keep client commands and dump policies together; streaming mechanics live in separate modules.
 import {
   type DumpCompletenessRule,
@@ -85,6 +85,7 @@ const mysqlClient = (
   String(creds.port),
   "-u",
   creds.user,
+  ...DATABASE_FAMILY_LOCAL_CLIENT_ARGS[family],
   ...extra,
 ];
 
@@ -135,6 +136,7 @@ export const dumpCommand = (
         String(creds.port),
         "-u",
         creds.user,
+        ...DATABASE_FAMILY_LOCAL_CLIENT_ARGS[family],
         "--single-transaction",
         "--quick",
         ...(family === "mysql" ? ["--set-gtid-purged=OFF"] : []),

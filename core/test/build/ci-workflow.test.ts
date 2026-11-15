@@ -1177,7 +1177,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      fail-fast: false");
     expect(providerIntegration).toContain("          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}");
     expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
-    expect(providerIntegration).toContain("    timeout-minutes: 35");
+    expect(providerIntegration).toContain("    timeout-minutes: 50");
     expect(providerIntegrationGate).toContain(
       "    needs: [selection, provider-integration-linux-x64-runner]",
     );
@@ -1392,8 +1392,10 @@ describe("ci workflow", () => {
           "run test:selection providers-ephemeral-data",
           "run test:selection providers-host-reachability",
           "run test:selection providers-listener-observation",
+          "run test:selection proxy-traefik-certificate-live",
           "run test:selection providers-sqlite-integrity",
           "run test:selection providers-sqlite-borrowed-mounts",
+          "run test:selection providers-schedule",
         ]);
         const services = await runSuite("services");
         expect(services.status).toBe(0);

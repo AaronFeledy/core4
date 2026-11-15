@@ -20,7 +20,7 @@ lando db:import dump.sql.gz --yes
 lando db:import dump.sql.zst --yes
 ```
 
-`.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. Host compression stages the uncompressed dump in a temp file, so a huge dump pays disk twice. Credentials stay in the service environment, not on argv.
+`.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. A compressed server-database export stages the uncompressed dump beside the destination, so that directory needs write access and room for both files. Lando creates missing destination directories and removes its staging files when the export finishes or fails. Compressed imports stage in Lando's cache directory instead. Credentials stay in the service environment, not on argv.
 
 ## Export or import a dump
 
@@ -130,6 +130,26 @@ responding, `error.cause` holds that failure with its own `_tag`, message, and
 `remediation`, and `error.remediation` starts with what the runtime says to do.
 Database payloads and stdout are never included in these command failures.
 
+Host filesystem failures during a transfer report `DataTransferError` for both
+compressed and plain dumps. Their `error.cause` is a `FileIoError` with the failed `path`, an
+`operation` of `read`, `stage`, or `persist`, and a `reason` you can use in a script.
+The remediation matches that operation: an unreadable source needs read access,
+while staging and output files need a writable location.
+
+The reason distinguishes permissions (`permission-denied`), a read-only
+filesystem (`read-only`), exhausted storage (`no-space`), account quota
+(`quota-exceeded`), a missing path (`not-found`), and an invalid path
+(`invalid-path`). Storage includes filesystem space and available inodes. Other
+I/O failures use `io` or `unknown`. Use the reported path and remediation to
+identify what needs to change.
+
+`SqlDumpCompressionError` means the compression or decompression itself failed,
+such as corrupt gzip or zstd input. A staging-directory failure stops the export
+before the database dump starts. Compression and output writes can fail after
+the dump has finished; an existing destination still stays unchanged. Initial
+checks for a missing or unreadable import file happen before the database probe
+and use `SqlDumpNotFoundError`.
+
 `lando db:*` commands mask only the target database's credential password or
 root password in their output and errors, following the same rules as other
 commands: a secret-store or generated password is masked wherever it appears,
@@ -156,6 +176,12 @@ Import and seed stop with the same diagnostics if their emptiness query fails.
 
 Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.
 
+Restoring a snapshot builds the replacement inside the volume before anything live changes. Lando reads the whole snapshot, checks it, and extracts it into a private staging directory. Only then does it move your old data aside and the new data in, while the database is stopped. Until that swap, your database keeps its current data: a failed restore or Ctrl+C changes nothing and removes the staging copy. The swap is resumable rather than a single atomic rename. If Lando is killed partway through, the next `db:restore`, `db:import`, or `db:snapshot` of that database finishes moving the old and new contents before doing anything else. The same is true for `db:import`: Lando reads and checks the whole dump before it changes the database.
+
+The swap needs room in the volume for a second copy of the database while the old and new data exist side by side. A restore that runs out of space while extracting fails before the swap and says so, with your data unchanged; free space and retry. If moving the old and new contents fails partway through the swap, the error says so, and the next `db:restore`, `db:import`, or `db:snapshot` finishes it. Snapshots also record the physical volume they came from, so a restore into a different volume, or into a volume whose identity Lando cannot prove, is refused. Use `db:seed <file>` or a logical `db:export`/`db:import` to move that data.
+
+On providers without native volume snapshots, such as Docker and Podman, a snapshot is a tarball of the database volume in the snapshot store. Restore checks the tarball before it replaces the volume's contents.
+
 Each snapshot has an owner recorded from the source volume's physical identity, not just the app name. Lando keeps its catalog entry at `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.json`, with a copy-mode archive beside it or a reference to a native image on the recording provider. There is no separate index. If Lando cannot prove the volume's identity, capture fails before copying data. `db:snapshot` can adopt a legacy database volume after verifying its mounted target.
 
 Take and list the snapshot first. Run `db:restore` only when you intend to replace the current database with the saved state; it is not part of taking a backup.
@@ -168,7 +194,7 @@ lando db:restore before-change --yes
 
 `db:restore` takes a label or the id `db:snapshots` prints. Both ids and labels resolve only within the current app, owner, and database store. Labels don't have to be unique. A label on more than one snapshot in that scope fails with `SnapshotAmbiguousError` and lists the matching ids, newest first, so pass one of those. A name that matches nothing in that scope fails with `SnapshotNotFoundError`.
 
-A snapshot restores only into the database volume that took it, with matching owner, service, database family, version, and image. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`. Native snapshots also cannot restore through another provider. Move data across providers with `db:export` on the source, then `db:import` or `db:seed <file>` on the destination.
+A snapshot restores only into the database volume that took it, with matching owner, service, database family, version, image, and recorded physical volume generation. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`. Native snapshots also cannot restore through another provider. Move data across providers with `db:export` on the source, then `db:import` or `db:seed <file>` on the destination.
 
 ## Seed a fresh database
 

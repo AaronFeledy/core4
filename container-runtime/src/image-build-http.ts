@@ -40,7 +40,7 @@ type BuildRequestInput = {
   readonly stream?: NonNullable<ContainerBuildHttpApi["stream"]>;
   readonly options: ContainerBuildOptions;
   readonly path: `/${string}`;
-  readonly tag: string;
+  readonly tag?: string;
   readonly stdin: AsyncIterable<Uint8Array>;
   readonly secretValues: ReadonlyArray<string>;
   /** Proxy URLs whose own userinfo must be redacted alongside the host's proxy variables. */
@@ -50,6 +50,7 @@ type BuildRequestInput = {
 
 type BuildFrameState = {
   error: string | undefined;
+  id: string | undefined;
   digest: string | undefined;
   sinkFailed: boolean;
 };
@@ -189,7 +190,7 @@ const artifactBuildFailure = (
 ): ArtifactBuildError => {
   const diagnostic = redactSecrets(streamError.trim(), redactor);
   const boundedDiagnostic = diagnostic.length > 4096 ? `${diagnostic.slice(0, 4095)}…` : diagnostic;
-  const tag = redactSecrets(input.tag, redactor).slice(0, 256);
+  const tag = redactSecrets(input.tag ?? "<untagged>", redactor).slice(0, 256);
   return new ArtifactBuildError({
     providerId: input.options.providerId,
     operation: "buildArtifact",
@@ -247,6 +248,7 @@ const handleBuildLine = (
   if (state.digest === undefined && Predicate.isObject(parsed.aux) && typeof parsed.aux.Digest === "string") {
     state.digest = parsed.aux.Digest;
   }
+  if (Predicate.isObject(parsed.aux) && typeof parsed.aux.ID === "string") state.id = parsed.aux.ID;
 
   const output: string[] = [];
   if (typeof parsed.stream === "string" && parsed.stream.length > 0) output.push(parsed.stream);
@@ -262,14 +264,14 @@ type BuildRequestError = ArtifactBuildError | ProviderUnavailableError | Provide
 
 export const requestContainerBuild = (
   input: BuildRequestInput,
-): Effect.Effect<string | undefined, BuildRequestError> =>
+): Effect.Effect<{ readonly id?: string; readonly digest?: string }, BuildRequestError> =>
   Effect.gen(function* () {
     const redactor = yield* buildSecretsRedactor(
       input.secretValues,
       input.options.sourceEnv,
       input.proxyUrls ?? [],
     );
-    const state: BuildFrameState = { error: undefined, digest: undefined, sinkFailed: false };
+    const state: BuildFrameState = { error: undefined, id: undefined, digest: undefined, sinkFailed: false };
     const headers = { "Content-Type": "application/x-tar" };
 
     if (input.stream !== undefined) {
@@ -322,20 +324,35 @@ export const requestContainerBuild = (
       return yield* Effect.fail(artifactBuildFailure(input, redactor, state.error));
     }
 
+    const reference = input.tag ?? state.id?.replace(/^sha256:/u, "");
+    if (reference === undefined) {
+      return yield* Effect.fail(
+        new ProviderInternalError({
+          providerId: input.options.providerId,
+          operation: "buildArtifact",
+          message: "Untagged image build did not report aux.ID; the next build step requires its image ID.",
+          remediation:
+            "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
+        }),
+      );
+    }
     return yield* input
-      .request({ method: "GET", path: `/images/${encodeURIComponent(input.tag)}/json` })
+      .request({ method: "GET", path: `/images/${encodeURIComponent(reference)}/json` })
       .pipe(
         mapFailures((cause) => mapRequestError(input.options, redactor, cause)),
         Effect.flatMap(
-          (response): Effect.Effect<string | undefined, BuildRequestError> =>
+          (response): Effect.Effect<{ readonly id?: string; readonly digest?: string }, BuildRequestError> =>
             response.status >= 200 && response.status < 300
-              ? Effect.succeed(state.digest)
+              ? Effect.succeed({
+                  ...(state.id === undefined ? {} : { id: state.id }),
+                  ...(state.digest === undefined ? {} : { digest: state.digest }),
+                })
               : Effect.fail(
                   new ProviderUnavailableError({
                     providerId: input.options.providerId,
                     operation: "buildArtifact",
-                    message: `Built image tag ${input.tag} was not available through the container API.`,
-                    details: { status: response.status, tag: input.tag },
+                    message: `Built image ${reference} was not available through the container API.`,
+                    details: { status: response.status, tag: reference },
                     remediation: UNAVAILABLE_REMEDIATION,
                   }),
                 ),

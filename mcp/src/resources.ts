@@ -4,6 +4,7 @@ import { Context, Effect, Predicate, Schema } from "effect";
 import * as McpSchema from "effect/ai/McpSchema";
 import { McpServer } from "effect/ai/McpServer";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
+import { McpDiagnostics, boundDiagnostics } from "./diagnostics";
 import type { McpDispatchDeps } from "./dispatch";
 
 export interface McpResourceEntry {
@@ -42,7 +43,7 @@ const contents = Effect.fnUntraced(function* (uri: string, value: unknown, redac
 /** Runs one resource read with the services of the app the session serves. */
 type McpResourceProvider = <A, E>(read: Effect.Effect<A, E, unknown>) => Effect.Effect<A, unknown, never>;
 
-export const registerResources = Effect.fn("McpService.registerResources")(function* (
+const registerResourceEntries = Effect.fn("McpService.registerResourceEntries")(function* (
   entries: ReadonlyArray<McpResourceEntry>,
   provide: McpResourceProvider,
   redaction: Pick<McpDispatchDeps, "redactor" | "resultRedactor">,
@@ -53,12 +54,14 @@ export const registerResources = Effect.fn("McpService.registerResources")(funct
     const readResource = Effect.fn("McpService.readResource")(
       function* () {
         const value = yield* provide(entry.read);
-        const encoded = yield* Schema.encodeUnknownEffect(entry.resultSchema)(value);
-        return yield* contents(
-          entry.uri,
-          encoded,
-          yield* resultRedactor(entry.redactionTokens?.(value) ?? []),
-        );
+        const readRedactor = yield* resultRedactor(entry.redactionTokens?.(value) ?? []);
+        let published = value;
+        if (entry.uri === "lando://diagnostics") {
+          const diagnostics = Schema.decodeUnknownSync(McpDiagnostics)(value);
+          published = boundDiagnostics(diagnostics.revision, diagnostics.diagnostics, readRedactor);
+        }
+        const encoded = yield* Schema.encodeUnknownEffect(entry.resultSchema)(published);
+        return yield* contents(entry.uri, encoded, readRedactor);
       },
       Effect.scoped,
       Effect.catch((error) => resourceError(error, redactor).pipe(Effect.flatMap(Effect.fail))),
@@ -74,6 +77,37 @@ export const registerResources = Effect.fn("McpService.registerResources")(funct
       handle: readResource(),
     });
   }
+});
+
+export const registerDiagnosticsResource = Effect.fnUntraced(function* (
+  read: Effect.Effect<McpDiagnostics, unknown>,
+  redaction: Pick<McpDispatchDeps, "redactor" | "resultRedactor">,
+) {
+  const context = Context.makeUnsafe<unknown>((yield* Effect.context<never>()).mapUnsafe);
+  yield* registerResourceEntries(
+    [
+      {
+        uri: "lando://diagnostics",
+        name: "Command availability diagnostics",
+        description:
+          "Unavailable authorized commands for the session directory app. Reading refreshes the shared tool catalog; fix the reported source and read again to recover without reconnecting.",
+        resultSchema: McpDiagnostics,
+        read,
+      },
+    ],
+    (effect) => Effect.provide(effect, context),
+    redaction,
+  );
+});
+
+export const registerResources = Effect.fn("McpService.registerResources")(function* (
+  entries: ReadonlyArray<McpResourceEntry>,
+  provide: McpResourceProvider,
+  redaction: Pick<McpDispatchDeps, "redactor" | "resultRedactor">,
+) {
+  yield* registerResourceEntries(entries, provide, redaction);
+  const server = yield* McpServer;
+  const { redactor } = redaction;
   yield* server.addResourceTemplate({
     template: new McpSchema.ResourceTemplate({
       uriTemplate: "lando://schemas/{name}",

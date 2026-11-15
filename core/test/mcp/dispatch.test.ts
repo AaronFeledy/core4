@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import {
   type McpDispatchDeps,
   type McpExecute,
@@ -11,7 +12,7 @@ import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
-import { Cause, Effect, Schema } from "effect";
+import { Cause, Effect, Result, Schema } from "effect";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
@@ -76,6 +77,7 @@ const harness = (
 describe("dispatchTool", () => {
   test("returns an ok envelope for a successful command", async () => {
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:info", () => Effect.succeed({ name: "demo" }), {
         resultSchema: Schema.Struct({ name: Schema.String }),
       }),
@@ -96,6 +98,7 @@ describe("dispatchTool", () => {
   test("forces command execution to be non-interactive", async () => {
     let observedInteraction: "non-interactive" | undefined;
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:info", () => Effect.succeed({})),
     };
     const { deps } = harness([entry]);
@@ -120,6 +123,7 @@ describe("dispatchTool", () => {
 
   test("surfaces a command's tagged failure as an ok:false envelope, not an MCP error", async () => {
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:start", () =>
         Effect.fail(new PromptRequiredError({ message: "answer required", remediation: "pass --yes" })),
       ),
@@ -132,7 +136,10 @@ describe("dispatchTool", () => {
   });
 
   test("rejects a tool outside the effective allowlist and still publishes both events", async () => {
-    const entry: McpCommandEntry = { spec: spec("app:info", () => Effect.succeed({})) };
+    const entry: McpCommandEntry = {
+      kind: "command" as const,
+      spec: spec("app:info", () => Effect.succeed({})),
+    };
     const { deps, events } = harness([entry], { allow: [] });
     const exit = await Effect.runPromiseExit(dispatchTool({ toolId: "app:info" }, deps));
     expect(exit._tag).toBe("Failure");
@@ -160,6 +167,7 @@ describe("dispatchTool", () => {
 
   test("rejects an invalid input with McpToolInputError carrying the flag path", async () => {
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:logs", () => Effect.succeed({}), {
         flags: { format: { type: "string", required: true } },
       }),
@@ -210,7 +218,7 @@ describe("dispatchTool", () => {
   });
 
   test("publishes post event when command execution is interrupted", async () => {
-    const entry: McpCommandEntry = { spec: spec("app:exec", () => Effect.never) };
+    const entry: McpCommandEntry = { kind: "command" as const, spec: spec("app:exec", () => Effect.never) };
     const { deps, events } = harness([entry]);
     const exit = await Effect.runPromiseExit(
       dispatchTool(
@@ -229,6 +237,7 @@ describe("dispatchTool", () => {
   test("redacts secret values before the envelope crosses the transport", async () => {
     const secret = "sk-super-secret-token";
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:info", () => Effect.succeed({ token: secret }), {
         resultSchema: Schema.Struct({ token: Schema.String }),
       }),
@@ -242,6 +251,7 @@ describe("dispatchTool", () => {
     // Given
     const secret = "baretoolingtoken";
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:tooling", () => Effect.succeed({ output: secret, redactionTokens: [secret] }), {
         resultSchema: Schema.Struct({
           output: Schema.String,
@@ -266,7 +276,14 @@ describe("dispatchTool", () => {
     // Given
     const secret = "bareprojectedtoken";
     const projected = mcpRegistryWithToolingEntries({ commandEntries: [] }, [
-      { id: "app:projected", summary: "Projected tooling", hidden: false },
+      {
+        id: "app:projected",
+        summary: "Projected tooling",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: Result.getOrThrow(normalizeToolingInput("projected", {})),
+      },
     ]);
     const entry = projected.toolingEntries?.[0];
     expect(entry).toBeDefined();
@@ -333,6 +350,7 @@ describe("dispatchTool", () => {
       },
     );
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:unsafe-result", () => Effect.succeed({}), {
         resultSchema: Schema.Struct({ nested: Schema.Struct({ value: Schema.String }) }),
       }),
@@ -374,6 +392,7 @@ describe("dispatchTool", () => {
     // Given
     const omittedKey = "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1);
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:unsafe-result", () => Effect.succeed({}), { resultSchema: Schema.Unknown }),
     };
     const { deps, events } = harness([entry]);
@@ -397,7 +416,10 @@ describe("dispatchTool", () => {
 
   test("bounds app references before publishing lifecycle events", async () => {
     // Given
-    const entry: McpCommandEntry = { spec: spec("app:info", () => Effect.succeed({})) };
+    const entry: McpCommandEntry = {
+      kind: "command" as const,
+      spec: spec("app:info", () => Effect.succeed({})),
+    };
     const { deps, events } = harness([entry], { secrets: ["a"] });
 
     // When
@@ -427,7 +449,10 @@ describe("dispatchTool", () => {
 
   test("publishes a post event when command execution dies", async () => {
     // Given
-    const entry: McpCommandEntry = { spec: spec("app:exec", () => Effect.succeed({})) };
+    const entry: McpCommandEntry = {
+      kind: "command" as const,
+      spec: spec("app:exec", () => Effect.succeed({})),
+    };
     const { deps, events } = harness([entry]);
 
     // When
@@ -464,7 +489,10 @@ describe("dispatchTool", () => {
         return Reflect.getOwnPropertyDescriptor(target, key);
       },
     });
-    const entry: McpCommandEntry = { spec: spec("app:unsafe-failure", () => Effect.succeed({})) };
+    const entry: McpCommandEntry = {
+      kind: "command" as const,
+      spec: spec("app:unsafe-failure", () => Effect.succeed({})),
+    };
     const { deps, events } = harness([entry]);
 
     // When
@@ -499,6 +527,7 @@ describe("dispatchTool", () => {
     const secret = "stream-secret-token";
     const notifications: unknown[] = [];
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:logs", () => Effect.succeed({ chunk: `hello ${secret}` }), {
         resultSchema: Schema.Struct({ chunk: Schema.String }),
         streamFrames: (value) => {
@@ -562,6 +591,7 @@ describe("dispatchTool", () => {
     );
     let frame: McpProgressFrame = accessorFrame;
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: spec("app:logs", () => Effect.succeed({}), {
         streamFrames: () => [frame],
       }),
@@ -602,6 +632,7 @@ describe("dispatchTool", () => {
     expect(execSpec.redactionTokens?.(execResult)).toContain(canary);
     const registrySpec: LandoCommandSpec = execSpec;
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: {
         ...registrySpec,
         resultSchema: Schema.Struct({

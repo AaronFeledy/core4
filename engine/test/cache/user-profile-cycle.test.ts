@@ -102,7 +102,17 @@ test("recomputes profile identities through edit, deletion, and byte-identical r
     await Effect.runPromise(
       writeAppCommandCacheStrict({
         landofile: first.landofile,
-        entries: [{ id: "app:check", summary: "Check", hidden: false, service: "web" }],
+        entries: [
+          {
+            id: "app:check",
+            summary: "Check",
+            _tag: "Ready",
+            sourceKind: "tooling",
+            visibility: "public",
+            input: emptyToolingInput,
+            service: "web",
+          },
+        ],
         cwd: appRoot,
         cacheRoot,
       }),
@@ -146,3 +156,8 @@ test("recomputes profile identities through edit, deletion, and byte-identical r
     await rm(root, { recursive: true, force: true });
   }
 });
+
+import { normalizeToolingInput as fixtureToolingInput } from "@lando/landofile/tooling-input-normalize";
+import { Result as FixtureResult } from "effect";
+
+const emptyToolingInput = FixtureResult.getOrThrowWith(fixtureToolingInput("fixture", {}), (error) => error);

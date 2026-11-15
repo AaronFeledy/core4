@@ -1,6 +1,5 @@
-import { certificatePairIsCurrent as isCurrent } from "@lando/sdk/certificates";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { type AppRouteOwner, type CertificateName, certificateNameForHostname } from "@lando/sdk/schema";
+import type { AppRouteOwner } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 
 const AckSchema = Schema.Struct({ digest: Schema.String });
@@ -32,22 +31,6 @@ export const routeReloadDigest = (values: ReadonlyArray<string | undefined>): st
     ),
   );
   return hash.digest("hex");
-};
-
-/**
- * Whether the router's copy of a pair still serves `hostnames` at `now`. Route hostnames map
- * through `certificateNameForHostname` (a leftmost partial wildcard becomes `*.<rest>`); a hostname
- * no certificate can cover is never current. No renewal margin and no root check.
- */
-export const certificatePairIsCurrent = (
-  certificatePem: string,
-  privateKeyPem: string,
-  hostnames: ReadonlyArray<string>,
-  now: number,
-): boolean => {
-  const names = hostnames.map(certificateNameForHostname);
-  if (!names.every((name): name is CertificateName => name !== undefined)) return false;
-  return isCurrent({ certificate: certificatePem, privateKey: privateKeyPem }, { names, now });
 };
 
 export const isAcknowledged = (

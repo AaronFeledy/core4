@@ -12,8 +12,17 @@ import { ProviderId } from "@lando/sdk/schema";
 import { Effect, Layer, Schema } from "effect";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
-import { DoctorReportSchema } from "../../src/cli/commands/doctor-report-contract.ts";
+import type { DoctorFinding } from "../../src/cli/commands/doctor-contract.ts";
+import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
+
+const reportFrom = (checks: ReadonlyArray<DoctorFinding>) =>
+  makeDoctorReport({
+    version: "test",
+    checks: checks.map((check) => ({ section: "provider" as const, ...check })),
+    skipped: [],
+  });
 
 const report = '{ name: "installed-healthy", status: "pass", severity: "info", context: {}, solutions: [] }';
 const healthy = `{ id: "installed-healthy", run: () => Effect.succeed([${report}]) }`;
@@ -100,16 +109,7 @@ describe("doctor installed contributions through runtime discovery", () => {
       withInstalled(source, async (runtime) => {
         const result = await collect(runtime);
         expect(result.checks.some((check) => check.name === "installed-healthy")).toBe(true);
-        expect(() =>
-          Schema.encodeSync(DoctorReportSchema)({
-            version: "test",
-            provider: result,
-            self: { checks: result.selfChecks ?? [] },
-            subsystems: { checks: [] },
-            globalApp: { checks: [] },
-            mcp: { checks: [] },
-          }),
-        ).not.toThrow();
+        expect(() => Schema.encodeSync(DoctorReportSchema)(reportFrom(result.checks))).not.toThrow();
       }));
   }
 
@@ -129,9 +129,11 @@ describe("doctor installed contributions through runtime discovery", () => {
             return yield* doctor({ env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } });
           }).pipe(Effect.provide(runtime)),
         );
-        expect(result.selfChecks?.some((check) => check.section.startsWith("plugin-check:")) ?? false).toBe(
-          false,
-        );
+        expect(
+          result.checks.some(
+            (check) => check.name === "doctor-self" && (check.subject?.startsWith("plugin-check:") ?? false),
+          ),
+        ).toBe(false);
         expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
       },
       true,
@@ -155,26 +157,17 @@ describe("doctor installed contributions through runtime discovery", () => {
       withInstalled(source, async (runtime) => {
         const result = await collect(runtime);
         expect(result.checks.some((check) => check.name === "installed-healthy")).toBe(false);
-        expect(result.selfChecks).toContainEqual(
+        expect(result.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
           expect.objectContaining({
-            section: "plugin-doctor-checks",
             context: expect.objectContaining({
+              probe: "plugin-doctor-checks",
               failure: "PluginDescriptorMismatchError",
               message: expect.stringContaining("@example/doctor-installed"),
             }),
           }),
         );
         expect(JSON.stringify(result)).not.toContain("private payload");
-        expect(() =>
-          Schema.encodeSync(DoctorReportSchema)({
-            version: "test",
-            provider: result,
-            self: { checks: result.selfChecks ?? [] },
-            subsystems: { checks: [] },
-            globalApp: { checks: [] },
-            mcp: { checks: [] },
-          }),
-        ).not.toThrow();
+        expect(() => Schema.encodeSync(DoctorReportSchema)(reportFrom(result.checks))).not.toThrow();
       }));
   }
 
@@ -184,23 +177,18 @@ describe("doctor installed contributions through runtime discovery", () => {
       async (runtime) => {
         const result = await collect(runtime, { PLUGIN_API_TOKEN: "installed-secret" });
         expect(result.checks.some((check) => check.name === "installed-healthy")).toBe(true);
-        expect(result.selfChecks).toContainEqual(
-          expect.objectContaining({ section: "plugin-check:hung", reason: "timeout" }),
+        expect(result.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
+          expect.objectContaining({
+            context: expect.objectContaining({ probe: "plugin-check:hung", reason: "timeout" }),
+          }),
         );
-        expect(result.selfChecks).toContainEqual(
-          expect.objectContaining({ section: "plugin-check:throwing", reason: "defect" }),
+        expect(result.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
+          expect.objectContaining({
+            context: expect.objectContaining({ probe: "plugin-check:throwing", reason: "defect" }),
+          }),
         );
         expect(JSON.stringify(result)).not.toContain("installed-secret");
-        expect(() =>
-          Schema.encodeSync(DoctorReportSchema)({
-            version: "test",
-            provider: result,
-            self: { checks: result.selfChecks ?? [] },
-            subsystems: { checks: [] },
-            globalApp: { checks: [] },
-            mcp: { checks: [] },
-          }),
-        ).not.toThrow();
+        expect(() => Schema.encodeSync(DoctorReportSchema)(reportFrom(result.checks))).not.toThrow();
       },
     ));
   test("an empty graph suppresses bundled checks even when they would report", () =>
@@ -243,7 +231,9 @@ describe("doctor installed contributions through runtime discovery", () => {
           Effect.provide(Layer.merge(factory, sources)),
         ),
       );
-      expect(result.provider.checks.some((check) => check.name === "installed-healthy")).toBe(true);
+      expect(
+        result.checks.some((check) => check.section === "provider" && check.name === "installed-healthy"),
+      ).toBe(true);
       expect(() => Schema.encodeSync(DoctorReportSchema)(result)).not.toThrow();
     }));
 

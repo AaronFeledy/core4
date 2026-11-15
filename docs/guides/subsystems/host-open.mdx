@@ -73,7 +73,7 @@ Running `lando start` on a running app keeps its host-proxy session, socket, and
 
 ## Troubleshoot the host-proxy session
 
-Starting an app with host-proxy-enabled services needs a host-proxy transport session. If that session cannot start, `lando start` can fail with `HostProxyTransportUnavailableError`. `lando doctor` checks the RPC transport separately from [host DNS resolution](./host-dns.mdx): its `host-proxy` section reports `host-proxy-transport`, `host-proxy-state`, and `host-proxy-allowlist` checks.
+Starting an app with host-proxy-enabled services needs a host-proxy transport session. If that session cannot start, `lando start` can fail with `HostProxyTransportUnavailableError`. `lando doctor` checks the RPC transport separately from [host DNS resolution](./host-dns.mdx): its `provider` section reports `host-proxy-transport`, `host-proxy-state`, and `host-proxy-allowlist` checks.
 
 Run doctor on the host to inspect those checks. A stale generated allowlist produces a `host-proxy-allowlist` warning even without an active session; a current allowlist produces no finding. Transport checks apply when a worker is expected:
 
@@ -83,8 +83,8 @@ Run doctor on the host to inspect those checks. A stale generated allowlist prod
       <Run runtime="library" displayCode="lando doctor --format=json" code={`const run = yield* context.runCli(["doctor", "--format=json"]);
 const report = JSON.parse(run.stdout);
 expect(report.apiVersion).toBe("v4");
-expect(report.result.provider.checks).toEqual(expect.any(Array));
-expect(report.result.provider.checks).not.toContainEqual(
+expect(report.result.checks).toEqual(expect.any(Array));
+expect(report.result.checks).not.toContainEqual(
   expect.objectContaining({ name: "host-proxy-allowlist" }),
 );`} />
     </Step>

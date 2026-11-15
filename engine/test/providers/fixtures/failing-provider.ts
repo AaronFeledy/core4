@@ -32,6 +32,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
     buildArtifact: fail,
     pullArtifact: fail,
     removeArtifact: fail,
+    listArtifacts: () => Effect.fail(availabilityError),
     inspectAppliedFileSync: fail,
     prepareFileSyncTargets: fail,
     quiesceRetainedFileSync: fail,
@@ -66,6 +67,8 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
     removeVolume: fail,
     copyToService: fail,
     copyFromService: stream,
+    exportVolume: stream,
+    importVolume: fail,
     exportArtifact: stream,
     importArtifact: fail,
   };

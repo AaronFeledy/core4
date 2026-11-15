@@ -131,11 +131,21 @@ describe("family command builders", () => {
       "43210",
       "-u",
       "alice",
+      "--skip-ssl-verify-server-cert",
       "--single-transaction",
       "--quick",
       "--no-tablespaces",
       "appdb",
     ]);
+  });
+
+  test("states the loopback TLS choice for mariadb clients only", () => {
+    for (const build of [loadCommand, countCommand, resetCommand, versionCommand]) {
+      expect(build("mariadb", creds)).toContain("--skip-ssl-verify-server-cert");
+      expect(build("mysql", creds)).not.toContain("--skip-ssl-verify-server-cert");
+    }
+    expect(dumpCommand("mariadb", creds)).toContain("--skip-ssl-verify-server-cert");
+    expect(dumpCommand("mysql", creds)).not.toContain("--skip-ssl-verify-server-cert");
   });
 
   test("postgres dump recreates included objects without source ownership or ACLs", () => {

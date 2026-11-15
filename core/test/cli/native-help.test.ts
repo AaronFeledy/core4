@@ -68,8 +68,18 @@ const makeAppFixture = async (): Promise<{
 const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture>>): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: fixture.env,
       landofile: { name: "native-help" },
-      entries: [{ id: "app:known", summary: "Known task", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:known",
+          summary: "Known task",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
     }),
@@ -459,3 +469,5 @@ describe("native unknown-command failures", () => {
     expect(result.stderr).toBe("");
   });
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

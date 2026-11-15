@@ -23,6 +23,7 @@ import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
 import { Effect, Layer } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
+import { selectionOwnershipHint } from "./cli-help";
 import { finishCommandProgress } from "./command-progress";
 import { renderRunToolingResult } from "./commands/tooling";
 import {
@@ -37,6 +38,7 @@ import {
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { attachToolingHostIo, toolingHostStdin } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
+import type { LandoFlagMatch } from "./lando-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { type ToolingRoute, toolingRouteError } from "./tooling-router";
@@ -136,7 +138,18 @@ const runDynamicBunShellTooling = async (
   context?: CliInvocationContext,
 ): Promise<void> => {
   if (parentSignal?.aborted) return;
-  const { name, appRoot, relativePath, input } = route;
+  const { name, appRoot, relativePath } = route;
+  let input: ToolingInputDeclaration | undefined;
+  switch (route.availability._tag) {
+    case "Ready":
+      input = route.availability.input;
+      break;
+    case "Disabled":
+    case "Unavailable":
+      break;
+    default:
+      return route.availability satisfies never;
+  }
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name, context);
   if (await emitJsonListModeIfRequested(ToolingResult, context)) return;
@@ -233,12 +246,28 @@ export const renderAliasResolutionFailure = async (
   });
 };
 
+export interface ToolingSelectionOwnership {
+  readonly taskName: string;
+  /** The `--format` occurrence typed after the task name, when there is one. */
+  readonly format?: LandoFlagMatch;
+}
+
+export interface RouteResolvedToolingOptions {
+  readonly signal?: AbortSignal;
+  readonly context?: CliInvocationContext;
+  readonly ownership?: ToolingSelectionOwnership;
+}
+
 export const routeResolvedTooling = async (
   route: ToolingRoute,
   argv: ReadonlyArray<string>,
-  signal?: AbortSignal,
-  context?: CliInvocationContext,
+  options: RouteResolvedToolingOptions = {},
 ): Promise<boolean> => {
+  const { signal, context } = options;
+  const remediationSuffix =
+    options.ownership?.format === undefined
+      ? undefined
+      : selectionOwnershipHint(options.ownership.format, options.ownership.taskName);
   if (signal?.aborted) return true;
   switch (route._tag) {
     case "not-tooling":
@@ -265,6 +294,7 @@ export const routeResolvedTooling = async (
       if (
         await rejectUnsupportedResultFormat(`app:${route.name}`, undefined, {
           ...(context === undefined ? {} : { context }),
+          ...(remediationSuffix === undefined ? {} : { remediationSuffix }),
         })
       )
         return true;
@@ -275,10 +305,21 @@ export const routeResolvedTooling = async (
       if (
         await rejectUnsupportedResultFormat(`app:${route.name}`, undefined, {
           ...(context === undefined ? {} : { context }),
+          ...(remediationSuffix === undefined ? {} : { remediationSuffix }),
         })
       )
         return true;
-      await runDynamicTooling([route.name, ...argv], signal, route.input, context);
+      switch (route.availability._tag) {
+        case "Ready":
+          await runDynamicTooling([route.name, ...argv], signal, route.availability.input, context);
+          break;
+        case "Disabled":
+        case "Unavailable":
+          await runDynamicTooling([route.name, ...argv], signal, undefined, context);
+          break;
+        default:
+          return route.availability satisfies never;
+      }
       return true;
     default:
       return assertNever(route);

@@ -167,7 +167,7 @@ describe("doctor() contributed checks", () => {
 
     // Then
     expect(result.checks.map((check) => check.name)).toEqual(["test-preemptive"]);
-    expect(result.checks[0]?.selection?.providerId).toBe("lando");
+    expect(result.provider?.selection.providerId).toBe("lando");
   });
 
   test("redacts every plugin-authored string before including the report", async () => {
@@ -179,11 +179,12 @@ describe("doctor() contributed checks", () => {
         Effect.succeed([
           {
             name: "test-redaction",
+            subject: secret,
             status: "warn",
             severity: "warn",
             runtimeStatus: `Authorization: Bearer ${secret}`,
             runtime: { running: false, version: secret },
-            context: { [secret]: secret, password: "hunter2" },
+            context: { [secret]: [secret, "safe"], password: "hunter2" },
             solutions: [
               {
                 kind: "manual",
@@ -203,6 +204,8 @@ describe("doctor() contributed checks", () => {
     // Then
     const report = result.checks.find((check) => check.name === "test-redaction");
     expect(report).toBeDefined();
+    expect(report?.subject).toBe("[redacted]");
+    expect(report?.context["[redacted]"]).toEqual(["[redacted]", "safe"]);
     expect(JSON.stringify(report)).not.toContain(secret);
     expect(JSON.stringify(report)).not.toContain("hunter2");
     expect(JSON.stringify(report)).toContain("[redacted]");
@@ -230,11 +233,12 @@ describe("doctor() contributed checks", () => {
     // Then
     expect(result.checks.some((check) => check.name === "test-oversized-context")).toBe(false);
     expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
-    expect(result.selfChecks).toContainEqual(
+    expect(result.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
       expect.objectContaining({
-        section: "plugin-check:test-oversized-context",
-        reason: "failure",
+        subject: "plugin-check:test-oversized-context",
         context: expect.objectContaining({
+          probe: "plugin-check:test-oversized-context",
+          reason: "failure",
           checkId: "test-oversized-context",
           failure: "PluginDoctorReportInvalidError",
         }),
@@ -263,11 +267,11 @@ describe("doctor() contributed checks", () => {
 
     // Then
     expect(result.checks.some((check) => check.name.startsWith("test-excess-report-"))).toBe(false);
-    expect(result.selfChecks).toContainEqual(
+    expect(result.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
       expect.objectContaining({
-        section: "plugin-check:test-excess-reports",
-        reason: "failure",
         context: expect.objectContaining({
+          probe: "plugin-check:test-excess-reports",
+          reason: "failure",
           checkId: "test-excess-reports",
           failure: "PluginDoctorReportInvalidError",
         }),
@@ -293,15 +297,68 @@ describe("doctor() contributed checks", () => {
     // Then
     expect(result.checks.some((check) => check.name === "test-invalid-shape")).toBe(false);
     expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
-    expect(result.selfChecks).toContainEqual(
+    expect(result.checks.filter((check) => check.name === "doctor-self")).toContainEqual(
       expect.objectContaining({
-        section: "plugin-check:test-invalid-shape",
-        reason: "failure",
         context: expect.objectContaining({
+          probe: "plugin-check:test-invalid-shape",
+          reason: "failure",
           checkId: "test-invalid-shape",
           failure: "PluginDoctorReportInvalidError",
         }),
       }),
     );
+  });
+
+  test("attributes a plugin finding to its contribution id without rewriting plugin context", async () => {
+    const module = doctorModule({
+      id: "attributed",
+      run: () =>
+        Effect.succeed([
+          {
+            name: "plugin-finding",
+            subject: "authored-subject",
+            status: "warn",
+            severity: "warn",
+            context: { customKey: "authored", extra: "kept" },
+            solutions: [],
+          },
+        ]),
+    });
+
+    const result = await Effect.runPromise(doctor({}, [module]).pipe(Effect.provide(doctorLayer())));
+
+    const finding = result.checks.find((check) => check.name === "plugin-finding");
+    expect(finding?.contributor).toBe("attributed");
+    expect(finding?.subject).toBe("authored-subject");
+    expect(finding?.context).toEqual({ customKey: "authored", extra: "kept" });
+  });
+
+  test("rejects a plugin report named doctor-self as a reserved invalid payload", async () => {
+    const module = doctorModule({
+      id: "reserved",
+      run: () =>
+        Effect.succeed([
+          {
+            name: "doctor-self",
+            status: "pass",
+            severity: "info",
+            context: { marker: "plugin-authored" },
+            solutions: [],
+          },
+        ]),
+    });
+
+    const result = await Effect.runPromise(doctor({}, [module]).pipe(Effect.provide(doctorLayer())));
+
+    expect(result.checks.some((check) => check.context.marker === "plugin-authored")).toBe(false);
+    const self = result.checks.find(
+      (check) => check.name === "doctor-self" && check.context.probe === "plugin-check:reserved",
+    );
+    expect(self).toMatchObject({
+      status: "fail",
+      severity: "error",
+      context: { failure: "PluginDoctorReportInvalidError" },
+    });
+    expect(self?.context.message).toContain("doctor-self");
   });
 });

@@ -39,19 +39,16 @@ describe("compileEffectiveTooling", () => {
           file,
         }),
       );
-      const tasks = compileEffectiveTooling({
+      const resolved = toolingForPlan.resolveEffectiveTooling({
         landofile: compiled.document,
         services: [{ name: "web", tooling: { inspect: { cmd: "service-type" } } }],
       });
-      const plan = toolingForPlan.attachEffectiveTooling(
-        eventPlan(),
-        tasks,
-        {},
-        toolingForPlan.disabledToolingSources(compiled.document, tasks),
-      );
+      const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), resolved.tasks, {
+        provenance: resolved.provenance,
+      });
       const roundTrip = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(plan));
       expect(toolingForPlan.effectiveToolingForPlan(roundTrip)?.inspect).toEqual({ disabled: true });
-      expect(toolingForPlan.disabledToolingSourceForPlan(roundTrip, "inspect")).toBe(file);
+      expect(toolingForPlan.toolingSourceResolverForPlan(roundTrip)("inspect").path).toBe(file);
     },
   );
   test("false drops a service-type task definition wholesale", () => {

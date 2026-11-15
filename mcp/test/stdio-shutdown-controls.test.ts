@@ -36,7 +36,7 @@ for (const kind of ["tool", "resource"] as const) {
             const service = yield* McpService.pipe(
               Effect.provide(
                 serverLayer({
-                  commandEntries: [{ spec }],
+                  commandEntries: [{ kind: "command" as const, spec }],
                   defaultAllowlist: [spec.id],
                   resources: [
                     {
@@ -106,7 +106,7 @@ for (const kind of ["tool", "resource"] as const) {
           const service = yield* McpService.pipe(
             Effect.provide(
               serverLayer({
-                commandEntries: [{ spec }],
+                commandEntries: [{ kind: "command" as const, spec }],
                 defaultAllowlist: [spec.id],
                 resources: [
                   {

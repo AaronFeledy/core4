@@ -7,7 +7,7 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Layer } from "effect";
+import { Layer } from "effect";
 import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoGenerationRuntime, makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
@@ -29,15 +29,15 @@ import {
   runCompiledCommand,
   setActiveCommandId,
 } from "../compiled-runtime";
-import { readCliAppCommandCache } from "../tooling-command-cache";
+import type { CommandTokens } from "../invocation";
 
 export const runMetaUninstall = async (
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   signal?: AbortSignal,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:uninstall", argv, context)) return;
-  const input = compiledCommandInputFromArgv("meta:uninstall", argv, { context });
+  if (await rejectInvalidInvocation("meta:uninstall", tokens.argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:uninstall", tokens.argv, { tokens, context });
   return runCompiledCommand(
     uninstall(uninstallOptionsFromInput(input)),
     Layer.mergeAll(
@@ -51,12 +51,12 @@ export const runMetaUninstall = async (
 };
 
 export const runMetaMcp = async (
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   signal?: AbortSignal,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:mcp", argv, context)) return;
-  const input = compiledCommandInputFromArgv("meta:mcp", argv, { context });
+  if (await rejectInvalidInvocation("meta:mcp", tokens.argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:mcp", tokens.argv, { tokens, context });
   const flags = mcpFlagsFromParsed(input.flags);
   const commandRuntime = resolveCompiledCommandRuntime(
     "meta:mcp",
@@ -81,11 +81,6 @@ export const runMetaMcp = async (
     ...(signal === undefined ? {} : { signal }),
     commandRuntime,
     sessionRuntime,
-    // Session start rebuilds a non-fresh index silently (stdout is the protocol); a failed
-    // rebuild keeps the registry's own fallback so the server still starts.
-    prepareTooling: Effect.ignore(
-      readCliAppCommandCache({ includeScriptInventory: true, rebuildNotice: false }),
-    ),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     invocation: getActiveCommandInvocation() ?? {
@@ -110,14 +105,14 @@ export const runMetaVersion = async (context?: CliInvocationContext): Promise<vo
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
 export const runMetaShellenv = async (
-  argv: ReadonlyArray<string> = [],
+  tokens: CommandTokens,
   signal?: AbortSignal,
   context: CliInvocationContext = processInvocationContext(),
 ): Promise<void> => {
-  if (await rejectInvalidInvocation("meta:shellenv", argv, context)) return;
-  const input = compiledCommandInputFromArgv("meta:shellenv", argv, { context });
+  if (await rejectInvalidInvocation("meta:shellenv", tokens.argv, context)) return;
+  const input = compiledCommandInputFromArgv("meta:shellenv", tokens.argv, { tokens, context });
   const shell = input.flags.shell;
-  if (argv.includes("--shell") && shell === undefined) {
+  if (tokens.argv.includes("--shell") && shell === undefined) {
     await emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh", context);
     context.setExitCode(2);
     return;

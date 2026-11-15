@@ -127,15 +127,16 @@ Lando saves build step output separately from a service's console, so plain `lan
 lando logs --build --tail 3
 ```
 
-For an app whose one `build.app` step printed a single line, that is:
+For an Alpine service whose one `build.app` step printed a single line, that is:
 
 ```text
+app stdout [build]: Using image docker.io/library/alpine:3.20@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e
 app stdout [build:app:app:authored-app:1]: app build step ok
 ```
 
 The label after the service name says which step printed the line. `[build]` is the service's image build, and `[build:<step id>]` is a `build.app` step. `--service` limits the output to one service. `--tail` keeps the last lines of each build step's output, not one total.
 
-`--build` prints what was saved and exits, so it can't be combined with `--follow`, `--since`, or `--source`. Lando rejects those combinations as a usage error with exit code `2`. An app with no saved build output prints one line that tells you to run `lando rebuild`. `lando destroy` removes an app's saved build output.
+`--build` prints what was saved and exits, so it can't be combined with `--follow`, `--since`, or `--source`. Lando rejects those combinations as a usage error with exit code `2`. An app with no saved build output prints one line that says so and exits `0`. Nothing needs repair: Lando saves output whenever a build step runs. Saved output belongs to the project folder, so a build from another folder with the same app name never shows up here. `lando destroy` removes an app's saved build output.
 
 With `--format=json`, each line's `source` is `build` or `build:<step id>`. To read a failed build with this command, see [Recover from a failed build step](../services/php-build-failures.mdx#read-the-full-build-output).
 

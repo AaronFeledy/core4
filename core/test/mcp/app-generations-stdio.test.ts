@@ -184,6 +184,7 @@ test("real MCP calls reload transitive edits and recover from syntax errors with
     await writeFile(value, "export const version = ;");
     expect(structured(await call())).toMatchObject({ ok: false, error: { _tag: "PluginLoadError" } });
     await writeFile(value, 'export const version = "fixed";');
+    await session.request("resources/read", { uri: "lando://diagnostics" });
     expect(structured(await call())).toMatchObject({ ok: true, result: { app: "fixed" } });
     const { exit, stderr } = await session.finish();
     expect(exit, stderr).toBe(0);
@@ -218,8 +219,11 @@ test("a plugin that fails to import fails only its own tools, and recovers once 
     const healthy = await call("fixture:pair-a");
     const builtIn = await call("app:config:view");
     const failed = await call("fixture:pair-b");
+    expect(failed).toMatchObject({ error: { message: expect.stringContaining("fixture:pair-b") } });
+    const diagnostics = await session.request("resources/read", { uri: "lando://diagnostics" });
     // And the entry is fixed before the next call
     await writeFile(other.entry, source);
+    await session.request("resources/read", { uri: "lando://diagnostics" });
     const recovered = await call("fixture:pair-b");
     const { exit, stderr } = await session.finish();
 
@@ -227,13 +231,21 @@ test("a plugin that fails to import fails only its own tools, and recovers once 
     expect(structured(before)).toMatchObject({ ok: true, result: { app: "pairb", id: "fixture:pair-b" } });
     expect(structured(healthy)).toMatchObject({ ok: true, result: { app: "pair", id: "fixture:pair-a" } });
     expect(structured(builtIn)).toMatchObject({ ok: true, result: { app: "app-pair" } });
-    expect(structured(failed)).toMatchObject({
-      ok: false,
-      error: {
-        _tag: "PluginLoadError",
-        pluginName: "@example/app-pairb",
-        message: expect.stringContaining("Failed to import plugin @example/app-pairb entry index.ts"),
-      },
+    const diagnosticPayload = Schema.decodeUnknownSync(
+      Schema.Struct({
+        result: Schema.Struct({
+          contents: Schema.Array(Schema.Struct({ text: Schema.String })),
+        }),
+      }),
+    )(diagnostics);
+    expect(JSON.parse(diagnosticPayload.result.contents[0]?.text ?? "null")).toMatchObject({
+      diagnostics: [
+        expect.objectContaining({
+          commandId: "fixture:pair-b",
+          _tag: "PluginLoadError",
+          plugin: { name: "@example/app-pairb", source: "external", provenance: "app" },
+        }),
+      ],
     });
     expect(structured(recovered)).toMatchObject({ ok: true, result: { app: "pairb", id: "fixture:pair-b" } });
     expect(exit, stderr).toBe(0);

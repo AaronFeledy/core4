@@ -4,10 +4,37 @@ import { observeTcpListener } from "@lando/container-runtime/listener-observatio
 import { capRedactedLogLines } from "@lando/container-runtime/podman/bring-up";
 import { isSupervisedService } from "@lando/container-runtime/supervision";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { type DatabaseClientCheckState, classifyDatabaseClientResult } from "@lando/sdk/database-creds";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
-import type { AppPlan, ServiceName } from "@lando/sdk/schema";
+import type { AppPlan, DatabaseConnection, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Cause, DateTime, Duration, Effect, Option, Stream } from "effect";
+import { databaseCredentialRemediation } from "./database-credentials.ts";
+
+/** A classified login rejection adds credential recovery advice; an unproven state adds none. */
+const credentialRemediation = (
+  connection: DatabaseConnection | undefined,
+  state: DatabaseClientCheckState | undefined,
+): string => {
+  if (connection === undefined || state === undefined) return "";
+  if (state !== "rejected" && state !== "database-missing") return "";
+  return ` ${databaseCredentialRemediation(connection.family, state)}`;
+};
+
+/**
+ * Classify the raw tail before redaction rewrites it: a configured password equal to a word in
+ * the rejection text (for example `Login` in SQL Server's `Login failed for user`) would
+ * otherwise erase the signal the recovery advice depends on. The raw text stays in this scope;
+ * only the verdict leaves it.
+ */
+const classifyCredentialState = (
+  connection: DatabaseConnection | undefined,
+  exitCode: number | undefined,
+  raw: string,
+): DatabaseClientCheckState | undefined =>
+  connection === undefined || exitCode === undefined || raw.length === 0
+    ? undefined
+    : classifyDatabaseClientResult(connection.family, { exitCode, stderr: raw });
 
 export interface ReadinessTarget {
   readonly provider: RuntimeProviderShape;
@@ -51,7 +78,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   const redactor = yield* redactorForReadiness;
   const service = target.plan.services[target.service];
   const diagnose = evidence.reason === "healthcheck-failed" || evidence.reason === "healthcheck-timeout";
-  const [listener, logTail] = yield* Effect.all(
+  const [listener, logEvidence] = yield* Effect.all(
     [
       diagnose && service !== undefined
         ? observeTcpListener(service, (command) =>
@@ -66,13 +93,15 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
       ).pipe(
         Effect.map((chunks) => {
           if (chunks.length === 0) return undefined;
+          const raw = chunks.map((chunk) => chunk.line).join("\n");
           return {
-            service: String(target.service),
-            ...capRedactedLogLines(
-              redactor.redactString(chunks.map((chunk) => chunk.line).join("\n")).split("\n"),
-            ),
-            ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
-            ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
+            tail: {
+              service: String(target.service),
+              ...capRedactedLogLines(redactor.redactString(raw).split("\n")),
+              ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
+              ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
+            },
+            credentialState: classifyCredentialState(service?.connection, evidence.runtime?.exitCode, raw),
           };
         }),
         Effect.timeout(Duration.seconds(4)),
@@ -102,7 +131,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
       remediation:
         evidence.reason === "inspect-failed"
           ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-          : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
+          : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentialRemediation(service?.connection, logEvidence?.credentialState)}`,
       ...(listener === undefined ? {} : { listener }),
       ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
       ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),
@@ -110,7 +139,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
       ...(evidence.lastStatus === undefined
         ? {}
         : { lastStatus: redactor.redactString(evidence.lastStatus) }),
-      ...(logTail === undefined ? {} : { logTail }),
+      ...(logEvidence === undefined ? {} : { logTail: logEvidence.tail }),
     }),
   );
 });

@@ -3,6 +3,7 @@ import {
   NoProviderInstalledError,
   ProviderCapabilityError,
   ProviderUnavailableError,
+  VolumeOperationError,
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, LogSource, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProvider } from "@lando/sdk/services";
@@ -649,7 +650,22 @@ describe("RuntimeProvider contract", () => {
         ...TestRuntimeProvider.capabilities,
         volumeSnapshot: "native" as const,
       },
-      restoreVolume: () => Effect.void,
+      // Refuses a replaced target like a real provider, but never restores bytes.
+      restoreVolume: (spec: Parameters<typeof TestRuntimeProvider.restoreVolume>[0]) =>
+        TestRuntimeProvider.listVolumes({ app: spec.target.app, store: spec.target.store }).pipe(
+          Effect.flatMap((volumes) =>
+            volumes.some((volume) => volume.instanceId === spec.expectedTargetGeneration)
+              ? Effect.void
+              : Effect.fail(
+                  new VolumeOperationError({
+                    providerId: "broken-native-volume",
+                    operation: "restoreVolume",
+                    message: "The restore target volume was replaced.",
+                    remediation: "Retry against the current volume.",
+                  }),
+                ),
+          ),
+        ),
     } as typeof TestRuntimeProvider;
 
     const exit = await Effect.runPromiseExit(
@@ -668,6 +684,41 @@ describe("RuntimeProvider contract", () => {
     if (!Cause.isFailReason(reason)) return;
     expect(reason.error).toBeInstanceOf(ContractFailure);
     expect(reason.error.assertion).toBe("snapshot -> mutate -> restore restores volume bytes");
+  });
+
+  test("data-plane contract fails when native restore ignores the expected target generation", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        volumeSnapshot: "native" as const,
+      },
+      restoreVolume: (spec: Parameters<typeof TestRuntimeProvider.restoreVolume>[0]) =>
+        TestRuntimeProvider.listVolumes({ app: spec.target.app, store: spec.target.store }).pipe(
+          Effect.flatMap((volumes) =>
+            TestRuntimeProvider.restoreVolume({
+              ...spec,
+              expectedTargetGeneration: volumes[0]?.instanceId ?? spec.expectedTargetGeneration,
+            }),
+          ),
+        ),
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderDataPlaneContract({
+        providerName: "generation-blind-native-volume",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined || !Cause.isFailReason(reason)) throw new Error("expected a typed failure");
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe(
+      "restoreVolume refuses a target whose generation differs from the expected one",
+    );
   });
 
   test("data-plane contract fails with CapabilityError when ephemeral mounts are missing", async () => {

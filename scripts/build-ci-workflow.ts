@@ -414,9 +414,13 @@ export const landoRootlessPrereqSteps = `      - name: Provision rootless runtim
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
 
-const sqliteHelper = PROVIDER_IMAGES.images.sqliteHelper;
-if (sqliteHelper === undefined) throw new Error("PROVIDER_IMAGES is missing the sqliteHelper pin");
-const sqliteHelperImageRef = `${sqliteHelper.image}@${sqliteHelper.digest}`;
+const pinnedHelperImageRef = (name: "sqliteHelper" | "dataHelper"): string => {
+  const helper = PROVIDER_IMAGES.images[name];
+  if (helper === undefined) throw new Error(`PROVIDER_IMAGES is missing the ${name} pin`);
+  return `${helper.image}@${helper.digest}`;
+};
+const sqliteHelperImageRef = pinnedHelperImageRef("sqliteHelper");
+const dataHelperImageRef = pinnedHelperImageRef("dataHelper");
 
 const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -527,6 +531,8 @@ ${landoManagedPodmanRuntimeDirCommands}
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image ${dataHelperImageRef}
           docker_pull_image ${sqliteHelperImageRef}`;
 
 // Each selection runs even after an earlier one fails, so one run reports every failing selection;
@@ -548,8 +554,10 @@ const engineLaneRuns = laneRuns([
   ["providers-ephemeral-data", "ephemeral-data-helpers"],
   ["providers-host-reachability", "host-reachability"],
   ["providers-listener-observation", "listener-observation"],
+  ["proxy-traefik-certificate-live", "proxy-traefik-certificate-live"],
   ["providers-sqlite-integrity", "sqlite-integrity"],
   ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
+  ["providers-schedule", "schedule"],
 ]);
 
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests

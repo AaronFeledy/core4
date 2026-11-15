@@ -22,7 +22,8 @@
     "./live": "./src/live.ts",
     "./local-ca-trust": "./src/local-ca-trust.ts",
     "./network-trust": "./src/network-trust.ts",
-    "./downloader": "./src/downloader.ts"
+    "./downloader": "./src/downloader.ts",
+    "./tls-peer": "./src/tls-peer.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "http-client", "downloader"],

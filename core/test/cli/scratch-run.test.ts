@@ -187,7 +187,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       Effect.sync(() => {
         return { providerId, ref: spec.ref, digest: "sha256:source" };
       }),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: (plan, applyOptions) =>
       Effect.gen(function* () {
         recorded.appliedPlans.push(plan);
@@ -261,6 +262,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     removeVolume: () => die("removeVolume"),
     copyToService: () => die("copyToService"),
     copyFromService: () => Stream.die("scratch run test provider should not call copyFromService"),
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.die("scratch run test provider should not call exportArtifact"),
     importArtifact: () => die("importArtifact"),
   });

@@ -52,46 +52,51 @@ const inspectionError = (
 export const inspectInheritedImageUser = (
   input: InspectInheritedImageUserInput,
 ): Effect.Effect<string, ProviderUnavailableError | ProviderInternalError> =>
-  input.request({ method: "GET", path: `/images/${encodeURIComponent(input.baseRef)}/json` }).pipe(
-    mapFailures((cause) =>
-      cause instanceof ProviderUnavailableError
-        ? cause
-        : inspectionError(input, `Unable to inspect inherited image user for ${input.baseRef}.`, cause),
-    ),
-    Effect.flatMap((response) =>
-      response.status >= 200 && response.status < 300
-        ? Effect.succeed(response.body)
-        : Effect.fail(
-            new ProviderUnavailableError({
-              providerId: input.providerId,
-              operation: "buildArtifact",
-              message: `Inherited image user inspection failed with HTTP ${response.status}.`,
-              remediation: inspectionRemediation(input),
-            }),
-          ),
-    ),
-    Effect.flatMap((body) =>
-      tryParseJson(body, (cause) =>
-        inspectionError(input, "Inherited image user inspection returned malformed JSON.", cause),
+  input
+    .request({
+      method: "GET",
+      path: `/images/${encodeURIComponent(input.baseRef.replace(/^sha256:/u, ""))}/json`,
+    })
+    .pipe(
+      mapFailures((cause) =>
+        cause instanceof ProviderUnavailableError
+          ? cause
+          : inspectionError(input, `Unable to inspect inherited image user for ${input.baseRef}.`, cause),
       ),
-    ),
-    Effect.flatMap((value) => {
-      const decoded = Schema.decodeUnknownResult(ImageInspect)(value);
-      return Result.isSuccess(decoded)
-        ? Effect.succeed(decoded.success.Config.User)
-        : Effect.fail(
-            inspectionError(
-              input,
-              "Inherited image user inspection returned malformed configuration.",
-              decoded.failure,
+      Effect.flatMap((response) =>
+        response.status >= 200 && response.status < 300
+          ? Effect.succeed(response.body)
+          : Effect.fail(
+              new ProviderUnavailableError({
+                providerId: input.providerId,
+                operation: "buildArtifact",
+                message: `Inherited image user inspection failed with HTTP ${response.status}.`,
+                remediation: inspectionRemediation(input),
+              }),
             ),
-          );
-    }),
-    Effect.flatMap((user) =>
-      validateDockerfileUser(
-        user === undefined || user === "" ? "root" : user,
-        "inherited image user",
-        input.providerId,
       ),
-    ),
-  );
+      Effect.flatMap((body) =>
+        tryParseJson(body, (cause) =>
+          inspectionError(input, "Inherited image user inspection returned malformed JSON.", cause),
+        ),
+      ),
+      Effect.flatMap((value) => {
+        const decoded = Schema.decodeUnknownResult(ImageInspect)(value);
+        return Result.isSuccess(decoded)
+          ? Effect.succeed(decoded.success.Config.User)
+          : Effect.fail(
+              inspectionError(
+                input,
+                "Inherited image user inspection returned malformed configuration.",
+                decoded.failure,
+              ),
+            );
+      }),
+      Effect.flatMap((user) =>
+        validateDockerfileUser(
+          user === undefined || user === "" ? "root" : user,
+          "inherited image user",
+          input.providerId,
+        ),
+      ),
+    );

@@ -1,6 +1,14 @@
 import { expect, test } from "bun:test";
 import type { ToolingRunSummary, ToolingRunTarget } from "@lando/sdk/schema";
+import { ToolingInputRevision } from "@lando/sdk/schema";
 import { renderToolingHelp } from "../../src/cli/cli-help.ts";
+
+const input = {
+  acceptsArguments: true,
+  flags: [],
+  args: [],
+  revision: ToolingInputRevision.make("run-help"),
+};
 
 const targets: readonly { readonly target: ToolingRunTarget; readonly text: string }[] = [
   { target: { kind: "host" }, text: "on the host" },
@@ -13,11 +21,15 @@ test.each(targets)("describes a single command $text before the ownership hint",
   const help = renderToolingHelp({
     id: "app:check",
     summary: "Check",
-    runs: {
-      kind: "commands",
-      steps: 1,
-      targets: [target],
-      program: "echo",
+    availability: {
+      _tag: "Ready",
+      input,
+      runs: {
+        kind: "commands",
+        steps: 1,
+        targets: [target],
+        program: "echo",
+      },
     },
   });
   expect(help).toContain(`Runs \`echo\` ${text}.\n\nRun \`lando check -- --help\``);
@@ -69,5 +81,15 @@ const cases: readonly { readonly runs: ToolingRunSummary; readonly sentence: str
   },
 ];
 test.each(cases)("renders $sentence", ({ runs, sentence }) => {
-  expect(renderToolingHelp({ id: "app:check", summary: "Check", runs })).toContain(sentence);
+  expect(
+    renderToolingHelp({
+      id: "app:check",
+      summary: "Check",
+      availability: {
+        _tag: "Ready",
+        input,
+        runs,
+      },
+    }),
+  ).toContain(sentence);
 });

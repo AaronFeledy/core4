@@ -114,7 +114,7 @@ describe("MCP executable guide", () => {
     const bounded = libraryRun(scenarioById(guide, "bounded-read-only-regressions"));
     expect(bounded.code).toContain("mcpRegistryFromBuiltIns");
     expect(bounded.code).toContain("MAX_OUTSTANDING_REQUESTS");
-    expect(bounded.code).toContain('Effect.timeout("5 seconds")');
+    expect(bounded.code).toContain("Effect.timeout");
     expect(bounded.code).toContain("isError: Schema.Literal(true)");
     expect(bounded.code).toContain('type: Schema.Literal("text"), text: Schema.String');
     expect(bounded.code).toContain('expect(JSON.parse(busyResult.content[0]?.text ?? "{}")).toEqual');

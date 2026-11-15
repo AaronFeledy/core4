@@ -16,6 +16,8 @@ export const serverLayer = (
         Layer.succeed(
           McpRuntimeConfig,
           McpRuntimeConfig.of({
+            cwd: process.cwd(),
+            env: { ...process.env },
             commandEntries: [],
             defaultAllowlist: [],
             apps: testAppGenerations(),

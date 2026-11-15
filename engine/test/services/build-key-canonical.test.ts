@@ -25,9 +25,12 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as FileStateStore from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
 import { appBuildKeyForStep, buildKeyForService } from "../../src/services/build-key.ts";
 import * as AppBuildOrchestrator from "../../src/services/build-orchestrator.ts";
-import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import * as AppEventService from "../../src/services/event-service.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { CORE_VERSION } from "../../src/version.ts";
@@ -210,13 +213,14 @@ test("does not skip the provider when a version-1 persisted build result has the
     };
     await Effect.runPromise(
       Effect.gen(function* () {
-        const bucket = yield* openScratchBuildResults(yield* StateStore);
-        yield* recordBuildResult(bucket, {
+        const bucket = yield* openArtifactBuildResults(yield* StateStore);
+        yield* recordArtifactBuildResult(bucket, {
+          owner: "scratch-canonical",
+          providerId: String(provider.id),
           buildKey: oldKey,
           service: service.name,
           phase: "artifact",
           outcome: "complete",
-          exitCode: 0,
           durationMs: 1,
           artifactRef: "web:old",
           transcriptPath: AbsolutePath.make(join(root, "old.log")),

@@ -288,6 +288,21 @@ export const runProviderContract = Effect.fnUntraced(function* (
   const available = yield* provider.isAvailable.pipe(mapFailures(mapProviderFailure("isAvailable resolves")));
   yield* requireContract(typeof available === "boolean", "isAvailable resolves to a boolean", available);
 
+  const unknownArtifact = { providerId, ref: `lando-build-contract-unknown-${crypto.randomUUID()}` };
+  const artifacts = yield* provider
+    .listArtifacts({ labels: { "dev.lando.contract-unknown": crypto.randomUUID() } })
+    .pipe(mapFailures(mapProviderFailure("listArtifacts resolves for an unknown label")));
+  yield* requireContract(artifacts.length === 0, "unknown artifact label listing is empty", artifacts);
+  for (const attempt of [1, 2]) {
+    const removal = yield* provider
+      .removeArtifact(unknownArtifact)
+      .pipe(mapFailures(mapProviderFailure("removeArtifact resolves for an unknown ref")));
+    yield* requireContract(removal.kind === "absent", "unknown artifact removal is absent and idempotent", {
+      attempt,
+      removal,
+    });
+  }
+
   const status = yield* provider.getStatus.pipe(mapFailures(mapProviderFailure("getStatus resolves")));
   yield* requireContract(Schema.is(ProviderStatus)(status), "getStatus returns running or idle", status);
   yield* requireContract(

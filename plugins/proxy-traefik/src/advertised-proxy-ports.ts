@@ -124,7 +124,7 @@ export const makeAdvertisedProxyPortsCheck = (
       runtime: { running: false },
       context: {
         host,
-        ports: broken.map((item) => String(item.port)).join(","),
+        ports: broken.map((item) => String(item.port)),
       },
       solutions: [
         {

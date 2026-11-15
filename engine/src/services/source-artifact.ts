@@ -4,8 +4,8 @@ import type { ServicePlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type {
   ArtifactPullPolicy,
-  ArtifactRef,
   EventService,
+  ProviderArtifactRef,
   ProviderError,
   RuntimeProviderShape,
   StateStore,
@@ -82,7 +82,7 @@ export const resolveSourceArtifact = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
   options: SourceArtifactOptions,
-): Effect.Effect<ArtifactRef | undefined, ProviderError> => {
+): Effect.Effect<ProviderArtifactRef | undefined, ProviderError> => {
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") return Effect.succeed(undefined);
   if (!provider.capabilities.artifactPull) {

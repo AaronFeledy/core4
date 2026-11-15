@@ -25,6 +25,7 @@ import { hostShellIssues } from "../planner/host-shell-issues.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
 import { planningLintFindings } from "../planner/lint-planning.ts";
+import { toolingDeclarationIssues } from "../planner/tooling-declaration-issues.ts";
 import { toolingDynamicIssues } from "../planner/tooling-dynamic-issues.ts";
 import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
 import { FileSyncPolicy, fileSyncMetadata, makeFileSyncPolicy } from "../plugins/file-sync-policy.ts";
@@ -128,6 +129,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const issues = [
     ...(resolved.success._tag === "Invalid" ? resolved.success.issues : []),
     ...toolingAndEventIssues(resolution),
+    ...toolingDeclarationIssues(resolution),
     ...toolingDynamicIssues(resolution, invocationSites),
     ...hostShellIssues(resolution, invocationSites),
     ...(yield* lintCapabilityIssues(

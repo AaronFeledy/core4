@@ -7,6 +7,7 @@ import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lea
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { startFileSyncSessions } from "../operations/start-file-sync.ts";
 import { withRoutesStartProgress } from "../operations/start-progress-phases.ts";
+import { withActivationObservations } from "../services/build-app-observation.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { applyAppRoutes } from "./routes.ts";
 import { completeGlobalGroups } from "./startup-completion-groups.ts";
@@ -53,10 +54,13 @@ export type GlobalGroups<E> = {
 
 const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: UserStart) {
   yield* withBuildProvider(
-    request.builds.buildApp(request.plan, {
-      ...(request.forceAppBuild === true ? { force: true } : {}),
-      ...(request.signal === undefined ? {} : { signal: request.signal }),
-    }),
+    withActivationObservations(
+      request.builds.buildApp(request.plan, {
+        ...(request.forceAppBuild === true ? { force: true } : {}),
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
+      }),
+      request.initial,
+    ),
     request.provider,
   );
   yield* verifyGlobalConsumerAdmission;
@@ -73,10 +77,13 @@ const selectedRestart = Effect.fn("StartupCompletion.selectedRestart")(function*
 });
 const selectedRebuild = Effect.fn("StartupCompletion.selectedRebuild")(function* (request: SelectedRebuild) {
   yield* withBuildProvider(
-    request.builds.buildApp(request.selectedPlan, {
-      force: true,
-      ...(request.signal === undefined ? {} : { signal: request.signal }),
-    }),
+    withActivationObservations(
+      request.builds.buildApp(request.selectedPlan, {
+        force: true,
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
+      }),
+      request.initial,
+    ),
     request.provider,
   );
   yield* verifyGlobalConsumerAdmission;

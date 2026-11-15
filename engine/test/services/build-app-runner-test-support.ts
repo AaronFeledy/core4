@@ -11,7 +11,12 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  PathsService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  type StateStore,
+} from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
@@ -69,7 +74,10 @@ export const planWith = (
   extensions: {},
 });
 
-export const makeLayer = (provider: RuntimeProviderShape) => {
+export const makeLayer = (
+  provider: RuntimeProviderShape,
+  store: Layer.Layer<StateStore> = stateStoreLayer,
+) => {
   const paths = Layer.succeed(PathsService, makeLandoPaths());
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
@@ -87,7 +95,7 @@ export const makeLayer = (provider: RuntimeProviderShape) => {
     RedactionService,
     Effect.sync(() => makeRedactionService()),
   );
-  const dependencies = Layer.mergeAll(LandoEventService.layer, paths, registry, stateStoreLayer, redaction);
+  const dependencies = Layer.mergeAll(LandoEventService.layer, paths, registry, store, redaction);
   return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
 };
 

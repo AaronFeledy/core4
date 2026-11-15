@@ -14,6 +14,7 @@ import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/prox
 import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { resolveLandoRoots, updateHandoffDir } from "@lando/paths";
 
+import { hasDiagnosticFlag, landoControlRole } from "../src/cli/lando-flags";
 import { installProcessLifecycle } from "../src/cli/process-lifecycle";
 import { runWithProcessSignalReraise } from "../src/cli/process-signals";
 import { cliUserArgv } from "../src/cli/user-argv";
@@ -24,17 +25,7 @@ ensureHostProxyNoProxy("localhost");
 
 const argv = cliUserArgv(Bun.argv);
 const hasDiagnosticOverride = (tokens: ReadonlyArray<string>, env: NodeJS.ProcessEnv): boolean => {
-  if (
-    tokens.some(
-      (token) =>
-        token === "--debug" ||
-        token === "--verbose" ||
-        token === "--log-level" ||
-        token.startsWith("--log-level="),
-    )
-  ) {
-    return true;
-  }
+  if (hasDiagnosticFlag(tokens)) return true;
   const level = env.LANDO_LOG_LEVEL;
   return level !== undefined && level !== "" && level !== "none";
 };
@@ -69,22 +60,26 @@ const main = async (): Promise<void> => {
       const { surfaceDeferredUpdateReceipts } = await import("../src/cli/update-receipts.ts");
       if (await surfaceDeferredUpdateReceipts(argv)) return;
     }
+    // Freeze host entry once: cold diagnostic gate, discovery, and runCli share this snapshot.
+    // Full CliInvocation (IO) is assembled only on the dispatcher path so cold paths stay Effect-free.
+    const capturedCwd = process.cwd();
+    const capturedEnv: Readonly<Record<string, string | undefined>> = { ...process.env };
     // Only single-token forms can be remapped by commandAliases; multi-token
     // registered paths such as `recipes list` stay on the cold path in-app.
     const appSensitiveAlias =
-      argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "");
-    const discovery = { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() };
+      argv.length === 1 &&
+      (["version", "shellenv", "recipes"].includes(argv[0] ?? "") ||
+        landoControlRole(argv[0] ?? "") === "help");
+    const discovery = { cwd: capturedCwd, resolver: makeAppDiscoveryResolver() };
     const hasAppContext = async (): Promise<boolean> =>
       (await discovery.resolver.resolve(discovery.cwd)).kind === "found";
     const appAliasContext = appSensitiveAlias && (await hasAppContext());
-    const coldPathAllowed = !hasDiagnosticOverride(argv, process.env);
+    const coldPathAllowed = !hasDiagnosticOverride(argv, capturedEnv);
 
     // Every text form of the version command prints the bare embedded version.
     const versionRequest =
       argv.length === 1 &&
-      (argv[0] === "--version" ||
-        argv[0] === "-V" ||
-        argv[0] === "-v" ||
+      (landoControlRole(argv[0] ?? "") === "version" ||
         argv[0] === "meta:version" ||
         (argv[0] === "version" && !appAliasContext));
 
@@ -107,7 +102,7 @@ const main = async (): Promise<void> => {
     if (
       coldPathAllowed &&
       argv.length === 1 &&
-      (argv[0] === "--help" || argv[0] === "-h") &&
+      landoControlRole(argv[0] ?? "") === "help" &&
       !appAliasContext
     ) {
       const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
@@ -132,8 +127,10 @@ const main = async (): Promise<void> => {
     const keepAlive = setInterval(() => undefined, 60_000);
     try {
       const { runCli } = await import("@lando/core/cli");
+      const { processInvocationContext } = await import("../src/runtime/invocation-context");
       if (state.received() !== undefined) return;
-      await runCli({ argv, rootUrl: import.meta.url, discovery, signal: state.signal });
+      const context = { ...processInvocationContext(), cwd: capturedCwd, env: capturedEnv };
+      await runCli({ argv, rootUrl: import.meta.url, discovery, signal: state.signal, context });
     } finally {
       clearInterval(keepAlive);
     }

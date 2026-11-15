@@ -136,7 +136,8 @@ const makeLayer = (rawLine: string) => {
           remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
     stop: () => Effect.void,
@@ -170,6 +171,8 @@ const makeLayer = (rawLine: string) => {
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),
     copyFromService: () => Stream.die("not used"),
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.die("not used"),
     importArtifact: () => Effect.die("not used"),
   };

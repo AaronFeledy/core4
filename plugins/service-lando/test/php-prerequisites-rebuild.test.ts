@@ -95,7 +95,8 @@ const makeEngine = () => {
   const lookup = (reference: string): StoredImage | undefined => {
     const digestIndex = reference.indexOf("@");
     if (digestIndex !== -1) return images.get(reference.slice(digestIndex + 1));
-    return tags.get(reference) ?? images.get(reference);
+    // Engines resolve an image ID with or without its sha256: prefix.
+    return tags.get(reference) ?? images.get(reference) ?? images.get(`sha256:${reference}`);
   };
 
   const inspectBody = (image: StoredImage): string =>
@@ -117,14 +118,17 @@ const makeEngine = () => {
         return { status: 404, body: '{"error":"local tag is not in a registry"}' };
       }
       if (!input.path.startsWith("/build?")) return { status: 404, body: "{}" };
+      // FROM-only base builds are untagged; the engine reports the image ID the next stage needs.
       const tag = new URL(`http://build${input.path}`).searchParams.get("t");
-      if (tag === null) return { status: 400, body: '{"error":"missing tag"}' };
+      const buildBody = (image: StoredImage) => `{"aux":{"ID":"${image.id}","Digest":"${image.digest}"}}\n`;
       const dockerfile = dockerfileFromTar(yield* Effect.promise(() => collect(input.stdin)));
       const cached = layerCache.get(dockerfile);
       if (cached !== undefined) {
-        tags.set(tag, cached);
-        images.set(tag, cached);
-        return { status: 200, body: `{"aux":{"Digest":"${cached.digest}"}}\n` };
+        if (tag !== null) {
+          tags.set(tag, cached);
+          images.set(tag, cached);
+        }
+        return { status: 200, body: buildBody(cached) };
       }
       const from = /^FROM\s+(\S+)/u.exec(dockerfile)?.[1];
       const parent = from === undefined ? undefined : lookup(from);
@@ -138,10 +142,12 @@ const makeEngine = () => {
         marker: parent.marker,
       };
       layerCache.set(dockerfile, built);
-      tags.set(tag, built);
-      images.set(tag, built);
+      if (tag !== null) {
+        tags.set(tag, built);
+        images.set(tag, built);
+      }
       images.set(built.id, built);
-      return { status: 200, body: `{"aux":{"Digest":"${built.digest}"}}\n` };
+      return { status: 200, body: buildBody(built) };
     });
 
   return {

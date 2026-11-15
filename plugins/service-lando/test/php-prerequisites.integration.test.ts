@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { dirname, join } from "node:path";
 
 import { buildKeyForService } from "@lando/engine/services/build-key";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -18,6 +17,7 @@ import { DateTime, Effect, Schema } from "effect";
 
 import { PHP_COMMON_EXTENSIONS, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { runBuiltImage } from "./support/run-built-image.ts";
 
 const appId = AppId.make("php-prerequisites-smoke");
 const serviceName = ServiceName.make("web");
@@ -31,39 +31,6 @@ const metadata = {
 const planMetadata = {
   ...metadata,
   resolvedAt: DateTime.makeUnsafe(metadata.resolvedAt),
-};
-
-const runBuiltImage = async (
-  runtimeRoot: string,
-  image: string,
-  command: ReadonlyArray<string>,
-): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
-  const proc = Bun.spawn(
-    [
-      join(runtimeRoot, "bin", "podman"),
-      "--root",
-      join(runtimeRoot, "storage"),
-      "--runroot",
-      join(runtimeRoot, "run"),
-      "--config",
-      join(runtimeRoot, "config"),
-      "run",
-      "--rm",
-      image,
-      ...command,
-    ],
-    {
-      env: { ...process.env, CONTAINERS_CONF: join(runtimeRoot, "config", "containers.conf") },
-      stderr: "pipe",
-      stdout: "pipe",
-    },
-  );
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
 };
 
 describe("stock PHP prerequisites — live provider", () => {
@@ -117,13 +84,21 @@ describe("stock PHP prerequisites — live provider", () => {
 
       // When
       const artifact = await Effect.runPromise(
-        Effect.scoped(provider.buildArtifact({ app: appId, service: serviceName, plan, buildKey })),
+        Effect.scoped(
+          provider.buildArtifact({
+            labels: { "dev.lando.test": crypto.randomUUID() },
+            app: appId,
+            service: serviceName,
+            plan,
+            buildKey,
+            ref: `lando-build-test-${crypto.randomUUID()}-php`,
+          }),
+        ),
       );
       try {
-        const runtimeRoot = dirname(dirname(socket.socketPath));
-        const composer = await runBuiltImage(runtimeRoot, artifact.ref, ["composer", "--version"]);
-        const unzip = await runBuiltImage(runtimeRoot, artifact.ref, ["unzip", "-v"]);
-        const modules = await runBuiltImage(runtimeRoot, artifact.ref, ["php", "-m"]);
+        const composer = await runBuiltImage(socket.socketPath, artifact.ref, ["composer", "--version"]);
+        const unzip = await runBuiltImage(socket.socketPath, artifact.ref, ["unzip", "-v"]);
+        const modules = await runBuiltImage(socket.socketPath, artifact.ref, ["php", "-m"]);
 
         // Then
         expect(composer.exitCode, composer.stderr).toBe(0);
@@ -139,7 +114,9 @@ describe("stock PHP prerequisites — live provider", () => {
         );
         for (const extension of PHP_COMMON_EXTENSIONS) expect(loaded.has(extension)).toBe(true);
       } finally {
-        await Effect.runPromise(provider.removeArtifact(artifact));
+        expect(
+          (await Effect.runPromise(provider.removeArtifact({ ...artifact, pruneParents: true }))).kind,
+        ).toBe("removed");
       }
     },
     600_000,

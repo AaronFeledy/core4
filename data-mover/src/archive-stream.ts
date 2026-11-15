@@ -5,7 +5,7 @@ import {
   padToBlock,
 } from "@lando/container-runtime/tar";
 import { ArchiveFormatError } from "@lando/sdk/errors";
-import { Effect, Stream } from "effect";
+import { type Cause, Effect, Stream } from "effect";
 
 export type ArchiveStreamFormat = "tar" | "tar.gz" | "tar.zst";
 
@@ -22,6 +22,22 @@ const archiveError = (format: ArchiveStreamFormat, path: string, message: string
 
 const compressionName = (format: Exclude<ArchiveStreamFormat, "tar">): "gzip" | "zstd" =>
   format === "tar.gz" ? "gzip" : "zstd";
+
+const preserveSourceFailure = <E, R>(
+  source: Stream.Stream<Uint8Array, E, R>,
+  transform: (body: Stream.Stream<Uint8Array, E, R>) => Stream.Stream<Uint8Array, E | ArchiveFormatError, R>,
+): Stream.Stream<Uint8Array, E | ArchiveFormatError, R> =>
+  Stream.suspend(() => {
+    let sourceFailure: Cause.Cause<E> | undefined;
+    return transform(
+      source.pipe(
+        Stream.catchCause((cause) => {
+          sourceFailure = cause;
+          return Stream.failCause(cause);
+        }),
+      ),
+    ).pipe(Stream.catchCause((cause) => Stream.failCause(sourceFailure ?? cause)));
+  });
 
 const throughCompression = <E, R>(
   source: Stream.Stream<Uint8Array, E, R>,
@@ -57,6 +73,22 @@ const throughDecompression = <E, R>(
     ),
   );
 
+/** Compress an archive stream, preserving the source failure identity. */
+export const encodeCompressionStream = <E, R>(
+  source: Stream.Stream<Uint8Array, E, R>,
+  format: Exclude<ArchiveStreamFormat, "tar">,
+  path: string,
+): Stream.Stream<Uint8Array, E | ArchiveFormatError, R> =>
+  preserveSourceFailure(source, (body) => throughCompression(body, format, path));
+
+/** Decompress an archive stream, preserving the source failure identity. */
+export const decodeCompressionStream = <E, R>(
+  source: Stream.Stream<Uint8Array, E, R>,
+  format: Exclude<ArchiveStreamFormat, "tar">,
+  path: string,
+): Stream.Stream<Uint8Array, E | ArchiveFormatError, R> =>
+  preserveSourceFailure(source, (body) => throughDecompression(body, format, path));
+
 export const encodeArchiveStream = <E, R>(input: {
   readonly body: Stream.Stream<Uint8Array, E, R>;
   readonly sizeBytes: number;
@@ -76,7 +108,7 @@ export const encodeArchiveStream = <E, R>(input: {
     Stream.make(header),
     Stream.concat(input.body, Stream.make(new Uint8Array(padding + blockSize * 2))),
   );
-  return input.format === "tar" ? tar : throughCompression(tar, input.format, input.path);
+  return input.format === "tar" ? tar : encodeCompressionStream(tar, input.format, input.path);
 };
 
 const append = (left: Uint8Array, right: Uint8Array): Uint8Array => {
@@ -95,7 +127,10 @@ const tarPayload = async function* (
 ): AsyncGenerator<Uint8Array> {
   let buffered: Uint8Array<ArrayBufferLike> = new Uint8Array();
   let remaining: number | undefined;
+  let payloadComplete = false;
   for await (const chunk of source) {
+    // Keep consuming to EOF after the payload so a decompressor trailer failure surfaces.
+    if (payloadComplete) continue;
     buffered = append(buffered, chunk);
     if (remaining === undefined) {
       if (buffered.byteLength < blockSize) continue;
@@ -108,14 +143,20 @@ const tarPayload = async function* (
         throw archiveError(format, path, `Archive payload size exceeded ${maxPayloadBytes} bytes.`);
       }
       buffered = buffered.subarray(blockSize);
-      if (remaining === 0) return;
+      if (remaining === 0) {
+        payloadComplete = true;
+        buffered = new Uint8Array();
+      }
     }
     if (remaining > 0 && buffered.byteLength > 0) {
       const count = Math.min(remaining, buffered.byteLength);
       yield buffered.subarray(0, count);
       buffered = buffered.subarray(count);
       remaining -= count;
-      if (remaining === 0) return;
+      if (remaining === 0) {
+        payloadComplete = true;
+        buffered = new Uint8Array();
+      }
     }
   }
   if (remaining === undefined)
@@ -129,19 +170,20 @@ export const decodeArchiveStream = <E, R>(input: {
   readonly path: string;
   readonly maxPayloadBytes: number;
 }): Stream.Stream<Uint8Array, E | ArchiveFormatError, R> => {
-  const decoded =
-    input.format === "tar" ? input.body : throughDecompression(input.body, input.format, input.path);
-  return Stream.unwrap(
-    Stream.toReadableStreamEffect(decoded, { strategy: { highWaterMark: 0 } }).pipe(
-      Effect.map((source) =>
-        Stream.fromAsyncIterable(
-          tarPayload(source, input.format, input.path, input.maxPayloadBytes),
-          (cause) =>
-            cause instanceof ArchiveFormatError
-              ? cause
-              : archiveError(input.format, input.path, "Failed to decode host archive endpoint.", cause),
+  return preserveSourceFailure(input.body, (body) => {
+    const decoded = input.format === "tar" ? body : throughDecompression(body, input.format, input.path);
+    return Stream.unwrap(
+      Stream.toReadableStreamEffect(decoded, { strategy: { highWaterMark: 0 } }).pipe(
+        Effect.map((source) =>
+          Stream.fromAsyncIterable(
+            tarPayload(source, input.format, input.path, input.maxPayloadBytes),
+            (cause) =>
+              cause instanceof ArchiveFormatError
+                ? cause
+                : archiveError(input.format, input.path, "Failed to decode host archive endpoint.", cause),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  });
 };

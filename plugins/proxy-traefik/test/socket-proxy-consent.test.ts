@@ -5,6 +5,7 @@ import { Effect, Schema, Stream } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
 import { PROXYD_CANDIDATES } from "../src/socket-proxy-install.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const harness = (isInteractive: boolean) => {
   const confirms: string[] = [];
@@ -43,6 +44,7 @@ const harness = (isInteractive: boolean) => {
     probeForward: () => Effect.succeed({ kind: "success" }),
   };
   const router = makeTraefikRouterService({
+    stateStore: makeAckStore([]),
     probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {

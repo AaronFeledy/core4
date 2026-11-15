@@ -20,7 +20,7 @@ export const appsGcConfirmation = (report: AppsGcReport, options: DestroyAppOpti
             : "data volumes and file-sync copies of app files",
         ]
       : []),
-    ...(options.purgeCaches ? ["cache volumes"] : []),
+    ...(options.purgeCaches ? ["cache volumes and built images"] : []),
     ...(options.purgeSnapshots ? ["snapshots"] : []),
   ];
   const kept = [
@@ -92,7 +92,7 @@ export const appsGcSpec: LandoCommandSpec<AppsGcReport> = {
       default: false,
       description: "Delete data volumes, file-sync copies of app files, and snapshots.",
     }),
-    "purge-caches": Flags.boolean({ default: false, description: "Delete cache volumes." }),
+    "purge-caches": Flags.boolean({ default: false, description: "Delete cache volumes and built images." }),
     provider: Flags.string({ description: "Inspect and clean up only this provider." }),
     yes: yesFlag("Skip the confirmation prompt."),
   },

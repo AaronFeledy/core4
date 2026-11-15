@@ -41,6 +41,7 @@
     "./operation-discovery": "./src/operation-discovery.ts",
     "./operation-scope": "./src/operation-scope.ts",
     "./env-file": "./src/env-file.ts",
+    "./environment-dependencies": "./src/environment-dependencies.ts",
     "./include-guard": "./src/include-guard.ts",
     "./include-provenance": "./src/include-provenance.ts",
     "./includes": "./src/includes.ts",

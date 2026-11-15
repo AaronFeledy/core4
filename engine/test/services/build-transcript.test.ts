@@ -3,8 +3,9 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { relative, resolve } from "node:path";
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { BuildOwner } from "../../src/services/build-owner.ts";
 
 import {
   buildTranscriptExists,
@@ -23,19 +24,17 @@ describe("makeBuildTranscriptPath", () => {
     const paths = [
       makeBuildTranscriptPath({
         userDataRoot,
-        appId: "../../outside",
+        owner: BuildOwner.scratch(AppId.make("../../outside")),
         phase: "artifact",
         serviceName: "../web",
         buildKey: "../../artifact",
-        scratch: true,
       }),
       makeBuildTranscriptPath({
         userDataRoot,
-        appId: "../../outside",
+        owner: BuildOwner.root(AbsolutePath.make("/tmp/outside")),
         phase: "app",
         serviceName: "../web",
         buildKey: "../../app",
-        scratch: false,
       }),
     ];
 
@@ -60,13 +59,12 @@ describe("openBuildTranscript", () => {
       await symlink(escapeRoot, resolve(userDataRoot, "builds"));
       const path = makeBuildTranscriptPath({
         userDataRoot,
-        appId: "test-app",
+        owner: BuildOwner.root(AbsolutePath.make("/tmp/test-app")),
         phase: "app",
         serviceName: "web",
         buildKey: "test-build",
-        scratch: false,
       });
-      const escapeTarget = resolve(escapeRoot, "test-app", "app", "web", "test-build.log");
+      const escapeTarget = resolve(escapeRoot, relative(resolve(userDataRoot, "builds"), path));
 
       try {
         // When

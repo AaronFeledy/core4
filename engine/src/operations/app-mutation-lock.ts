@@ -26,7 +26,7 @@ export const APP_LOCK_TIMEOUT_ENV = "LANDO_APP_LOCK_TIMEOUT_MS";
 export const APP_LOCK_HOLDERS_ENV = "LANDO_APP_LOCK_HOLDERS";
 export const APP_LOCK_WAIT_MESSAGE = "another Lando command holds the app lock";
 
-const HeldAppLockKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldAppLockKeys", {
+export const HeldAppLockKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldAppLockKeys", {
   defaultValue: (): ReadonlySet<string> => new Set(),
 });
 

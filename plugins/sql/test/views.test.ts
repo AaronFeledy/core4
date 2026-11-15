@@ -5,6 +5,20 @@ import { DateTime } from "effect";
 import { type SqlPlanService, toSqlLandofile, toSqlPlan } from "../src/views.ts";
 
 describe("toSqlPlan", () => {
+  test("carries clone provenance so target enumeration can skip companions", () => {
+    const plan = toSqlPlan({
+      services: {
+        "database-schedule": {
+          type: "mysql",
+          provenance: { clonedBy: { feature: "schedule.compile", from: "database" } },
+        },
+      },
+    });
+    expect(plan.services["database-schedule"]?.provenance).toEqual({
+      clonedBy: { feature: "schedule.compile", from: "database" },
+    });
+  });
+
   test("preserves volume mount destinations when projecting a service", () => {
     const mounts = [
       { type: "volume", store: "home", target: "/home/lando", readOnly: false },

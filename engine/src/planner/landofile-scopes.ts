@@ -138,13 +138,18 @@ export const materializeLandofileScopesForPlan = Effect.fn("Landofile.planScopes
     deferredSites: identity.pendingSites,
     context: serviceScopeContext({ ...identity, services: serviceCredsScopeForPlan(plan) }),
   });
-  const document = yield* decodeDocument(result.document, input.landofilePath, identity.pendingSites);
-  return ServiceScopedLandofile.make({
+  const document = copyLandofileProvenance(
+    identity.landofile,
+    yield* decodeDocument(result.document, input.landofilePath, identity.pendingSites),
+  );
+  const carrier = ServiceScopedLandofile.make({
     ...result,
     document,
     stage: "service-scoped",
     context: identity.context,
   });
+  copyLandofileProvenance(document, carrier.document);
+  return carrier;
 });
 
 export const referencedServices = (

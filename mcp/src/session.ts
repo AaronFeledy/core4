@@ -11,7 +11,7 @@ import * as McpSchema from "effect/ai/McpSchema";
 import * as McpServer from "effect/ai/McpServer";
 import { stringifyBoundedJson } from "./bounded-json";
 import { type McpCallSelectionDeps, type McpCallTarget, selectCallOwner } from "./call-selection";
-import type { McpAllowPolicy } from "./catalog";
+import { type McpAllowPolicy, selectMcpOwners } from "./catalog";
 import { confirmationPrompt } from "./confirmation";
 import type { McpDispatchDeps, McpNotify } from "./dispatch";
 import { dispatchTool, registerToolInputRedaction } from "./dispatch";
@@ -19,7 +19,7 @@ import { type MemoryPressureLevel, attachMemoryPressureListener } from "./memory
 import type { McpCommandExecutorShape } from "./port";
 import { makeStreamFrameSink } from "./progress";
 import type { McpCommandEntry, McpToolInput } from "./registry";
-import { registerResources } from "./resources";
+import { registerDiagnosticsResource, registerResources } from "./resources";
 import type { McpRuntimeConfigShape } from "./service";
 import { makeSessionCatalog } from "./session-catalog";
 import { withStdioConnection } from "./stdio-connection";
@@ -44,7 +44,7 @@ export const serveSession = Effect.fnUntraced(
   function* (session: McpSession) {
     return yield* withStdioConnection((stdio) =>
       Effect.gen(function* () {
-        const sessionCwd = session.options.cwd ?? process.cwd();
+        const sessionCwd = session.options.cwd ?? session.config.cwd;
         const apps = yield* session.config.apps;
         // Build the session app's generation before the server reads stdin, so the first
         // tools/list already holds its plugin tools. A session app whose plugins fail to build
@@ -66,8 +66,21 @@ export const serveSession = Effect.fnUntraced(
         ).pipe(Effect.forkScoped, Effect.flatMap(Fiber.join));
         const server = Context.get(context, McpServer.McpServer);
 
-        const sessionOwners = new Map(session.entries.map((entry) => [entry.spec.id, entry]));
-        const handle = (toolId: string) =>
+        const sessionOwners = new Map(
+          session.entries.flatMap((entry) => {
+            switch (entry.kind) {
+              case "command":
+                return [[entry.spec.id, entry] as const];
+              case "tooling":
+                return [];
+              default:
+                return entry satisfies never;
+            }
+          }),
+        );
+        const handle = (
+          toolId: string,
+        ): Parameters<Context.Service.Shape<typeof McpServer.McpServer>["addTool"]>[0]["handle"] =>
           Effect.fn("McpService.callTool")(
             function* (input: unknown) {
               let notice: McpToolNotice | undefined;
@@ -92,7 +105,15 @@ export const serveSession = Effect.fnUntraced(
                   message,
                 });
               });
-              yield* registerToolInputRedaction(session.deps.registry.get(toolId)?.spec, input);
+              const currentEntry = selectMcpOwners([
+                session.deps.registry.get(toolId),
+                catalog.toolingOwner(toolId),
+              ])[0];
+              const registry =
+                currentEntry === undefined
+                  ? session.deps.registry
+                  : new Map(session.deps.registry).set(toolId, currentEntry);
+              yield* registerToolInputRedaction(currentEntry?.spec, input);
               const decodedInput = yield* Effect.try({
                 try: () => SchemaInput(input),
                 catch: () => stdioTransportError("MCP tool arguments must be an object."),
@@ -151,6 +172,7 @@ export const serveSession = Effect.fnUntraced(
                     },
                     {
                       ...session.deps,
+                      registry,
                       select: () =>
                         selectCallOwner(selection, target).pipe(
                           Effect.provideService(OperationDiscovery, discovery),
@@ -186,7 +208,10 @@ export const serveSession = Effect.fnUntraced(
           server,
           policy: session.policy,
           entries: session.entries,
+          unavailable: session.options.tooling === true ? (session.config.toolingUnavailable ?? []) : [],
           handle,
+          sessionKey: Exit.isSuccess(sessionGeneration) ? sessionGeneration.value.key : resolve(sessionCwd),
+          redactor: session.redactor,
         });
         const selection: McpCallSelectionDeps = {
           apps,
@@ -201,6 +226,22 @@ export const serveSession = Effect.fnUntraced(
         yield* catalog.publishAll;
         yield* Scope.close(startup, Exit.void);
 
+        const diagnosticsRead = Effect.scoped(
+          withAppDiscovery(
+            sessionCwd,
+            catalog.refresh(
+              Effect.gen(function* () {
+                const generation = yield* apps.acquire(sessionCwd);
+                const tooling =
+                  session.options.tooling === true && session.config.toolingCatalog !== undefined
+                    ? yield* session.config.toolingCatalog(generation)
+                    : undefined;
+                return { generation, session: true as const, ...(tooling === undefined ? {} : { tooling }) };
+              }),
+            ),
+          ),
+        ).pipe(Effect.map((value) => value.diagnostics));
+
         yield* registerResources(
           session.config.resources ?? [],
           (read) =>
@@ -214,6 +255,9 @@ export const serveSession = Effect.fnUntraced(
             ),
           session.deps,
         ).pipe(Effect.provideService(McpServer.McpServer, server));
+        yield* registerDiagnosticsResource(diagnosticsRead, session.deps).pipe(
+          Effect.provideService(McpServer.McpServer, server),
+        );
       }),
     );
   },

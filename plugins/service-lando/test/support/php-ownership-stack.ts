@@ -107,11 +107,19 @@ export const acquirePhpStack = Effect.fn("PhpAcceptance.acquire")(function* (
     ...authoredPlan,
     networking: { perAppBridge: authoredPlan.networking?.perAppBridge ?? null },
   };
+  const built: Array<Parameters<typeof provider.removeArtifact>[0]> = [];
   // Register BEFORE build/apply: even a partially failed bringUp owns resources needing teardown.
   evidence.cleanup = "pending";
   yield* Effect.addFinalizer(() =>
     bringDown(isolatedPlan, { api, volumes: true, purgeCaches: true }).pipe(
       Effect.timeout("60 seconds"),
+      Effect.tap(() =>
+        Effect.forEach(built, (artifact) =>
+          provider
+            .removeArtifact({ ...artifact, pruneParents: true })
+            .pipe(Effect.tap((result) => Effect.sync(() => expect(result.kind).toBe("removed")))),
+        ),
+      ),
       Effect.tap((result) =>
         Effect.sync(() => {
           evidence.cleanup = "completed";
@@ -134,11 +142,14 @@ export const acquirePhpStack = Effect.fn("PhpAcceptance.acquire")(function* (
   evidence.phase = "build";
   const buildKey = yield* buildKeyForService(provider, service);
   const artifact = yield* provider.buildArtifact({
+    labels: { "dev.lando.test": crypto.randomUUID() },
     app: authoredPlan.id,
     service: web,
     plan: authoredPlan,
     buildKey,
+    ref: `lando-build-test-${crypto.randomUUID()}-php-ownership`,
   });
+  built.push(artifact);
   evidence.facts.builtRef = artifact.ref;
   const plan: CurrentExecutableAppPlan = {
     ...isolatedPlan,

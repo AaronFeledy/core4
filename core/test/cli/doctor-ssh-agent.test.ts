@@ -21,12 +21,10 @@ import {
 import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { DoctorReportSchema } from "../../src/cli/commands/doctor-report-contract.ts";
+import { type DoctorFinding, DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
+import { makeDoctorReport, renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-report.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
-import {
-  renderSubsystemDoctorResultAsNdjson,
-  subsystemDoctor,
-} from "../../src/cli/commands/doctor-subsystems.ts";
+import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
@@ -65,6 +63,12 @@ const sidecarRegistry = RuntimeProviderRegistry.of({
   capabilities: Effect.succeed(runningSidecar.capabilities),
   select: () => Effect.succeed(runningSidecar),
 });
+
+const posture = (check: Pick<DoctorFinding, "details">) => {
+  const value = check.details;
+  if (value === undefined || !("mode" in value)) throw new Error("expected SSH posture details");
+  return value;
+};
 
 describe("SSH agent doctor posture", () => {
   test("Landofile sidecar false overrides global default in doctor", async () => {
@@ -576,7 +580,7 @@ describe("SSH agent doctor posture", () => {
       ),
     );
     // Then
-    expect(report.checks.find((check) => check.name === "ssh")?.details?.mode).toBe("host");
+    expect(posture(report.checks.find((check) => check.name === "ssh") ?? {}).mode).toBe("host");
   });
 
   test("typed SSH details survive report encoding and NDJSON", async () => {
@@ -587,22 +591,19 @@ describe("SSH agent doctor posture", () => {
         globalConfig: { sshAgent: { sidecar: false, socket: "/missing-agent.sock" } },
       }),
     );
-    expect(check.details?.upstream).toMatchObject({
+    expect(posture(check).upstream).toMatchObject({
       reason: "socket-missing",
       socketPath: "/missing-agent.sock",
     });
-    const report = {
-      version: "test",
-      provider: { checks: [] },
-      subsystems: { checks: [check] },
-      globalApp: { checks: [] },
-      mcp: { checks: [] },
-    };
+    const report = makeDoctorReport({
+      checks: [{ section: "subsystems", ...check }],
+      skipped: [],
+    });
     // When
     const encoded = Schema.encodeSync(DoctorReportSchema)(report);
-    const ndjson = renderSubsystemDoctorResultAsNdjson(report.subsystems);
+    const ndjson = renderDoctorReportAsNdjson(report);
     // Then
-    expect(encoded.subsystems.checks[0]?.details).toEqual(check.details);
+    expect(encoded.checks[0]?.details).toEqual(check.details);
     expect(JSON.parse(ndjson.split("\n")[0] ?? "{}").payload.details).toEqual(check.details);
   });
 
@@ -610,7 +611,7 @@ describe("SSH agent doctor posture", () => {
     // Given / When
     const check = await Effect.runPromise(sshAgentPostureCheck(inputs()));
     // Then
-    expect(check.details?.mode).toBe("sidecar");
+    expect(posture(check).mode).toBe("sidecar");
     expect(check.context.securityPosture).toBe("sidecar-managed-keys");
   });
 
@@ -624,7 +625,7 @@ describe("SSH agent doctor posture", () => {
     // When
     const check = await Effect.runPromise(sshAgentPostureCheck(input));
     // Then
-    expect(check.details?.mode).toBe("host");
+    expect(posture(check).mode).toBe("host");
     expect(check.context.securityPosture).toBe("host-signatures");
   });
 
@@ -643,7 +644,7 @@ describe("SSH agent doctor posture", () => {
     // When
     const check = await Effect.runPromise(sshAgentPostureCheck(input));
     // Then
-    expect(check.details?.mode).toBe("host");
+    expect(posture(check).mode).toBe("host");
     expect(check.context.securityPosture).toBe("host-win32-loopback");
   });
 });

@@ -1032,6 +1032,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run e2e smoke guide scenarios
@@ -2113,7 +2115,7 @@ jobs:
         runs-on: [ubuntu-26.04]
         suite: [providers, engine, services]
     runs-on: ${{ matrix.runs-on }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2293,6 +2295,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run provider contract tests
@@ -2324,8 +2328,10 @@ jobs:
               bun run test:selection providers-ephemeral-data 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log || status=$?
               bun run test:selection providers-host-reachability 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log || status=$?
               bun run test:selection providers-listener-observation 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log || status=$?
+              bun run test:selection proxy-traefik-certificate-live 2>&1 | tee /tmp/lando-provider-test-logs/proxy-traefik-certificate-live.log || status=$?
               bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
               bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
+              bun run test:selection providers-schedule 2>&1 | tee /tmp/lando-provider-test-logs/schedule.log || status=$?
               ;;
             services)
               bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?
@@ -2384,7 +2390,7 @@ jobs:
       - name: Report job timing
         if: always()
         run: |
-          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 50m)"
 
   provider-integration-linux-x64:
     needs: [selection, provider-integration-linux-x64-runner]
