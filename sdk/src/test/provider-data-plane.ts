@@ -9,8 +9,10 @@ import { mapFailures } from "../command-result/failure.ts";
 import {
   CapabilityError,
   DataEndpointUnsupportedError,
+  DataTransferError,
   EnvironmentValueResolutionError,
   ProviderCapabilityError,
+  VolumeOperationError,
 } from "../errors/index.ts";
 import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
 import {
@@ -49,6 +51,7 @@ import {
   runsContractServiceScript,
   sampleBytes,
   streamBytes,
+  tarPayloadMember,
   testCapabilities,
   utf8,
 } from "./_shared.ts";
@@ -103,6 +106,31 @@ const dataStoreMount = (store: string): VolumeMountPlan => ({
   target: Schema.decodeUnknownSync(PortablePath)("/data"),
   readOnly: false,
 });
+
+const emptyVolumeArchive = (): Uint8Array => new Uint8Array(0);
+
+/** One-member uncompressed ustar archive used to exercise volume import/export. */
+const volumeArchiveFixture = (payload: Uint8Array): Uint8Array => {
+  const encoder = new TextEncoder();
+  const header = new Uint8Array(512);
+  const write = (offset: number, text: string) => header.set(encoder.encode(text), offset);
+  write(0, "payload");
+  write(100, "0000644\0");
+  write(108, "0000000\0");
+  write(116, "0000000\0");
+  write(124, `${payload.byteLength.toString(8).padStart(11, "0")}\0`);
+  write(136, "00000000000\0");
+  header.fill(0x20, 148, 156);
+  header[156] = 0x30;
+  write(257, "ustar\0");
+  write(263, "00");
+  let checksum = 0;
+  for (const byte of header) checksum += byte;
+  write(148, `${checksum.toString(8).padStart(6, "0")}\0 `);
+  const padded = new Uint8Array(Math.ceil(payload.byteLength / 512) * 512);
+  padded.set(payload);
+  return concatBytes([header, padded, new Uint8Array(1024)]);
+};
 
 const writeMountedVolume = (
   provider: RuntimeProviderShape,
@@ -244,9 +272,111 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   const exportedVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
     mapFailures(mapProviderFailure("volume export via runStream succeeds")),
   );
-  yield* requireContract(bytesEqual(exportedVolume, volumePayload), "importVolume(exportVolume(x)) == x", {
-    expected: Array.from(volumePayload),
-    actual: Array.from(exportedVolume),
+  yield* requireContract(
+    bytesEqual(exportedVolume, volumePayload),
+    "mounted volume write/read round-trips file bytes",
+    { expected: Array.from(volumePayload), actual: Array.from(exportedVolume) },
+  );
+
+  yield* requireContract(
+    provider.capabilities.volumeArchive === true,
+    "data-plane provider declares typed volume archive support",
+    provider.capabilities,
+  );
+  yield* Effect.gen(function* () {
+    const alphaPayload = sampleBytes(1, 2, 3, 4);
+    const betaPayload = sampleBytes(5, 6, 7, 8);
+    const alpha = volumeArchiveFixture(alphaPayload);
+    const beta = volumeArchiveFixture(betaPayload);
+    const importArchive = (archive: Stream.Stream<Uint8Array, never>) =>
+      provider
+        .importVolume({ target: { app: TEST_APP_ID, store }, archive, beforeCommit: Effect.void })
+        .pipe(mapFailures(mapProviderFailure("importVolume succeeds")));
+    const requirePayload = (expected: Uint8Array, label: string) =>
+      Effect.gen(function* () {
+        const actual = yield* readMountedVolume(provider, volumeOwner, store).pipe(
+          mapFailures(mapProviderFailure("volume read via runStream succeeds")),
+        );
+        yield* requireContract(bytesEqual(actual, expected), label, {
+          expected: Array.from(expected),
+          actual: Array.from(actual),
+        });
+      });
+
+    yield* importArchive(Stream.make(alpha));
+    yield* requirePayload(alphaPayload, "importVolume publishes the archive's file bytes");
+
+    const exported = yield* collectByteStream(provider.exportVolume({ app: TEST_APP_ID, store })).pipe(
+      mapFailures(mapProviderFailure("exportVolume succeeds")),
+    );
+    yield* requireContract(
+      exported.byteLength > 0,
+      "exportVolume returns the volume's archive bytes",
+      exported.byteLength,
+    );
+
+    yield* importArchive(Stream.make(exported));
+    yield* requirePayload(alphaPayload, "importVolume(exportVolume(x)) keeps the same volume contents");
+
+    yield* importArchive(Stream.make(beta));
+    yield* requirePayload(betaPayload, "importVolume replaces the volume's contents");
+
+    const archiveFailure = new DataTransferError({
+      message: "Synthetic archive failure.",
+      operation: "contract",
+      remediation: "Propagate the archive stream's own failure.",
+    });
+    const failedArchive = yield* Effect.result(
+      provider.importVolume({
+        target: { app: TEST_APP_ID, store },
+        archive: Stream.fail(archiveFailure),
+        beforeCommit: Effect.void,
+      }),
+    );
+    yield* requireContract(
+      failedArchive._tag === "Failure" && failedArchive.failure === archiveFailure,
+      "a failing archive stream fails importVolume with its own error",
+      failedArchive,
+    );
+    yield* requirePayload(betaPayload, "a failing archive stream leaves volume contents unchanged");
+
+    const emptyArchive = yield* Effect.result(
+      provider.importVolume({
+        target: { app: TEST_APP_ID, store },
+        archive: Stream.empty,
+        beforeCommit: Effect.void,
+      }),
+    );
+    yield* requireContract(
+      emptyArchive._tag === "Failure",
+      "an empty archive fails importVolume",
+      emptyArchive,
+    );
+    yield* requirePayload(betaPayload, "an empty archive leaves volume contents unchanged");
+
+    const beforeCommitFailure = new DataTransferError({
+      message: "Synthetic beforeCommit failure.",
+      operation: "contract",
+      remediation: "Leave the volume unchanged when the caller's check fails.",
+    });
+    const rejectedCommit = yield* Effect.result(
+      provider.importVolume({
+        target: { app: TEST_APP_ID, store },
+        archive: Stream.make(alpha),
+        beforeCommit: Effect.fail(beforeCommitFailure),
+      }),
+    );
+    yield* requireContract(
+      rejectedCommit._tag === "Failure" && rejectedCommit.failure === beforeCommitFailure,
+      "a beforeCommit failure fails importVolume with its own error",
+      rejectedCommit,
+    );
+    yield* requirePayload(betaPayload, "a beforeCommit failure leaves volume contents unchanged");
+
+    // Restore the fixture contents the snapshot section expects.
+    yield* writeMountedVolume(provider, volumeOwner, store, volumePayload).pipe(
+      mapFailures(mapProviderOrContractFailure("volume fixture restore via EphemeralRunSpec succeeds")),
+    );
   });
 
   if (provider.capabilities.volumeSnapshot === "native") {
@@ -262,6 +392,27 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
     }
     yield* writeMountedVolume(provider, volumeOwner, store, mutatedPayload).pipe(
       mapFailures(mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds")),
+    );
+    const replacedTarget = yield* Effect.result(
+      provider.restoreVolume({
+        snapshot,
+        target: { app: TEST_APP_ID, store },
+        expectedTargetGeneration: "00000000-0000-4000-8000-0000000000ff",
+        overwrite: true,
+      }),
+    );
+    yield* requireContract(
+      replacedTarget._tag === "Failure",
+      "restoreVolume refuses a target whose generation differs from the expected one",
+      replacedTarget,
+    );
+    const afterRefusal = yield* readMountedVolume(provider, volumeOwner, store).pipe(
+      mapFailures(mapProviderFailure("volume read after a refused restore succeeds")),
+    );
+    yield* requireContract(
+      bytesEqual(afterRefusal, mutatedPayload),
+      "a refused restore leaves the volume unchanged",
+      { expected: Array.from(mutatedPayload), actual: Array.from(afterRefusal) },
     );
     yield* provider
       .restoreVolume({
@@ -417,7 +568,11 @@ const runTestEphemeral = Effect.fnUntraced(function* (
 export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
   const containers = makeTestProviderContainers();
   const testVolumeBytes = new Map<string, Uint8Array>();
-  const testSnapshotBytes = new Map<string, Uint8Array>();
+  const testVolumeArchives = new Map<string, Uint8Array>();
+  const testSnapshotBytes = new Map<
+    string,
+    { readonly fileBytes: Uint8Array; readonly treeBytes: Uint8Array }
+  >();
   const testServicePathBytes = new Map<string, Uint8Array>();
   const testArtifactBytes = new Map<string, Uint8Array>();
   const testBuiltArtifacts = new Map<string, Readonly<Record<string, string>>>();
@@ -633,8 +788,11 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
     snapshotVolume: (spec) =>
       Effect.sync(() => {
         const id = spec.snapshotId ?? `${spec.volume.store}-snapshot`;
-        const payload = cloneBytes(testVolumeBytes.get(volumeKey(spec.volume)) ?? utf8(""));
-        testSnapshotBytes.set(id, payload);
+        const key = volumeKey(spec.volume);
+        const fileBytes = cloneBytes(testVolumeBytes.get(key) ?? utf8(""));
+        const treeBytes = cloneBytes(testVolumeArchives.get(key) ?? emptyVolumeArchive());
+        testSnapshotBytes.set(id, { fileBytes, treeBytes });
+        const payload = concatBytes([fileBytes, treeBytes]);
         return {
           provider: TEST_PROVIDER_ID,
           id,
@@ -647,16 +805,34 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       Effect.sync(() => {
         testSnapshotBytes.delete(snapshot.id);
       }),
-    restoreVolume: (spec) =>
-      Effect.sync(() => {
-        testVolumeBytes.set(
-          volumeKey(spec.target),
-          cloneBytes(testSnapshotBytes.get(spec.snapshot.id) ?? utf8("")),
-        );
+    restoreVolume: <E = never>(
+      spec: Parameters<RuntimeProviderShape["restoreVolume"]>[0],
+      options?: { readonly beforeCommit?: Effect.Effect<void, E> },
+    ) =>
+      Effect.gen(function* () {
+        const key = volumeKey(spec.target);
+        const snapshot = testSnapshotBytes.get(spec.snapshot.id);
+        if (snapshot === undefined || spec.expectedTargetGeneration !== testVolumeGeneration) {
+          return yield* Effect.fail(
+            new VolumeOperationError({
+              providerId: TEST_PROVIDER_ID,
+              operation: "restoreVolume",
+              message:
+                snapshot === undefined
+                  ? "The storage snapshot does not exist."
+                  : "The restore target volume was replaced.",
+              remediation: "Take a new snapshot of the current volume and retry the restore.",
+            }),
+          );
+        }
+        if (options?.beforeCommit !== undefined) yield* options.beforeCommit;
+        testVolumeBytes.set(key, cloneBytes(snapshot.fileBytes));
+        testVolumeArchives.set(key, cloneBytes(snapshot.treeBytes));
       }),
     listVolumes: (filter) =>
       Effect.sync(() => {
-        const volumes = Array.from(testVolumeBytes.keys()).map((key) => {
+        const keys = new Set([...testVolumeBytes.keys(), ...testVolumeArchives.keys()]);
+        const volumes = Array.from(keys).map((key) => {
           const [app, store, scope] = key.split(":");
           return volumeInfo(
             volumeRef(AppId.make(app ?? String(TEST_APP_ID)), store ?? "data", storageScopeFromKey(scope)),
@@ -677,9 +853,33 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
         coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
         nativeName: ref.store,
       }),
+    exportVolume: (ref) =>
+      Stream.sync(() => cloneBytes(testVolumeArchives.get(volumeKey(ref)) ?? emptyVolumeArchive())),
+    importVolume: (spec) =>
+      Effect.gen(function* () {
+        const key = volumeKey(spec.target);
+        const payload = yield* collectByteStream(spec.archive);
+        if (payload.byteLength === 0) {
+          return yield* Effect.fail(
+            new VolumeOperationError({
+              providerId: TEST_PROVIDER_ID,
+              operation: "importVolume",
+              message: "The volume archive is empty.",
+              remediation: "Export the source volume again and retry the import.",
+            }),
+          );
+        }
+        yield* spec.beforeCommit;
+        const fileBytes = tarPayloadMember(payload);
+        yield* Effect.sync(() => {
+          testVolumeArchives.set(key, cloneBytes(payload));
+          if (fileBytes !== undefined) testVolumeBytes.set(key, cloneBytes(fileBytes));
+        });
+      }),
     removeVolume: (ref) =>
       Effect.sync(() => {
         testVolumeBytes.delete(volumeKey(ref));
+        testVolumeArchives.delete(volumeKey(ref));
       }),
     copyToService: (target, spec) =>
       Effect.promise(async () => {

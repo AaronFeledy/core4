@@ -67,6 +67,8 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
     removeVolume: fail,
     copyToService: fail,
     copyFromService: stream,
+    exportVolume: stream,
+    importVolume: fail,
     exportArtifact: stream,
     importArtifact: fail,
   };

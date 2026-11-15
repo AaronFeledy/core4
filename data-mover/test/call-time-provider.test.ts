@@ -76,13 +76,9 @@ describe("BunDataMover.layer call-time provider", () => {
         id: "selected",
         appliedPlans: Effect.succeed([plan]),
         capabilities: { ...TestRuntimeProvider.capabilities, ephemeralMounts: true, artifactPull: false },
-        runStream: (spec) => {
-          expect(spec.owner?.app).toBe(AppId.make("renamed"));
-          expect(spec.owner?.plan).toBe(plan);
-          return Stream.make(
-            { kind: "stdout" as const, chunk: new TextEncoder().encode("registry-output") },
-            { exitCode: 0 },
-          );
+        exportVolume: (ref) => {
+          expect(ref.app).toBe(AppId.make("data-app"));
+          return Stream.make(new TextEncoder().encode("registry-output"));
         },
         execStream: () =>
           Stream.make(

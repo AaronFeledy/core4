@@ -262,6 +262,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     removeVolume: () => die("removeVolume"),
     copyToService: () => die("copyToService"),
     copyFromService: () => Stream.die("scratch run test provider should not call copyFromService"),
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.die("scratch run test provider should not call exportArtifact"),
     importArtifact: () => die("importArtifact"),
   });

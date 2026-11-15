@@ -395,6 +395,10 @@ export const ProviderCapabilities = Schema.Struct({
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
   volumeSnapshot: Schema.Literals(["native", "none"]),
+  volumeArchive: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Whether the provider streams whole-volume archives and replaces volume contents in one staged operation; omission means unsupported.",
+  }),
   serviceFileCopy: Schema.Literals(["native", "exec", "none"]),
   artifactExport: Schema.Boolean,
   artifactImport: Schema.Boolean,

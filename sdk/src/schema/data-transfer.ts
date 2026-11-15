@@ -364,6 +364,10 @@ export const SnapshotInfo = Schema.Struct({
   metadata: Schema.optionalKey(SnapshotMetadata).annotate({
     description: "Database compatibility and recovery metadata recorded at creation.",
   }),
+  sourceVolumeGeneration: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Physical volume generation observed at capture, independent of database metadata; a physical restore requires it.",
+  }),
 });
 export type SnapshotInfo = typeof SnapshotInfo.Type;
 

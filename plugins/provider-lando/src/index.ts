@@ -843,6 +843,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         );
       case "run":
       case "runStream":
+      case "exportVolume":
+      case "importVolume":
       case "snapshotVolume":
       case "restoreVolume":
       case "importArtifact":

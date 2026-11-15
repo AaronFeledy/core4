@@ -287,6 +287,22 @@ export interface EphemeralRunSpec {
   readonly remove?: boolean;
 }
 
+/**
+ * One staged replacement of a volume's contents. The provider owns staging,
+ * extraction, publication, and cleanup; the caller supplies only the archive and
+ * the last fallible check before anything live changes.
+ */
+export interface VolumeArchiveImportSpec<E, R> {
+  readonly target: VolumeRef;
+  /** Uncompressed tar of the volume's contents, excluding Lando's reserved root entries. */
+  readonly archive: Stream.Stream<Uint8Array, E, R>;
+  /**
+   * Runs exactly once after the archive completed, was validated and extracted, and
+   * before publication. A failure leaves the live contents unchanged.
+   */
+  readonly beforeCommit: Effect.Effect<void, E, R>;
+}
+
 export interface LogTarget extends ServiceSelector {}
 
 export interface LogOptions {
@@ -584,6 +600,10 @@ export class RuntimeProvider extends Context.Service<
     readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
     readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
 
+    /**
+     * Captures a native volume snapshot. Requires the caller to hold the
+     * physical-volume lock for the source; DataMover is the caller that does.
+     */
     readonly snapshotVolume: (
       spec: VolumeSnapshotSpec,
     ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
@@ -594,7 +614,32 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<void, ProviderError, Scope.Scope>;
     /** List native snapshot images without consulting a host snapshot index. */
     readonly listVolumeSnapshots?: () => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, ProviderError>;
-    readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    /**
+     * Restore a native snapshot into a target volume. `beforeCommit`, when given, runs
+     * after staging and target verification and immediately before publication. Requires
+     * the caller to hold the physical-volume lock for the target; DataMover is the caller
+     * that does.
+     */
+    readonly restoreVolume: <E = never>(
+      spec: VolumeRestoreSpec,
+      options?: { readonly beforeCommit?: Effect.Effect<void, E> },
+    ) => Effect.Effect<void, ProviderError | E, Scope.Scope>;
+    /**
+     * Streams the volume's contents as an uncompressed tar, excluding Lando's reserved
+     * root entries. Requires the caller to hold the physical-volume lock for this
+     * volume; DataMover is the caller that does.
+     */
+    readonly exportVolume: (ref: VolumeRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    /**
+     * Replaces the volume's contents in one operation: stage and extract the archive
+     * inside the volume, validate it inline, run `beforeCommit`, then publish and dispose
+     * of the previous contents. A failure or interruption before publication leaves the
+     * live contents unchanged and removes staging. Requires the caller to hold the
+     * physical-volume lock for the target; DataMover is the caller that does.
+     */
+    readonly importVolume: <E, R>(
+      spec: VolumeArchiveImportSpec<E, R>,
+    ) => Effect.Effect<void, ProviderError | E, Scope.Scope | R>;
     readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
     readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
     readonly inspectResourceNames?: (

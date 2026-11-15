@@ -214,6 +214,8 @@ const makeProvider = (
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),
     copyFromService: () => Stream.empty,
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.empty,
     importArtifact: () => Effect.die("not used"),
   };

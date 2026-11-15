@@ -72,6 +72,7 @@ export interface ProviderCapabilityConstants {
   readonly bindMounts: ProviderCapabilitiesShape["bindMounts"];
   readonly bindMountPerformance: ProviderCapabilitiesShape["bindMountPerformance"];
   readonly volumeSnapshot?: ProviderCapabilitiesShape["volumeSnapshot"];
+  readonly volumeArchive?: ProviderCapabilitiesShape["volumeArchive"];
   readonly serviceFileCopy?: ProviderCapabilitiesShape["serviceFileCopy"];
   readonly artifactBuild?: ProviderCapabilitiesShape["artifactBuild"];
   readonly artifactPull?: ProviderCapabilitiesShape["artifactPull"];
@@ -115,6 +116,7 @@ export const buildProviderCapabilities = (
     copyMounts: false,
     copyOnWriteAppRoot: false,
     volumeSnapshot: constants.volumeSnapshot ?? "none",
+    volumeArchive: constants.volumeArchive ?? true,
     serviceFileCopy: constants.serviceFileCopy ?? "exec",
     artifactExport: constants.artifactExport ?? false,
     artifactImport: constants.artifactImport ?? false,

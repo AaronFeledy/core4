@@ -3,9 +3,6 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { libpodPullDialect } from "@lando/container-runtime/dialect";
-import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
-import { pullImage } from "@lando/container-runtime/image-pull";
 import { providerImages } from "@lando/container-runtime/provider-images";
 import { __testOnlyEncodeTarOctal, __testOnlyUnarchivePayloadWithCap } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";
@@ -35,11 +32,9 @@ import {
   ServiceName,
   type VolumeIdentity,
   appIdentityKey,
-  encodeUriComponent,
   snapshotHandle,
 } from "@lando/sdk/schema";
 import {
-  type ArtifactPullSpec,
   DataMover,
   type EventFor,
   EventService,
@@ -69,10 +64,9 @@ import {
 } from "effect";
 import { TestClock } from "effect/testing";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
-import { makeDataMoverService } from "../src/service.ts";
-import { privateFileAccess } from "./private-file-access.ts";
 import * as BunDataMover from "./support.ts";
 import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
+import { parseTarArchive, tarArchive } from "./tar-fixture.ts";
 
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
@@ -137,6 +131,14 @@ const testTar = (payload: Uint8Array): Uint8Array => {
   archive.set(header, 0);
   archive.set(payload, 512);
   return archive;
+};
+
+const treeFixture = (value: string | Uint8Array): Uint8Array =>
+  tarArchive([{ name: "./payload", data: value }]);
+
+const payloadFromTree = (archive: Uint8Array): string => {
+  const member = parseTarArchive(archive).find((entry) => entry.name === "./payload");
+  return new TextDecoder().decode(member?.data ?? new Uint8Array());
 };
 
 const compressedTarFixture = async (
@@ -340,11 +342,16 @@ describe("BunDataMover.layer", () => {
   test("falls back through ephemeral run for volume archive export/import", async () => {
     await withTempDir(async (dir) => {
       const archive = join(dir, "volume.tar");
-      const seed = join(dir, "seed.txt");
-      const restored = join(dir, "restored.txt");
-      await writeFile(seed, "volume-payload");
-      let observedRunStdin: "inherit" | "ignore" | undefined;
-      const observedOwners: unknown[] = [];
+      const seed = join(dir, "seed.tar");
+      const restored = join(dir, "restored.tar");
+      const treeTar = tarArchive([
+        { name: "./", typeflag: "5" },
+        { name: "./database/", typeflag: "5" },
+        { name: "./database/app.sql", data: "volume-payload" },
+        { name: "./database/nested/", typeflag: "5" },
+        { name: "./database/nested/value.txt", data: "nested-payload" },
+      ]);
+      await writeFile(seed, treeTar);
 
       const result = await Effect.runPromise(
         Effect.scoped(
@@ -377,15 +384,6 @@ describe("BunDataMover.layer", () => {
             providerLayer({
               listVolumes: ({ store }) =>
                 Effect.succeed([{ ref: { app, store: store === "restored" ? "other-store" : "data" } }]),
-              run: (spec) => {
-                observedRunStdin = spec.stdin;
-                observedOwners.push(spec.owner);
-                return TestRuntimeProvider.run(spec);
-              },
-              runStream: (spec) => {
-                observedOwners.push(spec.owner);
-                return TestRuntimeProvider.runStream(spec);
-              },
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -394,11 +392,20 @@ describe("BunDataMover.layer", () => {
 
       expect(result.importResult.accelerated).toBe(false);
       expect(result.exportResult.accelerated).toBe(false);
-      expect(observedRunStdin).toBeUndefined();
-      expect(observedOwners).toEqual([{ app }, { app }, { app }, { app }]);
-      expect(await readFile(archive, "utf8")).not.toBe("volume-payload");
-      expect(await readFile(restored, "utf8")).toBe("volume-payload");
-      expect(result.exportResult.digest).toBe(sha256("volume-payload"));
+      const exportedArchive = parseTarArchive(await readFile(archive));
+      expect(exportedArchive.map((member) => member.name)).toEqual(["payload"]);
+      expect(Array.from(exportedArchive[0]?.data ?? [])).toEqual(Array.from(treeTar));
+      const exportedTree = parseTarArchive(await readFile(restored));
+      expect(exportedTree.map((member) => member.name)).toEqual([
+        "./",
+        "./database/",
+        "./database/app.sql",
+        "./database/nested/",
+        "./database/nested/value.txt",
+      ]);
+      expect(new TextDecoder().decode(exportedTree[2]?.data)).toBe("volume-payload");
+      expect(result.importResult.digest).toBe(sha256(treeTar));
+      expect(result.exportResult.digest).toBe(sha256(treeTar));
     });
   });
 
@@ -851,7 +858,8 @@ describe("BunDataMover.layer", () => {
       const source = join(dir, "large-volume.sql");
       const payload = new Uint8Array(5 * 1024 * 1024);
       payload.fill(98);
-      await writeFile(source, payload);
+      const archive = treeFixture(payload);
+      await writeFile(source, archive);
       const chunkSizes: number[] = [];
 
       // When: the payload is imported through the generic volume helper.
@@ -869,13 +877,15 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              runStream: (command) =>
-                Stream.fromEffect(
-                  Effect.promise(async () => {
-                    for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
-                    return { exitCode: 0 };
-                  }),
-                ),
+              importVolume: (spec) =>
+                Effect.gen(function* () {
+                  yield* Stream.runForEach(spec.archive, (chunk) =>
+                    Effect.sync(() => {
+                      chunkSizes.push(chunk.byteLength);
+                    }),
+                  );
+                  yield* spec.beforeCommit;
+                }),
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -885,7 +895,7 @@ describe("BunDataMover.layer", () => {
       // Then: backpressure reaches the helper as bounded file-stream chunks.
       expect(chunkSizes.length).toBeGreaterThan(1);
       expect(Math.max(...chunkSizes)).toBeLessThanOrEqual(1024 * 1024);
-      expect(chunkSizes.reduce((total, size) => total + size, 0)).toBe(payload.byteLength);
+      expect(chunkSizes.reduce((total, size) => total + size, 0)).toBe(archive.byteLength);
     });
   });
 
@@ -896,7 +906,7 @@ describe("BunDataMover.layer", () => {
       const scratchDir = join(dir, "scratch");
       const transferStagingDir = join(dir, "transfer-staging");
       await mkdir(scratchDir, { recursive: true });
-      await writeFile(source, "interrupt-volume-payload");
+      await writeFile(source, treeFixture("interrupt-volume-payload"));
       const helperStarted = await Effect.runPromise(Deferred.make<void>());
       const paths = PathsService.of({ ...makeLandoPaths(), scratchDir, transferStagingDir });
       const transfer = Effect.scoped(
@@ -919,10 +929,11 @@ describe("BunDataMover.layer", () => {
               RuntimeProvider.of({
                 ...TestRuntimeProvider,
                 pullArtifact: verifyingPullArtifact,
-                runStream: () =>
-                  Stream.fromEffect(
-                    Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
-                  ),
+                importVolume: () =>
+                  Effect.gen(function* () {
+                    yield* Deferred.succeed(helperStarted, undefined);
+                    yield* Effect.never;
+                  }),
               }),
             ),
             captureEvents().layer,
@@ -931,19 +942,14 @@ describe("BunDataMover.layer", () => {
         ),
       );
 
-      // When: the transfer is interrupted after the provider helper starts.
+      // When: the transfer is interrupted after the provider started the import.
       const fiber = Effect.runFork(transfer);
       await Effect.runPromise(Deferred.await(helperStarted));
-      expect(
-        (await readdir(transferStagingDir)).some((name) => name.startsWith(".lando-stage-volume-")),
-      ).toBe(true);
       expect(await readdir(scratchDir)).toEqual([]);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
-      // Then: scoped cleanup removes both staged and in-progress files.
-      expect(
-        (await readdir(transferStagingDir)).filter((name) => name.includes("lando-stage-volume")),
-      ).toEqual([]);
+      // Then: nothing was staged on the host and the scratch tree stays clean.
+      expect(await readdir(transferStagingDir).catch(() => [])).toEqual([]);
     });
   });
 
@@ -1083,7 +1089,7 @@ describe("BunDataMover.layer", () => {
     await withTempDir(async (dir) => {
       const archive = join(dir, "volume.tar");
       const seed = join(dir, "seed.txt");
-      await writeFile(seed, "volume-payload");
+      await writeFile(seed, treeFixture("volume-payload"));
       await writeFile(archive, "old");
 
       const exit = await Effect.runPromiseExit(
@@ -1474,8 +1480,8 @@ describe("BunDataMover.layer", () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const restored = join(dir, "restored.txt");
-      await writeFile(join(dir, "seed.txt"), "volume-payload");
-      await writeFile(join(dir, "changed.txt"), "changed-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("volume-payload"));
+      await writeFile(join(dir, "changed.txt"), treeFixture("changed-payload"));
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
 
@@ -1527,7 +1533,7 @@ describe("BunDataMover.layer", () => {
         const archiveBytes = await readFile(archivePath);
         expect(result.listed[0]?.digest).toBe(sha256(archiveBytes));
         expect(result.listed[0]?.sizeBytes).toBe(archiveBytes.byteLength);
-        expect(await readFile(restored, "utf8")).toBe("volume-payload");
+        expect(payloadFromTree(await readFile(restored))).toBe("volume-payload");
         expect(
           await Bun.file(join(dataRoot, "snapshots", result.handle.ownerKey, "index.bin")).exists(),
         ).toBe(false);
@@ -1555,8 +1561,8 @@ describe("BunDataMover.layer", () => {
       const restored = join(dir, "restored.txt");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "seed.txt"), "snapshot-source");
-      await writeFile(join(dir, "changed.txt"), "target-must-survive");
+      await writeFile(join(dir, "seed.txt"), treeFixture("snapshot-source"));
+      await writeFile(join(dir, "changed.txt"), treeFixture("target-must-survive"));
       try {
         const exit = await Effect.runPromiseExit(
           Effect.scoped(
@@ -1614,7 +1620,7 @@ describe("BunDataMover.layer", () => {
             DataChecksumMismatchError,
           );
         }
-        expect(await readFile(restored, "utf8")).toBe("target-must-survive");
+        expect(payloadFromTree(await readFile(restored))).toBe("target-must-survive");
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1626,7 +1632,7 @@ describe("BunDataMover.layer", () => {
     await withTempDir(async (dir) => {
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
-      await writeFile(join(dir, "seed.txt"), "same-label-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("same-label-payload"));
 
       try {
         const result = await Effect.runPromise(
@@ -1670,8 +1676,8 @@ describe("BunDataMover.layer", () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const restored = join(dir, "restored-from-handle.txt");
-      await writeFile(join(dir, "seed.txt"), "handle-payload");
-      await writeFile(join(dir, "changed.txt"), "changed-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("handle-payload"));
+      await writeFile(join(dir, "changed.txt"), treeFixture("changed-payload"));
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
 
@@ -1719,7 +1725,7 @@ describe("BunDataMover.layer", () => {
           ),
         );
 
-        expect(await readFile(restored, "utf8")).toBe("handle-payload");
+        expect(payloadFromTree(await readFile(restored))).toBe("handle-payload");
         expect(result.pruned).toEqual([result.first.id]);
         expect(result.listed.map((entry) => entry.id)).toEqual([result.second.id]);
       } finally {
@@ -1732,7 +1738,7 @@ describe("BunDataMover.layer", () => {
   test("pruneSnapshots with filter only and omitted keepLatest removes nothing", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
-      await writeFile(join(dir, "seed.txt"), "seed-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("seed-payload"));
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
 
@@ -1786,7 +1792,7 @@ describe("BunDataMover.layer", () => {
   ])("pruneSnapshots selects $name", async ({ recovery: automatic, retainOldest }) => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
-      await writeFile(join(dir, "seed.txt"), "seed-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("seed-payload"));
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
 
@@ -2301,8 +2307,8 @@ describe("BunDataMover.layer", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "data-a.txt"), "data-a-payload");
-      await writeFile(join(dir, "data-b.txt"), "data-b-payload");
+      await writeFile(join(dir, "data-a.txt"), treeFixture("data-a-payload"));
+      await writeFile(join(dir, "data-b.txt"), treeFixture("data-b-payload"));
 
       try {
         const listed = await Effect.runPromise(
@@ -2347,8 +2353,8 @@ describe("BunDataMover.layer", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "left.txt"), "left-payload");
-      await writeFile(join(dir, "right.txt"), "right-payload");
+      await writeFile(join(dir, "left.txt"), treeFixture("left-payload"));
+      await writeFile(join(dir, "right.txt"), treeFixture("right-payload"));
 
       try {
         const result = await Effect.runPromise(
@@ -2392,8 +2398,8 @@ describe("BunDataMover.layer", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "keep.txt"), "keep-payload");
-      await writeFile(join(dir, "drop.txt"), "drop-payload");
+      await writeFile(join(dir, "keep.txt"), treeFixture("keep-payload"));
+      await writeFile(join(dir, "drop.txt"), treeFixture("drop-payload"));
 
       try {
         const listed = await Effect.runPromise(
@@ -2437,9 +2443,10 @@ describe("BunDataMover.layer", () => {
   test("keeps native provider snapshot alive until persistence finishes", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
+      let persistedAtRelease: boolean | undefined;
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "payload.txt"), "native-persist-payload");
+      await writeFile(join(dir, "payload.txt"), treeFixture("native-persist-payload"));
 
       try {
         await Effect.runPromise(
@@ -2451,11 +2458,10 @@ describe("BunDataMover.layer", () => {
                 to: { _tag: "volume", app, store: "data" },
                 overwrite: true,
               });
-              const handle = yield* dataMover.snapshot(
+              yield* dataMover.snapshot(
                 { app, store: "data" },
                 { volumeSnapshot: "native", label: "scope-hold" },
               );
-              yield* dataMover.restore(handle, { app, store: "data" });
             }),
           ).pipe(
             Effect.provide(BunDataMover.layer),
@@ -2466,7 +2472,11 @@ describe("BunDataMover.layer", () => {
                 snapshotVolume: Effect.fn("RuntimeProvider.snapshotVolume")(function* (spec) {
                   const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
                   yield* Effect.addFinalizer(() =>
-                    (TestRuntimeProvider.removeVolumeSnapshot?.(ref) ?? Effect.void).pipe(
+                    Effect.promise(async () => {
+                      const entries = await readdir(join(dataRoot, "snapshots"), { recursive: true });
+                      persistedAtRelease = entries.some((entry) => entry.endsWith(`${ref.id}.json`));
+                    }).pipe(
+                      Effect.andThen(TestRuntimeProvider.removeVolumeSnapshot?.(ref) ?? Effect.void),
                       Effect.catch(() => Effect.void),
                     ),
                   );
@@ -2481,6 +2491,7 @@ describe("BunDataMover.layer", () => {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       }
+      expect(persistedAtRelease).toBe(true);
     });
   });
 
@@ -2808,7 +2819,7 @@ describe("BunDataMover.layer", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "seed.txt"), "resolve-id-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("resolve-id-payload"));
 
       try {
         const result = await Effect.runPromise(
@@ -2855,7 +2866,7 @@ describe("BunDataMover.layer", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "seed.txt"), "resolve-unique-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("resolve-unique-payload"));
 
       try {
         const result = await Effect.runPromise(
@@ -2899,7 +2910,7 @@ describe("BunDataMover.layer", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
-      await writeFile(join(dir, "seed.txt"), "resolve-ambiguous-payload");
+      await writeFile(join(dir, "seed.txt"), treeFixture("resolve-ambiguous-payload"));
 
       try {
         const expectedIds = await Effect.runPromise(
@@ -3029,7 +3040,7 @@ describe("BunDataMover.layer", () => {
 });
 
 describe("DataMover helpers", () => {
-  test("stops reading a tar stream after the declared payload ends", async () => {
+  test("drains a tar stream after the declared payload ends without yielding trailing bytes", async () => {
     // Given: a complete empty tar followed by producer data that is outside the archive payload.
     let producedChunks = 0;
     const source = Stream.fromAsyncIterable(
@@ -3051,14 +3062,15 @@ describe("DataMover helpers", () => {
     );
 
     // When: the production tar decoder drains the declared payload.
-    await Effect.runPromise(
+    const chunks = await Effect.runPromise(
       decodeArchiveStream({ body: source, format: "tar", path: "fixture.tar", maxPayloadBytes: 1 }).pipe(
-        Stream.runDrain,
+        Stream.runCollect,
       ),
     );
 
-    // Then: upstream is cancelled before producing bytes beyond the completed payload.
-    expect(producedChunks).toBe(2);
+    // Then: upstream is read to EOF so decompressor trailers are verified, and no trailing bytes are yielded.
+    expect(producedChunks).toBe(3);
+    expect(chunks).toHaveLength(0);
   });
 
   test("collectVerifiedStream remains the checksum primitive used by archive tests", async () => {
@@ -3344,427 +3356,5 @@ describe("BunDataMover.layer hostPath -> hostPath directory transfers", () => {
         );
       }
     });
-  });
-});
-
-describe("BunDataMover.layer pinned helper image resolution", () => {
-  const pinned = providerImages.images.dataHelper;
-  const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: true });
-  const volumeCapsWithoutPull = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: false });
-
-  const importToVolume = (dataMover: Context.Service.Shape<typeof DataMover>, source: string) =>
-    dataMover.transfer({
-      from: { _tag: "hostPath", path: absolute(source) },
-      to: { _tag: "volume", app, store: "data" },
-      overwrite: true,
-    });
-
-  test.each([false, true])(
-    "transfers to a volume using the observed libpod helper digest (cached: %s)",
-    async (cached) => {
-      await withTempDir(async (dir) => {
-        // Given: the real pull path observes an engine-owned digest, never an echoed pin.
-        const source = join(dir, "seed.txt");
-        await writeFile(source, "pinned-helper-payload");
-        const pinnedRef = `${pinned.image}@${pinned.digest}`;
-        const inspectRequest: EngineHttpRequest = {
-          method: "GET",
-          path: `/libpod/images/${encodeURIComponent(pinnedRef)}/json`,
-        };
-        const pulls: ArtifactPullSpec[] = [];
-        const requests: EngineHttpRequest[] = [];
-        let present = cached;
-        let ranImage: string | undefined;
-        const api: EngineHttpApi = {
-          request: (request) =>
-            Effect.sync(() => {
-              requests.push(request);
-              if (request.method === "POST") {
-                present = true;
-                return { status: 200, body: '{"status":"Pull complete"}\n' };
-              }
-              return {
-                status: present ? 200 : 404,
-                body: JSON.stringify({ RepoDigests: ["other/helper@sha256:other", pinnedRef] }),
-              };
-            }),
-        };
-
-        // When
-        await Effect.runPromise(
-          Effect.scoped(
-            Effect.gen(function* () {
-              const dataMover = yield* DataMover;
-              yield* importToVolume(dataMover, source);
-            }),
-          ).pipe(
-            Effect.provide(BunDataMover.layer),
-            Effect.provide(
-              providerLayer({
-                capabilities: volumeCaps,
-                pullArtifact: (spec) => {
-                  pulls.push(spec);
-                  return pullImage(api, spec.ref, {
-                    ctx: { providerId: "test", remediation: "Check the test engine.", env: {} },
-                    dialect: libpodPullDialect,
-                    ...spec,
-                  }).pipe(Effect.map((image) => ({ ...image, providerId: ProviderId.make("test") })));
-                },
-                runStream: (spec) => {
-                  ranImage = spec.image;
-                  return TestRuntimeProvider.runStream(spec);
-                },
-              }),
-            ),
-            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-          ),
-        );
-
-        // Then
-        expect(pulls).toEqual([{ ref: pinnedRef, policy: "missing" }]);
-        expect(requests).toEqual(
-          cached ? [inspectRequest] : [inspectRequest, libpodPullDialect.request(pinnedRef), inspectRequest],
-        );
-        expect(ranImage).toBe(pinnedRef);
-      });
-    },
-  );
-
-  test("runs the digest-qualified pinned ref without pullArtifact when artifact pull is unavailable", async () => {
-    await withTempDir(async (dir) => {
-      const source = join(dir, "seed.txt");
-      await writeFile(source, "pinned-helper-payload");
-      let ranImage: string | undefined;
-      let pullCalls = 0;
-
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const dataMover = yield* DataMover;
-            yield* importToVolume(dataMover, source);
-          }),
-        ).pipe(
-          Effect.provide(BunDataMover.layer),
-          Effect.provide(
-            providerLayer({
-              capabilities: volumeCapsWithoutPull,
-              pullArtifact: () =>
-                Effect.sync(() => {
-                  pullCalls += 1;
-                  return new ProviderUnavailableError({
-                    providerId: "test",
-                    operation: "pullArtifact",
-                    message: "pullArtifact is unavailable",
-                    remediation:
-                      "Install or start the `test` provider and confirm it can perform `pullArtifact`.",
-                  });
-                }).pipe(Effect.flatMap((error) => Effect.fail(error))),
-              runStream: (spec) => {
-                ranImage = spec.image;
-                return TestRuntimeProvider.runStream(spec);
-              },
-            }),
-          ),
-          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-        ),
-      );
-
-      expect(pullCalls).toBe(0);
-      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
-    });
-  });
-
-  test("fails loudly before running the helper when the returned digest mismatches", async () => {
-    await withTempDir(async (dir) => {
-      const source = join(dir, "seed.txt");
-      await writeFile(source, "pinned-helper-payload");
-      let runCalls = 0;
-
-      const failure = await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const dataMover = yield* DataMover;
-            yield* importToVolume(dataMover, source);
-          }),
-        ).pipe(
-          Effect.provide(BunDataMover.layer),
-          Effect.provide(
-            providerLayer({
-              capabilities: volumeCaps,
-              pullArtifact: (spec) =>
-                Effect.succeed({
-                  providerId: ProviderId.make("test"),
-                  ref: spec.ref,
-                  digest: `sha256:${"f".repeat(64)}`,
-                }),
-              runStream: (spec) => {
-                runCalls += 1;
-                return TestRuntimeProvider.runStream(spec);
-              },
-            }),
-          ),
-          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-          Effect.flip,
-        ),
-      );
-
-      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
-      expect(runCalls).toBe(0);
-    });
-  });
-
-  test("fails loudly before running the helper when the returned digest is missing", async () => {
-    await withTempDir(async (dir) => {
-      const source = join(dir, "seed.txt");
-      await writeFile(source, "pinned-helper-payload");
-      let runCalls = 0;
-
-      const failure = await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const dataMover = yield* DataMover;
-            yield* importToVolume(dataMover, source);
-          }),
-        ).pipe(
-          Effect.provide(BunDataMover.layer),
-          Effect.provide(
-            providerLayer({
-              capabilities: volumeCaps,
-              pullArtifact: (spec) => Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref }),
-              runStream: (spec) => {
-                runCalls += 1;
-                return TestRuntimeProvider.runStream(spec);
-              },
-            }),
-          ),
-          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-          Effect.flip,
-        ),
-      );
-
-      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
-      expect(runCalls).toBe(0);
-    });
-  });
-
-  test("warm cache resolves with no network access and runs idempotently", async () => {
-    await withTempDir(async (dir) => {
-      const source = join(dir, "seed.txt");
-      await writeFile(source, "pinned-helper-payload");
-      let networkPulls = 0;
-      const warmCache = new Set<string>();
-
-      const provider = providerLayer({
-        capabilities: volumeCaps,
-        pullArtifact: (spec) =>
-          Effect.sync(() => {
-            if (spec.policy !== "missing" || !warmCache.has(spec.ref)) {
-              networkPulls += 1;
-              warmCache.add(spec.ref);
-            }
-            return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
-          }),
-      });
-
-      const runImport = Effect.scoped(
-        Effect.gen(function* () {
-          const dataMover = yield* DataMover;
-          yield* importToVolume(dataMover, source);
-        }),
-      ).pipe(
-        Effect.provide(BunDataMover.layer),
-        Effect.provide(provider),
-        Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-      );
-
-      await Effect.runPromise(runImport);
-      await Effect.runPromise(runImport);
-
-      expect(networkPulls).toBe(1);
-    });
-  });
-});
-
-test.each([
-  ["source", "PGPASSWORD"],
-  ["source", "CUSTOM_VALUE"],
-  ["target", "PGPASSWORD"],
-  ["target", "CUSTOM_VALUE"],
-  ["source", "CUSTOM_URL"],
-  ["target", "CUSTOM_URL"],
-  ["source", "MONGO_URI"],
-  ["target", "MONGO_URI"],
-] as const)("direct transfer masks explicit %s command secrets for %s", async (side, key) => {
-  await withTempDir(async (dir) => {
-    const url = key === "CUSTOM_URL" || key === "MONGO_URI";
-    const secret = url ? "p:/?#'!\n☃" : "SYNTHETIC_GENERIC_COMMAND_CREDENTIAL";
-    const encoded = encodeUriComponent(secret);
-    const envValue = url ? `arbitrary://user:${encoded}@host/database` : secret;
-    // Explicit tiered credential secrets only — never every env value.
-    // URL userinfo is derived from substring secrets via collectUrlCredentialValues.
-    const secrets = {
-      substring: url ? [secret, encoded] : [secret],
-      wholeToken: [] as string[],
-    };
-    const payload = new Uint8Array([0, 255, 195, 169, 13, 10]);
-    const received: number[] = [];
-    let destinationCalls = 0;
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const stateStore = yield* StateStore;
-        const provider = RuntimeProvider.of({
-          ...TestRuntimeProvider,
-          execStream: (_target, command) => {
-            const isSource = command.command[0] === "dump";
-            if (!isSource) destinationCalls += 1;
-            return Stream.unwrap(
-              Effect.promise(async (): Promise<Stream.Stream<ExecChunk>> => {
-                for await (const chunk of command.stdinStream ?? []) received.push(...chunk);
-                if ((side === "source") === isSource)
-                  return Stream.make(
-                    { kind: "stdout" as const, chunk: isSource ? payload : new Uint8Array() },
-                    { kind: "stderr" as const, chunk: bytes(`command refused ${secret} ${encoded}\n`) },
-                    { exitCode: 7 },
-                  );
-                return Stream.make({ kind: "stdout" as const, chunk: payload }, { exitCode: 0 });
-              }),
-            );
-          },
-        });
-        const mover = makeDataMoverService(
-          Effect.succeed(provider),
-          { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
-        );
-        return yield* mover
-          .transfer({
-            from: {
-              _tag: "serviceCmd",
-              app,
-              service,
-              command: ["dump"],
-              env: { [key]: envValue },
-              secrets,
-            },
-            to: {
-              _tag: "serviceCmd",
-              app,
-              service,
-              command: ["load"],
-              env: { [key]: envValue },
-              secrets,
-            },
-            overwrite: true,
-          })
-          .pipe(Effect.result);
-      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
-    );
-    if (result._tag !== "Failure") throw new Error("Expected command failure");
-    expect(result.failure._tag).toBe("DataTransferError");
-    expect(JSON.stringify(result.failure).includes(secret)).toBe(false);
-    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
-    expect(result.failure.stderrTail).toBe("command refused [redacted] [redacted]\n");
-    expect(result.failure.exitCode).toBe(7);
-    expect(destinationCalls).toBe(side === "source" ? 0 : 1);
-    expect(received).toEqual(side === "source" ? [] : [...payload]);
-  });
-});
-
-test("serviceCmd whole-token secrets mask whole tokens only on failure tails", async () => {
-  await withTempDir(async (dir) => {
-    const secret = "wordpress";
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const stateStore = yield* StateStore;
-        const provider = RuntimeProvider.of({
-          ...TestRuntimeProvider,
-          execStream: () =>
-            Stream.make(
-              {
-                kind: "stderr" as const,
-                chunk: bytes(`denied ${secret} path=wp-content/plugins/wordpress-seo\n`),
-              },
-              { exitCode: 3 },
-            ),
-        });
-        const mover = makeDataMoverService(
-          Effect.succeed(provider),
-          { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
-        );
-        return yield* mover
-          .transfer({
-            from: {
-              _tag: "serviceCmd",
-              app,
-              service,
-              command: ["dump"],
-              env: { MYSQL_PWD: secret },
-              secrets: { substring: [], wholeToken: [secret] },
-            },
-            to: { _tag: "hostPath", path: AbsolutePath.make(join(dir, "out.bin")) },
-            overwrite: true,
-          })
-          .pipe(Effect.result);
-      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
-    );
-    if (result._tag !== "Failure") throw new Error("Expected command failure");
-    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
-    expect(result.failure.stderrTail).toBe("denied [redacted] path=wp-content/plugins/wordpress-seo\n");
-  });
-});
-
-test.each([
-  ["source", "APP_TOKEN", undefined, "[redacted]"],
-  ["target", "APP_TOKEN", undefined, "[redacted]"],
-  ["source", "APP_TOKEN", { substring: [], wholeToken: [] }, "private-canary"],
-  ["target", "APP_TOKEN", { substring: [], wholeToken: [] }, "private-canary"],
-  ["source", "PGPASSWORD", undefined, "private-canary"],
-  ["target", "PGPASSWORD", undefined, "private-canary"],
-  ["source", "DB_USER", undefined, "private-canary"],
-  ["target", "DB_USER", undefined, "private-canary"],
-])("serviceCmd %s failure tails classify unclassified %s env: %j", async (side, key, secrets, expected) => {
-  await withTempDir(async (dir) => {
-    const secret = "private-canary";
-    await writeFile(join(dir, "in.bin"), "payload");
-    const endpoint = {
-      _tag: "serviceCmd" as const,
-      app,
-      service,
-      command: ["transfer"],
-      env: { [key]: secret },
-      ...(secrets === undefined ? {} : { secrets }),
-    };
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const stateStore = yield* StateStore;
-        const provider = RuntimeProvider.of({
-          ...TestRuntimeProvider,
-          execStream: () =>
-            Stream.make({ kind: "stderr" as const, chunk: bytes(`denied ${secret}\n`) }, { exitCode: 3 }),
-        });
-        const mover = makeDataMoverService(
-          Effect.succeed(provider),
-          { redactText: (text) => text, publish: () => Effect.void },
-          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore, privateFileAccess },
-        );
-        return yield* mover
-          .transfer({
-            from:
-              side === "source"
-                ? endpoint
-                : { _tag: "hostPath", path: AbsolutePath.make(join(dir, "in.bin")) },
-            to:
-              side === "source"
-                ? { _tag: "hostPath", path: AbsolutePath.make(join(dir, "out.bin")) }
-                : endpoint,
-            overwrite: true,
-          })
-          .pipe(Effect.result);
-      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
-    );
-    if (result._tag !== "Failure") throw new Error("Expected command failure");
-    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
-    expect(result.failure.stderrTail).toBe(`denied ${expected}\n`);
   });
 });

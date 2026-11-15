@@ -38,6 +38,19 @@ import { removeAllStaleVolumeHolders, sweepStaleDataHelpers } from "./stale-data
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
 import { extractFirstTarFile } from "./tar-file-stream.ts";
+import { ContainerTransportError } from "./transport-error.ts";
+import {
+  VOLUME_ARCHIVE_MOUNT,
+  volumeArchiveDiscardStagingCommand,
+  volumeArchiveDisposeCommand,
+  volumeArchiveExportCommand,
+  volumeArchiveExtractCommand,
+  volumeArchivePublishCommand,
+  volumeSnapshotCaptureCommand,
+  volumeSnapshotExtractCommand,
+} from "./volume-archive.ts";
+import { VolumeArchiveGate } from "./volume-archive-gate.ts";
+import { VOLUME_REPLACED_PREFIX } from "./volume-archive-reserved.ts";
 import {
   type MountedVolumeTarget,
   type NativeVolumeIdentityResolution,
@@ -47,7 +60,7 @@ import {
   observeMountedVolume,
   resolveNativeVolumeIdentity,
 } from "./volume-observation.ts";
-import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
+import { VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
 
 export {
   VOLUME_OWNER_LABEL,
@@ -86,6 +99,8 @@ import {
   type ServiceName,
   type StorageScope,
   type VolumeInfo,
+  type VolumeRef,
+  type VolumeRestoreSpec,
   type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
 import type {
@@ -95,8 +110,9 @@ import type {
   ProviderArtifactRef,
   ProviderError,
   RuntimeProviderShape,
+  VolumeArchiveImportSpec,
 } from "@lando/sdk/services";
-import { Cause, Deferred, Duration, Effect, Exit, Fiber, Queue, type Scope, Stream } from "effect";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Option, Queue, type Scope, Stream } from "effect";
 
 export interface DataPlaneHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
@@ -129,7 +145,7 @@ export interface ProviderDataPlaneOptions {
    */
   readonly pullHelperImage?: (ref: string) => Effect.Effect<PulledImage, ProviderError>;
   readonly api: DataPlaneApiClient;
-  readonly capabilities: Pick<ProviderCapabilities, "volumeSnapshot">;
+  readonly capabilities: Pick<ProviderCapabilities, "volumeSnapshot" | "volumeArchive">;
   readonly redactor: Redactor;
   readonly redactorFor?: (tokens: {
     readonly authoritativeTokens: readonly string[];
@@ -258,8 +274,14 @@ const ephemeralContainerName = (providerId: string): string =>
 const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> | undefined =>
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
 
-const preserveWitness = `! -name '${VOLUME_WITNESS_FILE}' ! -name '.lando-witness-stage-*'`;
-const snapshotDataMountTarget = PortablePath.make("/lando-data");
+const archiveMountTarget = PortablePath.make(VOLUME_ARCHIVE_MOUNT);
+/** The volume mounted read-write where every archive helper script `cd`s. */
+const archiveMount = (nativeName: string) => ({
+  type: "volume" as const,
+  store: nativeName,
+  target: archiveMountTarget,
+  readOnly: false,
+});
 const nativeSnapshotRepo = "localhost/lando-volume-snapshot";
 
 const nativeSnapshotImage = (id: string): string => `${nativeSnapshotRepo}:${sanitize(id).toLowerCase()}`;
@@ -1036,14 +1058,8 @@ const snapshotCommitHelper = (options: ProviderDataPlaneOptions, spec: NativeSna
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
       image: dataHelperImage.ref,
-      command: [
-        "sh",
-        "-c",
-        `mkdir -p /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /snapshot/' sh {} +`,
-      ],
-      mounts: [
-        { type: "volume", store: volumeName(spec.store), target: snapshotDataMountTarget, readOnly: true },
-      ],
+      command: volumeSnapshotCaptureCommand(),
+      mounts: [archiveMount(volumeName(spec.store))],
       remove: true,
     }),
     (name) =>
@@ -1112,6 +1128,290 @@ const snapshotCommitHelper = (options: ProviderDataPlaneOptions, spec: NativeSna
 const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, spec: NativeSnapshotCommit) =>
   ensureHelperImage(options, "snapshotVolume", dataHelperImage).pipe(
     Effect.andThen(() => snapshotCommitHelper(options, spec)),
+  );
+
+const stderrTailLimit = 8 * 1024;
+
+const appendStderrTail = (current: string, chunk: Uint8Array): string => {
+  const next = current + textDecoder.decode(chunk);
+  return next.length > stderrTailLimit ? next.slice(-stderrTailLimit) : next;
+};
+
+type ArchivePhase = "extract" | "publish" | "dispose";
+
+const freeSpaceRemediation =
+  "Free disk space and retry: replacing a volume's contents needs room for a second copy of its data while Lando swaps the new data in.";
+
+const archiveRemediation = (stderr: string): string =>
+  /no space left on device/iu.test(stderr) ? freeSpaceRemediation : runtimeRemediation;
+
+const helperFailureMessage: Readonly<Record<ArchivePhase, string>> = {
+  extract: "Lando's volume archive helper exited unsuccessfully.",
+  publish: "Lando stopped while swapping the volume's contents.",
+  dispose: "Lando installed the volume's new contents but could not remove the previous copy.",
+};
+
+const unsupportedVolumeArchive = (options: ProviderDataPlaneOptions, operation: string) =>
+  redactProviderError(
+    new ProviderCapabilityError({
+      providerId: options.providerId,
+      operation,
+      capability: "volumeArchive",
+      requiredValue: "staged",
+      actualValue: "unsupported",
+      message: "This provider cannot stream or replace whole-volume archives.",
+      remediation:
+        "Use a provider with typed volume archive support, or move the data through a service path.",
+    }),
+    options.redactor,
+  );
+
+interface ArchiveFailureInput {
+  readonly exitCode?: number | undefined;
+  readonly stderr?: string | undefined;
+  readonly store?: string | undefined;
+  readonly cause?: unknown;
+  readonly replaced?: string | undefined;
+  readonly spaceHint?: boolean;
+}
+
+const phaseRemediation = (phase: ArchivePhase, stderr: string, input: ArchiveFailureInput): string => {
+  const replacedIn = input.replaced === undefined ? "" : ` in ${input.replaced}`;
+  switch (phase) {
+    case "extract":
+      return `${input.spaceHint === true ? `${freeSpaceRemediation} ` : ""}${archiveRemediation(stderr)}`;
+    case "publish":
+      return `${archiveRemediation(stderr)} The previous contents are retained${replacedIn}; the next import, restore, or snapshot of this volume finishes the swap.`;
+    case "dispose":
+      return `The new contents are installed. The previous copy${replacedIn} could not be removed; the next import, restore, or snapshot of this volume removes it. Do not repeat the restore.`;
+  }
+};
+
+const archiveFailure = (
+  options: ProviderDataPlaneOptions,
+  operation: string,
+  phase: ArchivePhase,
+  message: string,
+  input: ArchiveFailureInput = {},
+) => {
+  const stderr = input.stderr ?? "";
+  const stderrTail =
+    stderr.length === 0
+      ? undefined
+      : boundedDiagnostic(stderr, (value) => options.redactor.redactValue(value));
+  return redactProviderError(
+    new VolumeOperationError({
+      providerId: options.providerId,
+      operation,
+      message,
+      remediation: phaseRemediation(phase, stderr, input),
+      ...(input.store === undefined ? {} : { store: input.store }),
+      details: {
+        phase,
+        ...(input.exitCode === undefined ? {} : { exitCode: input.exitCode }),
+        ...(stderrTail === undefined ? {} : { stderrTail }),
+        ...(input.replaced === undefined ? {} : { replaced: input.replaced }),
+      },
+      ...(input.cause === undefined ? {} : { cause: input.cause }),
+    }),
+    options.redactor,
+  );
+};
+
+const collectHelperOutcome = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+): Effect.Effect<{ readonly exitCode: number | undefined; readonly stderr: string }, ProviderError> =>
+  Effect.scoped(
+    Stream.runFold(
+      runByteStream(options, spec),
+      () => ({ exitCode: undefined as number | undefined, stderr: "" }),
+      (state, chunk) => {
+        if ("kind" in chunk) {
+          return chunk.kind === "stderr"
+            ? { exitCode: state.exitCode, stderr: appendStderrTail(state.stderr, chunk.chunk) }
+            : state;
+        }
+        return { exitCode: chunk.exitCode, stderr: state.stderr };
+      },
+    ),
+  );
+
+/** One staged replacement of a volume's contents, keyed by its staging id. */
+interface StagedArchive {
+  readonly operation: string;
+  readonly stagingId: string;
+  readonly mount: ReturnType<typeof archiveMount>;
+  readonly store: string;
+}
+
+const runArchiveHelper = (
+  options: ProviderDataPlaneOptions,
+  staged: StagedArchive,
+  helper: { readonly phase: ArchivePhase; readonly command: readonly string[]; readonly replaced?: string },
+) =>
+  collectHelperOutcome(options, {
+    image: dataHelperImage.ref,
+    command: helper.command,
+    mounts: [staged.mount],
+    remove: true,
+  }).pipe(
+    Effect.flatMap((outcome) =>
+      outcome.exitCode === 0
+        ? Effect.void
+        : Effect.fail(
+            archiveFailure(options, staged.operation, helper.phase, helperFailureMessage[helper.phase], {
+              exitCode: outcome.exitCode,
+              stderr: outcome.stderr,
+              store: staged.store,
+              ...(helper.replaced === undefined ? {} : { replaced: helper.replaced }),
+            }),
+          ),
+    ),
+  );
+
+const extractStagedArchive = <E, R>(
+  options: ProviderDataPlaneOptions,
+  staged: StagedArchive,
+  archive: Stream.Stream<Uint8Array, E, R>,
+): Effect.Effect<void, ProviderError | E, R> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const failure = (message: string, input: ArchiveFailureInput = {}) =>
+        archiveFailure(options, staged.operation, "extract", message, { store: staged.store, ...input });
+      const gate = new VolumeArchiveGate(`volume:${staged.store}`);
+      const invalid = (cause: unknown) =>
+        failure("Lando refused the volume archive because it is not a safe tar of the volume.", { cause });
+      const validated = Stream.concat(
+        archive.pipe(
+          Stream.mapEffect((chunk) =>
+            Effect.try({
+              try: () => gate.push(chunk),
+              catch: invalid,
+            }),
+          ),
+          Stream.filter((chunk) => chunk.byteLength > 0),
+        ),
+        Stream.fromEffect(
+          Effect.try({
+            try: () => gate.finish(),
+            catch: invalid,
+          }),
+        ).pipe(Stream.filter((chunk) => chunk.byteLength > 0)),
+      );
+      const queue = yield* Queue.bounded<Uint8Array, Cause.Done>(8);
+      const producer = yield* Stream.runForEach(validated, (chunk) => Queue.offer(queue, chunk)).pipe(
+        Effect.onExit(() => Queue.end(queue).pipe(Effect.ignore)),
+        Effect.forkScoped,
+      );
+      // Our own interruption of the producer is not a source failure; a real source
+      // failure recorded before the extractor stopped still keeps its typed identity.
+      const stopProducer = Effect.gen(function* () {
+        yield* Fiber.interrupt(producer);
+        const settled = yield* Fiber.await(producer).pipe(Effect.timeoutOption(Duration.seconds(5)));
+        if (
+          Option.isSome(settled) &&
+          Exit.isFailure(settled.value) &&
+          !Cause.hasInterruptsOnly(settled.value.cause)
+        ) {
+          return yield* Effect.failCause(settled.value.cause);
+        }
+      });
+      const stdin = yield* Stream.toAsyncIterableEffect(Stream.fromQueue(queue));
+      const outcome = yield* collectHelperOutcome(options, {
+        image: dataHelperImage.ref,
+        command: volumeArchiveExtractCommand(staged.stagingId),
+        mounts: [staged.mount],
+        remove: true,
+        stdinStream: stdin,
+      }).pipe(
+        Effect.catch(
+          (cause): Effect.Effect<never, ProviderError | E> =>
+            cause instanceof ProviderUnavailableError && cause.cause instanceof ContainerTransportError
+              ? stopProducer.pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      failure(
+                        "Lando's volume helper stopped while extracting the archive, so the volume's data is unchanged.",
+                        { cause, spaceHint: true },
+                      ),
+                    ),
+                  ),
+                )
+              : Effect.fail(cause),
+        ),
+      );
+      if (outcome.exitCode !== 0) {
+        yield* stopProducer;
+        return yield* Effect.fail(
+          failure("Lando's volume helper could not extract the archive, so the volume's data is unchanged.", {
+            exitCode: outcome.exitCode,
+            stderr: outcome.stderr,
+          }),
+        );
+      }
+      const sourceUnfinished = {
+        duration: Duration.seconds(60),
+        orElse: () =>
+          Effect.fail(
+            failure("Lando's volume archive source did not finish, so the volume's data is unchanged."),
+          ),
+      };
+      // tar exits successfully at its end markers, possibly before the source is exhausted;
+      // the source must still finish successfully or the import must not commit.
+      yield* Stream.runDrain(Stream.fromQueue(queue)).pipe(Effect.timeoutOrElse(sourceUnfinished));
+      const settled = yield* Fiber.await(producer).pipe(Effect.timeoutOrElse(sourceUnfinished));
+      if (Exit.isFailure(settled)) return yield* Effect.failCause(settled.cause);
+    }),
+  ).pipe(Effect.asVoid);
+
+/** Verify the helper image, publish staging uninterruptibly (the commit point), then dispose of the old copy. */
+const commitStagedArchive = (
+  options: ProviderDataPlaneOptions,
+  staged: StagedArchive,
+): Effect.Effect<void, ProviderError> => {
+  const replaced = `${VOLUME_REPLACED_PREFIX}${staged.stagingId}`;
+  return ensureHelperImage(options, staged.operation, dataHelperImage).pipe(
+    Effect.andThen(
+      Effect.uninterruptible(
+        runArchiveHelper(options, staged, {
+          phase: "publish",
+          command: volumeArchivePublishCommand(staged.stagingId),
+          replaced,
+        }),
+      ),
+    ),
+    Effect.andThen(
+      runArchiveHelper(options, staged, {
+        phase: "dispose",
+        command: volumeArchiveDisposeCommand(staged.stagingId),
+        replaced,
+      }),
+    ),
+  );
+};
+
+/**
+ * Run one staged replacement under a fresh staging id. Discarding this transaction's
+ * staging is a best-effort finalizer; reconciliation removes anything it leaves.
+ */
+const withStagedArchive = <A, E, R>(
+  options: ProviderDataPlaneOptions,
+  target: Omit<StagedArchive, "stagingId">,
+  use: (staged: StagedArchive) => Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Effect.acquireUseRelease(
+    Effect.sync((): StagedArchive => ({ ...target, stagingId: randomUUID() })),
+    use,
+    (staged) =>
+      runArchiveHelper(options, staged, {
+        phase: "extract",
+        command: volumeArchiveDiscardStagingCommand(staged.stagingId),
+      }).pipe(
+        Effect.timeoutOption(Duration.seconds(10)),
+        Effect.catchCause(() => Effect.void),
+        Effect.asVoid,
+      ),
   );
 
 export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
@@ -1239,6 +1539,64 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
       Stream.unwrap(
         ensureEphemeralVolumes(options, spec).pipe(Effect.map(() => runByteStream(options, spec))),
       ),
+    exportVolume: ((ref: VolumeRef): Stream.Stream<Uint8Array, ProviderError, Scope.Scope> =>
+      Stream.scoped(
+        Stream.unwrap(
+          Effect.gen(function* () {
+            if (options.capabilities.volumeArchive !== true) {
+              return yield* Effect.fail(unsupportedVolumeArchive(options, "exportVolume"));
+            }
+            const nativeName = volumeName(ref.store);
+            yield* ensureHelperImage(options, "exportVolume", dataHelperImage);
+            const stderr = { text: "" };
+            return runByteStream(options, {
+              image: dataHelperImage.ref,
+              command: volumeArchiveExportCommand(),
+              mounts: [archiveMount(nativeName)],
+              remove: true,
+            }).pipe(
+              Stream.flatMap((chunk): Stream.Stream<Uint8Array, ProviderError> => {
+                if ("kind" in chunk) {
+                  if (chunk.kind === "stdout") return Stream.make(chunk.chunk);
+                  stderr.text = appendStderrTail(stderr.text, chunk.chunk);
+                  return Stream.empty;
+                }
+                return chunk.exitCode === 0
+                  ? Stream.empty
+                  : Stream.fail(
+                      archiveFailure(options, "exportVolume", "extract", helperFailureMessage.extract, {
+                        exitCode: chunk.exitCode,
+                        stderr: stderr.text,
+                        store: ref.store,
+                      }),
+                    );
+              }),
+            );
+          }),
+        ),
+      )) satisfies RuntimeProviderShape["exportVolume"],
+    importVolume: (<E, R>(
+      spec: VolumeArchiveImportSpec<E, R>,
+    ): Effect.Effect<void, ProviderError | E, Scope.Scope | R> =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const operation = "importVolume";
+          if (options.capabilities.volumeArchive !== true) {
+            return yield* Effect.fail(unsupportedVolumeArchive(options, operation));
+          }
+          yield* ensureHelperImage(options, operation, dataHelperImage);
+          yield* withStagedArchive(
+            options,
+            { operation, mount: archiveMount(volumeName(spec.target.store)), store: spec.target.store },
+            (staged) =>
+              Effect.gen(function* () {
+                yield* extractStagedArchive(options, staged, spec.archive);
+                yield* spec.beforeCommit;
+                yield* commitStagedArchive(options, staged);
+              }),
+          );
+        }),
+      )) satisfies RuntimeProviderShape["importVolume"],
     snapshotVolume: ((spec): ReturnType<RuntimeProviderShape["snapshotVolume"]> => {
       const store = spec.volume.store;
       const name = volumeName(store);
@@ -1342,7 +1700,10 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
         }
       }
     }),
-    restoreVolume: ((spec): ReturnType<RuntimeProviderShape["restoreVolume"]> => {
+    restoreVolume: (<E = never>(
+      spec: VolumeRestoreSpec,
+      callOptions?: { readonly beforeCommit?: Effect.Effect<void, E> },
+    ): Effect.Effect<void, ProviderError | E, Scope.Scope> => {
       const store = spec.target.store;
       const name = volumeName(store);
       if (options.capabilities.volumeSnapshot !== "native" || spec.snapshot.format !== "native") {
@@ -1358,10 +1719,35 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
           }),
         );
       }
-      const command =
-        spec.overwrite !== false
-          ? `test -d /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && find /snapshot -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /lando-data/' sh {} +`
-          : "test -d /snapshot";
+      const snapshotImage = nativeSnapshotImage(spec.snapshot.id);
+      const mount = archiveMount(name);
+      const stagedRestore = (staged: StagedArchive): Effect.Effect<void, ProviderError | E> =>
+        Effect.gen(function* () {
+          const extraction = yield* collectHelperOutcome(options, {
+            image: snapshotImage,
+            command: volumeSnapshotExtractCommand(staged.stagingId),
+            mounts: [mount],
+            remove: true,
+          });
+          if (extraction.exitCode !== 0) {
+            return yield* Effect.fail(
+              archiveFailure(
+                options,
+                "restoreVolume",
+                "extract",
+                "Lando's snapshot helper could not stage the snapshot, so the volume's data is unchanged.",
+                { exitCode: extraction.exitCode, stderr: extraction.stderr, store },
+              ),
+            );
+          }
+          yield* verifyExpectedIdentity({
+            ref: spec.target,
+            expectedGeneration: spec.expectedTargetGeneration,
+            operation: "restoreVolume",
+          });
+          yield* callOptions?.beforeCommit ?? Effect.void;
+          yield* commitStagedArchive(options, staged);
+        });
       const verifySource = request(options, "restoreVolume", {
         method: "GET",
         path: `/images/${encodeURIComponent(nativeSnapshotImage(spec.snapshot.id))}/json`,
@@ -1403,26 +1789,29 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
           }),
         ),
         Effect.andThen(
-          runBytes(options, {
-            image: nativeSnapshotImage(spec.snapshot.id),
-            command: ["sh", "-c", command],
-            mounts: [{ type: "volume", store: name, target: snapshotDataMountTarget, readOnly: false }],
-            remove: true,
-          }),
-        ),
-        Effect.flatMap((result) =>
-          result.exitCode === 0
-            ? Effect.void
-            : Effect.fail(
-                volumeError(
-                  options,
-                  "restoreVolume",
-                  "Lando's storage restore helper exited unsuccessfully.",
-                  result,
-                  undefined,
-                  store,
+          spec.overwrite === false
+            ? runBytes(options, {
+                image: snapshotImage,
+                command: ["sh", "-c", "test -d /snapshot"],
+                mounts: [mount],
+                remove: true,
+              }).pipe(
+                Effect.flatMap((result) =>
+                  result.exitCode === 0
+                    ? Effect.void
+                    : Effect.fail(
+                        volumeError(
+                          options,
+                          "restoreVolume",
+                          "Lando's storage restore helper exited unsuccessfully.",
+                          result,
+                          undefined,
+                          store,
+                        ),
+                      ),
                 ),
-              ),
+              )
+            : withStagedArchive(options, { operation: "restoreVolume", mount, store }, stagedRestore),
         ),
       );
     }) satisfies RuntimeProviderShape["restoreVolume"],
