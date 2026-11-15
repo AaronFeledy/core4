@@ -94,8 +94,9 @@ export const recordEnvironment = (env: Readonly<Record<string, string | undefine
 };
 
 /**
- * Record env members named by a parsed expression. Unanalyzable members mark
- * `Complete`. Call for every env-scoped site the load parses, deferred or not.
+ * Record env members named by a parsed expression, including `${NAME}` shell
+ * parameters. Unanalyzable members mark `Complete`. Call for every env-scoped
+ * site the load parses, deferred or not.
  */
 export const recordExpressionEnvironment = (
   recorder: EnvironmentRecorder,
@@ -107,4 +108,7 @@ export const recordExpressionEnvironment = (
     return;
   }
   recorder.recordNames(members.members);
+  if ("whole" in ast)
+    for (const segment of ast.segments)
+      if (segment.kind === "ShellParamSegment") recorder.recordNames([segment.name]);
 };

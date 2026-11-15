@@ -76,6 +76,12 @@ describe("recordExpressionEnvironment", () => {
     expect(recorder.dependencies()).toEqual({ _tag: "Names", names: ["SET", "UNSET"] });
   });
 
+  test("records braced shell parameters, which load evaluation reads from env", () => {
+    const recorder = recordEnvironment({ CI: "1" });
+    recordExpressionEnvironment(recorder, parse("${CI}-${MODE:-dev}-$BARE"));
+    expect(recorder.dependencies()).toEqual({ _tag: "Names", names: ["CI", "MODE"] });
+  });
+
   test("marks Complete when env member is unanalyzable", () => {
     const recorder = recordEnvironment({ SET: "1" });
     recordExpressionEnvironment(recorder, parse("{{ env[app.name] }}"));
