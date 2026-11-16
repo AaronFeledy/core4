@@ -10,7 +10,9 @@
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 
+import { structuralRedaction } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
+import { StreamFrame } from "@lando/sdk/schema";
 import type { Redactor, TieredRedactionValues } from "@lando/sdk/secrets";
 import { Effect, Semaphore } from "effect";
 import { redactBoundedJsonValue } from "./bounded-json";
@@ -19,6 +21,8 @@ import { LiveProgress } from "./live-progress";
 import { projectLiveProgressInput } from "./live-progress-input";
 import { OutputCapture } from "./output-capture";
 import { projectMcpProgressFrame } from "./result-inspector";
+
+const progressPolicy = structuralRedaction(StreamFrame);
 
 export const encodeProgressFrame = (
   frame: unknown,
@@ -49,6 +53,7 @@ export const encodeProgressFrame = (
         },
         bodyRedactorForFrame,
         "MCP progress payload",
+        progressPolicy,
       ).pipe(
         Effect.tap((safe) =>
           Effect.sync(() => capture?.append(projectMcpProgressFrame(safe), projected.chunk)),

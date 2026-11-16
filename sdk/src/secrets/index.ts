@@ -20,6 +20,7 @@ export * from "./redactor-profiles.ts";
 export { type ParsedSecretReference, parseSecretReference } from "./reference.ts";
 export { isSecretEnvName, isSecretFieldName, isSecretStructuralName } from "./secret-names.ts";
 export { encodeUriComponent } from "./uri-component.ts";
+export { type ValueRedactionScope, redactValueWith } from "./value-redaction.ts";
 
 /** Container transport credentials recovered only for app output redaction. */
 export const HOST_PROXY_CREDENTIAL_ENV_NAMES = [

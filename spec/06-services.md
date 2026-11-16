@@ -738,7 +738,7 @@ Providers declaring `serviceLogSources` MUST support finite snapshots and scoped
 
 #### 6.14.5 Redaction
 
-Providers return raw `LogChunk`s. Renderer, lifecycle, telemetry, and machine-output boundaries apply `RedactionService` exactly once. Library log streams and app-owned files remain raw.
+Providers return raw `LogChunk`s. Each renderer, lifecycle, telemetry, and machine-output boundary applies its canonical redaction policy before disclosure, and redacting already-redacted output is idempotent. Library log streams and app-owned files remain raw.
 
 A line cut by the line bound ends in the SDK truncation marker. Before that marker, the value layer masks a nonempty proper prefix of a known value when a `substring` value continues from it, or when a `whole-token` value continues from it and the prefix's original left neighbour is a boundary (§3.7). The marker does not create a left boundary.
 

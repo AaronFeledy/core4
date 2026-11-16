@@ -17,6 +17,7 @@ import { RedactionService } from "@lando/redaction/service";
 import {
   type CommandResultOutcome,
   buildCommandResultEnvelope,
+  commandResultEnvelopePolicy,
   failureOutcomeFromCause,
   normalizeDefect,
 } from "@lando/sdk/command-result";
@@ -246,7 +247,12 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
       outcome,
       redactor,
     });
-    const safeEnvelope = yield* redactBoundedJsonValue(encodedEnvelope, redactor, "MCP tool result");
+    const safeEnvelope = yield* redactBoundedJsonValue(
+      encodedEnvelope,
+      redactor,
+      "MCP tool result",
+      commandResultEnvelopePolicy(entry.spec.resultSchema),
+    );
     if (!Predicate.isObject(safeEnvelope))
       return yield* Effect.fail(
         new McpTransportError({
