@@ -18,6 +18,7 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
@@ -54,7 +55,12 @@ const expected = evolveHistoricalSchedule(
   evolveHistoricalServiceCreds(
     evolveHistoricalSwarmReservations(
       evolveHistoricalUploadDirs(
-        evolveHistoricalSqliteTarget(evolveHistoricalAuthoringProjection(historicalExpected, "services")),
+        evolveHistoricalSqliteTarget(
+          evolveHistoricalProjectUser(
+            evolveHistoricalAuthoringProjection(historicalExpected, "services"),
+            "plain",
+          ),
+        ),
       ),
     ),
   ),
