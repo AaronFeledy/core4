@@ -1001,7 +1001,8 @@ describe("failed-create compensation", () => {
         Effect.gen(function* () {
           const fiber = yield* Effect.forkChild(invokeFailedCreate(provider, mode));
           yield* Deferred.await(pending);
-          yield* Effect.forkChild(Fiber.interrupt(fiber));
+          // Start the interrupter now so the interrupt is pending before the create returns.
+          yield* Effect.forkChild(Fiber.interrupt(fiber), { startImmediately: true });
           yield* Deferred.succeed(complete, { status: 201, body: "{}" });
           return yield* Fiber.await(fiber);
         }),
@@ -1039,7 +1040,8 @@ describe("failed-create compensation", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(invokeFailedCreate(provider, mode));
         yield* Deferred.await(pending);
-        yield* Effect.forkChild(Fiber.interrupt(fiber));
+        // Start the interrupter now so the interrupt is pending before the create returns.
+        yield* Effect.forkChild(Fiber.interrupt(fiber), { startImmediately: true });
         yield* Deferred.succeed(complete, { status: 500, body: "create failed" });
         return yield* Fiber.await(fiber);
       }),
