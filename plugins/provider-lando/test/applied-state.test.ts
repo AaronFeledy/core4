@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { APPLIED_STATE_VERSION, inspectAppliedPlan, migrateAppliedPlan } from "../src/applied-state.ts";
 
 describe("provider-lando applied plan inspection versioning", () => {
-  test("opens the applied-plan bucket at version 4 with the shared migrator", async () => {
+  test("opens the applied-plan bucket at the current version with the shared migrator", async () => {
     const opens: Array<{ version: number; onVersionMismatch: unknown }> = [];
     const state: PluginStateStore = {
       open: (spec) => {
@@ -19,7 +19,7 @@ describe("provider-lando applied plan inspection versioning", () => {
 
     expect(opens).toHaveLength(1);
     expect(opens[0]?.version).toBe(APPLIED_STATE_VERSION);
-    expect(APPLIED_STATE_VERSION).toBe(6);
+    expect(APPLIED_STATE_VERSION).toBe(7);
     // Same migration function identity as container-runtime export.
     expect(opens[0]?.onVersionMismatch).toBe(migrateAppliedPlan);
   });
