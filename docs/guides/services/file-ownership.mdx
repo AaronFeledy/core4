@@ -7,11 +7,11 @@ tags: [docs, service, php, ownership]
 
 # Who owns your app files
 
-On Linux with the default `lando` provider (managed rootless Podman), files your PHP service writes into the app mount belong to your host user. Composer, your editor, and PHP's web workers can work on the same files without handing the project back and forth with `chown`.
+On Linux with the default `lando` provider (managed rootless Podman), or the `podman` provider running rootless, files your PHP service writes into the app mount belong to your host user. Composer, your editor, and PHP's web workers can work on the same files without handing the project back and forth with `chown`.
 
 Lando calls the container account mapped to your host user the **project user**. Stock PHP services declare `www-data`, UID and GID `33`. Podman's keep-id mapping makes that account's writes belong to you on the host; it does not change your host UID to `33`. This applies to user apps whose services mount the app source. Database services, services without that mount, scratch apps, and the global app do not gain a project user.
 
-macOS, Windows, and the Docker provider keep their previous ownership behavior for now: the PHP default does not stop those apps from starting, but it does not make their files belong to your host user either. [Run `lando info`](#see-the-services-project-user) to see which case applies to a service.
+macOS, Windows, rootful Podman, and the Docker provider keep their previous ownership behavior for now: the PHP default does not stop those apps from starting, but it does not make their files belong to your host user either. [Run `lando info`](#see-the-services-project-user) to see which case applies to a service.
 
 ## See the service's project user
 
