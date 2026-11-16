@@ -2124,7 +2124,9 @@
       "isSecretEnvName",
       "isSecretFieldName",
       "isSecretStructuralName",
+      "isSignedQueryName",
       "isUsableExactRedactionValue",
+      "maskOpenSecretConstruct",
       "parseSecretReference",
       "redactValueWith"
     ],

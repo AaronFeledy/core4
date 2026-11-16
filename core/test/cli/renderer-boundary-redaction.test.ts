@@ -332,6 +332,7 @@ describe("runWithRendererHandling redaction", () => {
         forProfile: () =>
           Effect.succeed({
             redactString: (text: string) => text.split("32").join("[redacted]"),
+            redactPrefix: (text: string) => text.split("32").join("[redacted]"),
             redactValue: (value: unknown) => value,
           }),
       }),

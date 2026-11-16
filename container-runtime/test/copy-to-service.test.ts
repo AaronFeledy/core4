@@ -10,6 +10,7 @@ import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
+  redactPrefix: (value: string) => value,
   redactValue: (value: unknown) => value,
 } satisfies Redactor;
 

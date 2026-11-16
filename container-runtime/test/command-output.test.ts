@@ -365,7 +365,7 @@ test.each(["take", "interrupt"] as const)(
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactor: { redactString: (text) => text, redactValue: (value) => value },
+      redactor: { redactString: (text) => text, redactPrefix: (text) => text, redactValue: (value) => value },
     });
     const source = provider.runStream({ image: "alpine:3.20", command: ["true"], remove: true });
     const exit: Exit.Exit<unknown, unknown> =

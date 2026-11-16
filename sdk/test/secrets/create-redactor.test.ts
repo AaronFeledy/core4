@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { PATTERN_CLASSES, REDACTED, REDACTION_PROFILES, createRedactor } from "@lando/sdk/secrets";
+import {
+  PATTERN_CLASSES,
+  REDACTED,
+  REDACTION_PROFILES,
+  createRedactor,
+  isSecretFieldName,
+  isSecretStructuralName,
+} from "@lando/sdk/secrets";
 import { LOG_LINE_TRUNCATED_MARKER } from "../../src/log-follow/marker.ts";
+import { replacePatternsBounded } from "../../src/secrets/bounded-redaction.ts";
 
 const signedUrlCases = [
   {
@@ -64,6 +72,7 @@ describe("sequential secret pattern regressions", () => {
       expected: "?api_key=[redacted]&n=1",
     },
     { name: "bare query", input: "?token=abc", expected: "?token=[redacted]" },
+    { name: "suffixed quoted query", input: '?token="x"suffix', expected: "?token=[redacted]" },
     {
       name: "legitimate closing bracket",
       input: "Env=[A_PASSWORD=x]",
@@ -127,13 +136,16 @@ describe("createRedactor surface", () => {
     expect(REDACTION_PROFILES).toEqual(["secrets", "telemetry", "transcript"]);
   });
 
-  test("PATTERN_CLASSES exposes the canonical secrets catalog classes", () => {
-    const secretAssignment = PATTERN_CLASSES.secretAssignment;
-    expect(secretAssignment).toBeDefined();
-    if (secretAssignment === undefined) throw new Error("missing secret assignment pattern");
+  test("PATTERN_CLASSES exposes only the regex-expressible classes", () => {
+    // The secret-name grammars are scanner-owned; the catalog keeps the classes
+    // that really are one regex: URL userinfo, field-name tests, and the
+    // normalization placeholders.
+    expect(PATTERN_CLASSES.secretAssignment).toBeUndefined();
+    expect(PATTERN_CLASSES.secretMember).toBeUndefined();
+    expect(PATTERN_CLASSES.secretYamlKey).toBeUndefined();
+    expect(PATTERN_CLASSES.bearerToken).toBeUndefined();
+    expect(PATTERN_CLASSES.signedQueryParam).toBeUndefined();
     expect(PATTERN_CLASSES.urlUserinfo).toBeDefined();
-    expect(PATTERN_CLASSES.bearerToken).toBeDefined();
-    expect(PATTERN_CLASSES.signedQueryParam).toBeDefined();
     expect(PATTERN_CLASSES.secretKeyedField).toBeDefined();
     expect(PATTERN_CLASSES.uncPath).toBeDefined();
     expect(PATTERN_CLASSES.homeAlias).toBeDefined();
@@ -143,7 +155,7 @@ describe("createRedactor surface", () => {
     expect(PATTERN_CLASSES.digest).toBeDefined();
     expect(PATTERN_CLASSES.providerId).toBeDefined();
     expect(PATTERN_CLASSES.root).toBeDefined();
-    expect(secretAssignment.pattern).toBeInstanceOf(RegExp);
+    expect(PATTERN_CLASSES.urlUserinfo?.pattern).toBeInstanceOf(RegExp);
   });
 });
 
@@ -200,6 +212,15 @@ describe("secrets profile (pattern layer)", () => {
     );
     // A substring keyword in an innocuous param is not redacted.
     expect(r.redactString("https://cdn/x?design=blue")).toBe("https://cdn/x?design=blue");
+  });
+
+  test("classifies signed query keys with the broad field recognizer", () => {
+    // Given the field vocabulary plus the signature words, under query keys.
+    for (const key of ["auth", "authorization", "authtoken", "apiToken", "sig", "X-Amz-Signature", "api_key"])
+      expect(r.redactString(`?${key}=hunter2`), key).toBe(`?${key}=[redacted]`);
+    // Then an innocuous key whose text merely contains a signature word stays readable.
+    for (const key of ["design", "sv", "sp", "page"])
+      expect(r.redactString(`?${key}=blue`), key).toBe(`?${key}=blue`);
   });
 
   test("leaves ordinary text untouched", () => {
@@ -272,6 +293,29 @@ describe("value layer applied before pattern layer", () => {
 
     // Then
     expect(result).toBe(r.redactString(input));
+  });
+});
+
+describe("bounded pattern replacers", () => {
+  test("receive the same arguments as String.prototype.replace", () => {
+    // Given a replacer that records its whole argument list.
+    const calls: ReadonlyArray<unknown>[] = [];
+    const replace = (...args: unknown[]): string => {
+      calls.push(args);
+      return "[masked]";
+    };
+    const input = "a abc b abc";
+
+    // When unbounded `String.replace` and the bounded path both run it.
+    const expected = input.replace(/abc/gu, replace);
+    const unboundedArgs = [...calls];
+    calls.length = 0;
+    const bounded = replacePatternsBounded(input, [{ pattern: /abc/gu, replace }], 4_096);
+
+    // Then both mask the same text and pass `(match, offset, input)` in that order.
+    expect(bounded).toBe(expected);
+    expect(calls).toEqual(unboundedArgs);
+    expect(calls[0]?.[1]).toBe(2);
   });
 });
 
@@ -573,5 +617,307 @@ describe("complete env-reference exemption (all profiles)", () => {
     expect(output).toContain(REDACTED);
     expect(output).toContain(LOG_LINE_TRUNCATED_MARKER);
     expect(output).not.toContain("NPM_TOK");
+  });
+});
+
+describe("assignment grammar forms (#2399)", () => {
+  const r = createRedactor("secrets");
+  // Every accepted spelling and its exact masking. The colon forms keep a quoted
+  // value's own quoting (and escaped-JSON backslash run) around the sentinel.
+  const masked = [
+    { input: 'password= "x"', expected: "password= [redacted]" },
+    { input: 'password = "x"', expected: "password = [redacted]" },
+    { input: 'password: "x"', expected: 'password: "[redacted]"' },
+    { input: '{"password":"x"}', expected: '{"password":"[redacted]"}' },
+    { input: '{"password" : "x"}', expected: '{"password" : "[redacted]"}' },
+    { input: "{'password': 'x'}", expected: "{'password': '[redacted]'}" },
+    { input: '{\\"password\\":\\"x\\"}', expected: '{\\"password\\":\\"[redacted]\\"}' },
+    { input: '{"token": 12345}', expected: '{"token": "[redacted]"}' },
+    { input: '{\\"token\\": 12345}', expected: '{\\"token\\": \\"[redacted]\\"}' },
+    { input: '{"password":"left\\"right"}', expected: '{"password":"[redacted]"}' },
+    { input: "  db_password: s3cret value", expected: "  db_password: [redacted]" },
+    { input: "- api_key: abc", expected: "- api_key: [redacted]" },
+    { input: "db_password: s3cret", expected: "db_password: [redacted]" },
+    { input: "Token: expired", expected: "Token: [redacted]" },
+    { input: "PASSWORD=true", expected: "PASSWORD=[redacted]" },
+    // A whole-name secret that is not a strong substring.
+    { input: "auth=hunter2", expected: "auth=[redacted]" },
+    { input: "authorization=hunter2", expected: "authorization=[redacted]" },
+    { input: '{"authorization":"hunter2"}', expected: '{"authorization":"[redacted]"}' },
+    // A secret reference is kept only when it is the whole value.
+    { input: 'token: "prefix ${secret:EXISTING}"', expected: 'token: "[redacted]"' },
+    { input: 'token="${secret:EXISTING}"suffix', expected: "token=[redacted]" },
+    // A quoted shell word carries its non-stop suffix as one value.
+    { input: 'password="x"suffix', expected: "password=[redacted]" },
+    { input: 'password="x"/dev/null', expected: "password=[redacted]" },
+  ] as const;
+
+  const unchanged = [
+    "The password is required",
+    "Failed to read token: file not found",
+    "SecretNotFoundError: missing DB_PASSWORD",
+    "secretRedaction: true",
+    '{"secretRedaction":true}',
+    "Enter password: ",
+    "password:",
+    "password:\n",
+    "cacheKey: value",
+    "oauth=hunter2",
+  ] as const;
+
+  for (const { input, expected } of masked) {
+    test(`masks ${JSON.stringify(input)}`, () => {
+      const output = r.redactString(input);
+      expect(output).toBe(expected);
+      expect(r.redactString(output)).toBe(expected);
+      expect(r.redactStringBounded?.(input, 4_096)).toBe(expected);
+    });
+  }
+
+  for (const input of unchanged) {
+    test(`leaves ${JSON.stringify(input)} unchanged`, () => {
+      expect(r.redactString(input)).toBe(input);
+      expect(r.redactStringBounded?.(input, 4_096)).toBe(input);
+    });
+  }
+
+  test("keeps a bare typed literal as a boolean or null, never as a string", () => {
+    // Given the member and YAML forms, whose syntax types a bare scalar.
+    for (const input of ['{"password":true}', '{"password":false}', '{"password":null}', "password: ~"])
+      expect(r.redactString(input), input).toBe(input);
+    for (const input of ["password: TRUE", "password: FALSE", "password: NULL"])
+      expect(r.redactString(input), input).toBe(input);
+    // `~` is YAML spelling only: a JSON or Python member keeps the string meaning.
+    expect(r.redactString('{"password": ~}')).toBe('{"password": "[redacted]"}');
+    expect(r.redactString("{'password': ~}")).toBe("{'password': '[redacted]'}");
+  });
+
+  test("splits the broad field recognizer from the structural colon recognizer", () => {
+    // Given a name that contains a secret word but whose last segment is not sensitive.
+    // `=` and member forms use the broad field test; colon forms use the structural one,
+    // because a false positive there would swallow a diagnostic or a capability flag.
+    expect(r.redactString('apassword = "x"')).toBe("apassword = [redacted]");
+    expect(r.redactString('{"apassword":"x"}')).toBe('{"apassword":"[redacted]"}');
+    expect(r.redactString('apassword: "x"')).toBe('apassword: "x"');
+  });
+
+  test.each([
+    "password",
+    "dbPassword",
+    "APIPassword",
+    "apiPassword",
+    "APIKey",
+    "APIKeys",
+    "apiKey",
+    "secretAccessKey",
+    "authToken",
+    "AUTHToken",
+    "DBPassword",
+    "rootPassword",
+    "cacheKey",
+    "certs.key",
+    "tokenFile",
+    "APITokenizer",
+    "APIKeyFile",
+    "PGPASSWORD",
+    "defaultSecretStore",
+    "apassword",
+  ])("colon grammar agrees with the structural recognizer for %s", (name) => {
+    // Given / When the colon form masks exactly when the recognizer accepts the name.
+    const masked = r.redactString(`${name}: "x"`) === `${name}: "[redacted]"`;
+    // Then the grammar and the recognizer never disagree.
+    expect(masked).toBe(isSecretStructuralName(name));
+  });
+
+  test.each([
+    "auth",
+    "authorization",
+    "authtoken",
+    "oauth",
+    "apassword",
+    "tokenizer",
+    "db_password",
+    "api-token",
+  ])("equals and member grammars agree with the field recognizer for %s", (name) => {
+    // Given / When both broad-name forms mask exactly when the recognizer accepts.
+    const equalsMasked = r.redactString(`${name}=hunter2`).includes(REDACTED);
+    const memberMasked = r.redactString(`{"${name}":"hunter2"}`).includes(REDACTED);
+    // Then the shared whole-name source keeps all three in agreement.
+    expect(equalsMasked).toBe(isSecretFieldName(name));
+    expect(memberMasked).toBe(isSecretFieldName(name));
+  });
+
+  test("consumes a shell word's non-stop suffix as part of a quoted value", () => {
+    // Given a quoted value and a suffix the grammar does not stop on, all one word.
+    for (const input of ['password="x"suffix', 'password="x"/dev/null', "password='x'y"])
+      expect(r.redactString(input), input).toBe("password=[redacted]");
+    // Then a stop character still ends the word after the masked value.
+    expect(r.redactString('password="x" suffix')).toBe("password=[redacted] suffix");
+    expect(r.redactString('password="x", next')).toBe("password=[redacted], next");
+  });
+
+  test("treats an inserted sentinel in the shell-word suffix as one opaque unit", () => {
+    // Given a registered value the value layer masks inside a quoted word's suffix.
+    const known = createRedactor("secrets", { values: ["KNOWN"] });
+    // When / Then the whole shell word is one value, even across the sentinel.
+    for (const [input, expected] of [
+      ['password="a"leftKNOWNright', "password=[redacted]"],
+      ['?token="a"leftKNOWNright&keep=yes', "?token=[redacted]&keep=yes"],
+    ] as const) {
+      expect(known.redactString(input), input).toBe(expected);
+      expect(known.redactPrefix(input), input).toBe(expected);
+      expect(known.redactStringBounded?.(input, 4_096), input).toBe(expected);
+    }
+  });
+
+  test("keeps a complete env reference and published default in every new form", () => {
+    for (const input of [
+      'password= "$TOKEN"',
+      'password: "$TOKEN"',
+      '{"password":"$TOKEN"}',
+      'db_password: "$TOKEN"',
+      "db_password: $TOKEN",
+      'TOKEN: "${secret:EXISTING}"',
+      "token: ${secret:EXISTING}",
+      "token=$${secret:EXISTING}",
+      '{"token":"${secret:store://bucket/path?version=latest}"}',
+    ])
+      expect(r.redactString(input), input).toBe(input);
+    for (const input of ['{"password":"lando"}', "db_password: lando"])
+      expect(r.redactString(input), input).toBe(input);
+  });
+});
+
+describe("complete-text secret values (#2395)", () => {
+  const r = createRedactor("secrets");
+
+  test("closes an unterminated quoted value to the end of the input", () => {
+    expect(r.redactString('password="hunter2')).toBe("password=[redacted]");
+    expect(r.redactString("api_token='hunter2")).toBe("api_token=[redacted]");
+    expect(r.redactString('password=\\"first')).toBe("password=[redacted]");
+    expect(r.redactString('password="x\\"')).toBe("password=[redacted]");
+    expect(r.redactString('password: "first')).toBe('password: "[redacted]"');
+    expect(r.redactString('{"password":"first')).toBe('{"password":"[redacted]"');
+  });
+
+  test("appends nothing for a bearer introducer with no value", () => {
+    expect(r.redactString("Authorization: Bearer")).toBe("Authorization: Bearer");
+    expect(r.redactString("Authorization: Bearer ")).toBe("Authorization: Bearer ");
+  });
+
+  test("leaves an unterminated opener intact in prefix redaction", () => {
+    for (const input of ['password="hunter2', "api_token='hunter2", 'password=\\"first', 'password: "first'])
+      expect(r.redactPrefix(input), input).toBe(input);
+  });
+
+  test("a shell string whose closing quote follows the name still masks one value", () => {
+    expect(r.redactString('RUN echo "token=" > f')).toBe('RUN echo "token=" > f');
+    expect(r.redactString('RUN sh -c "mysql --password=secret"')).toBe(
+      'RUN sh -c "mysql --password=[redacted]"',
+    );
+  });
+
+  test("bounded redaction closes too and fails closed past its budget", () => {
+    const input = 'password="hunter2';
+    expect(r.redactStringBounded?.(input, 4_096)).toBe("password=[redacted]");
+    expect(r.redactStringBounded?.(input, 10)).toBeUndefined();
+  });
+});
+
+describe("redaction idempotence and bounded equivalence (R7)", () => {
+  const forms = [
+    'password= "x"',
+    'password = "x"',
+    'password: "x"',
+    '{"password":"x"}',
+    "{'password': 'x'}",
+    '{\\"password\\":\\"x\\"}',
+    '{"token": 12345}',
+    "  db_password: s3cret value",
+    "- api_key: abc",
+    'password="left\\"right"',
+    'a password="first\ncanary\nlast" b',
+    'password="x"suffix',
+    '?token="x"suffix',
+  ] as const;
+
+  test("secrets output is a fixed point, including a registered quoted sentinel", () => {
+    // Given the sentinel itself registered with quotes, as a value layer would mask it.
+    const r = createRedactor("secrets", { values: ['"[redacted]"'] });
+    for (const input of [...forms, '{"password":"[redacted]"}', 'k="[redacted]"']) {
+      const once = r.redactString(input);
+      expect(r.redactString(once), input).toBe(once);
+    }
+  });
+
+  test("bounded redaction masks exactly what unbounded redaction masks", () => {
+    const r = createRedactor("secrets");
+    for (const input of forms) {
+      const expected = r.redactString(input);
+      expect(r.redactStringBounded?.(input, 4_096), input).toBe(expected);
+    }
+  });
+});
+
+describe("assignment grammar stays linear on adversarial input (R6)", () => {
+  const r = createRedactor("secrets");
+
+  test("scans a repeated secret-word run once", () => {
+    // Given a long run of secret words with no separator, the old name pattern
+    // backtracked through every start position.
+    const input = `${"token".repeat(20_000)}=x`;
+    // When
+    const started = performance.now();
+    const output = r.redactString(input);
+    // Then one pass completes far below the quadratic bound.
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(output.endsWith("[redacted]")).toBe(true);
+  });
+
+  test("never starts a match inside a long backslash run", () => {
+    // Given a run far longer than any escaped opener, with no name before it.
+    const input = `${"\\".repeat(200_000)}"x`;
+    // When
+    const started = performance.now();
+    const output = r.redactString(input);
+    // Then the member grammar only considers the run's start.
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(output).toBe(input);
+  });
+
+  test("scans a repeated encoded-scheme run once", () => {
+    // Given a percent-encoded scheme followed by many encoded colons and no
+    // encoded `@`: the lazy userinfo runs used to re-split the same run.
+    const input = `https%3A%2F%2F${"x%3A".repeat(50_000)}`;
+    // When
+    const started = performance.now();
+    const output = r.redactString(input);
+    // Then one pass completes far below the quadratic bound and nothing is masked,
+    // because there is no encoded `%40` to close a userinfo credential.
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(output).toBe(input);
+  });
+
+  test("scans a failing dotted scheme run once", () => {
+    // Given a long run of scheme characters with no userinfo `@`: the greedy
+    // scheme used to be retried at every word boundary inside the run.
+    const input = `${"a.".repeat(60_000)}a://u:p`;
+    // When
+    const started = performance.now();
+    const output = r.redactString(input);
+    // Then one pass completes far below the quadratic bound and nothing is masked.
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(output).toBe(input);
+  });
+
+  test("scans a long separator run once", () => {
+    // Given a colon followed by a very long whitespace run.
+    const input = `password:${" ".repeat(200_000)}x`;
+    // When
+    const started = performance.now();
+    const output = r.redactString(input);
+    // Then the separator is consumed once.
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(output.endsWith("[redacted]")).toBe(true);
   });
 });

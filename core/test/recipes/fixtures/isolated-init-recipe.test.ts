@@ -28,7 +28,7 @@ const secretProbeInput: RecipeDecomposeInput = {
   secrets: { apiToken: { disposition: "secret-store", reference: `secret://${marker}` } },
 };
 const decomposer = isolatedInitDecomposer({
-  redactor: { redactString: (text) => text, redactValue: (value) => value },
+  redactor: { redactString: (text) => text, redactPrefix: (text) => text, redactValue: (value) => value },
 });
 
 describe("isolated init recipe fixture", () => {

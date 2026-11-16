@@ -102,7 +102,12 @@ const layers = (rec: ReturnType<typeof record>) =>
       RedactionService.of({
         ...makeRedactionService(),
         payloadValues: () => Effect.succeed(() => ({ substring: [], wholeToken: [] })),
-        forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
+        forProfile: () =>
+          Effect.succeed({
+            redactString: (t: string) => `RED(${t})`,
+            redactPrefix: (t: string) => `RED(${t})`,
+            redactValue: (v) => v,
+          }),
       }),
     ),
   );

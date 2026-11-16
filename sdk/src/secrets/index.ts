@@ -12,13 +12,19 @@ export {
   type TieredRedactionValues,
   isRedactionTokenBoundaryUnit,
 } from "./literal-matcher.ts";
-export * from "./open-construct.ts";
 export * from "./payload-redactor.ts";
 export * from "./public-default-credentials.ts";
 export * from "./redactor.ts";
 export * from "./redactor-profiles.ts";
 export { type ParsedSecretReference, parseSecretReference } from "./reference.ts";
-export { isSecretEnvName, isSecretFieldName, isSecretStructuralName } from "./secret-names.ts";
+export type { OpenSecretConstruct } from "./secret-constructs.ts";
+export {
+  isSecretEnvName,
+  isSecretFieldName,
+  isSecretStructuralName,
+  isSignedQueryName,
+} from "./secret-names.ts";
+export { findOpenSecretConstruct, maskOpenSecretConstruct } from "./secret-scanner.ts";
 export { encodeUriComponent } from "./uri-component.ts";
 export { type ValueRedactionScope, redactValueWith } from "./value-redaction.ts";
 

@@ -87,6 +87,12 @@ test.each([
   "secretAccessKey",
   "privateKey",
   "signingKeys",
+  // Acronym camel transitions the recognizer splits with ([A-Z]+)([A-Z][a-z]).
+  "APIPassword",
+  "APIKey",
+  "APIKeys",
+  "DBPassword",
+  "AUTHToken",
 ])("recognizes structural name %s", (name) => expect(isSecretStructuralName(name)).toBe(true));
 test.each([
   "defaultSecretStore",
@@ -101,6 +107,8 @@ test.each([
   "sshKey",
   "storageKeys",
   "PGPASSWORD",
+  "APITokenizer",
+  "APIKeyFile",
 ])("rejects structural metadata %s", (name) => expect(isSecretStructuralName(name)).toBe(false));
 
 test("field recognition preserves the broad original pattern", () => {

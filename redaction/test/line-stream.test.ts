@@ -7,6 +7,8 @@ import {
 } from "@lando/redaction/line-stream";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { createPayloadValues } from "../src/service.ts";
+
 const encoder = new TextEncoder();
 
 interface StreamResult {
@@ -321,5 +323,65 @@ describe("redactLineSequence", () => {
 
     // Then
     expect(result).toEqual(["before", "token=[redacted]", undefined]);
+  });
+});
+
+describe("assignment grammar forms across frames (#2399)", () => {
+  test("masks an escaped-opener assignment split across frames", () => {
+    // Given a shell-escaped opener whose closer is the next quote.
+    const result = runPipeline('password=\\"left\nright\\"\n', 1);
+
+    // Then both fragments are one value.
+    expect(result.text).toBe("password=[redacted]");
+    expect(result.text).not.toContain("left");
+  });
+
+  test("masks a colon-plus-quoted value split across frames", () => {
+    const result = runPipeline('password: "first\ncanary-colon-value\nlast"\n', 1);
+
+    expect(result.text).toBe('password: "[redacted]"');
+    expect(result.text).not.toContain("canary-colon-value");
+  });
+
+  test("masks a member value split across frames and keeps the mapping quoting", () => {
+    const result = runPipeline('{"password":"left\nright"}\n', 1);
+
+    expect(result.text).toBe('{"password":"[redacted]"}');
+  });
+
+  test("masks an unclosed member value at end of stream with its key quoting", () => {
+    const result = pushLines(['{"password":"left', "right"]);
+
+    expect(result.lines).toEqual(['{"password":"[redacted]"']);
+  });
+
+  test("masks a YAML block key value split across frames", () => {
+    const result = runPipeline('db_password: "first\ncanary-yaml-value\nlast"\n', 1);
+
+    expect(result.text).toBe('db_password: "[redacted]"');
+    expect(result.text).not.toContain("canary-yaml-value");
+  });
+});
+
+describe("value layer line-ending variants (#2397)", () => {
+  const pipeline = (values: readonly string[], input: string): StreamResult => {
+    const output = createOutputLineRedactor({
+      redactor: createRedactor("secrets"),
+      payloadValues: createPayloadValues(values),
+    });
+    const lines = [...output.write(encoder.encode(input)), ...output.end()];
+    return { lines, text: lines.join("\n") };
+  };
+
+  test("masks an LF-registered value printed with CRLF as one line", () => {
+    expect(pipeline(["left\nright"], "before left\r\nright after\n").lines).toEqual([
+      "before [redacted] after",
+    ]);
+  });
+
+  test("masks a CRLF-registered value printed with LF as one line", () => {
+    expect(pipeline(["left\r\nright"], "before left\nright after\n").lines).toEqual([
+      "before [redacted] after",
+    ]);
   });
 });

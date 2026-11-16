@@ -25,7 +25,8 @@
  */
 import { type FramedLine, makeLineFramer } from "@lando/sdk/log-follow";
 import {
-  REDACTED,
+  type OpenSecretConstruct,
+  maskOpenSecretConstruct,
   type Redactor,
   type TieredRedactionValues,
   createPayloadRedactor,
@@ -64,7 +65,7 @@ const encoder = new TextEncoder();
  * every release redacts the whole held block, so the output is unchanged.
  */
 export const createLineStreamRedactor = (
-  redactor: Pick<Redactor, "redactString">,
+  redactor: Pick<Redactor, "redactPrefix">,
   options: LineStreamRedactorOptions = {},
 ): LineStreamRedactor => {
   const maxHeldLines = options.maxHeldLines ?? DEFAULT_LINE_STREAM_MAX_HELD_LINES;
@@ -76,7 +77,7 @@ export const createLineStreamRedactor = (
   // Quote character of the leftmost open construct; undefined for `Bearer`.
   let heldQuote: string | undefined;
 
-  const redactedBlock = (): string => redactor.redactString(held.join("\n"));
+  const redactedBlock = (): string => redactor.redactPrefix(held.join("\n"));
 
   const clear = (): void => {
     held = [];
@@ -85,8 +86,8 @@ export const createLineStreamRedactor = (
     heldQuote = undefined;
   };
 
-  const failClosed = (output: string, valueStart: number): readonly string[] => {
-    const masked = `${output.slice(0, valueStart)}${REDACTED}`;
+  const failClosed = (output: string, open: OpenSecretConstruct): readonly string[] => {
+    const masked = maskOpenSecretConstruct(output, open);
     clear();
     return masked.split("\n");
   };
@@ -106,8 +107,8 @@ export const createLineStreamRedactor = (
       clear();
       return output.split("\n");
     }
-    if (overBound) return failClosed(output, open.valueStart);
-    heldQuote = output[open.valueStart];
+    if (overBound) return failClosed(output, open);
+    heldQuote = open.quote;
     return [];
   };
 
@@ -115,7 +116,7 @@ export const createLineStreamRedactor = (
     if (held.length === 0) return [];
     const output = redactedBlock();
     const open = findOpenSecretConstruct(output);
-    if (open !== undefined) return failClosed(output, open.valueStart);
+    if (open !== undefined) return failClosed(output, open);
     clear();
     return output.split("\n");
   };
@@ -181,7 +182,7 @@ export const redactLineText = (scope: OutputRedactionScope, text: string): strin
 /** The two redaction layers one process-output stream needs. */
 export interface OutputRedactionScope {
   /** The canonical `secrets` pattern redactor. */
-  readonly redactor: Pick<Redactor, "redactString">;
+  readonly redactor: Pick<Redactor, "redactString" | "redactPrefix">;
   /** The exact values, read before every write so later registrations apply. */
   readonly payloadValues: () => Iterable<string> | TieredRedactionValues;
 }

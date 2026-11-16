@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PATTERN_CLASSES, REDACTED, createRedactor } from "@lando/sdk/secrets";
+import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
 import { isCompleteEnvReference } from "../../src/secrets/env-placeholder.ts";
 
@@ -22,7 +22,6 @@ const MASK_VALUES = [
   { value: "\\${TOKEN}", note: "escaped dollar with braces" },
   { value: "\\$TOKEN", note: "escaped dollar" },
   { value: '\\"$TOKEN"', note: "unequal backslash runs" },
-  { value: '"$TOKEN\\"', note: "unequal backslash runs, trailing" },
   { value: "${bad canary}", note: "malformed body" },
   { value: "${BAD-NAME}", note: "hyphen in the identifier" },
   { value: "${9TOKEN}", note: "leading digit" },
@@ -37,33 +36,50 @@ const MASK_VALUES = [
   { value: "${TOKEN??}", note: "doubled question mark" },
 ] as const;
 
-test.each(["secretAssignment", "signedQueryParam"])(
-  "exported %s pattern keeps every complete reference at a verified terminator",
+test.each(["secretAssignment", "signedQueryParam"] as const)(
+  "%s grammar keeps every complete reference at a verified terminator",
   (name) => {
-    const pattern = PATTERN_CLASSES[name];
-    if (pattern === undefined || typeof pattern.replace !== "function")
-      throw new Error("Missing pattern replacement");
+    const redactor = createRedactor("secrets");
     const prefix = name === "secretAssignment" ? "token=" : "?token=";
     // Each grammar has its own stop class; only that class verifies a terminator.
     const stop = name === "secretAssignment" ? "," : "&";
     for (const value of KEEP_VALUES) {
       const input = prefix + value;
-      expect(input.replace(pattern.pattern, pattern.replace)).toBe(input);
+      expect(redactor.redactPrefix(input)).toBe(input);
       const terminated = `${input}${stop}${name === "secretAssignment" ? "" : "next=1"}`;
-      expect(terminated.replace(pattern.pattern, pattern.replace)).toBe(terminated);
+      expect(redactor.redactPrefix(terminated)).toBe(terminated);
     }
   },
 );
 
-test.each(["secretAssignment", "signedQueryParam"])(
-  "exported %s pattern masks every incomplete or unterminated value",
+/** Unterminated quoted values survive the pattern stage so the detector can hold them. */
+const UNTERMINATED_VALUES = [
+  { value: '"$TOKEN\\"', note: "unequal backslash runs, trailing" },
+  { value: '"hunter2', note: "unterminated double quote" },
+  { value: "'hunter2", note: "unterminated single quote" },
+] as const;
+
+test.each(["secretAssignment", "signedQueryParam"] as const)(
+  "%s grammar leaves an unterminated quoted value intact for the detector",
   (name) => {
-    const pattern = PATTERN_CLASSES[name];
-    if (pattern === undefined || typeof pattern.replace !== "function")
-      throw new Error("Missing pattern replacement");
+    const redactor = createRedactor("secrets");
+    const prefix = name === "secretAssignment" ? "token=" : "?token=";
+    for (const { value, note } of UNTERMINATED_VALUES) {
+      // The prefix stage never partially masks an open quote.
+      expect(redactor.redactPrefix(prefix + value), note).toBe(prefix + value);
+      // Complete text closes it instead.
+      expect(redactor.redactString(prefix + value), note).toBe(`${prefix}${REDACTED}`);
+    }
+  },
+);
+
+test.each(["secretAssignment", "signedQueryParam"] as const)(
+  "%s grammar masks every incomplete or malformed value",
+  (name) => {
+    const redactor = createRedactor("secrets");
     const prefix = name === "secretAssignment" ? "token=" : "?token=";
     for (const { value, note } of MASK_VALUES) {
-      const output = (prefix + value).replace(pattern.pattern, pattern.replace);
+      const output = redactor.redactPrefix(prefix + value);
       expect(output, note).toContain(REDACTED);
       expect(output, note).not.toContain(`${REDACTED}}`);
     }
@@ -72,24 +88,18 @@ test.each(["secretAssignment", "signedQueryParam"])(
 
 test("the mask never leaves a partial reference or a stray closing brace", () => {
   // Given malformed doubled-brace values that must be masked whole.
-  const pattern = PATTERN_CLASSES.secretAssignment;
-  if (pattern === undefined || typeof pattern.replace !== "function")
-    throw new Error("Missing pattern replacement");
+  const redactor = createRedactor("secrets");
   for (const value of ["$${bad canary}", "$${TOKEN", "$${TOKEN}x", "$${TOKEN}.x"]) {
-    // When the exported assignment pattern redacts the value.
-    const output = `token=${value}`.replace(pattern.pattern, pattern.replace);
+    // When the assignment grammar redacts the value.
     // Then neither a partial reference nor any trailing bytes survive.
-    expect(output).toBe(`token=${REDACTED}`);
+    expect(redactor.redactPrefix(`token=${value}`)).toBe(`token=${REDACTED}`);
   }
 });
 
 test("a doubled-brace reference at a closing brace is kept whole", () => {
-  const pattern = PATTERN_CLASSES.secretAssignment;
-  if (pattern === undefined || typeof pattern.replace !== "function")
-    throw new Error("Missing pattern replacement");
-  for (const input of ["token=$${TOKEN}}", "token=${TOKEN}}", "{token=$TOKEN}"]) {
-    expect(input.replace(pattern.pattern, pattern.replace)).toBe(input);
-  }
+  const redactor = createRedactor("secrets");
+  for (const input of ["token=$${TOKEN}}", "token=${TOKEN}}", "{token=$TOKEN}"])
+    expect(redactor.redactPrefix(input)).toBe(input);
 });
 
 test("isCompleteEnvReference accepts exactly one documented reference", () => {
@@ -100,6 +110,44 @@ test("isCompleteEnvReference accepts exactly one documented reference", () => {
   for (const value of ["$TOKEN\n", "${TOKEN}\n", '"$TOKEN" ', "$TOKEN,", "${TOKEN}}"])
     expect(isCompleteEnvReference(value), JSON.stringify(value)).toBe(false);
 });
+
+/** Complete `${secret:...}` references the rendered Landofile must keep readable. */
+const SECRET_REFERENCES = [
+  "${secret:DB_PASSWORD}",
+  "$${secret:DB_PASSWORD}",
+  "${secret:store://bucket/path}",
+  "$${secret:store://bucket/path/more/seg?version=latest}",
+] as const;
+
+test("isCompleteEnvReference accepts one complete secret reference in every form", () => {
+  for (const reference of SECRET_REFERENCES)
+    for (const { wrap } of WRAPPERS)
+      expect(isCompleteEnvReference(wrap(reference)), wrap(reference)).toBe(true);
+  for (const { value, note } of [
+    { value: "${secret:}", note: "empty reference" },
+    { value: "${secret:not a ref}", note: "spaces in the reference" },
+    { value: "${secret:store://onlyone}", note: "single URI segment" },
+    { value: "${secret:store://a/b/c/d/e}", note: "too many URI segments" },
+    { value: "${secret:DB_PASSWORD}x", note: "suffixed reference" },
+    { value: "prefix ${secret:DB_PASSWORD}", note: "prefixed reference" },
+    { value: "${secret:DB_PASSWORD", note: "truncated reference" },
+    { value: "'${secret:DB_PASSWORD}'", note: "single-quoted reference" },
+  ] as const)
+    expect(isCompleteEnvReference(value), note).toBe(false);
+});
+
+test.each(["secretAssignment", "signedQueryParam"] as const)(
+  "%s grammar keeps a complete secret reference",
+  (name) => {
+    const redactor = createRedactor("secrets");
+    const prefix = name === "secretAssignment" ? "token=" : "?token=";
+    for (const reference of SECRET_REFERENCES)
+      for (const { wrap } of WRAPPERS) {
+        const input = prefix + wrap(reference);
+        expect(redactor.redactPrefix(input), input).toBe(input);
+      }
+  },
+);
 
 test.each(["secrets", "telemetry", "transcript"] as const)(
   "registered reference literals stay authoritative for %s",

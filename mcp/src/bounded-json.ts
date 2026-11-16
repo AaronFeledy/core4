@@ -11,6 +11,7 @@ const STRING_CHUNK_CODE_UNITS = 1_024;
 const SEGMENT_CODE_UNITS = 64 * 1_024;
 const identityRedactor: Redactor = {
   redactString: (text) => text,
+  redactPrefix: (text) => text,
   redactStringBounded: (text) => text,
   redactValue: (value) => value,
 };
