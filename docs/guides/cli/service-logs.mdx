@@ -112,6 +112,8 @@ it does not substitute their console output.
 
 Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
 
+Without `--follow`, Lando masks a credential that wraps onto the next line as one value, such as a quoted `password=` value that continues below or a token on the line after `Bearer`. Text, `--format=json`, and `--format=yaml` show the same masked lines. The masked value takes the place of the lines it covered. With `--follow`, each line is masked as it arrives, so only a credential that fits on one line is masked by its shape. Known secrets are masked either way.
+
 For scripts, `lando logs --format=json` emits a buffered frame stream. Its
 terminal `result` frame carries the app name at `envelope.result.app` and the
 collected lines at `envelope.result.lines`. Each line carries `service`, `stream`,

@@ -109,9 +109,13 @@ pairs a username from one path with a password from another. Unexpanded
 placeholders are not credentials, and credentials aren't sent to tarballs on
 another host.
 
-When a remediation names a missing `//host/path/:_authToken` line, the complete
-`${NPM_TOKEN}` or `${NPM_TOKEN?}` placeholder stays readable in logs and machine
-output. The resolved token value is still registered and redacted.
+When a remediation names a missing `//host/path/:_authToken` line, a value that
+is exactly one environment-variable reference stays readable in logs and
+machine output. That covers `${NPM_TOKEN}`, `${NPM_TOKEN?}`, `$${NPM_TOKEN}` and
+`$NPM_TOKEN`, including each one inside double quotes, as in `"$NPM_TOKEN"`.
+A value with a suffix, in single quotes, or with an escaped `$` shows as
+`[redacted]` instead. The resolved token value is registered and redacted either
+way.
 
 If installation reports HTTP 401 or 403, read the error's remediation. It names
 your npm user config and the `//host/path/:_authToken` key Lando matched:

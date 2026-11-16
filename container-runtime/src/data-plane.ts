@@ -646,6 +646,8 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
     yield* requireBorrowableMounts(options.providerId, inspected.body);
   }
   const name = ephemeralContainerName(options.providerId);
+  const compensate = (cause: Cause.Cause<ProviderError>) =>
+    compensateFailedCreate(options, spec, name, cause);
   const mount = spec.mounts?.[0];
   const binds = (spec.mounts ?? []).flatMap((mount) =>
     mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
@@ -716,8 +718,10 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
       AttachStdout: spec.captureStdout === true,
       AttachStderr: true,
     },
-  });
-  yield* ensureEphemeral2xx(options, spec, { operation: "run.create", response });
+  }).pipe(Effect.catchCause(compensate));
+  const accepted = ensureEphemeral2xx(options, spec, { operation: "run.create", response });
+  // 409: another container already holds this name, so it is not ours to remove.
+  yield* response.status === 409 ? accepted : accepted.pipe(Effect.catchCause(compensate));
   return name;
 });
 
@@ -747,7 +751,7 @@ const ephemeralCompletionFailure = (
       providerId: options.providerId,
       operation,
       message: `Lando's helper command exited with status ${outcome.exitCode}, and Lando couldn't remove its helper container.`,
-      remediation: `Check the helper's error output in \`stderrTail\` for why it failed. ${leftoverHelperRemediation(options.redactor)}`,
+      remediation: `Check the helper's error output in \`stderrTail\` for why it failed. ${leftoverHelperRemediation(options.redactor, true)}`,
       details:
         stderrTail === undefined
           ? { exitCode: outcome.exitCode }
@@ -781,14 +785,18 @@ interface EphemeralRelease {
 /** Fixed bound so a hung engine DELETE cannot hold scope close open. */
 const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
 
-const releaseEphemeralContainer = (release: EphemeralRelease) => {
-  const { options, name, remove, exit, operation, observed } = release;
-  if (!remove) return Effect.void;
-  const cleanupRemediation = leftoverHelperRemediation(options.redactor);
-  // Finalizers are uninterruptible. The removal stays interruptible so this
-  // deadline can stop it; the finalizer stays masked so parent cancellation
-  // still waits for that bounded attempt instead of abandoning cleanup.
-  const removal = Effect.interruptible(
+const boundedEphemeralRemoval = (
+  options: ProviderDataPlaneOptions,
+  name: string,
+  operation: string,
+  cleanupRemediation: string,
+) =>
+  // Finalizers and masked acquire are uninterruptible. The removal stays
+  // interruptible so this deadline can stop it; the caller stays masked so
+  // parent cancellation waits for that bounded attempt instead of abandoning it.
+  // The timeout runs the removal in its own fiber, so an interrupt already
+  // pending on the caller does not cancel it before the DELETE is sent.
+  Effect.interruptible(
     removeRuntimeContainer(
       {
         request: (input) =>
@@ -822,7 +830,36 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
     }),
     redactFailures(options.redactor),
   );
-  return removal.pipe(
+
+const compensateFailedCreate = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+  name: string,
+  cause: Cause.Cause<ProviderError>,
+): Effect.Effect<never, ProviderError> => {
+  if (spec.remove === false) return Effect.failCause(cause);
+  return boundedEphemeralRemoval(
+    options,
+    name,
+    "run.create",
+    leftoverHelperRemediation(options.redactor, false),
+  ).pipe(
+    Effect.matchCauseEffect({
+      onSuccess: () => Effect.failCause(cause),
+      onFailure: (cleanup) => Effect.failCause(mergeFailure(cause, cleanup, "cleanup")),
+    }),
+  );
+};
+
+const releaseEphemeralContainer = (release: EphemeralRelease) => {
+  const { options, name, remove, exit, operation, observed } = release;
+  if (!remove) return Effect.void;
+  return boundedEphemeralRemoval(
+    options,
+    name,
+    operation,
+    leftoverHelperRemediation(options.redactor, Exit.isSuccess(exit)),
+  ).pipe(
     Effect.asVoid,
     Effect.catchCause((cause) => {
       const failedCommand = completedCommandFailure(exit, observed);

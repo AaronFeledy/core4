@@ -4,7 +4,9 @@ import {
   type CompletedCommandResult,
   failureOutcomeFromCause,
   normalizeDefect,
+  redactValueWithPolicy,
   resolveCommandCompletion,
+  structuralRedaction,
 } from "@lando/sdk/command-result";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import type { CommandCompletion } from "@lando/sdk/schema";
@@ -115,7 +117,9 @@ const publishRedacted = Effect.fnUntraced(
     const redaction = yield* RedactionService;
     const events = yield* EventService;
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
-    const decoded = yield* Schema.decodeUnknownEffect(schema)(redactor.redactValue(event));
+    const decoded = yield* Schema.decodeUnknownEffect(schema)(
+      redactValueWithPolicy(redactor, structuralRedaction(schema), event),
+    );
     yield* events.publish(decoded);
   },
   Effect.catchCause((cause) =>

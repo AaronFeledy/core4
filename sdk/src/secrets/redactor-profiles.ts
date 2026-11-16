@@ -11,9 +11,13 @@
  *    pattern boundary.
  * 2. The **pattern layer**: a fixed catalog of pattern classes, selected by
  *    profile, that normalizes secrets and PII to deterministic sentinels and
- *    placeholders. Complete bare npm-style `${IDENT}` / `${IDENT?}` assignment
- *    and signed-query values are left intact so config examples stay readable;
- *    suffix, malformed, quoted, escaped, and truncated forms still mask.
+ *    placeholders. An assignment or signed-query value that is exactly one
+ *    complete environment-variable reference (`${IDENT}`, `${IDENT?}`,
+ *    `$${IDENT}`, `$${IDENT?}`, `$IDENT`, bare or double-quoted, with equal
+ *    backslash runs when escaped) is left intact at a verified terminator so
+ *    config examples and remediation stay readable; a suffix, a single-quoted
+ *    or escaped-dollar form, unequal backslash runs, and malformed or truncated
+ *    bodies still mask. Registered values win in the value layer below.
  *
  * Three profiles are published:
  *
@@ -35,16 +39,20 @@
 import { replacePatternsBounded } from "./bounded-redaction.ts";
 import {
   ASSIGNMENT_STOP_CLASS,
+  DOUBLE_QUOTED_VALUE_SOURCE,
   QUERY_STOP_CLASS,
-  keepCompleteEnvPlaceholderOrRedact,
+  SECRET_VALUE_TERMINATOR_SOURCE,
+  keepCompleteEnvReferenceReplacer,
   unquotedSecretValueSource,
 } from "./env-placeholder.ts";
 import { redactedInspection } from "./inspection.ts";
 import { isPublicDefaultCredential } from "./public-default-credentials.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
 import {
+  SECRET_ASSIGNMENT_LEFT_BOUNDARY_SOURCE,
+  SECRET_ASSIGNMENT_NAME_SOURCE,
   SECRET_FIELD_PATTERN,
-  SECRET_WORD_SOURCE,
+  SIGNED_QUERY_PREFIX_SOURCE,
   SIGNED_QUERY_WORD_SOURCE,
   isSecretFieldName,
 } from "./secret-names.ts";
@@ -98,11 +106,13 @@ const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
 
-const QUOTED_VALUE_SOURCE = String.raw`\\+"[^"]*\\+"|\\+'[^']*\\+'|"[^"]*"|'[^']*'|`;
+// Plain quoted values may span newlines; `findOpenSecretConstruct` reports an opener whose closer has not arrived.
+const QUOTED_VALUE_SOURCE = `${DOUBLE_QUOTED_VALUE_SOURCE}|${String.raw`\\+'[^']*\\+'|'[^']*'|`}`;
+
 const ASSIGNMENT_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(ASSIGNMENT_STOP_CLASS);
 
 const SECRET_ASSIGNMENT_PATTERN = new RegExp(
-  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(${ASSIGNMENT_VALUE_SOURCE})`,
+  `${SECRET_ASSIGNMENT_LEFT_BOUNDARY_SOURCE}(${SECRET_ASSIGNMENT_NAME_SOURCE})=(${ASSIGNMENT_VALUE_SOURCE})${SECRET_VALUE_TERMINATOR_SOURCE}`,
   "giu",
 );
 
@@ -117,7 +127,7 @@ const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+(?:\[redacted\]|[\w.~+/=-])+/giu;
 const QUERY_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(QUERY_STOP_CLASS);
 
 const SIGNED_QUERY_PARAM_PATTERN = new RegExp(
-  String.raw`([?&](?:[\w-]*[-_])?(?:${SIGNED_QUERY_WORD_SOURCE})=)(${QUERY_VALUE_SOURCE})`,
+  `(${SIGNED_QUERY_PREFIX_SOURCE}(?:${SIGNED_QUERY_WORD_SOURCE})=)(${QUERY_VALUE_SOURCE})${SECRET_VALUE_TERMINATOR_SOURCE}`,
   "giu",
 );
 
@@ -128,15 +138,18 @@ const isQuotedOrBarePublishedDefault = (value: string): boolean => {
   return isPublicDefaultCredential(value.slice(1, -1));
 };
 
-const keepOrRedactAssignment = (match: string, _name: string, value: string): string =>
+const keepAssignmentEnvReference = keepCompleteEnvReferenceReplacer(ASSIGNMENT_STOP_CLASS);
+const keepQueryEnvReference = keepCompleteEnvReferenceReplacer(QUERY_STOP_CLASS);
+
+const keepOrRedactAssignment = (match: string, _name: string, value: string, terminator?: string): string =>
   // The value layer ran first, so a registered or secret-store value is already
   // masked here; only an authored published default keeps the whole assignment.
   isQuotedOrBarePublishedDefault(value)
     ? match
-    : keepCompleteEnvPlaceholderOrRedact(match, `${_name}=${REDACTED}`, value);
+    : keepAssignmentEnvReference(match, `${_name}=${REDACTED}`, value, terminator);
 
-const keepOrRedactQuery = (match: string, prefix: string, value: string): string =>
-  keepCompleteEnvPlaceholderOrRedact(match, `${prefix}${REDACTED}`, value);
+const keepOrRedactQuery = (match: string, prefix: string, value: string, terminator?: string): string =>
+  keepQueryEnvReference(match, `${prefix}${REDACTED}`, value, terminator);
 
 const SECRETS_REPLACEMENTS = [
   { pattern: URL_USERINFO_PATTERN, replace: (_m: string, scheme: string) => `${scheme}${REDACTED}@` },

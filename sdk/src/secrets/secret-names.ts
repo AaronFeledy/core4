@@ -19,6 +19,11 @@ export const SECRET_WORD_SOURCE = STRONG_WORDS.map((word) => (word === "apikey" 
   "|",
 );
 export const SIGNED_QUERY_WORD_SOURCE = [SECRET_WORD_SOURCE, "signature", "sig"].join("|");
+/** A whole assignment name that contains a secret word. Pair it with the left boundary below. */
+export const SECRET_ASSIGNMENT_NAME_SOURCE = `[A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*`;
+/** Keeps a query separator out of an assignment name (`?token=` is a query, not an assignment). */
+export const SECRET_ASSIGNMENT_LEFT_BOUNDARY_SOURCE = "(?<![?&A-Za-z0-9_.-])";
+export const SIGNED_QUERY_PREFIX_SOURCE = String.raw`[?&](?:[\w-]*[-_])?`;
 export const SECRET_FIELD_PATTERN = new RegExp(`${SECRET_WORD_SOURCE}|^auth(?:token|orization)?$`, "iu");
 
 // Whole segments only. Guessing suffixes (PGPASSWORD, MYSQL_PWD) collects host defaults such as GitHub's

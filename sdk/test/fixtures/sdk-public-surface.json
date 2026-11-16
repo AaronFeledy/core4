@@ -562,6 +562,7 @@
       "buildCommandResultEnvelope",
       "commandCompletionFromExitCode",
       "commandFailureCause",
+      "commandResultEnvelopePolicy",
       "encodeCommandResult",
       "encodeStreamEventFrame",
       "encodeStreamResultFrame",
@@ -581,7 +582,9 @@
       "primaryFailureReason",
       "projectEncodedResult",
       "projectToolingDiagnostic",
+      "redactValueWithPolicy",
       "resolveCommandCompletion",
+      "structuralRedaction",
       "taggedErrorJson"
     ],
     "./database-creds": [
@@ -2117,13 +2120,15 @@
       "createRedactor",
       "createSecretRedactor",
       "encodeUriComponent",
+      "findOpenSecretConstruct",
       "isPublicDefaultCredential",
       "isRedactionTokenBoundaryUnit",
       "isSecretEnvName",
       "isSecretFieldName",
       "isSecretStructuralName",
       "isUsableExactRedactionValue",
-      "parseSecretReference"
+      "parseSecretReference",
+      "redactValueWith"
     ],
     "./services": [
       "AppPlanSanitizer",
