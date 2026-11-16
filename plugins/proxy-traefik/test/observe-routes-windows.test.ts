@@ -7,6 +7,7 @@ import {
   dashboardConfigFile,
   defaultCertificateFiles,
   defaultDomainFile,
+  defaultIssuerFile,
   defaultTlsFile,
   routeFile,
 } from "../src/proxy-paths.ts";
@@ -39,7 +40,20 @@ test.each(["current", "stale", "missing"] as const)(
     }
     if (generation === "stale") fixture.files.set(dashboardConfigFile(paths), "changed-dashboard");
     fixture.mutations.length = 0;
-    const service = makeTraefikRouterService({ ...fixture.dependencies, paths, stateStore });
+    const issuer = defaultIssuerFile(paths, "example.test");
+    fixture.files.set(issuer, "issuer must not affect generation observation");
+    const service = makeTraefikRouterService({
+      ...fixture.dependencies,
+      paths,
+      stateStore,
+      fileSystem: {
+        ...fixture.dependencies.fileSystem,
+        readText: (path) =>
+          path === issuer
+            ? Effect.fail("ordinary observation must not read issuer")
+            : fixture.dependencies.fileSystem.readText(path),
+      },
+    });
     const evidence = await Effect.runPromise(service.observeRoutes(app, [route]));
     expect(evidence.observation.status).toBe(generation === "current" ? "present" : "unknown");
     expect(evidence.configuredAuthorities).toHaveLength(2);

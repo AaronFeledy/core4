@@ -9,7 +9,8 @@ import type {
 import { Cause, Effect, Exit, Option } from "effect";
 
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
-import { CERTS_SPEC, type DoctorSubsystemCheck, buildDegradedCheck } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
+import { CERTS_SPEC, buildDegradedCheck } from "./doctor-subsystem-checks";
 
 export type CertsDoctorStatus =
   | { readonly _tag: "unresolved" }
@@ -116,7 +117,7 @@ const UNTRUSTED_CA =
 export const certsSubsystemCheck = Effect.fnUntraced(function* (
   status: CertsDoctorStatus,
   fix: boolean,
-): Effect.fn.Return<DoctorSubsystemCheck | undefined, never> {
+): Effect.fn.Return<DoctorFinding | undefined, never> {
   if (status._tag === "selected" && status.trusted) {
     return passCheckNamed({
       name: "certs",
@@ -185,7 +186,7 @@ export const certsSubsystemId = (status: CertsDoctorStatus): string => {
   }
 };
 
-export const certsCheckContext = (status: CertsDoctorStatus): Readonly<Record<string, string>> => {
+export const certsCheckContext = (status: CertsDoctorStatus): DoctorFinding["context"] => {
   switch (status._tag) {
     case "unresolved":
     case "selected":
@@ -197,7 +198,7 @@ export const certsCheckContext = (status: CertsDoctorStatus): Readonly<Record<st
     case "ambiguous":
       return {
         certsReason: "ambiguous",
-        certsCandidateIds: status.candidateIds.join(","),
+        certsCandidateIds: status.candidateIds,
         certsDetail: status.detail,
       };
     case "load-failed":

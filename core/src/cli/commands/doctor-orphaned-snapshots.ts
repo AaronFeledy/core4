@@ -2,7 +2,7 @@ import { snapshotGc } from "@lando/engine/operations/snapshot-gc";
 import { DataMover, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
 import { snapshotBytes } from "./snapshots-gc";
 
 export const orphanedSnapshotsDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
@@ -55,7 +55,7 @@ export const orphanedSnapshotsDoctor = Effect.fnUntraced(function* (redact: (tex
           ),
         }),
   };
-  const check: DoctorSubsystemCheck =
+  const check: DoctorFinding =
     report.totalCount === 0 && failed.length === 0
       ? passCheckNamed({ name: "orphaned-volume-snapshots", recovery: "manual", context })
       : warnCheck({

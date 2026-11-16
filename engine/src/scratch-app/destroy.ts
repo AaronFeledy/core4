@@ -9,7 +9,7 @@ import {
   PreScratchDestroyEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
 import {
   DataMover,
   EventService,
@@ -24,11 +24,9 @@ import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
+import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
-import {
-  removeBuildTranscripts,
-  warnBuildOutputCleanupFailure,
-} from "../services/build-transcript-cleanup.ts";
+import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
 import { ScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -92,13 +90,6 @@ export const makeScratchReaper = Effect.gen(function* () {
       const orphan = plan === undefined ? yield* scanner.prepareScratch(input.id, keepVolumes) : undefined;
       const evidence =
         plan === undefined || entry?.status === "acquiring" ? ("orphans" as const) : ("applied" as const);
-      // Forget app-step results before the first provider call: a teardown that fails halfway has
-      // already removed containers. The transcripts are removed only after teardown succeeds.
-      yield* clearAppBuildResults(stateStore, input.id).pipe(
-        Effect.catch((failure) =>
-          warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
-        ),
-      );
       yield* events.publish(PreScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
       yield* Effect.gen(function* () {
         yield* events.publish(PreStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
@@ -146,14 +137,22 @@ export const makeScratchReaper = Effect.gen(function* () {
               }),
             });
         // teardown succeeded: the destroyed container's build output is stale.
-        if (Option.isSome(paths)) {
-          yield* removeBuildTranscripts({
-            providerId: scratchProviderId,
-            userDataRoot: paths.value.roots.userDataRoot,
-            appId: input.id,
-            scratch: true,
-          });
-        }
+        const buildOwner = BuildOwner.scratch(AppId.make(input.id));
+        yield* (
+          Option.isSome(paths)
+            ? removeAppBuildOutput(buildOwner, scratchProviderId, undefined, {
+                images: "release",
+              }).pipe(
+                Effect.provideService(PathsService, paths.value),
+                Effect.provideService(StateStore, stateStore),
+                Effect.provideService(RuntimeProviderRegistry, providers),
+              )
+            : clearAppBuildResults(stateStore, buildOwner)
+        ).pipe(
+          Effect.catch((failure) =>
+            warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
+          ),
+        );
         yield* events.publish(
           PostDestroyEvent.make({ app, evidence, outcome, timestamp: DateTime.nowUnsafe() }),
         );

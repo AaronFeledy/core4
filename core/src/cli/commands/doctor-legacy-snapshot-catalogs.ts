@@ -2,7 +2,7 @@ import { findLegacySnapshotCatalogs } from "@lando/data-mover/orphaned-snapshots
 import { PathsService } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
 
 export const legacySnapshotCatalogsDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
   const paths = yield* Effect.serviceOption(PathsService);
@@ -27,8 +27,8 @@ export const legacySnapshotCatalogsDoctor = Effect.fnUntraced(function* (redact:
     ];
   }
   const catalogs = found.success;
-  const context = { count: String(catalogs.length), paths: catalogs.map(redact).join("\n") };
-  const check: DoctorSubsystemCheck =
+  const context = { count: String(catalogs.length), paths: catalogs.map(redact) };
+  const check: DoctorFinding =
     catalogs.length === 0
       ? passCheckNamed({ name: "legacy-snapshot-catalogs", recovery: "manual", context })
       : warnCheck({

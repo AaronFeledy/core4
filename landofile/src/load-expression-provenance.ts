@@ -1,3 +1,5 @@
+import { type EnvironmentDependencies, emptyEnvironmentDependencies } from "./environment-dependencies.ts";
+
 export interface LandofileReferencedFile {
   readonly absolutePath: string;
   readonly size: number;
@@ -23,3 +25,19 @@ export const rememberLandofileReferencedFiles = <A extends object>(
 
 export const getLandofileReferencedFiles = (landofile: object): ReadonlyArray<LandofileReferencedFile> =>
   referencedFiles.get(landofile) ?? [];
+
+const environmentDependencies = new WeakMap<object, EnvironmentDependencies>();
+
+export const hasLandofileEnvironmentDependencies = (landofile: object): boolean =>
+  environmentDependencies.has(landofile);
+
+export const rememberLandofileEnvironmentDependencies = <A extends object>(
+  landofile: A,
+  dependencies: EnvironmentDependencies,
+): A => {
+  environmentDependencies.set(landofile, dependencies);
+  return landofile;
+};
+
+export const getLandofileEnvironmentDependencies = (landofile: object): EnvironmentDependencies =>
+  environmentDependencies.get(landofile) ?? emptyEnvironmentDependencies();

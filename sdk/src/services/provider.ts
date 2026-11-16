@@ -32,6 +32,10 @@ import type {
   AppPlan,
   AppRef,
   AppliedStateInventory,
+  ArtifactListing,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
   HealthcheckPlan,
@@ -44,6 +48,7 @@ import type {
   PortNumber,
   PortablePath,
   PreparedFileSyncTarget,
+  ProviderArtifactRef,
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
@@ -132,11 +137,18 @@ export interface ProviderVersions {
   readonly bundle?: string;
 }
 
-export interface ArtifactBuildSpec {
+export interface ArtifactBuildRequest {
   readonly app: AppId;
   readonly service: ServiceName;
   readonly plan: AppPlan;
   readonly buildKey: string;
+  /**
+   * The name the produced artifact carries. The engine chooses it per data root, provider, service, and
+   * build key, so it can later remove exactly what it built.
+   */
+  readonly ref: string;
+  /** Engine-chosen labels the provider sets on every image the build produces. */
+  readonly labels: Readonly<Record<string, string>>;
   /**
    * Receives the build's output text in arrival order: unredacted and not aligned to lines. The provider
    * awaits each call before reading further, delivers every call before `buildArtifact` returns, and
@@ -145,11 +157,7 @@ export interface ArtifactBuildSpec {
   readonly onOutput?: (text: string) => Effect.Effect<void, ProviderInternalError>;
 }
 
-export interface ArtifactRef {
-  readonly providerId: ProviderId;
-  readonly ref: string;
-  readonly digest?: string;
-}
+export type { ProviderArtifactRef } from "../schema/artifacts.ts";
 
 export type ArtifactPullPolicy = "always" | "missing" | "never";
 
@@ -166,6 +174,12 @@ export interface ArtifactPullSpec {
 }
 
 export interface ApplyOptions {
+  /**
+   * When true, the plan names every service of the app, so the provider persists it (or
+   * `recordedPlan` when given) as the whole applied record instead of carrying previous
+   * services it does not name. `reconcile` only forces container recreation.
+   */
+  readonly complete?: boolean;
   readonly reconcile: boolean;
   readonly recordedPlan?: AppPlan;
   /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */
@@ -273,6 +287,22 @@ export interface EphemeralRunSpec {
   readonly remove?: boolean;
 }
 
+/**
+ * One staged replacement of a volume's contents. The provider owns staging,
+ * extraction, publication, and cleanup; the caller supplies only the archive and
+ * the last fallible check before anything live changes.
+ */
+export interface VolumeArchiveImportSpec<E, R> {
+  readonly target: VolumeRef;
+  /** Uncompressed tar of the volume's contents, excluding Lando's reserved root entries. */
+  readonly archive: Stream.Stream<Uint8Array, E, R>;
+  /**
+   * Runs exactly once after the archive completed, was validated and extracted, and
+   * before publication. A failure leaves the live contents unchanged.
+   */
+  readonly beforeCommit: Effect.Effect<void, E, R>;
+}
+
 export interface LogTarget extends ServiceSelector {}
 
 export interface LogOptions {
@@ -301,6 +331,8 @@ export interface ServiceRuntimeFields {
   readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
+  /** Native container identity: stable across in-place restarts, different after replacement.
+   * Omission means consumers cannot prove that container-local work can be reused. */
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
@@ -474,10 +506,25 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
     readonly buildArtifact: (
-      spec: ArtifactBuildSpec,
-    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-    readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
-    readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+      spec: ArtifactBuildRequest,
+    ) => Effect.Effect<ProviderArtifactRef, ProviderError, Scope.Scope>;
+    readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ProviderArtifactRef, ProviderError>;
+    /**
+     * Removes exactly the requested image ref or ID. With pruneParents, the runtime may also reclaim
+     * dangling parents; otherwise parent pruning is disabled. Never forces and never starts a runtime.
+     * A container conflict is reported as `in-use` with container names; a missing image is `absent`.
+     */
+    readonly removeArtifact: (
+      request: ArtifactRemovalRequest,
+    ) => Effect.Effect<ArtifactRemoval, ProviderError>;
+    /**
+     * Lists images whose labels all match, like the engine's default image listing: tagged images and
+     * dangling untagged leaves, never parents that still have children. Never starts a runtime;
+     * an unreachable runtime fails with ProviderUnavailableError.
+     */
+    readonly listArtifacts: (
+      selector: ArtifactSelector,
+    ) => Effect.Effect<ReadonlyArray<ArtifactListing>, ProviderUnavailableError | ProviderInternalError>;
 
     /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
     readonly inspectAppliedFileSync?: (
@@ -553,6 +600,10 @@ export class RuntimeProvider extends Context.Service<
     readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
     readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
 
+    /**
+     * Captures a native volume snapshot. Requires the caller to hold the
+     * physical-volume lock for the source; DataMover is the caller that does.
+     */
     readonly snapshotVolume: (
       spec: VolumeSnapshotSpec,
     ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
@@ -563,7 +614,32 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<void, ProviderError, Scope.Scope>;
     /** List native snapshot images without consulting a host snapshot index. */
     readonly listVolumeSnapshots?: () => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, ProviderError>;
-    readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    /**
+     * Restore a native snapshot into a target volume. `beforeCommit`, when given, runs
+     * after staging and target verification and immediately before publication. Requires
+     * the caller to hold the physical-volume lock for the target; DataMover is the caller
+     * that does.
+     */
+    readonly restoreVolume: <E = never>(
+      spec: VolumeRestoreSpec,
+      options?: { readonly beforeCommit?: Effect.Effect<void, E> },
+    ) => Effect.Effect<void, ProviderError | E, Scope.Scope>;
+    /**
+     * Streams the volume's contents as an uncompressed tar, excluding Lando's reserved
+     * root entries. Requires the caller to hold the physical-volume lock for this
+     * volume; DataMover is the caller that does.
+     */
+    readonly exportVolume: (ref: VolumeRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    /**
+     * Replaces the volume's contents in one operation: stage and extract the archive
+     * inside the volume, validate it inline, run `beforeCommit`, then publish and dispose
+     * of the previous contents. A failure or interruption before publication leaves the
+     * live contents unchanged and removes staging. Requires the caller to hold the
+     * physical-volume lock for the target; DataMover is the caller that does.
+     */
+    readonly importVolume: <E, R>(
+      spec: VolumeArchiveImportSpec<E, R>,
+    ) => Effect.Effect<void, ProviderError | E, Scope.Scope | R>;
     readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
     readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
     readonly inspectResourceNames?: (
@@ -589,10 +665,12 @@ export class RuntimeProvider extends Context.Service<
       target: ExecTarget,
       spec: ServiceCopyOutSpec,
     ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-    readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly exportArtifact: (
+      ref: ProviderArtifactRef,
+    ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
     readonly importArtifact: (
       data: Stream.Stream<Uint8Array, ProviderError>,
-    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+    ) => Effect.Effect<ProviderArtifactRef, ProviderError, Scope.Scope>;
   }
 >()("@lando/core/RuntimeProvider") {}
 

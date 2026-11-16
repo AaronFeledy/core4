@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
-import { AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
@@ -78,10 +78,16 @@ test.each(["destroy", "observed"] as const)(
         : await Effect.runPromise(
             provider.removeObservedService({
               app: AppId.make("shutdown-app"),
+              appRoot: AbsolutePath.make(plan.root),
               providerId: ProviderId.make("podman"),
               service: ServiceName.make("web"),
               status: "running",
               publications: { status: "unknown" },
+              labels: {
+                "dev.lando.app": plan.id,
+                "dev.lando.app-root": plan.root,
+                "dev.lando.service": "web",
+              },
               containerId: "owned-id",
             }),
           );

@@ -27,6 +27,18 @@ const failureDetail = <A, E>(exit: Exit.Exit<A, E>): unknown => {
   return error._tag === "Some" ? (error.value as { readonly detail?: unknown }).detail : undefined;
 };
 
+const failureValue = <A, E>(exit: Exit.Exit<A, E>): unknown => {
+  if (Exit.isSuccess(exit)) return undefined;
+  const error = Cause.findErrorOption(exit.cause);
+  return error._tag === "Some" ? error.value : undefined;
+};
+
+const failureMessage = <A, E>(exit: Exit.Exit<A, E>): string => {
+  const error = failureValue(exit);
+  if (typeof error !== "object" || error === null || !("message" in error)) return "";
+  return typeof error.message === "string" ? error.message : "";
+};
+
 const root = AbsolutePath.make("/tmp/applied-state-evidence");
 
 test("per-app inventory damage does not poison readable plans or an unrelated cwd", async () => {
@@ -622,6 +634,12 @@ describe("resolveTeardownEvidence", () => {
       appRoot: root,
       service: ServiceName.make("appserver"),
       providerId: ProviderId.make("lando"),
+      containerId: "orphan-container",
+      labels: {
+        "dev.lando.app": "orphaned-app",
+        "dev.lando.app-root": root,
+        "dev.lando.service": "appserver",
+      },
       status: "running" as const,
       publications: { status: "unknown" as const },
     };
@@ -640,6 +658,39 @@ describe("resolveTeardownEvidence", () => {
         },
       ],
     });
+  });
+
+  test.each([
+    ["provider", { "dev.lando.provider": "docker" }],
+    ["owner", { "dev.lando.owner": "other-owner" }],
+    ["role", { "dev.lando.role": "data-helper" }],
+    ["scratch", { "dev.lando.scratch": "TRUE" }],
+  ] as const)("refuses orphan evidence with a contradictory %s label", async (_label, extra) => {
+    // Given a container that claims this root but whose own labels contradict its identity.
+    const service = {
+      app: AppId.make("orphaned-app"),
+      appRoot: root,
+      service: ServiceName.make("appserver"),
+      providerId: ProviderId.make("lando"),
+      containerId: "contradictory-container",
+      labels: {
+        "dev.lando.app": "orphaned-app",
+        "dev.lando.app-root": root,
+        "dev.lando.service": "appserver",
+        ...extra,
+      },
+      status: "running" as const,
+      publications: { status: "unknown" as const },
+    };
+    // When
+    const exit = await Effect.runPromiseExit(
+      resolveTeardownEvidence(root, [provider("lando", { list: () => Effect.succeed([service]) })]),
+    );
+    // Then the evidence refuses instead of reporting absent or handing over a removable orphan.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(failureValue(exit)).toMatchObject({ _tag: "AppResolveError", detail: "provider-resources" });
+    expect(failureMessage(exit)).toContain("contradictory-container");
+    expect(failureMessage(exit)).toContain(Object.keys(extra)[0] ?? "");
   });
 
   test("adopts an owned volume the shared resolver refuses", async () => {

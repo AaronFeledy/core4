@@ -137,7 +137,8 @@ const makeProvider = (
             "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
     stop: () => Effect.void,
@@ -213,6 +214,8 @@ const makeProvider = (
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),
     copyFromService: () => Stream.empty,
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.empty,
     importArtifact: () => Effect.die("not used"),
   };

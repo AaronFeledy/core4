@@ -26,7 +26,9 @@ const invocationFromMaps = (declaration: ToolingInputDeclaration, input: unknown
   return { _tag: "NamedMaps", flags, args };
 };
 
-export const toolingSpecFromRegistered = (command: RegisteredCommand): McpCommandSpec => {
+export const toolingSpecFromRegistered = (
+  command: Extract<RegisteredCommand, { readonly _tag: "Ready" }>,
+): McpCommandSpec => {
   const declaration = command.input;
   return {
     id: command.id,
@@ -40,26 +42,21 @@ export const toolingSpecFromRegistered = (command: RegisteredCommand): McpComman
               : `${command.summary} ${toolingRunHelp(command.runs)}`,
           ),
         }),
-    ...(declaration === undefined ? {} : { toolingInput: declaration }),
+    toolingInput: declaration,
     resultSchema: ToolingResult,
     completion: (result) =>
       commandCompletionFromExitCode(Schema.decodeUnknownSync(ToolingResult)(result).exitCode),
     inputRedactionTokens: (input) =>
-      declaration === undefined
-        ? []
-        : toolingInputRedactionTokens([declaration], invocationFromMaps(declaration, input)),
+      toolingInputRedactionTokens([declaration], invocationFromMaps(declaration, input)),
     run: Effect.fnUntraced(function* (input: McpRunInput) {
-      const invocation: ToolingInvocationInput =
-        declaration === undefined
-          ? { _tag: "NamedMaps", flags: input.flags, args: input.args }
-          : invocationFromMaps(declaration, input);
+      const invocation = invocationFromMaps(declaration, input);
       const redaction = yield* Effect.serviceOption(RedactionService);
-      if (Option.isSome(redaction) && declaration !== undefined)
+      if (Option.isSome(redaction))
         yield* redaction.value.registerValues(toolingInputRedactionTokens([declaration], invocation));
       return yield* runTooling({
         name: command.id,
         input: invocation,
-        ...(declaration === undefined ? {} : { expectedInputRevision: declaration.revision }),
+        expectedInputRevision: declaration.revision,
       });
     }),
     redactionTokens: (result) =>

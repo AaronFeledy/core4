@@ -9,8 +9,13 @@ import { mysqlServiceType } from "../src/services/mysql.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const cases = [
-  { type: mysqlServiceType, admin: "mysqladmin", client: "mysql" },
-  { type: mariadbServiceType, admin: "mariadb-admin", client: "mariadb" },
+  { type: mysqlServiceType, admin: "mysqladmin", client: "mysql", probeArgs: [] },
+  {
+    type: mariadbServiceType,
+    admin: "mariadb-admin",
+    client: "mariadb",
+    probeArgs: ["--skip-ssl-verify-server-cert"],
+  },
 ] as const;
 const creds = {
   user: "app-user",
@@ -46,7 +51,7 @@ test.each([...cases])(
 
 test.skipIf(process.platform === "win32").each([...cases])(
   "$type.id gives only its probe process the application password",
-  async ({ type, admin }) => {
+  async ({ type, admin, probeArgs }) => {
     const root = await mkdtemp(join(tmpdir(), "lando-database-probe-env-"));
     try {
       const executable = join(root, admin);
@@ -88,7 +93,17 @@ test.skipIf(process.platform === "win32").each([...cases])(
 
       expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: "" });
       expect(observed.pwd).toBe(creds.password);
-      expect(observed.args).toEqual(["ping", "-h", "127.0.0.1", "-P", "13306", "-u", creds.user, "--silent"]);
+      expect(observed.args).toEqual([
+        "ping",
+        "-h",
+        "127.0.0.1",
+        "-P",
+        "13306",
+        "-u",
+        creds.user,
+        ...probeArgs,
+        "--silent",
+      ]);
       expect(observed.args).not.toContain(creds.password);
       expect(command.join(" ")).not.toContain(creds.password);
     } finally {

@@ -26,6 +26,8 @@ export interface KeyEventLike {
   name?: string;
   sequence?: string;
   ctrl?: boolean;
+  /** Kitty keyboard protocol: the code point of the same physical key on the US layout. */
+  baseCode?: number;
   defaultPrevented?: boolean;
   preventDefault?(): void;
 }
@@ -93,7 +95,10 @@ export interface RendererLike {
   ): void;
   requestRender?(): unknown;
   resize?(width: number, height: number): void;
-  destroy(): unknown | Promise<unknown>;
+  /** Restores the terminal asynchronously; await `closed` before the next writer uses it. */
+  destroy(): void;
+  /** Settles after destruction writes the remaining output and restores the terminal. */
+  readonly closed: Promise<void>;
   on?(event: string, listener: EventListenerLike<ReadonlyArray<unknown>>): unknown;
   off?(event: string, listener: EventListenerLike<ReadonlyArray<unknown>>): unknown;
 }

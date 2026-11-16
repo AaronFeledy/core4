@@ -21,8 +21,11 @@ import type {
   ServiceName,
   ToolingTaskShape,
 } from "../schema/index.ts";
+import type { RegisteredCommand } from "../schema/registered-command.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
+
+export type { RegisteredCommand } from "../schema/registered-command.ts";
 
 export class PluginRegistry extends Context.Service<
   PluginRegistry,
@@ -176,15 +179,6 @@ export interface ServiceType {
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
   readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
-}
-
-export interface RegisteredCommand {
-  readonly id: string;
-  readonly summary: string;
-  readonly hidden: boolean;
-  readonly input?: import("../schema/tooling-input.ts").ToolingInputDeclaration;
-  /** Bounded summary of what a tooling command runs, when its index entry records one. */
-  readonly runs?: import("../schema/tooling-run-summary.ts").ToolingRunSummary;
 }
 
 export class CommandRegistry extends Context.Service<

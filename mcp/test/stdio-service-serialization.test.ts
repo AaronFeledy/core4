@@ -27,7 +27,11 @@ test("MCP command failures preserve and redact passthrough expression fields", a
         return yield* client.request("tools/call", { name: spec.id });
       }),
     ).pipe(
-      Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }, [secret])),
+      Effect.provide(
+        serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }, [
+          secret,
+        ]),
+      ),
     ),
   );
   expect(response).toMatchObject({
@@ -74,7 +78,11 @@ test("aggregate oversized result fails tagged, releases correlation, and preserv
         return [first, second] as const;
       }),
     ).pipe(
-      Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }, [secret])),
+      Effect.provide(
+        serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }, [
+          secret,
+        ]),
+      ),
     ),
   );
   expect(toolErrorObject(responses[0])).toMatchObject({

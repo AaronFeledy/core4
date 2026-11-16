@@ -15,6 +15,7 @@ import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -270,6 +271,7 @@ describe("setup persistence", () => {
     // Given: a Traefik proxy whose global service ensureRunning succeeds.
     const files = new Map<string, string>();
     const service = makeTraefikRouterService({
+      stateStore: makeAckStore([]),
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {

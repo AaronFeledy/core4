@@ -28,8 +28,11 @@ const services = McpService.layer.pipe(
       TestMcpCommandExecutor,
       Layer.succeed(RedactionService, makeRedactionService()),
       Layer.succeed(McpRuntimeConfig, {
+        cwd: process.cwd(),
+        env: { ...process.env },
         commandEntries: [
           {
+            kind: "command" as const,
             spec: {
               id: "app:logs",
               summary: "Follow until abandoned",
@@ -38,6 +41,7 @@ const services = McpService.layer.pipe(
             },
           },
           {
+            kind: "command" as const,
             spec: {
               id: "app:info",
               summary: "Return a deterministic payload",
@@ -46,6 +50,7 @@ const services = McpService.layer.pipe(
             },
           },
           {
+            kind: "command" as const,
             spec: {
               id: "app:exec",
               summary: "Must stay queued behind the follow call",

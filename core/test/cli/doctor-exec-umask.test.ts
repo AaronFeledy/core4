@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
+import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
+import { AppId, type GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { type Context, Effect, Layer } from "effect";
+import { doctor } from "../../src/cli/commands/doctor.ts";
 
 import {
   EXEC_UMASK_CHECK_NAME,
@@ -8,20 +12,6 @@ import {
   collectExecUmaskDoctorCheck,
   diagnoseExecUmask,
 } from "../../src/cli/commands/doctor-exec-umask.ts";
-
-const provider = {
-  id: "docker",
-  displayName: "Docker Runtime Provider",
-  version: "0.0.0",
-};
-
-const selection = {
-  providerId: "docker",
-  source: "flag" as const,
-  inputs: { flag: "docker", capabilityDefault: "lando" },
-};
-
-const runtime = { running: true, version: "29.6.0" };
 
 describe("diagnoseExecUmask", () => {
   test.each([undefined, "Umask:\t0000\n", "Umask:\t0077\n", "no umask line"])(
@@ -33,7 +23,7 @@ describe("diagnoseExecUmask", () => {
         ...(effectiveStdout === undefined ? {} : { effectiveStdout }),
       });
       expect(diagnosis.compensating).toBe(false);
-      const check = buildExecUmaskDoctorCheck(diagnosis, provider, runtime, "ready");
+      const check = buildExecUmaskDoctorCheck(diagnosis);
       expect(check.status).toBe("warn");
       expect(check.solutions).toEqual([]);
     },
@@ -77,19 +67,13 @@ describe("diagnoseExecUmask", () => {
 
 describe("buildExecUmaskDoctorCheck", () => {
   test("warns when Lando is compensating for umask 0000", () => {
-    const check = buildExecUmaskDoctorCheck(
-      {
-        engineVersion: "29.6.0",
-        execUmask: "0000",
-        effectiveExecUmask: "0022",
-        compensating: true,
-        probeStatus: "ok",
-      },
-      provider,
-      runtime,
-      "ready",
-      selection,
-    );
+    const check = buildExecUmaskDoctorCheck({
+      engineVersion: "29.6.0",
+      execUmask: "0000",
+      effectiveExecUmask: "0022",
+      compensating: true,
+      probeStatus: "ok",
+    });
     expect(check.name).toBe(EXEC_UMASK_CHECK_NAME);
     expect(check.status).toBe("warn");
     expect(check.context).toMatchObject({
@@ -109,8 +93,8 @@ describe("collectExecUmaskDoctorCheck", () => {
       const commands: Array<{ readonly raw?: boolean }> = [];
       const check = await Effect.runPromise(
         collectExecUmaskDoctorCheck({
+          running: true,
           provider: {
-            ...provider,
             list: () =>
               Effect.succeed([
                 {
@@ -135,9 +119,6 @@ describe("collectExecUmaskDoctorCheck", () => {
             },
           },
           engineVersion: "29.6.0",
-          runtime,
-          runtimeStatus: "ready",
-          selection,
         }),
       );
       expect(commands.map((command) => command.raw)).toEqual([true, undefined]);
@@ -153,8 +134,8 @@ describe("collectExecUmaskDoctorCheck", () => {
   test("probes a running service and reports the engine umask", async () => {
     const check = await Effect.runPromise(
       collectExecUmaskDoctorCheck({
+        running: true,
         provider: {
-          ...provider,
           list: () =>
             Effect.succeed([
               {
@@ -174,9 +155,6 @@ describe("collectExecUmaskDoctorCheck", () => {
             }),
         },
         engineVersion: "29.6.0",
-        runtime,
-        runtimeStatus: "ready",
-        selection,
       }),
     );
 
@@ -186,60 +164,41 @@ describe("collectExecUmaskDoctorCheck", () => {
     expect(check.context.engineVersion).toBe("29.6.0");
   });
 
+  test("never lists or execs when the runtime is not running", async () => {
+    let calls = 0;
+    const check = await Effect.runPromise(
+      collectExecUmaskDoctorCheck({
+        running: false,
+        provider: {
+          list: () => {
+            calls += 1;
+            return Effect.succeed([]);
+          },
+          exec: () => {
+            calls += 1;
+            return Effect.succeed({ exitCode: 0, stdout: "Umask:\t0000\n", stderr: "" });
+          },
+        },
+        engineVersion: "28.0.4",
+      }),
+    );
+
+    expect(calls).toBe(0);
+    expect(check.context.execUmask).toBe("unprobed");
+  });
+
   test("stays unprobed when no service is running", async () => {
     const check = await Effect.runPromise(
       collectExecUmaskDoctorCheck({
+        running: true,
         provider: {
-          ...provider,
           list: () => Effect.succeed([]),
           exec: () => Effect.succeed({ exitCode: 0, stdout: "Umask:\t0000\n", stderr: "" }),
         },
         engineVersion: "28.0.4",
-        runtime,
-        runtimeStatus: "ready",
-        selection,
       }),
     );
 
-    expect(check.status).toBe("warn");
-    expect(check.context.execUmask).toBe("unprobed");
-    expect(check.context.compensating).toBe("false");
-  });
-
-  test("stays unprobed when the runtime is not running", async () => {
-    let listCalls = 0;
-    let execCalls = 0;
-    const check = await Effect.runPromise(
-      collectExecUmaskDoctorCheck({
-        provider: {
-          ...provider,
-          list: () => {
-            listCalls += 1;
-            return Effect.succeed([
-              {
-                app: AppId.make("demo"),
-                service: ServiceName.make("web"),
-                providerId: ProviderId.make("docker"),
-                status: "running",
-                publications: { status: "unknown" as const },
-                containerId: "cid-web",
-              },
-            ]);
-          },
-          exec: () => {
-            execCalls += 1;
-            return Effect.succeed({ exitCode: 0, stdout: "Umask:\t0000\n", stderr: "" });
-          },
-        },
-        engineVersion: "29.6.0",
-        runtime: { running: false, message: "runtime socket unreachable" },
-        runtimeStatus: "runtime socket unreachable",
-        selection,
-      }),
-    );
-
-    expect(listCalls).toBe(0);
-    expect(execCalls).toBe(0);
     expect(check.status).toBe("warn");
     expect(check.context.execUmask).toBe("unprobed");
     expect(check.context.compensating).toBe("false");
@@ -249,8 +208,8 @@ describe("collectExecUmaskDoctorCheck", () => {
     let execCalls = 0;
     const check = await Effect.runPromise(
       collectExecUmaskDoctorCheck({
+        running: true,
         provider: {
-          ...provider,
           list: () =>
             Effect.succeed([
               {
@@ -267,9 +226,6 @@ describe("collectExecUmaskDoctorCheck", () => {
           },
         },
         engineVersion: "28.0.4",
-        runtime,
-        runtimeStatus: "ready",
-        selection,
       }),
     );
 
@@ -277,5 +233,48 @@ describe("collectExecUmaskDoctorCheck", () => {
     expect(check.status).toBe("warn");
     expect(check.context.execUmask).toBe("unprobed");
     expect(check.context.compensating).toBe("false");
+  });
+});
+
+describe("exec-umask runtime gating", () => {
+  const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
+    const config: GlobalConfig = {
+      defaultProviderId: ProviderId.make("lando"),
+      telemetry: { enabled: false },
+    } as GlobalConfig;
+    const load = Effect.succeed(config);
+    return ConfigService.of({
+      load,
+      get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
+    });
+  };
+
+  const buildLayers = (provider: typeof TestRuntimeProvider) =>
+    Layer.mergeAll(
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
+          list: Effect.succeed([ProviderId.make(provider.id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        }),
+      ),
+      Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
+      Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
+    );
+
+  test("stays unprobed when the runtime is not running", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      getStatus: Effect.succeed({ state: "idle" as const, message: "runtime socket unreachable" }),
+      ensureReady: Effect.die("must not launch"),
+    };
+    const result = await Effect.runPromise(doctor({ env: {} }).pipe(Effect.provide(buildLayers(provider))));
+
+    expect(result.checks.find((check) => check.name === EXEC_UMASK_CHECK_NAME)).toBeUndefined();
+    expect(result.skipped).toContainEqual(expect.objectContaining({ check: "exec-umask" }));
   });
 });

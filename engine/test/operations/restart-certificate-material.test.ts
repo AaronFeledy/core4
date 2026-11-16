@@ -92,7 +92,10 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
 
     // Given: the running container was created from the plan start stamped with the rootA pair
     const started = await Effect.runPromise(
-      prepareServiceCertificates(applied).pipe(Effect.provide(certificates)),
+      prepareServiceCertificates(applied).pipe(
+        Effect.map((prepared) => prepared.plan),
+        Effect.provide(certificates),
+      ),
     );
     const startedService = started.services[web.name];
     if (startedService === undefined) throw new TypeError("missing started web service");

@@ -233,7 +233,7 @@ For `lando pnpm`, add a tooling entry with `service: app`, `dir: /app`, and `cmd
   </Scenario>
 </Guide>
 
-When you're finished, `lando destroy -y` removes the app containers and app-owned networks. Data volumes stay unless you pass `--volumes` or `--purge`; `--purge-caches` removes cache volumes. None of those flags deletes your source files.
+When you're finished, `lando destroy -y` removes the app containers and app-owned networks. Data volumes stay unless you pass `--volumes` or `--purge`; `--purge-caches` removes cache volumes and the built images Lando otherwise keeps for reuse. None of those flags deletes your source files.
 
 ```sh
 lando destroy -y

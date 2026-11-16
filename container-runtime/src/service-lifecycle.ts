@@ -12,6 +12,7 @@ import type {
 import { Effect } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
+import { serviceContainerOwnershipProblem } from "./native-ownership.ts";
 import { serviceContainerName } from "./plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 import { absentShutdown } from "./shutdown-observation.ts";
@@ -191,6 +192,24 @@ export const removeObservedContainer = (
   };
   if (containerId === undefined)
     return Effect.succeed({ kind: "absent", shutdownObservations: [absentShutdown(identity)] });
+  // Observed identity alone is not mutation authority: the container's own labels must prove it.
+  const ownershipProblem = serviceContainerOwnershipProblem(observed.labels, {
+    app: String(observed.app),
+    appRoot: observed.appRoot === undefined ? "" : String(observed.appRoot),
+    service: String(observed.service),
+    providerId: options.ctx.providerId,
+  });
+  if (ownershipProblem !== undefined) {
+    return Effect.fail(
+      new ProviderUnavailableError({
+        providerId: options.ctx.providerId,
+        operation,
+        message: `Container ${containerId} does not prove Lando service ownership: ${ownershipProblem} is missing or disagrees.`,
+        details: { service: observed.service, containerId, label: ownershipProblem },
+        remediation: `Inspect container ${containerId} with your container runtime and remove it there, or restore its ${ownershipProblem} label so it matches the observed app, root, and service.`,
+      }),
+    );
+  }
   const request = options.api?.request;
   if (request === undefined) {
     return Effect.fail(

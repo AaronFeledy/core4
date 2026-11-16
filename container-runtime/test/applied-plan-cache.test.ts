@@ -35,8 +35,8 @@ const stateStore = (lockFails: boolean): PluginStateStore => ({
 
 describe("applied plan cache", () => {
   test.each([false, true])(
-    "refuses unreadable durable state before persisting reconcile=%s",
-    async (reconcile) => {
+    "refuses unreadable durable state before persisting complete=%s",
+    async (complete) => {
       const error = new ProviderUnavailableError({
         providerId: "docker",
         operation: "applied-state.read",
@@ -61,7 +61,7 @@ describe("applied plan cache", () => {
       readable = false;
       expect(
         await Effect.runPromise(
-          cache.rememberPlan(appPlan("incoming", ["web"]), reconcile).pipe(Effect.flip),
+          cache.rememberPlan(appPlan("incoming", ["web"]), { complete }).pipe(Effect.flip),
         ),
       ).toBe(error);
       expect(writes).toBe(0);
@@ -94,7 +94,7 @@ describe("applied plan cache", () => {
           }),
         remove: () => Effect.void,
       });
-      await Effect.runPromise(cache.rememberPlan(desired, true));
+      await Effect.runPromise(cache.rememberPlan(desired, { complete: true }));
       const observed = await Effect.runPromise(cache.resolvePlan(desired.id));
       const { events: _events, ...record } = desired;
       const expected = { ...record, extensions: { retainedTooling: { task: "cleanup" } } };
@@ -128,7 +128,7 @@ describe("applied plan cache", () => {
     expect(loads).toBe(2);
   });
 
-  test("merges and persists the sanitized plan when reconcile is false", async () => {
+  test("merges and persists the sanitized plan when it does not name every service", async () => {
     const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
     const persisted: AppPlan[] = [];
     let loads = 0;
@@ -150,7 +150,7 @@ describe("applied plan cache", () => {
       remove: () => Effect.void,
     });
 
-    await Effect.runPromise(cache.rememberPlan(appPlan("incoming", ["web"]), false));
+    await Effect.runPromise(cache.rememberPlan(appPlan("incoming", ["web"]), { complete: false }));
 
     expect(loads).toBe(1);
     expect(persisted).toHaveLength(1);
@@ -158,7 +158,7 @@ describe("applied plan cache", () => {
     expect(Object.keys(persisted[0]?.services ?? {}).sort()).toEqual(["db", "web"]);
   });
 
-  test("verifies the previous plan even when reconcile is true", async () => {
+  test("verifies the previous plan even when the incoming plan is complete", async () => {
     const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
     const persisted: AppPlan[] = [];
     let loads = 0;
@@ -179,7 +179,7 @@ describe("applied plan cache", () => {
       remove: () => Effect.void,
     });
 
-    await Effect.runPromise(cache.rememberPlan(appPlan("incoming", ["web"]), true));
+    await Effect.runPromise(cache.rememberPlan(appPlan("incoming", ["web"]), { complete: true }));
 
     expect(loads).toBe(1);
     expect(Object.keys(persisted[0]?.services ?? {})).toEqual(["web"]);
@@ -239,7 +239,7 @@ describe("applied plan cache", () => {
         ),
     });
 
-    await Effect.runPromise(cache.rememberPlan(appPlan("sticky", ["web"]), true));
+    await Effect.runPromise(cache.rememberPlan(appPlan("sticky", ["web"]), { complete: true }));
     const failure = await Effect.runPromise(cache.forgetPlan(appId).pipe(Effect.flip));
     const stillCached = await Effect.runPromise(cache.resolvePlan(appId));
 
@@ -269,7 +269,7 @@ describe("applied plan cache", () => {
         }),
     });
 
-    await Effect.runPromise(cache.rememberPlan(appPlan("memory", ["web"]), false));
+    await Effect.runPromise(cache.rememberPlan(appPlan("memory", ["web"])));
     const cached = await Effect.runPromise(cache.resolvePlan(appId));
     await Effect.runPromise(cache.forgetPlan(appId));
     const forgotten = await Effect.runPromise(cache.resolvePlan(appId));
@@ -292,7 +292,7 @@ describe("applied plan cache", () => {
     });
 
     const error = await Effect.runPromise(
-      cache.rememberPlan(appPlan("incoming", ["web"]), true).pipe(Effect.flip),
+      cache.rememberPlan(appPlan("incoming", ["web"]), { complete: true }).pipe(Effect.flip),
     );
 
     expect(error).toBeInstanceOf(ProviderUnavailableError);

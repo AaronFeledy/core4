@@ -200,14 +200,3 @@ export const parseStringFlag = (
   }
   return undefined;
 };
-
-export const hasUniversalFormatFlag = (argv: ReadonlyArray<string>): boolean => {
-  for (const arg of argv) {
-    if (arg === "--") return false;
-    if (arg === "-j") return true;
-    if (arg === "--format" || arg.startsWith("--format=")) return true;
-    if (arg === "--json" || arg.startsWith("--json=")) return true;
-    if (arg === "--jq" || arg.startsWith("--jq=")) return true;
-  }
-  return false;
-};

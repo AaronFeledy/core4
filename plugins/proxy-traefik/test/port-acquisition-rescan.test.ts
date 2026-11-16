@@ -7,6 +7,7 @@ import { readAcquisitionState } from "../src/port-acquisition-state.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths } from "../src/proxy-types.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const router = {
   httpPort: 46080,
@@ -37,6 +38,7 @@ const fixture = (platform: ProxyPaths["platform"] = "linux") => {
     remove: (path) => Effect.sync(() => void files.delete(path)),
   };
   const service = makeTraefikRouterService({
+    stateStore: makeAckStore([]),
     paths,
     fileSystem,
     certificateAuthority: makeTestCertificateAuthority(),

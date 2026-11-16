@@ -4,8 +4,8 @@ import type { AppPlan, VolumeCreationFact } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
 import { type ApplyOptions, type RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { type Context, Effect, Option } from "effect";
-import { withVolumeCoordinationLock } from "./volume-coordination.ts";
 
 // A created volume that cannot be re-verified fails the apply instead of starting services on a
 // generation that would stay ineligible for seeding with no visible cause.
@@ -38,7 +38,7 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
         identity.ownerRoot !== fact.ownerRoot
       )
         return yield* Effect.fail(unverifiedCreation(provider.id));
-      yield* withVolumeCoordinationLock(
+      yield* withPhysicalVolumeLock(
         store.value,
         identity.coordinationKey,
         Effect.gen(function* () {

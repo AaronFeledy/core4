@@ -71,7 +71,14 @@ test("creates scaffold directories with COPY when the image has no executables",
   // When
   await Effect.runPromise(
     buildContainerArtifact(
-      { app: plan.id, service: serviceName, plan, buildKey: "directories" },
+      {
+        app: plan.id,
+        service: serviceName,
+        plan,
+        buildKey: "directories",
+        labels: { "dev.lando.test": "directories" },
+        ref: "lando-build-test-directories",
+      },
       { providerId, api, sourceEnv: {} },
     ),
   );
@@ -101,7 +108,14 @@ test.each(["relative", "/", "/etc/../tmp", "/etc/lando\nRUN evil"])(
     const result = await Effect.runPromise(
       Effect.result(
         buildContainerArtifact(
-          { app: plan.id, service: serviceName, plan, buildKey: "unsafe" },
+          {
+            app: plan.id,
+            service: serviceName,
+            plan,
+            buildKey: "unsafe",
+            ref: "lando-build-test-unsafe",
+            labels: { "dev.lando.test": "directories" },
+          },
           {
             providerId,
             sourceEnv: {},
@@ -136,7 +150,14 @@ test("copies attached CA files when the owning build step creates directories", 
     // When
     await Effect.runPromise(
       buildContainerArtifact(
-        { app: plan.id, service: serviceName, plan, buildKey: "directory-ca" },
+        {
+          app: plan.id,
+          service: serviceName,
+          plan,
+          buildKey: "directory-ca",
+          labels: { "dev.lando.test": "directories" },
+          ref: "lando-build-test-directory-ca",
+        },
         {
           providerId,
           sourceEnv: {},

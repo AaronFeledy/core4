@@ -14,7 +14,13 @@ import { McpToolInputError, type McpToolNotAllowedError } from "@lando/sdk/error
 import { Cause, Context, Effect, Option, Scope, type Semaphore } from "effect";
 
 import type { McpAppGenerationsShape } from "./apps";
-import { type McpAllowPolicy, isMcpEntryAuthorized, isMcpIdAuthorizable } from "./catalog";
+import {
+  type McpAllowPolicy,
+  isMcpEntryAuthorized,
+  isMcpIdAuthorizable,
+  isMcpToolingAuthorized,
+  selectMcpOwners,
+} from "./catalog";
 import type { McpDispatchDeps, McpToolSelection } from "./dispatch";
 import { mcpToolNotAllowedError } from "./dispatch-outcome";
 import { makeNestedExecute } from "./execute";
@@ -41,7 +47,7 @@ export interface McpCallSelectionDeps {
   readonly apps: McpAppGenerationsShape;
   readonly catalog: Effect.Success<ReturnType<typeof makeSessionCatalog>>;
   readonly policy: McpAllowPolicy;
-  readonly sessionOwners: ReadonlyMap<string, McpCommandEntry>;
+  readonly sessionOwners: ReadonlyMap<string, Extract<McpCommandEntry, { readonly kind: "command" }>>;
   readonly deps: Pick<McpDispatchDeps, "effective" | "allowlistSource">;
   readonly executor: McpCommandExecutorShape;
   readonly permits: Semaphore.Semaphore;
@@ -53,9 +59,29 @@ export const selectCallOwner = Effect.fnUntraced(function* (
 ): Effect.fn.Return<McpToolSelection, McpToolInputError | McpToolNotAllowedError, OperationDiscovery> {
   const { toolId } = call;
   // No owner of a denied or never-allowed id can run, so its app is never built.
-  if (!isMcpIdAuthorizable(session.policy, toolId))
-    return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));
-  const leased = yield* Effect.exit(Scope.provide(session.apps.acquire(call.cwd), call.scope));
+  // A tooling task shadows a same-id command here exactly as it does in tools/list and dispatch.
+  const knownOwner = selectMcpOwners<McpCommandEntry>([
+    session.sessionOwners.get(toolId),
+    session.catalog.toolingOwner(toolId),
+  ])[0];
+  let authorizable: boolean;
+  switch (knownOwner?.kind) {
+    case "tooling":
+      authorizable = isMcpToolingAuthorized(session.policy, toolId);
+      break;
+    case "command":
+    case undefined:
+      authorizable = isMcpIdAuthorizable(session.policy, toolId);
+      break;
+    default:
+      return knownOwner satisfies never;
+  }
+  if (!authorizable) return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));
+  const leased = yield* Effect.exit(
+    session.catalog.refresh(
+      Effect.map(Scope.provide(session.apps.acquire(call.cwd), call.scope), (generation) => ({ generation })),
+    ),
+  );
   if (leased._tag === "Failure") {
     if (Cause.hasInterruptsOnly(leased.cause)) return yield* Effect.interrupt;
     return {
@@ -64,10 +90,12 @@ export const selectCallOwner = Effect.fnUntraced(function* (
       outcome: failureOutcomeFromCause(leased.cause, normalizeDefect),
     };
   }
-  const generation = leased.value;
-  const publication = yield* session.catalog.project(generation);
+  const { generation, publication } = leased.value;
   call.published(generation.key, publication);
-  const sessionOwner = session.sessionOwners.get(toolId);
+  const sessionOwner = selectMcpOwners<McpCommandEntry>([
+    session.sessionOwners.get(toolId),
+    session.catalog.toolingOwner(toolId),
+  ])[0];
   const owner =
     sessionOwner === undefined
       ? generation.commands.get(toolId)
@@ -79,12 +107,15 @@ export const selectCallOwner = Effect.fnUntraced(function* (
       message: `Tool ${toolId} is unavailable in the selected app (${generation.key}).`,
       remediation: `Pass an appPath whose app provides ${toolId}, or call a tool the selected app provides.`,
     });
-  if (owner._tag === "Failed")
+  if (owner._tag === "Failed") {
+    if (owner.owner === undefined || !isMcpEntryAuthorized(session.policy, owner.owner))
+      return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));
     return {
       _tag: "OwnerFailed",
       commandId: owner.commandId,
       outcome: failureOutcomeFromCause(Cause.fail(owner.error), normalizeDefect),
     };
+  }
   const entry = owner.entry;
   if (!isMcpEntryAuthorized(session.policy, entry))
     return yield* Effect.fail(mcpToolNotAllowedError(toolId, session.deps));

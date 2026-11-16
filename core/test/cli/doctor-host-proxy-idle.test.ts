@@ -34,11 +34,7 @@ test.each([
           },
           doctor: {
             provider: TestRuntimeProvider,
-            providerKind: "managed",
             runtimeIdle: idle,
-            runtimeStatus: idle ? "idle (starts on demand)" : "running",
-            runtime: { running: !idle },
-            selection: { providerId: "lando", source: "default", inputs: { capabilityDefault: "lando" } },
           },
         }).pipe(
           Effect.provideService(
@@ -62,14 +58,14 @@ test.each([
         ),
       );
       expect(inspections).toBe(2);
+      if (!("status" in result)) throw new Error("expected a privacy finding");
       expect(result.status).toBe(status);
-      if (idle && result.status !== "skipped") {
+      if (idle) {
         expect(result.name).toBe("host-proxy-privacy");
         expect(result.context.privateRunDirectory).toBe(String(privateDirectory));
         expect(result.context.reachability).toBe("skipped");
         expect(result.solutions).toHaveLength(privateDirectory ? 0 : 1);
       } else {
-        if (result.status === "skipped") throw new Error("privacy inspection must be reported");
         expect(result.solutions).toHaveLength(1);
         expect(result.solutions[0]?.command).toBe("lando start");
         expect(result.solutions[0]?.description).toContain(
@@ -104,11 +100,7 @@ test("idle report exposes host privacy and separately skips reachability without
     const result = await Effect.runPromise(
       hostProxyTransportDoctorChecks({
         provider: TestRuntimeProvider,
-        providerKind: "managed",
         runtimeIdle: true,
-        runtimeStatus: "idle (starts on demand)",
-        runtime: { running: false },
-        selection: { providerId: "lando", source: "default", inputs: { capabilityDefault: "lando" } },
         sourceEnv: {},
       }).pipe(Effect.provide(HostProxyDoctorFileSystem.layer), Effect.provideService(PathsService, paths)),
     );
@@ -119,14 +111,14 @@ test("idle report exposes host privacy and separately skips reachability without
     ).toMatchObject([
       {
         name: "host-proxy-privacy",
+        subject: "legacy-demo",
         status: "pass",
         context: { privateRunDirectory: "true", reachability: "skipped" },
       },
     ]);
     expect(result.skipped).toEqual([
       {
-        section: "host-proxy-transport:legacy-demo",
-        status: "skipped",
+        check: "host-proxy-transport:legacy-demo",
         reason: "Provider test is idle; host-proxy reachability was not probed.",
       },
     ]);

@@ -18,20 +18,34 @@ import {
   computeEffectiveAllowlist,
   isMcpEntryAuthorized,
   makeMcpAllowPolicy,
+  selectMcpOwners,
   toDescriptor,
 } from "./catalog";
+import type { McpDiagnostic, McpToolingCatalog } from "./diagnostics";
 import { type MemoryPressureLevel, handleMemoryPressure } from "./memory-pressure";
 import { McpCommandExecutor } from "./port";
 import type { McpCommandEntry } from "./registry";
 import type { McpResourceEntry } from "./resources";
 import { serveSession } from "./session";
 
+export {
+  McpDiagnostic,
+  McpDiagnostics,
+  type McpToolingCatalog,
+  boundDiagnostics,
+  pluginDiagnostics,
+} from "./diagnostics";
+
 export type { McpResourceEntry } from "./resources";
 export { DEFAULT_MCP_MAX_CONCURRENT } from "./stdio-limits";
 
 export interface McpRuntimeConfigShape {
-  readonly commandEntries: ReadonlyArray<McpCommandEntry>;
-  readonly toolingEntries?: ReadonlyArray<McpCommandEntry>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly cwd: string;
+  readonly commandEntries: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>>;
+  readonly toolingEntries?: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "tooling" }>>;
+  readonly toolingUnavailable?: readonly McpDiagnostic[];
+  readonly toolingCatalog?: (generation: McpAppGeneration) => Effect.Effect<McpToolingCatalog, unknown>;
   readonly defaultAllowlist: ReadonlyArray<string>;
   readonly resources?: ReadonlyArray<McpResourceEntry>;
   readonly version?: string;
@@ -55,22 +69,18 @@ const sessionEntries = (
     ? [...config.commandEntries, ...(config.toolingEntries ?? [])]
     : config.commandEntries;
 
-/** The session allow policy; tooling ids join `allow` when tooling is on. */
 const sessionAllowPolicy = (
   config: McpRuntimeConfigShape,
   options: McpCatalogOptions | undefined,
 ): McpAllowPolicy =>
   makeMcpAllowPolicy({
     defaults: config.defaultAllowlist,
-    allow:
-      options?.tooling === true
-        ? [...(options.allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
-        : options?.allow,
+    allow: options?.allow,
     deny: options?.deny,
   });
 
 const catalogOf = (entries: ReadonlyArray<McpCommandEntry>, policy: McpAllowPolicy): McpCatalog => ({
-  tools: entries
+  tools: selectMcpOwners(entries)
     .filter((entry) => isMcpEntryAuthorized(policy, entry))
     .map((entry) => toDescriptor(entry.spec))
     .sort((left, right) => left.toolId.localeCompare(right.toolId)),
@@ -94,6 +104,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
     this,
     Effect.gen(function* () {
       const config = yield* McpRuntimeConfig;
+      const sourceEnv = { ...config.env };
       const redaction = yield* RedactionService;
       const executor = yield* McpCommandExecutor;
       const events = yield* Effect.serviceOption(EventService);
@@ -109,7 +120,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
         const key = JSON.stringify(options);
         const entries = sessionEntries(config, options);
         const policy = sessionAllowPolicy(config, options);
-        const directory = cwd ?? process.cwd();
+        const directory = cwd ?? config.cwd;
         const generation = yield* withAppDiscovery(
           directory,
           Effect.scoped(Effect.flatMap(config.apps, (apps) => apps.acquire(directory))),
@@ -133,7 +144,6 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           closeIdleSockets: () => {},
         });
       const serve = Effect.fn("McpService.serve")(function* (options: McpServeOptions) {
-        const sourceEnv = { ...process.env };
         const resultRedactor = (tokens: ReadonlyArray<string>) =>
           redaction.forProfile("secrets", { sourceEnv, authoritativeTokens: tokens });
         const redactor = yield* resultRedactor([]);
@@ -160,7 +170,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           payloadValues,
           handleMemoryPressure: onMemoryPressure,
           deps: {
-            registry: new Map(entries.map((entry) => [entry.spec.id, entry])),
+            registry: new Map(selectMcpOwners(entries).map((entry) => [entry.spec.id, entry])),
             effective: allowlist.ids,
             allowlistSource: options.tooling === true ? `${allowlist.source}+tooling` : allowlist.source,
             redactor,

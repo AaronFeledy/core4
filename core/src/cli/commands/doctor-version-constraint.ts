@@ -12,47 +12,9 @@ import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/e
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Result, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
-import {
-  DoctorSeveritySchema,
-  DoctorStatusSchema,
-  failCheck,
-  passCheckNamed,
-  warnCheck,
-} from "./doctor-check-builders";
-import type { DoctorSeverity, DoctorStatus } from "./doctor-contract";
+import { failCheck, passCheckNamed, warnCheck } from "./doctor-check-builders";
+import type { DoctorFinding, DoctorSectionResult, DoctorSolution } from "./doctor-contract";
 import { resolveSecretsRedactor } from "./secrets-redactor";
-
-export interface AppVersionConstraintDoctorCheck {
-  readonly name: "app-version-constraint";
-  readonly status: DoctorStatus;
-  readonly severity: DoctorSeverity;
-  readonly context: Readonly<Record<string, string>>;
-  readonly solutions: ReadonlyArray<{
-    readonly kind: "manual";
-    readonly description: string;
-    readonly command?: string;
-  }>;
-}
-
-export interface AppVersionConstraintDoctorResult {
-  readonly checks: ReadonlyArray<AppVersionConstraintDoctorCheck>;
-}
-
-const DoctorSolutionSchema = Schema.Struct({
-  kind: Schema.Literal("manual"),
-  description: Schema.String,
-  command: Schema.optionalKey(Schema.String),
-});
-const AppVersionConstraintDoctorCheckSchema = Schema.Struct({
-  name: Schema.Literal("app-version-constraint"),
-  status: DoctorStatusSchema,
-  severity: DoctorSeveritySchema,
-  context: Schema.Record(Schema.String, Schema.String),
-  solutions: Schema.Array(DoctorSolutionSchema),
-});
-export const AppVersionConstraintDoctorResultSchema = Schema.Struct({
-  checks: Schema.Array(AppVersionConstraintDoctorCheckSchema),
-});
 
 const VERSION_CONSTRAINT_SOLUTION = {
   kind: "manual",
@@ -73,9 +35,9 @@ const MALFORMED_LANDOFILE_SOLUTION = {
 } as const;
 
 const failedLoadResult = Effect.fnUntraced(function* (
-  context: Readonly<Record<string, string>>,
-  solutions: AppVersionConstraintDoctorCheck["solutions"],
-): Effect.fn.Return<AppVersionConstraintDoctorResult> {
+  context: DoctorFinding["context"],
+  solutions: ReadonlyArray<DoctorSolution>,
+): Effect.fn.Return<DoctorSectionResult> {
   return {
     checks: [
       failCheck({
@@ -105,7 +67,7 @@ const formatConstraintEntry = (
   `${redact(entry.range)} (${entry.layer}#${entry.order}: ${relativeSource(appRoot, entry.source)})`;
 
 export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Effect.fn.Return<
-  AppVersionConstraintDoctorResult | undefined,
+  DoctorSectionResult | undefined,
   never,
   never
 > {
@@ -139,7 +101,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
         {
           declared: "(Landofile load failures)",
           loadFailure: redact(resolved.failure.message),
-          includeResolution: failures.map((error) => redact(error.message)).join("\n"),
+          includeResolution: failures.map((error) => redact(error.message)),
         },
         failures.map((error) => ({ kind: "manual" as const, description: redact(error.remediation) })),
       );
@@ -170,12 +132,22 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
       return yield* failedLoadResult(
         {
           declared: "(unresolved includes)",
-          includeResolution: redact(resolved.failure.message),
+          includeResolution: [redact(resolved.failure.message)],
         },
         [INCLUDE_RESOLUTION_SOLUTION],
       );
     }
-    return undefined;
+    // Any other load failure is a Landofile problem the app-config section reports; the
+    // constraint was never evaluated, so it is listed as skipped rather than failed twice.
+    return {
+      checks: [],
+      skipped: [
+        {
+          check: "app-version-constraint",
+          reason: `The Landofile could not be loaded, so its version constraint was not evaluated: ${redact(resolved.failure.message)}`,
+        },
+      ],
+    };
   }
   const landofile = resolved.success.document;
   const entries = getVersionConstraintEntries(landofile, filePath);
@@ -185,50 +157,28 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   const invalid = evaluation.invalid.map((entry) => formatConstraintEntry(entry, appRoot, redact));
   const unsatisfied = evaluation.unsatisfied.map((entry) => formatConstraintEntry(entry, appRoot, redact));
-  const status =
-    invalid.length > 0 || (unsatisfied.length > 0 && !skipped) ? "fail" : skipped ? "warn" : "pass";
-  const context: Record<string, string> = {
+  const context: Record<string, string | ReadonlyArray<string>> = {
     runningVersion: CORE_VERSION,
     skipped: String(skipped),
-    declared: entries.map((entry) => formatConstraintEntry(entry, appRoot, redact)).join(", ") || "(none)",
+    declared: entries.map((entry) => formatConstraintEntry(entry, appRoot, redact)),
   };
-  if (invalid.length > 0) context.invalid = invalid.join(", ");
-  if (unsatisfied.length > 0) context.unsatisfied = unsatisfied.join(", ");
+  if (invalid.length > 0) context.invalid = invalid;
+  if (unsatisfied.length > 0) context.unsatisfied = unsatisfied;
   if (skipped) context.skipEnv = `${VERSION_CONSTRAINT_SKIP_ENV_VAR}=1 is active`;
 
-  return {
-    checks: [
-      {
-        pass: () => passCheckNamed({ name: "app-version-constraint", context }),
-        warn: () =>
-          warnCheck({ name: "app-version-constraint", context, solutions: [VERSION_CONSTRAINT_SOLUTION] }),
-        fail: () =>
-          failCheck({ name: "app-version-constraint", context, solutions: [VERSION_CONSTRAINT_SOLUTION] }),
-      }[status](),
-    ],
-  } satisfies AppVersionConstraintDoctorResult;
+  if (invalid.length > 0 || (unsatisfied.length > 0 && !skipped)) {
+    return {
+      checks: [
+        failCheck({ name: "app-version-constraint", context, solutions: [VERSION_CONSTRAINT_SOLUTION] }),
+      ],
+    };
+  }
+  if (skipped) {
+    return {
+      checks: [
+        warnCheck({ name: "app-version-constraint", context, solutions: [VERSION_CONSTRAINT_SOLUTION] }),
+      ],
+    };
+  }
+  return { checks: [passCheckNamed({ name: "app-version-constraint", context })] };
 });
-
-export const appVersionConstraintCheckPayload = (
-  check: AppVersionConstraintDoctorCheck,
-): Record<string, unknown> => ({
-  _tag: "doctor.check",
-  name: check.name,
-  status: check.status,
-  severity: check.severity,
-  context: check.context,
-  solutions: check.solutions,
-});
-
-export const renderAppVersionConstraintResult = (result: AppVersionConstraintDoctorResult): string =>
-  result.checks
-    .flatMap((check) => {
-      const lines = [`${check.name}: ${check.status}`, `severity: ${check.severity}`];
-      for (const [field, value] of Object.entries(check.context)) lines.push(`${field}: ${value}`);
-      for (const solution of check.solutions) {
-        lines.push(`solution[${solution.kind}]: ${solution.description}`);
-        if (solution.command !== undefined) lines.push(`  command: ${solution.command}`);
-      }
-      return lines;
-    })
-    .join("\n");

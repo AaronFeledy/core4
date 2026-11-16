@@ -317,7 +317,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   test-isolation-linux-x64:
     needs: [selection]
@@ -386,7 +386,7 @@ jobs:
           bun run test:selection container-helper
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -1032,6 +1032,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run e2e smoke guide scenarios
@@ -1065,7 +1067,7 @@ jobs:
 
       - name: Upload guide scenario transcripts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip
           path: dist/transcripts/guides/**/*.json
@@ -1074,7 +1076,7 @@ jobs:
 
       - name: Upload guide e2e provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}.zip
           path: guide-e2e-provider-diagnostics
@@ -1296,7 +1298,7 @@ jobs:
 
       - name: Upload darwin-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-darwin-arm64
           path: |
@@ -1379,7 +1381,7 @@ jobs:
 
       - name: Upload darwin-x64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-darwin-x64
           path: |
@@ -1462,7 +1464,7 @@ jobs:
 
       - name: Upload linux-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-linux-arm64
           path: |
@@ -1545,7 +1547,7 @@ jobs:
 
       - name: Upload linux-x64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-linux-x64
           path: |
@@ -1625,7 +1627,7 @@ jobs:
 
       - name: Upload windows-x64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-windows-x64
           path: |
@@ -1705,7 +1707,7 @@ jobs:
 
       - name: Upload windows-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-windows-arm64
           path: |
@@ -1756,7 +1758,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 
       - name: Upload current-commit Linux x64 runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
@@ -1805,7 +1807,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
 
       - name: Upload current-commit Linux arm64 runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-linux-arm64-current
           path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
@@ -1840,7 +1842,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
       - name: Upload current-commit Windows runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
@@ -1950,7 +1952,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-darwin-arm64
           path: provider-diagnostics
@@ -2021,7 +2023,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-darwin-x64
           path: provider-diagnostics
@@ -2092,7 +2094,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-linux-arm64
           path: provider-diagnostics
@@ -2113,7 +2115,7 @@ jobs:
         runs-on: [ubuntu-26.04]
         suite: [providers, engine, services]
     runs-on: ${{ matrix.runs-on }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2293,6 +2295,8 @@ jobs:
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image docker.io/library/alpine:3.20.3@sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d
           docker_pull_image docker.io/alpine/sqlite:3.53.4@sha256:c60da9273ce8d15e63b6a536383ba07cdb053dac02c04cbe11e4072938d40a75
 
       - name: Run provider contract tests
@@ -2324,8 +2328,10 @@ jobs:
               bun run test:selection providers-ephemeral-data 2>&1 | tee /tmp/lando-provider-test-logs/ephemeral-data-helpers.log || status=$?
               bun run test:selection providers-host-reachability 2>&1 | tee /tmp/lando-provider-test-logs/host-reachability.log || status=$?
               bun run test:selection providers-listener-observation 2>&1 | tee /tmp/lando-provider-test-logs/listener-observation.log || status=$?
+              bun run test:selection proxy-traefik-certificate-live 2>&1 | tee /tmp/lando-provider-test-logs/proxy-traefik-certificate-live.log || status=$?
               bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
               bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
+              bun run test:selection providers-schedule 2>&1 | tee /tmp/lando-provider-test-logs/schedule.log || status=$?
               ;;
             services)
               bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?
@@ -2374,7 +2380,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}
           path: provider-diagnostics
@@ -2384,7 +2390,7 @@ jobs:
       - name: Report job timing
         if: always()
         run: |
-          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 50m)"
 
   provider-integration-linux-x64:
     needs: [selection, provider-integration-linux-x64-runner]
@@ -2488,7 +2494,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-windows-x64
           path: provider-diagnostics
@@ -2559,7 +2565,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-integration-diagnostics-windows-arm64
           path: provider-diagnostics

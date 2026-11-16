@@ -102,6 +102,22 @@ test.each(
   expect(JSON.parse(result.stdout).error._tag).toBe("HostProxyCommandNotAllowedError");
 });
 
+// The envelope flag must stay before `--`; after it, the token belongs to the command.
+test.each([
+  { argv: ["--format=json"], commandId: "cli:unknown" },
+  { argv: ["--help", "--format=json"], commandId: "--help" },
+  { argv: ["--help", "app:open", "--format=json"], commandId: "--help" },
+  { argv: ["--format=json", "--", "app:open"], commandId: "--" },
+] as const)("child denies $argv naming $commandId", async ({ argv, commandId }) => {
+  const { call, paths } = await fixture();
+  const result = await invoke({ ...call, argv }, paths);
+  expect(result.exitCode).not.toBe(0);
+  expect(JSON.parse(result.stdout).error).toMatchObject({
+    _tag: "HostProxyCommandNotAllowedError",
+    commandId,
+  });
+});
+
 test("child publishes redacted pre/post execution hooks on command failure", async () => {
   const { call, paths } = await fixture();
   await writeFile(join(call.app.root, ".lando.yml"), "name: demo\n");
@@ -190,8 +206,18 @@ test.each([false, true])("child rejects an open alias routed to tooling (help=%s
   );
   await Effect.runPromise(
     writeAppCommandCacheStrict({
+      env: hostProxyChildEnv(process.env, paths, {}, call.depth),
       landofile: { name: "demo", commandAliases: { custom: { open: "app:greet" } } },
-      entries: [{ id: "app:greet", summary: "Greet", hidden: false, source: "bun-script" }],
+      entries: [
+        {
+          id: "app:greet",
+          summary: "Greet",
+          _tag: "Ready",
+          sourceKind: "bun-script",
+          visibility: "public",
+          input: emptyToolingInput(),
+        },
+      ],
       cwd: call.app.root,
       cacheRoot: paths.userCacheRoot,
     }),
@@ -272,3 +298,5 @@ test("child aborts active invocation when its worker stdin lease closes", async 
     await proc.exited;
   }
 });
+
+import { emptyToolingInput } from "../../_support/tooling-input.ts";

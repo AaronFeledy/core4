@@ -26,6 +26,7 @@ import {
 } from "../src/socket-proxy-helper.ts";
 import { SOCKET_UNIT_PATHS } from "../src/socket-proxy-units.ts";
 import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -234,6 +235,7 @@ const makeDeps = (
   classifyOverride: ClassifyOverride,
   extra: Record<string, unknown> = {},
 ): TraefikProxyDependencies => ({
+  stateStore: makeAckStore([]),
   certificateAuthority: makeTestCertificateAuthority(),
   fileSystem: store.fileSystem,
   paths,

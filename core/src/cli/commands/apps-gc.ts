@@ -1,4 +1,5 @@
 import type { AppsGcReport } from "@lando/engine/operations/apps-gc";
+import { builtImageCleanupLines } from "./service-summary";
 
 const counted = (count: number, noun: string): string | undefined =>
   count === 0 ? undefined : `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -52,5 +53,6 @@ export const renderAppsGcReport = (report: AppsGcReport): string => {
             ? "Run lando apps:gc --prune to clean up while keeping data and file-sync copies of app files."
             : "Run lando apps:gc --prune to clean up; add --volumes to delete data and file-sync copies of app files.",
         ]),
+    ...builtImageCleanupLines(report.builtImages),
   ].join("\n");
 };

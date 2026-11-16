@@ -18,6 +18,7 @@ import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
+import { recordExpressionEnvironment } from "./environment-dependencies.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
 import { normalizeLoadExpressionFailure } from "./load-expression-failure.ts";
@@ -128,8 +129,7 @@ export const resolveLandofileLoadExpressions = (
           if (options.recorder === undefined) throw cause;
           const source = { file: options.source.sourcePath, layer: options.source.layer, path };
           const failure = normalizeLoadExpressionFailure(cause, options.source, path);
-          if (failure instanceof NotImplementedError)
-            options.recorder.effectiveChecks.push(Effect.fail(failure));
+          if (failure instanceof NotImplementedError) options.recorder.deferRefusal(failure, source);
           else options.recorder.record(failure, source);
           return value;
         }
@@ -183,6 +183,8 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
+          if (options.environmentRecorder !== undefined)
+            recordExpressionEnvironment(options.environmentRecorder, parsed.success);
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
           if (deferred !== undefined) throw deferred;
           const references = parsed.success.segments.flatMap((segment) =>

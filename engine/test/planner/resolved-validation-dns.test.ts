@@ -76,6 +76,19 @@ test.each([
   expect(validate({ services })).toMatchObject([{ path, rule: "landofile.dns-name" }]);
 });
 
+test("reports the reserved container DNS shape on an undeclared network", () => {
+  expect(
+    validate({
+      services: { web: { networks: { missing: { aliases: ["lando-shop--api"] } } } },
+    }),
+  ).toMatchObject([
+    {
+      path: ["services", "web", "networks", "missing", "aliases", 0],
+      rule: "landofile.dns-name",
+    },
+  ]);
+});
+
 test("skips blocked aliases without suppressing independent DNS collisions", () => {
   expect(
     validate(

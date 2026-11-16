@@ -19,6 +19,7 @@ test("dispatch retains and redacts combined failures without invoking unsafe fie
     ),
   );
   const entry: McpCommandEntry = {
+    kind: "command" as const,
     spec: { id: "app:start", summary: "Start app", resultSchema: Schema.Void, run: () => command },
   };
   Object.defineProperty(secondary, "unsafe", {
@@ -81,6 +82,7 @@ for (const stage of ["dispatch", "body"] as const) {
     const defect = new Error(`Unexpected failure ${secret}\n    at embedded-stack`);
     const command = Effect.die(defect);
     const entry: McpCommandEntry = {
+      kind: "command" as const,
       spec: { id: "app:info", summary: "Info", resultSchema: Schema.Unknown, run: () => command },
     };
     const redactor = createRedactor("secrets", { values: [secret] });
@@ -129,6 +131,7 @@ test("MCP and CLI preserve identical typed diagnostic fields and validation issu
     issues: [{ path: ["services", "web", "port"], message: "Expected a positive port." }],
   };
   const entry: McpCommandEntry = {
+    kind: "command" as const,
     spec: { id: "app:info", summary: "Info", resultSchema: Schema.Unknown, run: () => Effect.fail(error) },
   };
   const redactor = createRedactor("secrets", { values: [] });

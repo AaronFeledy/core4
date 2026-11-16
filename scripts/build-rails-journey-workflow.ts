@@ -54,7 +54,7 @@ ${renderSetupStep(cell, binary)}
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: rails-journey-${cell.id}
           path: \${{ runner.temp }}/rails-journey.json

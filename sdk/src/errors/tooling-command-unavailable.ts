@@ -15,6 +15,7 @@ export class ToolingCommandUnavailableError extends Schema.TaggedError<ToolingCo
         "format",
         "lando-version",
         "source",
+        "environment",
         "referenced-file",
         "script-metadata",
         "script-inventory",

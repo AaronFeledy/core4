@@ -271,10 +271,12 @@ test("buildArtifact registers the spec's app and plan before building", async ()
         registry.select(plan).pipe(
           Effect.flatMap((selected) =>
             selected.buildArtifact({
+              labels: { "dev.lando.test": "output-registration" },
               app: specPlan.id,
               service: baseService.name,
               plan: specPlan,
               buildKey: "registration",
+              ref: "built",
             }),
           ),
         ),

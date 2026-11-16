@@ -1,10 +1,11 @@
 import type { DestroyAppOptions } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import { BuiltImageCleanup, ProviderId } from "@lando/sdk/schema";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result, Schema } from "effect";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { prepareTeardownOwners } from "../providers/runtime-observation.ts";
+import { withBuiltImageCleanupBatch } from "../services/build-image-cleanup.ts";
 import { UnreadableStartJournal, sweepCompletedAcceleratedStarts } from "./accelerated-start-inventory.ts";
 import { digest } from "./accelerated-start-record.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
@@ -32,6 +33,9 @@ export const AppsGcReport = Schema.Struct({
   roots: Schema.Array(RootOutcome),
   completedJournalsRemoved: Schema.Number,
   unreadableJournals: Schema.Array(UnreadableStartJournal),
+  builtImages: Schema.optionalKey(BuiltImageCleanup).annotate({
+    description: "Aggregate built-image cleanup across pruned app roots.",
+  }),
 });
 export type AppsGcReport = typeof AppsGcReport.Type;
 
@@ -76,7 +80,12 @@ export const prepareAppsGc = Effect.fn("AppOperation.prepareAppsGc")(function* (
     roots: [],
     completedJournalsRemoved: 0,
   };
-  return { report, prune: pruneAppsGc(report, scan.identities, options) };
+  return {
+    report,
+    prune: withBuiltImageCleanupBatch(pruneAppsGc(report, scan.identities, options)).pipe(
+      Effect.map(({ result, builtImages }) => ({ ...result, builtImages })),
+    ),
+  };
 });
 
 const evidenceDigest = (record: typeof MissingAppRoot.Type) =>

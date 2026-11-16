@@ -11,14 +11,29 @@ import { AppPlanner, CommandRegistry, RuntimeProviderRegistry } from "@lando/sdk
 import { Effect, Result, Schema } from "effect";
 import { renderColdAllHelp, renderColdRootHelp } from "../../src/cli/cold-path-output.ts";
 import { HelpCatalogResult, buildHelpCatalog } from "../../src/cli/compiled-help.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
+import { ownerPolicy } from "../../src/cli/invocation-owner.ts";
 import { renderPreCommandFailure } from "../../src/cli/spec/command-boundary.ts";
 import { toolingMetadataStatus } from "../../src/cli/tooling-cache-status.ts";
 import { readCliAppCommandCache } from "../../src/cli/tooling-command-cache.ts";
-import {
-  resolveToolingRoute,
-  toolingHelpRequested,
-  toolingRouteFailure,
-} from "../../src/cli/tooling-router.ts";
+import { type ToolingRoute, resolveToolingRoute, toolingRouteFailure } from "../../src/cli/tooling-router.ts";
+
+const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
+  switch (route._tag) {
+    case "tooling":
+    case "bun-script":
+      return splitCommandTokens(argv, ownerPolicy({ kind: "tooling", route })).help;
+    case "built-in":
+    case "plugin":
+    case "not-tooling":
+    case "alias-disabled":
+    case "cache-miss":
+    case "unknown-tooling":
+      return false;
+    default:
+      return route satisfies never;
+  }
+};
 
 const states = ["missing", "stale", "invalid", "unknown"] as const;
 type State = (typeof states)[number];
@@ -46,15 +61,14 @@ test.each([
       (error) => error,
     );
     // When
-    const requested = toolingHelpRequested(
+    const requested = helpRequested(
       {
         _tag: "tooling",
         commandId: "app:empty",
         name: "empty",
         summary: "",
         hidden: false,
-        input,
-        ...(wrapper ? { wrapper: true as const } : {}),
+        availability: { _tag: "Ready", input, ...(wrapper ? { wrapper: true as const } : {}) },
       },
       ["--help"],
     );
@@ -63,7 +77,11 @@ test.each([
   },
 );
 
-const withCache = async (state: State, run: (cwd: string, cacheRoot: string) => Promise<void>) => {
+const withCache = async (
+  state: State,
+  run: (cwd: string, cacheRoot: string) => Promise<void>,
+  childEnvironment = false,
+) => {
   const cwd = await mkdtemp(join(tmpdir(), "lando-tooling-recovery-"));
   const cacheRoot = join(cwd, "cache");
   try {
@@ -73,12 +91,24 @@ const withCache = async (state: State, run: (cwd: string, cacheRoot: string) => 
         writeAppCommandCacheStrict({
           cwd,
           cacheRoot,
+          ...(childEnvironment
+            ? {
+                env: {
+                  ...process.env,
+                  LANDO_USER_CACHE_ROOT: cacheRoot,
+                  LANDO_USER_DATA_ROOT: join(cwd, "data"),
+                  LANDO_USER_CONF_ROOT: join(cwd, "conf"),
+                },
+              }
+            : {}),
           landofile: { name: "recovery" },
           entries: [
             {
               id: "app:known",
               summary: "Old metadata must not leak",
-              hidden: false,
+              _tag: "Ready",
+              sourceKind: "tooling",
+              visibility: "public",
               input: Result.getOrThrowWith(
                 normalizeToolingInput("known", { flags: { credential: { sensitive: true } } }),
                 (error) => error,
@@ -181,37 +211,41 @@ test.each(states)("keeps built-ins available and reflects %s metadata in root he
 });
 
 test.each(states)("direct help adapter reports the %s lookup failure", async (state) => {
-  await withCache(state, async (cwd, cacheRoot) => {
-    // Given
-    const runtime = pathToFileURL(join(import.meta.dirname, "../../src/cli/compiled-runtime.ts")).href;
-    const help = pathToFileURL(join(import.meta.dirname, "../../src/cli/run-help.ts")).href;
-    const program = `import { setActiveRendererMode, setActiveResultFormat } from ${JSON.stringify(runtime)};
+  await withCache(
+    state,
+    async (cwd, cacheRoot) => {
+      // Given
+      const runtime = pathToFileURL(join(import.meta.dirname, "../../src/cli/compiled-runtime.ts")).href;
+      const help = pathToFileURL(join(import.meta.dirname, "../../src/cli/run-help.ts")).href;
+      const program = `import { setActiveRendererMode, setActiveResultFormat } from ${JSON.stringify(runtime)};
       import { dispatchHelpTarget } from ${JSON.stringify(help)};
       setActiveRendererMode("json"); setActiveResultFormat("json"); await dispatchHelpTarget("app:absent");`;
-    // When
-    const child = Bun.spawn([process.execPath, "-e", program], {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        LANDO_USER_CACHE_ROOT: cacheRoot,
-        LANDO_USER_DATA_ROOT: join(cwd, "data"),
-        LANDO_USER_CONF_ROOT: join(cwd, "conf"),
-      },
-    });
-    const [code, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    // Then
-    expect(code, stderr).toBe(state === "unknown" ? 2 : 1);
-    expect(JSON.parse(stdout)).toMatchObject({
-      ok: false,
-      command: failureCommand(state),
-      error: { ...failures[state], remediation: expect.stringMatching(/\S/u) },
-    });
-    expect(stderr).toBe("");
-  });
+      // When
+      const child = Bun.spawn([process.execPath, "-e", program], {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          LANDO_USER_CACHE_ROOT: cacheRoot,
+          LANDO_USER_DATA_ROOT: join(cwd, "data"),
+          LANDO_USER_CONF_ROOT: join(cwd, "conf"),
+        },
+      });
+      const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      // Then
+      expect(code, stderr).toBe(state === "unknown" ? 2 : 1);
+      expect(JSON.parse(stdout)).toMatchObject({
+        ok: false,
+        command: failureCommand(state),
+        error: { ...failures[state], remediation: expect.stringMatching(/\S/u) },
+      });
+      expect(stderr).toBe("");
+    },
+    true,
+  );
 });

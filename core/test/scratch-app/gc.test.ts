@@ -31,6 +31,7 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Stream } from "effect";
@@ -150,7 +151,8 @@ const makeLayer = (
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () => die("buildArtifact"),
     pullArtifact: () => die("pullArtifact"),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: () => die("apply"),
     start: () => die("start"),
     stop: () => die("stop"),
@@ -203,6 +205,7 @@ const makeLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    PrivateFileAccessService.layer,
     stateStoreLayer,
     environmentResolverLayer(),
     BunFileSystem.layer,
@@ -275,7 +278,8 @@ describe("ScratchAppServiceLayer.layer gc", () => {
           Effect.provide(testSupportLayer()),
         ),
       );
-      expect(dryRun).toEqual({ inspected: 5, reaped: [], errors: [] });
+      const candidates = [unsafeLabel, deadOwner, directoryOrphan, labelOrphan, registryStaleWithLabel];
+      expect(dryRun).toEqual({ inspected: 5, candidates, reaped: [], errors: [] });
 
       const prunedRun = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
@@ -285,6 +289,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       );
       expect(prunedRun).toEqual({
         inspected: 5,
+        candidates,
         reaped: [deadOwner, directoryOrphan, labelOrphan, registryStaleWithLabel],
         errors: [`${unsafeLabel}: unsafe scratch id`],
       });
@@ -298,7 +303,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
           Effect.provide(testSupportLayer()),
         ),
       );
-      expect(second).toEqual({ inspected: 0, reaped: [], errors: [] });
+      expect(second).toEqual({ inspected: 0, candidates: [], reaped: [], errors: [] });
     });
   });
 

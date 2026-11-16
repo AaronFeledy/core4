@@ -2,11 +2,14 @@ import { expect, spyOn, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { Cause, Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import * as composition from "../../src/composition.ts";
+import { rebuildApp } from "../../src/operations/rebuild.ts";
+import { startApp } from "../../src/operations/start.ts";
 import { withStartedHostProxy } from "../../src/operations/start-host-proxy.ts";
 import type { HostProxyRunLandoSession } from "../../src/subsystems/host-proxy/transport.ts";
 import * as worker from "../../src/subsystems/host-proxy/worker.ts";
 import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
+import { writeHostProxyWorker } from "./start-worker-retirement-support.ts";
 
 const selected = {
   ...plan,
@@ -164,3 +167,72 @@ for (const reused of [false, true]) {
     });
   }
 }
+
+test("a whole-app start retires a host-proxy worker the desired plan no longer needs", async () => {
+  // Given an app whose plan has no host-proxy service and its recorded worker.
+  const harness = makeHarness();
+  const recordPath = await writeHostProxyWorker(harness, app);
+  try {
+    expect(await Bun.file(recordPath).exists()).toBe(true);
+    // When the whole app starts.
+    await Effect.runPromise(startApp({}, { plan, root: plan.root, app }).pipe(Effect.provide(harness.layer)));
+    // Then the recorded worker and its run-directory state are gone.
+    expect(await Bun.file(recordPath).exists()).toBe(false);
+  } finally {
+    await rm(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
+
+test("a whole-app start keeps the host-proxy worker a needed service still uses", async () => {
+  // Given a plan with a host-proxy service and its recorded worker.
+  const harness = makeHarness();
+  const recordPath = await writeHostProxyWorker(harness, app);
+  const session: HostProxyRunLandoSession = {
+    appId: selected.id,
+    sessionId: "proxy-session",
+    token: "token",
+    controlToken: "control-token",
+    socketPath: "/relay/proxy.sock",
+    shimPath: "/relay/shim",
+    transport: "unix-socket",
+    closed: Promise.resolve(),
+    close: async () => undefined,
+  };
+  const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+    Effect.succeed(stubContainerHelper("/shim")),
+  );
+  const spawn = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) =>
+    (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session)),
+  );
+  try {
+    // When the whole app starts.
+    await Effect.runPromise(
+      startApp({}, { plan: selected, root: selected.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+    // Then the worker is acquired and its recorded state is retained.
+    expect(spawn.mock.calls).toHaveLength(1);
+    expect(await Bun.file(recordPath).exists()).toBe(true);
+  } finally {
+    prepare.mockRestore();
+    spawn.mockRestore();
+    await rm(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
+
+test("a selected rebuild leaves the host-proxy worker alone", async () => {
+  // Given an app whose selected plan has no host-proxy service and its recorded worker.
+  const harness = makeHarness();
+  const recordPath = await writeHostProxyWorker(harness, app);
+  try {
+    // When only the ordinary service is rebuilt.
+    await Effect.runPromise(
+      rebuildApp({ services: [web.name] }, { plan, root: plan.root, app }).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    // Then the unselected services' worker is still recorded for a later whole-app start.
+    expect(await Bun.file(recordPath).exists()).toBe(true);
+  } finally {
+    await rm(harness.userDataRoot, { recursive: true, force: true });
+  }
+});

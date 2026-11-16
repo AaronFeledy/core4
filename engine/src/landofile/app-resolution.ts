@@ -1,10 +1,12 @@
 import {
   type ResolvedAppTarget,
   type UserAppResolution,
+  type UserLandofileError,
   makeUserAppResolution,
   userAppRef,
 } from "@lando/landofile/app-resolution";
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import {
   type VersionConstraintEntry,
@@ -13,9 +15,10 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
+import type { LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, Renderer, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
+import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 import { CORE_VERSION } from "../version.ts";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "./command-warnings.ts";
@@ -112,14 +115,30 @@ export const makeEngineUserAppResolution = (inputs: LandofileRuntimeInputs): Use
   makeUserAppResolution({
     inputs,
     assertVersionConstraint: (landofile, sourcePath) =>
-      assertLandoVersionConstraint(landofile, sourcePath === undefined ? undefined : { sourcePath }),
+      assertLandoVersionConstraint(landofile, {
+        ...(sourcePath === undefined ? {} : { sourcePath }),
+        ...(inputs.templates.context?.env === undefined ? {} : { env: inputs.templates.context.env }),
+      }),
   });
 
 const userAppResolution = (): Effect.Effect<UserAppResolution> =>
   Effect.map(scopedLandofileRuntimeInputs, makeEngineUserAppResolution);
 
-export const loadUserLandofile: UserAppResolution["loadUserLandofile"] = (...args) =>
-  Effect.flatMap(userAppResolution(), (resolution) => resolution.loadUserLandofile(...args));
+export const loadUserLandofile = Effect.fnUntraced(function* (
+  service: Parameters<UserAppResolution["loadUserLandofile"]>[0],
+  options?: { readonly env: Readonly<Record<string, string | undefined>> },
+): Effect.fn.Return<LoadScopedLandofile, UserLandofileError> {
+  const host = yield* HostExecutionDefaults;
+  const load = Effect.flatMap(userAppResolution(), (resolution) => resolution.loadUserLandofile(service));
+  if (options === undefined) return yield* load;
+  return yield* load.pipe(
+    Effect.provideService(HostExecutionDefaults, {
+      cwd: host?.cwd ?? (yield* discoveryCwd()),
+      env: options.env,
+      platform: host?.platform ?? process.platform,
+    }),
+  );
+});
 export const loadUserLandofileAt: UserAppResolution["loadUserLandofileAt"] = (...args) =>
   Effect.flatMap(userAppResolution(), (resolution) => resolution.loadUserLandofileAt(...args));
 export const loadUserLandofileFile = (filePath: string) =>

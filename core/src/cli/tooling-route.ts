@@ -1,23 +1,29 @@
-import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
+import type {
+  AppCommandIndexPayload,
+  CommandIndexEntry,
+  DisabledCommandIndexEntry,
+  ReadyCommandIndexEntry,
+  UnavailableCommandIndexEntry,
+} from "@lando/engine/cache/command-index";
 import { canonicalIdFromRelativePath } from "@lando/landofile/bun-sh-discovery";
 import type { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import { type HelpAliasPolicy, type TypeableName, typeableName } from "./help-names";
 import type { ToolingRebuildFailure } from "./tooling-cache-status";
 
-interface ToolingRouteMetadata {
+export type ToolingAvailability =
+  | Pick<ReadyCommandIndexEntry, "_tag" | "input" | "service" | "wrapper" | "runs">
+  | Pick<DisabledCommandIndexEntry, "_tag" | "source">
+  | Pick<UnavailableCommandIndexEntry, "_tag" | "diagnostic">;
+
+type ToolingRouteMetadata = {
   readonly commandId: string;
   readonly name: string;
   readonly summary: string;
   readonly hidden: boolean;
-  readonly disabled?: true;
-  readonly sourcePath?: string;
-  readonly service?: string;
-  readonly input?: NonNullable<CommandIndexEntry["input"]>;
-  readonly wrapper?: true;
-  readonly runs?: NonNullable<CommandIndexEntry["runs"]>;
-  readonly loadError?: NonNullable<CommandIndexEntry["loadError"]>;
+  readonly availability: ToolingAvailability;
   readonly aliasPolicy?: NonNullable<AppCommandIndexPayload["aliasPolicy"]>;
-}
+};
 
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }
@@ -55,25 +61,49 @@ export type ToolingRoute =
 
 export type NormalizedToolingRoute = Extract<ToolingRoute, { readonly _tag: "tooling" | "bun-script" }>;
 
+/** The name a user types for a tooling route: implicit namespace strip plus any alias policy. */
+export const toolingTypeableName = (canonicalId: string, aliasPolicy?: HelpAliasPolicy): TypeableName =>
+  typeableName({
+    canonicalId,
+    builtInAliases: [],
+    implicitNamespaceStrip: true,
+    ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+  });
+
 export const normalizedToolingRoute = (
   entry: CommandIndexEntry,
   aliasPolicy: AppCommandIndexPayload["aliasPolicy"],
-  sourcePath?: string,
-): Extract<ToolingRoute, { readonly _tag: "tooling" }> => ({
-  _tag: "tooling",
-  commandId: entry.id,
-  name: entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id,
-  summary: entry.summary,
-  hidden: entry.hidden,
-  ...(entry.disabled === undefined ? {} : { disabled: entry.disabled }),
-  ...(entry.hidden && sourcePath !== undefined ? { sourcePath } : {}),
-  ...(entry.service === undefined ? {} : { service: entry.service }),
-  ...(entry.input === undefined ? {} : { input: entry.input }),
-  ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
-  ...(entry.runs === undefined ? {} : { runs: entry.runs }),
-  ...(entry.loadError === undefined ? {} : { loadError: entry.loadError }),
-  ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
-});
+): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
+  let availability: ToolingAvailability;
+  switch (entry._tag) {
+    case "Ready":
+      availability = {
+        _tag: "Ready",
+        input: entry.input,
+        ...(entry.service === undefined ? {} : { service: entry.service }),
+        ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
+        ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+      };
+      break;
+    case "Disabled":
+      availability = { _tag: "Disabled", source: entry.source };
+      break;
+    case "Unavailable":
+      availability = { _tag: "Unavailable", diagnostic: entry.diagnostic };
+      break;
+    default:
+      return entry satisfies never;
+  }
+  return {
+    availability,
+    hidden: entry.visibility === "internal",
+    _tag: "tooling" as const,
+    commandId: entry.id,
+    name: entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id,
+    summary: entry.summary,
+    ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+  };
+};
 
 export const bunScriptRoute = (
   entry: CommandIndexEntry,
@@ -84,36 +114,11 @@ export const bunScriptRoute = (
     (script) => canonicalIdFromRelativePath(script.relativePath)?.id === entry.id,
   )?.relativePath;
   return {
-    ...normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile),
+    ...normalizedToolingRoute(entry, cache.aliasPolicy),
     _tag: "bun-script",
     appRoot,
     ...(relativePath === undefined ? {} : { relativePath }),
   };
-};
-
-export const toolingHelpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
-  switch (route._tag) {
-    case "tooling":
-    case "bun-script":
-      if (!route.disabled) {
-        if (route.input?.flags.some((flag) => flag.name === "help" || flag.alias === "h")) return false;
-        if (route.wrapper) return false;
-      }
-      for (const token of argv) {
-        if (token === "--") return false;
-        if (token === "--help" || token === "-h") return true;
-      }
-      return false;
-    case "not-tooling":
-    case "built-in":
-    case "plugin":
-    case "alias-disabled":
-    case "cache-miss":
-    case "unknown-tooling":
-      return false;
-    default:
-      return route satisfies never;
-  }
 };
 
 export const toolingVersionRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
@@ -121,10 +126,18 @@ export const toolingVersionRequested = (route: ToolingRoute, argv: ReadonlyArray
     case "tooling":
     case "bun-script":
       if (argv.length !== 1 || argv[0] !== "--version") return false;
-      return (
-        route.disabled === true ||
-        (!route.wrapper && !route.input?.flags.some((flag) => flag.name === "version"))
-      );
+      switch (route.availability._tag) {
+        case "Ready":
+          return (
+            !route.availability.wrapper &&
+            !route.availability.input.flags.some((flag) => flag.name === "version")
+          );
+        case "Disabled":
+        case "Unavailable":
+          return false;
+        default:
+          return route.availability satisfies never;
+      }
     case "not-tooling":
     case "built-in":
     case "plugin":

@@ -110,6 +110,43 @@ test("Docker list leaves planless TCP bindings as TCP rather than guessing HTTP"
   ]);
 });
 
+test("Docker list keeps the reporting provider id and the raw provider label", async () => {
+  // Given a container whose own provider label claims another provider.
+  const api: DockerApiClient = {
+    info: Effect.succeed({}),
+    request: (input) =>
+      Effect.succeed({
+        status: 200,
+        body: input.path.startsWith("/containers/json")
+          ? JSON.stringify([
+              {
+                Id: "claimed-by-podman",
+                Names: ["/lando-endpoint-test--web"],
+                State: "running",
+                Labels: {
+                  "dev.lando.app": plan.id,
+                  "dev.lando.app-root": plan.root,
+                  "dev.lando.service": name,
+                  "dev.lando.provider": "podman",
+                },
+              },
+            ])
+          : inspectBody,
+      }),
+  };
+  const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+  // When
+  const result = await Effect.runPromise(provider.list({ app: plan.id }));
+  // Then the reporting provider stays docker; the raw label survives for the ownership predicate.
+  expect(result).toMatchObject([
+    {
+      providerId: "docker",
+      containerId: "claimed-by-podman",
+      labels: expect.objectContaining({ "dev.lando.provider": "podman" }),
+    },
+  ]);
+});
+
 test.each([
   { status: 404, body: "{}", observation: { status: "missing" } },
   { status: 200, body: "{}", observation: { status: "unknown" } },

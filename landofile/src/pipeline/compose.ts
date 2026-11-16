@@ -1,6 +1,7 @@
 import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { Logger } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { unionEnvironmentDependencies } from "../environment-dependencies.ts";
 import {
   getLandofileIncludeSources,
   getLocalIncludePaths,
@@ -12,7 +13,10 @@ import { resolveLandofileIncludeLayers } from "../includes.ts";
 import type { PresentLandofileLayer } from "../layers.ts";
 import type { LandofileLoadContext } from "../load-context.ts";
 import {
+  getLandofileEnvironmentDependencies,
   getLandofileReferencedFiles,
+  hasLandofileEnvironmentDependencies,
+  rememberLandofileEnvironmentDependencies,
   rememberLandofileReferencedFiles,
 } from "../load-expression-provenance.ts";
 import type { LandofileEvaluationInputs } from "../ports.ts";
@@ -37,6 +41,7 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
       layers.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
       context.compilationContext?.env,
       context.pendingSites,
+      context.environmentRecorder,
     )),
     recorder: context.recorder,
   };
@@ -107,5 +112,13 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
     document,
     loaded.flatMap(({ provenance, layer }) => getVersionConstraintEntries(provenance, layer.filePath)),
   );
+  const envParts = loaded
+    .map(({ provenance }) => provenance)
+    .filter(hasLandofileEnvironmentDependencies)
+    .map(getLandofileEnvironmentDependencies);
+  if (loadScope.environmentRecorder !== undefined)
+    envParts.push(loadScope.environmentRecorder.dependencies());
+  if (envParts.length > 0)
+    rememberLandofileEnvironmentDependencies(document, unionEnvironmentDependencies(...envParts));
   return { document, scope: loadScope };
 });

@@ -41,7 +41,7 @@ ${isolateLandoRootsStep}
           ${testSelectionCommand("container-helper")}
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${CONTAINER_HELPER_ARTIFACT}
           path: core/container-helper/dist/

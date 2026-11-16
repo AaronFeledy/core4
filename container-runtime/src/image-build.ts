@@ -2,7 +2,7 @@ import { collectProxyUrls } from "@lando/redaction/plan-values";
 import { type ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import { isSecretEnvName } from "@lando/sdk/secrets";
-import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
+import type { ArtifactBuildRequest, ProviderArtifactRef } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { type BuildContextEntry, packBuildContext, tarStream, tarText } from "./build-context.ts";
@@ -95,19 +95,30 @@ const dockerfileForDerivedBuild = Effect.fnUntraced(function* (
   return [...instructions, ""].join("\n");
 });
 
-const deterministicRef = (input: ArtifactBuildSpec): string =>
-  `lando-build-${input.plan.provider}-${input.service}-${input.buildKey.slice(0, 24)}`.replace(
-    /[^a-zA-Z0-9_.-]/gu,
-    "-",
-  );
+export const BUILT_ARTIFACT_PREFIX = "lando-build-";
+
+const requireBuildId = (result: { readonly id?: string }, providerId: string) =>
+  result.id === undefined
+    ? Effect.fail(
+        new ProviderInternalError({
+          providerId,
+          operation: "buildArtifact",
+          message: "Image build did not report aux.ID; the derived build requires its base image ID.",
+          remediation:
+            "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
+        }),
+      )
+    : Effect.succeed(result.id);
 
 const resolvedBaseRef = (artifact: Extract<ServicePlan["artifact"], { readonly kind: "ref" }>): string =>
   artifact.digest === undefined || artifact.ref.includes("@")
     ? artifact.ref
     : `${artifact.ref}@${artifact.digest}`;
 
-const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/${string}` => {
-  const params = new URLSearchParams({ t: tag });
+const buildPath = (input: ArtifactBuildRequest, tag: string | undefined, derived: boolean): `/${string}` => {
+  const params = new URLSearchParams();
+  if (tag !== undefined) params.set("t", tag);
+  if (!derived || tag !== undefined) params.set("labels", JSON.stringify(input.labels));
   const artifact = input.plan.services[input.service]?.artifact;
   if (!derived && artifact?.kind === "build") {
     params.set(
@@ -125,9 +136,12 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
 };
 
 export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(function* (
-  input: ArtifactBuildSpec,
+  input: ArtifactBuildRequest,
   options: ContainerBuildOptions,
-): Effect.fn.Return<ArtifactRef, ArtifactBuildError | ProviderUnavailableError | ProviderInternalError> {
+): Effect.fn.Return<
+  ProviderArtifactRef,
+  ArtifactBuildError | ProviderUnavailableError | ProviderInternalError
+> {
   const request = options.api.request;
   if (request === undefined) {
     return yield* Effect.fail(
@@ -158,7 +172,7 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
   }
   const { steps, caEntries } = yield* prepareDerivedBuild(service, options.providerId);
   const needsInheritedUser = service.user !== undefined || steps.some((step) => step.user !== undefined);
-  const tag = deterministicRef(input);
+  const tag = input.ref;
   let digest: string | undefined;
   // Ordinary build args are public and often short ("1", "22"); treating one as a secret would blank
   // every error that happens to contain it.
@@ -195,25 +209,27 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
               content: tarText(artifact.specInline),
             },
           ]);
-    const baseTag = steps.length === 0 ? tag : `${tag}-base`;
-    digest = yield* requestContainerBuild({
+    const baseTag = steps.length === 0 ? tag : undefined;
+    const base = yield* requestContainerBuild({
       request,
       ...streamOptions,
       options,
       ...outputOptions,
       path: buildPath(input, baseTag, false),
-      tag: baseTag,
+      ...(baseTag === undefined ? {} : { tag: baseTag }),
       stdin,
       secretValues,
       proxyUrls,
     });
+    digest = base.digest;
     if (steps.length > 0) {
+      const baseRef = yield* requireBuildId(base, options.providerId);
       const inheritedUser = needsInheritedUser
-        ? yield* inspectInheritedImageUser({ baseRef: baseTag, providerId: options.providerId, request })
+        ? yield* inspectInheritedImageUser({ baseRef, providerId: options.providerId, request })
         : "root";
       const dockerfile = yield* dockerfileForDerivedBuild({
         providerId: options.providerId,
-        baseRef: baseTag,
+        baseRef,
         steps,
         inheritedUser,
         finalUser: service.user ?? inheritedUser,
@@ -222,7 +238,7 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
         ...caEntries,
       ];
-      digest = yield* requestContainerBuild({
+      digest = (yield* requestContainerBuild({
         request,
         ...streamOptions,
         options,
@@ -232,11 +248,11 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         stdin: tarStream(entries),
         secretValues,
         proxyUrls,
-      });
+      })).digest;
     }
   } else if (artifact?.kind === "ref" && steps.length > 0) {
     const resolvedRef = resolvedBaseRef(artifact);
-    const baseRef = needsInheritedUser ? `${tag}-base` : resolvedRef;
+    let baseRef = resolvedRef;
     if (needsInheritedUser) {
       const baseDockerfile = yield* dockerfileForDerivedBuild({
         providerId: options.providerId,
@@ -245,20 +261,19 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         inheritedUser: "root",
         finalUser: "root",
       });
-      // This FROM-only build only gives the source image a local name to inspect. Its output is the
-      // engine listing every tag that shares the image, so it is not forwarded.
-      yield* requestContainerBuild({
+      // FROM-only output lists every tag sharing the image, so it is not forwarded.
+      const base = yield* requestContainerBuild({
         request,
         ...streamOptions,
         options,
-        path: buildPath(input, baseRef, true),
-        tag: baseRef,
+        path: buildPath(input, undefined, true),
         stdin: tarStream([
           { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(baseDockerfile) },
         ]),
         secretValues,
         proxyUrls,
       });
+      baseRef = yield* requireBuildId(base, options.providerId);
     }
     const inheritedUser = needsInheritedUser
       ? yield* inspectInheritedImageUser({ baseRef, providerId: options.providerId, request })
@@ -274,7 +289,7 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
       { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
       ...caEntries,
     ];
-    digest = yield* requestContainerBuild({
+    digest = (yield* requestContainerBuild({
       request,
       ...streamOptions,
       options,
@@ -284,7 +299,7 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
       stdin: tarStream(entries),
       secretValues,
       proxyUrls,
-    });
+    })).digest;
   } else {
     return yield* Effect.fail(
       new ProviderInternalError({

@@ -12,6 +12,7 @@ import type {
   ServiceExitResult,
   ServiceRuntimeInfo,
   ServiceSelector,
+  VolumeArchiveImportSpec,
   WaitForExitOptions,
 } from "@lando/sdk/services";
 import { Effect, type Scope, Stream } from "effect";
@@ -77,6 +78,8 @@ export type ResolvedProviderOps = Pick<
   | "inspect"
   | "run"
   | "runStream"
+  | "exportVolume"
+  | "importVolume"
   | "snapshotVolume"
   | "removeVolumeSnapshot"
   | "listVolumeSnapshots"
@@ -234,6 +237,23 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           ),
         ),
       ),
+    exportVolume: (ref) =>
+      Stream.unwrap(
+        requireDataPlane("exportVolume").pipe(
+          Effect.flatMap((dataPlane) =>
+            before("exportVolume").pipe(Effect.map(() => dataPlane.exportVolume(ref))),
+          ),
+        ),
+      ),
+    importVolume: <E, R>(spec: VolumeArchiveImportSpec<E, R>) =>
+      requireDataPlane("importVolume").pipe(
+        Effect.flatMap((dataPlane) =>
+          beforeMutation(spec.target.app).pipe(
+            Effect.andThen(before("importVolume")),
+            Effect.flatMap(() => dataPlane.importVolume(spec)),
+          ),
+        ),
+      ),
     snapshotVolume: (spec) =>
       requireDataPlane("snapshotVolume").pipe(
         Effect.flatMap((dataPlane) =>
@@ -255,12 +275,15 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       requireDataPlane("listVolumeSnapshots").pipe(
         Effect.flatMap((dataPlane) => dataPlane.listVolumeSnapshots()),
       ),
-    restoreVolume: (spec) =>
+    restoreVolume: <E = never>(
+      spec: Parameters<RuntimeProviderShape["restoreVolume"]>[0],
+      options?: { readonly beforeCommit?: Effect.Effect<void, E> },
+    ) =>
       requireDataPlane("restoreVolume").pipe(
         Effect.flatMap((dataPlane) =>
           beforeMutation(spec.target.app).pipe(
             Effect.andThen(before("restoreVolume")),
-            Effect.flatMap(() => dataPlane.restoreVolume(spec)),
+            Effect.flatMap(() => dataPlane.restoreVolume(spec, options)),
           ),
         ),
       ),

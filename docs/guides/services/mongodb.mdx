@@ -98,7 +98,7 @@ The official image runs a temporary, loopback-only `mongod` while it creates the
 
 After start, the service's ongoing healthcheck is the TCP dial alone, repeated on the usual interval. It starts no MongoDB shell and leaves no shell-state files behind. The protocol ping runs at startup, restart, and rebuild, not every few seconds for the life of the container.
 
-`ready` means the final server is accepting connections. It does not prove that the credentials in your Landofile match the users stored on the volume; the probe never authenticates. See [Recover when credentials don't match](#recover-when-credentials-dont-match) for that case.
+`ready` means the final server is accepting connections. It does not prove that the credentials in your Landofile match the users stored on the volume; the probe never authenticates. After readiness, `lando start` runs one authenticated query when it started or recreated the container, or when the planned connection changed since the last apply. `lando restart` and `lando rebuild` run it for the services they restart, and `lando doctor --app` runs it for every running database service. Each warns when MongoDB rejects the configured login. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
 
 ## Check database access
 
@@ -232,7 +232,7 @@ That prints `27018`, through a client that found the server on the planned port 
 
 ## Recover when credentials don't match
 
-`creds:` and `MONGO_INITDB_ROOT_*` seed a fresh volume. The image ignores them once `/data/db` holds data, so changing `creds:` on an existing app rewrites what Lando's clients send, not the users MongoDB already stores. Start still reports `ready`, because readiness checks the listener, not your login. The first authenticated call is where you find out:
+`creds:` and `MONGO_INITDB_ROOT_*` seed a fresh volume. The image ignores them once `/data/db` holds data, so changing `creds:` on an existing app rewrites what Lando's clients send, not the users MongoDB already stores. Start still reports `ready`, because readiness checks the listener, not your login. The post-readiness check runs after a start that created or started the container or saw a connection change, and on `lando doctor --app`, `lando restart`, and `lando rebuild`. It warns when the server rejects the configured login; without that warning, the first authenticated call is where you find out:
 
 ```sh
 lando mongosh --eval "db.runCommand('ping')"

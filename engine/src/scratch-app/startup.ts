@@ -3,8 +3,10 @@ import { AppPlacementError, ScratchAppError, ServiceNotReadyError } from "@lando
 import type { AbsolutePath, AppPlan, RouterConfig } from "@lando/sdk/schema";
 import { EnvironmentValueResolver, type FileSystem, type RouterServiceShape } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Exit } from "effect";
+import { applyActivation } from "../lifecycle/activation-apply.ts";
+import type { PreparedCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
-import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
+import { HeldAppLockKeys } from "../operations/app-mutation-lock.ts";
 import {
   type GlobalConsumerAdmissionServices,
   requiresGlobalConsumerAdmission,
@@ -12,19 +14,20 @@ import {
 } from "../operations/global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
-import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import {
   type PreparedDebuggerOverlay,
   prepareDebuggerOverlay,
   projectDebuggerOverlay,
 } from "../subsystems/start-overlay-registry.ts";
 import type { makeScratchReaper } from "./destroy.ts";
+import type { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import type { ScratchRegistry } from "./registry.ts";
 
 export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function* (
   request: {
     readonly id: string;
     readonly plan: AppPlan;
+    readonly certificates: PreparedCertificates;
     readonly landofileRouter?: RouterConfig;
     readonly preparedOverlays?: PreparedDebuggerOverlay;
   },
@@ -39,17 +42,14 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   const preparedOverlays = request.preparedOverlays ?? (yield* prepareDebuggerOverlay(plan));
   const runtimePlan = projectDebuggerOverlay(plan, preparedOverlays);
   const activate = Effect.gen(function* () {
-    yield* Effect.scoped(
-      applyWithResolvedEnvironment(
-        services.provider,
-        runtimePlan,
-        {
-          reconcile: false,
-          onVolumeCreated: yield* volumeCreationRecorder(services.provider, runtimePlan),
-        },
-        verifyGlobalConsumerAdmission,
-      ).pipe(Effect.provideService(EnvironmentValueResolver, services.environmentResolver)),
-    ).pipe(
+    yield* applyActivation({
+      provider: services.provider,
+      plan: runtimePlan,
+      certificates: request.certificates,
+      reconcile: false,
+      beforeApply: verifyGlobalConsumerAdmission,
+    }).pipe(
+      Effect.provideService(EnvironmentValueResolver, services.environmentResolver),
       mapFailures(
         (cause) =>
           new ScratchAppError({
@@ -127,6 +127,7 @@ export const withScratchAcquisition = <A, E, R>(
     readonly fileSystem: typeof FileSystem.Service;
     readonly reap: Effect.Success<typeof makeScratchReaper>;
     readonly retainedIds: ReadonlySet<string>;
+    readonly withLock: Effect.Success<typeof makeScratchLifecycleLock>;
   },
 ) =>
   Effect.uninterruptibleMask((restore) =>
@@ -161,17 +162,27 @@ export const withScratchAcquisition = <A, E, R>(
       );
       if (!request.detached) {
         yield* Effect.addFinalizer(() =>
-          services.registry.get(id).pipe(
-            Effect.catch(() => Effect.succeed(undefined)),
-            Effect.flatMap((entry) =>
-              entry !== undefined
-                ? Effect.succeed(!entry.detached)
-                : services.fileSystem.exists(instanceRoot).pipe(Effect.catch(() => Effect.succeed(true))),
+          services
+            .withLock(
+              { id, instanceRoot },
+              services.registry.get(id).pipe(
+                Effect.catch(() => Effect.succeed(undefined)),
+                Effect.flatMap((entry) =>
+                  entry !== undefined
+                    ? Effect.succeed(!entry.detached)
+                    : services.fileSystem.exists(instanceRoot).pipe(Effect.catch(() => Effect.succeed(true))),
+                ),
+                Effect.flatMap((owned) =>
+                  owned && !services.retainedIds.has(id) ? cleanup("scope-close") : Effect.void,
+                ),
+              ),
+            )
+            .pipe(
+              Effect.provideService(HeldAppLockKeys, new Set()),
+              Effect.catchCause((cause) =>
+                Effect.logWarning(`Unable to reap scratch app ${id} during cleanup: ${Cause.pretty(cause)}`),
+              ),
             ),
-            Effect.flatMap((owned) =>
-              owned && !services.retainedIds.has(id) ? cleanup("scope-close") : Effect.void,
-            ),
-          ),
         );
       }
       return result;

@@ -86,6 +86,11 @@ export const makeTestProviderContainers = () => {
               ? current.lastStartedAt
               : DateTime.toDateUtc(DateTime.makeUnsafe(now)),
           publications: { status: "unknown" },
+          labels: {
+            "dev.lando.app": plan.id,
+            "dev.lando.app-root": plan.identity?.appRoot ?? plan.root,
+            "dev.lando.service": service.name,
+          },
         });
         const probe = effectiveReadiness(service);
         if (probe !== undefined && probe.kind !== "none" && options.executeReadinessAttempt !== undefined) {

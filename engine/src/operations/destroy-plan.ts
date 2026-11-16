@@ -26,8 +26,6 @@ export type TeardownPlan = {
   readonly name: string;
   readonly refs: ReadonlyArray<AppRef>;
   readonly applied: ResolvedAppTarget | undefined;
-  /** The desired plan's app id, for build output when no applied state names one. */
-  readonly buildAppId?: string;
   /**
    * The Landofile hooks for an applied teardown, resolved from the Landofile at the applied root.
    * Undefined for retained recovery: that target is the desired plan itself, so its Landofile
@@ -194,7 +192,6 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
       applied?.plan.name ?? retained?.plan.name ?? recorded[0]?.id ?? desired?.plan.name ?? basename(root),
     refs,
     applied,
-    ...(desired === undefined ? {} : { buildAppId: desired.app.id }),
     authored,
     retained,
     target,

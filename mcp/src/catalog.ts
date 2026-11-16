@@ -64,9 +64,27 @@ export const isMcpIdAuthorizable = (policy: McpAllowPolicy, id: string): boolean
  * allowance covers only built-ins and reviewed bundled contributions, so an external plugin that
  * replaces a default-allowed bundled id does not inherit it.
  */
-export const isMcpEntryAuthorized = (policy: McpAllowPolicy, entry: McpCommandEntry): boolean =>
-  isMcpIdAuthorizable(policy, entry.spec.id) &&
-  (policy.allow.has(entry.spec.id) || filterMcpDefaultAllowlist([entry.spec.id], [entry]).length === 1);
+export const isMcpToolingAuthorized = (policy: McpAllowPolicy, id: string): boolean =>
+  !policy.deny.has(id) && !isMcpNeverAllowed(id);
+
+export type McpCommandOwner = Pick<McpCommandEntry, "plugin"> & {
+  readonly spec: Pick<McpCommandSpec, "id" | "mcpAllowed" | "flags"> & { readonly hidden?: boolean };
+} & ({ readonly kind: "command" } | { readonly kind: "tooling" });
+
+export const isMcpEntryAuthorized = (policy: McpAllowPolicy, entry: McpCommandOwner): boolean => {
+  if (entry.spec.hidden === true) return false;
+  switch (entry.kind) {
+    case "tooling":
+      return isMcpToolingAuthorized(policy, entry.spec.id);
+    case "command":
+      return (
+        isMcpIdAuthorizable(policy, entry.spec.id) &&
+        (policy.allow.has(entry.spec.id) || filterMcpDefaultAllowlist([entry.spec.id], [entry]).length === 1)
+      );
+    default:
+      return entry satisfies never;
+  }
+};
 
 export const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
   toolId: spec.id,
@@ -77,11 +95,28 @@ export const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
   inputSchema: deriveToolInputSchema(spec),
 });
 
+export const selectMcpOwners = <
+  A extends {
+    readonly kind: "command" | "tooling";
+    readonly spec: { readonly id: string };
+  },
+>(
+  entries: readonly (A | undefined)[],
+): readonly A[] => {
+  const owners = new Map<string, A>();
+  for (const entry of entries) {
+    if (entry === undefined) continue;
+    if (entry.kind === "tooling" || owners.get(entry.spec.id)?.kind !== "tooling")
+      owners.set(entry.spec.id, entry);
+  }
+  return [...owners.values()];
+};
+
 export interface BuildCatalogInput {
   /** Command entries projected as tools (filtered by the effective allowlist). */
-  readonly commandEntries: ReadonlyArray<McpCommandEntry>;
+  readonly commandEntries: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "command" }>>;
   /** Tooling-task entries projected as tools only when `options.tooling` is true. */
-  readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
+  readonly toolingEntries?: ReadonlyArray<Extract<McpCommandEntry, { readonly kind: "tooling" }>> | undefined;
   readonly effective: EffectiveAllowlist;
   readonly options?: McpCatalogOptions | undefined;
 }
@@ -93,13 +128,12 @@ export interface BuildCatalogInput {
  */
 export const buildCatalog = (input: BuildCatalogInput): McpCatalog => {
   const tools: McpToolDescriptor[] = [];
-  for (const entry of input.commandEntries) {
+  const entries = selectMcpOwners([
+    ...input.commandEntries,
+    ...(input.options?.tooling === true ? (input.toolingEntries ?? []) : []),
+  ]);
+  for (const entry of entries) {
     if (input.effective.ids.has(entry.spec.id)) tools.push(toDescriptor(entry.spec));
-  }
-  if (input.options?.tooling === true) {
-    for (const entry of input.toolingEntries ?? []) {
-      if (input.effective.ids.has(entry.spec.id)) tools.push(toDescriptor(entry.spec));
-    }
   }
   tools.sort((left, right) => left.toolId.localeCompare(right.toolId));
   return { tools };

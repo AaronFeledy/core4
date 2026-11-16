@@ -1,0 +1,567 @@
+{
+  "provenance": {
+    "note": "Optional ServiceConfig.schedule addition. Bare field is independently modeled; authoring and fragment fields are the normalized projections reviewed with that addition."
+  },
+  "deltas": [
+    {
+      "mode": "bare",
+      "field": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "every": {
+              "type": "string"
+            },
+            "name": {
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+              "type": "string"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "user": {
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-9_][A-Za-z0-9_.-]*)?$",
+              "type": "string"
+            }
+          },
+          "required": ["every", "name", "run"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "witness": {
+        "items": {
+          "pattern": "^(?!/)(?!\\*$)(?!.*//)(?!.*\\.\\.)(?!.*\\*\\*)(?!.*/$)(?!(?:^|.*/)\\.(?:/|$))[A-Za-z0-9._/*-]+$",
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    {
+      "mode": "authoring",
+      "field": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "every": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "pattern": "^(?:\\{\\{\\{\\{|\\$\\$\\{|\\{\\{#(?:(?!#\\}\\})[\\s\\S])*#\\}\\}|(?!\\{\\{|\\$\\$\\{|\\$\\{|\\$[A-Za-z_])[\\s\\S])*(?:\\{\\{(?!#)(?:(?!\\{\\{|\\}\\})[\\s\\S])+\\}\\}|\\$(?:[A-Za-z_][A-Za-z0-9_]*|\\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\\?|:\\+)[^}]*)?)\\}))",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "run": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "user": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["every", "name", "run"],
+                  "type": "object"
+                },
+                {
+                  "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+            "type": "string"
+          }
+        ]
+      },
+      "witness": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "mode": "fragment",
+      "field": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileOverride"],
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "every": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileOverride"],
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["_tag", "value"],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileReset"],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["_tag"],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "name": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileOverride"],
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "anyOf": [
+                                        {
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        {
+                                          "pattern": "^(?:\\{\\{\\{\\{|\\$\\$\\{|\\{\\{#(?:(?!#\\}\\})[\\s\\S])*#\\}\\}|(?!\\{\\{|\\$\\$\\{|\\$\\{|\\$[A-Za-z_])[\\s\\S])*(?:\\{\\{(?!#)(?:(?!\\{\\{|\\}\\})[\\s\\S])+\\}\\}|\\$(?:[A-Za-z_][A-Za-z0-9_]*|\\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\\?|:\\+)[^}]*)?)\\}))",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": ["_tag", "value"],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileReset"],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["_tag"],
+                                  "type": "object"
+                                },
+                                {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                {
+                                  "pattern": "^(?:\\{\\{\\{\\{|\\$\\$\\{|\\{\\{#(?:(?!#\\}\\})[\\s\\S])*#\\}\\}|(?!\\{\\{|\\$\\$\\{|\\$\\{|\\$[A-Za-z_])[\\s\\S])*(?:\\{\\{(?!#)(?:(?!\\{\\{|\\}\\})[\\s\\S])+\\}\\}|\\$(?:[A-Za-z_][A-Za-z0-9_]*|\\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\\?|:\\+)[^}]*)?)\\}))",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "run": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileOverride"],
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "anyOf": [
+                                        {
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "type": "array"
+                                        },
+                                        {
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": ["_tag", "value"],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileReset"],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["_tag"],
+                                  "type": "object"
+                                },
+                                {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "user": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileOverride"],
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["_tag"],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_tag": {
+                                      "enum": ["LandofileReset"],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["_tag"],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileReset"],
+                "type": "string"
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "every": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileOverride"],
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["_tag", "value"],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileReset"],
+                              "type": "string"
+                            }
+                          },
+                          "required": ["_tag"],
+                          "type": "object"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileOverride"],
+                              "type": "string"
+                            },
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                {
+                                  "pattern": "^(?:\\{\\{\\{\\{|\\$\\$\\{|\\{\\{#(?:(?!#\\}\\})[\\s\\S])*#\\}\\}|(?!\\{\\{|\\$\\$\\{|\\$\\{|\\$[A-Za-z_])[\\s\\S])*(?:\\{\\{(?!#)(?:(?!\\{\\{|\\}\\})[\\s\\S])+\\}\\}|\\$(?:[A-Za-z_][A-Za-z0-9_]*|\\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\\?|:\\+)[^}]*)?)\\}))",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["_tag", "value"],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileReset"],
+                              "type": "string"
+                            }
+                          },
+                          "required": ["_tag"],
+                          "type": "object"
+                        },
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "pattern": "^(?:\\{\\{\\{\\{|\\$\\$\\{|\\{\\{#(?:(?!#\\}\\})[\\s\\S])*#\\}\\}|(?!\\{\\{|\\$\\$\\{|\\$\\{|\\$[A-Za-z_])[\\s\\S])*(?:\\{\\{(?!#)(?:(?!\\{\\{|\\}\\})[\\s\\S])+\\}\\}|\\$(?:[A-Za-z_][A-Za-z0-9_]*|\\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\\?|:\\+)[^}]*)?)\\}))",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "run": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileOverride"],
+                              "type": "string"
+                            },
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["_tag", "value"],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileReset"],
+                              "type": "string"
+                            }
+                          },
+                          "required": ["_tag"],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "user": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileOverride"],
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["_tag"],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "_tag": {
+                              "enum": ["LandofileReset"],
+                              "type": "string"
+                            }
+                          },
+                          "required": ["_tag"],
+                          "type": "object"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+            "type": "string"
+          }
+        ]
+      },
+      "witness": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileOverride"],
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": ["LandofileReset"],
+                "type": "string"
+              }
+            },
+            "required": ["_tag"],
+            "type": "object"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])",
+            "type": "string"
+          }
+        ]
+      }
+    }
+  ]
+}

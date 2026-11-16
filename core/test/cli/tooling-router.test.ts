@@ -15,16 +15,34 @@ import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize"
 import type { LandofileShape } from "@lando/sdk/schema";
 import { Context, Effect, Result, Schema } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
+import { ownerPolicy } from "../../src/cli/invocation-owner.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
   type ToolingRoute,
   resolveAppCommandHelpAliases,
   resolveToolingRoute,
-  toolingHelpRequested,
   toolingName,
   toolingRouteError,
   toolingVersionRequested,
 } from "../../src/cli/tooling-router.ts";
+
+const helpRequested = (route: ToolingRoute, argv: ReadonlyArray<string>): boolean => {
+  switch (route._tag) {
+    case "tooling":
+    case "bun-script":
+      return splitCommandTokens(argv, ownerPolicy({ kind: "tooling", route })).help;
+    case "built-in":
+    case "plugin":
+    case "not-tooling":
+    case "alias-disabled":
+    case "cache-miss":
+    case "unknown-tooling":
+      return false;
+    default:
+      return route satisfies never;
+  }
+};
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));
@@ -58,8 +76,7 @@ test.each([
       name: "wipe",
       summary: "Record input",
       hidden: false,
-      input,
-      ...(wrapper ? { wrapper: true } : {}),
+      availability: { _tag: "Ready", input, ...(wrapper ? { wrapper: true } : {}) },
     };
     expect(toolingVersionRequested(route, argv)).toBe(expected);
   },
@@ -167,7 +184,7 @@ const assertDynamicToolingRoute = (
     commandId: `app:${name}`,
     name,
     hidden: false,
-    ...extra,
+    availability: { _tag: "Ready", ...extra },
   });
 };
 
@@ -181,15 +198,17 @@ const declaredInput = Result.getOrThrowWith(
 
 const declaredInputRoute = (
   overrides: Partial<Extract<ToolingRoute, { readonly _tag: "tooling" }>> = {},
-): Extract<ToolingRoute, { readonly _tag: "tooling" }> => ({
-  _tag: "tooling",
-  commandId: "app:greet",
-  name: "greet",
-  summary: "Greet a target",
-  hidden: false,
-  input: declaredInput,
-  ...overrides,
-});
+): Extract<ToolingRoute, { readonly _tag: "tooling" }> => {
+  return {
+    _tag: "tooling" as const,
+    commandId: "app:greet",
+    name: "greet",
+    summary: "Greet a target",
+    hidden: false,
+    availability: { _tag: "Ready" as const, input: declaredInput },
+    ...overrides,
+  };
+};
 
 test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {
   // Given
@@ -206,7 +225,14 @@ test("Given a fresh app cache, when help options are command heads, then they ar
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [
-      { id: "app:quality", summary: "Run quality checks", hidden: false },
+      {
+        id: "app:quality",
+        summary: "Run quality checks",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
     ]);
 
     // When
@@ -228,8 +254,10 @@ test("Given a fresh cached Bun script, when resolving it, then it selects the sc
       {
         id: "app:quality",
         summary: "Run quality checks",
-        hidden: false,
-        source: "bun-script",
+        _tag: "Ready",
+        sourceKind: "bun-script",
+        visibility: "public",
+        input: emptyToolingInput(),
       },
     ]);
     const argv = ["quality", "--fix"] as const;
@@ -245,6 +273,7 @@ test("Given a fresh cached Bun script, when resolving it, then it selects the sc
       hidden: false,
       summary: "Run quality checks",
       appRoot: root,
+      availability: { _tag: "Ready", input: emptyToolingInput() },
     });
     expect(argv.slice(1)).toEqual(["--fix"]);
   });
@@ -254,7 +283,14 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [
-      { id: "app:quality", summary: "Run quality checks", hidden: false },
+      {
+        id: "app:quality",
+        summary: "Run quality checks",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
     ]);
     const argv = ["quality", "--fix"] as const;
 
@@ -286,7 +322,16 @@ test("Given a schema-version-2 cache blob, when resolving a listed task, then th
 test("Given a fresh cache that does not list a token, when resolving it, then it is unknown-tooling", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
-    await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
+    await writeFreshCache(root, cacheRoot, [
+      {
+        id: "app:cached",
+        summary: "Cached task",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
+    ]);
 
     // When
     const route = await Effect.runPromise(resolveToolingRoute("disabled-now", { cwd: root, cacheRoot }));
@@ -300,7 +345,14 @@ test("Given a fresh cached app task, when resolving version, then the flag remai
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [
-      { id: "app:quality", summary: "Run quality checks", hidden: false },
+      {
+        id: "app:quality",
+        summary: "Run quality checks",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
     ]);
     const argv = ["quality", "--version"] as const;
 
@@ -320,7 +372,14 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [
-      { id: "app:quality", summary: "Run quality checks", hidden: false },
+      {
+        id: "app:quality",
+        summary: "Run quality checks",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
     ]);
     const argv = ["app:quality", "--fix"] as const;
 
@@ -336,7 +395,16 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
 test("Given an uncached Landofile task, when resolving it, then the router rebuilds and routes it", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
-    await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
+    await writeFreshCache(root, cacheRoot, [
+      {
+        id: "app:cached",
+        summary: "Cached task",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
+    ]);
     await writeFile(
       join(root, ".lando.yml"),
       ["name: router-test", "tooling:", "  uncached:", "    cmd: echo must-not-run", ""].join("\n"),
@@ -353,7 +421,16 @@ test("Given an uncached Landofile task, when resolving it, then the router rebui
 test("Given a fresh app cache, when resolving an unknown task, then it returns tagged remediation", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
-    await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
+    await writeFreshCache(root, cacheRoot, [
+      {
+        id: "app:cached",
+        summary: "Cached task",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
+    ]);
 
     // When
     const route = await Effect.runPromise(resolveToolingRoute("unknown", { cwd: root, cacheRoot }));
@@ -386,7 +463,14 @@ test("Given another namespace or a directory outside an app, when resolving, the
   await withApp(async (root, cacheRoot) => {
     // Given
     await writeFreshCache(root, cacheRoot, [
-      { id: "app:quality", summary: "Run quality checks", hidden: false },
+      {
+        id: "app:quality",
+        summary: "Run quality checks",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
     ]);
     const outside = await mkdtemp(join(tmpdir(), "lando-tooling-router-outside-"));
     try {
@@ -415,7 +499,14 @@ test("Given a stale version-policy cache, when resolving a task, then the rebuil
       ["# ---", "# desc: Must remain cache-gated", "# ---", `echo ran > ${marker}`, ""].join("\n"),
     );
     await writeFreshCache(root, cacheRoot, [
-      { id: "app:policy-check", summary: "Policy check", hidden: false },
+      {
+        id: "app:policy-check",
+        summary: "Policy check",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
     ]);
     await writeFile(join(root, ".lando.yml"), "name: router-test\nlando: '>=99'\n");
 
@@ -474,7 +565,16 @@ test("Given a remote include without a fragment path, rebuilding a missing index
 test("Given rebuild is disabled, a stale cache reports remediation without a manual refresh command", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given
-    await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
+    await writeFreshCache(root, cacheRoot, [
+      {
+        id: "app:cached",
+        summary: "Cached task",
+        _tag: "Ready",
+        sourceKind: "tooling",
+        visibility: "public",
+        input: emptyToolingInput(),
+      },
+    ]);
     await writeFile(
       join(root, ".lando.yml"),
       ["name: router-test", "tooling:", "  uncached:", "    cmd: echo must-not-run", ""].join("\n"),
@@ -508,7 +608,16 @@ test("Given a cached task that declares input, when resolving any of its spellin
     await writeFreshCache(
       root,
       cacheRoot,
-      [{ id: "app:greet", summary: "Greet a target", hidden: false, input: declaredInput }],
+      [
+        {
+          id: "app:greet",
+          summary: "Greet a target",
+          _tag: "Ready",
+          sourceKind: "tooling",
+          visibility: "public",
+          input: declaredInput,
+        },
+      ],
       {
         yaml: ["name: router-test", "commandAliases:", "  custom:", "    hi: app:greet", ""].join("\n"),
         landofile: { name: "router-test", commandAliases: { custom: { hi: "app:greet" } } },
@@ -529,11 +638,18 @@ test("Given a cached task that declares input, when resolving any of its spellin
   });
 });
 
-test("Given a cached task the index hides, when resolving it, then the route reports it hidden", async () => {
+test("Given a disabled cached task, when resolving it, then the route retains refusal context without inputs", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given — a disabled task stays indexed as hidden so the authoritative check can refuse it
     await writeFreshCache(root, cacheRoot, [
-      { id: "app:legacy", summary: "Retired task", hidden: true, input: declaredInput },
+      {
+        id: "app:legacy",
+        summary: "Retired task",
+        _tag: "Disabled",
+        sourceKind: "tooling",
+        visibility: "public",
+        source: { path: ".lando.yml", task: "legacy" },
+      },
     ]);
 
     // When
@@ -545,9 +661,8 @@ test("Given a cached task the index hides, when resolving it, then the route rep
       commandId: "app:legacy",
       name: "legacy",
       summary: "Retired task",
-      hidden: true,
-      sourcePath: join(root, ".lando.yml"),
-      input: declaredInput,
+      hidden: false,
+      availability: { _tag: "Disabled", source: { path: ".lando.yml", task: "legacy" } },
     });
   });
 });
@@ -558,7 +673,7 @@ test("Given a declared-input task, when its argv asks for help, then help is req
 
   // When
   const requests = [["--help"], ["-h"], ["dev", "--help"], ["--name=team", "-h"]].map((argv) =>
-    toolingHelpRequested(route, argv),
+    helpRequested(route, argv),
   );
 
   // Then
@@ -570,9 +685,7 @@ test("Given a declared-input task, when argv has no help option, then help is no
   const route = declaredInputRoute();
 
   // When
-  const requests = [[], ["dev"], ["--name=team"], ["--helpless"]].map((argv) =>
-    toolingHelpRequested(route, argv),
-  );
+  const requests = [[], ["dev"], ["--name=team"], ["--helpless"]].map((argv) => helpRequested(route, argv));
 
   // Then
   expect(requests).toEqual([false, false, false, false]);
@@ -586,7 +699,7 @@ test("Given a declared-input task, when help follows the argument terminator, th
   const requests = [
     ["--", "--help"],
     ["dev", "--", "-h"],
-  ].map((argv) => toolingHelpRequested(route, argv));
+  ].map((argv) => helpRequested(route, argv));
 
   // Then
   expect(requests).toEqual([false, false]);
@@ -596,10 +709,16 @@ test.each([true, false] as const)(
   "Given a raw task with wrapper=%s, help follows its ownership",
   (wrapper) => {
     // Given
-    const { input: _input, ...route } = declaredInputRoute();
+    const route = declaredInputRoute();
 
     // When
-    const requested = toolingHelpRequested({ ...route, ...(wrapper ? { wrapper } : {}) }, ["--help"]);
+    const requested = helpRequested(
+      {
+        ...route,
+        availability: { _tag: "Ready", input: emptyToolingInput(), ...(wrapper ? { wrapper } : {}) },
+      },
+      ["--help"],
+    );
 
     // Then
     expect(requested).toBe(!wrapper);
@@ -611,7 +730,7 @@ test("Given a hidden declared-input task, when argv asks for help, then it route
   const route = declaredInputRoute({ hidden: true });
 
   // When
-  const requested = toolingHelpRequested(route, ["--help"]);
+  const requested = helpRequested(route, ["--help"]);
 
   // Then
   expect(requested).toBe(true);
@@ -620,20 +739,26 @@ test("Given a hidden declared-input task, when argv asks for help, then it route
 test("Given a task that declares its own help flag, when argv asks for help, then the declared flag wins", () => {
   // Given
   const byName = declaredInputRoute({
-    input: Result.getOrThrowWith(
-      normalizeToolingInput("greet", { flags: { help: { boolean: true } } }),
-      (error) => error,
-    ),
+    availability: {
+      _tag: "Ready",
+      input: Result.getOrThrowWith(
+        normalizeToolingInput("greet", { flags: { help: { boolean: true } } }),
+        (error) => error,
+      ),
+    },
   });
   const byAlias = declaredInputRoute({
-    input: Result.getOrThrowWith(
-      normalizeToolingInput("greet", { flags: { hint: { alias: "h", boolean: true } } }),
-      (error) => error,
-    ),
+    availability: {
+      _tag: "Ready",
+      input: Result.getOrThrowWith(
+        normalizeToolingInput("greet", { flags: { hint: { alias: "h", boolean: true } } }),
+        (error) => error,
+      ),
+    },
   });
 
   // When
-  const requests = [toolingHelpRequested(byName, ["--help"]), toolingHelpRequested(byAlias, ["-h"])];
+  const requests = [helpRequested(byName, ["--help"]), helpRequested(byAlias, ["-h"])];
 
   // Then
   expect(requests).toEqual([false, false]);
@@ -650,12 +775,13 @@ test("Given mixed route kinds, help is requested only for the raw script", () =>
       summary: "",
       hidden: false,
       appRoot: "/tmp",
+      availability: { _tag: "Ready", input: emptyToolingInput() },
     },
     { _tag: "unknown-tooling", commandId: "app:nope", name: "nope" },
   ];
 
   // When
-  const requests = routes.map((route) => toolingHelpRequested(route, ["--help"]));
+  const requests = routes.map((route) => helpRequested(route, ["--help"]));
 
   // Then
   expect(requests).toEqual([false, true, false]);
@@ -725,3 +851,5 @@ test("plugin alias routing reuses the invocation catalog", async () => {
     expect(state.acquired).toBe(1);
   });
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

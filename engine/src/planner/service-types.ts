@@ -235,6 +235,12 @@ export type PlannedServiceDraft = {
   readonly logSources: ReadonlyArray<LogSource>;
   readonly routes: ReadonlyArray<NormalizedRoute> | undefined;
   readonly extensions: ServicePlan["extensions"];
+  /**
+   * Service whose name keys this entry's service-scoped stores. Cloned
+   * companions share their parent's stores, so store names must follow the
+   * owner while identity, issue paths, and diagnostics keep the clone name.
+   */
+  readonly storeOwner?: string;
 };
 
 export const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArray<string> =>

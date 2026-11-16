@@ -48,7 +48,7 @@ describe("bounded final output capture", () => {
           Effect.provide(
             serverLayer(
               {
-                commandEntries: [{ spec }],
+                commandEntries: [{ kind: "command" as const, spec }],
                 defaultAllowlist: [spec.id],
                 apps: testAppGenerations(Layer.succeed(RedactionService, redaction)),
               },
@@ -121,7 +121,7 @@ describe("bounded final output capture", () => {
           Effect.provide(
             serverLayer(
               {
-                commandEntries: [{ spec }],
+                commandEntries: [{ kind: "command" as const, spec }],
                 defaultAllowlist: [spec.id],
                 apps: testAppGenerations(Layer.succeed(RedactionService, redaction)),
               },

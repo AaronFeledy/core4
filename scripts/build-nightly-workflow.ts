@@ -113,7 +113,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload provider-lando e2e diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: provider-lando-e2e-diagnostics-linux-x64
           path: provider-lando-e2e-diagnostics
@@ -245,7 +245,7 @@ ${distributionSanitizeLines}
         run: bun run scripts/dist-bundle.ts --verify dist/bundle
 
       - name: Upload distribution rehearsal bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-dist-rehearsal-v4.0.0-nightly.\${{ github.run_number }}
           path: dist/bundle
@@ -310,7 +310,7 @@ ${containerHelperDownloadStep}
 
       - name: Upload refreshed timings
         if: success()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bun-test-timings
           path: ${TEST_TIMINGS_FILE}
@@ -495,7 +495,7 @@ ${landoManagedPodmanRuntimeDirCommands}
 
       - name: Upload ARM MySQL client diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mysql-arm-client-diagnostics-linux-arm64
           path: mysql-arm-client-diagnostics

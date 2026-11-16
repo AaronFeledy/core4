@@ -10,6 +10,8 @@ export const toolingInvocationIssues = (task: ToolingTaskShape, sites: readonly 
       readonly source: typeof site.source;
       readonly message: string;
       readonly suggestion: string;
+      readonly reason: string;
+      readonly rule: "landofile.tooling";
     }[] = [];
     for (const group of ["flags", "args"] as const) {
       const declared = Object.keys(task[group] ?? {});
@@ -17,6 +19,8 @@ export const toolingInvocationIssues = (task: ToolingTaskShape, sites: readonly 
         if (declared.includes(name)) continue;
         const suggestion = suggestionForUnknownKey(name, declared);
         issues.push({
+          reason: "unknown-input-reference",
+          rule: "landofile.tooling",
           path: site.path,
           source: site.source,
           message: `Unknown tooling input ${group}.${name}.`,
@@ -28,6 +32,8 @@ export const toolingInvocationIssues = (task: ToolingTaskShape, sites: readonly 
     if (raw.analyzable && raw.members.size === 0) return issues;
     if (Object.keys(task.flags ?? {}).length > 0 || Object.keys(task.args ?? {}).length > 0)
       issues.push({
+        reason: "raw-with-declared-inputs",
+        rule: "landofile.tooling",
         path: site.path,
         source: site.source,
         message: "raw is unavailable on tasks with declared flags or args.",
@@ -35,6 +41,8 @@ export const toolingInvocationIssues = (task: ToolingTaskShape, sites: readonly 
       });
     else if (rawPlacementRefused(site))
       issues.push({
+        reason: "raw-placement",
+        rule: "landofile.tooling",
         path: site.path,
         source: site.source,
         message: "raw must occupy a whole unquoted argument word.",

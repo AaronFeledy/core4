@@ -5,7 +5,7 @@ export const renderLogsAppResult = (result: LogsAppResult, buildOutput = false):
   if (result.lines === undefined) return "";
   if (result.lines.length === 0) {
     if (buildOutput) {
-      return `${result.app} has no recorded build output. Run "lando rebuild" to build the app and record it.`;
+      return `${result.app} has no recorded build output.`;
     }
     return `${result.app} (no log lines)`;
   }

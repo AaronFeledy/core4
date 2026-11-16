@@ -14,6 +14,39 @@ const target = { app: plan.id, service: ServiceName.make("web") };
 const apply = (provider: ReturnType<typeof makeTestRuntimeProvider>) =>
   provider.apply(plan, { reconcile: true });
 
+test("built artifact listing requires every label and removal updates the listing", async () => {
+  const provider = makeTestRuntimeProvider();
+  const result = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const request = {
+          app: plan.id,
+          service: target.service,
+          plan,
+          buildKey: "built",
+          ref: "built",
+          labels: { store: "a", owner: "web" },
+        };
+        const artifact = yield* provider.buildArtifact(request);
+        yield* provider.buildArtifact({ ...request, ref: "other", labels: { store: "a", owner: "other" } });
+        const listed = yield* provider.listArtifacts({ labels: { store: "a", owner: "web" } });
+        const removed = yield* provider.removeArtifact({
+          providerId: artifact.providerId,
+          ref: artifact.ref,
+          pruneParents: false,
+        });
+        const remaining = yield* provider.listArtifacts({ labels: { store: "a" } });
+        return { listed, removed, remaining };
+      }),
+    ),
+  );
+  expect(result).toEqual({
+    listed: [{ id: "built", refs: ["built"] }],
+    removed: { kind: "removed" },
+    remaining: [{ id: "other", refs: ["other"] }],
+  });
+});
+
 test("the in-memory provider conforms to lifecycle and data-plane contracts", async () => {
   await Effect.runPromise(runProviderContract(makeTestRuntimeProvider()));
   await Effect.runPromise(

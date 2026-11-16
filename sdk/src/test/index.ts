@@ -4,7 +4,7 @@
  * Every `RuntimeProvider` plugin MUST pass the contract suite before it can be
  * treated as conforming to the SDK surface.
  */
-export { ContractFailure } from "./_shared.ts";
+export { ContractFailure, tarPayloadMember } from "./_shared.ts";
 export * from "./ca-pem-fixture.ts";
 export * from "./certificate-authority-contract.ts";
 export * from "./certificate-fixtures.ts";

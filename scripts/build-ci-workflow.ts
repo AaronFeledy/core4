@@ -279,7 +279,7 @@ ${renderSmokeCommands(platform)}
 
       - name: Upload ${platform.id} binary
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lando-${platform.id}
           path: |
@@ -337,7 +337,7 @@ ${timingNoticeStep("docs-build", 15)}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 `;
 
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
@@ -414,9 +414,13 @@ export const landoRootlessPrereqSteps = `      - name: Provision rootless runtim
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
 
-const sqliteHelper = PROVIDER_IMAGES.images.sqliteHelper;
-if (sqliteHelper === undefined) throw new Error("PROVIDER_IMAGES is missing the sqliteHelper pin");
-const sqliteHelperImageRef = `${sqliteHelper.image}@${sqliteHelper.digest}`;
+const pinnedHelperImageRef = (name: "sqliteHelper" | "dataHelper"): string => {
+  const helper = PROVIDER_IMAGES.images[name];
+  if (helper === undefined) throw new Error(`PROVIDER_IMAGES is missing the ${name} pin`);
+  return `${helper.image}@${helper.digest}`;
+};
+const sqliteHelperImageRef = pinnedHelperImageRef("sqliteHelper");
+const dataHelperImageRef = pinnedHelperImageRef("dataHelper");
 
 const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -527,6 +531,8 @@ ${landoManagedPodmanRuntimeDirCommands}
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
+          docker_pull_image docker.io/library/mariadb:11.4
+          docker_pull_image ${dataHelperImageRef}
           docker_pull_image ${sqliteHelperImageRef}`;
 
 // Each selection runs even after an earlier one fails, so one run reports every failing selection;
@@ -548,8 +554,10 @@ const engineLaneRuns = laneRuns([
   ["providers-ephemeral-data", "ephemeral-data-helpers"],
   ["providers-host-reachability", "host-reachability"],
   ["providers-listener-observation", "listener-observation"],
+  ["proxy-traefik-certificate-live", "proxy-traefik-certificate-live"],
   ["providers-sqlite-integrity", "sqlite-integrity"],
   ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
+  ["providers-schedule", "schedule"],
 ]);
 
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
@@ -655,7 +663,7 @@ ${timingStartStep}
 ${restoreOrAssembleRuntimeBundleSteps(hostKey)}
 
       - name: Upload current-commit ${label} runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-${hostKey}-current
           path: dist/cache/runtime-bundle/lando-runtime-${hostKey}.tar.gz
@@ -680,7 +688,7 @@ ${setupBunSteps}
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
       - name: Upload current-commit Windows runtime bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
@@ -771,7 +779,7 @@ ${providerIntegrationSteps(platform)}
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${diagnosticsName}
           path: provider-diagnostics
@@ -829,7 +837,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload guide scenario transcripts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-scenario-transcripts-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
           path: dist/transcripts/guides/**/*.json
@@ -838,7 +846,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload guide e2e provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: guide-e2e-provider-diagnostics-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
           path: guide-e2e-provider-diagnostics

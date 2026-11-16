@@ -1,17 +1,7 @@
 import { ConfigError } from "@lando/sdk/errors";
 /**
- * Doctor self-resilience substrate.
- *
- * `lando doctor` is the tool a user reaches for when the host is already
- * broken, so it must survive the breakage it reports on. Every fallible
- * section of the report routes through {@link isolateDoctorSection}, which
- * bounds the section with a deadline and converts a typed failure, an untyped
- * defect, or a timeout into a {@link DoctorSelfCheck} carrying remediation
- * instead of failing the whole report.
- *
- * Invariant: `lando doctor` always emits a structured report. A section that
- * cannot answer degrades to its fallback plus one self check naming the
- * section, never a propagated error or a stack trace.
+ * Doctor must survive the host breakage it diagnoses, so a failed section
+ * degrades to a fallback and a self finding instead of failing the report.
  *
  * Cancellation by the user is deliberately *not* absorbed: sections run in a
  * child fiber, so interrupting the parent still cancels the whole run, while a
@@ -21,12 +11,13 @@ import { Cause, Duration, Effect, Exit, Fiber, Option, Result } from "effect";
 
 import {
   DOCTOR_SELF_CHECK_NAME,
-  type DoctorSelfCheck,
+  type DoctorSectionId,
   type DoctorSelfFailureReason,
-  type DoctorSelfSolution,
-} from "./doctor-self-contract";
+  type DoctorSelfFinding,
+  type DoctorSolution,
+} from "./doctor-contract";
 
-export * from "./doctor-self-contract";
+export type { DoctorSelfFailureReason, DoctorSelfFinding } from "./doctor-contract";
 
 const DEFAULT_SECTION_BUDGET_MS = 10_000;
 const MIN_SECTION_BUDGET_MS = 1_000;
@@ -35,9 +26,8 @@ const MAX_SECTION_BUDGET_MS = 120_000;
 export const DOCTOR_SECTION_BUDGET_ENV = "LANDO_DOCTOR_SECTION_BUDGET_MS";
 
 /**
- * Per-section deadline in milliseconds. An unparsable or out-of-range override
- * falls back to the default rather than failing: budget resolution must never
- * be the reason doctor cannot run.
+ * Invalid overrides fall back and numeric overrides are clamped: budget
+ * resolution must never be the reason doctor cannot run.
  */
 export const doctorSectionBudgetMs = (
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -53,7 +43,7 @@ export const doctorSectionBudgetMs = (
   return parsed;
 };
 
-const REPORT_ISSUE_SOLUTION: DoctorSelfSolution = {
+const REPORT_ISSUE_SOLUTION: DoctorSolution = {
   kind: "manual",
   description:
     "A `lando doctor` section failed to run. Re-run with `--format=json` for the full record, then report it at https://github.com/lando/core/issues.",
@@ -103,18 +93,9 @@ interface DescribedCause {
   readonly message: string;
 }
 
-/**
- * Describe an already-caught failure value for callers holding an `Either`
- * rather than a `Cause`. Counterpart to {@link describeDoctorCause}.
- */
 export const describeDoctorFailure = (value: unknown): { readonly tag?: string; readonly message: string } =>
   inspectFailure(value);
 
-/**
- * Reduce a `Cause` to the reason/tag/message a self check reports. Typed
- * failures keep their `_tag` so agents can branch on it; defects report the
- * thrown value's message.
- */
 export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause => {
   // Defects outrank typed failures: a mixed cause is the more severe of the two.
   const defect = Result.getSuccess(Cause.findDefect(cause));
@@ -143,7 +124,9 @@ export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause
 };
 
 export interface IsolateDoctorSectionOptions<A, E, R> {
-  readonly section: string;
+  readonly section: DoctorSectionId;
+  /** The isolated unit when it is narrower than the whole section. */
+  readonly probe?: string | undefined;
   readonly effect: Effect.Effect<A, E, R>;
   readonly fallback: A;
   readonly budgetMs?: number;
@@ -152,33 +135,34 @@ export interface IsolateDoctorSectionOptions<A, E, R> {
    * a redactor so a secret in an error string never lands in output.
    */
   readonly redact?: (value: string) => string;
-  readonly solutions?: ReadonlyArray<DoctorSelfSolution>;
+  readonly solutions?: ReadonlyArray<DoctorSolution>;
   readonly context?: Readonly<Record<string, string>>;
 }
 
 export interface IsolatedDoctorSection<A> {
   readonly value: A;
-  readonly self?: DoctorSelfCheck;
+  readonly self?: DoctorSelfFinding;
 }
 
 export const doctorSelfCheck = (input: {
-  readonly section: string;
+  readonly section: DoctorSectionId;
+  readonly probe?: string | undefined;
   readonly reason: DoctorSelfFailureReason;
   readonly message: string;
   readonly tag?: string | undefined;
-  readonly solutions?: ReadonlyArray<DoctorSelfSolution> | undefined;
+  readonly solutions?: ReadonlyArray<DoctorSolution> | undefined;
   readonly context?: Readonly<Record<string, string>> | undefined;
   /** False when the failure is user-fixable, so "report a Lando bug" would mislead. */
   readonly reportIssue?: boolean | undefined;
-}): DoctorSelfCheck => ({
-  name: DOCTOR_SELF_CHECK_NAME,
+}): DoctorSelfFinding => ({
   section: input.section,
+  name: DOCTOR_SELF_CHECK_NAME,
+  subject: input.context?.pluginId ?? input.probe ?? input.section,
   status: "fail",
   severity: "error",
-  reason: input.reason,
   context: {
     ...input.context,
-    section: input.section,
+    ...(input.probe === undefined ? {} : { probe: input.probe }),
     reason: input.reason,
     ...(input.tag === undefined ? {} : { failure: input.tag }),
     message: input.message,
@@ -187,13 +171,7 @@ export const doctorSelfCheck = (input: {
 });
 
 /**
- * Run one report section under a deadline with failure *and* defect capture.
- *
- * Returns the section value on success, or the caller's fallback plus a self
- * check describing why the section is missing. The error channel is `never`:
- * an isolated section can never take the report down with it.
- *
- * Caveat: a section that blocks the event loop synchronously cannot be
+ * A section that blocks the event loop synchronously cannot be
  * interrupted by a deadline. Section programs must stay `Effect`-shaped and
  * interruptible for the budget to bite.
  */
@@ -202,6 +180,10 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
 ): Effect.fn.Return<IsolatedDoctorSection<A>, never, R> {
   const budgetMs = options.budgetMs ?? doctorSectionBudgetMs();
   const redact = options.redact ?? ((value: string) => value);
+  const probe = options.probe === undefined ? undefined : redact(options.probe);
+  const context = Object.fromEntries(
+    Object.entries(options.context ?? {}).map(([key, value]) => [key, redact(value)]),
+  );
   // Forked so a section that interrupts *itself* cannot masquerade as user
   // cancellation: if the parent were interrupted, `Fiber.await` would itself be
   // interrupted and never reach the classification below.
@@ -214,9 +196,10 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
       value: options.fallback,
       self: doctorSelfCheck({
         section: options.section,
+        probe,
         reason: "timeout",
         message: `Section did not complete within ${budgetMs}ms and was abandoned.`,
-        context: { budgetMs: String(budgetMs), ...options.context },
+        context: { budgetMs: String(budgetMs), ...context },
         ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
       }),
     };
@@ -229,9 +212,10 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
       value: options.fallback,
       self: doctorSelfCheck({
         section: options.section,
+        probe,
         reason: "defect",
         message: "Section interrupted itself before producing a result.",
-        ...(options.context === undefined ? {} : { context: options.context }),
+        context,
         ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
       }),
     };
@@ -254,10 +238,11 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
     value: options.fallback,
     self: doctorSelfCheck({
       section: options.section,
+      probe,
       reason: described.reason,
       message: redactDoctorMessage(described.message, redact),
       ...(described.tag === undefined ? {} : { tag: described.tag }),
-      ...(options.context === undefined ? {} : { context: options.context }),
+      context,
       ...(solutions === undefined ? {} : { solutions }),
       ...(remediation === undefined ? {} : { reportIssue: false }),
     }),

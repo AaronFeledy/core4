@@ -11,12 +11,14 @@ import type {
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
+import { listContainerArtifacts } from "@lando/container-runtime/image-list";
 import {
   type PullImageOptions,
   buildImagePullRequest,
   parseImagePullFrame,
   pullImage as runtimePullImage,
 } from "@lando/container-runtime/image-pull";
+import { removeContainerArtifact } from "@lando/container-runtime/image-remove";
 import {
   type ResolveContainerHelper,
   makeProviderLogSourceBinding,
@@ -841,6 +843,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         );
       case "run":
       case "runStream":
+      case "exportVolume":
+      case "importVolume":
       case "snapshotVolume":
       case "restoreVolume":
       case "importArtifact":
@@ -1796,7 +1800,14 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     })),
                   ),
                 ),
-        removeArtifact: () => Effect.void,
+        removeArtifact: (request) =>
+          podmanApi === undefined
+            ? Effect.fail(makeUnavailable("removeArtifact"))
+            : removeContainerArtifact(podmanApi, request, LANDO_CTX),
+        listArtifacts: (selector) =>
+          podmanApi === undefined
+            ? Effect.fail(makeUnavailable("listArtifacts"))
+            : listContainerArtifacts(podmanApi, selector, LANDO_CTX),
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
           const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
@@ -1938,21 +1949,25 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         list: (filter) =>
           hydratePlansFromDisk.pipe(
             Effect.flatMap(() =>
-              Effect.forEach(Array.from(plans.values()), (plan) =>
-                Effect.forEach(Object.values(plan.services), (service) =>
-                  runtimeInspect(
-                    plan,
-                    { app: plan.id, service: service.name },
-                    { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
-                  ).pipe(
-                    // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
-                    Effect.map((snapshot) => ({
-                      ...snapshot,
-                      appRoot: plan.root,
-                      labels: snapshot.labels ?? scratchLabelsForPlan(plan),
-                    })),
-                  ),
+              Effect.forEach(
+                Array.from(plans.values()).filter(
+                  (plan) => filter.app === undefined || plan.id === filter.app,
                 ),
+                (plan) =>
+                  Effect.forEach(Object.values(plan.services), (service) =>
+                    runtimeInspect(
+                      plan,
+                      { app: plan.id, service: service.name },
+                      { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
+                    ).pipe(
+                      // Inspected labels prove ownership; a row without a container keeps the plan's scratch identity.
+                      Effect.map((snapshot) => ({
+                        ...snapshot,
+                        appRoot: plan.root,
+                        labels: snapshot.labels ?? scratchLabelsForPlan(plan),
+                      })),
+                    ),
+                  ),
               ),
             ),
             Effect.map((snapshots) => snapshots.flat()),

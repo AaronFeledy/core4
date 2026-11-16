@@ -601,7 +601,8 @@ const makeStartLayer = (
           remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: (appPlan, applyOptions) =>
       Effect.sync(() => {
         if (appPlan.id === "global") globalApplyPlans.push(appPlan);
@@ -959,7 +960,8 @@ const makeAutoStartLayer = async (options: {
           remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: (appPlan, applyOptions) =>
       Effect.sync(() => {
         applyPlans.push(appPlan);
@@ -2507,7 +2509,8 @@ describe("lando start", () => {
             remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
-      removeArtifact: () => Effect.void,
+      removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+      listArtifacts: () => Effect.succeed([]),
       apply: () =>
         Effect.sync(() => {
           order.push("apply");
@@ -2679,7 +2682,8 @@ describe("lando start", () => {
             remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
-      removeArtifact: () => Effect.void,
+      removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+      listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
       start: () => Effect.void,
       stop: () => Effect.void,
@@ -2837,7 +2841,8 @@ describe("lando start", () => {
             remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
-      removeArtifact: () => Effect.void,
+      removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+      listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
       start: () => Effect.void,
       stop: () => Effect.void,
@@ -2999,7 +3004,8 @@ describe("lando start", () => {
             remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
-      removeArtifact: () => Effect.void,
+      removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+      listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
       start: () => Effect.void,
       stop: () => Effect.void,
@@ -3175,7 +3181,8 @@ describe("lando start", () => {
             remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
-      removeArtifact: () => Effect.void,
+      removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+      listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
       start: () => Effect.void,
       stop: () => Effect.void,
@@ -3384,7 +3391,8 @@ describe("lando start", () => {
             remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
-      removeArtifact: () => Effect.void,
+      removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+      listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
       start: () => Effect.void,
       stop: () => Effect.void,
@@ -3581,7 +3589,8 @@ describe("lando start", () => {
             remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
-      removeArtifact: () => Effect.void,
+      removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+      listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
       start: () => Effect.void,
       stop: () => Effect.void,
