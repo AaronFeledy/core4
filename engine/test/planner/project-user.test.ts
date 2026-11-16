@@ -135,6 +135,13 @@ describe("resolveProjectUser implicit resolution", () => {
   test("Given no identity and no numeric user, Then the absence is explained", () => {
     expect(explanationOf(resolveProjectUser(input({ identity: undefined }))).state).toBe("unresolved");
   });
+
+  test.each(["root:root", "0:root", "root:0"])(
+    "Given the authored root principal %s, Then no project user is resolved",
+    (authoredUser) => {
+      expect(explanationOf(resolveProjectUser(input({ authoredUser }))).state).toBe("unresolved");
+    },
+  );
 });
 
 describe("resolveProjectUser applicability", () => {
@@ -146,6 +153,17 @@ describe("resolveProjectUser applicability", () => {
     expect(explanationOf(resolveProjectUser(input({ appSourceMounted: false }))).state).toBe(
       "not-applicable",
     );
+  });
+
+  test("Given an invalid explicit project user and no app-source mount, Then planning still fails", () => {
+    const resolved = resolveProjectUser(input({ authored: "bogus", appSourceMounted: false }));
+    expect(resolved).toBeInstanceOf(LandofileValidationError);
+  });
+
+  test("Given a valid explicit project user and no app-source mount, Then it is not applicable", () => {
+    expect(
+      explanationOf(resolveProjectUser(input({ authored: "www-data", appSourceMounted: false }))).state,
+    ).toBe("not-applicable");
   });
 });
 

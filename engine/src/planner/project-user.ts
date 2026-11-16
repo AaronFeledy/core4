@@ -53,6 +53,17 @@ const explanation = (
 
 const isRootIdentity = (user: ServiceProjectUser): boolean => user.uid === 0 || user.name === "root";
 
+/** The principal of a `user:` value, without its optional group suffix. */
+const userPrincipal = (user: string): string => {
+  const separator = user.indexOf(":");
+  return separator === -1 ? user : user.slice(0, separator);
+};
+
+const isRootPrincipal = (user: string): boolean => {
+  const principal = userPrincipal(user);
+  return principal === "root" || principal === "0";
+};
+
 const numericIdentity = (uid: string, gid: string): ServiceProjectUser => ({
   name: uid,
   uid: Number(uid),
@@ -103,6 +114,32 @@ export const resolveProjectUser = (
   input: ResolveProjectUserInput,
 ): LandofileValidationError | CapabilityError | ResolvedProjectUser => {
   const explicit = input.authored !== undefined;
+  // Explicit grammar is validated before applicability so an invalid value
+  // never passes because this service happens to have no app-source mount.
+  let explicitCandidate: ServiceProjectUser | undefined;
+  if (typeof input.authored === "string") {
+    const pair = NUMERIC_PAIR.exec(input.authored);
+    if (pair !== null) {
+      explicitCandidate = numericIdentity(pair[1] ?? "", pair[2] ?? "");
+    } else {
+      const declared = input.identity?.projectUser;
+      if (declared === undefined)
+        return invalidAuthoring(
+          input,
+          input.authored,
+          `service type ${input.serviceTypeLabel} declares no project user name, so only a numeric uid:gid pair is accepted.`,
+          'Set projectUser to a numeric "<uid>:<gid>" pair, or remove it.',
+        );
+      if (input.authored !== declared.name)
+        return invalidAuthoring(
+          input,
+          input.authored,
+          `only the declared name "${declared.name}" or a numeric "<uid>:<gid>" pair is accepted.`,
+          `Set projectUser to "${declared.name}" or a numeric "<uid>:<gid>" pair.`,
+        );
+      explicitCandidate = declared;
+    }
+  }
   if (input.appKind !== "user")
     return explanation("not-applicable", explicit, "The project user applies only to user apps.");
   if (!input.appSourceMounted)
@@ -120,31 +157,11 @@ export const resolveProjectUser = (
 
   let candidate: ServiceProjectUser | undefined;
   if (typeof input.authored === "string") {
-    const pair = NUMERIC_PAIR.exec(input.authored);
-    if (pair !== null) {
-      candidate = numericIdentity(pair[1] ?? "", pair[2] ?? "");
-    } else {
-      const declared = input.identity?.projectUser;
-      if (declared === undefined)
-        return invalidAuthoring(
-          input,
-          input.authored,
-          `service type ${input.serviceTypeLabel} declares no project user name, so only a numeric uid:gid pair is accepted.`,
-          'Set projectUser to a numeric "<uid>:<gid>" pair, or remove it.',
-        );
-      if (input.authored !== declared.name)
-        return invalidAuthoring(
-          input,
-          input.authored,
-          `only the declared name "${declared.name}" or a numeric "<uid>:<gid>" pair is accepted.`,
-          `Set projectUser to "${declared.name}" or a numeric "<uid>:<gid>" pair.`,
-        );
-      candidate = declared;
-    }
+    candidate = explicitCandidate;
   } else {
     const declared = input.identity?.projectUser;
     const authored = input.authoredUser;
-    if (authored === "root" || authored === "0")
+    if (authored !== undefined && isRootPrincipal(authored))
       return explanation(
         "unresolved",
         false,
