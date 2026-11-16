@@ -55,6 +55,12 @@ describe("public schema contracts", () => {
     expect(transcriptPayload.transcriptPath).toBe(AbsolutePath.make("/tmp/lando/builds/web.log"));
   });
 
+  test("project-user plan fields are published schemas", () => {
+    expect(JSON_SCHEMA_NAMES).toEqual(
+      expect.arrayContaining(["ServiceProjectUser", "ProjectUserExplanation"]),
+    );
+  });
+
   test("every public schema has a schema contract fixture", () => {
     expect(() => assertPublicSchemaContractCoverage()).not.toThrow();
   });
