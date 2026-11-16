@@ -113,7 +113,7 @@ lando craft help
 lando mariadb -e 'SELECT username, email FROM users;'
 ```
 
-`lando craft help` starts with `Welcome to Craft CMS version 5` and lists the CLI commands. Craft has no `--help` or `--version` flag, so use `lando craft help <command>` for one command's options. The query's output includes `admin`.
+`lando craft help` prints `Welcome to Craft CMS version` with the installed 5.x version, then lists the CLI commands. Craft has no `--help` or `--version` flag, so use `lando craft help <command>` for one command's options. The query's output includes `admin`.
 
 Open the HTTPS URL `lando info` prints. A fresh install serves "Welcome to Craft CMS". Add `/admin` to the URL for the control panel and sign in as `admin` with the password you saved.
 
