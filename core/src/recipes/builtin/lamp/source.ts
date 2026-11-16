@@ -2,6 +2,7 @@ import type { RecipeSource } from "@lando/sdk/schema";
 import {
   composerOption,
   composerTool,
+  createProjectTool,
   phpAppserver,
   phpOption,
   phpTool,
@@ -34,7 +35,12 @@ export const source = {
     },
     tooling: { php: phpTool },
   },
-  variants: [{ when: "{{ ne(options.composer, false) }}", config: { tooling: { composer: composerTool } } }],
+  variants: [
+    {
+      when: "{{ ne(options.composer, false) }}",
+      config: { tooling: { composer: composerTool, "create-project": createProjectTool } },
+    },
+  ],
   postInit: [
     { type: "message", text: "Run 'lando start' inside the new app directory to bring the LAMP stack up." },
   ],

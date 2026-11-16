@@ -10,8 +10,11 @@ through Composer after starting the stack.
 
 ## Bootstrapping the codebase
 
-The recipe writes a Landofile only. After `lando start`, create the Symfony
-project with the generated Composer tooling if the app root is empty.
+The recipe writes a Landofile only. After `lando start`, run
+`lando create-project symfony/skeleton`. It stages the skeleton outside the app
+root, promotes it without overwriting `.lando.yml`, installs `vendor` in place,
+and runs the project's Composer hooks. Pass a version or constraint as the second
+argument, and `--no-scripts` to skip the hooks and install scripts.
 
 ## Generated services
 
@@ -27,3 +30,6 @@ the database service at plan time.
 
 - `lando console …`: Symfony console.
 - `lando composer …`: Composer.
+- `lando create-project <package> [<version>]`: Stage a Composer project (for example `symfony/skeleton`) outside the app root, promote it into `/app` without overwriting `.lando.yml`, install `vendor` in place, then run the root package's Composer hooks. `--no-scripts` skips both hooks and install scripts.
+
+The PHP service image installs `lando-create-project` when Composer is enabled, so this recipe declares the task rather than the program; disabling Composer removes both.

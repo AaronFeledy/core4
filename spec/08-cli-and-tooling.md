@@ -833,6 +833,22 @@ Cancellation is Effect interruption, not a tagged error: the in-flight acquisiti
 
 Recipe persisted locations are `recipes/<id>/` and the §12.8 source store, `<userCacheRoot>/sources/git/<commit>/` and `<userCacheRoot>/sources/archive/<sha256>/` (npm tarballs included). Compiled manifests, generated Landofiles, and derived snapshots MUST remain independent of provider state.
 
+#### 8.8.17 Composer project tools
+
+Composer recipes (`lamp` when its `composer` option is enabled, `lemp`, `laravel`, `symfony`, and recipes that extend them) ship one tool:
+
+`lando create-project <package> [<version>] [--no-scripts]`
+
+`package` is a required declared argument holding a Composer name (`vendor/name`, optionally pinned as `vendor/name:constraint`); `version` is an optional declared argument holding a version or constraint; `no-scripts` is a declared boolean flag. Because the flag is declared, Lando's own flag parsing leaves it to the task.
+
+The program belongs to the PHP service type, not to the Landofile: a PHP service with Composer enabled installs `lando-create-project` at `/usr/local/bin/lando-create-project` in its derived image, and a service with Composer disabled installs none. The recipe's tool entry is therefore only the task declaration (`cmd: lando-create-project`), and a recipe gates the tool the same way it gates Composer. The installed text is generated from the shared scaffold protocol described below and travels in the image's build steps and build key, so editing the protocol rebuilds the image instead of reusing one that carries an old program. The file is world readable and executable because tooling may run as the site's non-root user.
+
+The tool MUST refuse an app root that already holds `composer.json` without the tool's own recovery manifest, and the remediation MUST name `lando composer install` as the way to finish an existing project. It MUST stage with `composer create-project <package> <staging> [<version>] --no-install --no-scripts --no-interaction`, MUST NOT overwrite `.lando.yml` or any other existing path, MUST fill an empty directory at a target (a mounted `vendor`, `node_modules`, or working-directory shadow) in place, and MUST install dependencies directly in the app root rather than copying a staged `vendor`.
+
+After promotion it MUST run, in Composer's own order and only for events the root package defines, `post-root-package-install`, then `composer install --no-interaction`, then `post-create-project-cmd`; `--no-scripts` MUST skip both hooks and pass `--no-scripts` to `composer install`. A defined hook that fails MUST fail the tool. Hooks keep the terminal so interactive ones can prompt.
+
+`create-project` and the two Drupal scaffold tools share one promotion protocol: a lock, a durable per-path manifest, atomic promotion with resume from an interrupted copy or promotion, a completion marker, and the refusal to overwrite an occupied path. `drupal-scaffold` and `drupal-cms-scaffold` stage their own projects and keep their own tool names, markers, and completion checks.
+
 ### 8.9 Renderers and messages
 
 The Effect service tag `Renderer` has `id`, current `RendererCapabilities`, `render(Stream<RenderEvent>)`, and immediate first-paint emission. `RendererCapabilities` is the schema-backed boolean set `color`, `interactive`, `animation`, and `notifications`.

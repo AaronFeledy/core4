@@ -3,6 +3,7 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
+import { createProjectTool } from "../../src/recipes/builtin/source-php.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -53,6 +54,7 @@ const expected = {
       cmds: ["composer"],
       wrapper: true,
     },
+    "create-project": createProjectTool,
   },
 } as const;
 

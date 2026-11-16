@@ -34,6 +34,13 @@ lando init --recipe lamp --name=my-lamp-app --yes \
 
 `lando start` prints the app URL. `lando info` repeats it.
 
+To add a Composer project to an initialized app, run `lando create-project <package> [<version>]`. It stages the package outside the app root, then promotes it into the mounted `/app` without overwriting `.lando.yml` or files you added, fills empty mounted directories such as `vendor`, installs dependencies in place, and runs the project's own Composer hooks. Pass `--no-scripts` to skip those hooks and install scripts:
+
+```sh
+lando create-project laravel/laravel
+lando create-project typo3/cms-base-distribution "^14"
+```
+
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling, Apache PHP, and database hosts, see [Run the LAMP recipe](https://aaronfeledy.github.io/core4/guides/recipes/lamp-workflow/).

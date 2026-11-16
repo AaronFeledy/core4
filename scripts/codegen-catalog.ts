@@ -85,6 +85,13 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Carries the shared create-project protocol into the PHP service image.
+    id: "php-create-project",
+    ownership: "derived",
+    script: "build-php-create-project.ts",
+    workspace: "repo",
+  },
+  {
     id: "provider-images",
     ownership: "derived",
     script: "build-provider-images.ts",

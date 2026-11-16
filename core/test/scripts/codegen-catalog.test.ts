@@ -93,6 +93,7 @@ const expectedCatalogRows = [
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
   ["github-actions-pins", "committed-pin", "build-github-actions-pins.ts", "repo"],
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
+  ["php-create-project", "derived", "build-php-create-project.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo", ["core-service-env-catalog"]],
@@ -391,13 +392,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(43);
+    expect(catalog).toHaveLength(44);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(14);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(25);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(26);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);

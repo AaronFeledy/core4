@@ -19,17 +19,20 @@ lando info
 
 The named init creates `my-laravel-app/`. Change into it before app commands. `lando start` prints the app URL. `lando info` repeats it.
 
-The recipe writes a Landofile, not a Laravel application. For a new app, create
-Laravel in `tmp-app` because `.lando.yml` makes the root nonempty. Use the
-following copy step only for a new app: it copies files into the app root and
-removes `tmp-app` afterward. Existing files with matching names can be replaced:
+The recipe writes a Landofile, not a Laravel application. Create the Laravel
+project in the app root with the bundled `create-project` tool. It stages
+`laravel/laravel` outside the app root, promotes it without overwriting
+`.lando.yml`, installs `vendor` in place, and runs Laravel's own Composer
+hooks in Composer's order:
 
 ```sh
-lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
-lando composer install --no-interaction
+lando create-project laravel/laravel
 lando artisan --version
 ```
+
+Pass `--no-scripts` to skip Laravel's Composer hooks and install scripts. The
+same command accepts a version or constraint, for example
+`lando create-project laravel/laravel "^12"`.
 
 Then install and build the frontend. `lando npm` runs in the `node` service, a
 `node:22` container that idles until you call it:
