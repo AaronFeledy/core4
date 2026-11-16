@@ -42,7 +42,6 @@ export const CODEGEN_CATALOG = [
       "docker-cli-versions",
       "php-msmtp-pins",
       "tomcat-catalog",
-      "php-create-project",
       "provider-images",
     ],
     id: "bundled-plugins",
@@ -86,13 +85,6 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    // Carries the shared create-project protocol into the PHP service image.
-    id: "php-create-project",
-    ownership: "derived",
-    script: "build-php-create-project.ts",
-    workspace: "repo",
-  },
-  {
     id: "provider-images",
     ownership: "derived",
     script: "build-provider-images.ts",
@@ -129,7 +121,6 @@ export const CODEGEN_CATALOG = [
       "docker-cli-versions",
       "php-msmtp-pins",
       "tomcat-catalog",
-      "php-create-project",
       "provider-images",
     ],
     id: "setup-plugin-flags",
@@ -233,14 +224,14 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Imports @lando/service-lando and its PHP msmtp pins; see `bundled-plugins`.
-    dependsOn: ["php-msmtp-pins", "tomcat-catalog", "php-create-project"],
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
     id: "service-type-reference",
     ownership: "derived",
     script: "build-service-type-reference.ts",
     workspace: "repo",
   },
   {
-    dependsOn: ["php-msmtp-pins", "tomcat-catalog", "php-create-project"],
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
     id: "service-listener-reference",
     ownership: "derived",
     script: "build-service-listener-reference.ts",

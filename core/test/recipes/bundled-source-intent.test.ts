@@ -5,7 +5,6 @@ import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { renderCompiledRecipeSnapshot } from "@lando/sdk/recipes";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
-import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
 
 const { decomposer: drupalDecomposer } = bundledRecipe("drupal");
@@ -82,7 +81,7 @@ test.each([
     expect(compiled.pendingSites.map((pending) => pending.path.join("."))).toContain(site);
     expect(loaded.document.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.1");
     if (id === "drupal")
-      expect(loaded.document.tooling?.["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand("10"));
+      expect(loaded.document.tooling?.["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
     if (id === "laravel")
       expect(loaded.document.services?.[ServiceName.make("appserver")]?.schedule).toEqual([
         {

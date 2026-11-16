@@ -54,4 +54,4 @@ over `.env`. SQLite sets only `DB_CONNECTION` and has no database dependency.
 - `lando create-project <package> [<version>]`: Stage a Composer project (for example `laravel/laravel`) outside the app root, promote it into `/app` without overwriting `.lando.yml`, install `vendor` in place, then run the root package's `post-root-package-install` and `post-create-project-cmd` hooks. `--no-scripts` skips both hooks and install scripts.
 - `lando npm`: npm inside the `node` service.
 
-The PHP service image installs `lando-create-project` when Composer is enabled, so this recipe declares the task rather than the program; disabling Composer removes both.
+The container helper mounts `lando-create-project` on the service PATH, so this recipe declares the task rather than the program; disabling Composer removes the tool entry.

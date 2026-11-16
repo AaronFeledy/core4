@@ -18,11 +18,6 @@ const derivedTypeScriptPolicies = [
     trackingPath: "plugins/service-lando/src/services/generated/tomcat-catalog.ts",
   },
   {
-    ids: ["php-create-project"],
-    ignoreProbe: "plugins/service-lando/src/services/generated/php-create-project.ts",
-    trackingPath: "plugins/service-lando/src/services/generated/php-create-project.ts",
-  },
-  {
     ids: ["command-registry-manifest"],
     ignoreProbe: "core/src/cli/allowlists/recipe-post-init.ts",
     trackingPath: "core/src/cli/allowlists/recipe-post-init.ts",

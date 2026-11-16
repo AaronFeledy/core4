@@ -31,4 +31,4 @@ version supports every PHP version. Choose a version supported by your project.
 - `lando create-project <package> [<version>]`: Stage a Composer project outside the app root, promote it into `/app` without overwriting `.lando.yml`, then install `vendor` in place. Add `--no-scripts` to skip the project's Composer hooks.
 - `lando php …`: PHP CLI inside the appserver service.
 
-The PHP service image installs `lando-create-project` when Composer is enabled, so this recipe declares the task rather than the program; disabling Composer removes both.
+The container helper mounts `lando-create-project` on the service PATH, so this recipe declares the task rather than the program; disabling Composer removes the tool entry.

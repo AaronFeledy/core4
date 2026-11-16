@@ -19,7 +19,6 @@ import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPor
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
-import { phpCreateProjectBuildStep } from "./php-create-project.ts";
 import { PHP_COMPOSER_STEP_ID, phpPrerequisiteBuildSteps, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
@@ -63,8 +62,6 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     const baseline = phpBaselineBuildStep();
     if (baseline !== undefined) ctx.addBuildStep(baseline);
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
-    // Composer enables the shared project creator that the recipes expose as `create-project`.
-    if (composerRelease !== false) ctx.addBuildStep(phpCreateProjectBuildStep());
     if (service.framework === "wordpress") {
       ctx.addBuildStep(PHP_WP_CLI_STEP);
       addEnvRecord(ctx, { WP_CLI_ALLOW_ROOT: "1" });

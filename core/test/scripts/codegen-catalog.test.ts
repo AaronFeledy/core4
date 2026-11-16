@@ -80,14 +80,7 @@ const expectedCatalogRows = [
     "derived",
     "build-bundled-plugins.ts",
     "repo",
-    [
-      "mutagen-versions",
-      "docker-cli-versions",
-      "php-msmtp-pins",
-      "tomcat-catalog",
-      "php-create-project",
-      "provider-images",
-    ],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
   ],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -100,7 +93,6 @@ const expectedCatalogRows = [
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
   ["github-actions-pins", "committed-pin", "build-github-actions-pins.ts", "repo"],
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
-  ["php-create-project", "derived", "build-php-create-project.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo", ["core-service-env-catalog"]],
@@ -110,14 +102,7 @@ const expectedCatalogRows = [
     "derived",
     "build-setup-plugin-flags.ts",
     "repo",
-    [
-      "mutagen-versions",
-      "docker-cli-versions",
-      "php-msmtp-pins",
-      "tomcat-catalog",
-      "php-create-project",
-      "provider-images",
-    ],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
   ],
   [
     "bundled-command-descriptors",
@@ -193,14 +178,14 @@ const expectedCatalogRows = [
     "derived",
     "build-service-type-reference.ts",
     "repo",
-    ["php-msmtp-pins", "tomcat-catalog", "php-create-project"],
+    ["php-msmtp-pins", "tomcat-catalog"],
   ],
   [
     "service-listener-reference",
     "derived",
     "build-service-listener-reference.ts",
     "repo",
-    ["php-msmtp-pins", "tomcat-catalog", "php-create-project"],
+    ["php-msmtp-pins", "tomcat-catalog"],
   ],
   [
     "config-lint-rule-reference",
@@ -300,7 +285,6 @@ describe("codegen catalog", () => {
       "docker-cli-versions",
       "php-msmtp-pins",
       "tomcat-catalog",
-      "php-create-project",
       "provider-images",
     ].map((id) => ({
       id,
@@ -407,13 +391,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(44);
+    expect(catalog).toHaveLength(43);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(14);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(26);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(25);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);
@@ -440,7 +424,6 @@ describe("codegen catalog", () => {
     // Then: later consumers wait for their inputs, and independent derived work shares a wave.
     expect(waveOf("php-msmtp-pins")).toBeLessThan(waveOf("service-type-reference"));
     expect(waveOf("tomcat-catalog")).toBeLessThan(waveOf("service-type-reference"));
-    expect(waveOf("php-create-project")).toBeLessThan(waveOf("bundled-plugins"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("command-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("schema-snapshot"));
     expect(waveOf("bundled-plugins")).toBeLessThan(waveOf("schema-snapshot"));

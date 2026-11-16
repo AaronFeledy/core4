@@ -32,4 +32,4 @@ the database service at plan time.
 - `lando composer …`: Composer.
 - `lando create-project <package> [<version>]`: Stage a Composer project (for example `symfony/skeleton`) outside the app root, promote it into `/app` without overwriting `.lando.yml`, install `vendor` in place, then run the root package's Composer hooks. `--no-scripts` skips both hooks and install scripts.
 
-The PHP service image installs `lando-create-project` when Composer is enabled, so this recipe declares the task rather than the program; disabling Composer removes both.
+The container helper mounts `lando-create-project` on the service PATH, so this recipe declares the task rather than the program; disabling Composer removes the tool entry.

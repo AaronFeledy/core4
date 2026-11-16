@@ -26,13 +26,6 @@ export {
   renderPhpBaselineIni,
 } from "./php-baseline.ts";
 export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
-export {
-  PHP_CREATE_PROJECT_PATH,
-  PHP_CREATE_PROJECT_SCRIPT,
-  PHP_CREATE_PROJECT_STEP_ID,
-  phpCreateProjectBuildStep,
-  phpCreateProjectCommand,
-} from "./php-create-project.ts";
 export { PHP_FEATURE_ID, PHP_FEATURE_PRIORITY, phpServiceFeature } from "./php-feature.ts";
 export {
   PHP_APT_PACKAGE_PINS,
