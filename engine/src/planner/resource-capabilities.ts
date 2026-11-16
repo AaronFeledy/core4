@@ -161,11 +161,26 @@ export const publicationCapabilityError = (
     : undefined;
 
 /**
- * Re-checks project-user realizability against the provider in front of a
- * plan. Fresh planning fails explicit authoring before it builds the plan;
- * this is the same rule applied to a cached plan, so a plan written under a
- * different engine never runs with a mapping the current provider cannot make.
+ * The one project-user admission rule: a provider that cannot map one
+ * container id to the host user fails an explicit request. Fresh planning and
+ * a cache hit both call it, so a plan written under a different engine never
+ * runs with a mapping the current provider cannot make.
  */
+export const projectUserMappingCapabilityError = (
+  provider: ProviderId,
+  capabilities: ProviderCapabilities,
+  serviceName: string,
+): CapabilityError | undefined =>
+  capabilities.projectUserMapping === "userns-keep-id"
+    ? undefined
+    : missingCapability(
+        provider,
+        serviceName,
+        "project user mapping",
+        "projectUserMapping",
+        `Set services.${serviceName}.projectUser to false to keep the container default identity, or choose a provider that maps one container id to the host user.`,
+      );
+
 export const projectUserCapabilityErrors = (
   provider: ProviderId,
   capabilities: ProviderCapabilities,
@@ -183,16 +198,9 @@ export const projectUserCapabilityErrors = (
       service.projectUser !== undefined ||
       (service.projectUserExplanation?.state === "provider-unsupported" &&
         service.projectUserExplanation.explicit);
-    if (!realizationRequired || capabilities.projectUserMapping === "userns-keep-id") return [];
-    return [
-      missingCapability(
-        provider,
-        service.name,
-        "project user mapping",
-        "projectUserMapping",
-        `Set services.${service.name}.projectUser to false to keep the container default identity, or choose a provider that maps one container id to the host user.`,
-      ),
-    ];
+    if (!realizationRequired) return [];
+    const error = projectUserMappingCapabilityError(provider, capabilities, service.name);
+    return error === undefined ? [] : [error];
   });
 
 /**

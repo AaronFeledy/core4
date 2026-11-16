@@ -19,7 +19,7 @@ import type {
 import { validationIssue } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
-import { missingCapability } from "./compose-capabilities.ts";
+import { projectUserMappingCapabilityError } from "./resource-capabilities.ts";
 
 const NUMERIC_PAIR = /^([0-9]+):([0-9]+)$/u;
 
@@ -79,13 +79,12 @@ const unsupported = (
   explicit: boolean,
 ): CapabilityError | ResolvedProjectUser =>
   explicit
-    ? missingCapability(
-        input.provider,
-        input.serviceName,
-        "project user mapping",
-        "projectUserMapping",
-        `Set services.${input.serviceName}.projectUser to false to keep running as the container default, or choose a provider that maps one container id to the host user (rootless Podman or the managed Lando runtime on Linux).`,
-      )
+    ? (projectUserMappingCapabilityError(input.provider, input.capabilities, input.serviceName) ??
+      explanation(
+        "provider-unsupported",
+        false,
+        `Provider ${String(input.provider)} does not map one container id to the host user, so the service keeps the container default identity.`,
+      ))
     : explanation(
         "provider-unsupported",
         false,
