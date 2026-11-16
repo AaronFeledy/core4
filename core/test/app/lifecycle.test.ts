@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
@@ -34,6 +34,7 @@ import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
+import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 import { lifecycleFileSyncPlugin } from "./lifecycle-file-sync-plugin.ts";
 
 const fixedDateTime = DateTime.makeUnsafe("2026-06-22T00:00:00Z");
@@ -326,12 +327,30 @@ const landofileYaml = `name: embedded-app\nruntime: 4\nprovider: ${TestRuntimePr
 const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-lifecycle-")));
   await Bun.write(join(dir, ".lando.yml"), landofileYaml);
-  const original = process.cwd();
-  process.chdir(dir);
+  // A start writes durable state (an accelerated-start journal, applied-state records)
+  // that must not outlive the test in the process-wide roots: a later test reading
+  // ambient state then sees an app whose folder is gone. Give every root this test's own
+  // directory, which the teardown below removes.
+  const roots = {
+    LANDO_USER_DATA_ROOT: join(dir, "host", "data"),
+    LANDO_USER_CACHE_ROOT: join(dir, "host", "cache"),
+    LANDO_USER_CONF_ROOT: join(dir, "host", "config"),
+    LANDO_SYSTEM_PLUGIN_ROOT: join(dir, "host", "system-plugins"),
+  };
+  await Promise.all(Object.values(roots).map((root) => mkdir(root, { recursive: true })));
+  const withRoots = () =>
+    withEnvVar("LANDO_USER_DATA_ROOT", roots.LANDO_USER_DATA_ROOT, () =>
+      withEnvVar("LANDO_USER_CACHE_ROOT", roots.LANDO_USER_CACHE_ROOT, () =>
+        withEnvVar("LANDO_USER_CONF_ROOT", roots.LANDO_USER_CONF_ROOT, () =>
+          withEnvVar("LANDO_SYSTEM_PLUGIN_ROOT", roots.LANDO_SYSTEM_PLUGIN_ROOT, () =>
+            withCwd(dir, () => run(dir), [dir]),
+          ),
+        ),
+      ),
+    );
   try {
-    return await run(dir);
+    return await withRoots();
   } finally {
-    process.chdir(original);
     await rm(dir, { recursive: true, force: true });
   }
 };
