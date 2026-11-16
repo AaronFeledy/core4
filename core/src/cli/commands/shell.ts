@@ -299,7 +299,6 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       Object.keys(identity.environment).length === 0
         ? baseEnv
         : { ...identity.environment, ...(baseEnv ?? {}) };
-    options.noHistory === true ? withSessionNoHistoryEnv(forwardedEnv ?? {}) : forwardedEnv;
     const spec: CommandSpec = {
       command: serviceLoginShellCommand(options.args),
       stdin: "inherit",

@@ -146,7 +146,7 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
   routeProvider: false,
   tlsCertificates: "none",
   rootless: false,
-  projectUserMapping: "unsupported" as const,
+  projectUserMapping: "unsupported",
   bindOwnership: "host-ids",
   privilegedServices: true,
   composeSpec: "native",

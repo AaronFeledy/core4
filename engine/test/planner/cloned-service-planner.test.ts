@@ -407,7 +407,7 @@ describe("cloned services in a planned app", () => {
     const parent = app.services[ServiceName.make("web")];
     const sidecar = app.services[ServiceName.make("web-schedule")];
     if (parent === undefined || sidecar === undefined) throw new Error("expected both services");
-    expect(sidecar.projectUser).toEqual(parent.projectUser);
+    expect(sidecar.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
   });
 
   test("a clone never re-claims a Compose host publication", async () => {

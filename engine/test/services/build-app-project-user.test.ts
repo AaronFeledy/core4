@@ -67,7 +67,9 @@ describe("build.app execution identity", () => {
   });
 
   test("a service without a project user keeps the image identity", () => {
-    const [step] = appSteps(plan(service()));
+    const steps = appSteps(plan(service()));
+    expect(steps).toHaveLength(1);
+    const [step] = steps;
     expect(step?.step.user).toBeUndefined();
     expect(step?.command.env).toBeUndefined();
   });

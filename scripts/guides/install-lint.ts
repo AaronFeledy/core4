@@ -20,15 +20,11 @@ const installKey = (argv: readonly string[]): string | undefined => {
   if (argv[0] !== "lando") return undefined;
   const subcommand = argv[1];
   if (subcommand?.endsWith("-scaffold")) return `lando ${subcommand}`;
-  const prefix =
-    subcommand === "create-project"
-      ? ["lando", "create-project"]
-      : subcommand === "composer" && argv[2] === "create-project"
-        ? ["lando", "composer", "create-project"]
-        : undefined;
-  if (prefix === undefined) return undefined;
-  const pkg = argv.slice(prefix.length).find((arg) => !arg.startsWith("-"));
-  return pkg === undefined ? undefined : `${prefix.join(" ")} ${packageName(pkg)}`;
+  if (subcommand !== "create-project" && !(subcommand === "composer" && argv[2] === "create-project"))
+    return undefined;
+  const prefixLength = subcommand === "create-project" ? 2 : 3;
+  const pkg = argv.slice(prefixLength).find((arg) => !arg.startsWith("-"));
+  return pkg === undefined ? undefined : `${argv.slice(0, prefixLength).join(" ")} ${packageName(pkg)}`;
 };
 
 export const lintInstallCoverage = (

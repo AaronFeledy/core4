@@ -68,9 +68,8 @@ export const selectCommandIdentity = (input: SelectCommandIdentityInput): Comman
   if (explicit !== undefined && explicit.length > 0) return { user: explicit, environment: {} };
   const service = input.service;
   if (service === undefined) return { environment: {} };
-  const projectUser: ServiceProjectUser | undefined = service.projectUser;
-  const user = projectUserExecUser(projectUser);
-  if (projectUser === undefined || user === undefined) return { environment: {} };
+  const user = projectUserExecUser(service.projectUser);
+  if (user === undefined) return { environment: {} };
   return { user, environment: projectUserEnvironment(service) };
 };
 

@@ -135,6 +135,11 @@ test("#2302 nightly reporter waits for every job with issue permission only on t
   );
   expect(permissions).toEqual({ contents: "read" });
   expect(reporter?.permissions).toEqual({ issues: "write" });
+  expect(
+    Object.entries(jobs)
+      .filter(([, job]) => job.permissions?.issues === "write")
+      .map(([id]) => id),
+  ).toEqual(["report-failure"]);
   expect(reporter?.["runs-on"]).toBe("ubuntu-24.04");
   expect(reporter?.steps).toHaveLength(1);
   expect(reporter?.steps[0]).toMatchObject({ name: "Report automation failure" });

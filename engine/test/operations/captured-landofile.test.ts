@@ -152,6 +152,8 @@ const operations = {
 test("exec keeps the container default when the applied plan is unreadable", async () => {
   const f = fixture({ projectUser: { name: "www-data", uid: 33, gid: 33 } });
   await Effect.runPromise(execApp({ command: ["env"] }, f.target).pipe(Effect.provide(f.layer)));
+  expect(f.targets).toHaveLength(1);
+  expect(f.calls).toHaveLength(1);
   expect(f.targets[0]?.user).toBeUndefined();
   expect(f.calls[0]?.env?.LANDO_USER).toBeUndefined();
 });

@@ -237,7 +237,7 @@ test("treats an invisible bind source and a file mount point as no-ops", async (
       }).pipe(Effect.provide(HostMountPoints.layer)),
     );
 
-    expect(await exists(join(root, "web"))).toBe(false);
+    expect(await exists(join(root, "missing", "web"))).toBe(false);
     expect(await exists(join(root, "settings", "config.inc"))).toBe(false);
   });
 });

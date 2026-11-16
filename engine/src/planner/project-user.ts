@@ -170,8 +170,6 @@ export const resolveProjectUser = (
     const pair = authored === undefined ? null : NUMERIC_PAIR.exec(authored);
     if (pair !== null) {
       candidate = numericIdentity(pair[1] ?? "", pair[2] ?? "");
-    } else if (authored !== undefined && authored === declared?.name) {
-      candidate = declared;
     } else {
       candidate = declared;
     }

@@ -261,9 +261,7 @@ export const containerCreateBodyFragment = (
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
-    ...((options.createUser ?? service.user) === undefined || (options.createUser ?? service.user) === ""
-      ? {}
-      : { User: options.createUser ?? service.user }),
+    ...((options.createUser ?? service.user) ? { User: options.createUser ?? service.user } : {}),
     ...(healthcheck === undefined ? {} : { Healthcheck: healthcheck }),
     ...(Object.keys(exposedPorts).length > 0 ? { ExposedPorts: exposedPorts } : {}),
     Labels: options.labels ?? commonContainerLabels(plan, service),

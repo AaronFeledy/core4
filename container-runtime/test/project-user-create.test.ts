@@ -40,8 +40,10 @@ const baseService: ServicePlan = {
   extensions: {},
 };
 
-const service = (overrides: Partial<ServicePlan> = {}): ServicePlan =>
-  ({ ...baseService, ...overrides }) as ServicePlan;
+const service = (overrides: Partial<Pick<ServicePlan, "projectUser" | "user">> = {}): ServicePlan => ({
+  ...baseService,
+  ...overrides,
+});
 
 const plan = (value: ServicePlan): AppPlan => ({
   valueModel: 1,
@@ -75,10 +77,10 @@ describe("project-user container creation", () => {
     expect(containerHostConfigFragment(plan(service()), service())).not.toHaveProperty("UsernsMode");
   });
 
-  test("Given a project user and an authored process user, Then the create body names that user", () => {
+  test("Given an explicit create user, Then it overrides the authored process user", () => {
     const value = service({ projectUser, user: "root" });
-    const body = containerCreateBodyFragment(plan(value), value, { createUser: "root" });
-    expect(body.User).toBe("root");
+    const body = containerCreateBodyFragment(plan(value), value, { createUser: "node" });
+    expect(body.User).toBe("node");
   });
 
   test("Given a project user and an inspected image user, Then the image user is preserved", () => {
@@ -87,7 +89,7 @@ describe("project-user container creation", () => {
     expect(body.User).toBe("node");
   });
 
-  test("Given no project user, Then an unroutable inspected user is not sent", () => {
+  test("Given no process user, Then the create body omits User", () => {
     const body = containerCreateBodyFragment(plan(service()), service());
     expect(body).not.toHaveProperty("User");
   });

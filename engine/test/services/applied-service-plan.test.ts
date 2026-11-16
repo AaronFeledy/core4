@@ -56,6 +56,10 @@ const registry = (result: () => Promise<AppPlan | undefined>) =>
 
 describe("appliedServicePlan", () => {
   test("returns the applied service, not the desired one", async () => {
+    const desired: AppPlan = {
+      ...plan,
+      services: { [ServiceName.make("web")]: service("web", { name: "node", uid: 1000, gid: 1000 }) },
+    };
     const applied: AppPlan = {
       ...plan,
       services: { [ServiceName.make("web")]: service("web", { name: "www-data", uid: 33, gid: 33 }) },
@@ -63,7 +67,7 @@ describe("appliedServicePlan", () => {
     const resolved = await Effect.runPromise(
       appliedServicePlan(
         registry(async () => applied),
-        plan,
+        desired,
         "web",
       ),
     );

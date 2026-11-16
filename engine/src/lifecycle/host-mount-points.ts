@@ -82,7 +82,7 @@ export const hostMountDirectories = (
     const bind = appBindOf(service.mounts);
     if (bind === undefined || bind.realization !== "passthrough" || !isAbsolute(bind.source)) continue;
     const candidates: ReadonlyArray<{ readonly target: string; readonly mount?: MountPlan }> = [
-      ...(service.workingDirectory === undefined ? [] : [{ target: service.workingDirectory as string }]),
+      ...(service.workingDirectory === undefined ? [] : [{ target: service.workingDirectory }]),
       ...service.mounts.map((mount) => ({ target: mount.target, mount })),
     ];
     for (const candidate of candidates) {

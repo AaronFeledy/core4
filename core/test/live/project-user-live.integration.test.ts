@@ -107,7 +107,6 @@ test.skipIf(socket === undefined || process.platform !== "linux")(
       const started = await pidNamespace();
       expect(started, "the service container must exist").toMatch(/^[0-9]+$/);
 
-      // The login identity is the project user, with its persisted home.
       const identity = await must([
         "exec",
         service,
@@ -124,16 +123,13 @@ test.skipIf(socket === undefined || process.platform !== "linux")(
         "www-data/33/33",
       ]);
 
-      // A command-created file is host-owned.
       await must(["exec", service, "--", "sh", "-c", "printf exec > /app/exec.txt"]);
       expect(await hostOwner(join(root, "exec.txt"))).toBe(hostOwnerId);
 
-      // Tooling creates a host-owned file too.
       const tooling = await must(["php", "-r", "file_put_contents('/app/tooling.txt', 'tooling');"]);
       expect(tooling.exitCode).toBe(0);
       expect(await hostOwner(join(root, "tooling.txt"))).toBe(hostOwnerId);
 
-      // The Apache worker writes through the request, and can append to a host-created file.
       const served = await must([
         "exec",
         service,
@@ -146,7 +142,6 @@ test.skipIf(socket === undefined || process.platform !== "linux")(
       expect(await hostOwner(join(root, "worker.txt"))).toBe(hostOwnerId);
       expect((await Bun.file(join(root, "host.txt")).text()).trim()).toBe("host appended");
 
-      // An empty exclude shadow accepts create, edit, rename, and delete as the project user.
       await must([
         "exec",
         service,
@@ -156,19 +151,15 @@ test.skipIf(socket === undefined || process.platform !== "linux")(
         "mkdir -p /app/vendor && printf one > /app/vendor/a.txt && printf two > /app/vendor/a.txt && mv /app/vendor/a.txt /app/vendor/b.txt && rm /app/vendor/b.txt",
       ]);
 
-      // Home persistence follows the project user and is writable.
       await must(["exec", service, "--", "sh", "-c", 'printf home > "$HOME/.lando-project-user"']);
 
-      // Composer writes host-owned project files.
       const composer = await must(["composer", "require", "psr/log", "--no-interaction"]);
       expect(composer.exitCode).toBe(0);
       expect(await hostOwner(join(root, "composer.json"))).toBe(hostOwnerId);
 
-      // Explicit root stays available.
       const rootIdentity = await must(["exec", "--user", "root", service, "--", "sh", "-c", "id -u; id -un"]);
       expect(rootIdentity.stdout.trim().split("\n")).toEqual(["0", "root"]);
 
-      // Apache serves the app.
       const page = await must([
         "exec",
         service,
@@ -179,10 +170,8 @@ test.skipIf(socket === undefined || process.platform !== "linux")(
       ]);
       expect(page.stdout).toContain("served");
 
-      // Xdebug's admin task keeps root.
       await must(["xdebug", "off"]);
 
-      // An unchanged second start reuses the container.
       await must(["start", "--format=json"]);
       expect(await pidNamespace()).toBe(started);
     } finally {
@@ -277,11 +266,9 @@ test.skipIf(socket === undefined || process.platform !== "linux")(
         expect(`${info.uid}:${info.gid}`, `${directory} must belong to the host user`).toBe(hostOwnerId);
       }
 
-      // The project user can create in the working directory the runtime would have made.
       await must(["exec", service, "--", "sh", "-c", "printf project > /app/web/project.txt"]);
       expect(await hostOwner(join(root, "web/project.txt"))).toBe(hostOwnerId);
 
-      // The host user can create in the same directory.
       await writeFile(join(root, "web/host.txt"), "host");
       expect((await Bun.file(join(root, "web/host.txt")).text()).trim()).toBe("host");
     } finally {
