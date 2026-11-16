@@ -49,7 +49,19 @@ export const redactLineSequence = (
     blockStart = blockEnd;
   };
   valueSafe.forEach((line, index) => {
+    // A line released while a value was suppressed belongs to the line that
+    // carried its closer, not to the lines that were dropped inside it.
+    const wasSuppressing = stream.suppressing();
     const released = stream.push(line);
+    if (wasSuppressing) {
+      while (output.length < index) output.push(undefined);
+      if (released.length > 0) place(released, index + 1);
+      else {
+        output.push(undefined);
+        blockStart = index + 1;
+      }
+      return;
+    }
     if (released.length > 0) place(released, index + 1);
   });
   place(stream.flush(), valueSafe.length);

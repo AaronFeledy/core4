@@ -174,7 +174,9 @@ describe("createLineStreamRedactor", () => {
     expect(stream.push('password="first')).toEqual([]);
     expect(stream.push("canary-held")).toEqual([]);
     expect(stream.push("one too many")).toEqual(["password=[redacted]"]);
-    expect(stream.push("later line")).toEqual(["later line"]);
+    // The released value's continuation stays suppressed, never exposed.
+    expect(stream.push("later line")).toEqual([]);
+    expect(stream.push('closer" tail')).toEqual([" tail"]);
     expect(stream.flush()).toEqual([]);
   });
 
@@ -195,12 +197,13 @@ describe("createLineStreamRedactor", () => {
     expect(result.lines).toEqual(["password=[redacted]"]);
   });
 
-  test("masks a held region when its framer dropped bytes", () => {
-    // Given
+  test("masks the continuation of a region whose framer dropped bytes", () => {
+    // Given a truncated frame in the middle of a quoted value: the framer may
+    // have dropped the closer, so nothing after it can be trusted.
     const result = pushLines(['password="first', "tail after truncation"], { truncated: [0] });
 
-    // Then
-    expect(result.lines).toEqual(["password=[redacted]", "tail after truncation"]);
+    // Then the whole value is masked and its continuation is not exposed.
+    expect(result.lines).toEqual(["password=[redacted]"]);
   });
 
   test("is idempotent over its own released lines", () => {
@@ -247,7 +250,10 @@ describe("createLineStreamRedactor", () => {
       // When / Then the exact bound holds, and one more quote-free line releases it.
       for (const line of lines) expect(stream.push(line)).toEqual([]);
       expect(stream.push("x")).toEqual(["password=[redacted]"]);
-      expect(stream.push("public")).toEqual(["public"]);
+      // Then the released value's continuation stays suppressed, never exposed.
+      expect(stream.push("public")).toEqual([]);
+      expect(stream.push('still"')).toEqual([]);
+      expect(stream.push("later")).toEqual(["later"]);
     },
   );
 
@@ -257,9 +263,125 @@ describe("createLineStreamRedactor", () => {
     expect(stream.push('password="first')).toEqual([]);
     // When
     const released = stream.push("canary", { truncated: true });
-    // Then truncation bypasses the quote-skip hold and clears it for subsequent output.
+    // Then truncation releases the block, and the lost synchronization keeps
+    // suppressing the value's continuation instead of exposing it.
     expect(released).toEqual(["password=[redacted]"]);
+    expect(stream.push("public")).toEqual([]);
+  });
+});
+
+describe("continuation suppression", () => {
+  const clock = () => {
+    let current = 1_000;
+    return {
+      timeBound: { maxHeldMillis: 500, now: () => current },
+      advance: (millis: number) => {
+        current += millis;
+      },
+    };
+  };
+
+  test("suppresses a released quoted value's continuation until its closer, then resumes after it", () => {
+    // Given a quoted value released fail-closed on the time bound.
+    const time = clock();
+    const stream = createLineStreamRedactor(createRedactor("secrets"), { timeBound: time.timeBound });
+    expect(stream.push('password="first')).toEqual([]);
+    time.advance(500);
+    expect(stream.expire()).toEqual(["password=[redacted]"]);
+    // When its continuation arrives without the closer.
+    expect(stream.push("canary-inside-value")).toEqual([]);
+    expect(stream.push("more-inside-value")).toEqual([]);
+    // Then the closer line resumes after the whole value.
+    expect(stream.push('last" tail')).toEqual([" tail"]);
+    // And later lines flow normally.
     expect(stream.push("public")).toEqual(["public"]);
+  });
+
+  test("a mask keeps the whole value even when its continuation is 70 lines long", () => {
+    // Given the default line bound and a value that opens before it.
+    const stream = createLineStreamRedactor(createRedactor("secrets"));
+    expect(stream.push('password="a')).toEqual([]);
+    // When the bound releases the held region, every continuation line is dropped.
+    const released = Array.from({ length: 70 }, (_, index) => stream.push(`continuation-${index}`)).flat();
+    expect(released).toEqual(["password=[redacted]"]);
+    // Then the closer line resumes after the value and exposes only its tail.
+    expect(stream.push('b" tail')).toEqual([" tail"]);
+    expect(stream.push("public")).toEqual(["public"]);
+  });
+
+  test("the closer line's remainder is re-scanned, so a second secret on it is masked", () => {
+    // Given a released value and a closer line carrying another assignment.
+    const time = clock();
+    const stream = createLineStreamRedactor(createRedactor("secrets"), { timeBound: time.timeBound });
+    expect(stream.push('password="first')).toEqual([]);
+    time.advance(500);
+    expect(stream.expire()).toEqual(["password=[redacted]"]);
+    // When / Then the remainder after the whole shell word is masked normally.
+    expect(stream.push('last" token=second-secret')).toEqual([" token=[redacted]"]);
+  });
+
+  test("a CRLF terminator does not become part of the value", () => {
+    // Given collected lines that keep their CR from a CRLF stream.
+    const result = redactLineSequence(
+      { redactor: createRedactor("secrets"), payloadValues: () => [] },
+      ['password="a', "inside", 'b"\r', "public"],
+      { maxHeldLines: 1 },
+    );
+    // Then the closer line contributes nothing and later lines keep their positions.
+    expect(result).toEqual(["password=[redacted]", undefined, undefined, "public"]);
+  });
+
+  test("a truncated line during suppression keeps suppressing until the bound", () => {
+    // Given suppression entered by a truncated frame, which lost synchronization.
+    const stream = createLineStreamRedactor(createRedactor("secrets"), { maxHeldLines: 2 });
+    expect(stream.push('password="first')).toEqual([]);
+    expect(stream.push("canary", { truncated: true })).toEqual(["password=[redacted]"]);
+    // When a later line happens to carry a quote, it must not be trusted.
+    expect(stream.push('b" rest')).toEqual([]);
+    // Then the suppression bound ends it and output flows again.
+    expect(stream.push("one")).toEqual([]);
+    expect(stream.push("two")).toEqual(["two"]);
+    expect(stream.push("three")).toEqual(["three"]);
+  });
+
+  test("a quote that never closes ends suppression at the bound and later lines flow", () => {
+    // Given a stray opener released on the time bound.
+    const time = clock();
+    const stream = createLineStreamRedactor(createRedactor("secrets"), {
+      timeBound: time.timeBound,
+      maxHeldLines: 2,
+    });
+    expect(stream.push('password="stray')).toEqual([]);
+    time.advance(500);
+    expect(stream.expire()).toEqual(["password=[redacted]"]);
+    // When quote-free lines arrive, the bound (not a closer) ends suppression.
+    expect(stream.push("one")).toEqual([]);
+    expect(stream.push("two")).toEqual([]);
+    expect(stream.push("three")).toEqual(["three"]);
+    expect(stream.push("four")).toEqual(["four"]);
+  });
+
+  test("end of stream ends suppression without exposing the continuation", () => {
+    // Given a released value whose closer never arrived.
+    const time = clock();
+    const stream = createLineStreamRedactor(createRedactor("secrets"), { timeBound: time.timeBound });
+    expect(stream.push('password="first')).toEqual([]);
+    time.advance(500);
+    expect(stream.expire()).toEqual(["password=[redacted]"]);
+    expect(stream.push("inside")).toEqual([]);
+    // Then flushing emits nothing more.
+    expect(stream.flush()).toEqual([]);
+  });
+
+  test("redactLineSequence keeps dropped continuation lines at undefined", () => {
+    // Given a sequence whose held value is released at the line bound.
+    const result = redactLineSequence(
+      { redactor: createRedactor("secrets"), payloadValues: () => [] },
+      ['password="a', "inside", 'b" tail', "public"],
+      { maxHeldLines: 1 },
+    );
+    // Then the masked value keeps position 0 and the closer's tail keeps its own.
+    expect(result).toEqual(["password=[redacted]", undefined, " tail", "public"]);
   });
 });
 
@@ -412,6 +534,8 @@ describe("live time bound", () => {
     clock.advance(1);
     expect(stream.expire()).toEqual(["password=[redacted]"]);
     expect(stream.deadline()).toBeUndefined();
+    // And the value's continuation stays suppressed until its closer arrives.
+    expect(stream.push('last"')).toEqual([]);
     expect(stream.push("plain")).toEqual(["plain"]);
   });
 
@@ -431,6 +555,24 @@ describe("live time bound", () => {
     expect(stream.expire()).toEqual([]);
     clock.advance(1);
     expect(stream.expire()).toEqual(["password=[redacted]"]);
+  });
+
+  test("a push after the deadline releases the expired block before processing its own line", () => {
+    // Given an expired hold.
+    const clock = liveClock();
+    const stream = createLineStreamRedactor(createRedactor("secrets"), {
+      timeBound: clock.timeBound,
+    });
+    expect(stream.push('password="first')).toEqual([]);
+    clock.advance(600);
+    // When the next push arrives after the deadline.
+    expect(stream.push("canary")).toEqual(["password=[redacted]"]);
+    // Then the released value's continuation is suppressed, not held again or exposed.
+    expect(stream.deadline()).toBeUndefined();
+    expect(stream.expire()).toEqual([]);
+    // The whole value ends at the closer, including its shell-word suffix.
+    expect(stream.push('tail" rest')).toEqual([" rest"]);
+    expect(stream.push("public")).toEqual(["public"]);
   });
 
   test("keeps the payload layer's held newline bounded and releases its partial line", () => {

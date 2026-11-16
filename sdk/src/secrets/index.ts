@@ -19,6 +19,14 @@ export * from "./redactor-profiles.ts";
 export { type ParsedSecretReference, parseSecretReference } from "./reference.ts";
 export type { OpenSecretConstruct } from "./secret-constructs.ts";
 export {
+  type ContinuationBoundary,
+  type ContinuationSuffix,
+  type SecretContinuation,
+  type SecretContinuationStep,
+  continueSecretValue,
+  startSecretContinuation,
+} from "./secret-continuation.ts";
+export {
   isSecretEnvName,
   isSecretFieldName,
   isSecretStructuralName,

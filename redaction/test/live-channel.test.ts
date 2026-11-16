@@ -153,3 +153,86 @@ describe("live channel payload hold start", () => {
     expect(drain(channel)).toEqual(["password=[redacted]\n"]);
   });
 });
+
+describe("live channel continuation suppression", () => {
+  const drain = (channel: {
+    readonly queue: readonly { readonly chunk: string }[];
+    readonly shift: () => void;
+  }): string[] => {
+    const chunks: string[] = [];
+    while (channel.queue.length > 0) {
+      const head = channel.queue[0];
+      if (head !== undefined) chunks.push(head.chunk);
+      channel.shift();
+    }
+    return chunks;
+  };
+
+  test("a cut piece inside a released value stays suppressed until the closer arrives", () => {
+    // Given a quoted value released fail-closed at the time bound.
+    const clock = liveClock();
+    const channel = createLiveChannel({
+      kind: "bytes",
+      redactor: createRedactor("secrets"),
+      payloadValues: () => [],
+      timeBound: clock.timeBound,
+      maxPieceBytes: 32,
+    });
+    channel.feed(encoder.encode('password="a\n'));
+    clock.advance(500);
+    channel.expire();
+    expect(drain(channel)).toEqual(["password=[redacted]\n"]);
+    // When a piece cut at the piece cap continues the value, it is dropped.
+    channel.feed(encoder.encode("b".repeat(40)));
+    expect(drain(channel)).toEqual([]);
+    // Then the line carrying the closer contributes nothing, and later lines flow.
+    channel.feed(encoder.encode('tail"\n'));
+    expect(drain(channel)).toEqual([]);
+    channel.feed(encoder.encode("public\n"));
+    expect(drain(channel)).toEqual(["public\n"]);
+  });
+
+  test("an unterminated tail after a released value is suppressed at end of stream", () => {
+    // Given a released value whose continuation is still open.
+    const clock = liveClock();
+    const channel = createLiveChannel({
+      kind: "bytes",
+      redactor: createRedactor("secrets"),
+      payloadValues: () => [],
+      timeBound: clock.timeBound,
+    });
+    channel.feed(encoder.encode('password="a\n'));
+    clock.advance(500);
+    channel.expire();
+    expect(drain(channel)).toEqual(["password=[redacted]\n"]);
+    // When a partial line arrives and the stream ends.
+    channel.feed(encoder.encode("still-inside"));
+    channel.end();
+    // Then nothing of the value's tail is delivered.
+    expect(drain(channel)).toEqual([]);
+  });
+
+  test("a closer reached in a fragment resumes output at the remainder", () => {
+    // Given a released value.
+    const clock = liveClock();
+    const channel = createLiveChannel({
+      kind: "bytes",
+      redactor: createRedactor("secrets"),
+      payloadValues: () => [],
+      timeBound: clock.timeBound,
+      maxPieceBytes: 32,
+    });
+    channel.feed(encoder.encode('password="a\n'));
+    clock.advance(500);
+    channel.expire();
+    expect(drain(channel)).toEqual(["password=[redacted]\n"]);
+    // When the closer arrives inside a piece cut at the cap, with a suffix.
+    channel.feed(encoder.encode(`b" tail-${"x".repeat(30)}`));
+    // Then only the remainder after the whole value is delivered.
+    const delivered = drain(channel);
+    expect(delivered.join("")).toBe(` tail-${"x".repeat(24)}`);
+    channel.end();
+    delivered.push(...drain(channel));
+    expect(delivered.join("")).toBe(` tail-${"x".repeat(30)}`);
+  });
+});

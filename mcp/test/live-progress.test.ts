@@ -239,6 +239,39 @@ describe("MCP live time bound", () => {
     );
   });
 
+  test("masks a Bearer token that arrives after its introducer expired", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        // Given an introducer whose token is on a later record.
+        const { sink, owner, frames } = yield* progressFixture();
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: "Authorization: Bearer",
+          service: "app",
+          source: "logs",
+        });
+        yield* TestClock.adjust(499);
+        expect(frames).toEqual([]);
+        // When the deadline releases the introducer and the token record arrives.
+        yield* TestClock.adjust(1);
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: "   eyJhbGciOi.abc-123 rest",
+          service: "app",
+          source: "logs",
+        });
+        // Then only the token is masked and the rest of its record is kept.
+        expect(frames).toEqual([
+          { _tag: "stderr", chunk: "Authorization: Bearer\n", service: "app", source: "logs" },
+          { _tag: "stderr", chunk: "[redacted] rest\n", service: "app", source: "logs" },
+        ]);
+        yield* owner.finish();
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+
   test("completes two records inside the window as one masked frame", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

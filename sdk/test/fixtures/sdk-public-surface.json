@@ -2115,6 +2115,7 @@
       "PUBLIC_DEFAULT_CREDENTIALS",
       "REDACTED",
       "REDACTION_PROFILES",
+      "continueSecretValue",
       "createPayloadRedactor",
       "createRedactor",
       "createSecretRedactor",
@@ -2130,7 +2131,8 @@
       "maskOpenSecretConstruct",
       "parseSecretReference",
       "redactSecretField",
-      "redactValueWith"
+      "redactValueWith",
+      "startSecretContinuation"
     ],
     "./services": [
       "AppPlanSanitizer",
