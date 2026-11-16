@@ -213,7 +213,7 @@ test("refuses to create through a symlink that leaves the app root", async () =>
   });
 });
 
-test("treats an invisible bind source and a file mount point as no-ops", async () => {
+test("treats an invisible bind source as a no-op and creates only a file mount point's parents", async () => {
   await withRoot(async (root) => {
     const source = join(root, "config.inc");
     await writeFile(source, "config");
@@ -238,6 +238,10 @@ test("treats an invisible bind source and a file mount point as no-ops", async (
     );
 
     expect(await exists(join(root, "missing", "web"))).toBe(false);
+    // The runtime would otherwise create settings/ as an id the host user cannot write.
+    const parent = await stat(join(root, "settings"));
+    expect(parent.isDirectory()).toBe(true);
+    expect(`${parent.uid}:${parent.gid}`).toBe(`${process.getuid?.()}:${process.getgid?.()}`);
     expect(await exists(join(root, "settings", "config.inc"))).toBe(false);
   });
 });

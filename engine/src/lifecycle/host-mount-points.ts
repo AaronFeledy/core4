@@ -9,8 +9,10 @@
  * missing children correctly, so Lando creates them itself, as the host user,
  * before provider apply creates the service containers.
  *
- * Only directories are prepared: a working directory below the app mount, and
- * every mount point below it. Paths map through the app bind's host source and
+ * Only directories are prepared: a working directory below the app mount, every
+ * directory mount point below it, and the parent directories of a file mount
+ * point, whose target itself is left to the runtime. Paths map through the app
+ * bind's host source and
  * stay inside the canonical app root; `..` and a symlink that leaves the root
  * are refused, existing paths are never modified, and a bind source the CLI
  * cannot see (an accelerated or remote mount) is a no-op.
@@ -137,12 +139,13 @@ const statOrUndefined = async (path: string) => {
   }
 };
 
-/** A mount point exists for a directory only; a file bind's target is never created. */
-const needsDirectory = async (directory: HostMountDirectory): Promise<boolean> => {
+/** The segments to create: a file bind's target is never created, only the directories above it. */
+const segmentsToCreate = async (directory: HostMountDirectory): Promise<ReadonlyArray<string>> => {
   const mount = directory.mount;
-  if (mount === undefined || mount.type !== "bind" || mount.realization === "accelerated") return true;
+  if (mount === undefined || mount.type !== "bind" || mount.realization === "accelerated")
+    return directory.segments;
   const source = await statOrUndefined(mount.source);
-  return source === undefined || source.isDirectory();
+  return source === undefined || source.isDirectory() ? directory.segments : directory.segments.slice(0, -1);
 };
 
 /**
@@ -192,13 +195,13 @@ export const prepareHostMountPoints = Effect.fn("HostMountPoints.prepare")(funct
     if (!roots.has(directory.root)) roots.set(directory.root, yield* canonicalDirectory(directory.root));
     const root = roots.get(directory.root);
     if (root === undefined) continue;
-    const directoryNeeded = yield* Effect.tryPromise({
-      try: () => needsDirectory(directory),
+    const segments = yield* Effect.tryPromise({
+      try: () => segmentsToCreate(directory),
       catch: (cause) => safeFileIoError("persist", directory.path, cause),
     });
-    if (!directoryNeeded) continue;
+    if (segments.length === 0) continue;
     yield* Effect.tryPromise({
-      try: () => createDirectory(root, directory.segments),
+      try: () => createDirectory(root, segments),
       catch: (cause) => safeFileIoError("persist", directory.path, cause),
     });
   }
