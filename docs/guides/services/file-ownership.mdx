@@ -50,6 +50,18 @@ The main process keeps its own identity. In stock PHP Apache services the master
 
 For stock PHP, the persisted home follows the project user to `/var/www` even while the Apache master remains root. Root processes keep the image's home. See [Keep a service home across rebuilds](./home-and-host.mdx) for home overrides and persistence.
 
+## Directories Lando creates before start
+
+A container runtime creates a missing mount point itself, as an account that is neither you nor the project user. Lando gets there first. Before it creates a service's containers, it creates these paths on the host, as your host user, when they sit inside your app directory and don't exist yet:
+
+- The service's working directory.
+- Each nested mount point, such as the empty `vendor` and `node_modules` directories that a service volume covers.
+- The parent directories of a file you mount into the app.
+
+That's why a fresh `web/` or `public/` webroot belongs to you, and why the empty `vendor` and `node_modules` directories in your app are yours to keep or delete.
+
+Lando only fills in what's missing. It never changes the owner or mode of a path that already exists, and it creates nothing outside your app directory.
+
 ## Choose a project user in your Landofile
 
 You do not need to set `projectUser` for stock PHP. To opt a service out, add this to its existing block in `.lando.yml`:
@@ -62,7 +74,7 @@ services:
 
 The service then uses the provider's previous identity behavior, including command defaults. Lint reports the opt-out.
 
-To select an identity explicitly, `projectUser` accepts a numeric pair such as `"1000:1000"`, or the exact name declared by the service type (`www-data` for stock PHP). It does not accept a bare UID, `name:group`, or an arbitrary account name.
+To select an identity explicitly, `projectUser` accepts a numeric pair such as `"1000:1000"`, or the exact name declared by the service type (`www-data` for stock PHP). It does not accept a bare UID, `name:group`, or an arbitrary account name. Root is rejected too: a value that names UID `0`, such as `"0:0"`, fails planning. Use `user:` when the main process needs root.
 
 A custom `image:` or Compose `build.context` has no declared account metadata, so use a numeric pair for it. The account must be usable in your image. Lando does not guess a home path for a numeric identity with no declared home. Set `home.path` if you need to retain a known home there.
 
@@ -72,7 +84,7 @@ An explicit project-user identity on an unsupported provider fails planning befo
 
 ## If PHP cannot write a directory on another platform
 
-If a site on macOS, Windows, or Docker reports that it cannot write a specific directory, first confirm its project-user explanation with `lando info` and check the directory named by the error. If that directory needs to belong to PHP's worker, give only that directory to `www-data`. Replace `<dir>` with the failing path inside `appserver`, such as `/app/storage`:
+If a site on macOS, Windows, rootful Podman, or Docker reports that it cannot write a specific directory, first confirm its project-user explanation with `lando info` and check the directory named by the error. If that directory needs to belong to PHP's worker, give only that directory to `www-data`. Replace `<dir>` with the failing path inside `appserver`, such as `/app/storage`:
 
 ```sh
 lando exec appserver --user root -- chown -R www-data:www-data <dir>

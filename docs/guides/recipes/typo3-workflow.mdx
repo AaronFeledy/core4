@@ -79,7 +79,7 @@ unset TYPO3_ADMIN_PASSWORD
 
 `--server-type=apache` writes `public/.htaccess`.
 
-Lando runs `lando typo3`, `lando composer`, and `lando exec` as `www-data`, the account Apache uses to serve TYPO3. On Linux, that account maps to your host user, so `config/`, `var/`, and `public/fileadmin/` stay yours and writable by the site. See [Who owns your app files](../services/file-ownership.mdx) for the ownership rule and platform limits.
+On Linux with the default `lando` provider, or with `podman` running rootless, Lando runs `lando typo3`, `lando composer`, and `lando exec` as `www-data`, the account Apache uses to serve TYPO3, and maps that account to your host user. `config/`, `var/`, and `public/fileadmin/` stay yours and writable by the site. Other providers and platforms keep their own command and ownership defaults, which [Who owns your app files](../services/file-ownership.mdx) covers.
 
 ## Check the tools and the site
 
