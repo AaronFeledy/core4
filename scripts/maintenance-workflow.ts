@@ -1,4 +1,4 @@
-import { renderFailureIssueStep } from "./_failure-issue-workflow.ts";
+import { NEEDS_FAILED_OR_TIMED_OUT, renderFailureIssueStep } from "./_failure-issue-workflow.ts";
 import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
 
 type MaintenanceWorkflow = {
@@ -113,7 +113,7 @@ ${indentScript(policy.proposal.checkAndReport)}
           gh workflow run ci.yml --ref "$BRANCH"
   report-failure:
     needs: [bump]
-    if: \${{ failure() }}
+    if: \${{ !cancelled() && ${NEEDS_FAILED_OR_TIMED_OUT} }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:

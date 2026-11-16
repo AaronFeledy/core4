@@ -45,3 +45,40 @@ printf report > "$BODY_FILE"`,
     expect(commands).not.toContain("gh issue create");
   },
 );
+
+test.each([
+  [["failure"], false, true],
+  // GitHub reports a job stopped by timeout-minutes as cancelled, not failed.
+  [["cancelled"], false, true],
+  [["success"], false, false],
+  // A run cancelled by hand cancels its jobs too, and files nothing.
+  [["cancelled"], true, false],
+] as const)(
+  "reports a bump result of %j when the run cancelled is %p: %p",
+  (results, runCancelled, expected) => {
+    const yaml = renderMaintenanceWorkflow({
+      name: "candidate",
+      cron: "0 4 * * *",
+      branch: "automation/candidate",
+      ownedPaths: ["file.txt"],
+      proposal: { name: "Prepare candidate", prepare: "true", checkAndReport: "true" },
+    });
+    const { jobs } = Bun.YAML.parse(yaml) as { jobs: Record<string, { if?: string }> };
+    const condition = jobs["report-failure"]?.if;
+    if (condition === undefined) throw new TypeError("Missing reporter condition");
+    // The expression uses the JavaScript/GitHub boolean subset once needs.*.result is bound.
+    const evaluate = new Function(
+      "cancelled",
+      "contains",
+      "results",
+      `return (${condition.slice(3, -2).replaceAll("needs.*.result", "results")});`,
+    );
+    expect(
+      evaluate(
+        () => runCancelled,
+        (values: ReadonlyArray<string>, value: string) => values.includes(value),
+        results,
+      ),
+    ).toBe(expected);
+  },
+);

@@ -4,6 +4,14 @@ type FailureIssue = {
   readonly assignee?: string;
 };
 
+/**
+ * A job stopped by `timeout-minutes` reaches its dependents as `cancelled`, not
+ * `failure`, so a reporter treats both as failed. Pair it with `!cancelled()`
+ * so a run cancelled as a whole files nothing.
+ */
+export const NEEDS_FAILED_OR_TIMED_OUT =
+  "(contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))";
+
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\"'\"'")}'`;
 
 export const renderFailureIssueStep = (issue: FailureIssue): string => {
