@@ -279,6 +279,13 @@ export interface EphemeralRunSpec {
   /** Borrow the realized mounts of an existing service container. */
   readonly mountsFrom?: EphemeralMountSource;
   readonly user?: string;
+  /**
+   * Runtime user-namespace mode the helper must share with the container
+   * whose mounts it borrows (for example `keep-id:uid=33,gid=33`). Without
+   * it, `user` ids resolve inside a different namespace and files land on
+   * subordinate host ids.
+   */
+  readonly usernsMode?: string;
   readonly entrypoint?: ReadonlyArray<string>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;

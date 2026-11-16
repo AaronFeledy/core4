@@ -693,6 +693,7 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
             ...(spec.user === undefined ? {} : { User: spec.user }),
             ...(spec.entrypoint === undefined ? {} : { Entrypoint: spec.entrypoint }),
             HostConfig: {
+              ...(spec.usernsMode === undefined ? {} : { UsernsMode: spec.usernsMode }),
               Binds: binds,
               ...(mounts.length === 0 ? {} : { Mounts: mounts }),
               ...(source === undefined

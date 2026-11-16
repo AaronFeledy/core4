@@ -164,10 +164,18 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
   const projectUser = Object.values(deps.applied.services ?? {}).find(
     (service) => String(service.name) === target.name,
   )?.projectUser;
+  // A new database belongs to the project user. Its ids only mean the
+  // project identity inside the service container's user namespace, so the
+  // helper must borrow that exact keep-id mapping as well.
+  const creatingProjectUser = existed ? undefined : projectUser;
   const user =
-    !existed && projectUser !== undefined
-      ? `${projectUser.uid}:${projectUser.gid}`
-      : sqliteHelperUser(existed ? inspected.stdout : inspected.stdout.slice("missing\n".length));
+    creatingProjectUser === undefined
+      ? sqliteHelperUser(existed ? inspected.stdout : inspected.stdout.slice("missing\n".length))
+      : `${creatingProjectUser.uid}:${creatingProjectUser.gid}`;
+  const usernsMode =
+    creatingProjectUser === undefined
+      ? undefined
+      : `keep-id:uid=${creatingProjectUser.uid},gid=${creatingProjectUser.gid}`;
   if (user === undefined)
     return yield* Effect.fail(
       new SqlRecoveryUnavailableError({
@@ -218,7 +226,10 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
       mountsFrom,
       binds: [{ source: scratchHost, target: scratchTarget }],
       user,
+      // The pinned sqlite helper image's ENTRYPOINT is sqlite3; the helper's
+      // commands are shell and sqlite3 argv, so the entrypoint must be cleared.
       entrypoint: [],
+      ...(usernsMode === undefined ? {} : { usernsMode }),
       remove: true,
     },
   } satisfies SqliteHelperContext;
