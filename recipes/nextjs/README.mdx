@@ -134,6 +134,7 @@ Three tooling commands ship with the Landofile, all running inside the `web` ser
     </Step>
     <Step name="scaffold-nextjs">
       <Run command="lando nextjs-scaffold" />
+      <Verify command="lando next --version" />
       <Verify command="lando exec web -- test -f /app/package.json" />
     </Step>
     <Step name="serve-nextjs">

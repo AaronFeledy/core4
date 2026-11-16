@@ -9,7 +9,7 @@ tags: [docs, recipes, laravel, php, redis, horizon, queues]
 
 Run Horizon in the Laravel recipe's worker, with Redis queues and a dashboard at `/horizon`. A container restart policy reloads Horizon after you terminate it.
 
-This builds on [Run the Laravel recipe](../laravel-workflow/). The app name below is `horizon-demo`.
+This builds on [Run the Laravel recipe](./laravel-workflow.mdx). The app name below is `horizon-demo`.
 
 ## Scaffold Laravel with a worker
 
@@ -53,8 +53,8 @@ The worker can't run yet: Laravel and Horizon aren't installed, so its process e
 From the app directory on your host, scaffold Laravel and install the queue packages. The permission change below makes cache and log directories writable for local development; do not use it as a production permissions policy.
 
 ```sh
-lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+lando create-project laravel/laravel
+lando artisan --version
 chmod -R a+rwX storage bootstrap/cache
 lando composer require laravel/horizon predis/predis --no-interaction
 lando artisan horizon:install
@@ -230,5 +230,5 @@ lando destroy -y
 
 ## Next
 
-- [Run the Laravel recipe](../laravel-workflow/)
-- [Add Redis](../../services/redis/)
+- [Run the Laravel recipe](./laravel-workflow.mdx)
+- [Add Redis](../services/redis.mdx)

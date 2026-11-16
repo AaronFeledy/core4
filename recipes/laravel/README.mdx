@@ -1,7 +1,7 @@
 ---
 id: laravel
 provider: test
-timeout: 60000
+timeout: 900000
 tags: [recipe, laravel, php]
 ---
 
@@ -168,6 +168,23 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"sqlite\":\\s*\\{\\s*\"path\":\\s*\"database/database.sqlite\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"database\":\\s*\\{)[\\s\\S]*$" } }} />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="install-path" layer="e2e" render={false} reason="Live Laravel installation and HTTP verification">
+    <Step name="init">
+      <Run command="lando init --recipe laravel --name=laravel-install --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+    </Step>
+    <Step name="install-laravel">
+      <Run command="lando create-project laravel/laravel" />
+      <Verify command="lando artisan --version" />
+      <Verify command="lando exec appserver -- curl -s -o /dev/null -w &quot;%{http_code}&quot; http://127.0.0.1/" expect={{ stdout: { regex: "^200$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
     </Step>
   </Scenario>
 </Guide>

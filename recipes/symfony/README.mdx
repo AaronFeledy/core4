@@ -1,7 +1,7 @@
 ---
 id: symfony
 provider: test
-timeout: 60000
+timeout: 900000
 tags: [recipe, symfony, php]
 ---
 
@@ -81,6 +81,23 @@ Pass a version or constraint as the second argument, and `--no-scripts` to skip 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="install-path" layer="e2e" render={false} reason="Live Symfony installation and welcome page verification">
+    <Step name="init">
+      <Run command="lando init --recipe symfony --name=symfony-install --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+    </Step>
+    <Step name="install-symfony">
+      <Run command="lando create-project symfony/skeleton" />
+      <Verify command="lando console --version" />
+      <Verify command="lando exec appserver -- curl -s http://127.0.0.1/" expect={{ stdout: { regex: "Welcome to Symfony" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
     </Step>
   </Scenario>
 </Guide>

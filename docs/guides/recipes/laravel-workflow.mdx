@@ -21,18 +21,17 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 ## Run Artisan, Composer, npm, and the clients
 
-`create-project` wants an empty directory, and `.lando.yml` is already there:
+Create Laravel in the app root. The recipe's `create-project` tool preserves
+`.lando.yml`, installs dependencies, and runs Laravel's Composer hooks in order:
 
 ```sh
-lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
+lando create-project laravel/laravel
 ```
 
-Copy the application into the root, keeping `.lando.yml`, then check its
-dependencies and tools:
+Laravel's hooks create `.env` and generate the application key. Check the
+installed application and tools:
 
 ```sh
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
-lando composer install --no-interaction
 lando artisan --version
 lando composer --version
 lando redis-cli ping

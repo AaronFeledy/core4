@@ -1,7 +1,7 @@
 ---
 id: lamp
 provider: test
-timeout: 60000
+timeout: 900000
 tags: [recipe, lamp, php]
 ---
 
@@ -44,9 +44,15 @@ lando init --recipe lamp --name=my-lamp-app --yes \
 To add a Composer project to an initialized app, run `lando create-project <package> [<version>]`. It stages the package outside the app root, then promotes it into the mounted `/app` without overwriting `.lando.yml` or files you added, fills empty mounted directories such as `vendor`, installs dependencies in place, and runs the project's own Composer hooks. Pass `--no-scripts` to skip those hooks and install scripts:
 
 ```sh
-lando create-project laravel/laravel
 lando create-project typo3/cms-base-distribution "^14"
+lando composer show typo3/cms-core
 ```
+
+Continue with [Run TYPO3 on LAMP](https://aaronfeledy.github.io/core4/guides/recipes/typo3-workflow/)
+for application configuration and verification, or follow
+[Run Craft CMS on LAMP](https://aaronfeledy.github.io/core4/guides/recipes/craft-workflow/)
+to create a Craft project. Laravel has its own
+[recipe](https://aaronfeledy.github.io/core4/recipes/laravel/).
 
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
@@ -82,6 +88,22 @@ For day-to-day tooling, Apache PHP, and database hosts, see [Run the LAMP recipe
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mysql:8\\.0\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="install-path" layer="e2e" render={false} reason="Live coverage for the documented TYPO3 Composer install">
+    <Step name="init">
+      <Run command="lando init --recipe lamp --name=lamp-install --yes --answer=webroot=public" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+    </Step>
+    <Step name="install-typo3">
+      <Run command={`lando create-project typo3/cms-base-distribution "^14"`} />
+      <Verify command="lando composer show typo3/cms-core" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
     </Step>
   </Scenario>
 </Guide>

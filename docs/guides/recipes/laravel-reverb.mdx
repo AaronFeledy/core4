@@ -9,7 +9,7 @@ tags: [docs, recipes, laravel, php, reverb, websockets, node]
 
 Run Reverb on its own service and route WebSockets through Lando's proxy. The browser uses `wss://ws.reverb-demo.lndo.site`; Laravel publishes to `http://reverb:8080` on the app network.
 
-This builds on [Run the Laravel recipe](../laravel-workflow/). The app name below is `reverb-demo`.
+This builds on [Run the Laravel recipe](./laravel-workflow.mdx). The app name below is `reverb-demo`.
 
 ## Scaffold Laravel
 
@@ -32,13 +32,12 @@ From the app directory on your host, start the app and install Laravel. The `chm
 
 ```sh
 lando start
-lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
-lando composer install --no-interaction
+lando create-project laravel/laravel
+lando artisan --version
 chmod -R a+rwX storage bootstrap/cache
 ```
 
-`create-project` needs an empty directory, hence `tmp-app`. Apache runs as `www-data`; the permission change lets it write Laravel's cache and logs.
+`lando create-project` preserves `.lando.yml`, installs dependencies, and runs Laravel's Composer hooks to create `.env` and generate the application key. Apache runs as `www-data`; the permission change lets it write Laravel's cache and logs.
 
 ## Point Laravel at MariaDB
 
@@ -289,5 +288,5 @@ lando destroy -y
 
 ## Next
 
-- [Run the Laravel recipe](../laravel-workflow/)
-- [Turn the router off and tune the post-start URL scanner](../../services/router-and-scanner/)
+- [Run the Laravel recipe](./laravel-workflow.mdx)
+- [Turn the router off and tune the post-start URL scanner](../services/router-and-scanner.mdx)
