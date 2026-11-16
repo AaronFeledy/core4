@@ -33,6 +33,12 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 		return runHostProxy(context.Background(), args, streams)
 	case "xdg-open", "open":
 		return runHostOpen(context.Background(), args, streams)
+	case "lando-create-project":
+		return runCreateProject(args, streams, nil)
+	case "lando-drupal-scaffold":
+		return runDrupalScaffold(args, streams, nil)
+	case "lando-drupal-cms-scaffold":
+		return runDrupalCmsScaffold(args, streams, nil)
 	}
 	if len(args) > 0 {
 		switch args[0] {
@@ -48,6 +54,6 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 			return 0
 		}
 	}
-	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper exec-run -- <argv> | lando-container-helper log-file")
+	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper exec-run -- <argv> | lando-container-helper log-file | lando-create-project <package> [<version>] [--no-scripts] | lando-drupal-scaffold [<major>] | lando-drupal-cms-scaffold")
 	return 64
 }
