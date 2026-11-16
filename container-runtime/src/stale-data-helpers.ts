@@ -1,11 +1,6 @@
 /**
- * Stale data-helper reclamation.
- *
- * Helpers stamped with an owner identity are reclaimed once the Lando process
- * that created them is proven gone, which lets cleanup act immediately instead
- * of waiting out an output-drain margin. Helpers created before that metadata
- * existed keep the old stopped-for-ten-minutes rule. Uncertainty always keeps
- * the helper: none of these checks may remove one it cannot prove abandoned.
+ * Proven owner exit permits immediate reclamation; legacy helpers keep the
+ * ten-minute output-drain margin. Uncertainty always keeps the helper.
  */
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, DateTime, Duration, Effect, Option, Schema } from "effect";
@@ -168,13 +163,7 @@ export const dataHelperReclaimVerdict = (input: DataHelperReclaimInput): DataHel
   return processOwnerVerdict(owner, input);
 };
 
-const reclaimDependencies = (
-  options: HelperReclaimOptions | undefined,
-): {
-  readonly identity: Effect.Effect<HelperOwnerIdentity | undefined>;
-  readonly probe: (pid: number) => OwnerProcessObservation;
-  readonly isActive: (name: string) => boolean;
-} => ({
+const reclaimDependencies = (options: HelperReclaimOptions | undefined) => ({
   identity: helperOwnerIdentityFor(options),
   probe: options?.probe ?? probeHelperOwnerPid,
   isActive: options?.isActive ?? isActiveHelper,
@@ -194,28 +183,17 @@ const containerName = (value: string | undefined): string | undefined =>
 
 const reclaimVerdict = (
   life: typeof Lifecycle.Type,
-  input: {
-    readonly providerId: string;
-    readonly fallbackName: string;
-    readonly nowMs: number;
-    readonly identity: HelperOwnerIdentity | undefined;
-    readonly isActive: (name: string) => boolean;
-    readonly probe: (pid: number) => OwnerProcessObservation;
-  },
+  input: Pick<DataHelperReclaimInput, "providerId" | "name" | "nowMs" | "identity" | "isActive" | "probe">,
 ): DataHelperVerdict =>
   dataHelperReclaimVerdict({
+    ...input,
     labels: life.Config.Labels,
-    providerId: input.providerId,
-    name: containerName(life.Name) ?? input.fallbackName,
+    name: containerName(life.Name) ?? input.name,
     state: life.State.Status,
     running: life.State.Running === true,
     startedAt: life.State.StartedAt,
     finishedAt: life.State.FinishedAt,
     created: life.Created,
-    nowMs: input.nowMs,
-    identity: input.identity,
-    isActive: input.isActive,
-    probe: input.probe,
   });
 
 const removeHelper = (request: StaleHelperRequester, id: string) =>
@@ -255,7 +233,7 @@ export const removeAllStaleVolumeHolders = (
       if (life === undefined) continue;
       const verdict = reclaimVerdict(life, {
         providerId: input.providerId,
-        fallbackName: holder.name,
+        name: holder.name,
         nowMs,
         identity: self,
         isActive,
@@ -300,7 +278,7 @@ export const sweepStaleDataHelpers = (
       if (
         reclaimVerdict(life, {
           providerId: input.providerId,
-          fallbackName,
+          name: fallbackName,
           nowMs,
           identity: self,
           isActive,

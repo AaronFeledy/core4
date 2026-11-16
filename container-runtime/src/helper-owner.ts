@@ -7,9 +7,9 @@
  * the stale-helper sweep. Every lookup is best effort: an unknown identity only
  * keeps the helper, it never authorizes removal.
  */
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile, readlink } from "node:fs/promises";
+import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect, Option } from "effect";
@@ -94,7 +94,7 @@ export const probeHelperOwnerPid = (pid: number): OwnerProcessObservation => {
   return start === undefined ? { state: "present" } : { state: "present", start };
 };
 
-const machineKey = (value: string): string => createHash("sha256").update(value).digest("hex").slice(0, 32);
+const machineKey = (value: string): string => sha256Hex(value).slice(0, 32);
 
 const readOptionalText = async (path: string): Promise<string | undefined> => {
   try {
