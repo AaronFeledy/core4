@@ -301,9 +301,11 @@ lando db:restore before-update --yes
       <Verify command="lando db:snapshot --label before-update --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
       <Verify command="lando db:restore before-update --yes --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
     </Step>
+    <Step name="hand-back">
+      <Run command={`lando exec appserver -- sh -c 'chown -R "$(stat -c %u:%g .lando.yml)" /app'`} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command={`lando exec appserver -- sh -c 'chown -R "$(stat -c %u:%g .lando.yml)" /app'`} />
       <Run command="lando destroy -y --purge" />
     </Step>
   </Scenario>
