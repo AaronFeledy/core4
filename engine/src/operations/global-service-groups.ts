@@ -72,7 +72,6 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
       services: Object.fromEntries(apply.services.map((service) => [service.name, service])),
     }));
   let recordedPlan = apply.recordedPlan ?? plan;
-  // Each group applies under its own reservation; the outcome map is the union of their reports.
   const changes = new Map<string, ServiceContainerChange>();
   const outcomes = yield* Effect.forEach(
     serviceGroups(apply.services, apply.bindings),

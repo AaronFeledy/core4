@@ -509,7 +509,7 @@ describe("selected service restart", () => {
 
       // Then web's applied route is kept, published after apply, and recorded.
       expect(selected.applyRoutes).toEqual(["web.test"]);
-      expect(selected.calls.indexOf("apply")).toBeLessThan(selected.calls.indexOf("routes"));
+      expect(selected.calls).toEqual(["apply", "routes"]);
       expect(selected.applyCalls[0]?.options.recordedPlan?.routes.map((entry) => entry.hostname)).toEqual([
         "web.test",
       ]);

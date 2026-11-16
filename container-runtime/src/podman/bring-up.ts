@@ -190,7 +190,6 @@ interface BringUpDeps {
   readonly options: BringUpOptions;
   readonly remediation: string;
   readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
-  /** What this bringUp did to each service container, reported as ApplyResult.services. */
   readonly changes: Map<string, ServiceContainerChange>;
   /** Cached once per bringUp; never construct per failure/inspect line. */
   readonly redactor: ReturnType<typeof redactorFor>;
@@ -830,7 +829,6 @@ const startService = Effect.fnUntraced(function* (
   for (const attachment of attachmentsAfterCreate(deps, plan, service, !before.exists)) {
     yield* connectNetwork(deps, service, name, attachment);
   }
-  let started = false;
   if (!before.running) {
     const response = yield* startContainer(deps, name);
     if (response.status !== 204 && response.status !== 304) {
@@ -851,7 +849,7 @@ const startService = Effect.fnUntraced(function* (
         if (recoveryId !== undefined) {
           yield* stopContainerSilent(deps, recoveryId);
           yield* removeContainer(deps, service, recoveryId);
-          // The bind-rejection recovery recreated a container this apply had not replaced yet.
+          // Preserve the original replacement reason if bind recovery recreates it again.
           if (existedBefore) replacedReason ??= "host-port";
         }
         createEndpoints = yield* prepareEndpoints(assigned);
@@ -876,7 +874,6 @@ const startService = Effect.fnUntraced(function* (
         );
       }
     }
-    started = true;
     changed = true;
   }
 
@@ -915,12 +912,17 @@ const startService = Effect.fnUntraced(function* (
   }
 
   const action =
-    replacedReason !== undefined ? "replaced" : !existedBefore ? "created" : started ? "started" : "kept";
+    replacedReason !== undefined
+      ? "replaced"
+      : !existedBefore
+        ? "created"
+        : before.running
+          ? "kept"
+          : "started";
   const anonymousVolumes = action === "replaced" ? anonymousVolumePaths(service, inspected.body) : [];
-  const reason = action === "replaced" ? replacedReason : undefined;
   deps.changes.set(String(service.name), {
     action,
-    ...(reason === undefined ? {} : { reason }),
+    ...(replacedReason === undefined ? {} : { reason: replacedReason }),
     ...(anonymousVolumes.length === 0 ? {} : { anonymousVolumes }),
   });
 

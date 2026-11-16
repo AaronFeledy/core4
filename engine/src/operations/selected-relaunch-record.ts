@@ -17,8 +17,8 @@ export const selectedAppliedRecord = (
   const { fileSyncPolicy, ...planLevel } = desired;
   const selected = new Set(Object.keys(runtime.services));
   const routes = [
-    ...(applied?.routes ?? []).filter((route) => !selected.has(String(route.service))),
-    ...desired.routes.filter((route) => selected.has(String(route.service))),
+    ...(applied?.routes ?? []).filter((route) => !selected.has(route.service)),
+    ...desired.routes.filter((route) => selected.has(route.service)),
   ];
   const routeKeys = routes.map(canonicalJson);
   const services = Object.fromEntries(

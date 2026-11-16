@@ -5,7 +5,6 @@ import { Effect } from "effect";
 
 import { inspectAppliedService } from "./service-readiness.ts";
 
-/** The channel every service inspection shares, whatever steps the caller placed before it. */
 type InspectionError = Effect.Error<ReturnType<typeof inspectAppliedService>>;
 type InspectionServices = Effect.Services<ReturnType<typeof inspectAppliedService>>;
 
@@ -32,12 +31,8 @@ interface ApplyAndObserveInput<E, R, EBefore, RBefore> {
 }
 
 /**
- * The apply-and-observe tail a whole-app launch and a selected relaunch share: apply the plan, let
- * the caller step in at the two points where its own effects belong, prepare the GPG home, then
- * inspect every service into the initial-runtime map that readiness and the credential check read.
- *
- * The steps stay in one place because a change to what happens between apply and readiness used to
- * have to be made in both operations at once.
+ * Keeps the steps between apply and readiness in one place so whole-app launches and selected
+ * relaunches cannot drift apart.
  */
 export const applyAndObserveServices = <E, R, EBefore = never, RBefore = never>(
   input: ApplyAndObserveInput<E, R, EBefore, RBefore>,

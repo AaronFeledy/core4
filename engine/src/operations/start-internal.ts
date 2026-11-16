@@ -204,14 +204,9 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
   });
 });
 
-/** The database credential session apply and the completion check share; undefined when unused. */
 type DatabaseCredentialSession = Effect.Success<ReturnType<typeof openDatabaseCredentialSession>>;
 type PendingAcceleratedStart = Effect.Success<ReturnType<typeof prepareAcceleratedStart>>["pendingStart"];
 
-/**
- * File-sync verification and certificate preparation, before any hook or provider action. The
- * stamped plan and the certificate proof are what the activation applier requires.
- */
 const preflightAppLaunch = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   provider: PreparedRuntimeProvider,
@@ -266,10 +261,6 @@ const preflightAppLaunch = Effect.fnUntraced(function* (
   return prepared;
 });
 
-/**
- * Everything the user can observe before the app's own resources are acquired: low-port warnings,
- * the app start events and hooks, router preparation, and the global services the plan needs.
- */
 const announceAppLaunch = Effect.fnUntraced(function* (input: {
   readonly target: ResolvedAppTarget;
   readonly plan: AppPlan;
@@ -333,11 +324,7 @@ const announceAppLaunch = Effect.fnUntraced(function* (input: {
   }
 });
 
-/**
- * The apply group of a whole-app launch: the pre-apply convergence that removed-service pruning
- * and the completion credential check both read, then the shared apply-observe tail. Its outcome
- * is recorded in scope because the progress tree only carries per-service rows back out.
- */
+/** Capture the apply result separately because the progress tree returns only per-service rows. */
 const applyAppLaunch = Effect.fnUntraced(function* (input: {
   readonly admitted: AdmittedApp;
   readonly plan: AppPlan;
@@ -411,9 +398,8 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
 });
 
 /**
- * Readiness, the app post events and hooks, the database credential check, and the URL scan. It
- * runs inside the activation scopes: the credential session and the admission lease stay open
- * until readiness and its checks are done.
+ * Keep completion inside the activation scopes so the credential session and admission lease
+ * stay open until readiness and its checks are done.
  */
 const completeAppLaunch = Effect.fnUntraced(function* (input: {
   readonly admitted: AdmittedApp;
@@ -424,7 +410,6 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
   readonly observedBefore: ReadonlyArray<ServiceRuntimeInfo>;
   readonly initial: ReadonlyMap<string, ServiceRuntimeInfo>;
   readonly applyOutcome: ApplyResult | undefined;
-  /** Rebuilds an app whose completion policy asks for a fresh build. */
   readonly forceAppBuild?: boolean;
 }) {
   const { admitted, plan, runtimePlan, options, environment, observedBefore, initial, applyOutcome } = input;
@@ -509,10 +494,6 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
   return { servicesStarted, checks };
 });
 
-/**
- * Acquire the launch overlays, build, admit the global consumer, and run the apply group, then
- * complete startup before either scope closes.
- */
 const activateAppLaunch = Effect.fnUntraced(function* (input: {
   readonly admitted: AdmittedApp;
   readonly plan: AppPlan;

@@ -23,7 +23,8 @@ const outcome = (services: Readonly<Record<string, ServiceContainerChange>>) => 
 const noticeBodies = (harness: ReturnType<typeof makeHarness>): ReadonlyArray<string> =>
   byTag(harness.events, "message.info")
     .map((event) => event.body)
-    .filter((body) => body.startsWith("Lando replaced ") || body.includes("had no container"));
+    // Applied-state restarts have no Landofile in this harness and report the skipped hooks separately.
+    .filter((body) => !body.startsWith("Skipping Landofile events for "));
 
 describe("apply outcome notices", () => {
   test("an ordinary start announces a replacement and reports it in the result", async () => {
@@ -80,11 +81,11 @@ describe("apply outcome notices", () => {
 
   test("a whole-app rebuild announces nothing but reports what apply did", async () => {
     const harness = makeHarness({
-      applyOutcome: outcome({ web: { action: "created" } }),
+      applyOutcome: outcome({ web: { action: "replaced", reason: "reconcile" } }),
     });
     const result = await Effect.runPromise(rebuildApp({}, target()).pipe(Effect.provide(harness.layer)));
     expect(noticeBodies(harness)).toEqual([]);
-    expect(result.servicesStarted[0]?.container).toEqual({ action: "created" });
+    expect(result.servicesStarted[0]?.container).toEqual({ action: "replaced", reason: "reconcile" });
   });
 
   test("a selected rebuild announces nothing but reports what apply did", async () => {

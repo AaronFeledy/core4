@@ -4,7 +4,7 @@ import type { EventService } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 
 const joinItems = (items: ReadonlyArray<string>): string =>
-  items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+  `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 
 const replacementReason = (reason: ServiceContainerChange["reason"]): string => {
   switch (reason) {

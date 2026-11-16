@@ -1188,6 +1188,7 @@ test("lists only anonymous volumes of the replaced container that no planned mou
     existingMounts: [
       { Type: "volume", Source: "data", Destination: "/data" },
       { Type: "volume", Source: "anonymous-1", Destination: "/var/lib/anonymous" },
+      { Type: "bind", Source: "/host/cache", Destination: "/cache" },
     ],
     networkExists: true,
     existingNetworks: ["recreate-ports-network"],

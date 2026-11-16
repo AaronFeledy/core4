@@ -45,21 +45,17 @@ const rerunCommand = (command: IncompleteStartCommand): string => {
   return `lando ${command.verb} ${services.map((service) => `-s ${service}`).join(" ")}`;
 };
 
-/** Lando commands a remediation tells the user to run, as written between backticks. */
-const remediationCommands = (remediation: string | undefined): ReadonlyArray<string> =>
-  [...(remediation ?? "").matchAll(/`(lando [^`]+)`/gu)].flatMap((match) =>
-    match[1] === undefined ? [] : [match[1]],
-  );
-
 /**
  * Nothing changed, so the error's own remedy is the advice. The rerun hint is added only when that
  * remedy names no other Lando command, so the footer never contradicts it.
  */
 const unchangedNotice = (command: IncompleteStartCommand, remediation: string | undefined): string => {
   const rerun = rerunCommand(command);
-  const others = remediationCommands(remediation).filter((named) => named !== rerun);
+  const hasOtherCommand = [...(remediation ?? "").matchAll(/`(lando [^`]+)`/gu)].some(
+    ([, named]) => named !== undefined && named !== rerun,
+  );
   const summary = `${VERB_LABEL[command.verb]} did not complete. No app resources changed.`;
-  return others.length > 0 ? summary : `${summary} Fix the reported error, then run \`${rerun}\`.`;
+  return hasOtherCommand ? summary : `${summary} Fix the reported error, then run \`${rerun}\`.`;
 };
 
 const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan, command: IncompleteStartCommand) {
