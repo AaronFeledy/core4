@@ -30,7 +30,7 @@ export type SqliteHelperPull = (spec: {
   readonly policy?: "always" | "missing" | "never";
 }) => Effect.Effect<{ readonly digest?: string }, unknown>;
 export type SqliteHelperDeps = {
-  readonly applied: Pick<AppPlan, "root" | "identity">;
+  readonly applied: Pick<AppPlan, "root" | "identity"> & Partial<Pick<AppPlan, "services">>;
   readonly run: SqliteHelperRun;
   readonly pullArtifact: SqliteHelperPull;
   readonly inspect: SqlRuntimeObservationDeps["inspect"];
@@ -159,7 +159,15 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
     ),
   );
   const existed = !inspected.stdout.startsWith("missing\n");
-  const user = sqliteHelperUser(existed ? inspected.stdout : inspected.stdout.slice("missing\n".length));
+  // A database this helper creates belongs to the project user. An existing
+  // file keeps its observed owner, which is what makes the file editable at all.
+  const projectUser = Object.values(deps.applied.services ?? {}).find(
+    (service) => String(service.name) === target.name,
+  )?.projectUser;
+  const user =
+    !existed && projectUser !== undefined
+      ? `${projectUser.uid}:${projectUser.gid}`
+      : sqliteHelperUser(existed ? inspected.stdout : inspected.stdout.slice("missing\n".length));
   if (user === undefined)
     return yield* Effect.fail(
       new SqlRecoveryUnavailableError({

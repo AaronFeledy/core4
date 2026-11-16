@@ -212,6 +212,7 @@
     "./services/draft": "./src/services/draft.ts",
     "./services/environment-value-resolver": "./src/services/environment-value-resolver.ts",
     "./services/event-command-executor": "./src/services/event-command-executor.ts",
+    "./services/execution-identity": "./src/services/execution-identity.ts",
     "./services/event-service": "./src/services/event-service.ts",
     "./services/event-validation": "./src/services/event-validation.ts",
     "./services/feature": "./src/services/feature.ts",
