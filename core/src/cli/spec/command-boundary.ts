@@ -66,6 +66,7 @@ export const renderPreCommandFailure = async (input: PreCommandFailureInput): Pr
         rendererMode: input.rendererMode,
         ...(input.usage === true ? { usage: true } : {}),
       }),
+    formatErrorAlreadyRedacted: true,
   });
 };
 

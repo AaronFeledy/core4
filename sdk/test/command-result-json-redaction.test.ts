@@ -7,6 +7,7 @@ import {
   encodeStreamStdoutFrame,
   identityRedactor,
 } from "@lando/sdk/command-result";
+import { SecretNotFoundError } from "@lando/sdk/errors";
 import {
   BoundText,
   CommandResultEnvelope,
@@ -376,5 +377,62 @@ describe("one secret-named-field rule in machine envelopes", () => {
       password: { _tag: "BoundText", parts: [REDACTED, { reference: "DB_PASSWORD", encoding: "raw" }] },
     });
     expect(yaml).toEqual(json);
+  });
+});
+
+describe("tagged error diagnostics under the secret-named-field rule", () => {
+  const redactor = createRedactor("secrets", { values: ["registered-token"] });
+  const failure = (error: unknown) =>
+    envelope(
+      Effect.runSync(
+        encodeCommandResult({
+          command: "cli:unknown-command",
+          resultSchema: Schema.Void,
+          outcome: { _tag: "failure" as const, error, additionalErrors: [] },
+          redactor,
+        }),
+      ),
+    );
+
+  test("keeps an unknown command's token readable in JSON and YAML", () => {
+    // Given a tagged error whose own diagnostic field the name rule would mask.
+    const error = {
+      _tag: "UnknownCommandError",
+      message: "Unknown command.",
+      remediation: "Run lando help.",
+      commandToken: "app:list:share",
+    };
+    // When
+    const json = failure(error);
+    const yaml = Bun.YAML.parse(
+      Effect.runSync(
+        encodeCommandResult({
+          command: "cli:unknown-command",
+          resultSchema: Schema.Void,
+          outcome: { _tag: "failure" as const, error, additionalErrors: [] },
+          redactor,
+          format: "yaml",
+        }),
+      ),
+    );
+    // Then
+    expect(json.error?.commandToken).toBe("app:list:share");
+    expect(yaml).toEqual(json);
+  });
+
+  test("keeps a missing secret's id readable while a registered value still masks", () => {
+    // Given the real tagged error and a token carrying a registered value.
+    const missing = failure(
+      new SecretNotFoundError({ message: "Missing secret.", secret: "MISSING_SECRET" }),
+    );
+    const masked = failure({
+      _tag: "UnknownCommandError",
+      message: "Unknown command.",
+      remediation: "Run lando help.",
+      commandToken: "app:registered-token",
+    });
+    // Then
+    expect(missing.error).toMatchObject({ _tag: "SecretNotFoundError", secret: "MISSING_SECRET" });
+    expect(masked.error?.commandToken).toBe(`app:${REDACTED}`);
   });
 });

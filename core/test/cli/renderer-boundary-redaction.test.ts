@@ -7,6 +7,7 @@ import { formatSummary } from "@lando/renderer/summary";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AppPlan } from "@lando/sdk/schema";
 import { Effect, Layer, Schema } from "effect";
+import { formatBugReport } from "../../src/cli/bug-report.ts";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
 import { renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
@@ -173,7 +174,35 @@ describe("runWithRendererHandling redaction", () => {
     expect(io.stderr()).toContain("[redacted]");
     expect(io.stderr()).not.toContain("topsecret");
   });
-
+  test("keeps a canonical report's diagnostic label while masking a registered value", async () => {
+    // Given a canonical formatter that already redacts each field it prints.
+    const io = createBufferedRendererIO();
+    const error = {
+      _tag: "UnknownCommandError",
+      message: "Unknown command.",
+      remediation: "Run lando help.",
+      commandToken: "app:list:share",
+      note: "topsecret",
+    };
+    // When
+    await runWithRendererHandling(Effect.fail(error), {
+      runtime: redactionLayer,
+      rendererMode: "plain",
+      io,
+      formatError: (failure, redactor) =>
+        formatBugReport({
+          ...failure,
+          redactor,
+          context: { commandId: "cli:unknown-command" },
+          rendererMode: "plain",
+        }),
+      formatErrorAlreadyRedacted: true,
+      setExitCode: () => undefined,
+    });
+    // Then the report's own diagnostic label stays readable and the registered value masks.
+    expect(io.stderr()).toContain("commandToken: app:list:share");
+    expect(io.stderr()).not.toContain("topsecret");
+  });
   test("redacts proxy credentials embedded in SetupNetworkTrustError diagnostics", async () => {
     const io = createBufferedRendererIO();
     const failure = new SetupNetworkTrustError({

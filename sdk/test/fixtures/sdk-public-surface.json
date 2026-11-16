@@ -1798,7 +1798,7 @@
       "SchemaExecutionSiteAnnotationId",
       "SchemaIssueLeaf",
       "SchemaLayerMergeAnnotationId",
-      "SchemaSecretDescriptorAnnotationId",
+      "SchemaNotCredentialAnnotationId",
       "SecretRef",
       "SecretReference",
       "SecretStoreContribution",

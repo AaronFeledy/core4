@@ -7,6 +7,7 @@ export { CommandContribution } from "./command-contribution.ts";
 
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { FileSyncEngineCapabilities } from "./file-sync-engine.ts";
 import { BootstrapLevel, PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
@@ -247,6 +248,8 @@ export const SecretStoreContribution = Schema.Struct({
   deprecated: Schema.optionalKey(DeprecationNotice).annotate({
     description: "Optional lifecycle notice for this contribution.",
   }),
+}).annotate({
+  [SchemaNotCredentialAnnotationId]: true,
 });
 export type SecretStoreContribution = typeof SecretStoreContribution.Type;
 

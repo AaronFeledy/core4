@@ -21,11 +21,13 @@ export interface ValueRedactionScope {
    */
   readonly numberIsExempt?: ((value: number) => boolean) | undefined;
   /**
-   * True when every live schema candidate for this object is a secret
-   * descriptor: a published shape that carries references, never credential
-   * bytes. Only such a value keeps its own structure under a secret-named key.
+   * True when every live schema candidate at this position that accepts the
+   * value's JSON kind is annotated as holding no credential bytes: a published
+   * reference descriptor, a declared name/path/id, or a Lando-authored
+   * diagnostic field. Only such a position keeps the ordinary rules under a
+   * secret-named key.
    */
-  readonly isSecretDescriptor?: ((value: object) => boolean) | undefined;
+  readonly holdsNoCredential?: ((value: unknown) => boolean) | undefined;
 }
 
 /** Below a scope, a position the schema cannot describe redacts every key and string. */
@@ -57,6 +59,15 @@ const safeIsError = (value: object): boolean => {
   }
 };
 
+/** A schema-annotated position never carries credential bytes; an unreadable scope proves nothing. */
+const isProvenHarmless = (scope: ValueRedactionScope | undefined, value: unknown): boolean => {
+  try {
+    return scope?.holdsNoCredential?.(value) === true;
+  } catch {
+    return false;
+  }
+};
+
 /** What the secret-named-field rule does with one value. */
 export type SecretFieldRedaction =
   /** Keep the value's own shape and apply the ordinary rules. */
@@ -77,9 +88,9 @@ export type SecretFieldRedaction =
  * string and break schema decoding; without that proof it is data. A published
  * development default is public only as authored bytes, so it takes the
  * ordinary string path. Everything else under a secret-named key is masked
- * unless its shape is proven harmless: a secret descriptor
- * (`{_tag: "SecretRef", ...}`) or an array/object whose every own key the schema
- * declares or indexes.
+ * unless its position is proven harmless: a schema-annotated position that
+ * holds no credential bytes (`{_tag: "SecretRef", ...}`), or an array/object
+ * whose every own key the schema declares or indexes.
  */
 export const redactSecretField = (
   redactString: (text: string) => string,
@@ -87,23 +98,29 @@ export const redactSecretField = (
   scope?: ValueRedactionScope,
 ): SecretFieldRedaction => {
   if (value === null || value === undefined || typeof value === "boolean") return { kind: "ordinary" };
-  if (typeof value === "string") {
-    if (scope?.stringIsExempt(value) === true) return { kind: "ordinary" };
-    if (isPublicDefaultCredential(value)) return { kind: "replace", text: redactString(value) };
+  if (typeof value !== "object") {
+    // A schema-annotated position holds no credential bytes, so it keeps the
+    // ordinary rules; ordinary string redaction still masks registered values
+    // and patterns.
+    if (isProvenHarmless(scope, value)) return { kind: "ordinary" };
+    if (typeof value === "string") {
+      if (scope?.stringIsExempt(value) === true) return { kind: "ordinary" };
+      if (isPublicDefaultCredential(value)) return { kind: "replace", text: redactString(value) };
+      return { kind: "replace", text: REDACTED };
+    }
+    if (typeof value === "number")
+      return scope?.numberIsExempt?.(value) === true
+        ? { kind: "ordinary" }
+        : { kind: "replace", text: REDACTED };
     return { kind: "replace", text: REDACTED };
   }
-  if (typeof value === "number")
-    return scope?.numberIsExempt?.(value) === true
-      ? { kind: "ordinary" }
-      : { kind: "replace", text: REDACTED };
-  if (typeof value !== "object") return { kind: "replace", text: REDACTED };
   // A revoked proxy throws from `Array.isArray` and `instanceof`; fail closed.
   const array = safeIsArray(value);
   if (array === undefined) return { kind: "replace", text: REDACTED };
   // Error loses the structured shape it would only carry as free text.
   if (safeIsError(value)) return { kind: "replace", text: REDACTED };
+  if (isProvenHarmless(scope, value)) return { kind: "ordinary" };
   if (array) return { kind: "secret" };
-  if (scope?.isSecretDescriptor?.(value) === true) return { kind: "ordinary" };
   // A missing or opaque scope never proves a key name harmless.
   if (scope === undefined || scope === OPAQUE_SCOPE) return { kind: "replace", text: REDACTED };
   let keys: string[];

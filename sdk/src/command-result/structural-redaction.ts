@@ -6,6 +6,9 @@
  * carry user data, so masking it protects nothing and breaks schema decoding.
  * The same is true of a property name the schema declares. Everything else -
  * free text, template literals, unknown and dynamic keys - stays redacted.
+ * A position annotated as holding no credential bytes (a reference descriptor,
+ * a declared name/path/id, or a Lando-authored diagnostic field) keeps the
+ * ordinary string rules, so registered values and patterns still mask.
  *
  * The policy is conservative: a value is exempt only when EVERY live schema
  * candidate at that position is a finite literal set that accepts it. A union
@@ -31,7 +34,7 @@ import {
   redactValueWith,
 } from "@lando/sdk/secrets";
 import { SchemaAST as AST, type Schema } from "effect";
-import { SchemaSecretDescriptorAnnotationId } from "../schema/environment-value.ts";
+import { SchemaNotCredentialAnnotationId } from "../schema/environment-value.ts";
 import {
   type ObjectDiscriminatorIndex,
   type StructuralRedactionSide,
@@ -49,8 +52,8 @@ export interface StructuralRedactionNode extends ValueRedactionScope {
   readonly element: (index: number, length: number) => StructuralRedactionNode | undefined;
   /** True when every live candidate declares `key` as a property signature. */
   readonly keyIsDeclared: (key: string, value: object) => boolean;
-  /** True when every live candidate is annotated as a secret-reference descriptor. */
-  readonly isSecretDescriptor: (value: object) => boolean;
+  /** True when every live candidate that accepts the value's JSON kind holds no credential bytes. */
+  readonly holdsNoCredential: (value: unknown) => boolean;
   /** True when every live candidate accepting a number is a number schema or numeric literal. */
   readonly numberIsExempt: (value: number) => boolean;
 }
@@ -63,13 +66,14 @@ interface ChildEntry {
 }
 
 /**
- * A descriptor's own shape is published: it carries references, not credential
- * bytes. Only an annotated candidate proves that, so `BoundText` (whose parts
- * mix literal bytes with references) is deliberately not one.
+ * An annotated position carries no credential bytes: a published reference
+ * descriptor, a declared name/path/id, or a Lando-authored diagnostic field.
+ * Only an annotated candidate proves that, so `BoundText` (whose parts mix
+ * literal bytes with references) is deliberately not annotated.
  */
-const isSecretDescriptorAst = (ast: AST.AST): boolean =>
-  ast.annotations?.[SchemaSecretDescriptorAnnotationId] === true ||
-  ast.context?.annotations?.[SchemaSecretDescriptorAnnotationId] === true;
+const isNotCredentialAst = (ast: AST.AST): boolean =>
+  ast.annotations?.[SchemaNotCredentialAnnotationId] === true ||
+  ast.context?.annotations?.[SchemaNotCredentialAnnotationId] === true;
 
 const compiled = new WeakMap<AST.AST, Map<StructuralRedactionSide, StructuralRedactionNode>>();
 
@@ -135,6 +139,21 @@ const resolveChild = (key: string, live: readonly AST.AST[], side: StructuralRed
     children.push(...indexed);
   }
   return { declared, child: children.length === 0 ? undefined : makeNode(children, side) };
+};
+
+/** The JSON kind a value presents; a value JSON cannot carry has no kind. */
+const jsonKind = (value: unknown): string | undefined => {
+  if (value === null) return "null";
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return typeof value;
+    case "object":
+      return "object";
+    default:
+      return undefined;
+  }
 };
 
 /**
@@ -252,13 +271,34 @@ const makeNode = (raw: readonly AST.AST[], side: StructuralRedactionSide): Struc
     return proven;
   };
 
+  /**
+   * Every live candidate that accepts this value's JSON kind must be annotated
+   * as holding no credential bytes. Objects narrow by discriminator first, so a
+   * descriptor in a union proves only the value it selects; a position no
+   * candidate accepts proves nothing.
+   */
+  const holdsNoCredential = (value: unknown): boolean => {
+    let live: readonly AST.AST[];
+    if (value !== null && typeof value === "object") {
+      let array: boolean;
+      try {
+        array = Array.isArray(value);
+      } catch {
+        return false;
+      }
+      live = array ? arrays() : forObject(value);
+    } else {
+      const kind = jsonKind(value);
+      if (kind === undefined) return false;
+      live = candidates().filter((candidate) => acceptsKind(candidate, kind));
+    }
+    return live.length > 0 && live.every(isNotCredentialAst);
+  };
+
   return {
     keyIsDeclared: (key, value) => childEntry(key, value).declared,
     child: (key, value) => childEntry(key, value).child,
-    isSecretDescriptor: (value) => {
-      const live = forObject(value);
-      return live.length > 0 && live.every(isSecretDescriptorAst);
-    },
+    holdsNoCredential,
     numberIsExempt,
     element: (index, length) => {
       const live = arrays();

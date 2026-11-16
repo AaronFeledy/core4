@@ -11,7 +11,12 @@ import {
   structuralRedaction,
 } from "@lando/sdk/command-result";
 import { LandoEvent, TaskDetailEvent } from "@lando/sdk/events";
-import { CommandResultEnvelope, SecretRef, StreamFrame } from "@lando/sdk/schema";
+import {
+  CommandResultEnvelope,
+  SchemaNotCredentialAnnotationId,
+  SecretRef,
+  StreamFrame,
+} from "@lando/sdk/schema";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 
@@ -308,5 +313,39 @@ describe("the secret-named-field rule under a compiled policy", () => {
     // Then
     expect(descriptor).toEqual({ password: { _tag: "SecretRef", reference: "DB_PASSWORD" } });
     expect(plain).toEqual({ password: { value: REDACTED } });
+  });
+});
+
+describe("the NotCredential annotation", () => {
+  const redactor = createRedactor("secrets", { values: ["registered-value"] });
+  const notCredential = <T extends Schema.Top>(schema: T) =>
+    schema.annotate({ [SchemaNotCredentialAnnotationId]: true });
+
+  test("keeps an annotated secret-named string and masks an unannotated one", () => {
+    // Given one position the schema proves holds a name and one it does not.
+    const policy = structuralRedaction(
+      Schema.Struct({
+        defaultSecretStore: notCredential(Schema.String),
+        secretAnswers: Schema.String,
+      }),
+    );
+    // When
+    const output = redactValueWithPolicy(redactor, policy, {
+      defaultSecretStore: "1password",
+      secretAnswers: "hunter2",
+    });
+    // Then
+    expect(output).toEqual({ defaultSecretStore: "1password", secretAnswers: REDACTED });
+  });
+
+  test("still applies ordinary string redaction inside an annotated position", () => {
+    // Given an annotated field whose text carries a registered value.
+    const policy = structuralRedaction(Schema.Struct({ defaultSecretStore: notCredential(Schema.String) }));
+    // When
+    const output = redactValueWithPolicy(redactor, policy, {
+      defaultSecretStore: "store-registered-value",
+    });
+    // Then
+    expect(output).toEqual({ defaultSecretStore: `store-${REDACTED}` });
   });
 });

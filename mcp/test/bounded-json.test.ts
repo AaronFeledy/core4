@@ -3,7 +3,7 @@ import { redactBoundedJsonValue, stringifyBoundedJson } from "@lando/mcp/bounded
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { structuralRedaction } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
-import { BoundText, SecretRef } from "@lando/sdk/schema";
+import { BoundText, SecretRef, TaggedErrorJson } from "@lando/sdk/schema";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Option, Schema } from "effect";
 
@@ -408,6 +408,30 @@ describe("bounded MCP JSON applies one secret-named-field rule", () => {
         parts: [REDACTED, { reference: "DB_PASSWORD", encoding: "raw" }],
       },
     });
+  });
+
+  test("keeps a tagged error's own diagnostic fields readable and masks a registered value", async () => {
+    // Given a failure envelope position the error rest value holds names and ids.
+    const error = {
+      _tag: "SecretNotFoundError",
+      message: "Missing secret.",
+      remediation: "Create the named secret.",
+      secret: "MISSING_SECRET",
+      commandToken: "app:list:share",
+      registryToken: "registered-token",
+    };
+    const schema = Schema.Struct({ error: TaggedErrorJson });
+    // When
+    const encoded = await Effect.runPromise(
+      stringifyBoundedJson(
+        { error },
+        "diagnostic payload",
+        createRedactor("secrets", { values: ["registered-token"] }),
+        structuralRedaction(schema),
+      ),
+    );
+    // Then registered bytes still mask; the name rule no longer hides remediation.
+    expect(JSON.parse(encoded)).toEqual({ error: { ...error, registryToken: REDACTED } });
   });
 });
 

@@ -146,6 +146,13 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
     failure: import("@lando/sdk/command-result").ProjectedFailure,
     redactor: import("@lando/sdk/secrets").Redactor,
   ) => string;
+  /**
+   * The formatter already redacts every field it prints with the supplied
+   * redactor. The boundary must then not scan the assembled report as free
+   * text: the secret-assignment scanner would mask a diagnostic label such as
+   * `commandToken` and hide the remediation the report exists to carry.
+   */
+  readonly formatErrorAlreadyRedacted?: boolean;
   readonly setExitCode?: (code: number) => void;
   /**
    * Records the command's spans with this tracer. Without one, the CLI keeps
@@ -412,7 +419,9 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         return;
       }
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
-      let message = redactor.redactString(options.formatError({ error, additionalErrors }, redactor));
+      const formatted = options.formatError({ error, additionalErrors }, redactor);
+      let message =
+        options.formatErrorAlreadyRedacted === true ? formatted : redactor.redactString(formatted);
       // Failure notices (for example what an incomplete start left in place) follow the error.
       const notices = (yield* commandWarnings.failureNotices).map((notice) => redactor.redactString(notice));
       if (options.rendererMode === "lando" && io.isTTY === true) message = dimBugReportDetails(message);
