@@ -110,7 +110,6 @@ describe("private-file ACL worker lifecycle", () => {
             Effect.acquireUseRelease(
               acquireAdvisoryLockAt(lockPath, "replacement", {
                 privateFileAccess: worker,
-                expireLiveOwner: false,
               }),
               () => Effect.tryPromise(() => rename(candidate, binary)),
               (lock) => lock.release,

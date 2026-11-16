@@ -67,7 +67,7 @@ test("plugin lock rejects an unbounded runtime wait before opening a lock", asyn
   expect(error.remediation).toContain("finite plugin lock wait");
 });
 
-test("plugin options cannot override the live-owner lock policy", async () => {
+test("plugin lock never takes over a live owner's lock", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-plugin-lock-policy-"));
   const lockDir = join(root, "locks");
   const lockPath = join(lockDir, "routes.lock.lock");
@@ -80,7 +80,7 @@ test("plugin options cannot override the live-owner lock policy", async () => {
   await writeFile(lockPath, existing, { mode: 0o600 });
   try {
     const store = makePluginStateStore(makeTestStateStore().service, AbsolutePath.make(root), lockTestAccess);
-    const callerOptions = { timeoutMs: 80, expireLiveOwner: true };
+    const callerOptions = { timeoutMs: 80 };
     const result = await Effect.runPromise(
       Effect.result(store.withLock("routes.lock", Effect.succeed("incorrect takeover"), callerOptions)),
     );

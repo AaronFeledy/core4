@@ -100,7 +100,7 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
   // one lock spans the read and the write or the second writer drops the first change.
   const changeState = (change: (state: PluginTrustState) => PluginTrustState) => {
     const locked = (access: typeof PrivateFileAccessService.Service) =>
-      withAdvisoryLockUsing(access, { expireLiveOwner: false })(
+      withAdvisoryLockUsing(access)(
         path,
         "plugin-trust",
         readState.pipe(Effect.flatMap((state) => writeState(change(state)))),

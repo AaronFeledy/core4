@@ -20,18 +20,17 @@ describe("advisory state lock", () => {
     JSON.stringify({ pid: process.pid, token: "", createdAt: 0 }),
     JSON.stringify({ pid: process.pid, token: "invalid-time", createdAt: "old" }),
   ]) {
-    test(`reclaims an old invalid non-expiring record ${JSON.stringify(record)}`, async () => {
+    test(`reclaims an old invalid record ${JSON.stringify(record)}`, async () => {
       // Given invalid lock bytes with an old filesystem timestamp
       const dir = await mkdtemp(join(tmpdir(), "lando-state-lock-"));
       const path = join(dir, "transaction.lock");
       await writeFile(path, record);
       await utimes(path, new Date(0), new Date(0));
       try {
-        // When a non-expiring acquisition encounters the abandoned artifact
+        // When an acquisition encounters the abandoned artifact
         await run(
           Effect.acquireUseRelease(
             acquireAdvisoryLockAt(path, "test", {
-              expireLiveOwner: false,
               privateFileAccess: lockTestAccess,
             }),
             (lock) => Effect.promise(async () => expect(await readFile(path, "utf8")).toContain(lock.token)),
@@ -63,7 +62,7 @@ describe("advisory state lock", () => {
         process.umask(0o777);
         const path = ${JSON.stringify(path)};
         await Effect.runPromise(Effect.acquireUseRelease(
-          acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false, privateFileAccess: lockTestAccess }),
+          acquireAdvisoryLockAt(path, "test", { privateFileAccess: lockTestAccess }),
           () => Effect.promise(async () => {
             if (((await stat(path)).mode & 0o777) !== 0o600) throw new Error("mode mismatch");
           }),
@@ -92,7 +91,6 @@ describe("advisory state lock", () => {
       // When another transaction tries to acquire it
       const result = await Effect.runPromiseExit(
         acquireAdvisoryLockAt(path, "test", {
-          expireLiveOwner: false,
           privateFileAccess: lockTestAccess,
         }),
       );
@@ -112,7 +110,6 @@ describe("advisory state lock", () => {
       const started = Date.now();
       const result = await Effect.runPromiseExit(
         acquireAdvisoryLockAt(path, "test", {
-          expireLiveOwner: false,
           timeoutMs: 80,
           retryMs: 10,
           privateFileAccess: lockTestAccess,
@@ -137,7 +134,6 @@ describe("advisory state lock", () => {
       const error = await run(
         Effect.flip(
           acquireAdvisoryLockAt(path, "test", {
-            expireLiveOwner: false,
             timeoutMs: 20,
             retryMs: 10,
             privateFileAccess: lockTestAccess,
@@ -174,7 +170,6 @@ describe("advisory state lock", () => {
             return "ran";
           }),
           {
-            expireLiveOwner: false,
             onWait: Effect.sync(() => {
               waits += 1;
             }),
@@ -223,7 +218,7 @@ describe("advisory state lock", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
-  test("withAdvisoryLock never steals an old live owner when expiration is disabled", async () => {
+  test("withAdvisoryLock never steals an old live owner", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
     try {
       const file = join(dir, "state.json");
@@ -234,7 +229,7 @@ describe("advisory state lock", () => {
       await utimes(lockPath, new Date(0), new Date(0));
 
       const result = await Effect.runPromiseExit(
-        withAdvisoryLock(file, "test", Effect.succeed("unreachable"), { expireLiveOwner: false }),
+        withAdvisoryLock(file, "test", Effect.succeed("unreachable")),
       );
 
       expect(result._tag).toBe("Failure");
@@ -250,7 +245,7 @@ describe("advisory state lock", () => {
       const file = join(dir, "state.json");
       await writeFile(file, "{}\n");
       const result = await Effect.runPromiseExit(
-        withAdvisoryLock(file, "test", Effect.fail("expected failure"), { expireLiveOwner: false }),
+        withAdvisoryLock(file, "test", Effect.fail("expected failure")),
       );
       expect(result._tag).toBe("Failure");
       await expect(stat(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
@@ -273,7 +268,6 @@ describe("advisory state lock", () => {
               file,
               "test",
               Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
-              { expireLiveOwner: false },
             ),
           );
           yield* Deferred.await(entered);
@@ -298,9 +292,9 @@ test("same-fiber re-entry dies at once instead of waiting on its own lock", asyn
 
     // When the same fiber nests an acquisition of the same file.
     const result = await Effect.runPromiseExit(
-      withAdvisoryLock(file, "test", withAdvisoryLock(file, "test", Effect.succeed("unreachable")), {
-        expireLiveOwner: false,
-      }).pipe(Effect.timeout("1 second")),
+      withAdvisoryLock(file, "test", withAdvisoryLock(file, "test", Effect.succeed("unreachable"))).pipe(
+        Effect.timeout("1 second"),
+      ),
     );
 
     // Then it dies immediately, names the lock, and reports a Lando bug.
@@ -335,7 +329,6 @@ test("same-fiber re-entry from a wait hook dies while the outer acquire is still
     // When the wait hook re-enters the same lock on the same fiber.
     const result = await Effect.runPromiseExit(
       withAdvisoryLock(file, "test", Effect.succeed("unreachable"), {
-        expireLiveOwner: false,
         timeoutMs: 200,
         retryMs: 10,
         onWait: withAdvisoryLock(file, "test", Effect.void).pipe(Effect.orDie),
@@ -368,17 +361,12 @@ test("a different fiber still waits for the held lock and then acquires it", asy
         file,
         "test",
         Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
-        { expireLiveOwner: false },
       ),
     );
     await Effect.runPromise(Deferred.await(entered));
 
     // When a different fiber acquires the same lock.
-    const second = Effect.runFork(
-      withAdvisoryLock(file, "test", Deferred.succeed(secondEntered, undefined), {
-        expireLiveOwner: false,
-      }),
-    );
+    const second = Effect.runFork(withAdvisoryLock(file, "test", Deferred.succeed(secondEntered, undefined)));
     const beforeRelease = await Effect.runPromise(Deferred.poll(secondEntered));
     await Effect.runPromise(Deferred.succeed(release, undefined));
     await Effect.runPromise(Fiber.join(first));
@@ -406,7 +394,6 @@ test("interruption while holding clears the holder for a later acquisition", asy
             file,
             "test",
             Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
-            { expireLiveOwner: false },
           ),
         );
         yield* Deferred.await(entered);
@@ -415,9 +402,7 @@ test("interruption while holding clears the holder for a later acquisition", asy
     );
 
     // When a later acquisition runs.
-    const reacquired = await run(
-      withAdvisoryLock(file, "test", Effect.succeed("reacquired"), { expireLiveOwner: false }),
-    );
+    const reacquired = await run(withAdvisoryLock(file, "test", Effect.succeed("reacquired")));
 
     // Then the stale holder record did not block or falsely reject it.
     expect(reacquired).toBe("reacquired");
