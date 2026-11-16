@@ -1,7 +1,7 @@
 ---
 id: nextjs
 provider: test
-timeout: 60000
+timeout: 900000
 tags: [recipe, nextjs, node]
 ---
 
@@ -123,6 +123,26 @@ Three tooling commands ship with the Landofile, all running inside the `web` ser
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"NEXTAUTH_PROVIDER\":\\s*\"nextauth\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"none\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"database\":\\s*\\{)" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="install-path" layer="e2e" render={false} reason="Live scaffold and HTTP verification">
+    <Step name="init">
+      <Run command="lando init --recipe nextjs --name=nextjs-install --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+    </Step>
+    <Step name="scaffold-nextjs">
+      <Run command="lando nextjs-scaffold" />
+      <Verify command="lando exec web -- test -f /app/package.json" />
+    </Step>
+    <Step name="serve-nextjs">
+      <Run command="lando exec web -- sh -c 'nohup npx next dev > /tmp/nextjs-dev.log 2>&1 < /dev/null &'" />
+      <Verify command="lando exec web -- curl --retry 30 --retry-connrefused --retry-delay 2 --max-time 120 -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/" expect={{ stdout: { regex: "^200$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
     </Step>
   </Scenario>
 </Guide>
