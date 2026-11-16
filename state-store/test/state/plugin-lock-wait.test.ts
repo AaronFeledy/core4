@@ -28,20 +28,30 @@ test("plugin lock can wait past the default deadline for a live process", async 
         );
         await Effect.runPromise(store.withLock("routes.lock", Effect.promise(async () => {
           process.stdout.write("held\\n");
-          await Bun.sleep(2500);
+          // Hold until the parent closes stdin, so release never races the parent's wait.
+          await Bun.stdin.text();
         })));
       `,
     ],
-    { stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true },
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe", windowsHide: true },
   );
   try {
     const first = await child.stdout.getReader().read();
     expect(new TextDecoder().decode(first.value)).toContain("held");
     const store = makePluginStateStore(makeTestStateStore().service, AbsolutePath.make(root), lockTestAccess);
-    const acquired = await Effect.runPromise(
-      store.withLock("routes.lock", Effect.succeed("second owner"), { timeoutMs: 5_000 }),
+    const startedAt = performance.now();
+    const acquiring = Effect.runPromise(
+      store.withLock(
+        "routes.lock",
+        Effect.sync(() => performance.now()),
+        { timeoutMs: 5_000 },
+      ),
     );
-    expect(acquired).toBe("second owner");
+    // The wait past the 2 s default deadline is the behavior under test, so this hold is time-based.
+    await Bun.sleep(2_500);
+    child.stdin.end();
+    const acquiredAt = await acquiring;
+    expect(acquiredAt - startedAt).toBeGreaterThan(2_000);
     const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: "" });
   } finally {
