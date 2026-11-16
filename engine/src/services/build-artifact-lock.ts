@@ -48,7 +48,6 @@ export const withBuiltArtifactsLock = Effect.fnUntraced(function* <A, E, R>(body
         const access = yield* PrivateFileAccessService;
         yield* Effect.acquireRelease(
           acquireAdvisoryLockAt(lockPath, "built-artifacts", {
-            expireLiveOwner: false,
             timeoutMs: resolveAppLockTimeoutMs(),
             privateFileAccess: access,
             ...(onWait === undefined ? {} : { onWait }),
