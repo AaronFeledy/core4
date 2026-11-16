@@ -519,3 +519,40 @@ describe("cloned services in a planned app", () => {
     expect(failure.value.cause.remediation).toContain(derived);
   });
 });
+
+describe("project-user home preparation", () => {
+  test("prepares a numeric project user's persisted home that the image does not prepare", async () => {
+    // No clone here: the harness only needs a feature to load the test service types.
+    const inert: AppFeatureDefinition = {
+      id: "test.inert",
+      priority: 500,
+      selectors: { names: ["web"] },
+      apply: () => Effect.void,
+    };
+    const app = await Effect.runPromise(
+      planWithClone(
+        {
+          name: "homes",
+          services: {
+            web: {
+              type: "cloned-home:3.22",
+              appMount: "/app",
+              projectUser: "1000:1001",
+              home: { path: "/home/project" },
+            },
+          },
+        },
+        inert,
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const service = app.services[ServiceName.make("web")];
+    if (service === undefined) throw new Error("expected the web service");
+    expect(service.projectUser).toEqual({ name: "1000", uid: 1000, gid: 1001 });
+    expect(service.home).toMatchObject({ state: "persisted", target: "/home/project", user: "1000" });
+    const ownership = buildSteps(service).find((step) => step.id === DATA_TREE_OWNERSHIP_STEP_ID);
+    const command = ownership?.command;
+    if (!Array.isArray(command)) throw new TypeError("expected an argv ownership step");
+    expect(command.join(" ")).toContain("chown -R '1000:1001' '/home/project'");
+  });
+});

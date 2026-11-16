@@ -315,12 +315,12 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
     const ownershipTrees = [...ownedTrees];
     const home = homePlan.home;
-    if (
+    const catalogPreparesHome =
       home?.state === "persisted" &&
       home.user !== undefined &&
       !homeIntent.customImage &&
-      homeIntent.identity?.preparedHomes?.includes(home.user)
-    ) {
+      homeIntent.identity?.preparedHomes?.includes(home.user) === true;
+    if (catalogPreparesHome) {
       const preparedHome = resolveDataTreeOwnership({
         serviceName: name,
         serviceType: homeIntent.serviceType,
@@ -334,7 +334,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
     // A clone seeds no data of its own: it shares the parent's stores, and the
     // parent's derived image already prepares their ownership. Only an ordinary
-    // service prepares the fresh volume trees its project user writes.
+    // service prepares the fresh volume trees its project user writes, including
+    // a persisted home the catalog does not prepare (a numeric project user's).
     if (clonedFrom === undefined) {
       ownershipTrees.push(
         ...projectUserVolumeTrees({
@@ -342,7 +343,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
           ...(projectUserResolution.projectUser === undefined
             ? {}
             : { projectUser: projectUserResolution.projectUser }),
-          ...(homePlan.home.state === "persisted" ? { homeStore: homePlan.home.store } : {}),
+          ...(homePlan.home.state === "persisted" && catalogPreparesHome
+            ? { homeStore: homePlan.home.store }
+            : {}),
         }),
       );
     }
