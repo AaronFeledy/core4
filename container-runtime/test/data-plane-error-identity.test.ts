@@ -136,7 +136,7 @@ for (const mode of modes) {
         : invoke(provider, mode);
     const exit = await Effect.runPromiseExit(work);
     if (!Exit.isFailure(exit)) throw new Error("Expected typed failure");
-    expect(removals).toBe(phase === "create" ? 0 : 1);
+    expect(removals).toBe(1);
     const reason = exit.cause.reasons.find(
       (reason) => Cause.isFailReason(reason) || Cause.isDieReason(reason),
     );
@@ -441,9 +441,7 @@ for (const mode of modes) {
         }
         expect(error).toMatchObject({ remediation: diagnostic.remediation });
       }
-      expect(removals).toBe(
-        phase === "missing-request" || phase === "http" || phase === "volume-owner" ? 0 : 1,
-      );
+      expect(removals).toBe(phase === "missing-request" || phase === "volume-owner" ? 0 : 1);
       const envelope = await Effect.runPromise(
         encodeCommandResult({
           command: "fixture",
