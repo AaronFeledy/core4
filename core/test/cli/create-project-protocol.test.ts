@@ -24,6 +24,7 @@ const fakeComposer = [
   'printf "%s\\n" "$*" >> "$COMPOSER_LOG"',
   'case "$1" in',
   "  create-project)",
+  '    if test "${COMPOSER_FAIL_CREATE:-0}" = 1; then exit 1; fi',
   "    destination=$3",
   '    mkdir -p "$destination/app" "$destination/public"',
   '    printf "%s\\n" staged > "$destination/app/index.php"',
@@ -243,6 +244,26 @@ describe("create-project protocol", () => {
       expect(result.exitCode).toBe(0);
       expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(true);
       expect(await Bun.file(join(mounted, "composer.json")).exists()).toBe(false);
+    });
+  });
+
+  test("keeps recovery evidence when replacement staging fails, then resumes", async () => {
+    await withTempDir(async (dir) => {
+      const { appRoot, env } = await fixture(dir);
+      await writeFile(join(appRoot, "composer.json"), "{}\n");
+      await writeFile(join(appRoot, ".lando-create-project-manifest"), "complete:composer.json\n");
+
+      const failed = await run(dir, { ...env, COMPOSER_FAIL_CREATE: "1" }, ["acme/resumable"]);
+
+      expect(failed.exitCode).not.toBe(0);
+      expect(await Bun.file(join(appRoot, ".lando-create-project-manifest")).exists()).toBe(true);
+
+      const resumed = await run(dir, env, ["acme/resumable"]);
+
+      expect(resumed.exitCode).toBe(0);
+      expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(true);
+      expect(await Bun.file(join(appRoot, ".lando-create-project-complete")).exists()).toBe(true);
+      expect(await Bun.file(join(appRoot, ".lando-create-project-manifest")).exists()).toBe(false);
     });
   });
 
