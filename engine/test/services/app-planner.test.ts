@@ -970,10 +970,12 @@ describe("AppPlannerLayer.layer", () => {
   for (const phase of ["artifact", "app"] as const) {
     for (const scenario of [
       {
-        name: "inherits the service user for a bare string",
+        // An image step inherits the service user; a bare app step keeps none and
+        // runs as the command identity (project user, else the container default).
+        name: "defaults the user of a bare string by phase",
         user: "node",
         scripts: "a",
-        entries: [{ run: "a", user: "node" }],
+        entries: [{ run: "a", user: "node", inherited: true }],
       },
       {
         name: "preserves an explicit root user on an object step",
@@ -992,9 +994,9 @@ describe("AppPlannerLayer.layer", () => {
         user: "node",
         scripts: ["a", { run: "b", user: "root" }, "c"],
         entries: [
-          { run: "a", user: "node" },
+          { run: "a", user: "node", inherited: true },
           { run: "b", user: "root" },
-          { run: "c", user: "node" },
+          { run: "c", user: "node", inherited: true },
         ],
       },
     ]) {
@@ -1026,7 +1028,7 @@ describe("AppPlannerLayer.layer", () => {
               id: `authored-${phase}:${index + 1}`,
               phase: phase === "artifact" ? "build" : "app",
               command: phase === "artifact" ? ["sh", "-c", entry.run] : { command: ["sh", "-c", entry.run] },
-              ...("user" in entry ? { user: entry.user } : {}),
+              ...("user" in entry && !(phase === "app" && "inherited" in entry) ? { user: entry.user } : {}),
             })),
           );
         });

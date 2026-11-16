@@ -44,6 +44,8 @@ const entrypointFeature: ServiceFeatureDefinition = {
   apply: (ctx) =>
     Effect.sync(() => {
       if (ctx.normalizedConfig.entrypoint !== undefined) ctx.setEntrypoint(ctx.normalizedConfig.entrypoint);
+      // Authored `user:` becomes the planned process user, as the stock process feature does.
+      if (ctx.normalizedConfig.user !== undefined) ctx.setUser(ctx.normalizedConfig.user);
     }),
 };
 
@@ -554,5 +556,43 @@ describe("project-user home preparation", () => {
     const command = ownership?.command;
     if (!Array.isArray(command)) throw new TypeError("expected an argv ownership step");
     expect(command.join(" ")).toContain("chown -R '1000:1001' '/home/project'");
+  });
+});
+
+describe("build step users", () => {
+  test("a userless app step keeps no user so the project user applies, while an artifact step inherits the process user", async () => {
+    const inert: AppFeatureDefinition = {
+      id: "test.inert",
+      priority: 500,
+      selectors: { names: ["web"] },
+      apply: () => Effect.void,
+    };
+    const app = await Effect.runPromise(
+      planWithClone(
+        {
+          name: "steps",
+          services: {
+            web: {
+              type: "cloned-home:3.22",
+              appMount: "/app",
+              user: "root",
+              projectUser: "www-data",
+              build: { artifact: ["echo artifact"], app: ["composer install"] },
+            },
+          },
+        },
+        inert,
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const service = app.services[ServiceName.make("web")];
+    if (service === undefined) throw new Error("expected the web service");
+    expect(service.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
+    const steps = buildSteps(service);
+    const artifact = steps.find((step) => step.phase === "build" && step.id !== DATA_TREE_OWNERSHIP_STEP_ID);
+    const appStep = steps.find((step) => step.phase === "app");
+    expect(artifact?.user).toBe("root");
+    expect(appStep).toBeDefined();
+    expect(appStep?.user).toBeUndefined();
   });
 });
