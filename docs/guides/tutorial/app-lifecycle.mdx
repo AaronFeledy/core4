@@ -200,7 +200,7 @@ Snapshots survive plain `destroy` and `--volumes`. **`lando destroy --purge -y` 
 
 If a selected volume is still in use, the removal error names the containers holding it when the runtime can report them. Holder lookup is best effort; unavailable details do not make the removal succeed.
 
-Wait for any data operation to finish, then inspect the named container before removing it and retrying. Lando does not automatically reclaim leftover data helpers. A stopped container or a data-helper label does not prove that the operation has released it; an import, export or output drain may still need it.
+If the holder is a database import, export, or snapshot that is still running, let it finish, then run the same `destroy` again. You don't need to remove Lando's data helper containers yourself. Lando removes each helper when its command ends, and right away when creating it fails. A helper Lando couldn't remove is left alone for 10 minutes after it stops, because another `lando` command may still be reading its output. After that, the next database or snapshot command removes it, and `destroy --volumes` removes it when only such helpers hold the volume.
 
 Changing providers doesn't move an applied app. If `lando start` fails with `AppPlacementError`, retire the old copy explicitly:
 
