@@ -343,9 +343,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
           ...(projectUserResolution.projectUser === undefined
             ? {}
             : { projectUser: projectUserResolution.projectUser }),
-          ...(homePlan.home.state === "persisted" && catalogPreparesHome
-            ? { homeStore: homePlan.home.store }
-            : {}),
+          ...(catalogPreparesHome ? { homeStore: home.store } : {}),
         }),
       );
     }
