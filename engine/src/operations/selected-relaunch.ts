@@ -1,7 +1,6 @@
 import { FileSyncStartError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import type { AppPlan, FileSyncSessionSpec } from "@lando/sdk/schema";
-import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { BuildOrchestrator, EventService, RouterService } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
@@ -11,6 +10,7 @@ import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { resolveAppPlacement } from "../providers/app-placement.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import type { AdmittedServices } from "./app-activation.ts";
+import { applyAndObserveServices } from "./apply-observe.ts";
 import { publishApplyOutcomeNotices } from "./apply-outcome-notices.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import {
@@ -22,7 +22,6 @@ import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { selectedAppliedRecord } from "./selected-relaunch-record.ts";
-import { inspectAppliedService } from "./service-readiness.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
@@ -161,32 +160,26 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               );
             }
             if (signal?.aborted === true) return yield* Effect.interrupt;
-            const applied = yield* applyActivation({
+            const launch = yield* applyAndObserveServices({
+              apply: applyActivation({
+                provider,
+                plan: runtimePlan,
+                certificates,
+                reconcile: operation === "rebuild",
+                recordedPlan: record,
+                completionPlan: readinessPlan,
+                ...(environment === undefined ? {} : { environment }),
+                ...(signal === undefined ? {} : { signal }),
+                beforeApply: verifyGlobalConsumerAdmission,
+              }),
+              prepareGpgHome,
               provider,
-              plan: runtimePlan,
-              certificates,
-              reconcile: operation === "rebuild",
-              recordedPlan: record,
-              completionPlan: readinessPlan,
-              ...(environment === undefined ? {} : { environment }),
-              ...(signal === undefined ? {} : { signal }),
-              beforeApply: verifyGlobalConsumerAdmission,
+              plan: readinessPlan,
+              services,
             });
-            yield* prepareGpgHome;
-            const initial = new Map<string, ServiceRuntimeInfo>();
-            for (const service of services) {
-              initial.set(
-                String(service.name),
-                yield* inspectAppliedService({
-                  provider,
-                  plan: readinessPlan,
-                  service: service.name,
-                }),
-              );
-            }
             // Publish before completion so a later readiness failure still reports the replacement.
             if (operation === "restart")
-              yield* publishApplyOutcomeNotices(events, applied.services, { created: true });
+              yield* publishApplyOutcomeNotices(events, launch.applied.services, { created: true });
             const ready = yield* completeStartup({
               policy: "selected",
               selectedPlan: runtimePlan,
@@ -198,7 +191,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               provider,
               plan: readinessPlan,
               services: services.map((service) => service.name),
-              initial,
+              initial: launch.initial,
               ...(signal === undefined ? {} : { signal }),
               ...(landofileRouter === undefined ? {} : { landofileRouter }),
             });
@@ -211,7 +204,10 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
                 ...(appliedPlan === undefined ? {} : { previousPlan: appliedPlan }),
               });
             }
-            return startedServices(yield* collectPlanConnections(readinessPlan, ready), applied.services);
+            return startedServices(
+              yield* collectPlanConnections(readinessPlan, ready),
+              launch.applied.services,
+            );
           }),
         ),
       );
