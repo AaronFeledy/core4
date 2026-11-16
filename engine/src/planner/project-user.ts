@@ -121,6 +121,13 @@ export const resolveProjectUser = (
     const pair = NUMERIC_PAIR.exec(input.authored);
     if (pair !== null) {
       explicitCandidate = numericIdentity(pair[1] ?? "", pair[2] ?? "");
+      if (isRootIdentity(explicitCandidate))
+        return invalidAuthoring(
+          input,
+          input.authored,
+          "uid 0 is root, which keeps its own identity instead of mapping to the host user.",
+          'Set projectUser to a non-root "<uid>:<gid>" pair, or to false to opt the service out.',
+        );
     } else {
       const declared = input.identity?.projectUser;
       if (declared === undefined)
@@ -187,8 +194,8 @@ export const resolveProjectUser = (
 
 /**
  * Volume mounts whose fresh store the project user must own after the image
- * seeds it. The home store is prepared separately and authored `storage:`
- * mounts own their declared identity. An exclude shadow is included: on a
+ * seeds it. `homeStore` names a home the catalog already prepares, which is
+ * skipped; authored `storage:` mounts own their declared identity. An exclude shadow is included: on a
  * provider without file-sync it starts empty, and the project user must be
  * able to create in it.
  */

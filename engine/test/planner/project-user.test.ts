@@ -89,6 +89,27 @@ describe("resolveProjectUser grammar", () => {
     },
   );
 
+  test.each([
+    ["0:0", "lando"],
+    ["0:33", "lando"],
+    ["0:33", "docker"],
+  ])("Given the root pair %s on %s, Then planning fails instead of ignoring it", (authored, provider) => {
+    const resolved = resolveProjectUser(
+      input({
+        authored,
+        provider: ProviderId.make(provider),
+        ...(provider === "docker"
+          ? { capabilities: capabilities({ projectUserMapping: "unsupported" }) }
+          : {}),
+      }),
+    );
+    expect(resolved).toBeInstanceOf(LandofileValidationError);
+    const error = resolved as LandofileValidationError;
+    expect(error.message).toContain("root");
+    expect(error.remediation).toContain("false");
+    expect(error.issues[0]?.path).toEqual(["services", "web", "projectUser"]);
+  });
+
   test("Given a named value and no declared name, Then only numeric pairs are accepted", () => {
     const resolved = resolveProjectUser(input({ authored: "www-data", identity: undefined }));
     expect(resolved).toBeInstanceOf(LandofileValidationError);
