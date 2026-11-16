@@ -22,14 +22,17 @@ tooling:
     cmds:
       - composer
     description: Run Composer inside the appserver service.
+    wrapper: true
   php:
     service: appserver
     cmds:
       - php
     description: Run the PHP CLI inside the appserver service.
+    wrapper: true
   craft:
     service: appserver
     user: www-data
     cmds:
       - php craft
     description: Run the Craft CLI inside the appserver service.
+    wrapper: true
