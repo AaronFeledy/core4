@@ -26,6 +26,7 @@ import {
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
+  redactPrefix: (value: string) => value,
   redactValue: (value: unknown) => value,
 } satisfies Redactor;
 

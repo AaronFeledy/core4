@@ -6,6 +6,7 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Fiber, Layer, Schema } from "effect";
 import { DEFAULT_OUTPUT_BYTES, OutputCapture } from "../src/output-capture";
 import { testAppGenerations } from "../src/testing.ts";
+import { flushProgress, progressFixture } from "./live-progress-fixture";
 import { serverLayer, startServer } from "./server";
 
 const redactor = createRedactor("secrets", { values: [] });
@@ -227,4 +228,30 @@ describe("bounded final output capture", () => {
     expect(Buffer.byteLength(JSON.stringify(response))).toBeLessThan(8_388_608);
     expect(envelope).toMatchObject({ result });
   });
+});
+
+describe("retained capture lost context", () => {
+  test.each(["bytes", "record"] as const)(
+    "fails closed when the value layer rewrote a %s before capture",
+    async (kind) => {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          // Given a registered value the live value layer rewrites.
+          const { sink, owner, service } = yield* progressFixture();
+          yield* service.registerValues(["middle"]);
+          if (kind === "bytes")
+            yield* sink.emit({ kind: "bytes", _tag: "stdout", chunk: "before leftmiddleright after\n" });
+          else yield* sink.emit({ kind: "record", _tag: "stdout", chunk: "before leftmiddleright after" });
+          yield* flushProgress(owner);
+          // When the result identifies the whole value after the fact.
+          owner.capture.redactValues(["leftmiddleright"]);
+          const retained = owner.capture.snapshot(yield* service.forProfile("secrets"));
+          // Then the lost original context fails the retained capture closed, because
+          // the live chunk already carried a value-layer rewrite.
+          expect(retained.truncated).toBe(true);
+          expect(retained.chunks).toEqual([]);
+        }),
+      );
+    },
+  );
 });

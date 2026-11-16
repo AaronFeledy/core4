@@ -1,10 +1,19 @@
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Option, Schema } from "effect";
 import { encodeEngineFilters } from "./engine-json.ts";
+import type { HelperOwnerIdentity } from "./helper-owner.ts";
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
   DATA_HELPER_ROLE,
+  HELPER_LIFECYCLE_LABEL,
+  HELPER_LIFECYCLE_PROCESS,
+  HELPER_LIFECYCLE_RETAIN,
+  HELPER_OWNER_BOOT_LABEL,
+  HELPER_OWNER_MACHINE_LABEL,
+  HELPER_OWNER_PID_DOMAIN_LABEL,
+  HELPER_OWNER_PID_LABEL,
+  HELPER_OWNER_START_LABEL,
   PROVIDER_LABEL,
   ROLE_LABEL,
   STORE_LABEL,
@@ -16,13 +25,34 @@ export const ephemeralDataHelperLabels = (input: {
   readonly app?: string;
   readonly appRoot?: string;
   readonly store?: string;
-}): Readonly<Record<string, string>> => ({
-  [ROLE_LABEL]: DATA_HELPER_ROLE,
-  [PROVIDER_LABEL]: input.providerId,
-  ...(input.app === undefined ? {} : { [APP_LABEL]: input.app }),
-  ...(input.appRoot === undefined ? {} : { [APP_ROOT_LABEL]: input.appRoot }),
-  ...(input.store === undefined ? {} : { [STORE_LABEL]: input.store }),
-});
+  readonly remove?: boolean;
+  readonly owner?: HelperOwnerIdentity;
+}): Readonly<Record<string, string>> => {
+  // A process-owned helper always carries the full owner identity, including its start token.
+  const lifecycle =
+    input.remove === false
+      ? HELPER_LIFECYCLE_RETAIN
+      : input.owner === undefined
+        ? undefined
+        : HELPER_LIFECYCLE_PROCESS;
+  return {
+    [ROLE_LABEL]: DATA_HELPER_ROLE,
+    [PROVIDER_LABEL]: input.providerId,
+    ...(input.app === undefined ? {} : { [APP_LABEL]: input.app }),
+    ...(input.appRoot === undefined ? {} : { [APP_ROOT_LABEL]: input.appRoot }),
+    ...(input.store === undefined ? {} : { [STORE_LABEL]: input.store }),
+    ...(lifecycle === undefined ? {} : { [HELPER_LIFECYCLE_LABEL]: lifecycle }),
+    ...(input.owner === undefined
+      ? {}
+      : {
+          [HELPER_OWNER_MACHINE_LABEL]: input.owner.machine,
+          [HELPER_OWNER_PID_DOMAIN_LABEL]: input.owner.pidDomain,
+          [HELPER_OWNER_PID_LABEL]: String(input.owner.pid),
+          ...(input.owner.boot === undefined ? {} : { [HELPER_OWNER_BOOT_LABEL]: input.owner.boot }),
+          [HELPER_OWNER_START_LABEL]: input.owner.start,
+        }),
+  };
+};
 
 const Holder = Schema.Struct({
   Id: Schema.String,
@@ -79,7 +109,7 @@ export const isVolumeInUse = (details: unknown): boolean => {
 
 export const volumeInUseRemediation = (redactor: Redactor): string =>
   redactString(
-    "A container still uses this volume. Wait for any running data operation to finish, then retry. Lando removes a leftover data helper that holds the volume once the helper has been stopped for 10 minutes. Run `lando doctor` to check the runtime.",
+    "A container still uses this volume. Wait for any running data operation to finish, then retry. Lando removes a leftover data helper that holds the volume once it confirms the Lando process that started the helper has exited. Run `lando doctor` to check the runtime.",
     redactor,
   );
 
@@ -104,6 +134,6 @@ export const volumeInUseMessage = (
 /** `commandFinished` is true when the helper's command ran to completion and only its container is left. */
 export const leftoverHelperRemediation = (redactor: Redactor, commandFinished: boolean): string =>
   redactString(
-    `${commandFinished ? "The command already finished. " : ""}Lando removes the leftover helper container automatically during a later database or snapshot command, once it has been stopped for 10 minutes. Run \`lando doctor\` to check the runtime.`,
+    `${commandFinished ? "The command already finished. " : ""}Lando removes the leftover helper container automatically once it confirms the Lando process that started it has exited, during a later database or snapshot command or when it blocks removing a volume. Run \`lando doctor\` to check the runtime.`,
     redactor,
   );

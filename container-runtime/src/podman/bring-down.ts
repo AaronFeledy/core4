@@ -19,6 +19,7 @@ import {
   volumeInUseMessage,
   volumeInUseRemediation,
 } from "../ephemeral-data-helpers.ts";
+import type { HelperReclaimOptions } from "../helper-owner.ts";
 import { inspectOwnedNativeId, isSharedNetwork, networkOwnershipLabels } from "../native-ownership.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { removeAllStaleVolumeHolders } from "../stale-data-helpers.ts";
@@ -53,6 +54,8 @@ export interface BringDownOptions {
   readonly dialect?: LifecycleDialect;
   readonly eventService?: EventPublisher;
   readonly volumes?: boolean;
+  /** Test seam for owner-aware helper reclamation. */
+  readonly helperReclaim?: HelperReclaimOptions;
   readonly purgeCaches?: boolean;
 }
 
@@ -169,6 +172,7 @@ const removeVolume = Effect.fnUntraced(function* (
       providerId: deps.options.ctx.providerId,
       holders,
       redactor,
+      ...(deps.options.helperReclaim === undefined ? {} : { helperReclaim: deps.options.helperReclaim }),
     });
     if (recovered) {
       const retry = yield* request(deps, {

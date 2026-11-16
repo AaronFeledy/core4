@@ -16,6 +16,7 @@ import { ServiceCredsConfig } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { executionSite, executionSiteKey } from "./execution-site.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
@@ -379,12 +380,17 @@ const ComposeConfigOrSecretEntry = Schema.StructWithRest(
   [ExtensionRecord],
 );
 
+/** Source-name strings or long entries carry a reference and layout, never secret bytes. */
+const ComposeConfigOrSecretEntryList = layerMerge(Schema.Array(ComposeConfigOrSecretEntry), REPLACE).annotate(
+  { [SchemaNotCredentialAnnotationId]: true },
+);
+
 const composeConfigOrSecretInput = (description: string) =>
   layerMerge(Schema.Array(Schema.Union([Schema.String, ComposeConfigOrSecretEntry])), REPLACE)
-    .annotate({ description })
+    .annotate({ description, [SchemaNotCredentialAnnotationId]: true })
     .pipe(
       Schema.decodeTo(
-        layerMerge(Schema.Array(ComposeConfigOrSecretEntry), REPLACE),
+        ComposeConfigOrSecretEntryList,
         SchemaTransformation.transform<
           ReadonlyArray<typeof ComposeConfigOrSecretEntry.Encoded>,
           ReadonlyArray<string | typeof ComposeConfigOrSecretEntry.Type>
@@ -395,7 +401,7 @@ const composeConfigOrSecretInput = (description: string) =>
         }),
       ),
     )
-    .annotate({ description });
+    .annotate({ description, [SchemaNotCredentialAnnotationId]: true });
 
 const COMPOSE_CONFIGS_DESCRIPTION =
   "Service config grants as source-name strings or long entries; capability-checked and normalized into authored read-only file binds in ServicePlan.mounts, honoring source, target (default /<name>), and numeric or octal-string mode. Lando mounts, storage, and tmpfs take precedence; duplicate Compose volume/config destinations are rejected.";
@@ -1112,7 +1118,7 @@ export const ComposeSecretConfig = Schema.Struct({
   environment: Schema.optionalKey(Schema.String),
   external: Schema.optionalKey(Schema.Boolean),
   name: Schema.optionalKey(Schema.String),
-});
+}).annotate({ [SchemaNotCredentialAnnotationId]: true });
 export type ComposeSecretConfig = typeof ComposeSecretConfig.Type;
 
 export { SshAgentConfig } from "./agent-forwarding.ts";

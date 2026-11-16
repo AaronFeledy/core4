@@ -17,7 +17,7 @@ const defaults = { php: "8.4", database: "mariadb:11.4", composer: "2", webroot:
 const alternatives = { php: "8.1", database: "mysql:8.0", composer: false, webroot: "/app/web" };
 const validInput: RecipeDecomposeInput = { producer: lampProducer, options: defaults, secrets: {} };
 const decomposer = lampDecomposer({
-  redactor: { redactString: (text) => text, redactValue: (value) => value },
+  redactor: { redactString: (text) => text, redactPrefix: (text) => text, redactValue: (value) => value },
 });
 const expectedServices = {
   appserver: {

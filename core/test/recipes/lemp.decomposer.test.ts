@@ -24,7 +24,7 @@ const missingRecipeInput: RecipeDecomposeInput = {
   producer: { ...lempProducer, recipeId: "missing" },
 };
 const decomposer = lempDecomposer({
-  redactor: { redactString: (text) => text, redactValue: (value) => value },
+  redactor: { redactString: (text) => text, redactPrefix: (text) => text, redactValue: (value) => value },
 });
 const authoring = {
   runtime: 4,

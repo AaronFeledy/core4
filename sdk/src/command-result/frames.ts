@@ -26,6 +26,7 @@ export interface EncodeStreamChunkFrameOptions {
 
 export const identityRedactor: Redactor = {
   redactString: (text) => text,
+  redactPrefix: (text) => text,
   redactValue: (value) => value,
 };
 

@@ -54,6 +54,7 @@
     "test:changed": "bun test --changed",
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
     "bench:landofile-load": "bun run scripts/bench-landofile-load.ts",
+    "bench:redaction": "bun run scripts/bench-redaction.ts",
     "bench:opentui-startup": "bun run scripts/bench-opentui-startup.ts",
     "typecheck": "tsc -b",
     "lint": "biome check . && bun run check:deprecations",

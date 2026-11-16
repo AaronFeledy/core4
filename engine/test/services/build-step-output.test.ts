@@ -170,6 +170,43 @@ describe("openBuildStepOutput", () => {
     });
   });
 
+  test("masks a Bearer token whose introducer was released by the line bound", async () => {
+    await withTempRoots(async (root) => {
+      // Given an introducer and a token separated by more lines than the hold allows.
+      const token = "eyJhbGciOi.abc-123";
+      const publisher = makePublisher();
+      const redaction = await Effect.runPromise(makeRedaction());
+      const transcriptPath = transcriptFor(root, "bearer");
+
+      // When
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const recorder = yield* openBuildStepOutput({
+              events: publisher.events,
+              taskId: "web:app:install",
+              transcriptPath,
+              providerId: "test",
+              userDataRoot: root,
+              redaction,
+            });
+            yield* recorder.write(
+              "stdout",
+              encoder.encode(`Authorization: Bearer\n${"\n".repeat(65)}   ${token} rest\n`),
+            );
+            yield* recorder.end;
+          }),
+        ),
+      );
+
+      // Then the released introducer continues into the token line, which masks it.
+      const transcript = await readFile(transcriptPath, "utf8");
+      expect(transcript).toContain("[redacted] rest");
+      expect(transcript).not.toContain(token);
+      expect(JSON.stringify(publisher.published)).not.toContain(token);
+    });
+  });
+
   test("redacts a value registered after the recorder opened", async () => {
     await withTempRoots(async (root) => {
       // Given a live redaction scope.

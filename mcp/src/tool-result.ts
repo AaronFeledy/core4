@@ -79,14 +79,16 @@ export const rejectionResult = Effect.fnUntraced(function* (
   });
 });
 
-export const commandResult = Effect.fnUntraced(function* (
+export const commandResult = (
   result: McpDispatchResult,
   context: { readonly redactor: Redactor; readonly notice?: McpToolNotice },
-) {
-  const text = yield* stringifyBoundedJson(result.envelope, "MCP tool result");
-  return new McpSchema.CallToolResult({
-    content: [{ type: "text", text }, ...noticeContent(context.notice, context.redactor)],
-    structuredContent: result.envelope,
-    isError: !result.ok,
-  });
-});
+): Effect.Effect<McpSchema.CallToolResult> =>
+  Effect.succeed(
+    new McpSchema.CallToolResult({
+      // The dispatch already serialized with the result schema's policy; reusing
+      // that text keeps a schema literal or a `SecretRef` descriptor readable.
+      content: [{ type: "text", text: result.text }, ...noticeContent(context.notice, context.redactor)],
+      structuredContent: result.envelope,
+      isError: !result.ok,
+    }),
+  );

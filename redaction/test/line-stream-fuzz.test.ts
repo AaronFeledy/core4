@@ -1,6 +1,7 @@
 // allow: SIZE_OK — one seeded generator and its two property assertions share a single PRNG stream, so the fixture stays whole.
 import { describe, expect, test } from "bun:test";
 import { createLineStreamRedactor, createOutputLineRedactor } from "@lando/redaction/line-stream";
+import { createPayloadValues } from "@lando/redaction/service";
 import { type Redactor, createRedactor } from "@lando/sdk/secrets";
 
 /**
@@ -96,6 +97,20 @@ const ASSIGNMENT_NAMES = [
   "mysql_password",
   "credential_id",
 ] as const;
+/** Names the colon and YAML grammars classify structurally (a strong last segment). */
+const COLON_NAMES = [
+  "password",
+  "token",
+  "api_key",
+  "api-key",
+  "apikey",
+  "secret",
+  "DB_PASSWORD",
+  "client_secret",
+  "access_token",
+  "AUTH_TOKEN",
+  "mysql_password",
+] as const;
 const QUERY_NAMES = [
   "token",
   "access_token",
@@ -111,6 +126,9 @@ const CONSTRUCT_KINDS = [
   "assignment",
   "bearer",
   "query",
+  "colon",
+  "member",
+  "yaml",
   "userinfo-before",
   "userinfo-consume",
   "registered",
@@ -192,6 +210,39 @@ const bearer = (rng: Rng, canary: string): Construct => {
     values: [],
     closed: true,
   };
+};
+
+const colon = (rng: Rng, canary: string, closed: boolean): Construct => {
+  const quote = rng.pick(QUOTES);
+  const name = rng.pick(COLON_NAMES);
+  return {
+    kind: "colon",
+    lines: quoted(rng, { opener: `${rng.pick(PREFIXES)}${name}: ${quote}`, quote, canary, closed }),
+    canary,
+    values: [],
+    closed,
+  };
+};
+
+const member = (rng: Rng, canary: string, closed: boolean): Construct => {
+  const quote = rng.pick(QUOTES);
+  const keyQuote = rng.pick(QUOTES);
+  const name = rng.pick(ASSIGNMENT_NAMES);
+  const opener = `${rng.pick(PREFIXES)}{${keyQuote}${name}${keyQuote}: ${quote}`;
+  return {
+    kind: "member",
+    lines: quoted(rng, { opener, quote, canary, closed }),
+    canary,
+    values: [],
+    closed,
+  };
+};
+
+const yamlKey = (rng: Rng, canary: string, closed: boolean): Construct => {
+  const quote = rng.pick(QUOTES);
+  const name = rng.pick(COLON_NAMES);
+  const opener = `${rng.pick(["  ", "- "])}${name}: ${quote}`;
+  return { kind: "yaml", lines: quoted(rng, { opener, quote, canary, closed }), canary, values: [], closed };
 };
 
 const query = (rng: Rng, canary: string, closed: boolean): Construct => {
@@ -282,23 +333,19 @@ const generate = (rng: Rng, spec: CaseSpec): GeneratedCase => {
   const kind = rng.pick(kinds);
   const closed = profile === "bytes" && kind === "assignment" ? rng.chance(0.75) : true;
   const eol = profile === "bytes" && rng.chance(0.5) ? "\r\n" : "\n";
-  const built =
-    kind === "assignment"
-      ? assignment(rng, canary, closed)
-      : kind === "bearer"
-        ? bearer(rng, canary)
-        : kind === "query"
-          ? query(rng, canary, closed)
-          : kind === "userinfo-before"
-            ? userinfoBefore(rng, canary, closed)
-            : kind === "userinfo-consume"
-              ? userinfoConsume(rng, canary)
-              : registered(rng, canary);
-  // A registered value is literal bytes, so it carries the stream's own newline.
-  const construct: Construct =
-    built.kind === "registered"
-      ? { ...built, values: built.values.map((value) => value.replaceAll("\n", eol)) }
-      : built;
+  const builders: Record<ConstructKind, () => Construct> = {
+    assignment: () => assignment(rng, canary, closed),
+    bearer: () => bearer(rng, canary),
+    query: () => query(rng, canary, closed),
+    colon: () => colon(rng, canary, closed),
+    member: () => member(rng, canary, closed),
+    yaml: () => yamlKey(rng, canary, closed),
+    "userinfo-before": () => userinfoBefore(rng, canary, closed),
+    "userinfo-consume": () => userinfoConsume(rng, canary),
+    registered: () => registered(rng, canary),
+  };
+  // A registered value is LF-registered; the value layer derives the stream's own newline.
+  const construct = builders[kind]();
   const before = Array.from({ length: rng.int(4) }, (_, index) => publicLine(rng, `pb${iteration}_${index}`));
   const after = Array.from({ length: 1 + rng.int(2) }, (_, index) =>
     publicLine(rng, `pa${iteration}_${index}`),
@@ -346,7 +393,7 @@ const chunksOf = (generated: GeneratedCase): ReadonlyArray<Uint8Array> => {
 const runBytes = (generated: GeneratedCase, bounds: Bounds): readonly string[] => {
   const values = generated.values;
   const output = createOutputLineRedactor(
-    { redactor: createRedactor("secrets", { values }), payloadValues: () => values },
+    { redactor: createRedactor("secrets", { values }), payloadValues: createPayloadValues(values) },
     bounds,
   );
   const released = chunksOf(generated).flatMap((chunk) => output.write(chunk));
@@ -374,7 +421,7 @@ const splitAudit = (generated: GeneratedCase): { readonly multibyte: boolean; re
 };
 
 const runLines = (
-  redactor: Pick<Redactor, "redactString">,
+  redactor: Pick<Redactor, "redactPrefix">,
   lines: readonly string[],
   bounds: Bounds = {},
 ): readonly string[] => {
@@ -432,6 +479,7 @@ describe("bounded line-stream redaction under seeded fuzzing", () => {
     let registeredValues = 0;
     let multibyteSplits = 0;
     let crlfSplits = 0;
+    let crlfRegistered = 0;
 
     for (let iteration = 0; iteration < iterations; iteration += 1) {
       // Given one random construct with its own canary, plus public lines around it.
@@ -442,6 +490,7 @@ describe("bounded line-stream redaction under seeded fuzzing", () => {
       const audit = splitAudit(generated);
       multibyteSplits += audit.multibyte ? 1 : 0;
       crlfSplits += audit.crlf ? 1 : 0;
+      crlfRegistered += generated.values.length > 0 && generated.input.includes("\r\n") ? 1 : 0;
 
       // When the bytes arrive in random chunks under the default bounds.
       assertSafe(runBytes(generated, {}), generated, "default bounds");
@@ -461,6 +510,7 @@ describe("bounded line-stream redaction under seeded fuzzing", () => {
     expect(registeredValues, context).toBeGreaterThan(0);
     expect(multibyteSplits, context).toBeGreaterThan(0);
     expect(crlfSplits, context).toBeGreaterThan(0);
+    expect(crlfRegistered, context).toBeGreaterThan(0);
   });
 
   test("matches whole-string redaction when every construct closes within the bounds", () => {

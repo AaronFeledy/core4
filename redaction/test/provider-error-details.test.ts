@@ -291,6 +291,7 @@ test("failed canonical redaction fails closed", async () => {
   });
   const redacted = redactProviderError(original, {
     redactString: (value) => value,
+    redactPrefix: (value) => value,
     redactValue: () => {
       throw new Error("redactor failure");
     },
@@ -319,6 +320,7 @@ test("provider detail projection masks non-JSON canonical redactor output", () =
     { status: 503 },
     {
       redactString: (value) => value,
+      redactPrefix: (value) => value,
       redactValue: () => new Diagnostic(),
     },
   );

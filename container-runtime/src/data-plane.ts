@@ -18,6 +18,12 @@ import {
 } from "./ephemeral-data-helpers.ts";
 import { ensureEphemeral2xx, runtimeRemediation } from "./ephemeral-http-failure.ts";
 import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
+import {
+  type HelperReclaimOptions,
+  helperOwnerIdentityFor,
+  registerActiveHelper,
+  releaseActiveHelper,
+} from "./helper-owner.ts";
 import type { PulledImage } from "./image-pull.ts";
 import {
   APP_LABEL,
@@ -154,6 +160,8 @@ export interface ProviderDataPlaneOptions {
     plan: AppPlan,
     store: AppPlan["stores"][number],
   ) => Readonly<Record<string, string>>;
+  /** Test seam for the creator identity and owner-liveness probe. */
+  readonly helperReclaim?: HelperReclaimOptions;
 }
 
 const textDecoder = new TextDecoder();
@@ -624,6 +632,7 @@ const ensureStaleHelperSweep = (options: ProviderDataPlaneOptions): Effect.Effec
     return sweepStaleDataHelpers(options.api.request, {
       providerId: options.providerId,
       redactor: options.redactor,
+      ...(options.helperReclaim === undefined ? {} : { helperReclaim: options.helperReclaim }),
     });
   });
 
@@ -646,8 +655,10 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
     yield* requireBorrowableMounts(options.providerId, inspected.body);
   }
   const name = ephemeralContainerName(options.providerId);
+  // A failed create leaves nothing live under this name, whatever its cleanup does.
+  const forget = Effect.sync(() => releaseActiveHelper(name));
   const compensate = (cause: Cause.Cause<ProviderError>) =>
-    compensateFailedCreate(options, spec, name, cause);
+    forget.pipe(Effect.andThen(compensateFailedCreate(options, spec, name, cause)));
   const mount = spec.mounts?.[0];
   const binds = (spec.mounts ?? []).flatMap((mount) =>
     mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
@@ -677,6 +688,10 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
   ];
   const attachStdin = spec.stdinStream !== undefined;
   yield* ensureStaleHelperSweep(options);
+  // Stamp the creating process before the POST so cleanup can prove when it exits, and mark
+  // the name live first so a concurrent sweep in this process never takes a helper mid-create.
+  const owner = yield* helperOwnerIdentityFor(options.helperReclaim);
+  registerActiveHelper(name);
   const response = yield* request(options, "run.create", {
     method: "POST",
     path: `/containers/create?name=${encodeURIComponent(name)}`,
@@ -685,6 +700,8 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
       Cmd: spec.command,
       Labels: ephemeralDataHelperLabels({
         providerId: options.providerId,
+        remove: spec.remove !== false,
+        ...(owner === undefined ? {} : { owner }),
         ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
         ...(spec.owner?.plan?.identity === undefined ? {} : { appRoot: spec.owner.plan.identity.appRoot }),
         ...(mount === undefined ? {} : { store: mount.store }),
@@ -721,7 +738,9 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
   }).pipe(Effect.catchCause(compensate));
   const accepted = ensureEphemeral2xx(options, spec, { operation: "run.create", response });
   // 409: another container already holds this name, so it is not ours to remove.
-  yield* response.status === 409 ? accepted : accepted.pipe(Effect.catchCause(compensate));
+  yield* response.status === 409
+    ? accepted.pipe(Effect.onError(() => forget))
+    : accepted.pipe(Effect.catchCause(compensate));
   return name;
 });
 
@@ -853,6 +872,7 @@ const compensateFailedCreate = (
 
 const releaseEphemeralContainer = (release: EphemeralRelease) => {
   const { options, name, remove, exit, operation, observed } = release;
+  releaseActiveHelper(name);
   if (!remove) return Effect.void;
   return boundedEphemeralRemoval(
     options,
@@ -1948,6 +1968,7 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
               providerId: options.providerId,
               holders,
               redactor: options.redactor,
+              ...(options.helperReclaim === undefined ? {} : { helperReclaim: options.helperReclaim }),
             });
             if (recovered) {
               return yield* deleteVolume.pipe(

@@ -18,6 +18,7 @@ import { FakeEngine } from "./support/fake-engine.ts";
 
 const passthroughRedactor = {
   redactString: (value: string) => value,
+  redactPrefix: (value: string) => value,
   redactValue: (value: unknown) => value,
 } satisfies Redactor;
 
@@ -1263,7 +1264,9 @@ describe("provider data plane", () => {
     } else {
       expect(result.failure.message).toContain(reason);
       expect(result.failure.remediation).toContain("Wait for any running data operation to finish");
-      expect(result.failure.remediation).toContain("10 minutes");
+      expect(result.failure.remediation).toContain(
+        "confirms the Lando process that started the helper has exited",
+      );
       expect(result.failure.remediation).not.toContain("cannot verify");
     }
   });

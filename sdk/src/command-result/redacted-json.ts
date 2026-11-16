@@ -1,4 +1,10 @@
-import { REDACTED, type Redactor, type ValueRedactionScope, redactValueWith } from "@lando/sdk/secrets";
+import {
+  REDACTED,
+  type Redactor,
+  type ValueRedactionScope,
+  isSecretFieldName,
+  redactValueWith,
+} from "@lando/sdk/secrets";
 
 const maskedToken = JSON.stringify(REDACTED);
 
@@ -43,7 +49,10 @@ const redactTokens = (json: string, redactor: Pick<Redactor, "redactString">): s
 
 // Serialize first to retain JSON's toJSON, omission, and array semantics. Only
 // string tokens enter redaction; primitive values and JSON punctuation stay intact.
-// With a schema policy, literal-constrained values and declared keys survive.
+// The policy path also walks the model, so schema-fixed literals, declared keys,
+// and the one secret-named-field rule survive. The no-policy path only sizes
+// already-redacted strings (tooling diagnostics), carries no structure, and
+// stays token-only.
 export const encodeRedactedJson = (
   value: unknown,
   redactor: Pick<Redactor, "redactString">,
@@ -54,10 +63,9 @@ export const encodeRedactedJson = (
   if (policy === undefined) return redactTokens(json, redactor);
   if (!json.includes('"')) return json;
   // Walk the serialized representation so a schema-fixed literal keeps its
-  // serialized spelling; a secret-named key gets no special case here, matching
-  // the token path.
+  // serialized spelling and a secret-named field applies the shared rule.
   // Keep the token path's decoded + JSON-escaped double redaction.
   const redact = (text: string): string =>
     JSON.parse(redactStringToken(JSON.stringify(text), redactor)) as string;
-  return JSON.stringify(redactValueWith(redact, () => false, JSON.parse(json), policy));
+  return JSON.stringify(redactValueWith(redact, isSecretFieldName, JSON.parse(json), policy));
 };

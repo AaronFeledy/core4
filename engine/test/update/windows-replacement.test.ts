@@ -261,7 +261,6 @@ test("a competing lock participant cannot mutate between validation and replacem
         competitor = Effect.runPromise(
           Effect.acquireUseRelease(
             acquireAdvisoryLockAt(lockPath, "plugin:add", {
-              expireLiveOwner: false,
               privateFileAccess: {
                 enforce: async () => undefined,
                 verify: async () => {

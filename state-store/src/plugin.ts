@@ -49,7 +49,7 @@ export const makePluginStateStore = (
 
     return resolveStatePath({ path: pluginStateRoot }, "locks", key, "plugin-lock").pipe(
       Effect.flatMap(({ file }) =>
-        withAdvisoryLockUsing(privateFileAccess, { expireLiveOwner: false })(
+        withAdvisoryLockUsing(privateFileAccess)(
           file,
           "plugin-lock",
           body,

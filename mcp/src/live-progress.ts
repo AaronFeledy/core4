@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
-import { type PayloadRedactor, type TieredRedactionValues, createPayloadRedactor } from "@lando/sdk/secrets";
+import { LIVE_LINE_HOLD_MILLIS } from "@lando/redaction/line-stream";
+import { type LiveChannel, createLiveChannel } from "@lando/redaction/live-channel";
+import type { Redactor, TieredRedactionValues } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { LIVE_PROGRESS_PIECE_BYTES, type LiveProgressInput, liveBytePieces } from "./live-progress-input";
 import type { McpProgressData } from "./result-inspector";
@@ -7,25 +9,47 @@ import { MAX_FRAME_BYTES, MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from 
 
 interface Channel {
   readonly frame: McpProgressData;
-  readonly payload: PayloadRedactor;
-  readonly decoder: TextDecoder;
   readonly metadataBytes: number;
-  pending: Uint8Array;
+  readonly live: LiveChannel;
 }
 
+const earliest = (left: number | undefined, right: number | undefined): number | undefined =>
+  left === undefined ? right : right === undefined ? left : Math.min(left, right);
+
+interface LiveProgressOptions {
+  readonly redactor: Redactor;
+  readonly maxHeldMillis?: number;
+  readonly now: () => number;
+}
+
+/**
+ * Per-request live progress channels.
+ *
+ * The shared {@link createLiveChannel} owns every byte record's value layer,
+ * piece chunking, and line hold, and every record's time-bounded line redactor.
+ * This class owns only what is MCP-specific: provenance keying, metadata
+ * redaction, the retained-byte budget, and delivery through `write`.
+ */
 export class LiveProgress {
   readonly #channels = new Map<string, Channel>();
   readonly #values: () => Iterable<string> | TieredRedactionValues;
-  readonly #write: (frame: McpProgressData) => Effect.Effect<void>;
+  readonly #write: (frame: McpProgressData, profileChanged: boolean) => Effect.Effect<void>;
+  readonly #redactor: Redactor;
+  readonly #maxHeldMillis: number;
+  readonly #now: () => number;
   #previousValues: Iterable<string> | TieredRedactionValues | undefined;
   #valueBytes = 0;
 
   constructor(
     values: () => Iterable<string> | TieredRedactionValues,
-    write: (frame: McpProgressData) => Effect.Effect<void>,
+    write: (frame: McpProgressData, profileChanged: boolean) => Effect.Effect<void>,
+    options: LiveProgressOptions,
   ) {
     this.#values = values;
     this.#write = write;
+    this.#redactor = options.redactor;
+    this.#maxHeldMillis = options.maxHeldMillis ?? LIVE_LINE_HOLD_MILLIS;
+    this.#now = options.now;
   }
 
   #boundedValues = (additionalMetadataBytes?: number): Iterable<string> | TieredRedactionValues => {
@@ -45,59 +69,66 @@ export class LiveProgress {
         ? 0
         : LIVE_PROGRESS_PIECE_BYTES + this.#valueBytes + additionalMetadataBytes;
     for (const state of this.#channels.values()) {
-      retained += LIVE_PROGRESS_PIECE_BYTES + this.#valueBytes + state.metadataBytes;
+      retained +=
+        LIVE_PROGRESS_PIECE_BYTES + this.#valueBytes + state.metadataBytes + state.live.retainedBytes();
     }
     if (retained > MAX_OUTBOUND_QUEUED_BYTES)
       throw stdioTransportError("MCP live progress channels exceeded the retained byte limit.");
     return values;
   };
 
-  #deliver = Effect.fnUntraced(function* (
-    this: LiveProgress,
-    state: Channel,
-    bytes: Uint8Array,
-    final = false,
-  ) {
-    let offset = 0;
-    while (offset < bytes.length) {
-      const newline = bytes.indexOf(10, offset);
-      const end = Math.min(
-        bytes.length,
-        offset + LIVE_PROGRESS_PIECE_BYTES - state.pending.length,
-        newline < 0 ? bytes.length : newline + 1,
-      );
-      const pending = new Uint8Array(state.pending.length + end - offset);
-      pending.set(state.pending);
-      pending.set(bytes.subarray(offset, end), state.pending.length);
-      state.pending = pending;
-      offset = end;
-      if (pending.length === LIVE_PROGRESS_PIECE_BYTES || pending.at(-1) === 10) {
-        state.pending = new Uint8Array(0);
-        const chunk = state.decoder.decode(pending, { stream: true });
-        if (chunk.length > 0) yield* this.#write({ ...state.frame, chunk });
-      }
-    }
-    if (final) {
-      const pending = state.pending;
-      state.pending = new Uint8Array(0);
-      const chunk = state.decoder.decode(pending);
-      if (chunk.length > 0) yield* this.#write({ ...state.frame, chunk });
+  #newChannel = (frame: LiveProgressInput, metadataBytes: number): Channel => {
+    const common = {
+      redactor: this.#redactor,
+      payloadValues: this.#boundedValues,
+      timeBound: { maxHeldMillis: this.#maxHeldMillis, now: this.#now },
+    };
+    return {
+      frame: {
+        _tag: frame._tag,
+        chunk: "",
+        ...(frame.service === undefined ? {} : { service: frame.service }),
+        ...(frame.source === undefined ? {} : { source: frame.source }),
+      },
+      metadataBytes,
+      live:
+        frame.kind === "record"
+          ? createLiveChannel({ kind: "record", ...common })
+          : createLiveChannel({ kind: "bytes", ...common }),
+    };
+  };
+
+  #drain = Effect.fnUntraced(function* (this: LiveProgress, state: Channel) {
+    while (state.live.queue.length > 0) {
+      const delivered = state.live.queue[0];
+      if (delivered === undefined) return;
+      yield* this.#write({ ...state.frame, chunk: delivered.chunk }, delivered.changed);
+      state.live.shift();
     }
   });
 
-  #drain = Effect.fnUntraced(function* (this: LiveProgress, key: string, state: Channel) {
-    const tail = state.payload.flush();
-    this.#channels.delete(key);
-    yield* this.#deliver(state, tail, true);
+  /** End one channel (kind change or finish): release holds, then deliver. */
+  #endChannel = Effect.fnUntraced(function* (this: LiveProgress, state: Channel) {
+    state.live.end();
+    yield* this.#drain(state);
+  });
+
+  deadline = (): number | undefined => {
+    let deadline: number | undefined;
+    for (const state of this.#channels.values()) deadline = earliest(deadline, state.live.deadline());
+    return deadline;
+  };
+
+  expireDue = Effect.fnUntraced(function* (this: LiveProgress) {
+    const nowMs = this.#now();
+    for (const state of this.#channels.values()) {
+      const deadline = state.live.deadline();
+      if (deadline !== undefined && nowMs >= deadline) state.live.expire();
+      yield* this.#drain(state);
+    }
   });
 
   emit = Effect.fnUntraced(function* (this: LiveProgress, frame: LiveProgressInput) {
-    const metadata = {
-      _tag: frame._tag,
-      chunk: "",
-      ...(frame.service === undefined ? {} : { service: frame.service }),
-      ...(frame.source === undefined ? {} : { source: frame.source }),
-    };
     const metadataBytes =
       Buffer.byteLength(frame.service ?? "", "utf8") + Buffer.byteLength(frame.source ?? "", "utf8");
     if (metadataBytes > MAX_FRAME_BYTES)
@@ -106,32 +137,35 @@ export class LiveProgress {
     const retainedMetadataBytes = 2 * Buffer.byteLength(key, "utf8");
     if (retainedMetadataBytes > MAX_FRAME_BYTES)
       throw stdioTransportError("MCP live progress metadata exceeded the frame byte limit.");
-    let state = this.#channels.get(key);
-    if (frame.kind === "record") {
-      if (state !== undefined) yield* this.#drain(key, state);
-      state = undefined;
+    const existing = this.#channels.get(key);
+    if (existing !== undefined && existing.live.kind !== frame.kind) {
+      yield* this.#endChannel(existing);
+      this.#channels.delete(key);
     }
+    let state = this.#channels.get(key);
     if (state === undefined) {
       if (this.#channels.size >= MAX_OUTBOUND_QUEUED_BYTES / LIVE_PROGRESS_PIECE_BYTES)
         throw stdioTransportError("MCP live progress exceeded the channel count limit.");
       this.#boundedValues(retainedMetadataBytes);
-      state = {
-        frame: metadata,
-        metadataBytes: retainedMetadataBytes,
-        payload: createPayloadRedactor(this.#boundedValues),
-        decoder: new TextDecoder("utf-8", { ignoreBOM: true }),
-        pending: new Uint8Array(0),
-      };
+      state = this.#newChannel(frame, retainedMetadataBytes);
       this.#channels.set(key, state);
     }
     this.#boundedValues();
-    for (const bytes of liveBytePieces(frame.kind === "record" ? `${frame.chunk}\n` : frame.chunk)) {
-      yield* this.#deliver(state, state.payload.write(bytes));
+    if (frame.kind === "record") {
+      if (state.live.kind !== "record") return;
+      state.live.feed(frame.chunk);
+      yield* this.#drain(state);
+      return;
     }
-    if (frame.kind === "record") yield* this.#drain(key, state);
+    if (state.live.kind !== "bytes") return;
+    for (const bytes of liveBytePieces(frame.chunk)) state.live.feed(bytes);
+    yield* this.#drain(state);
   });
 
   flush = Effect.fnUntraced(function* (this: LiveProgress) {
-    for (const [key, state] of this.#channels) yield* this.#drain(key, state);
+    for (const [key, state] of this.#channels) {
+      yield* this.#endChannel(state);
+      if (state.live.queue.length === 0) this.#channels.delete(key);
+    }
   });
 }

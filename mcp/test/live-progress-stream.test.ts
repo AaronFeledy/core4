@@ -125,7 +125,7 @@ describe("MCP live channel streams", () => {
     );
   });
 
-  test("detaches draining data before a notification defect and accepts later emits", async () => {
+  test("retains undelivered output after a notification defect and retries it on finish", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         // Given a downstream that records a write but fails its first acknowledgement.
@@ -148,10 +148,13 @@ describe("MCP live channel streams", () => {
         yield* flushProgress(owner);
         const late = yield* Effect.exit(owner.sink.emit({ _tag: "stdout", chunk: "later\n", kind: "bytes" }));
         yield* flushProgress(owner);
-        // Then the failed write is not duplicated, and the drain did not close the sink.
+        // Then the unacknowledged write is retried once and the sink stays closed to emits.
         expect(Exit.isFailure(failed)).toBe(true);
         expect(Exit.isFailure(late)).toBe(true);
-        expect(frames).toEqual([{ _tag: "stdout", chunk: "held" }]);
+        expect(frames).toEqual([
+          { _tag: "stdout", chunk: "held" },
+          { _tag: "stdout", chunk: "held" },
+        ]);
       }),
     );
   });

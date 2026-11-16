@@ -10,6 +10,7 @@
  */
 
 import { SchemaAST as AST } from "effect";
+import { SchemaDeclarationInputAnnotationId } from "../schema/map-input.ts";
 
 /** Which side of a codec a policy describes: wire values or runtime values. */
 export type StructuralRedactionSide = "encoded" | "type";
@@ -82,6 +83,15 @@ export const normalizeCandidates = (
     }
     if (ast.encoding !== undefined) {
       pending.push(side === "encoded" ? AST.toEncoded(ast) : AST.toType(ast));
+      continue;
+    }
+    // A custom declaration hides its input shape; read the one it publishes.
+    const declaredInput = AST.isDeclaration(ast)
+      ? (ast.annotations?.[SchemaDeclarationInputAnnotationId] ??
+        ast.context?.annotations?.[SchemaDeclarationInputAnnotationId])
+      : undefined;
+    if (AST.isAST(declaredInput)) {
+      pending.push(declaredInput);
       continue;
     }
     output.push(ast);

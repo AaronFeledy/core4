@@ -1,0 +1,114 @@
+# Realistic non-secret output lines. Every line must survive redaction unchanged.
+# One entry per line; a line starting with '#' is a group header or comment.
+# Keep these as real programs print them: the corpus exists to catch false
+# positives, so an invented line proves nothing.
+
+# mysql / mariadb startup and errors
+2026-04-09 12:00:00 0 [Note] InnoDB: Buffer pool(s) load completed
+2026-04-09 12:00:00 0 [Warning] Aborted connection 42 to db: 'lando' user: 'lando' host: 'localhost' (Got an error reading communication packets)
+2026-04-09 12:00:01 0 [Note] mysqld: ready for connections. Version: '10.11.6-MariaDB' socket: '/run/mysqld/mysqld.sock' port: 3306
+ERROR 1045 (28000): Access denied for user 'lando'@'localhost' (using password: YES)
+ERROR 2002 (HY000): Can't connect to local server through socket '/run/mysqld/mysqld.sock' (2)
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql  Ver 15.1 Distrib 10.11.6-MariaDB, for debian-linux-gnu (x86_64) using  EditLine wrapper
+
+# postgres startup and errors
+2026-04-09 12:00:00.000 UTC [1] LOG:  database system is ready to accept connections
+2026-04-09 12:00:00.000 UTC [42] FATAL:  password authentication failed for user "lando"
+2026-04-09 12:00:00.000 UTC [42] FATAL:  role "lando" does not exist
+2026-04-09 12:00:00.000 UTC [42] ERROR:  relation "users" does not exist at character 15
+2026-04-09 12:00:00.000 UTC [42] DETAIL:  Key (email)=(admin@example.test) already exists.
+
+# nginx / apache access and error logs
+127.0.0.1 - - [10/Oct/2000:13:55:36 -0700] "GET /index.html HTTP/1.0" 200 2326
+10.0.0.7 - lando [09/Apr/2026:12:00:00 +0000] "POST /api/v1/login HTTP/1.1" 401 512 "-" "curl/8.5.0"
+2026/04/09 12:00:00 [error] 31#31: *42 connect() failed (111: Connection refused) while connecting to upstream
+nginx: [emerg] host not found in upstream "appserver" in /etc/nginx/conf.d/default.conf:12
+[09/Apr/2026:12:00:00 +0000] "GET /healthz HTTP/1.1" 200 2 "-" "kube-probe/1.30"
+
+# php-fpm
+[09-Apr-2026 12:00:00] NOTICE: fpm is running, pid 1
+[09-Apr-2026 12:00:00] NOTICE: ready to handle connections
+[09-Apr-2026 12:00:00] WARNING: [pool www] server reached max_children setting (5), consider raising it
+172.18.0.1 -  09/Apr/2026:12:00:00 +0000 "GET /index.php" 200
+
+# composer
+Composer version 2.7.7 2024-06-10 22:11:04
+Loading composer repositories with package information
+Installing dependencies from lock file (including require-dev)
+Generating optimized autoload files
+Nothing to install, update or remove
+
+# npm / bun install
+npm WARN config global `--global`, `--local` are deprecated. Use `--location=global` instead.
+added 1234 packages, and audited 1235 packages in 12s
+bun install v1.4.3 (c6da4a4d)
+Resolving dependencies
+Saved lockfile
+npm notice New minor version of npm available! 10.8.1 -> 10.9.0
+
+# drush / artisan
+drush cr
+[success] Cache rebuild complete.
+php artisan migrate --force
+INFO  Nothing to migrate.
+php artisan config:cache
+Configuration cached successfully.
+
+# node stack traces
+TypeError: Cannot read properties of undefined (reading 'id')
+    at Object.<anonymous> (/app/web/core/lib/Drupal.php:1234:15)
+    at Module._compile (node:internal/modules/cjs/loader:1356:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+Node.js v22.14.0
+
+# php stack traces
+PHP Fatal error:  Uncaught Error: Class "Drupal" not found in /app/index.php:3
+Stack trace:
+#0 /app/vendor/autoload.php(22): Composer\Autoload\ClassLoader->loadClass()
+#1 {main}
+  thrown in /app/index.php on line 3
+
+# git
+On branch main
+Your branch is up to date with 'origin/main'.
+nothing to commit, working tree clean
+fatal: not a git repository (or any of the parent directories): .git
+HEAD is now at 2f52eaa Merge pull request #2400 from AaronFeledy/fix/redaction-output-fidelity
+
+# container runtime startup
+time="2026-04-09T12:00:00Z" level=info msg="Starting up"
+Container app_database_1  Healthy
+[+] Running 2/2
+ ✔ Container app_appserver_1  Started
+
+# Lando remediation and diagnostics
+SecretNotFoundError: missing DB_PASSWORD
+secretRedaction: true
+Enter password:
+SecretNotFoundError: The secret DB_PASSWORD was not found in any configured secret store.
+  remediation: Run `lando secret:add DB_PASSWORD` or set it in the Landofile.
+Lando could not reach the provider. Run `lando setup` and retry.
+WARN[0000] Found orphan containers ([app_cache_1]) for this project
+apiKeyPolicy: observe
+passwordPolicy: strict
+tokenBudget: 1000
+authentication: enabled
+credentialHelpers: true
+
+# capability flags, config identifiers, and prose
+cacheKey: 42
+certs.key: /etc/ssl/private/app.key
+error: secret store unreachable
+Unable to read secret file: secretRedaction is disabled
+tokenizer: sentencepiece
+keys: 3
+password policy: strict
+authMode: oidc
+oauthClientId: abc123
+Session token count: 3
+secretName: app-db-password-ref
+The password field is required
+Password strength: strong
+secret-store: 1password
+Bearer token expected in the Authorization header

@@ -1,6 +1,7 @@
 import {
   DOUBLE_QUOTED_VALUE_SOURCE,
   SECRET_VALUE_TERMINATOR_SOURCE,
+  SINGLE_QUOTED_VALUE_SOURCE,
   TRANSCRIPT_KEY_STOP_CLASS,
   TRANSCRIPT_SHORT_STOP_CLASS,
   keepCompleteEnvReferenceReplacer,
@@ -34,7 +35,7 @@ const BT = "`";
 
 const FIXTURE_PATH = /(^|[\s"'`(=])((?:\.{1,2}[\\/])?(?:[A-Za-z0-9._-]+[\\/])*fixtures[\\/][^\s"'`)]+)/giu;
 
-const QUOTED_VALUE_SOURCE = `${DOUBLE_QUOTED_VALUE_SOURCE}|${String.raw`\\'[^']*\\'|`}\\\\${BT}[^${BT}]*\\\\${BT}|'[^']*'|${BT}[^${BT}]*${BT}`;
+const QUOTED_VALUE_SOURCE = `${DOUBLE_QUOTED_VALUE_SOURCE}|${SINGLE_QUOTED_VALUE_SOURCE}|\\\\${BT}[^${BT}]*\\\\${BT}|${BT}[^${BT}]*${BT}`;
 const SHORT_VALUE_SOURCE = `${QUOTED_VALUE_SOURCE}|${unquotedSecretValueSource(TRANSCRIPT_SHORT_STOP_CLASS)}`;
 const SHORT_EQUALS_SECRET = new RegExp(
   `(^|[\\s"'${BT}(])(-[tk])\\s*=\\s*(${SHORT_VALUE_SOURCE})${SECRET_VALUE_TERMINATOR_SOURCE}`,

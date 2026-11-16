@@ -6,14 +6,20 @@
  * carry user data, so masking it protects nothing and breaks schema decoding.
  * The same is true of a property name the schema declares. Everything else -
  * free text, template literals, unknown and dynamic keys - stays redacted.
+ * A position annotated as holding no credential bytes (a reference descriptor,
+ * a declared name/path/id, or a Lando-authored diagnostic field) keeps the
+ * ordinary string rules, so registered values and patterns still mask.
  *
  * The policy is conservative: a value is exempt only when EVERY live schema
  * candidate at that position is a finite literal set that accepts it. A union
  * branch is dropped only when the value provably disagrees with it (JSON kind
- * mismatch, a present literal-only property outside its set, or a template
- * pattern it cannot match); an unknown, `String`, or opaque declaration
- * candidate keeps the position redacted. A position with no live candidate
- * redacts everything below it, exactly as schema-free redaction does today.
+ * mismatch, a present literal-only property outside its set, a template pattern
+ * it cannot match, or a required property it lacks); an unknown, `String`, or
+ * opaque declaration candidate keeps the position redacted. A value that
+ * disagrees with every branch is partial - a projected result, an event without
+ * every field - so the branch set stands and the position stays redacted rather
+ * than losing the literals the value still proves. A position with no live
+ * candidate redacts everything below it, exactly as schema-free redaction does.
  *
  * Nodes are compiled lazily and memoized: narrowing reuses one discriminated
  * index per candidate set, and child/element nodes are cached by the identity of
@@ -28,6 +34,7 @@ import {
   redactValueWith,
 } from "@lando/sdk/secrets";
 import { SchemaAST as AST, type Schema } from "effect";
+import { SchemaNotCredentialAnnotationId } from "../schema/environment-value.ts";
 import {
   type ObjectDiscriminatorIndex,
   type StructuralRedactionSide,
@@ -45,6 +52,10 @@ export interface StructuralRedactionNode extends ValueRedactionScope {
   readonly element: (index: number, length: number) => StructuralRedactionNode | undefined;
   /** True when every live candidate declares `key` as a property signature. */
   readonly keyIsDeclared: (key: string, value: object) => boolean;
+  /** True when every live candidate that accepts the value's JSON kind holds no credential bytes. */
+  readonly holdsNoCredential: (value: unknown) => boolean;
+  /** True when every live candidate accepting a number is a number schema or numeric literal. */
+  readonly numberIsExempt: (value: number) => boolean;
 }
 
 export type StructuralRedactionInput = Schema.Top | AST.AST;
@@ -53,6 +64,16 @@ interface ChildEntry {
   readonly declared: boolean;
   readonly child: StructuralRedactionNode | undefined;
 }
+
+/**
+ * An annotated position carries no credential bytes: a published reference
+ * descriptor, a declared name/path/id, or a Lando-authored diagnostic field.
+ * Only an annotated candidate proves that, so `BoundText` (whose parts mix
+ * literal bytes with references) is deliberately not annotated.
+ */
+const isNotCredentialAst = (ast: AST.AST): boolean =>
+  ast.annotations?.[SchemaNotCredentialAnnotationId] === true ||
+  ast.context?.annotations?.[SchemaNotCredentialAnnotationId] === true;
 
 const compiled = new WeakMap<AST.AST, Map<StructuralRedactionSide, StructuralRedactionNode>>();
 
@@ -120,6 +141,43 @@ const resolveChild = (key: string, live: readonly AST.AST[], side: StructuralRed
   return { declared, child: children.length === 0 ? undefined : makeNode(children, side) };
 };
 
+/** The JSON kind a value presents; a value JSON cannot carry has no kind. */
+const jsonKind = (value: unknown): string | undefined => {
+  if (value === null) return "null";
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return typeof value;
+    case "object":
+      return "object";
+    default:
+      return undefined;
+  }
+};
+
+/**
+ * A struct candidate cannot describe a value that lacks one of its required
+ * properties: decoding that value fails. Optional keys, including a key with a
+ * decoding default on the side that accepts omitted input, stay livable. An
+ * unreadable property counts as present so an exotic value stays conservative.
+ */
+const describesValue = (candidate: AST.AST, value: object): boolean => {
+  if (!AST.isObjects(candidate)) return true;
+  for (const signature of candidate.propertySignatures) {
+    if (AST.isOptional(signature.type)) continue;
+    let present: boolean;
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(value, signature.name);
+      present = descriptor !== undefined && "value" in descriptor;
+    } catch {
+      present = true;
+    }
+    if (!present) return false;
+  }
+  return true;
+};
+
 const makeNode = (raw: readonly AST.AST[], side: StructuralRedactionSide): StructuralRedactionNode => {
   let normalized: readonly AST.AST[] | undefined;
   let objectCandidates: readonly AST.AST[] | undefined;
@@ -163,7 +221,18 @@ const makeNode = (raw: readonly AST.AST[], side: StructuralRedactionSide): Struc
     const cached = byObject?.get(value);
     if (cached !== undefined) return cached;
     if (objectIndex === undefined) objectIndex = buildDiscriminatorIndex(objects(), side);
-    const live = objectIndex.select(value);
+    const selected = objectIndex.select(value);
+    // Keep the index's shared cohort array whenever the candidate set is
+    // unchanged: downstream child nodes are cached by that array's identity, so
+    // a fresh copy per object would recompile every child on every encode.
+    let live = selected;
+    if (selected.length > 1) {
+      const describers = selected.filter((candidate) => describesValue(candidate, value));
+      // A value that satisfies no member is partial (a projected result, an
+      // event without every field), so keep the discriminator-selected set
+      // rather than dropping every candidate and losing the literals it proves.
+      if (describers.length > 0 && describers.length < selected.length) live = describers;
+    }
     if (byObject === undefined) byObject = new WeakMap();
     byObject.set(value, live);
     return live;
@@ -183,9 +252,54 @@ const makeNode = (raw: readonly AST.AST[], side: StructuralRedactionSide): Struc
     return entry;
   };
 
+  const numberIsExempt = (value: number): boolean => {
+    let proven = false;
+    for (const candidate of candidates()) {
+      if (AST.isNumber(candidate)) {
+        proven = true;
+        continue;
+      }
+      if (AST.isLiteral(candidate)) {
+        // A literal accepts only its own value. A matching numeric literal
+        // types the position as a number; any other literal cannot accept it.
+        if (candidate.literal === value) proven = true;
+        continue;
+      }
+      // Unknown/Any and every other number-accepting declaration stay opaque.
+      if (acceptsKind(candidate, "number")) return false;
+    }
+    return proven;
+  };
+
+  /**
+   * Every live candidate that accepts this value's JSON kind must be annotated
+   * as holding no credential bytes. Objects narrow by discriminator first, so a
+   * descriptor in a union proves only the value it selects; a position no
+   * candidate accepts proves nothing.
+   */
+  const holdsNoCredential = (value: unknown): boolean => {
+    let live: readonly AST.AST[];
+    if (value !== null && typeof value === "object") {
+      let array: boolean;
+      try {
+        array = Array.isArray(value);
+      } catch {
+        return false;
+      }
+      live = array ? arrays() : forObject(value);
+    } else {
+      const kind = jsonKind(value);
+      if (kind === undefined) return false;
+      live = candidates().filter((candidate) => acceptsKind(candidate, kind));
+    }
+    return live.length > 0 && live.every(isNotCredentialAst);
+  };
+
   return {
     keyIsDeclared: (key, value) => childEntry(key, value).declared,
     child: (key, value) => childEntry(key, value).child,
+    holdsNoCredential,
+    numberIsExempt,
     element: (index, length) => {
       const live = arrays();
       if (live.length === 0) return undefined;

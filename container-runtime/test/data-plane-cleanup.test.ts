@@ -22,6 +22,10 @@ const scriptRedactor = (redact: (value: unknown) => unknown): Redactor => ({
     const redacted = redact(value);
     return typeof redacted === "string" ? redacted : "[redacted]";
   },
+  redactPrefix: (value) => {
+    const redacted = redact(value);
+    return typeof redacted === "string" ? redacted : "[redacted]";
+  },
   redactValue: redact,
 });
 
