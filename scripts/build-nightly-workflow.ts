@@ -6,6 +6,7 @@ import {
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { renderNightlyFailureJob } from "./_nightly-failure-workflow.ts";
 import { serviceListenerMatrixNightlyJob } from "./_service-listener-matrix-nightly.ts";
 import { serviceListenerNightlyJob } from "./_service-listener-nightly.ts";
 
@@ -60,7 +61,7 @@ const providerLandoE2eJob = `
   provider-lando-e2e-linux-x64:
     needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-x64]
     runs-on: ${LINUX_X64_TEST_RUNNER}
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${isolateLandoRootsStep}
@@ -602,6 +603,7 @@ permissions:
 
 jobs:
 ${jobsYaml}
+${renderNightlyFailureJob(jobsYaml)}
 `;
 };
 

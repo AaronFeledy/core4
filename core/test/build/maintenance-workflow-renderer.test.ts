@@ -39,6 +39,9 @@ printf report > "$BODY_FILE"`,
     expect(await fixture.git("log", "-1", "--format=%s", `origin/${fixture.branch}`)).toBe(
       "candidate's update",
     );
-    expect(await fixture.commands()).toContain("gh issue comment 42 --body");
+    const commands = await fixture.commands();
+    expect(commands).toContain("gh issue comment 42 --body");
+    expect(commands).toContain("repo=fixture/repository");
+    expect(commands).not.toContain("gh issue create");
   },
 );

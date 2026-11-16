@@ -662,7 +662,9 @@ LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun run test:selection nightly-provider-e2e
 ```
 
-Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting.
+Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. The job has a 90-minute timeout, including room for six additional Composer install scenarios at about three minutes each.
+
+On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports any failed jobs, even when other dependencies were skipped or cancelled. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
 
 ## Nightly source-store acceptance
 

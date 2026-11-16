@@ -4,16 +4,23 @@ import { resolve } from "node:path";
 import { landoManagedPodmanRuntimeDirCommands } from "../../../scripts/build-ci-workflow.ts";
 import { renderNightlyWorkflow } from "../../../scripts/build-nightly-workflow.ts";
 import { isShardedUnitTest } from "../../../scripts/test-shards.ts";
+import { createMaintenanceFixture } from "./support/maintenance-workflow-harness.ts";
 
 const workflowPath = resolve(import.meta.dirname, "../../../.github/workflows/nightly.yml");
 
 type Step = Record<string, unknown>;
 type Job = {
+  readonly if?: string;
+  readonly permissions?: Readonly<Record<string, string>>;
+  readonly "timeout-minutes"?: number;
   readonly needs?: ReadonlyArray<string>;
   readonly "runs-on"?: string;
   readonly steps: ReadonlyArray<Step>;
 };
-type Workflow = { readonly jobs: Record<string, Job> };
+type Workflow = {
+  readonly permissions: Readonly<Record<string, string>>;
+  readonly jobs: Record<string, Job>;
+};
 
 const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, command: string]>> = {
   "container-helper": ["Set up Lando with Docker", "bun core/bin/lando.ts setup"],
@@ -61,6 +68,7 @@ test("nightly jobs regenerate derived sources after frozen install and before th
         "runtime-bundle-linux-arm64",
         "runtime-bundle-reproducibility-linux-x64",
         "runtime-bundle-reproducibility-linux-arm64",
+        "report-failure",
       ].sort(),
     );
 
@@ -115,6 +123,79 @@ test("nightly jobs regenerate derived sources after frozen install and before th
     expect(pinSteps.filter((step) => step.run === "bun run codegen")).toHaveLength(0);
   }
 });
+
+test("#2302 nightly reporter waits for every job with issue permission only on the reporter", () => {
+  const { jobs, permissions } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+  const reporter = jobs["report-failure"];
+  expect(reporter).toBeDefined();
+  expect(reporter?.needs?.toSorted()).toEqual(
+    Object.keys(jobs)
+      .filter((id) => id !== "report-failure")
+      .sort(),
+  );
+  expect(permissions).toEqual({ contents: "read" });
+  expect(reporter?.permissions).toEqual({ issues: "write" });
+  expect(reporter?.["runs-on"]).toBe("ubuntu-24.04");
+  expect(reporter?.steps).toHaveLength(1);
+  expect(reporter?.steps[0]).toMatchObject({ name: "Report automation failure" });
+  expect(jobs["provider-lando-e2e-linux-x64"]?.["timeout-minutes"]).toBe(90);
+});
+
+test.each([
+  ["schedule", "refs/heads/main", ["failure", "skipped", "cancelled"], true],
+  ["schedule", "refs/heads/main", ["success", "failure"], true],
+  ["schedule", "refs/heads/main", ["success", "skipped", "cancelled"], false],
+  ["workflow_dispatch", "refs/heads/main", ["failure"], false],
+  ["workflow_dispatch", "refs/heads/fix", ["failure"], false],
+  ["schedule", "refs/heads/fix", ["failure"], false],
+] as const)("#2302 reporter gate for %s on %s with %j", (event, ref, results, expected) => {
+  const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+  const condition = jobs["report-failure"]?.if;
+  expect(condition).toBe(
+    "${{ always() && failure() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' }}",
+  );
+  if (condition === undefined) throw new TypeError("Missing reporter condition");
+  // This expression uses the common JavaScript/GitHub boolean subset. GitHub documents
+  // failure() as any failed ancestor; always() admits skipped/cancelled dependencies.
+  const evaluate = new Function("always", "failure", "github", `return (${condition.slice(3, -2)});`);
+  expect(
+    evaluate(
+      () => true,
+      () => results.some((result) => result === "failure"),
+      {
+        event_name: event,
+        ref,
+      },
+    ),
+  ).toBe(expected);
+});
+
+test.skipIf(process.platform === "win32").each([true, false])(
+  "#2302 nightly reports failed job names and run URL (existing issue: %s)",
+  async (existing) => {
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat", repository: "fork/core4" });
+    const title = "nightly automation failure";
+    const result = await fixture.failure(renderNightlyWorkflow(), existing ? [{ number: 42, title }] : [], {
+      NEEDS_JSON: JSON.stringify({
+        "container-helper": { result: "failure" },
+        "file-sync-contract-linux-x64": { result: "failure" },
+        "provider-lando-e2e-linux-x64": { result: "skipped" },
+        "refresh-test-timings-linux-x64": { result: "cancelled" },
+        "runtime-bundle-manifest-live": { result: "success" },
+      }),
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    const commands = await fixture.commands();
+    expect(commands).toContain(
+      existing ? "gh issue comment 42 --body" : `gh issue create --title ${title} --body`,
+    );
+    expect(commands).toContain("Failed jobs: container-helper, file-sync-contract-linux-x64");
+    expect(commands).toContain("https://example.invalid/fork/core4/actions/runs/42");
+    expect(commands).toContain("repo=fork/core4");
+    expect(commands.includes("--assignee AaronFeledy")).toBe(!existing);
+    expect(commands).not.toContain("Failed jobs: provider-lando");
+  },
+);
 
 test.each([
   ["linux-x64", "ubuntu-24.04"],

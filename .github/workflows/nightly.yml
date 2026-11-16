@@ -315,7 +315,7 @@ jobs:
   provider-lando-e2e-linux-x64:
     needs: [container-helper, runtime-bundle-linux-x64]
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Isolate Lando roots
@@ -1641,3 +1641,29 @@ jobs:
           path: dist/bundle
           if-no-files-found: error
           retention-days: 14
+
+  report-failure:
+    needs: [container-helper, runtime-bundle-linux-x64, runtime-bundle-linux-arm64, runtime-bundle-reproducibility-linux-x64, runtime-bundle-reproducibility-linux-arm64, file-sync-contract-linux-x64, file-sync-contract-darwin-arm64, file-sync-contract-darwin-x64, file-sync-contract-windows-x64, provider-lando-e2e-linux-x64, service-listeners-linux-x64, service-listener-matrix-linux-x64, published-manifest-setup-linux-x64, mysql-arm-client-linux-arm64, source-store-acceptance-linux-x64, source-store-acceptance-darwin-arm64, source-store-acceptance-windows-x64, nightly-tier-unit-tests-linux-x64, refresh-test-timings-linux-x64, runtime-bundle-manifest-live, distribution-rehearsal-linux-x64]
+    if: ${{ always() && failure() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
+    steps:
+      - name: Report automation failure
+        run: |
+          set -euo pipefail
+          TITLE='nightly automation failure'
+          FAILED_JOBS="$(jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")' <<< "$NEEDS_JSON")"
+          printf -v BODY 'Workflow run failed: %s\n\nFailed jobs: %s' "$RUN_URL" "$FAILED_JOBS"
+          ISSUE_NUMBER="$(gh issue list --state open --search 'in:title "nightly automation failure" sort:created-asc' --limit 100 --json number,title --jq '[.[] | select(.title == "nightly automation failure")] | .[0].number // ""')"
+          if [ -n "$ISSUE_NUMBER" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY" --assignee 'AaronFeledy'
+          fi
