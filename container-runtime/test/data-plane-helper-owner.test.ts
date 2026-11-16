@@ -36,7 +36,7 @@ const ownerLabels = (owner: HelperOwnerIdentity, remove = true) =>
   ephemeralDataHelperLabels({ providerId: "test", owner, remove });
 
 const reclaim = (
-  probe: HelperReclaimOptions["probe"] = () => ({ state: "absent" }),
+  probe: HelperReclaimOptions["probe"] = () => Effect.succeed({ state: "absent" }),
 ): HelperReclaimOptions => ({ identity: Effect.succeed(SELF), probe });
 
 const planeFor = (engine: ReturnType<typeof helperEngine> | FakeEngine, helperReclaim = reclaim()) =>
@@ -88,6 +88,37 @@ test("a helper created with remove:false is retained instead of process-owned", 
   });
 });
 
+const createLabels = (engine: FakeEngine): Readonly<Record<string, string>> => {
+  const create = engine.httpRequests.find((request) => request.path.startsWith("/containers/create?name="));
+  if (create?.body === undefined) throw new Error("missing create request");
+  return (create.body as { Labels?: Readonly<Record<string, string>> }).Labels ?? {};
+};
+
+const unidentifiedOwner = (): HelperReclaimOptions => ({
+  identity: Effect.succeed(undefined),
+  probe: () => Effect.succeed({ state: "absent" }),
+});
+
+test("a helper created without a readable owner identity records no lifecycle", async () => {
+  const engine = new FakeEngine();
+  await Effect.runPromise(Effect.scoped(planeFor(engine, unidentifiedOwner()).run(spec)));
+  const labels = createLabels(engine);
+  expect(labels["dev.lando.role"]).toBe("data-helper");
+  expect(Object.keys(labels)).not.toContain("dev.lando.helper-lifecycle");
+  expect(Object.keys(labels)).not.toContain("dev.lando.helper-owner-start");
+  expect(Object.keys(labels)).not.toContain("dev.lando.helper-owner-machine");
+});
+
+test("a retained helper stays retained without owner labels when no identity is readable", async () => {
+  const engine = new FakeEngine();
+  await Effect.runPromise(
+    Effect.scoped(planeFor(engine, unidentifiedOwner()).run({ ...spec, remove: false })),
+  );
+  const labels = createLabels(engine);
+  expect(labels["dev.lando.helper-lifecycle"]).toBe("retain");
+  expect(Object.keys(labels)).not.toContain("dev.lando.helper-owner-start");
+});
+
 test("the sweep removes a dead owner's helper even while it is running", async () => {
   const engine = helperEngine([
     {
@@ -113,7 +144,7 @@ test("the sweep keeps a live owner's helper whose finish time is hours old", asy
   ]);
   await runWithSweep(
     engine,
-    reclaim(() => ({ state: "present", start: "700" })),
+    reclaim(() => Effect.succeed({ state: "present", start: "700" })),
   );
   expect(engine.containers.get("live-owner")).toBeDefined();
 });

@@ -28,6 +28,7 @@ export const ephemeralDataHelperLabels = (input: {
   readonly remove?: boolean;
   readonly owner?: HelperOwnerIdentity;
 }): Readonly<Record<string, string>> => {
+  // A process-owned helper always carries the full owner identity, including its start token.
   const lifecycle =
     input.remove === false
       ? HELPER_LIFECYCLE_RETAIN
@@ -48,7 +49,7 @@ export const ephemeralDataHelperLabels = (input: {
           [HELPER_OWNER_PID_DOMAIN_LABEL]: input.owner.pidDomain,
           [HELPER_OWNER_PID_LABEL]: String(input.owner.pid),
           ...(input.owner.boot === undefined ? {} : { [HELPER_OWNER_BOOT_LABEL]: input.owner.boot }),
-          ...(input.owner.start === undefined ? {} : { [HELPER_OWNER_START_LABEL]: input.owner.start }),
+          [HELPER_OWNER_START_LABEL]: input.owner.start,
         }),
   };
 };

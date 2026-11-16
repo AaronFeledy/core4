@@ -10,10 +10,8 @@ import type { VolumeHolder } from "./ephemeral-data-helpers.ts";
 import {
   type HelperOwnerIdentity,
   type HelperReclaimOptions,
-  type OwnerProcessObservation,
   helperOwnerIdentityFor,
   isActiveHelper,
-  probeHelperOwnerPid,
 } from "./helper-owner.ts";
 import {
   DATA_HELPER_ROLE,
@@ -28,6 +26,7 @@ import {
   PROVIDER_LABEL,
   ROLE_LABEL,
 } from "./labels.ts";
+import { type OwnerProcessObservation, probeHelperOwnerPid } from "./process-start-token.ts";
 import { redactString } from "./redact.ts";
 
 export const STALE_DATA_HELPER_AGE_MS = 10 * 60 * 1000;
@@ -53,7 +52,7 @@ export interface DataHelperReclaimInput {
   readonly nowMs: number;
   readonly identity: HelperOwnerIdentity | undefined;
   readonly isActive: (name: string) => boolean;
-  readonly probe: (pid: number) => OwnerProcessObservation;
+  readonly probe: (pid: number) => Effect.Effect<OwnerProcessObservation>;
 }
 
 const ListedHelpers = Schema.fromJsonString(
@@ -111,55 +110,59 @@ const readOwner = (labels: Readonly<Record<string, string>>): HelperOwnerIdentit
   if (machine === undefined || machine.length === 0) return undefined;
   if (pidDomain === undefined || pidDomain.length === 0) return undefined;
   if (pidText === undefined || !/^[1-9]\d*$/u.test(pidText)) return undefined;
-  const boot = labels[HELPER_OWNER_BOOT_LABEL];
   const start = labels[HELPER_OWNER_START_LABEL];
+  // A process-owned helper always carries a start token; without one its owner is unreadable.
+  if (start === undefined || start.length === 0) return undefined;
+  const boot = labels[HELPER_OWNER_BOOT_LABEL];
   return {
     machine,
     pidDomain,
     pid: Number(pidText),
     ...(boot === undefined || boot.length === 0 ? {} : { boot }),
-    ...(start === undefined || start.length === 0 ? {} : { start }),
+    start,
   };
 };
+
+const KEEP: Effect.Effect<DataHelperVerdict> = Effect.succeed("keep");
+const REMOVE: Effect.Effect<DataHelperVerdict> = Effect.succeed("remove");
 
 const processOwnerVerdict = (
   owner: HelperOwnerIdentity,
   input: DataHelperReclaimInput,
-): DataHelperVerdict => {
+): Effect.Effect<DataHelperVerdict> => {
   const self = input.identity;
   // Never authorize removal without a known self identity to compare against.
-  if (self === undefined) return "keep";
-  if (owner.machine !== self.machine) return "keep";
-  if (owner.boot !== undefined && self.boot !== undefined && owner.boot !== self.boot) return "remove";
-  if (owner.pidDomain !== self.pidDomain) return "keep";
+  if (self === undefined) return KEEP;
+  if (owner.machine !== self.machine) return KEEP;
+  if (owner.boot !== undefined && self.boot !== undefined && owner.boot !== self.boot) return REMOVE;
+  if (owner.pidDomain !== self.pidDomain) return KEEP;
   if (owner.pid === self.pid) {
     // A different start token for our pid is a previous process that reused it.
-    if (owner.start !== undefined && self.start !== undefined && owner.start !== self.start) return "remove";
-    return input.isActive(input.name) ? "keep" : "remove";
+    if (owner.start !== self.start) return REMOVE;
+    return input.isActive(input.name) ? KEEP : REMOVE;
   }
-  const observation = input.probe(owner.pid);
-  if (observation.state === "absent") return "remove";
-  if (
-    observation.state === "present" &&
-    owner.start !== undefined &&
-    observation.start !== undefined &&
-    owner.start !== observation.start
-  ) {
-    // The pid now belongs to a different process, so the original owner exited.
-    return "remove";
-  }
-  return "keep";
+  // Probe lazily: a helper this process owns needs no liveness lookup at all.
+  return input.probe(owner.pid).pipe(
+    Effect.map((observed): DataHelperVerdict => {
+      if (observed.state === "absent") return "remove";
+      // The pid now belongs to a different process, so the original owner exited.
+      if (observed.state === "present" && observed.start !== undefined && owner.start !== observed.start) {
+        return "remove";
+      }
+      return "keep";
+    }),
+  );
 };
 
-export const dataHelperReclaimVerdict = (input: DataHelperReclaimInput): DataHelperVerdict => {
-  if (!isProviderDataHelperLabels(input.labels, input.providerId)) return "keep";
+export const dataHelperReclaimVerdict = (input: DataHelperReclaimInput): Effect.Effect<DataHelperVerdict> => {
+  if (!isProviderDataHelperLabels(input.labels, input.providerId)) return KEEP;
   const lifecycle = input.labels[HELPER_LIFECYCLE_LABEL];
-  if (lifecycle === undefined) return isLegacyStaleDataHelper(input) ? "remove" : "keep";
-  if (lifecycle === HELPER_LIFECYCLE_RETAIN) return "keep";
-  if (lifecycle !== HELPER_LIFECYCLE_PROCESS) return "keep";
+  if (lifecycle === undefined) return isLegacyStaleDataHelper(input) ? REMOVE : KEEP;
+  if (lifecycle === HELPER_LIFECYCLE_RETAIN) return KEEP;
+  if (lifecycle !== HELPER_LIFECYCLE_PROCESS) return KEEP;
   const owner = readOwner(input.labels);
   // Partial metadata is not proof of anything; leave the helper alone.
-  if (owner === undefined) return "keep";
+  if (owner === undefined) return KEEP;
   return processOwnerVerdict(owner, input);
 };
 
@@ -184,7 +187,7 @@ const containerName = (value: string | undefined): string | undefined =>
 const reclaimVerdict = (
   life: typeof Lifecycle.Type,
   input: Pick<DataHelperReclaimInput, "providerId" | "name" | "nowMs" | "identity" | "isActive" | "probe">,
-): DataHelperVerdict =>
+): Effect.Effect<DataHelperVerdict> =>
   dataHelperReclaimVerdict({
     ...input,
     labels: life.Config.Labels,
@@ -231,7 +234,7 @@ export const removeAllStaleVolumeHolders = (
       const life = yield* inspectHelper(request, holder.id);
       // A holder another process already removed no longer blocks the volume.
       if (life === undefined) continue;
-      const verdict = reclaimVerdict(life, {
+      const verdict = yield* reclaimVerdict(life, {
         providerId: input.providerId,
         name: holder.name,
         nowMs,
@@ -275,18 +278,15 @@ export const sweepStaleDataHelpers = (
       const life = yield* inspectHelper(request, helper.Id);
       if (life === undefined) continue;
       const fallbackName = containerName(helper.Names?.[0]) ?? helper.Id;
-      if (
-        reclaimVerdict(life, {
-          providerId: input.providerId,
-          name: fallbackName,
-          nowMs,
-          identity: self,
-          isActive,
-          probe,
-        }) === "remove"
-      ) {
-        yield* removeHelper(request, helper.Id);
-      }
+      const verdict = yield* reclaimVerdict(life, {
+        providerId: input.providerId,
+        name: fallbackName,
+        nowMs,
+        identity: self,
+        isActive,
+        probe,
+      });
+      if (verdict === "remove") yield* removeHelper(request, helper.Id);
     }
   }).pipe(
     Effect.timeout(STALE_DATA_HELPER_SWEEP_DEADLINE),

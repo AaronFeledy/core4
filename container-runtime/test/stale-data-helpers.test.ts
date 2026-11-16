@@ -69,18 +69,20 @@ test.each([
   ["paused container", "paused", staleTime],
 ] as const)("preserves a helper with %s", (_name, state, finishedAt) => {
   expect(
-    dataHelperReclaimVerdict({
-      labels: helperLabels(),
-      providerId: "test",
-      name: "helper",
-      state,
-      finishedAt,
-      created: staleTime,
-      nowMs: NOW,
-      identity: undefined,
-      isActive: () => false,
-      probe: () => ({ state: "unknown" }),
-    }),
+    Effect.runSync(
+      dataHelperReclaimVerdict({
+        labels: helperLabels(),
+        providerId: "test",
+        name: "helper",
+        state,
+        finishedAt,
+        created: staleTime,
+        nowMs: NOW,
+        identity: undefined,
+        isActive: () => false,
+        probe: () => Effect.succeed({ state: "unknown" }),
+      }),
+    ),
   ).toBe("keep");
 });
 

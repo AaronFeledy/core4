@@ -4,21 +4,29 @@ import { Effect } from "effect";
 import { ephemeralDataHelperLabels } from "../src/ephemeral-data-helpers.ts";
 import {
   type HelperOwnerIdentity,
-  type OwnerProcessObservation,
   helperOwnerIdentity,
   isActiveHelper,
-  parseProcessStartToken,
-  probeHelperOwnerPid,
-  readProcessStartToken,
   registerActiveHelper,
   releaseActiveHelper,
 } from "../src/helper-owner.ts";
-import { DATA_HELPER_ROLE, PROVIDER_LABEL, ROLE_LABEL } from "../src/labels.ts";
-import { type DataHelperReclaimInput, dataHelperReclaimVerdict } from "../src/stale-data-helpers.ts";
+import { DATA_HELPER_ROLE, HELPER_OWNER_START_LABEL, PROVIDER_LABEL, ROLE_LABEL } from "../src/labels.ts";
+import {
+  type OwnerProcessObservation,
+  parseProcessStartToken,
+  probeHelperOwnerPid,
+  readProcessStartToken,
+} from "../src/process-start-token.ts";
+import {
+  type DataHelperReclaimInput,
+  type DataHelperVerdict,
+  dataHelperReclaimVerdict,
+} from "../src/stale-data-helpers.ts";
 
 const NOW = 1_700_000_000_000;
 const STALE = new Date(NOW - 600_001).toISOString();
 const FRESH = new Date(NOW - 60_000).toISOString();
+const MAC_TOKEN = "Mon Nov 16 10:23:45 2026";
+const WINDOWS_TOKEN = "2026-11-16T16:23:45.1234567Z";
 
 const SELF: HelperOwnerIdentity = {
   machine: "a".repeat(32),
@@ -33,6 +41,19 @@ const labelsFor = (owner: HelperOwnerIdentity, remove = true): Readonly<Record<s
 
 const legacyLabels = { [ROLE_LABEL]: DATA_HELPER_ROLE, [PROVIDER_LABEL]: "test" };
 
+/** A process-owned helper always carries a start token; a label set without one is malformed. */
+const withoutStartToken = (labels: Readonly<Record<string, string>>): Record<string, string> => {
+  const copy = { ...labels };
+  delete copy[HELPER_OWNER_START_LABEL];
+  return copy;
+};
+
+const sees = (
+  state: OwnerProcessObservation["state"],
+  start?: string,
+): Effect.Effect<OwnerProcessObservation> =>
+  Effect.succeed(start === undefined ? { state } : { state, start });
+
 const baseInput = (): DataHelperReclaimInput => ({
   labels: labelsFor(SELF),
   providerId: "test",
@@ -42,13 +63,16 @@ const baseInput = (): DataHelperReclaimInput => ({
   nowMs: NOW,
   identity: SELF,
   isActive: () => false,
-  probe: (): OwnerProcessObservation => ({ state: "unknown" }),
+  probe: () => sees("unknown"),
 });
 
 const withLabels = (
   labels: Readonly<Record<string, string>>,
   extra: Partial<DataHelperReclaimInput> = {},
 ) => ({ ...baseInput(), ...extra, labels });
+
+const verdict = (input: DataHelperReclaimInput): DataHelperVerdict =>
+  Effect.runSync(dataHelperReclaimVerdict(input));
 
 const otherOwner = (overrides: Partial<HelperOwnerIdentity>): HelperOwnerIdentity => ({
   ...SELF,
@@ -99,6 +123,16 @@ test.each([
     expected: "keep",
   },
   {
+    name: "a process-owned helper whose owner carries no start token",
+    input: withLabels(withoutStartToken(labelsFor(otherOwner({})))),
+    expected: "keep",
+  },
+  {
+    name: "a process-owned helper whose owner carries an empty start token",
+    input: withLabels({ ...labelsFor(otherOwner({})), [HELPER_OWNER_START_LABEL]: "" }),
+    expected: "keep",
+  },
+  {
     name: "an unknown self identity",
     input: { ...baseInput(), identity: undefined },
     expected: "keep",
@@ -134,37 +168,65 @@ test.each([
     expected: "remove",
   },
   {
-    name: "a live owner process with the expected start token",
+    name: "a live owner process with the expected Linux start token",
     input: withLabels(labelsFor(otherOwner({})), {
-      probe: () => ({ state: "present", start: "700" }),
+      probe: () => sees("present", "700"),
     }),
     expected: "keep",
   },
   {
-    name: "a live owner process with a different start token",
+    name: "a live owner process with a different Linux start token",
     input: withLabels(labelsFor(otherOwner({})), {
-      probe: () => ({ state: "present", start: "701" }),
+      probe: () => sees("present", "701"),
     }),
     expected: "remove",
   },
   {
-    name: "a live owner process without a start token",
+    name: "a live macOS owner process with the expected start token",
+    input: withLabels(labelsFor(otherOwner({ start: MAC_TOKEN })), {
+      probe: () => sees("present", MAC_TOKEN),
+    }),
+    expected: "keep",
+  },
+  {
+    name: "a live macOS owner process whose pid now belongs to another process",
+    input: withLabels(labelsFor(otherOwner({ start: MAC_TOKEN })), {
+      probe: () => sees("present", "Tue Nov 17 11:01:02 2026"),
+    }),
+    expected: "remove",
+  },
+  {
+    name: "a live Windows owner process with the expected start token",
+    input: withLabels(labelsFor(otherOwner({ start: WINDOWS_TOKEN })), {
+      probe: () => sees("present", WINDOWS_TOKEN),
+    }),
+    expected: "keep",
+  },
+  {
+    name: "a live Windows owner process whose pid now belongs to another process",
+    input: withLabels(labelsFor(otherOwner({ start: WINDOWS_TOKEN })), {
+      probe: () => sees("present", "2027-01-02T03:04:05.7654321Z"),
+    }),
+    expected: "remove",
+  },
+  {
+    name: "a live owner process without a readable start token",
     input: withLabels(labelsFor(otherOwner({})), {
-      probe: () => ({ state: "present" }),
+      probe: () => sees("present"),
     }),
     expected: "keep",
   },
   {
     name: "an absent owner process",
     input: withLabels(labelsFor(otherOwner({})), {
-      probe: () => ({ state: "absent" }),
+      probe: () => sees("absent"),
     }),
     expected: "remove",
   },
   {
     name: "an unverifiable owner process",
     input: withLabels(labelsFor(otherOwner({})), {
-      probe: () => ({ state: "unknown" }),
+      probe: () => sees("unknown"),
     }),
     expected: "keep",
   },
@@ -216,14 +278,14 @@ test.each([
     expected: "keep",
   },
 ] as const)("$name is kept or removed as declared", ({ input, expected }) => {
-  expect(dataHelperReclaimVerdict(input)).toBe(expected);
+  expect(verdict(input)).toBe(expected);
 });
 
 test("recovery of this process's helper name reflects the active registry", () => {
   registerActiveHelper("active-helper");
   try {
     expect(
-      dataHelperReclaimVerdict({
+      verdict({
         ...baseInput(),
         name: "active-helper",
         labels: labelsFor(SELF),
@@ -234,7 +296,7 @@ test("recovery of this process's helper name reflects the active registry", () =
     releaseActiveHelper("active-helper");
   }
   expect(
-    dataHelperReclaimVerdict({
+    verdict({
       ...baseInput(),
       name: "active-helper",
       labels: labelsFor(SELF),
@@ -262,15 +324,15 @@ test.skipIf(process.platform !== "linux")(
   async () => {
     const child = Bun.spawn(["cat"], { stdin: "pipe", stdout: "ignore" });
     try {
-      const before = probeHelperOwnerPid(child.pid);
+      const before = await Effect.runPromise(probeHelperOwnerPid(child.pid));
       expect(before.state).toBe("present");
       expect(before.start).toMatch(/^\d+$/u);
-      expect(before.start).toBe(readProcessStartToken(child.pid));
+      expect(before.start).toBe(await Effect.runPromise(readProcessStartToken(child.pid)));
     } finally {
       child.kill();
       await child.exited;
     }
-    expect(probeHelperOwnerPid(child.pid)).toEqual({ state: "absent" });
+    expect(await Effect.runPromise(probeHelperOwnerPid(child.pid))).toEqual({ state: "absent" });
   },
   10_000,
 );
@@ -288,6 +350,6 @@ test.skipIf(process.platform !== "linux" || !hasMachineId)(
     expect(identity?.pid).toBe(process.pid);
     expect(identity?.pidDomain).toMatch(/^pid:\[\d+\]$/u);
     expect(identity?.start).toMatch(/^\d+$/u);
-    expect(identity?.start).toBe(readProcessStartToken(process.pid));
+    expect(identity?.start).toBe(await Effect.runPromise(readProcessStartToken(process.pid)));
   },
 );

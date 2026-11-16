@@ -33,7 +33,7 @@ const ownerLabels = (owner: HelperOwnerIdentity) => ephemeralDataHelperLabels({ 
 
 const deadOwnerReclaim = {
   identity: Effect.succeed(SELF),
-  probe: () => ({ state: "absent" as const }),
+  probe: () => Effect.succeed({ state: "absent" as const }),
 };
 
 test("volume removal reclaims stale holders and retries once", async () => {
