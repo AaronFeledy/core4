@@ -655,8 +655,10 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
     yield* requireBorrowableMounts(options.providerId, inspected.body);
   }
   const name = ephemeralContainerName(options.providerId);
+  // A failed create leaves nothing live under this name, whatever its cleanup does.
+  const forget = Effect.sync(() => releaseActiveHelper(name));
   const compensate = (cause: Cause.Cause<ProviderError>) =>
-    compensateFailedCreate(options, spec, name, cause);
+    forget.pipe(Effect.andThen(compensateFailedCreate(options, spec, name, cause)));
   const mount = spec.mounts?.[0];
   const binds = (spec.mounts ?? []).flatMap((mount) =>
     mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
@@ -686,8 +688,10 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
   ];
   const attachStdin = spec.stdinStream !== undefined;
   yield* ensureStaleHelperSweep(options);
-  // Stamp the creating process before the POST so cleanup can prove when it exits.
+  // Stamp the creating process before the POST so cleanup can prove when it exits, and mark
+  // the name live first so a concurrent sweep in this process never takes a helper mid-create.
   const owner = yield* helperOwnerIdentityFor(options.helperReclaim);
+  registerActiveHelper(name);
   const response = yield* request(options, "run.create", {
     method: "POST",
     path: `/containers/create?name=${encodeURIComponent(name)}`,
@@ -733,8 +737,9 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
   }).pipe(Effect.catchCause(compensate));
   const accepted = ensureEphemeral2xx(options, spec, { operation: "run.create", response });
   // 409: another container already holds this name, so it is not ours to remove.
-  yield* response.status === 409 ? accepted : accepted.pipe(Effect.catchCause(compensate));
-  registerActiveHelper(name);
+  yield* response.status === 409
+    ? accepted.pipe(Effect.onError(() => forget))
+    : accepted.pipe(Effect.catchCause(compensate));
   return name;
 });
 
@@ -850,18 +855,13 @@ const compensateFailedCreate = (
   name: string,
   cause: Cause.Cause<ProviderError>,
 ): Effect.Effect<never, ProviderError> => {
-  if (spec.remove === false) {
-    releaseActiveHelper(name);
-    return Effect.failCause(cause);
-  }
+  if (spec.remove === false) return Effect.failCause(cause);
   return boundedEphemeralRemoval(
     options,
     name,
     "run.create",
     leftoverHelperRemediation(options.redactor, false),
   ).pipe(
-    // The name is no longer live for this process once compensation settles.
-    Effect.ensuring(Effect.sync(() => releaseActiveHelper(name))),
     Effect.matchCauseEffect({
       onSuccess: () => Effect.failCause(cause),
       onFailure: (cleanup) => Effect.failCause(mergeFailure(cause, cleanup, "cleanup")),

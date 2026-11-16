@@ -133,6 +133,6 @@ export const volumeInUseMessage = (
 /** `commandFinished` is true when the helper's command ran to completion and only its container is left. */
 export const leftoverHelperRemediation = (redactor: Redactor, commandFinished: boolean): string =>
   redactString(
-    `${commandFinished ? "The command already finished. " : ""}Lando removes the leftover helper container automatically once it confirms the Lando process that started it has exited, during a later database or snapshot command or when it holds a volume removal. Run \`lando doctor\` to check the runtime.`,
+    `${commandFinished ? "The command already finished. " : ""}Lando removes the leftover helper container automatically once it confirms the Lando process that started it has exited, during a later database or snapshot command or when it blocks removing a volume. Run \`lando doctor\` to check the runtime.`,
     redactor,
   );

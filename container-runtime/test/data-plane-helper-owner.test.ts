@@ -9,6 +9,7 @@ import {
   registerActiveHelper,
   releaseActiveHelper,
 } from "../src/helper-owner.ts";
+import { sweepStaleDataHelpers } from "../src/stale-data-helpers.ts";
 import { FakeEngine } from "./support/fake-engine.ts";
 import {
   NOW,
@@ -140,4 +141,44 @@ test("the sweep keeps legacy unlabeled helpers until they are stopped long enoug
   await runWithSweep(engine);
   expect(engine.containers.get("legacy-stale")).toBeUndefined();
   expect(engine.containers.get("legacy-fresh")).toBeDefined();
+});
+
+test("a sweep that runs while a helper is being created keeps that helper", async () => {
+  const engine = new FakeEngine();
+  const survivedConcurrentSweep: boolean[] = [];
+  const request = engine.api.request;
+  if (request === undefined) throw new Error("missing fake engine request client");
+  const api = {
+    ...engine.api,
+    request: (input: Parameters<typeof request>[0]) =>
+      request(input).pipe(
+        Effect.tap((response) => {
+          if (!input.path.startsWith("/containers/create?name=")) return Effect.void;
+          const { Id } = JSON.parse(response.body) as { Id: string };
+          // Another fiber in this process sweeps after the engine created the helper but before
+          // the create response reaches the data plane.
+          return sweepStaleDataHelpers(request, {
+            providerId: "test",
+            redactor,
+            helperReclaim: reclaim(),
+          }).pipe(
+            Effect.andThen(
+              Effect.sync(() => survivedConcurrentSweep.push(engine.containers.get(Id) !== undefined)),
+            ),
+          );
+        }),
+      ),
+  };
+  await Effect.runPromise(
+    Effect.scoped(
+      makeProviderDataPlane({
+        providerId: "test",
+        capabilities: { volumeSnapshot: "none" },
+        redactor,
+        api,
+        helperReclaim: reclaim(),
+      }).run(spec),
+    ),
+  );
+  expect(survivedConcurrentSweep).toEqual([true]);
 });
