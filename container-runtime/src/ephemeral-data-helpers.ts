@@ -79,7 +79,7 @@ export const isVolumeInUse = (details: unknown): boolean => {
 
 export const volumeInUseRemediation = (redactor: Redactor): string =>
   redactString(
-    "A container still uses this volume. Wait for any running data operation to finish. If a leftover data helper still holds the volume after 10 minutes, Lando removes it automatically the next time it runs a database or snapshot command. Run `lando doctor` to check the runtime.",
+    "A container still uses this volume. Wait for any running data operation to finish, then retry. Lando removes a leftover data helper that holds the volume once the helper has been stopped for 10 minutes. Run `lando doctor` to check the runtime.",
     redactor,
   );
 
@@ -101,8 +101,9 @@ export const volumeInUseMessage = (
   return redactString(withReason === named && body.length > 0 ? `${named} ${body}` : withReason, redactor);
 };
 
-export const leftoverHelperRemediation = (redactor: Redactor): string =>
+/** `commandFinished` is true when the helper's command ran to completion and only its container is left. */
+export const leftoverHelperRemediation = (redactor: Redactor, commandFinished: boolean): string =>
   redactString(
-    "The command already finished. Lando removes the leftover helper container automatically the next time it runs a database or snapshot command. Run `lando doctor` to check the runtime.",
+    `${commandFinished ? "The command already finished. " : ""}Lando removes the leftover helper container automatically during a later database or snapshot command, once it has been stopped for 10 minutes. Run \`lando doctor\` to check the runtime.`,
     redactor,
   );
