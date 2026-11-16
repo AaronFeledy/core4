@@ -33,7 +33,8 @@ tooling:
     dir: /app
     env:
       COMPOSER_ALLOW_SUPERUSER: "1"
-    description: Run Composer inside the appserver service.
+    description: Run Composer as superuser in /app inside the appserver service.
+    wrapper: true
   magento:
     service: appserver
     cmd: [php, bin/magento]

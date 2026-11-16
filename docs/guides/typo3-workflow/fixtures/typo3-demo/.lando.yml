@@ -24,11 +24,13 @@ tooling:
     cmds:
       - composer
     description: Run Composer inside the appserver service.
+    wrapper: true
   php:
     service: appserver
     cmds:
       - php
     description: Run the PHP CLI inside the appserver service.
+    wrapper: true
   typo3:
     service: appserver
     user: www-data

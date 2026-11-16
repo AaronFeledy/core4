@@ -60,9 +60,11 @@ tooling:
     cmds:
       - composer
     description: "Run Composer inside the appserver service."
+    wrapper: true
     service: appserver
   console:
     cmds:
       - "php bin/console"
     description: "Run the Symfony console inside the appserver service."
+    wrapper: true
     service: appserver
