@@ -107,7 +107,6 @@ export const applyServiceHome = (input: {
 }): LandofileValidationError | (ServicePlan & { readonly home: ServiceHomePlan }) => {
   const commandUser = input.projectUser?.name ?? input.servicePlan.user;
   const user = commandUser ?? (input.intent.customImage ? undefined : input.intent.identity?.defaultUser);
-  input.servicePlan.user ?? (input.intent.customImage ? undefined : input.intent.identity?.defaultUser);
   const principal = user === undefined ? undefined : userPrincipal(user);
   const knownUser = principal === undefined ? {} : { user: principal };
   const resolved = resolveHomePath({
