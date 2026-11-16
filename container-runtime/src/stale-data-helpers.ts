@@ -166,11 +166,27 @@ export const dataHelperReclaimVerdict = (input: DataHelperReclaimInput): Effect.
   return processOwnerVerdict(owner, input);
 };
 
-const reclaimDependencies = (options: HelperReclaimOptions | undefined) => ({
-  identity: helperOwnerIdentityFor(options),
-  probe: options?.probe ?? probeHelperOwnerPid,
-  isActive: options?.isActive ?? isActiveHelper,
-});
+/**
+ * Prepares one cleanup pass. Our own identity is captured before the pass's deadline starts
+ * (its lookups carry their own timeouts and are cached per process), and each owner pid is
+ * probed at most once per pass, because a start-token read can spawn `ps` or PowerShell.
+ */
+const reclaimPass = (options: HelperReclaimOptions | undefined) =>
+  helperOwnerIdentityFor(options).pipe(
+    Effect.map((identity) => {
+      const probeOwner = options?.probe ?? probeHelperOwnerPid;
+      const observed = new Map<number, OwnerProcessObservation>();
+      const probe = (pid: number): Effect.Effect<OwnerProcessObservation> => {
+        const seen = observed.get(pid);
+        return seen === undefined
+          ? probeOwner(pid).pipe(
+              Effect.tap((observation) => Effect.sync(() => observed.set(pid, observation))),
+            )
+          : Effect.succeed(seen);
+      };
+      return { identity, probe, isActive: options?.isActive ?? isActiveHelper };
+    }),
+  );
 
 const inspectHelper = (request: StaleHelperRequester, id: string) =>
   request({ method: "GET", path: `/containers/${encodeURIComponent(id)}/json` }).pipe(
@@ -225,30 +241,30 @@ export const removeAllStaleVolumeHolders = (
   },
 ): Effect.Effect<boolean> => {
   if (request === undefined || input.holders.length === 0) return Effect.succeed(false);
-  return Effect.gen(function* () {
-    const nowMs = yield* Clock.currentTimeMillis;
-    const { identity, probe, isActive } = reclaimDependencies(input.helperReclaim);
-    const self = yield* identity;
-    const stale: string[] = [];
-    for (const holder of input.holders) {
-      const life = yield* inspectHelper(request, holder.id);
-      // A holder another process already removed no longer blocks the volume.
-      if (life === undefined) continue;
-      const verdict = yield* reclaimVerdict(life, {
-        providerId: input.providerId,
-        name: holder.name,
-        nowMs,
-        identity: self,
-        isActive,
-        probe,
-      });
-      if (verdict === "keep") return false;
-      stale.push(holder.id);
-    }
-    for (const id of stale) yield* removeHelper(request, id);
-    return true;
-  }).pipe(
-    Effect.timeout(STALE_DATA_HELPER_SWEEP_DEADLINE),
+  return reclaimPass(input.helperReclaim).pipe(
+    Effect.flatMap(({ identity: self, probe, isActive }) =>
+      Effect.gen(function* () {
+        const nowMs = yield* Clock.currentTimeMillis;
+        const stale: string[] = [];
+        for (const holder of input.holders) {
+          const life = yield* inspectHelper(request, holder.id);
+          // A holder another process already removed no longer blocks the volume.
+          if (life === undefined) continue;
+          const verdict = yield* reclaimVerdict(life, {
+            providerId: input.providerId,
+            name: holder.name,
+            nowMs,
+            identity: self,
+            isActive,
+            probe,
+          });
+          if (verdict === "keep") return false;
+          stale.push(holder.id);
+        }
+        for (const id of stale) yield* removeHelper(request, id);
+        return true;
+      }).pipe(Effect.timeout(STALE_DATA_HELPER_SWEEP_DEADLINE)),
+    ),
     Effect.catchCause((cause) => logJanitorFailure(cause, input.redactor).pipe(Effect.as(false))),
   );
 };
@@ -262,34 +278,34 @@ export const sweepStaleDataHelpers = (
   },
 ): Effect.Effect<void> => {
   if (request === undefined) return Effect.void;
-  return Effect.gen(function* () {
-    const nowMs = yield* Clock.currentTimeMillis;
-    const { identity, probe, isActive } = reclaimDependencies(input.helperReclaim);
-    const self = yield* identity;
-    const response = yield* request({
-      method: "GET",
-      path: `/containers/json?all=true&filters=${encodeEngineFilters({
-        label: [`${ROLE_LABEL}=${DATA_HELPER_ROLE}`, `${PROVIDER_LABEL}=${input.providerId}`],
-      })}`,
-    });
-    if (response.status !== 200) return yield* Effect.fail(response);
-    const helpers = yield* Schema.decodeUnknownEffect(ListedHelpers)(response.body);
-    for (const helper of helpers) {
-      const life = yield* inspectHelper(request, helper.Id);
-      if (life === undefined) continue;
-      const fallbackName = containerName(helper.Names?.[0]) ?? helper.Id;
-      const verdict = yield* reclaimVerdict(life, {
-        providerId: input.providerId,
-        name: fallbackName,
-        nowMs,
-        identity: self,
-        isActive,
-        probe,
-      });
-      if (verdict === "remove") yield* removeHelper(request, helper.Id);
-    }
-  }).pipe(
-    Effect.timeout(STALE_DATA_HELPER_SWEEP_DEADLINE),
+  return reclaimPass(input.helperReclaim).pipe(
+    Effect.flatMap(({ identity: self, probe, isActive }) =>
+      Effect.gen(function* () {
+        const nowMs = yield* Clock.currentTimeMillis;
+        const response = yield* request({
+          method: "GET",
+          path: `/containers/json?all=true&filters=${encodeEngineFilters({
+            label: [`${ROLE_LABEL}=${DATA_HELPER_ROLE}`, `${PROVIDER_LABEL}=${input.providerId}`],
+          })}`,
+        });
+        if (response.status !== 200) return yield* Effect.fail(response);
+        const helpers = yield* Schema.decodeUnknownEffect(ListedHelpers)(response.body);
+        for (const helper of helpers) {
+          const life = yield* inspectHelper(request, helper.Id);
+          if (life === undefined) continue;
+          const fallbackName = containerName(helper.Names?.[0]) ?? helper.Id;
+          const verdict = yield* reclaimVerdict(life, {
+            providerId: input.providerId,
+            name: fallbackName,
+            nowMs,
+            identity: self,
+            isActive,
+            probe,
+          });
+          if (verdict === "remove") yield* removeHelper(request, helper.Id);
+        }
+      }).pipe(Effect.timeout(STALE_DATA_HELPER_SWEEP_DEADLINE)),
+    ),
     Effect.catchCause((cause) => logJanitorFailure(cause, input.redactor)),
   );
 };

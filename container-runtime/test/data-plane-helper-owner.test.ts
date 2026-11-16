@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
 import { ephemeralDataHelperLabels } from "../src/ephemeral-data-helpers.ts";
@@ -212,4 +212,54 @@ test("a sweep that runs while a helper is being created keeps that helper", asyn
     ),
   );
   expect(survivedConcurrentSweep).toEqual([true]);
+});
+
+test("one cleanup pass probes each owner pid once", async () => {
+  const engine = helperEngine([
+    { id: "first", state: "exited", labels: ownerLabels(OWNER), finishedAt: freshTime },
+    { id: "second", state: "exited", labels: ownerLabels(OWNER), finishedAt: freshTime },
+  ]);
+  const probed: number[] = [];
+  await Effect.runPromise(
+    sweepStaleDataHelpers(engine.api.request, {
+      providerId: "test",
+      redactor,
+      helperReclaim: {
+        identity: Effect.succeed(SELF),
+        probe: (pid) =>
+          Effect.sync(() => {
+            probed.push(pid);
+            return { state: "absent" } as const;
+          }),
+      },
+    }),
+  );
+  expect(probed).toEqual([OWNER.pid]);
+  expect(engine.containers.get("first")).toBeUndefined();
+  expect(engine.containers.get("second")).toBeUndefined();
+});
+
+test("a slow identity capture does not use up the cleanup deadline", async () => {
+  const engine = helperEngine([
+    { id: "dead-owner", state: "exited", labels: ownerLabels(OWNER), finishedAt: freshTime },
+  ]);
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const sweep = yield* Effect.forkChild(
+        sweepStaleDataHelpers(engine.api.request, {
+          providerId: "test",
+          redactor,
+          helperReclaim: {
+            // A cold capture on macOS or Windows runs host commands with their own timeouts.
+            identity: Effect.sleep("6 seconds").pipe(Effect.as(SELF)),
+            probe: () => Effect.succeed({ state: "absent" }),
+          },
+        }),
+        { startImmediately: true },
+      );
+      yield* TestClock.adjust("6 seconds");
+      yield* Fiber.join(sweep);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+  expect(engine.containers.get("dead-owner")).toBeUndefined();
 });
