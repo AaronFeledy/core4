@@ -295,10 +295,6 @@
       "digest": "3e8128eab07e4ea4e2ab362a7e20ec84d7a3e85905b27cc56c740b77cc6a7f8b"
     },
     {
-      "fixture": "docs/guides/craft-workflow/fixtures/craft-demo",
-      "digest": "84b237a079df8526d508b709616fcd51db16d5a17917410f092554a15a0d5596"
-    },
-    {
       "fixture": "docs/guides/db-import-export/fixtures/one-db",
       "digest": "5e950dcb15d5873532fb2c02197ca467c762bb6406bf6fe5c4b95e2f6c9101db"
     },
@@ -1328,10 +1324,6 @@
     {
       "fixture": "docs/guides/typesense/fixtures/typesense-demo",
       "digest": "95e962df56ce0ced5e73ee2e2c3a9f389464f5aff60fc483ebe4639c785229f0"
-    },
-    {
-      "fixture": "docs/guides/typo3-workflow/fixtures/typo3-demo",
-      "digest": "5d9bb8a4557dd21dbc9bab3d4987083f241069642523834f3184ca457ea575cc"
     },
     {
       "fixture": "docs/guides/valkey/fixtures/valkey-demo",
