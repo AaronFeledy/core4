@@ -161,7 +161,7 @@ lando bee status
 lando mariadb -e 'SHOW TABLES;'
 ```
 
-On Linux with the default managed provider, Bee and Apache's PHP workers use the project user, `www-data`, so their app-file writes belong to your host user. If the site cannot write `files/` on another platform or provider, see [Who owns your app files](../services/file-ownership.mdx). Open the HTTPS URL `lando info` prints. A fresh install serves the site name you passed to `install`.
+On Linux, the default managed provider, rootless `podman`, and rootful `podman` or `docker` make Bee and Apache's PHP workers use the project user, `www-data`, so their app-file writes belong to your host user. If the site cannot write `files/` on another platform or provider, see [Who owns your app files](../services/file-ownership.mdx). Open the HTTPS URL `lando info` prints. A fresh install serves the site name you passed to `install`.
 
 ## Connect Backdrop to MariaDB
 
