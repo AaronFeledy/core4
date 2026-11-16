@@ -159,6 +159,7 @@ describe("stock PHP prerequisite plan", () => {
       "service-lando.php:baseline",
       PHP_PREREQUISITES_STEP_ID,
       "service-lando.php:composer",
+      "service-lando.php:create-project",
       "service-lando.php:apache-default-site",
       "service-lando.http-errors:pages",
     ]);
