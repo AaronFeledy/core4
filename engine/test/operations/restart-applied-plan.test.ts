@@ -43,7 +43,8 @@ test("preserves persisted selected and unselected metadata when the Landofile ch
   ).pipe(
     Effect.provideService(RuntimeProviderRegistry, {
       ...harness.runtimeProviderRegistry,
-      resolveAppliedPlan: () => Effect.succeed(applied),
+      resolveAppliedPlan: (_root, _app, lookup) =>
+        lookup === "exact" ? Effect.succeed(applied) : Effect.die("restart must ask for the exact app"),
       select: () =>
         Effect.succeed({
           ...provider,
@@ -89,7 +90,8 @@ for (const applied of [
         ).pipe(
           Effect.provideService(RuntimeProviderRegistry, {
             ...harness.runtimeProviderRegistry,
-            resolveAppliedPlan: () => Effect.succeed(applied),
+            resolveAppliedPlan: (_root, _app, lookup) =>
+              lookup === "exact" ? Effect.succeed(applied) : Effect.die("restart must ask for the exact app"),
           }),
           Effect.provide(harness.layer),
         ),

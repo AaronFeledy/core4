@@ -91,7 +91,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   const { selectedPlan, target, provider, overlays: preparedOverlays } = admitted;
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
-  const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root);
+  const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root, target.app, "exact");
   if (
     appliedPlan === undefined ||
     appliedPlan.root !== target.plan.root ||
