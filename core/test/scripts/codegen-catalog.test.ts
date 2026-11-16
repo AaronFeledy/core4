@@ -80,7 +80,14 @@ const expectedCatalogRows = [
     "derived",
     "build-bundled-plugins.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
+    [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "php-create-project",
+      "provider-images",
+    ],
   ],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -103,7 +110,14 @@ const expectedCatalogRows = [
     "derived",
     "build-setup-plugin-flags.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
+    [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "php-create-project",
+      "provider-images",
+    ],
   ],
   [
     "bundled-command-descriptors",
@@ -179,14 +193,14 @@ const expectedCatalogRows = [
     "derived",
     "build-service-type-reference.ts",
     "repo",
-    ["php-msmtp-pins", "tomcat-catalog"],
+    ["php-msmtp-pins", "tomcat-catalog", "php-create-project"],
   ],
   [
     "service-listener-reference",
     "derived",
     "build-service-listener-reference.ts",
     "repo",
-    ["php-msmtp-pins", "tomcat-catalog"],
+    ["php-msmtp-pins", "tomcat-catalog", "php-create-project"],
   ],
   [
     "config-lint-rule-reference",
@@ -286,6 +300,7 @@ describe("codegen catalog", () => {
       "docker-cli-versions",
       "php-msmtp-pins",
       "tomcat-catalog",
+      "php-create-project",
       "provider-images",
     ].map((id) => ({
       id,
@@ -425,6 +440,7 @@ describe("codegen catalog", () => {
     // Then: later consumers wait for their inputs, and independent derived work shares a wave.
     expect(waveOf("php-msmtp-pins")).toBeLessThan(waveOf("service-type-reference"));
     expect(waveOf("tomcat-catalog")).toBeLessThan(waveOf("service-type-reference"));
+    expect(waveOf("php-create-project")).toBeLessThan(waveOf("bundled-plugins"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("command-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("schema-snapshot"));
     expect(waveOf("bundled-plugins")).toBeLessThan(waveOf("schema-snapshot"));

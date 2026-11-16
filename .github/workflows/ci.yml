@@ -512,6 +512,10 @@ jobs:
       - name: Regenerate paired Tomcat catalog
         run: bun run codegen:tomcat-catalog
 
+      # Gitignored output that the PHP service imports, so bundled plugins need it first.
+      - name: Regenerate PHP create-project script
+        run: bun run codegen:php-create-project
+
       # Gitignored output that container-runtime imports, so bundled plugins need it first.
       - name: Regenerate provider images manifest
         run: bun run codegen:provider-images
