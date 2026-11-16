@@ -73,23 +73,17 @@ export const selectCommandIdentity = (input: SelectCommandIdentityInput): Comman
   return { user, environment: projectUserEnvironment(service) };
 };
 
-const appRootOf = (plan: AppPlan): string => plan.identity?.appRoot ?? plan.root;
-
 /**
- * This app's applied plan, or `undefined` when none is readable. Applied-state
- * resolution walks up from the app root, so a plan recorded for an enclosing
- * app is not evidence for this one and is ignored.
+ * The applied plan recorded for exactly this app root, or `undefined` when none
+ * is readable. An enclosing app's plan is never evidence for this one.
  */
 export const appliedAppPlan = (
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   plan: AppPlan,
 ): Effect.Effect<AppPlan | undefined> =>
-  registry.resolveAppliedPlan(plan.root).pipe(
-    Effect.map((applied) =>
-      applied !== undefined && appRootOf(applied) === appRootOf(plan) ? applied : undefined,
-    ),
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
+  registry
+    .resolveAppliedPlan(plan.root, undefined, "exact")
+    .pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 /**
  * The service plan as it was applied, or `undefined` when no applied plan is

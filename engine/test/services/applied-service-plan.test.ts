@@ -51,7 +51,8 @@ const plan: AppPlan = {
 
 const registry = (result: () => Promise<AppPlan | undefined>) =>
   ({
-    resolveAppliedPlan: () => Effect.promise(result),
+    resolveAppliedPlan: (_root: AbsolutePath, _app: unknown, lookup?: string) =>
+      lookup === "exact" ? Effect.promise(result) : Effect.die("command identity must ask for the exact app"),
   }) as unknown as Parameters<typeof appliedServicePlan>[0];
 
 describe("appliedServicePlan", () => {
@@ -85,26 +86,29 @@ describe("appliedServicePlan", () => {
     expect(resolved).toBeUndefined();
   });
 
-  test("ignores an enclosing app's applied plan when this app has none", async () => {
-    // Applied-state resolution walks up from the app root, so a nested app with
-    // no applied record can resolve its parent's plan.
+  test("asks for this app's exact applied plan, never an enclosing app's", async () => {
+    // Applied-state resolution can walk up from the app root, so asking the
+    // ancestor question would let a parent plan answer for a nested app.
     const nested: AppPlan = {
       ...plan,
       id: AppId.make("nested"),
       root: AbsolutePath.make("/tmp/applied/nested"),
     };
-    const parent: AppPlan = {
-      ...plan,
-      services: { [ServiceName.make("web")]: service("web", { name: "www-data", uid: 33, gid: 33 }) },
-    };
+    const calls: Array<{ readonly root: AbsolutePath; readonly lookup: string | undefined }> = [];
     const resolved = await Effect.runPromise(
       appliedServicePlan(
-        registry(async () => parent),
+        {
+          resolveAppliedPlan: (root: AbsolutePath, _app: unknown, lookup?: string) => {
+            calls.push({ root, lookup });
+            return Effect.succeed(undefined);
+          },
+        } as unknown as Parameters<typeof appliedServicePlan>[0],
         nested,
         "web",
       ),
     );
     expect(resolved).toBeUndefined();
+    expect(calls).toEqual([{ root: nested.root, lookup: "exact" }]);
   });
 
   test("returns undefined when applied state cannot be read", async () => {
