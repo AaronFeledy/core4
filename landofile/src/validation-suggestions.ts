@@ -30,10 +30,11 @@ const isMisplacedComposeSurfaceKey = (
   Object.hasOwn(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
 
 export const valueAtPath = (value: unknown, path: ValidationIssuePath): unknown => {
-  let current = value;
+  const unwrap = (entry: unknown): unknown => (isLandofileOverride(entry) ? unwrap(entry.value) : entry);
+  let current = unwrap(value);
   for (const key of path) {
-    if (Array.isArray(current) && typeof key === "number") current = current[key];
-    else if (isPlainRecord(current)) current = current[String(key)];
+    if (Array.isArray(current) && typeof key === "number") current = unwrap(current[key]);
+    else if (isPlainRecord(current)) current = unwrap(current[String(key)]);
     else return undefined;
   }
   return current;

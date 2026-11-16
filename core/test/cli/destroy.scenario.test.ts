@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 
-import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
@@ -30,6 +30,11 @@ import {
 import { makeTestStateStore } from "@lando/core/testing";
 import * as BunDataMover from "@lando/data-mover/service";
 import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "@lando/engine/services/build-artifact-results";
+import { BuildOwner, openAppBuildResults, recordBuildResult } from "@lando/engine/services/build-results";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -225,6 +230,7 @@ const makeDestroyLayer = (
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const artifactRemovals: string[] = [];
   const evidenceRoots: string[] = [];
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const routeRemovals: string[] = [];
@@ -294,7 +300,9 @@ const makeDestroyLayer = (
           remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: (ref) =>
+      Effect.sync(() => artifactRemovals.push(ref.ref)).pipe(Effect.as({ kind: "absent" as const })),
+    listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
     ...(options.quiesceEffect === undefined
       ? {}
@@ -511,6 +519,7 @@ const makeDestroyLayer = (
     events,
     publishedEvents,
     destroyCalls,
+    artifactRemovals,
     routeRemovals,
     volumes,
     evidenceRoots,
@@ -670,6 +679,68 @@ describe("lando destroy", () => {
       expect(result).toMatchObject({ outcome: "unchanged", servicesDestroyed: [], snapshotsRemoved: 0 });
       expect(harness.events).toEqual([]);
       expect(harness.destroyCalls).toEqual([]);
+    },
+  );
+
+  test.each([false, true])(
+    "an app that never applied loses its build output and app results on destroy (scoped=%s)",
+    async (scoped) => {
+      await withTempCwd(async (dataRoot) => {
+        // Given a first build that failed before anything was applied.
+        const harness = makeDestroyLayer({ userDataRoot: dataRoot, absent: true });
+        const appDir = join(dataRoot, "builds", "owners", BuildOwner.fromPlan(plan).key);
+        const transcript = join(appDir, "app", "web", "install.log");
+        await mkdir(join(appDir, "app", "web"), { recursive: true });
+        await writeFile(transcript, "install output\n");
+        const bucket = await Effect.runPromise(
+          openAppBuildResults(harness.stateStore, BuildOwner.fromPlan(plan)),
+        );
+        const entry = {
+          buildKey: "app-key",
+          service: web.name,
+          phase: "app" as const,
+          step: "web:app:install",
+          outcome: "complete" as const,
+          exitCode: 0,
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(transcript),
+        };
+        await Effect.runPromise(recordBuildResult(bucket, entry));
+        const artifacts = await Effect.runPromise(openArtifactBuildResults(harness.stateStore));
+        for (const provider of ["lando", "docker"])
+          await Effect.runPromise(
+            recordArtifactBuildResult(artifacts, {
+              owner: BuildOwner.fromPlan(plan).key,
+              providerId: provider,
+              phase: "artifact",
+              service: web.name,
+              buildKey: provider,
+              artifactRef: `unused-${provider}`,
+              artifactOrigin: "build",
+              outcome: "fail",
+              durationMs: 1,
+              transcriptPath: AbsolutePath.make(transcript),
+            }),
+          );
+
+        // When the desired plan is destroyed even though nothing was ever applied.
+        const result = await withCwd(testAppRoot, () =>
+          Effect.runPromise(
+            destroyApp({ yes: true, ...(scoped ? { providerId } : {}) }).pipe(Effect.provide(harness.layer)),
+          ),
+        );
+
+        // Then the app's build directory and app-step result are gone, so the next start builds again.
+        expect(result).toMatchObject({ outcome: "unchanged" });
+        await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await Effect.runPromise(bucket.exists)).toBe(false);
+        expect((await Effect.runPromise(artifacts.get))?.results.map((entry) => entry.providerId)).toEqual(
+          scoped ? ["docker"] : [],
+        );
+        expect(harness.artifactRemovals).toEqual([]);
+        expect(result.builtImages).toEqual({ removed: 0, released: 0, inUse: [] });
+      });
     },
   );
 

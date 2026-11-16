@@ -24,6 +24,7 @@ export const readCliAppCommandCache = Effect.fnUntraced(function* (
   const scoped = {
     ...options,
     cwd: options.cwd ?? invocation.cwd,
+    env: options.env ?? invocation.env,
     cacheRoot: options.cacheRoot ?? roots.userCacheRoot,
     roots,
   };

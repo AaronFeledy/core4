@@ -129,7 +129,6 @@ test("internal selected stop preserves unrelated ownership hints", async () => {
         root: plannedApp.root,
         app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
       },
-      { skipInitEvents: true },
     ).pipe(Effect.provide(harness.layer)),
   );
   // Then

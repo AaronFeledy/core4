@@ -96,6 +96,7 @@ If you are looking for a public surface or policy:
 | Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
 | Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
+| Scheduled jobs: per-service `schedule`, cadence, timezone, identity, sidecar grouping and naming, scheduler acquisition, and the `schedule:list` / `schedule:run` commands | 01 + 06 + 08 + 11 | §1.4 + §6.2.2 + §8.2.8 + §10.14 |
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
 | File-sync eligibility, shared policy, and provider prepared-volume support | 04 + 05 | §4.3 + §4.4 + §5.4 |
@@ -112,19 +113,23 @@ If you are looking for a public surface or policy:
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
+| Generated companion services: `addClonedService`, `AppFeatureCloneError`, shared and non-inherited parent facts, naming, provenance, selection, and removal | 06 | §6.11.4 + §6.11.5 |
+| In-build acquisition of pinned third-party artifacts by Lando-contributed build steps | 06 + 11 | §6.13.3 + §10.3.3 |
 | Final effective feature validation, explicit field claims and structured feature issues | 06 | §6.11.0 + §6.11.4 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Authored versus resolved service credentials and explicit credential claims | 06 | §6.11 + §6.12.4 |
+| Post-readiness database credential observation, the `LANDO_DATABASE_CREDENTIALS_REJECTED` and `LANDO_DATABASE_MISSING` warnings, and the `database-credentials` doctor section | 06 + 11 | §6.12.4 + §10.9.1 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
-| `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
+| `BuildOrchestrator`, `BuildPlan`, owner-scoped results and transcripts, app-step settlement, container-bound app-step reuse, and errors | 06 + 05 + 12 | §6.13 + §5.3 + §12.1 |
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
+| User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
@@ -148,12 +153,14 @@ If you are looking for a public surface or policy:
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
-| Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
-| `strict: false` command tails and unknown-flag rejection for exec/ssh/run | 08 | §8.3 |
+| Single native dispatch, help projection, unavailable rows, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Structured tooling diagnostics, disclosure bounds, and tooling source provenance | 08 + 12 | §8.7 + §12.1 |
+| Token ownership between the dispatcher and a command: command tails for exec/ssh/run, plugin commands, wrappers, and `bun`/`x`; declared tooling flags; unknown-flag rejection | 08 | §8.3, §8.5 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
 | Automatic tooling metadata rebuild, failure reporting, and help recovery | 08 | §8.7 |
+| Strict load failures versus per-task normalization errors, unavailable tasks, and `LANDO_TOOLING_INVALID` | 07 + 08 + 12 | §7.8 + §8.2.1 + §8.5 + §8.7 + §12.2 |
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
@@ -178,8 +185,9 @@ If you are looking for a public surface or policy:
 | Plugin authoring commands | 10 | §9.10 |
 | Networking, same-provider routes, provider mismatch rejection, tunnels, and host ports | 11 | §10.1 + §10.2 |
 | Manifest-only router selection, static global-service requirements, and plan-cache identity | 04 + 10 + 11 | §4.3 + §9.5 + §10.2 |
-| Exact route-application acceptance, bounded convergence, warm-route reuse, and stopped-router withdrawal | 11 | §10.2.1 |
+| Exact route-application acceptance, served-TLS proof, router mutation lock, bounded convergence, warm-route reuse, and stopped-router withdrawal | 11 | §10.2.1 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
+| Shared certificate-pair preparation, router leaf renewal, current-root checks, issuer repair, and watched certificate reload | 11 | §10.3 + §10.2.1 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
@@ -191,7 +199,7 @@ If you are looking for a public surface or policy:
 | Host-proxy protocol and errors | 11 | §10.10 |
 | In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
 | Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
-| `DataMover`, endpoints, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
+| `DataMover`, endpoints, typed provider volume archives, role-aware host-file diagnostics, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
 | Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
 | Service tunnels, tethered sessions, and environment operations | 11 | §10.12.5 + §10.12.6 |
@@ -201,6 +209,7 @@ If you are looking for a public surface or policy:
 | Scope-owned per-service environment overrides | 06 | §6.9 |
 | Managed-file ownership, ledger, and errors | 11 | §10.13 |
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
+| MCP `lando://diagnostics` resource, authorization filtering, and repair without reconnecting | 11 | §10.14 |
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |

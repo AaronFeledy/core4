@@ -1,9 +1,15 @@
 import { expect, test } from "bun:test";
-import { access } from "node:fs/promises";
-import { AbsolutePath, AppId, AppPlan } from "@lando/sdk/schema";
+import { access, lstat, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { ScratchAppService } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
+import { BuildOwner, openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 import { runDestroy, seedScratchPlan, withDestroyFixture } from "./destroy-fixture.ts";
 
@@ -42,6 +48,58 @@ test("explicit scratch destroy nests standard events and removes its snapshots b
       reason: "explicit",
       retainedArtifacts: { volumes: false, snapshots: "none" },
     });
+  });
+});
+
+test("scratch destroy clears app output and releases only its own built image", async () => {
+  await withDestroyFixture({}, async (f) => {
+    const dataRoot = process.env.LANDO_USER_DATA_ROOT ?? "";
+    const appDir = join(dataRoot, "builds", "scratch", f.id);
+    const transcript = join(appDir, "app", "web", "install.log");
+    await mkdir(join(appDir, "app", "web"), { recursive: true });
+    await writeFile(transcript, "output\n");
+    const artifacts = await Effect.runPromise(openArtifactBuildResults(f.stateStore));
+    for (const owner of [f.id, "scratch-sibling"])
+      await Effect.runPromise(
+        recordArtifactBuildResult(artifacts, {
+          owner,
+          providerId: "lando",
+          phase: "artifact",
+          service: ServiceName.make("web"),
+          buildKey: "image",
+          artifactRef: "shared-image",
+          artifactOrigin: "build",
+          outcome: "complete",
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(transcript),
+        }),
+      );
+    const bucket = await Effect.runPromise(
+      openAppBuildResults(f.stateStore, BuildOwner.scratch(AppId.make(f.id))),
+    );
+    await Effect.runPromise(
+      recordBuildResult(bucket, {
+        buildKey: "app-key",
+        service: ServiceName.make("web"),
+        phase: "app",
+        step: "web:app:install",
+        outcome: "complete",
+        exitCode: 0,
+        durationMs: 1,
+        transcriptPath: AbsolutePath.make(transcript),
+      }),
+    );
+
+    // When explicit destroy completes.
+    await runDestroy(f);
+
+    await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(transcript)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await Effect.runPromise(bucket.exists)).toBe(false);
+    const results = (await Effect.runPromise(artifacts.get))?.results;
+    expect(results?.find((entry) => entry.owner === f.id)?.releasedAt).toBeDefined();
+    expect(results?.find((entry) => entry.owner === "scratch-sibling")?.releasedAt).toBeUndefined();
+    expect(results?.map((entry) => entry.owner)).toEqual(["scratch-sibling", f.id]);
   });
 });
 

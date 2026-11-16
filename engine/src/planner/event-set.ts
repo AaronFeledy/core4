@@ -17,12 +17,7 @@ import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
-import {
-  compileEffectiveTooling,
-  connectionClientOwners,
-  disabledToolingSources,
-  toolingBeforeDefaults,
-} from "./effective-tooling.ts";
+import { resolveEffectiveTooling } from "./effective-tooling.ts";
 import { requireServiceProjection } from "./endpoint-availability.ts";
 import { projectEndpoints } from "./endpoint-projection.ts";
 import { validEventNames } from "./event-names.ts";
@@ -202,6 +197,14 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     manifests,
     routes: validated.routes,
     canonicalFile: input.file,
+    toolingResolution: resolveEffectiveTooling({
+      landofile,
+      services: seeds.services.map((entry) => ({
+        name: entry.name,
+        serviceTypeId: entry.serviceType.id,
+        ...entry.resolution,
+      })),
+    }),
   };
   if (issues.length > 0) return { _tag: "Invalid" as const, issues, resolution };
   return { _tag: "Resolved" as const, resolution };
@@ -212,23 +215,14 @@ export type ResolvedLandofile = Extract<
   { readonly _tag: "Resolved" }
 >["resolution"];
 
-const toolingServicesOf = (resolution: ResolvedLandofile) =>
-  resolution.services.map((entry) => ({
-    name: entry.name,
-    serviceTypeId: entry.serviceType.id,
-    ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
-    connectionClientNames: entry.resolution.connectionClientNames ?? [],
-  }));
-
 /** Invocation-time expression sites of the effective tooling and events, compiled once per resolution. */
 export const invocationSitesOf = Effect.fnUntraced(function* (resolution: ResolvedLandofile) {
   const { landofile } = resolution;
-  const toolingServices = toolingServicesOf(resolution);
-  const effectiveTooling = compileEffectiveTooling({ landofile, services: toolingServices });
+  const { tasks, beforeDefaults } = resolution.toolingResolution;
   return effectiveInvocationSites({
     landofile,
-    taskNames: Object.keys(effectiveTooling),
-    tasksBeforeDefaults: toolingBeforeDefaults({ landofile, services: toolingServices }),
+    taskNames: Object.keys(tasks),
+    tasksBeforeDefaults: beforeDefaults,
     sites: yield* compileInvocationSites(
       resolution.pendingSites,
       serviceScopeContext({ ...resolution, services: resolution.serviceCredsScope }),
@@ -241,21 +235,23 @@ const knownEventSetFrom = Effect.fnUntraced(function* (
   resolution: ResolvedLandofile,
   invocationSites: Effect.Success<ReturnType<typeof invocationSitesOf>>,
 ) {
-  const { landofile } = resolution;
   const services = yield* Effect.forEach(resolution.services, (seed) =>
     requireServiceProjection(resolution.endpointProjection.services, seed.name, resolution.appRoot).pipe(
       Effect.map((projection) => ({ ...seed, ...projection })),
     ),
   );
-  const toolingServices = toolingServicesOf(resolution);
-  const effectiveTooling = compileEffectiveTooling({ landofile, services: toolingServices });
+  const {
+    tasks: effectiveTooling,
+    provenance: toolingProvenance,
+    connectionClients,
+  } = resolution.toolingResolution;
   const knownEventNames = validEventNames(effectiveTooling);
   return {
     ...resolution,
     services,
     effectiveTooling,
-    connectionClients: connectionClientOwners({ landofile, services: toolingServices }),
-    disabledToolingSources: disabledToolingSources(landofile, effectiveTooling),
+    connectionClients,
+    toolingProvenance,
     invocationSites,
     knownEventNames,
   };

@@ -75,7 +75,14 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
   // When
   await Effect.runPromise(
     buildContainerArtifact(
-      { app: appId, service: serviceName, plan, buildKey: "phase-key" },
+      {
+        app: appId,
+        service: serviceName,
+        plan,
+        buildKey: "phase-key",
+        ref: "lando-build-test-phase",
+        labels: { "dev.lando.test": "phase" },
+      },
       { providerId, api, sourceEnv: {} },
     ),
   );

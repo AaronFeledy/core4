@@ -4,7 +4,12 @@ import { type DestroyOptions, EventService, type ProviderError } from "@lando/sd
 import { DateTime, Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
-import { Observations, networkLabelsDecision, privateNetworkLabels } from "./native-ownership.ts";
+import {
+  Observations,
+  networkLabelsDecision,
+  privateNetworkLabels,
+  serviceContainerOwnershipProblem,
+} from "./native-ownership.ts";
 import { volumeSelectorValue } from "./podman/volume-prune.ts";
 import { type makeResourceOwnershipStore, ownershipFailure } from "./resource-ownership.ts";
 import { VOLUME_OWNER_LABEL, VOLUME_SELECTOR_LABEL } from "./volume-ownership.ts";
@@ -77,6 +82,15 @@ export const makeOwnedResourcesCleanup = (input: {
       const observed = Array.isArray(decoded.value) ? decoded.value[0] : decoded.value;
       if (observed === undefined) return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       const labels = observed.Config?.Labels ?? observed.Labels ?? observed.labels ?? {};
+      const containerProblem =
+        resource.kind === "container"
+          ? serviceContainerOwnershipProblem(labels, {
+              app: String(resource.appId),
+              appRoot: String(root),
+              service: String(resource.service),
+              providerId: input.ctx.providerId,
+            })
+          : undefined;
       let expected: Readonly<Record<string, string>>;
       switch (resource.kind) {
         case "container":
@@ -107,10 +121,26 @@ export const makeOwnedResourcesCleanup = (input: {
           return unreachable;
         }
       }
+      const refusedContainer = (reason: string, details: Readonly<Record<string, string>>) =>
+        new ProviderUnavailableError({
+          providerId: input.ctx.providerId,
+          operation: "resource-ownership",
+          message: `Container ${resource.nativeName} is recorded for this app, but ${reason}, so Lando did not remove it.`,
+          remediation: `Inspect container ${resource.nativeName} with your container runtime and remove it there if it is a leftover, then retry.`,
+          details: { container: resource.nativeName, ...details },
+        });
+      if (resource.kind === "container" && containerProblem !== undefined)
+        return yield* Effect.fail(
+          refusedContainer(
+            `its ${containerProblem} label does not prove it belongs to service ${resource.service} at ${root}`,
+            { label: containerProblem },
+          ),
+        );
       if (
         resource.kind === "network"
           ? networkLabelsDecision(labels, expected) === "foreign"
-          : Object.entries(expected).some(([key, value]) => labels[key] !== value)
+          : resource.kind === "volume" &&
+            Object.entries(expected).some(([key, value]) => labels[key] !== value)
       )
         return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       if (
@@ -121,6 +151,8 @@ export const makeOwnedResourcesCleanup = (input: {
         return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       const nativeId =
         resource.kind === "volume" ? observed.Name : (observed.Id ?? observed.ID ?? observed.id);
+      if (!nativeId && resource.kind === "container")
+        return yield* Effect.fail(refusedContainer("the runtime reported no native id for it", {}));
       if (!nativeId || (resource.kind === "volume" && nativeId !== resource.nativeName))
         return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       if (resource.kind === "volume") {

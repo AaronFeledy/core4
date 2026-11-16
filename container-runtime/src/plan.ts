@@ -20,13 +20,21 @@ export { bindMountStrings, mountSuffix } from "./container-mounts.ts";
 export { serviceContainerName } from "./container-name.ts";
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 
-/** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
+export interface MergeAppliedPlanOptions {
+  /**
+   * The incoming plan names every service of the app, so it becomes the whole applied record.
+   * Without it the record merges, carrying previous services the incoming plan does not name.
+   */
+  readonly complete?: boolean;
+}
+
+/** Retain earlier service metadata when a provider applies only a subset of the app. */
 export const mergeAppliedPlan = (
   previous: AppPlan | undefined,
   incoming: AppPlan,
-  reconcile: boolean,
+  options: MergeAppliedPlanOptions = {},
 ): AppPlan => {
-  if (previous === undefined || reconcile || previous.id !== incoming.id) return incoming;
+  if (options.complete === true || previous === undefined || previous.id !== incoming.id) return incoming;
   const carried = Object.entries(previous.services).filter(([name]) => !(name in incoming.services));
   const routeKeys = incoming.routes.map(canonicalJson);
   const services = Object.fromEntries(
@@ -50,7 +58,34 @@ export const mergeAppliedPlan = (
     ...incoming.stores,
     ...previous.stores.filter((store) => mountedStores.has(store.name) && !incomingStores.has(store.name)),
   ];
-  const merged = { ...incoming, stores, services: { ...services, ...incoming.services } };
+  // A carried service keeps its sync session and policy, so an accelerated record stays complete.
+  const carriedNames = new Set(carried.map(([name]) => name));
+  const sessionKey = (entry: AppPlan["fileSync"][number]) =>
+    `${entry.session.service}/${entry.session.mountKey}`;
+  const incomingSessions = new Set(incoming.fileSync.map(sessionKey));
+  const fileSync = [
+    ...incoming.fileSync,
+    ...previous.fileSync.filter(
+      (entry) => carriedNames.has(String(entry.session.service)) && !incomingSessions.has(sessionKey(entry)),
+    ),
+  ];
+  const carriedPolicies = Object.entries(previous.fileSyncPolicy?.services ?? {}).filter(([name]) =>
+    carriedNames.has(name),
+  );
+  const merged = {
+    ...incoming,
+    stores,
+    fileSync,
+    ...(incoming.fileSyncPolicy === undefined || carriedPolicies.length === 0
+      ? {}
+      : {
+          fileSyncPolicy: {
+            ...incoming.fileSyncPolicy,
+            services: { ...Object.fromEntries(carriedPolicies), ...incoming.fileSyncPolicy.services },
+          },
+        }),
+    services: { ...services, ...incoming.services },
+  };
   if (previous.valueModel !== 1 && carried.length > 0) {
     const { valueModel: _valueModel, ...observed } = merged;
     return observed;

@@ -3,6 +3,7 @@ import {
   type AppCommandCacheReadResult,
   readAppCommandCacheForCwdDetailed,
 } from "@lando/engine/cache/command-index-writer";
+import { HostExecutionDefaults } from "@lando/engine/services/host-execution-context";
 import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { type DiscoveryOperation, currentDiscoveryOperation } from "@lando/landofile/operation-scope";
 import type { CacheError, LandofileFormConflictError } from "@lando/sdk/errors";
@@ -42,6 +43,8 @@ const slowRebuildNotice = (receipt: PendingReceipt): string => {
           return "Updating this app's commands (Landofile changed)...";
         case "referenced-file":
           return "Updating this app's commands (a file the Landofile loads changed)...";
+        case "environment":
+          return "Updating this app's commands (environment changed)...";
         case "script-metadata":
         case "script-inventory":
           return "Updating this app's commands (scripts changed)...";
@@ -98,8 +101,10 @@ export const rebuildToolingCache = Effect.fnUntraced(function* (
   if (operation !== undefined && sources !== undefined) attempted.set(operation, sources);
   const cwd = dirname(receipt.sourcePath);
   const cacheRoot = options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot };
+  const invocation = yield* CliInvocation;
+  const env = options.env ?? invocation.env;
   yield* Effect.promise(() => import("../runtime/bundled-plugins"));
-  const rebuild = withDiscoveryCwd(cwd, refreshAppCache({ cwd, ...cacheRoot })).pipe(
+  const rebuild = withDiscoveryCwd(cwd, refreshAppCache({ cwd, env, ...cacheRoot })).pipe(
     Effect.provide(
       makeLandoRuntime({
         bootstrap: "app",
@@ -112,6 +117,12 @@ export const rebuildToolingCache = Effect.fnUntraced(function* (
         ...cacheRoot,
       }),
     ),
+    Effect.provideService(CliInvocation, invocation),
+    Effect.provideService(HostExecutionDefaults, {
+      cwd: options.cwd ?? invocation.cwd,
+      env,
+      platform: process.platform,
+    }),
   );
   // Typed failures become data so routing can defer to plugin/help fallbacks and then report
   // the rebuild's own error; interruption and defects still propagate.
@@ -125,7 +136,12 @@ export const rebuildToolingCache = Effect.fnUntraced(function* (
       }),
     ),
   );
-  if (failed === undefined) return yield* readAppCommandCacheForCwdDetailed(options);
+  if (failed === undefined)
+    return yield* readAppCommandCacheForCwdDetailed({
+      ...options,
+      cwd: options.cwd ?? invocation.cwd,
+      env,
+    });
   sources?.set(receipt.sourcePath, failed);
   return failed;
 });

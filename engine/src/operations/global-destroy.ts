@@ -11,6 +11,8 @@ import { Effect, Schema } from "effect";
 import { routeOwnerFromGlobalTeardown } from "../lifecycle/route-owner.ts";
 import { type RouteWithdrawal, withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
+import { BuildOwner } from "../services/build-owner.ts";
+import { removeAppBuildOutput } from "../services/build-transcript-cleanup.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
 export interface GlobalDestroyOptions {
@@ -28,6 +30,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
   servicesDestroyed: DestroyAppResult.fields.servicesDestroyed,
   volumesRemoved: DestroyAppResult.fields.volumesRemoved,
   shutdownObservations: DestroyAppResult.fields.shutdownObservations,
+  builtImages: DestroyAppResult.fields.builtImages,
 });
 
 export type GlobalDestroyResult = typeof GlobalDestroyResultSchema.Type;
@@ -61,6 +64,14 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
       const loaded = yield* resolveGlobalTeardown("destroy").pipe(
         Effect.provideService(TeardownProvider, options.providerId),
       );
+      const owner =
+        loaded.evidence.kind === "applied"
+          ? BuildOwner.fromPlan(loaded.evidence.plan)
+          : BuildOwner.root(loaded.paths.root);
+      const providerId = String(loaded.provider.id);
+      const removeBuildOutput = removeAppBuildOutput(owner, providerId, options.providerId, {
+        images: options.purge === true ? "remove" : "release",
+      });
       const volumes = options.purge ?? false;
       if (loaded.evidence.kind === "absent") {
         if (options.providerId === undefined) {
@@ -70,18 +81,21 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
           // A start that failed after certificate preparation leaves only host-side leaf material.
           yield* removeServiceCertificates(routeOwnerFromGlobalTeardown(loaded).ownerKey);
         }
+        const builtImages = yield* removeBuildOutput;
         return {
           app: "global",
           outcome: "unchanged" as const,
           materialized: loaded.materialized,
           servicesDestroyed: [],
           volumesRemoved: false,
+          builtImages,
         };
       }
 
       const receipt: Effect.Success<ReturnType<typeof executeGlobalTeardown>> & {
         readonly routes?: RouteWithdrawal["kind"];
       } = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
+      const builtImages = yield* removeBuildOutput;
       // Cleanup proof covers routes, so a skipped withdrawal leaves every obligation pending.
       if (options.providerId === undefined && receipt.routes === "withdrawn")
         yield* recordGlobalResourceCleanup();
@@ -96,6 +110,7 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
           materialized: loaded.materialized,
           servicesDestroyed: receipt.services,
           volumesRemoved: receipt.volumesRemoved,
+          builtImages,
         },
         receipt.shutdownObservations,
       );

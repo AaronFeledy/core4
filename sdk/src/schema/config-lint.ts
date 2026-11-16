@@ -38,6 +38,7 @@ export const ConfigLintViolation = Schema.Struct({
     }),
   ),
   source: ValidationIssue.fields.source,
+  related: ValidationIssue.fields.related,
 });
 export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 

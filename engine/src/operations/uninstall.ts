@@ -104,7 +104,10 @@ export interface UninstallOptions {
     userDataRoot: string,
     userCacheRoot: string,
   ) => Promise<ReadonlyArray<DiscoveredApp>>;
-  readonly cleanupDiscoveredApps?: (apps: ReadonlyArray<DiscoveredApp>) => Promise<void>;
+  readonly cleanupDiscoveredApps?: (
+    apps: ReadonlyArray<DiscoveredApp>,
+    userCacheRoot: string,
+  ) => Promise<string> | Promise<void>;
   readonly reportFallbackDir?: string;
   readonly cgroupsDelegatePath?: string;
   readonly shellProfilePath?: string;
@@ -558,7 +561,7 @@ const buildRunningAppsStep = async (
         target: "Lando apps",
         status: "owned" as const,
         detail:
-          "No running Lando apps found. Will clean up any leftover Lando-labeled containers and resources.",
+          "No running Lando apps found. Will clean up leftover Lando-labeled containers, networks and volumes, then this cache root's built images on host Docker and Podman before deleting caches. Foreign tags and in-use images are retained.",
       };
     }
     const appList = apps.map((app) => app.appId).join(", ");
@@ -566,7 +569,7 @@ const buildRunningAppsStep = async (
       ...base,
       target: `${apps.length} app${apps.length === 1 ? "" : "s"}: ${appList}`,
       status: "owned" as const,
-      detail: `Found ${apps.length} running Lando app${apps.length === 1 ? "" : "s"}. Will stop and remove ${apps.length === 1 ? "it" : "them"} along with unused Lando networks and volumes.`,
+      detail: `Found ${apps.length} running Lando app${apps.length === 1 ? "" : "s"}. Will stop and remove ${apps.length === 1 ? "it" : "them"} along with unused Lando networks and volumes, then this cache root's built images on host Docker and Podman before deleting caches. Foreign tags and in-use images are retained.`,
     };
   } catch (cause) {
     // Fail closed: discovery failed, cannot verify safety
@@ -949,10 +952,8 @@ const executeUninstall = async (
           options.listDiscoveredApps === undefined
             ? []
             : await options.listDiscoveredApps(userDataRoot, userCacheRoot);
-        if (options.cleanupDiscoveredApps !== undefined) {
-          await options.cleanupDiscoveredApps(apps);
-        }
-        executed.push({ ...step, outcome: "completed" });
+        const detail = await options.cleanupDiscoveredApps?.(apps, userCacheRoot);
+        executed.push({ ...step, outcome: "completed", detail: detail || step.detail });
       } catch (cause) {
         const error = causeMessage(cause);
         executed.push({ ...step, outcome: "failed", error });

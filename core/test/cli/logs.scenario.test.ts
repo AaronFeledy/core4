@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -15,13 +15,33 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanner,
+  FileSystem,
+  GlobalAppService,
+  LandofileService,
+  PathsService,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/core/services";
+import { makeTestStateStore } from "@lando/core/testing";
+import { makeGlobalAppServiceForRoot } from "@lando/engine/global-app/service";
 import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
+import { HostProviderOverride } from "@lando/engine/providers/host-provider";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "@lando/engine/services/build-artifact-results";
+import { BuildOwner } from "@lando/engine/services/build-results";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream, Struct } from "effect";
+import { logsSpec } from "../../src/cli/command-specs/app/logs.ts";
+import { globalLogsSpec } from "../../src/cli/command-specs/meta/global/logs.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -129,6 +149,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 const makeLogsLayer = (
   overrides: {
     readonly appPlan?: AppPlan;
+    readonly applied?: boolean;
     readonly serviceLogs?: boolean;
     readonly serviceLogSources?: boolean;
     readonly defaultProviderServiceLogs?: boolean;
@@ -178,7 +199,8 @@ const makeLogsLayer = (
           remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
-    removeArtifact: () => Effect.void,
+    removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
+    listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
     stop: () => Effect.void,
@@ -217,6 +239,8 @@ const makeLogsLayer = (
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),
     copyFromService: () => Stream.die("not used"),
+    exportVolume: () => Stream.empty,
+    importVolume: () => Effect.void,
     exportArtifact: () => Stream.die("not used"),
     importArtifact: () => Effect.die("not used"),
   };
@@ -233,7 +257,7 @@ const makeLogsLayer = (
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+        appliedPlansFor: () => Effect.succeed(overrides.applied ? [currentPlan] : []),
         resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(defaultProviderCapabilities),
@@ -263,6 +287,60 @@ describe("lando logs", () => {
     expect(rendered).toContain("web stdout: web line 1");
     expect(rendered).toContain("database stderr: database warn");
   });
+
+  test.each([
+    ["decorated TTY text", "lando", "text", true, logsSpec],
+    ["plain text", "plain", "text", false, logsSpec],
+    ["JSON frames", "json", "json", false, logsSpec],
+    ["global JSON frames", "json", "json", false, globalLogsSpec],
+  ] as const)(
+    "masks a secret that spans collected log lines in %s",
+    async (_label, mode, format, isTTY, spec) => {
+      // Given a quoted password that a service writes across three log lines.
+      const harness = makeLogsLayer({
+        applied: spec === globalLogsSpec,
+        logs: (target) =>
+          Stream.fromIterable(
+            ['password="first', "canary-spanning-log-secret", 'last"', "after"].map((line) => ({
+              service: target.service,
+              stream: "stdout" as const,
+              line,
+            })),
+          ),
+      });
+      const io = createBufferedRendererIO({ isTTY, stdoutIsTTY: isTTY });
+      const input = { flags: { service: "web" } };
+      const globalApp = Layer.effect(
+        GlobalAppService,
+        Effect.gen(function* () {
+          return makeGlobalAppServiceForRoot(Effect.succeed(plan.root), yield* FileSystem);
+        }),
+      ).pipe(Layer.provide(BunFileSystem.layer));
+
+      // When the logs spec runs through the CLI boundary.
+      await runWithRendererHandling(
+        spec.run(input).pipe(Effect.provideService(HostProviderOverride, providerId)),
+        {
+          runtime: Layer.merge(harness.layer, globalApp) as Layer.Layer<unknown>,
+          rendererMode: mode,
+          resultFormat: format,
+          command: spec.id,
+          resultSchema: LogsAppResult,
+          streaming: StreamFrame,
+          ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+          render: (result, context) => spec.render?.(result, input, context),
+          formatError: ({ error }) => String(error),
+          io,
+        },
+      );
+
+      // Then every surface shows the masked value and keeps the following line.
+      const output = io.stdout() + io.stderr();
+      expect(output).not.toContain("canary-spanning-log-secret");
+      expect(output).toContain("password=[redacted]");
+      expect(output).toContain("after");
+    },
+  );
 
   test("bound-target logs preserve the requested follow option", async () => {
     const harness = makeLogsLayer();
@@ -507,6 +585,15 @@ describe("lando logs", () => {
 
     expect(rendered).toContain("database stdout [slow-query]: slow query");
     expect(rendered).toContain("database stdout: console line");
+  });
+
+  test("reports empty build history without prescribing a forced rebuild", () => {
+    const rendered = renderLogsAppResult({ app: "test-logs", lines: [] }, true);
+
+    expect(rendered).toContain("test-logs");
+    expect(rendered).toContain("no recorded build output");
+    expect(rendered).not.toContain("lando rebuild");
+    expect(rendered).not.toContain("no log lines");
   });
 
   test("follow mode under --format json carries source on stdout/stderr frames", async () => {
@@ -836,6 +923,99 @@ describe("lando logs", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stderr).not.toContain("NotImplementedError");
       expect(result.stderr).not.toContain("deferred");
+    });
+  });
+
+  test("native --build prints recorded build output as build-sourced lines", async () => {
+    const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-logs-build-scenario-")));
+    try {
+      const state = makeTestStateStore();
+      const transcript = join(
+        dataRoot,
+        "builds",
+        "owners",
+        BuildOwner.fromPlan(plan).key,
+        "artifact",
+        "web",
+        "image.log",
+      );
+      await mkdir(dirname(transcript), { recursive: true });
+      await writeFile(transcript, "built image\n");
+      const bucket = await Effect.runPromise(openArtifactBuildResults(state.service));
+      await Effect.runPromise(
+        recordArtifactBuildResult(bucket, {
+          owner: BuildOwner.fromPlan(plan).key,
+          providerId: String(plan.provider),
+          artifactRef: "web:built",
+          buildKey: "image",
+          service: web.name,
+          phase: "artifact",
+          outcome: "complete",
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(transcript),
+        }),
+      );
+      const harness = makeLogsLayer();
+      const layer = Layer.mergeAll(
+        harness.layer,
+        Layer.succeed(
+          PathsService,
+          makeLandoPaths({
+            env: {},
+            platform: "linux",
+            userDataRoot: dataRoot,
+            userCacheRoot: join(dataRoot, "cache"),
+            userConfRoot: join(dataRoot, "conf"),
+            systemPluginRoot: join(dataRoot, "plugins"),
+          }),
+        ),
+        Layer.succeed(StateStore, state.service),
+      );
+      const io = createBufferedRendererIO({ isTTY: false });
+      const input = { flags: { build: true } };
+
+      await runWithRendererHandling(logsSpec.run(input), {
+        // Match native dispatch: LandoCommandSpec erases the command's service requirement to unknown.
+        runtime: layer as Layer.Layer<unknown>,
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "app:logs",
+        resultSchema: LogsAppResult,
+        render: (result, context) => logsSpec.render?.(result, input, context),
+        formatError: ({ error }) => String(error),
+        io,
+      });
+
+      expect(io.stdout()).toContain("web stdout [build]: built image");
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test.each(["follow", "since", "source"] as const)(
+    "source CLI rejects --build with --%s as a usage error",
+    async (flag) => {
+      await withTempCwd(async (dir) => {
+        await writeFile(join(dir, ".lando.yml"), "name: test-logs-build\nservices: {}\n");
+        const value = flag === "follow" ? [] : [flag === "since" ? "15m" : "console"];
+        const result = await runCli(["logs", "--build", `--${flag}`, ...value], dir);
+
+        expect(result.exitCode).toBe(2);
+        expect(result.stderr).toContain(`Remove --${flag}`);
+      });
+    },
+  );
+
+  test("rejects --build with --follow outside an app directory as a usage error", async () => {
+    await withTempCwd(async (dir) => {
+      // Given a directory with no Landofile.
+      const result = await runCli(["logs", "--build", "--follow"], dir);
+
+      // Then the flag conflict is a usage error, not a missing-app failure.
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("logs: --build cannot be combined with --follow.");
+      expect(result.stderr).toContain("Remove --follow when using --build.");
+      expect(result.stderr).not.toContain("No .lando.yml");
     });
   });
 

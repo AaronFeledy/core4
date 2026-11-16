@@ -1,5 +1,7 @@
 import type { GlobalConfig } from "@lando/sdk/schema";
 
+import { scanLandoFlags } from "./lando-flags";
+
 export interface TraceSelection {
   readonly enabled: boolean;
   readonly display: boolean;
@@ -34,13 +36,11 @@ export const resolveTrace = (
 ): TraceSelection & { readonly remainingArgv: ReadonlyArray<string> } => {
   const env = options.env ?? process.env;
   let display = env.LANDO_TRACE === "1" || env.LANDO_TRACE === "true";
-  let afterTerminator = false;
-  const remainingArgv: string[] = [];
-  for (const arg of options.argv ?? []) {
-    if (arg === "--") afterTerminator = true;
-    if (!afterTerminator && arg === "--trace") display = true;
-    else remainingArgv.push(arg);
-  }
+  const remainingArgv = scanLandoFlags(options.argv ?? [], {
+    "--trace": () => {
+      display = true;
+    },
+  });
   const endpoint = options.config?.otlp?.endpoint ?? env.OTEL_EXPORTER_OTLP_ENDPOINT;
   const headers = options.config?.otlp?.headers ?? parseHeaders(env.OTEL_EXPORTER_OTLP_HEADERS ?? "");
   return {

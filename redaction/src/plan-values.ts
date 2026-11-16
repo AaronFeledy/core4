@@ -9,10 +9,25 @@ import {
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import { collectPublicCredentialValues, nonEmpty } from "./heuristic-values.ts";
+import { collectUrlCredentialValues } from "./service.ts";
 
 type Candidate = {
   readonly path: ReadonlyArray<string | number>;
   readonly value: EnvironmentValue;
+};
+
+/** Proxy URL credentials live under ordinary proxy keys rather than secret-named ones. */
+const PROXY_ENV_KEYS: ReadonlySet<string> = new Set(["http_proxy", "https_proxy", "all_proxy", "ftp_proxy"]);
+
+export const collectProxyUrls = (
+  environment: Readonly<Record<string, unknown>> | undefined,
+): ReadonlyArray<string> => {
+  if (environment === undefined) return [];
+  const urls: string[] = [];
+  for (const [key, value] of Object.entries(environment)) {
+    if (PROXY_ENV_KEYS.has(key.toLowerCase()) && typeof value === "string") urls.push(value);
+  }
+  return urls;
 };
 
 export type RedactionPlan = Partial<Pick<AppPlan, "committedLiteralDigests" | "events" | "extensions">> & {
@@ -61,6 +76,11 @@ export function* sensitivePlanCandidates(plan: RedactionPlan): Generator<Candida
           if (Predicate.isObject(step)) yield* sensitiveMap(step.env, [...path, "cmds", index, "env"]);
         }
       }
+      if (Predicate.isObject(task.vars)) {
+        for (const [name, variable] of Object.entries(task.vars)) {
+          if (Predicate.isObject(variable)) yield* sensitiveMap(variable.env, [...path, "vars", name, "env"]);
+        }
+      }
     }
   }
   for (const [name, steps] of Object.entries(plan.events ?? {})) {
@@ -93,6 +113,13 @@ export const planRedactionValues = (
     if (publicValues.has(value) || !isUsableExactRedactionValue(value)) continue;
     if (digests.has(sha256Hex(value))) wholeToken.add(value);
     else substring.add(value);
+  }
+  for (const service of Object.values(plan.services)) {
+    for (const value of collectUrlCredentialValues(collectProxyUrls(service.environment))) {
+      if (isPublicDefaultCredential(value) || publicValues.has(value)) continue;
+      if (!isUsableExactRedactionValue(value)) continue;
+      substring.add(value);
+    }
   }
   return {
     substring: [...substring],
@@ -136,8 +163,52 @@ export const classifyLoweredEnvRedaction = (
     if (options?.wholeToken?.has(value)) wholeToken.add(value);
     else substring.add(value);
   }
+  for (const value of collectUrlCredentialValues(collectProxyUrls(env))) {
+    if (!isUsableExactRedactionValue(value)) continue;
+    if (isPublicDefaultCredential(value) || publicValues.has(value)) continue;
+    substring.add(value);
+  }
   return {
     substring: [...substring],
     wholeToken: [...wholeToken],
   };
+};
+
+export interface CredentialLiteralClassification {
+  readonly substring: ReadonlySet<string>;
+  readonly wholeToken: ReadonlySet<string>;
+  readonly publicValues: ReadonlySet<string>;
+}
+
+/**
+ * The one plan-to-classification step: read the plan's occurrence inventory and tier it, so a
+ * caller that selects credentials later never re-derives the classification itself.
+ */
+export const planCredentialClassification = (plan: RedactionPlan): CredentialLiteralClassification => {
+  const values = planRedactionValues(plan);
+  return {
+    substring: new Set(values.substring),
+    wholeToken: values.wholeTokenValues,
+    publicValues: values.publicValues,
+  };
+};
+
+/**
+ * Tier authored credential literals for redaction. A committed whole-token digest wins; a
+ * substring-classified or default-provenance value never becomes a broad exact-match token.
+ * References are skipped: the caller resolves them and registers the results as substrings.
+ */
+export const classifyCredentialLiterals = (
+  classification: CredentialLiteralClassification,
+  values: ReadonlyArray<EnvironmentValue>,
+): { readonly substring: string[]; readonly wholeToken: string[] } => {
+  const substring = new Set<string>();
+  const wholeToken = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== "string" || !isUsableExactRedactionValue(value)) continue;
+    if (classification.publicValues.has(value) || isPublicDefaultCredential(value)) continue;
+    if (classification.wholeToken.has(value) && !classification.substring.has(value)) wholeToken.add(value);
+    else substring.add(value);
+  }
+  return { substring: [...substring], wholeToken: [...wholeToken] };
 };

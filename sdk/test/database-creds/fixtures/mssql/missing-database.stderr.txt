@@ -1,0 +1,2 @@
+Sqlcmd: Error: Microsoft ODBC Driver 18 for SQL Server : Cannot open database "missingdb" requested by the login. The login failed..
+Sqlcmd: Error: Microsoft ODBC Driver 18 for SQL Server : Login failed for user 'sa'..

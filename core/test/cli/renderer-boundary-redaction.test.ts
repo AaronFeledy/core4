@@ -244,6 +244,62 @@ describe("runWithRendererHandling redaction", () => {
     expect(io.stdout()).not.toContain(secret);
   });
 
+  test("masks a multi-line value in rendered output without hiding lines after an unbalanced quote", async () => {
+    // Given saved build output lines, rendered as plain text the way `lando logs --build` joins them.
+    const io = createBufferedRendererIO();
+    const lines = [
+      'web stdout: RUN echo "token=" > f',
+      "web stdout: public-line",
+      'web stdout: next "quote"',
+      'web stdout: password="first',
+      "multi-line-canary",
+      'last"',
+      "web stdout: after-line",
+    ];
+
+    // When
+    await runWithRendererHandling(Effect.succeed({ lines }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      render: (result) => result.lines.join("\n"),
+      formatError: ({ error }) => String(error),
+      setExitCode: () => undefined,
+    });
+
+    // Then
+    expect(io.stdout()).toBe(
+      [
+        'web stdout: RUN echo "token=" > f',
+        "web stdout: public-line",
+        'web stdout: next "quote"',
+        "web stdout: password=[redacted]",
+        "web stdout: after-line",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("masks a result token that spans two rendered lines", async () => {
+    // Given a registered value that the renderer splits across two result lines.
+    const io = createBufferedRendererIO();
+    const lines = ["web stdout: before split-first", "split-second after"];
+
+    // When
+    await runWithRendererHandling(Effect.succeed({ lines }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      redactionTokens: () => ["split-first\nsplit-second"],
+      render: (result) => result.lines.join("\n"),
+      formatError: ({ error }) => String(error),
+      setExitCode: () => undefined,
+    });
+
+    // Then
+    expect(io.stdout()).toBe("web stdout: before [redacted] after\n");
+  });
+
   test("redacts exact result tokens from JSON command output", async () => {
     const io = createBufferedRendererIO();
     const secret = "bare-tooling-token";

@@ -17,6 +17,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Option, type Scope } from "effect";
 import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
+import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
 import {
   type HostAgentDiscoveryOptions,
@@ -160,6 +161,8 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
   }
 });
 
+const sshAgentWorkerNeeded = (plan: AppPlan): boolean => sshAgentEligibleServices(plan).length > 0;
+
 export const startSshAgentSession = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
@@ -167,8 +170,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
   intent: SshAgentIntent,
   options: SessionOptions = {},
 ) {
-  if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
-    return undefined;
+  if (app.kind === "global" || plan.id === "global" || !sshAgentWorkerNeeded(plan)) return undefined;
   const delivery = yield* validateAgentSocketCapability(capabilities, intent);
   const paths = yield* PathsService;
   const upstream = yield* resolveSshAgentUpstream({
@@ -236,7 +238,7 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
     readonly startSession?: () => Effect.Effect<AgentRelaySession | undefined, AgentError>;
   },
 ): Effect.fn.Return<A, E | AgentError, R | PathsService | PrivateFileAccessService | EventService> {
-  if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
+  if (app.kind === "global" || plan.id === "global" || !sshAgentWorkerNeeded(plan))
     return yield* options.use(plan);
   const { startSession } = options;
   const acquire = (
@@ -289,4 +291,11 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
           },
     ),
   );
+});
+
+/** Retires the recorded SSH agent relay when the whole desired plan no longer needs one. */
+export const retireUnusedSshAgentWorker = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {
+  if (app.kind === "global" || plan.id === "global" || sshAgentWorkerNeeded(plan)) return;
+  const paths = yield* PathsService;
+  yield* cleanupAgentRelayState(app, { ...paths.roots, platform: paths.platform }, "ssh");
 });

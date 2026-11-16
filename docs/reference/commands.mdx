@@ -18,6 +18,12 @@ The equals forms, such as `--format=json`, work too. Text is the default.
 Commands offer `table` or `ndjson` only when they implement that format;
 check `lando <command> --help` for the formats that command supports.
 
+These flags always work before the command name: `lando --format=json info`.
+Put them there for a command that hands the rest of the line to another
+program, such as `lando exec`, `lando ssh`, `lando run`, `lando bun`,
+`lando x`, and wrapper tasks like `lando composer`. Once that program's
+arguments start, a flag such as `--format=json` belongs to it.
+
 Use `--format=json` or `-j` to run a command and read its result as JSON.
 Bare `--json` instead lists selectable result keys without running the command
 body. Use `--json=key` to run the command and select a key inside `result`.
@@ -210,7 +216,7 @@ Flags:
 | --- | --- |
 | `--provider` | Destroy only this provider's applied app and owned resources. |
 | `--purge` | Also remove app/service-scoped storage volumes and this folder's snapshots, including provider-stored data. |
-| `--purge-caches` | Remove cache storage volumes. |
+| `--purge-caches` | Remove cache storage volumes and built images. |
 | `--root` | Clean up an app whose folder no longer exists, using the path lando doctor prints. |
 | `--volumes` | Also remove app/service-scoped storage volumes. |
 | `--yes, -y` | Skip the confirmation prompt. |
@@ -281,6 +287,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--build` | Show saved build output instead of service logs. |
 | `--follow, -f` | Stream new log lines until interrupted. |
 | `--no-viewer` | Reserved for the interactive log viewer; accepted as a no-op until the viewer exists (does not change follow behavior). |
 | `--service, -s` | Filter logs to a single planned service. |
@@ -576,7 +583,7 @@ Flags:
 | `--provider` | Inspect and clean up only this provider. |
 | `--prune` | Confirm once, then clean up the reported missing app roots. |
 | `--purge` | Delete data volumes, file-sync copies of app files, and snapshots. |
-| `--purge-caches` | Delete cache volumes. |
+| `--purge-caches` | Delete cache volumes and built images. |
 | `--volumes` | Delete data volumes and file-sync copies of app files. |
 | `--yes, -y` | Skip the confirmation prompt. |
 
@@ -956,11 +963,15 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--after` | Return checks strictly after this check id; requires --limit. |
 | `--all` | List every check, including passing ones, instead of only degraded checks. |
 | `--app` | Also lint the current app's Landofile and check its running services' listeners. |
 | `--deprecations` | Also report deprecated surfaces used by the current app and loaded plugins. |
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
+| `--limit` | Return at most this many checks (1 to 1000). |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
+| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
+| `--status` | Include checks with this status (repeatable). (one of `pass`, `warn`, `fail`) |
 
 ## `lando meta:events:follow`
 
@@ -1071,7 +1082,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--provider` | Destroy the global app only on this provider. |
-| `--purge` | Also remove global service data volumes. |
+| `--purge` | Also remove global service data volumes and built images. |
 | `--yes, -y` | Confirm destruction of global app provider resources. |
 
 ## `lando meta:global:disable`
@@ -1495,3 +1506,33 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `spec` | Package spec (e.g. prettier@latest, @astrojs/cli) |
+
+## `lando schedule:list`
+
+List scheduled jobs and their next run times.
+
+Provided by `@lando/schedule`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Limit the list to one service. |
+
+## `lando schedule:run`
+
+Run a scheduled job once, now, in the sidecar that schedules it.
+
+Provided by `@lando/schedule`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `name` | Job name unique within the service. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Parent service when the job name is used more than once. |

@@ -90,6 +90,11 @@ const harnessAt = (
                 status: "running" as const,
                 publications: { status: "unknown" as const },
                 containerId: "owned-container",
+                labels: {
+                  "dev.lando.app": "global",
+                  "dev.lando.app-root": root,
+                  "dev.lando.service": "orphan",
+                },
               },
             ]
           : [],

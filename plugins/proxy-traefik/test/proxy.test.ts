@@ -1,16 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
 import { AppPlacementError, FileNotFoundError, type GlobalAppError } from "@lando/sdk/errors";
-import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
-import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
-
 import { renderTraefikDiagnosticHtml } from "../src/diagnostics.ts";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService, renderTraefikDynamicConfig } from "../src/proxy.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
+import { observeFixtureTlsPeer, realCertificateAuthority } from "./real-certificate-authority.ts";
 import { routeFileBasename, routeMetadataLine, routeOwner } from "./route-owner-fixture.ts";
 
 const app = routeOwner("demo");
@@ -61,45 +60,10 @@ type WatcherDependencies = {
   readonly redactDiagnostic?: (text: string) => string;
 };
 
-// Keep the persistence fixture inside the plugin test tier, below the engine.
-const makeMemoryPluginStateStore = (): PluginStateStore => {
-  const values = new Map<string, unknown>();
-  return {
-    open: <A, I>(spec: PluginStateBucketSpec<A, I>) => {
-      const key = [spec.namespace ?? "", spec.key].join("/");
-      const current = (): A | null => (values.has(key) ? (values.get(key) as A) : null);
-      const bucket: StateBucket<A> = {
-        path: AbsolutePath.make(`/tmp/proxy-state/${key}`),
-        get: Effect.sync(current),
-        set: (value) => Effect.sync(() => void values.set(key, value)),
-        update: (f) =>
-          Effect.sync(() => {
-            const next = f(current());
-            values.set(key, next);
-            return next;
-          }),
-        mutate: () => Effect.die("this fixture does not support mutate"),
-        transition: () => Effect.die("this fixture does not support transition"),
-        modify: (f) =>
-          Effect.sync(() => {
-            const [result, next] = f(current());
-            values.set(key, next);
-            return result;
-          }),
-        remove: Effect.sync(() => void values.delete(key)),
-        exists: Effect.sync(() => values.has(key)),
-      };
-      return Effect.succeed(bucket);
-    },
-    withLock: (_key, body) => body,
-  };
-};
-
 const makeHarness = (
   failingPathSuffix?: string,
   watcherDependencies: WatcherDependencies = {},
   platform: "linux" | "win32" = "linux",
-  durableReloadState = false,
 ) => {
   let failRestart = false;
   const ensured: Array<ReadonlyArray<string>> = [];
@@ -107,7 +71,7 @@ const makeHarness = (
   let running = false;
   const files = new Map<string, string>();
   const runtime = makeApplyRuntime(files);
-  const stateStore = durableReloadState ? makeMemoryPluginStateStore() : undefined;
+  const stateStore = makeAckStore([]);
   const socketProxy = {
     userDataRoot: "/lando",
     user: "test",
@@ -123,7 +87,8 @@ const makeHarness = (
     ...watcherDependencies,
     readTraefikState: watcherDependencies.readTraefikState ?? (() => Effect.succeed("running")),
     probeForward: () => Effect.succeed({ kind: "success" }),
-    certificateAuthority: makeTestCertificateAuthority(),
+    certificateAuthority: realCertificateAuthority,
+    observeTlsPeer: observeFixtureTlsPeer(files),
     fileSystem: {
       mkdir: () => Effect.void,
       writeAtomic: (path, content) =>
@@ -169,7 +134,7 @@ const makeHarness = (
         }),
     },
     socketProxy,
-    ...(stateStore === undefined ? {} : { stateStore }),
+    stateStore,
   });
   const makePersistedService = (watcherDependencies: WatcherDependencies = {}) =>
     makeTraefikRouterService({
@@ -177,7 +142,8 @@ const makeHarness = (
       ...watcherDependencies,
       readTraefikState: watcherDependencies.readTraefikState ?? (() => Effect.succeed("running")),
       probeForward: () => Effect.succeed({ kind: "success" }),
-      certificateAuthority: makeTestCertificateAuthority(),
+      certificateAuthority: realCertificateAuthority,
+      observeTlsPeer: observeFixtureTlsPeer(files),
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: (path, content) => Effect.sync(() => void files.set(path, String(content))),
@@ -203,7 +169,7 @@ const makeHarness = (
             return true;
           }),
       },
-      ...(stateStore === undefined ? {} : { stateStore }),
+      stateStore,
     });
   return {
     ensured,
@@ -417,6 +383,7 @@ describe("Traefik RouterService", () => {
   test("status skips route files removed after the directory snapshot", async () => {
     const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
+      stateStore: makeAckStore([]),
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: () => Effect.void,
@@ -473,16 +440,16 @@ describe("Traefik RouterService", () => {
 
     await Effect.runPromise(harness.service.applyRoutes(routes, app));
     await Effect.runPromise(harness.service.applyRoutes(routes, app));
-    expect(harness.restarted).toEqual(["traefik", "traefik"]);
+    expect(harness.restarted).toEqual(["traefik"]);
 
     await Effect.runPromise(harness.service.applyRoutes(routes.slice(1), app));
     await Effect.runPromise(harness.service.removeRoutes(app));
     await Effect.runPromise(harness.service.removeRoutes(app));
-    expect(harness.restarted).toEqual(["traefik", "traefik", "traefik", "traefik"]);
+    expect(harness.restarted).toEqual(["traefik", "traefik", "traefik"]);
   });
 
   test("reuses a durable acknowledged HTTP route with persisted authorities across fresh Windows service instances", async () => {
-    const harness = makeHarness(undefined, {}, "win32", true);
+    const harness = makeHarness(undefined, {}, "win32");
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     const httpRoutes = routes.slice(1);
 
@@ -495,7 +462,7 @@ describe("Traefik RouterService", () => {
   });
 
   test("does not trust an acknowledgement after route bytes change", async () => {
-    const harness = makeHarness(undefined, {}, "win32", true);
+    const harness = makeHarness(undefined, {}, "win32");
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     const httpRoutes = routes.slice(1);
     await Effect.runPromise(harness.service.applyRoutes(httpRoutes, app));
@@ -510,7 +477,7 @@ describe("Traefik RouterService", () => {
 
   test("reloads Windows Traefik when only the dashboard domain changes", async () => {
     // Given
-    const harness = makeHarness(undefined, {}, "win32", true);
+    const harness = makeHarness(undefined, {}, "win32");
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     const httpRoutes = routes.slice(1);
     await Effect.runPromise(harness.service.applyRoutes(httpRoutes, app));
@@ -526,7 +493,7 @@ describe("Traefik RouterService", () => {
   });
 
   test("does not acknowledge a failed Windows reload and retries unchanged persisted routes", async () => {
-    const harness = makeHarness(undefined, {}, "win32", true);
+    const harness = makeHarness(undefined, {}, "win32");
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     harness.setFailRestart(true);
     const httpRoutes = routes.slice(1);

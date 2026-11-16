@@ -1,14 +1,19 @@
-import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
-import { TaskCompleteEvent, TaskDetailEvent, TaskFailEvent, TaskStartEvent } from "@lando/sdk/events";
-import { makeLineFramer } from "@lando/sdk/log-follow";
-import type { AbsolutePath, AppPlan, BuildStep } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
-import type { EventService, PathsService, RuntimeProviderShape, StateStore } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Stream } from "effect";
+import { redactProviderError } from "@lando/redaction/provider-error";
+import { mapDefectCause, mapStreamFailures } from "@lando/sdk/command-result";
+import type { SecretStoreError } from "@lando/sdk/errors";
+import type { AppPlan, BuildStep } from "@lando/sdk/schema";
+import type {
+  EventService,
+  PathsService,
+  ProviderError,
+  RuntimeProviderShape,
+  StateStore,
+} from "@lando/sdk/services";
+import { Cause, type Context, Effect, Stream } from "effect";
 import type { HostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
-
 import { type AppStep, providerCommand } from "./build-app-plan.ts";
-import { openBuildTranscript } from "./build-transcript.ts";
+import type { BuildRedaction } from "./build-redaction.ts";
+import type { BuildStepOutput, BuildStepOutputError } from "./build-step-output.ts";
 
 export interface AppBuildInput {
   readonly hostProbeRunners?: HostProbeRunners;
@@ -16,123 +21,79 @@ export interface AppBuildInput {
   readonly paths: Context.Service.Shape<typeof PathsService>;
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
-  readonly redactor: Pick<Redactor, "redactString">;
+  readonly redaction: BuildRedaction;
   readonly stateStore: Context.Service.Shape<typeof StateStore>;
 }
 
-const timestamp = DateTime.now;
+export interface AppBuildStepResult {
+  readonly durationMs: number;
+  readonly exitCode?: number;
+  readonly outputTail?: string;
+  readonly providerFailure?: ProviderError;
+}
 
-const publishDetailLines = (
-  input: Pick<AppBuildInput, "events" | "redactor">,
-  step: BuildStep,
-  stream: "stdout" | "stderr",
-  lines: ReadonlyArray<string>,
-) =>
-  Effect.forEach(
-    lines,
-    Effect.fnUntraced(function* (line) {
-      yield* input.events.publish(
-        TaskDetailEvent.make({
-          taskId: step.id,
-          stream,
-          line: input.redactor.redactString(line),
-          timestamp: yield* timestamp,
-        }),
-      );
-    }),
-    { discard: true },
-  );
+const isSecretStoreError = (failure: ProviderError): failure is SecretStoreError =>
+  failure._tag === "SecretNotFoundError" ||
+  failure._tag === "SecretStoreUnavailableError" ||
+  failure._tag === "SecretReferenceInvalidError";
+
+export const appStepExitMessage = (step: BuildStep, exitCode: number): string =>
+  `Build step ${step.id} for service ${String(step.service)} exited with code ${exitCode}.`;
+export const appStepProviderFailureMessage = (step: BuildStep, providerMessage: string): string =>
+  `Build step ${step.id} for service ${String(step.service)} did not complete: ${providerMessage}`;
 
 export const runAppBuildStep = Effect.fn("BuildOrchestrator.runAppBuildStep")(function* (
   input: AppBuildInput,
   appStep: AppStep,
-  transcriptPath: AbsolutePath,
-) {
+  output: BuildStepOutput,
+): Effect.fn.Return<AppBuildStepResult, BuildStepOutputError | ProviderError> {
   const { command, step } = appStep;
-  yield* input.events.publish(
-    TaskStartEvent.make({
-      taskId: step.id,
-      parentId: `build-app-${String(input.plan.id)}`,
-      label: `Build ${String(step.service)}`,
-      transcriptPath,
-      timestamp: yield* timestamp,
-    }),
-  );
   const started = performance.now();
-  let exitCode = 0;
-  const framers = { stdout: makeLineFramer(), stderr: makeLineFramer() };
-  const containsSecretReferences = Object.values(input.plan.services).some((service) =>
-    Object.values(service.environment).some(
-      (value) => typeof value !== "string" || exactSecretReferenceId(value) !== undefined,
-    ),
-  );
-  yield* Effect.scoped(
-    Effect.gen(function* () {
-      const transcript = yield* openBuildTranscript(
-        input.provider.id,
-        transcriptPath,
-        input.paths.roots.userDataRoot,
-      );
-      yield* input.provider
-        .execStream(
-          {
-            app: input.plan.id,
-            service: step.service,
-            ...(step.user === undefined ? {} : { user: step.user }),
-          },
-          providerCommand(command),
-        )
-        .pipe(
-          Stream.catch(() => Stream.make({ exitCode: 1 })),
-          Stream.runForEach((chunk) => {
-            if ("exitCode" in chunk) {
-              exitCode = chunk.exitCode;
-              return Effect.void;
-            }
-            const lines = framers[chunk.kind].feed(chunk.chunk).map((line) => line.text);
-            // Explicit secret references opt out of raw transcripts. Frame before redacting so
-            // a provider chunk boundary cannot split a resolved value around the redactor.
-            const persisted = containsSecretReferences
-              ? new TextEncoder().encode(
-                  lines.map((line) => `${input.redactor.redactString(line)}\n`).join(""),
-                )
-              : chunk.chunk;
-            return transcript
-              .append(persisted)
-              .pipe(Effect.andThen(publishDetailLines(input, step, chunk.kind, lines)));
-          }),
-        );
-      for (const stream of ["stdout", "stderr"] as const) {
-        const lines = framers[stream].flush().map((line) => line.text);
-        if (containsSecretReferences) {
-          yield* transcript.append(
-            new TextEncoder().encode(lines.map((line) => input.redactor.redactString(line)).join("\n")),
-          );
-        }
-        yield* publishDetailLines(input, step, stream, lines);
-      }
-    }),
-  );
-  const durationMs = performance.now() - started;
-  if (exitCode === 0) {
-    yield* input.events.publish(
-      TaskCompleteEvent.make({
-        taskId: step.id,
-        summary: `${step.id} complete`,
-        durationMs,
-        timestamp: yield* timestamp,
+  let exitCode: number | undefined;
+  const providerFailure = yield* input.provider
+    .execStream(
+      { app: input.plan.id, service: step.service, ...(step.user === undefined ? {} : { user: step.user }) },
+      providerCommand(command),
+    )
+    .pipe(
+      Stream.scoped,
+      mapStreamFailures((failure) =>
+        isSecretStoreError(failure) ? failure : redactProviderError(failure, input.redaction.redactor),
+      ),
+      Stream.catchCause((cause) =>
+        Stream.failCause(mapDefectCause(cause, (defect) => input.redaction.redactor.redactValue(defect))),
+      ),
+      Stream.catchCause((cause) => {
+        const reason = cause.reasons[0];
+        // Only a single ordinary provider failure is a scheduler disposition. Mixed causes and secrets propagate intact.
+        return cause.reasons.length === 1 &&
+          reason !== undefined &&
+          Cause.isFailReason(reason) &&
+          !isSecretStoreError(reason.error)
+          ? Stream.make(reason.error)
+          : Stream.failCause(cause);
       }),
+      Stream.runFoldEffect(
+        (): ProviderError | undefined => undefined,
+        (failure, chunk) => {
+          if ("_tag" in chunk) return Effect.succeed(chunk);
+          if ("exitCode" in chunk) {
+            exitCode = chunk.exitCode;
+            return Effect.succeed(failure);
+          }
+          return output.write(chunk.kind, chunk.chunk).pipe(Effect.as(failure));
+        },
+      ),
     );
-    return { durationMs, exitCode } as const;
-  }
-  yield* input.events.publish(
-    TaskFailEvent.make({
-      taskId: step.id,
-      summary: `${step.id} failed`,
-      exitCode,
-      durationMs,
-      timestamp: yield* timestamp,
-    }),
-  );
-  return { durationMs, exitCode } as const;
+  yield* output.end;
+  if (providerFailure !== undefined) yield* output.note(`Error: ${providerFailure.message}`);
+  else if (exitCode !== undefined && exitCode !== 0)
+    yield* output.note(`Error: ${appStepExitMessage(step, exitCode)}`);
+  const outputTail = output.tail();
+  return {
+    durationMs: performance.now() - started,
+    ...(providerFailure !== undefined || exitCode === undefined ? {} : { exitCode }),
+    ...(outputTail === undefined ? {} : { outputTail }),
+    ...(providerFailure === undefined ? {} : { providerFailure }),
+  };
 });

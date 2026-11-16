@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { type AppPlan, DEBUGGER_HOST_ALIAS, GlobalConfig, HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
 import { ConfigService, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
+import { prepareServiceCertificates } from "../../src/lifecycle/service-certificates.ts";
 import { selectPreparedProvider } from "../../src/providers/prepared.ts";
 import { applyScratchStartup } from "../../src/scratch-app/startup.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
@@ -36,8 +37,9 @@ test("scratch startup applies the resolved debugger address without rewriting it
     Effect.gen(function* () {
       const provider = yield* selectPreparedProvider(desired);
       const environmentResolver = yield* EnvironmentValueResolver;
+      const { plan, certificates } = yield* prepareServiceCertificates(desired);
       yield* applyScratchStartup(
-        { id: "debugger-scratch", plan: desired },
+        { id: "debugger-scratch", plan, certificates },
         { provider, environmentResolver },
       );
     }).pipe(Effect.provide(Layer.merge(harness.layer, configLayer))),

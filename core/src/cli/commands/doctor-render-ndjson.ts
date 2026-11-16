@@ -1,112 +1,60 @@
-import type { DoctorCheck, DoctorResult, DoctorSelectionRecord } from "./doctor-contract";
-import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
-import { DOCTOR_CAPABILITY_FIELDS } from "./doctor-provider";
+import {
+  encodeStreamEventFrame,
+  encodeStreamResultFrame,
+  identityRedactor,
+  resolveCommandCompletion,
+} from "@lando/sdk/command-result";
+import { Effect, Schema } from "effect";
+import {
+  DoctorCheck,
+  type DoctorNdjsonResult,
+  DoctorNdjsonResultSchema,
+  type DoctorReport,
+  DoctorSkip,
+} from "./doctor-contract";
+import { doctorCompletion } from "./doctor-report-model";
 
-const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): Record<string, unknown> => {
-  const ordered: Record<string, unknown> = {};
-  for (const field of DOCTOR_CAPABILITY_FIELDS) {
-    if (Object.hasOwn(capabilities, field)) ordered[field as string] = capabilities[field as string];
-  }
-  return ordered;
-};
+const encodeCheck = Schema.encodeSync(DoctorCheck);
+const encodeSkip = Schema.encodeSync(DoctorSkip);
 
-const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
-  "providerId",
-  "providerKind",
-  "providerVersion",
-  "setupProviderId",
-  "runtimeStatus",
-  "setupStatus",
-  "updatedAt",
-  "lastFailedStep",
-  "stepProvider",
-  "stepCa",
-  "stepProxy",
-  "stepProxyEvidence",
-  "stepShell",
-  "stepFileSync",
-  "stepFileSyncEvidence",
-  "runtimeVersion",
-  "bundleVersion",
-  "engineVersion",
-  "execUmask",
-  "effectiveExecUmask",
-  "compensating",
-  "probeStatus",
-  "platform",
-  "selectionSource",
-  "conflictKind",
-  "socketPath",
-  "providerLandoStatePath",
-  "runtimeRunning",
-  "socketReachable",
-  "ownedServiceProcess",
-  "runtimePid",
-  "orphanPids",
-  "lastRecordedRunning",
-  "lastRecordedSocketPath",
-  "lastRecordedPid",
-  "lastRecordedRuntimeVersion",
-  "containerName",
-  "image",
-  "exitCode",
-  "app",
-  "service",
-  "workerState",
-  "statePath",
-  "appId",
-  "transport",
-  "reachability",
-  "endpoint",
-  "containerGateway",
-  "workerProviderId",
-  "reason",
-  "failure",
-];
-
-const selectionEventPayload = (selection: DoctorSelectionRecord): Record<string, unknown> => ({
-  providerId: selection.providerId,
-  source: selection.source,
-  inputs: {
-    ...(selection.inputs.flag === undefined ? {} : { flag: selection.inputs.flag }),
-    ...(selection.inputs.landofile === undefined ? {} : { landofile: selection.inputs.landofile }),
-    ...(selection.inputs.env === undefined ? {} : { env: selection.inputs.env }),
-    ...(selection.inputs.config === undefined ? {} : { config: selection.inputs.config }),
-    capabilityDefault: selection.inputs.capabilityDefault,
-  },
-});
-
-const checkEventPayload = (check: DoctorCheck): Record<string, unknown> => {
-  const payload: Record<string, unknown> = {
-    _tag: "doctor.check",
-    name: check.name,
-    status: check.status,
-    severity: check.severity,
-    providerId: check.providerId,
-    providerName: check.providerName,
-    providerKind: check.providerKind,
-    providerVersion: check.providerVersion,
-    runtime: {
-      running: check.runtime.running,
-      ...(check.runtime.message === undefined ? {} : { message: check.runtime.message }),
-      ...(check.runtime.version === undefined ? {} : { version: check.runtime.version }),
-      ...(check.runtime.oomKilled === undefined ? {} : { oomKilled: check.runtime.oomKilled }),
-    },
-    capabilities: orderCapabilityKeys(check.capabilities),
-    context: orderKnownKeys(check.context, CONTEXT_KEY_ORDER),
-    solutions: doctorSolutionPayloads(check.solutions),
+// The renderer boundary has already redacted the report.
+export const renderDoctorReportAsNdjson = (report: DoctorReport): string => {
+  const lines: string[] = [];
+  for (const check of report.checks)
+    lines.push(
+      Effect.runSync(
+        encodeStreamEventFrame({
+          event: "doctor.check",
+          payload: encodeCheck(check),
+          redactor: identityRedactor,
+        }),
+      ),
+    );
+  for (const skip of report.skipped)
+    lines.push(
+      Effect.runSync(
+        encodeStreamEventFrame({
+          event: "doctor.skip",
+          payload: encodeSkip(skip),
+          redactor: identityRedactor,
+        }),
+      ),
+    );
+  const value: DoctorNdjsonResult = {
+    version: report.version,
+    ...(report.provider === undefined ? {} : { provider: report.provider }),
+    summary: report.summary,
+    ...(report.page === undefined ? {} : { page: report.page }),
   };
-  if (check.selection !== undefined) payload.selection = selectionEventPayload(check.selection);
-  return payload;
+  lines.push(
+    Effect.runSync(
+      encodeStreamResultFrame({
+        command: "meta:doctor",
+        resultSchema: DoctorNdjsonResultSchema,
+        outcome: resolveCommandCompletion("meta:doctor", value, () => doctorCompletion(report)),
+        redactor: identityRedactor,
+      }),
+    ),
+  );
+  return lines.join("\n");
 };
-
-export interface DoctorNdjsonOptions {
-  readonly now?: Date;
-}
-
-export const renderDoctorResultAsNdjson = (result: DoctorResult, options: DoctorNdjsonOptions = {}): string =>
-  renderDoctorChecksAsNdjson({
-    checks: result.checks,
-    now: options.now,
-    checkEventPayload,
-  });

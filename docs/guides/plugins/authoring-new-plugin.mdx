@@ -227,7 +227,45 @@ Run `runCaContract` from `@lando/sdk/test` against your authority in your own
 tests. It checks setup, `root`, the shape of what `issueCert` returns, and that
 the issued pair verifies against both the root it came with and `root` read
 afterwards. To make the same judgment yourself, call `certificatePairIsCurrent`
-from `@lando/sdk/certificates`. For tests that only need certificate-shaped
+from `@lando/sdk/certificates` with the requested names, the current root, and
+`LEAF_RENEWAL_MARGIN_MS` as `renewalMarginMs`. That constant is the shared 30-day
+policy for service and router leaves; the verifier caps it at one third of the
+leaf's lifetime.
+
+A plugin that stores certificates, such as a router, doesn't need to repeat that
+logic. Call `prepareCertificatePair` from the same module with the authority, the
+names you need, the root you read for this apply, and the pair you stored, if
+any:
+
+```ts
+import { prepareCertificatePair } from "@lando/sdk/certificates";
+
+const prepared = yield* prepareCertificatePair(authority, {
+  spec, // CertificateSpec: the cn and sans the leaf must cover
+  root, // PEM of the authority's current root
+  ...(existing === undefined ? {} : { existing }), // privateKey is wrapped in Redacted
+  subject: "service web", // names the leaf in a failure message
+});
+```
+
+`authority` needs only `id` and `issueCert`. The result is
+`{ source, certificate, privateKey, root }`. `source` is `"reused"` when your
+stored pair is still current under `root` and the 30-day margin, and `"issued"`
+after one `issueCert` call whose result passed the same check against the root
+that came with it. An unusable issuance fails with `CaError`. The helper reads and
+writes no files and keeps no cache: you store the pair, and `privateKey` stays
+`Redacted` so it can't leak into logs or JSON.
+
+The Traefik router reads `root` once per HTTPS route apply, including warm
+reuse, so keep that read free of setup and issuance work. It repairs its saved
+issuer independently of valid leaves and reloads served-pair replacements
+itself. After publishing, it confirms that the certificate it serves is current
+under your root before the start succeeds, so material the router can't serve
+fails the start instead of reaching a browser. HTTP-only publication and
+withdrawal need no authority. These are apply-time checks, not background
+renewal.
+
+For tests that only need certificate-shaped
 input, `@lando/sdk/test` exports `TEST_CERTIFICATES`, a set of throwaway PEM
 fixtures you must never trust, and `makeTestCertificateAuthority`, which returns
 one fixed leaf whatever names you request.
@@ -347,6 +385,62 @@ point, naming the problem.
 flags and positional arguments the module declares. JSON help puts them under
 `result.target.input`, with each input's type, description, choices, and whether
 it's required.
+
+### Use a flag name Lando also has
+
+After your command's name, a flag you declare is yours, even when Lando has a
+flag with the same spelling. Say `db:export` declares a boolean `verbose` flag:
+
+| Someone runs | `input.flags.verbose` | Lando's log output |
+| --- | --- | --- |
+| `lando db:export --verbose` | `true` | Normal |
+| `lando --verbose db:export` | unset | Verbose |
+
+A flag that takes a value also owns the next word, so
+`lando db:export --renderer fancy` hands `fancy` to your `renderer` flag.
+`lando db:export --help` ends with a line that names the flags your command
+took over, and JSON help lists them under `result.target.landoFlags.commandOwned`.
+
+Two names stay Lando's on every plugin command: `--format` and `--json` (with
+its short form `-j`) always choose how Lando encodes the result. You can declare
+`format` to describe it or `json` as a boolean, and read them from
+`input.flags`, but you can't give them another meaning. A `json` flag that
+takes a value, or a boolean `format` flag, could never receive input, so the
+plugin fails to load with `PluginLoadError` and the message names the flag to
+rename.
+
+### Hand the rest of the line to another program
+
+A command that runs another program, the way `lando exec` does, can take
+everything after its own flags as that program's command line. Set
+`strict: false` and declare a `command` argument:
+
+```ts
+strict: false,
+flags: {
+  target: { type: "string", description: "Where to run the command." },
+},
+args: {
+  command: { type: "string", multiple: true, description: "Command and its arguments." },
+},
+```
+
+The tail starts at the first word that isn't one of your flags, or right after
+`--`. Every token from there on arrives in `input.args.command` unchanged,
+including `--help`, `--format`, and a repeat of one of your own flags. With the
+spec above in a command named `fixture:run`:
+
+| Someone runs | `input.flags.target` | `input.args.command` |
+| --- | --- | --- |
+| `lando fixture:run --target=web ls --format=json --help` | `web` | `ls`, `--format=json`, `--help` |
+| `lando fixture:run --target web -- --help` | `web` | `--help` |
+
+`lando fixture:run --help` shows your command's help because nothing comes
+before it. An unknown flag in front of the tail, such as
+`lando fixture:run --bogus ls`, fails with `UnknownCliFlagError` before your
+code runs. Lando's own flags, such as `--format` and `--verbose`, go before the
+command name: `lando --format=json fixture:run ls --help` returns the result
+envelope and still hands `ls --help` to your command.
 
 ### Accept `-` for stdin or stdout
 

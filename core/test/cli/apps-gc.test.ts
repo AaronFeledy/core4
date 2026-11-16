@@ -58,6 +58,22 @@ const registry = RuntimeProviderRegistry.of({
   resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   observeRuntime: Effect.succeed([]),
 });
+
+test("GC text renders aggregate image cleanup facts", () => {
+  const builtImages = {
+    removed: 4,
+    released: 2,
+    inUse: [{ ref: "busy", containers: ["web"], reason: "container uses image" }],
+  };
+  const output = renderAppsGcReport(
+    Schema.decodeUnknownSync(AppsGcReport)({ ...report, prune: true, builtImages }),
+  );
+  expect(output.split("\n").slice(-3)).toEqual([
+    "Kept 2 built images for reuse for up to 7 days; --purge-caches removes them.",
+    "Removed 4 built images.",
+    "Kept image busy: used by container web.",
+  ]);
+});
 const baseLayer = Layer.mergeAll(
   makeTestRuntime({ bootstrap: "app" }).layer,
   Layer.succeed(RedactionService, makeRedactionService()),

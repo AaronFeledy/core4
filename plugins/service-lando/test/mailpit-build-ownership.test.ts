@@ -65,6 +65,7 @@ const applyWire = async (selected: ReadonlyArray<AppFeatureServiceView>) => {
       const service = selected.find((candidate) => candidate.serviceName === name);
       return service === undefined ? undefined : mutatorsFor(service);
     },
+    addClonedService: () => undefined,
   };
   const result = await Effect.runPromiseExit(mailpitWireFeature.apply(context));
   return { result, mutations };

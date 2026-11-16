@@ -67,6 +67,7 @@ import * as AppDefaults from "./app-defaults.ts";
 import { appFeatureError } from "./app-feature-error.ts";
 import { planServiceDrafts } from "./authored.ts";
 import { withCommittedLiteralDigests } from "./authored-literals.ts";
+import { materializeClonedServiceDrafts, networkServicesWithClones } from "./cloned-services.ts";
 import {
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,
@@ -80,7 +81,7 @@ import { validateConnectionValues } from "./connection-values.ts";
 import { compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
-import { environmentCacheInput } from "./environment-cache-input.ts";
+import { environmentCacheInput, rememberAppFeatureEnvironment } from "./environment-cache-input.ts";
 import { type ResolvedLandofile, resolveKnownEventSet } from "./event-set.ts";
 import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { hostEventsShellIssues } from "./host-shell-issues.ts";
@@ -131,7 +132,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     services: seeds,
     effectiveTooling,
     connectionClients,
-    disabledToolingSources,
+    toolingProvenance: provenance,
     invocationSites,
     appRoot,
     appName,
@@ -234,6 +235,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     identity: input.identity,
   });
   const preparedApp = endpointProjection.preparedApp;
+  rememberAppFeatureEnvironment(authoredLandofile, preparedApp.environment.dependencies);
   const appFeatures = preparedApp.features;
 
   const composeConfigFileInputs = yield* loadComposeConfigFiles({
@@ -429,6 +431,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       appName: appSlug,
       appRoot,
       key: cacheKey,
+      env: authoredLandofile.context.env,
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null && hasServiceArtifacts(cached)) {
@@ -442,17 +445,14 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeFieldsSupported(capabilityContext, cached);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
-        attachEffectiveTooling(proven, effectiveTooling, connectionClients, disabledToolingSources),
+        attachEffectiveTooling(proven, effectiveTooling, { connectionClients, provenance }),
         executableSites,
         effectiveEventsFor(planServices(cached.services)),
       );
     }
   }
 
-  const plannedServiceDrafts = yield* planServiceDrafts({
-    resolvedServices,
-    appRoot,
-  });
+  const plannedServiceDrafts = yield* planServiceDrafts({ resolvedServices, appRoot });
   const appFeatureResult = yield* applyPreparedAppFeatures(
     {
       appName,
@@ -461,6 +461,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     },
     preparedApp,
   ).pipe(mapFailures((error) => appFeatureError(appRoot, error)));
+  const { cloned, plannedWithClones } = yield* materializeClonedServiceDrafts(plannedServiceDrafts, {
+    clones: appFeatureResult.clones,
+    capabilities: providerCapabilities,
+    resolvedServices,
+    appRoot,
+    appSlug,
+  });
   const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
   for (const capability of appFeatureResult.requires.providerCapabilities) {
     if (providerSatisfiesCapability(providerCapabilities, capability)) continue;
@@ -475,7 +482,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const finalized = yield* finalizeServices({
     manifests,
     configs: landofile.configs,
-    plannedServiceDrafts,
+    plannedServiceDrafts: plannedWithClones,
     appId,
     appRoot,
     appSlug,
@@ -503,11 +510,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const perAppBridge = appId !== "global";
   const authoredNetworking = yield* normalizeNetworks({
     landofile,
-    services: Object.fromEntries(
-      resolvedServices
-        .filter(({ name }) => serviceNames.includes(name))
-        .map(({ name, service }) => [name, service]),
-    ),
+    services: networkServicesWithClones(resolvedServices, cloned, serviceNames),
     appRoot,
     perAppBridge,
   });
@@ -568,8 +571,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         Effect.map((decoded) => withCommittedLiteralDigests(decoded, authoredLandofile)),
       ),
       effectiveTooling,
-      connectionClients,
-      disabledToolingSources,
+      { connectionClients, provenance },
     ),
     executableSites,
     effectiveEventsFor(planServices(finalized.services)),

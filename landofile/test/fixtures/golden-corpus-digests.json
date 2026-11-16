@@ -72,6 +72,14 @@
       "digest": "19ca47822cd36b2ff703ef380c3c2c6beaaa677667103e38390774781099904d"
     },
     {
+      "fixture": "docs/guides/cache-refresh/fixtures/cache-refresh-invalid-task",
+      "digest": "81c13dc415c329551a3ce8b6275527a023b3c78406446f7b527358f6a0fdd1a5"
+    },
+    {
+      "fixture": "docs/guides/cache-refresh/fixtures/cache-refresh-repaired-task",
+      "digest": "bee60dc84612dc26d4a66db3274363ca7a9859e1f40f644c086e9103c1ec99d5"
+    },
+    {
       "fixture": "docs/guides/certificates-mkcert/fixtures/certificate-routes",
       "digest": "3fd3605fe40808c2ae675efc55460ca952591a8398b920424b8049dfc3b9e355"
     },
@@ -167,10 +175,21 @@
       "digest": "8915d062ed66e315386002f280dc0ab4abec22ca9c1602ccb1f3bc0c005f8686"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-declarations",
+      "digest": "ef2cfc0506b711f1a38aa858b6f5140e72cff729aef48c7d8ee2a500dc761eb7"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-include",
       "invalid": {
         "status": "invalid",
         "tag": "LandofileIncludeError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-unsupported-scopes",
+      "invalid": {
+        "status": "invalid",
+        "tag": "NotImplementedError"
       }
     },
     {
@@ -439,6 +458,14 @@
     {
       "fixture": "docs/guides/flags-and-args/fixtures/invalid-wrapper",
       "digest": "de7c35b02f36239aed6566b22710712972b8e24966ee87f334aac17561176562"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/malformed-task",
+      "digest": "38bea87cbb745818b7960bc0079e07d5e38e2e7ef3ed2f4dc0fc4b91bc452ed5"
+    },
+    {
+      "fixture": "docs/guides/flags-and-args/fixtures/shared-flag-names",
+      "digest": "704c9f0a578b4efe0b4f5b89ea2c456d2b70260ea4b340cb6deb3ea32696fab0"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
@@ -870,8 +897,16 @@
       "digest": "9185bfe3f0ad6878eed4924a4157fe63bca16fa652f941560b83d8bf328931e9"
     },
     {
+      "fixture": "docs/guides/php-build-failures/fixtures/failing-app-step",
+      "digest": "a6a3963a8f581b1cbf72b55ff08d926fc1779fae82e1bdd445c78046206547e1"
+    },
+    {
       "fixture": "docs/guides/php-build-failures/fixtures/failing-build",
       "digest": "f9e620e671090153b8f279c317ebc51881ef95402e2c2d09e94dcc69937764be"
+    },
+    {
+      "fixture": "docs/guides/php-build-failures/fixtures/failing-image-build",
+      "digest": "d749fc5a9d8bc0807083ee2c280e291c5f1e7c0937c1078198f30d098d4da521"
     },
     {
       "fixture": "docs/guides/php-build-failures/fixtures/happy-build",
@@ -1113,6 +1148,17 @@
       "digest": "03cac783553c63c735d82f0c694c227a9530ad616cea2762db78258687ae06b8"
     },
     {
+      "fixture": "docs/guides/schedule/fixtures/schedule-demo",
+      "digest": "d4d00fa9a391316cfe5b0d7fdf08fd7aaa29d8fd702dbd90d0638452a2867f3a"
+    },
+    {
+      "fixture": "docs/guides/schedule/fixtures/schedule-rejected-every",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/scripting-with-json/fixtures/project-script",
       "digest": "9942ee3c3be445567566a7dd2c59733ed33fb9e1339411438ee165c383b74a47"
     },
@@ -1135,19 +1181,23 @@
       }
     },
     {
-      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-command-misuse",
-      "invalid": {
-        "status": "invalid",
-        "tag": "LandofileValidationError"
-      }
-    },
-    {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-commands",
       "digest": "c9273ee4bc5f75c4b17c5297ec9294d46652e0085854700626e975c73c1ed55e"
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-demo",
       "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25"
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-direct-commands",
+      "digest": "7d68ce159f45865adeb8798e243f3f50f8cda881ac8c5c98826d139be42c8011"
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-refused-position",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-whole-token",
@@ -1274,6 +1324,10 @@
     {
       "fixture": "docs/guides/typesense/fixtures/typesense-demo",
       "digest": "95e962df56ce0ced5e73ee2e2c3a9f389464f5aff60fc483ebe4639c785229f0"
+    },
+    {
+      "fixture": "docs/guides/typo3-workflow/fixtures/typo3-demo",
+      "digest": "27a7c30d834caf9d74c9339806cefc1527838fdefe599f88ca16e1c07971b44b"
     },
     {
       "fixture": "docs/guides/valkey/fixtures/valkey-demo",
@@ -1562,9 +1616,9 @@
         "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
       },
       "after": {
-        "digest": "9e9c712e5ed587b8ec284c19961749bf2d51b03103f9242710d6ca2559f62358"
+        "digest": "a9fd21050cd91e4daf20c917056809fbdf4a6f33493f830cc477d9840b6746dd"
       },
-      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The encoded document drops bcmath from that one install command; nothing else changed."
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry; nothing else changed."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

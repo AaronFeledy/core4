@@ -31,24 +31,11 @@ import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./too
 export {
   type NormalizedToolingRoute,
   type ToolingRoute,
-  toolingHelpRequested,
   toolingVersionRequested,
 } from "./tooling-route";
 
 const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
   builtInCommandEntries.find((entry) => entry.spec.id === commandId);
-
-/**
- * The live error of a script route, or undefined when the script resolves. Invocation re-resolves
- * every script itself; help checks here so it never prints a page for a script that cannot run,
- * such as one a collision added after the index was built.
- */
-export const unavailableScriptError = (route: ToolingRoute) =>
-  route._tag === "bun-script"
-    ? resolveBunShellScript(route.appRoot, route.commandId).pipe(
-        Effect.match({ onFailure: (error) => error, onSuccess: () => undefined }),
-      )
-    : Effect.succeed(undefined);
 
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
@@ -68,9 +55,11 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
 > {
   const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return undefined;
-  const roots = resolveLandoRoots({ env: (yield* CliInvocation).env });
+  const env = (yield* CliInvocation).env;
+  const roots = resolveLandoRoots({ env });
   const cache = yield* readFreshAppCommandCacheForCwd({
     cwd: appRoot,
+    env,
     cacheRoot: options.cacheRoot ?? roots.userCacheRoot,
     roots,
   }).pipe(Effect.catchTag("LandofileFormConflictError", () => Effect.succeed(null)));
@@ -152,10 +141,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 
   const canonicalEntry = cache.entries.find((candidate) => candidate.id === token);
   if (canonicalEntry !== undefined) {
-    if (canonicalEntry.source === "bun-script") {
+    if (canonicalEntry.sourceKind === "bun-script") {
       return bunScriptRoute(canonicalEntry, appRoot, cache);
     }
-    return normalizedToolingRoute(canonicalEntry, cache.aliasPolicy, cache.sourceFile);
+    return normalizedToolingRoute(canonicalEntry, cache.aliasPolicy);
   }
 
   const policy = cache.aliasPolicy;
@@ -189,10 +178,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     const customName = custom.startsWith("app:") ? custom.slice("app:".length) : custom;
     if (customEntry === undefined)
       return { _tag: "unknown-tooling", commandId: custom, name: customName } as const;
-    if (customEntry.source === "bun-script") {
+    if (customEntry.sourceKind === "bun-script") {
       return bunScriptRoute(customEntry, appRoot, cache);
     }
-    return normalizedToolingRoute(customEntry, cache.aliasPolicy, cache.sourceFile);
+    return normalizedToolingRoute(customEntry, cache.aliasPolicy);
   }
 
   if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
@@ -225,9 +214,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
         {
           id: commandId,
           summary: "Unavailable script",
-          hidden: false,
-          source: "bun-script",
-          loadError: {
+          _tag: "Unavailable",
+          visibility: "public",
+          sourceKind: "bun-script",
+          diagnostic: {
             _tag: resolved.failure._tag,
             message: resolved.failure.message,
             remediation: resolved.failure.remediation,
@@ -244,10 +234,10 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     return { _tag: "unknown-tooling", commandId, name } as const;
   }
 
-  if (entry.source === "bun-script") {
+  if (entry.sourceKind === "bun-script") {
     return bunScriptRoute(entry, appRoot, cache);
   }
-  return normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile);
+  return normalizedToolingRoute(entry, cache.aliasPolicy);
 });
 
 type ToolingCacheMiss = Extract<ToolingRoute, { readonly _tag: "cache-miss" }>;

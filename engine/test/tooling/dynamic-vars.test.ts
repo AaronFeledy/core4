@@ -11,7 +11,7 @@ const resolve = (task: ToolingTaskShape, value: string, vars: Record<string, unk
       name: "t",
       evaluate: () => Effect.succeed(value),
     }),
-  );
+  ).then((resolved) => resolved.task);
 
 test("dynamic vars are evaluated once in declaration order and replaced by literals", async () => {
   const task = {
@@ -28,7 +28,7 @@ test("dynamic vars are evaluated once in declaration order and replaced by liter
           return command;
         }),
     }),
-  );
+  ).then((resolved) => resolved.task);
   expect(seen).toEqual(["one", "two"]);
   expect(resolved.cmd).toBe("echo 'one' 'one' 'two'");
   expect(resolved.vars).toEqual({ A: "one", B: "two" });
@@ -41,7 +41,7 @@ test.each(["", false, 0])("caller var %j suppresses shell evaluation", async (va
       name: "t",
       evaluate: () => Effect.die("caller override must suppress execution"),
     }),
-  );
+  ).then((resolved) => resolved.task);
   expect(resolved.vars?.V).toBe(value);
   expect(resolved.cmd).toBe(value === "" ? "echo " : `echo '${value}'`);
 });

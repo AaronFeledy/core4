@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceRuntimeFields, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -15,16 +15,27 @@ import {
 
 const ctx = { providerId: "podman", remediation: "Repair podman and retry.", env: {} } as const;
 
+const ownedLabels = {
+  "dev.lando.app": "orphan-app",
+  "dev.lando.app-root": "/tmp/orphan-app",
+  "dev.lando.service": "database",
+} as const;
+
 const observed = (
-  overrides: Partial<Omit<ServiceRuntimeFields, "containerId">> & { readonly withoutContainer?: true } = {},
+  overrides: Partial<Omit<ServiceRuntimeFields, "containerId">> & {
+    readonly withoutContainer?: true;
+    readonly withoutLabels?: true;
+  } = {},
 ): ServiceRuntimeInfo => {
-  const { withoutContainer, ...rest } = overrides;
+  const { withoutContainer, withoutLabels, ...rest } = overrides;
   return {
     app: AppId.make("orphan-app"),
+    appRoot: AbsolutePath.make("/tmp/orphan-app"),
     service: ServiceName.make("database"),
     providerId: ProviderId.make("podman"),
     status: "running",
     publications: { status: "unknown" },
+    ...(withoutLabels === true ? {} : { labels: ownedLabels }),
     ...(withoutContainer === true ? {} : { containerId: "abc123" }),
     ...rest,
   };
@@ -138,6 +149,75 @@ describe("removeObservedContainer", () => {
     const exit = await Effect.runPromiseExit(removeObservedContainer(observed(), { ctx }));
 
     expect(exit._tag).toBe("Failure");
+  });
+});
+
+describe("removeObservedContainer ownership authorization", () => {
+  test.each([
+    { name: "an unlabeled observation", observation: observed({ withoutLabels: true }) },
+    {
+      name: "a contradictory app label",
+      observation: observed({ labels: { ...ownedLabels, "dev.lando.app": "other" } }),
+    },
+    {
+      name: "a contradictory root label",
+      observation: observed({ labels: { ...ownedLabels, "dev.lando.app-root": "/tmp/other" } }),
+    },
+    {
+      name: "a contradictory service label",
+      observation: observed({ labels: { ...ownedLabels, "dev.lando.service": "other" } }),
+    },
+    {
+      name: "a conflicting provider label",
+      observation: observed({ labels: { ...ownedLabels, "dev.lando.provider": "docker" } }),
+    },
+    {
+      name: "a conflicting owner label",
+      observation: observed({ labels: { ...ownedLabels, "dev.lando.owner": "other-owner" } }),
+    },
+    {
+      name: "a role helper label",
+      observation: observed({ labels: { ...ownedLabels, "dev.lando.role": "data-helper" } }),
+    },
+    {
+      name: "an incoherent scratch marker",
+      observation: observed({ labels: { ...ownedLabels, "dev.lando.scratch": "TRUE" } }),
+    },
+    {
+      name: "a scratch id owned by another app",
+      observation: observed({
+        labels: { ...ownedLabels, "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": "other" },
+      }),
+    },
+  ])("refuses $name without calling the engine API", async ({ observation }) => {
+    const { api, calls } = recordingApi([]);
+
+    const exit = await Effect.runPromiseExit(removeObservedContainer(observation, { api, ctx }));
+
+    expect(exit._tag).toBe("Failure");
+    expect(calls).toEqual([]);
+  });
+
+  test("refusal names the container id and the disagreeing label", async () => {
+    const { api, calls } = recordingApi([]);
+
+    const result = await Effect.runPromise(
+      removeObservedContainer(observed({ labels: { ...ownedLabels, "dev.lando.provider": "docker" } }), {
+        api,
+        ctx,
+      }).pipe(Effect.result),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ProviderUnavailableError",
+        operation: "removeObservedService",
+        details: { containerId: "abc123", label: "dev.lando.provider" },
+      },
+    });
+    if (result._tag === "Failure") expect(result.failure.remediation).toContain("abc123");
+    expect(calls).toEqual([]);
   });
 });
 

@@ -55,7 +55,7 @@ test("winning generated client provenance survives attachment without credential
   const plan = attachEffectiveTooling(
     appliedClientFixture().plan,
     compileEffectiveTooling({ landofile: {}, services }),
-    owners,
+    { connectionClients: owners },
   );
   expect(connectionClientsForPlan(plan)).toEqual({ psql: ServiceName.make("alpha") });
   expect(connectionClientOwners({ landofile: { tooling: { psql: { cmd: "authored" } } }, services })).toEqual(
@@ -90,7 +90,7 @@ test("applied replacement removes nested overwritten sites and preserves unrelat
   );
   const resolved = await Effect.runPromise(
     resolveToolingTaskShape(client.task, { event: { value: "runtime" } }, client.sites),
-  );
+  ).then((resolved) => resolved.task);
   expect(resolved).toMatchObject({
     dir: "/current",
     vars: { mode: "current" },

@@ -118,9 +118,9 @@ const occupancyContext = (
   occupied: ReadonlyArray<PreferredHostPortSnapshot>,
   holder: string,
   identity: OccupancyHolderIdentity,
-): Record<string, string> => ({
+): Record<string, string | ReadonlyArray<string>> => ({
   host: LOOPBACK_HOST,
-  ports: occupied.map((item) => String(item.port)).join(","),
+  ports: occupied.map((item) => String(item.port)),
   holder,
   ...(identity.comm === undefined ? {} : { comm: identity.comm }),
   ...(identity.pid === undefined ? {} : { pid: String(identity.pid) }),

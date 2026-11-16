@@ -78,6 +78,7 @@ export const sidebar = [
           { label: "Run the Drupal recipe", slug: "guides/recipes/drupal-workflow" },
           { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
+          { label: "Run a TYPO3 site on LAMP", slug: "guides/recipes/typo3-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Run Drupal tests with PHPUnit and Chrome", slug: "guides/recipes/drupal-testing" },

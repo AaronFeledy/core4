@@ -29,6 +29,8 @@ export const dynamicToolingReferenceIssues = (
         readsDynamicToolingVar(site.template, names),
     )
     .map((site) => ({
+      reason: "dynamic-var-reference",
+      rule: "landofile.tooling" as const,
       path: site.path,
       source: site.source,
       message: "Dynamic tooling vars cannot be read by var definitions or task-level service, user, or dir.",

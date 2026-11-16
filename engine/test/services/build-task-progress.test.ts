@@ -174,7 +174,7 @@ describe("makeBuildTaskProgress", () => {
     });
   });
 
-  test("failTask and failTree publish fail summary, exit code, and fail counts", async () => {
+  test("failTask and failTree publish failure counts without inventing a command exit", async () => {
     // Given
     const publisher = collectPublisher();
     const progress = makeBuildTaskProgress(publisher, plan);
@@ -185,21 +185,22 @@ describe("makeBuildTaskProgress", () => {
     // When
     await Effect.runPromise(progress.completeTask(web, `Built ${String(web.name)}`));
     await Effect.runPromise(progress.failTask(db));
-    await Effect.runPromise(progress.abortTask(cache, transcriptPath));
+    await Effect.runPromise(progress.abortTask(cache));
     await Effect.runPromise(progress.failTree);
 
     // Then
     expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
       taskId: String(db.name),
       summary: `Build ${String(db.name)} failed`,
-      exitCode: 1,
     });
     expect(byTag(publisher.events, "task.tree.complete")[0]).toMatchObject({
       parentId,
       summary: `${plan.name} build failed`,
       succeeded: 1,
       failed: 2,
+      outcome: "failure",
     });
+    for (const event of byTag(publisher.events, "task.fail")) expect(event).not.toHaveProperty("exitCode");
   });
 
   test("abortTask on an unstarted service emits start then fail", async () => {
@@ -209,21 +210,22 @@ describe("makeBuildTaskProgress", () => {
     await Effect.runPromise(progress.startTree);
 
     // When
-    await Effect.runPromise(progress.abortTask(web, transcriptPath));
+    await Effect.runPromise(progress.abortTask(web));
 
     // Then
     expect(byTag(publisher.events, "task.start")).toHaveLength(1);
-    expect(byTag(publisher.events, "task.start")[0]).toMatchObject({
+    const start = byTag(publisher.events, "task.start")[0];
+    expect(start).toMatchObject({
       taskId: String(web.name),
       parentId,
       label: `Build ${String(web.name)}`,
-      transcriptPath,
     });
+    expect(start).not.toHaveProperty("transcriptPath");
     expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
       taskId: String(web.name),
       summary: `Build ${String(web.name)} aborted`,
-      exitCode: 1,
     });
+    expect(byTag(publisher.events, "task.fail")[0]).not.toHaveProperty("exitCode");
   });
 
   test("abortTask on a started service does not emit a duplicate start", async () => {
@@ -234,15 +236,15 @@ describe("makeBuildTaskProgress", () => {
     await Effect.runPromise(progress.startTask(web, transcriptPath));
 
     // When
-    await Effect.runPromise(progress.abortTask(web, transcriptPath));
+    await Effect.runPromise(progress.abortTask(web));
 
     // Then
     expect(byTag(publisher.events, "task.start")).toHaveLength(1);
     expect(byTag(publisher.events, "task.fail")[0]).toMatchObject({
       taskId: String(web.name),
       summary: `Build ${String(web.name)} aborted`,
-      exitCode: 1,
     });
+    expect(byTag(publisher.events, "task.fail")[0]).not.toHaveProperty("exitCode");
   });
 
   test("unsettledServices excludes complete, fail, and abort and keeps started", async () => {
@@ -259,7 +261,7 @@ describe("makeBuildTaskProgress", () => {
     // Then
     expect(progress.unsettledServices().map((service) => String(service.name))).toEqual([String(web.name)]);
 
-    await Effect.runPromise(progress.abortTask(web, transcriptPath));
+    await Effect.runPromise(progress.abortTask(web));
     expect(progress.unsettledServices()).toEqual([]);
   });
 });

@@ -21,6 +21,7 @@ const plan = {
   id: "app-id",
   name: "myapp",
   slug: "myapp",
+  fileSync: [] as AppPlan["fileSync"],
   extensions: {},
 } as AppPlan;
 
@@ -180,7 +181,7 @@ describe("container plan helpers", () => {
     expect(hostConfig.ExtraHosts).toEqual(expected);
   });
 
-  test("retains prior services only for a non-reconciling partial apply", () => {
+  test("retains prior services only for a partial apply that does not name every service", () => {
     const oldService = { ...service, name: "database" } as ServicePlan;
     const changedService = { ...service, environment: { UPDATED: "yes" } } as ServicePlan;
     const previous = {
@@ -191,14 +192,19 @@ describe("container plan helpers", () => {
     } as AppPlan;
     const incoming = { ...plan, routes: [], stores: [], services: { web: changedService } } as AppPlan;
 
-    expect(mergeAppliedPlan(previous, incoming, false).services).toEqual({
+    expect(mergeAppliedPlan(previous, incoming).services).toEqual({
       [ServiceName.make("database")]: oldService,
       [ServiceName.make("web")]: changedService,
     });
-    expect(mergeAppliedPlan(previous, incoming, true).services).toEqual({
+    expect(mergeAppliedPlan(previous, incoming, { complete: true }).services).toEqual({
       [ServiceName.make("web")]: changedService,
     });
-    expect(mergeAppliedPlan(undefined, incoming, false)).toBe(incoming);
+    expect(mergeAppliedPlan(previous, incoming, { complete: false }).services).toEqual({
+      [ServiceName.make("database")]: oldService,
+      [ServiceName.make("web")]: changedService,
+    });
+    expect(mergeAppliedPlan(undefined, incoming)).toBe(incoming);
+    expect(mergeAppliedPlan(undefined, incoming, { complete: true })).toBe(incoming);
   });
 
   test("converts env records and mount read-only suffixes", () => {

@@ -142,6 +142,8 @@ export interface ScratchGcOptions {
 
 export interface ScratchGcReport {
   readonly inspected: number;
+  /** Ids GC treats as orphaned: what a report-only run would prune, or what `--prune` tried to reap. */
+  readonly candidates: ReadonlyArray<string>;
   readonly reaped: ReadonlyArray<string>;
   readonly errors: ReadonlyArray<string>;
 }

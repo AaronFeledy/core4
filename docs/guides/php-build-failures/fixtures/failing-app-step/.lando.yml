@@ -1,0 +1,12 @@
+name: bt-failapp
+services:
+  app:
+    type: compose
+    primary: true
+    image: docker.io/library/alpine:3.20
+    command: sleep infinity
+    environment:
+      HTTP_PROXY: "http://proxyuser:proxypass-hunter2@127.0.0.1:3128"
+    build:
+      app:
+        - "echo app-step-marker; echo proxy=$HTTP_PROXY; echo bare=proxypass-hunter2; echo to-stderr >&2; printf 'unterminated proxypass-hunter2 tail'; exit 3"

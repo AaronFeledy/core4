@@ -17,6 +17,7 @@ import {
   APP_COMMAND_MAGIC,
   COMMAND_INDEX_HEADER_BYTES,
   COMMAND_INDEX_SCHEMA_VERSION,
+  commandEnvironmentHash,
   decodeAppCommandIndex,
   encodeAppCommandIndex,
 } from "@lando/engine/cache/command-index";
@@ -31,11 +32,26 @@ const appCommandPayload = {
   landoVersion: "0.0.0",
   appName: "fixture-app",
   sourceFile: "/workspace/fixture-app/.lando.yml",
+  sourceEnvironment: {
+    _tag: "Names" as const,
+    names: [],
+    hash: commandEnvironmentHash({ _tag: "Names", names: [] }, {}),
+  },
   sourceMtimeMs: 1_700_000_000_000,
   sourceSize: 128,
   versionConstraints: [],
   generatedAtMs: 1_700_000_100_000,
-  entries: [{ id: "fixture:task", summary: "Fixture task", hidden: false, service: "appserver" }],
+  entries: [
+    {
+      id: "fixture:task",
+      summary: "Fixture task",
+      _tag: "Ready" as const,
+      sourceKind: "tooling" as const,
+      visibility: "public" as const,
+      input: emptyToolingInput(),
+      service: "appserver",
+    },
+  ],
 };
 
 const appPlanFixture: AppPlan = {
@@ -100,8 +116,11 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v9.bin",
+      fixture: "app-command-v13.bin",
       previousFixtures: [
+        "app-command-v12.bin",
+        "app-command-v11.bin",
+        "app-command-v9.bin",
         "app-command-v8.bin",
         "app-command-v7.bin",
         "app-command-v6.bin",
@@ -224,3 +243,5 @@ describe("binary cache encoding policy", () => {
     ).toBeNull();
   });
 });
+
+import { emptyToolingInput } from "../_support/tooling-input.ts";

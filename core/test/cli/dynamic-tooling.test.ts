@@ -17,7 +17,7 @@ test.each([
   const cliRoot = resolve(import.meta.dirname, "../../src/cli");
   const script = `
     import { mock } from "bun:test";
-    import { Effect, Layer } from "effect";
+    import { Effect, Layer, Result } from "effect";
     const scenario = ${JSON.stringify(scenario)};
     const controller = new AbortController();
     let observed;
@@ -57,7 +57,9 @@ test.each([
       },
     }));
     const { routeResolvedTooling } = await import(${JSON.stringify(resolve(cliRoot, "dynamic-tooling.ts"))});
-    await routeResolvedTooling({ _tag: "bun-script", name: "scount", appRoot: "/app", relativePath: "scount.bun.sh" }, ["--", "argument"]);
+    const { normalizeToolingInput } = await import("@lando/landofile/tooling-input-normalize");
+    const input = Result.getOrThrow(normalizeToolingInput("scount", {}));
+    await routeResolvedTooling({ _tag: "bun-script", name: "scount", appRoot: "/app", relativePath: "scount.bun.sh", availability: { _tag: "Ready", input } }, ["--", "argument"]);
     console.log(JSON.stringify({ ...observed, handoff }));
   `;
   // When

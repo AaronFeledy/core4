@@ -12,8 +12,12 @@ const LOCKFILE = resolve(REPO_ROOT, "bun.lock");
 const OUTPUT_ROOT = resolve(REPO_ROOT, "scripts/generated/opentui-native");
 const STUBS_ROOT = resolve(OUTPUT_ROOT, "stubs");
 const CATALOG_PATH = resolve(OUTPUT_ROOT, "catalog.generated.ts");
-const PINNED_VERSION = "0.4.3";
-const PINNED_RENDERER_RANGE = "^0.4.3";
+// 0.8.0 is the last release whose native packages are MIT only. From 0.8.1 they statically link
+// LGPL-2.1-or-later FFmpeg for video, which the compiled-binary license policy rejects. Pin exactly
+// (a 0.x caret range would resolve to later patches) until https://github.com/anomalyco/opentui/issues/2088
+// gives a video-free build.
+const PINNED_VERSION = "0.8.0";
+const PINNED_RENDERER_RANGE = "0.8.0";
 
 const NATIVE_ROOTS = [
   "@opentui/core-darwin-arm64",

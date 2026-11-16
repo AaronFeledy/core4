@@ -56,7 +56,7 @@ ${renderSetupStep(cell, binary)}
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: drupal-journey-${cell.id}
           path: \${{ runner.temp }}/drupal-journey.json

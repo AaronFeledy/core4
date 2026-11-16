@@ -7,7 +7,7 @@ import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts
 
 test("pins the independently modeled tooling vars projections", () => {
   expect(createHash("sha256").update(JSON.stringify(toolingVarsDeltas)).digest("hex")).toBe(
-    "65296b9ee60e380ab8943517bdafdeab9ea77ae93627abef21a7981cc9b5729f",
+    "5c832eab30eb04c42b13ada80c77136e1b6cac9d05cb00600f2d16ecbd4fa838",
   );
 });
 

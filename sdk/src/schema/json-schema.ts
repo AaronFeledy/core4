@@ -1,6 +1,11 @@
 import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import {
+  CertificateMaterial,
+  CertificatePairPreparation,
+  PreparedCertificatePair,
+} from "../certificates/schema.ts";
+import {
   AxisToken,
   CleanupProps,
   ComponentId,
@@ -138,6 +143,7 @@ import {
   TunnelStatusEvent,
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
+import { ExecutionSiteMatch } from "../landofile/execution-sites.ts";
 import {
   AgentSocketBridgeInput,
   AgentSocketBridgeResult,
@@ -157,6 +163,7 @@ import {
   ServicePlan,
 } from "./app-plan.ts";
 import {
+  BuiltImageCleanup,
   DestroyAppOutcome,
   DestroyAppResult,
   ExecAppResult,
@@ -171,7 +178,16 @@ import {
   StopAppResult,
   ToolingResult,
 } from "./app-results.ts";
-import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
+import {
+  ArtifactBuildSpec,
+  ArtifactListing,
+  ArtifactRef,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
+  BuildScript,
+  ProviderArtifactRef,
+} from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandContribution } from "./command-contribution.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
@@ -233,7 +249,11 @@ import {
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
 import {
+  DatabaseClientCheckResult,
+  DatabaseClientCheckState,
+  DatabaseClientCreds,
   DatabaseConnection,
+  DatabaseLocalCheck,
   ServiceCreds,
   ServiceCredsConfig,
   ServiceCredsDisplay,
@@ -269,6 +289,7 @@ import {
   SecretRef,
   SecretReference,
 } from "./environment-value.ts";
+import { ExecutionSite } from "./execution-site.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncDisposalPhase,
@@ -465,6 +486,7 @@ import {
   RecipeSourceOption,
   RecipeSourcePrompt,
 } from "./recipe-source.ts";
+import { RegisteredCommand } from "./registered-command.ts";
 import {
   AppRemoteEntry,
   AppRemoteMutationResult,
@@ -500,6 +522,7 @@ import {
 } from "./renderer-panel.ts";
 import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
+import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./schedule.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
@@ -610,6 +633,8 @@ export type PublicSchemaReferencePage = {
 
 const basePublicSchemaRegistry = schemaRegistry({
   ConfigKeyDescription,
+  ExecutionSite,
+  ExecutionSiteMatch,
   SecretReference,
   SecretRef,
   BoundTextReference,
@@ -619,6 +644,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceCreds,
   ServiceCredsConfig,
   DatabaseConnection,
+  DatabaseClientCreds,
+  DatabaseClientCheckState,
+  DatabaseClientCheckResult,
+  DatabaseLocalCheck,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
   EventStepPlan,
@@ -684,6 +713,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostTerminal,
   AppRef,
   ArtifactRef,
+  ArtifactRemoval,
+  ArtifactRemovalRequest,
+  ArtifactSelector,
+  ArtifactListing,
+  ProviderArtifactRef,
   ArtifactBuildSpec,
   ArtifactManifestEntry,
   BuildScript,
@@ -743,6 +777,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   CertificatePlan,
   CertificateSpec,
   ListenerAuthority,
+  CertificateMaterial,
+  CertificatePairPreparation,
+  PreparedCertificatePair,
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,
@@ -760,12 +797,17 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingInputDeclaration,
   ToolingRunSummary,
   ToolingRunTarget,
+  RegisteredCommand,
   ToolingInputValues,
   ToolingInvocationInput,
   ServiceConfigInput,
   ServiceFileConfig,
   SqliteTargetConfig,
   PhpComposerConfig,
+  CronExpression,
+  ScheduleConfig,
+  ScheduleJob,
+  ScheduleJobName,
   LogSource,
   LogSourceId,
   LogSourceInput,
@@ -897,6 +939,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   RestartAppResult,
   RebuildAppResult,
   DestroyAppResult,
+  BuiltImageCleanup,
   DestroyAppOutcome,
   InfoAppAgentEnv,
   InfoAppHostProxy,
@@ -1253,6 +1296,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Global destroy completed successfully, including provider teardown and route cleanup.",
   FailureRole: "Relationship of an additional failure to the primary operation failure.",
   VolumeLocator: "Stable provider locator for one native volume before or after creation.",
+  CronExpression: "Five-field cron expression, named schedule, or @every interval.",
+  ScheduleJob: "One scheduled command on a service.",
+  ScheduleJobName: "Job name unique within the service.",
+  ScheduleConfig: "Scheduled jobs for a service.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
   DotnetServiceConfig: "Landofile configuration accepted by the .NET catalog service.",

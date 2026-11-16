@@ -7,13 +7,20 @@ import {
 import type { ValidationIssueSource } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
+export interface DeferredLoadRefusal {
+  readonly error: NotImplementedError;
+  readonly source: ValidationIssueSource;
+}
+
 export interface LoadFailureRecorder {
   readonly effectiveChecks: Effect.Effect<unknown, ComposeKeyRejectedError | NotImplementedError>[];
+  readonly deferredRefusals: DeferredLoadRefusal[];
   readonly failures: LandofileLoadFailure[];
   readonly blocked: ValidationIssueSource[];
   readonly prerequisites: Set<string>;
   recipeAvailable: boolean;
   readonly record: (error: LandofileLoadFailure, source?: ValidationIssueSource) => void;
+  readonly deferRefusal: (error: NotImplementedError, source: ValidationIssueSource) => void;
   /** Skips later load work under `source` without recording another failure. */
   readonly block: (source: ValidationIssueSource) => void;
 }
@@ -21,12 +28,19 @@ export interface LoadFailureRecorder {
 export const createLoadFailureRecorder = (): LoadFailureRecorder => {
   const failures: LandofileLoadFailure[] = [];
   const blocked: ValidationIssueSource[] = [];
+  const effectiveChecks: LoadFailureRecorder["effectiveChecks"] = [];
+  const deferredRefusals: DeferredLoadRefusal[] = [];
   return {
-    effectiveChecks: [],
+    effectiveChecks,
+    deferredRefusals,
     failures,
     blocked,
     prerequisites: new Set(),
     recipeAvailable: true,
+    deferRefusal: (error, source) => {
+      deferredRefusals.push({ error, source });
+      effectiveChecks.push(Effect.fail(error));
+    },
     record: (error, source) => {
       failures.push(error);
       if (source !== undefined) blocked.push(source);

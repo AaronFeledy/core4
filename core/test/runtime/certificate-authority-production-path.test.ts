@@ -113,7 +113,7 @@ test("bundled mkcert issues certs when the production runtime prepares a plan, n
             TestRuntimeProvider.capabilities,
           );
           const issuedWhilePlanning = issuances.length - issuedBySetup;
-          const prepared = yield* prepareServiceCertificates(plan).pipe(Effect.provide(context));
+          const { plan: prepared } = yield* prepareServiceCertificates(plan).pipe(Effect.provide(context));
           return { authorityId: authority.id, plan, prepared, issuedWhilePlanning };
         }),
       ),

@@ -1,8 +1,8 @@
-import { REDACTED, type Redactor } from "@lando/sdk/secrets";
+import { REDACTED, type Redactor, type ValueRedactionScope, redactValueWith } from "@lando/sdk/secrets";
 
 const maskedToken = JSON.stringify(REDACTED);
 
-const redactStringToken = (token: string, redactor: Redactor): string => {
+const redactStringToken = (token: string, redactor: Pick<Redactor, "redactString">): string => {
   try {
     const decoded: unknown = JSON.parse(token);
     if (typeof decoded !== "string") return maskedToken;
@@ -16,11 +16,7 @@ const redactStringToken = (token: string, redactor: Redactor): string => {
   }
 };
 
-// Serialize first to retain JSON's toJSON, omission, and array semantics. Only
-// string tokens enter redaction; primitive values and JSON punctuation stay intact.
-export const encodeRedactedJson = (value: unknown, redactor: Redactor): string => {
-  const json = JSON.stringify(value);
-  if (json === undefined) throw new Error("Expected a JSON document.");
+const redactTokens = (json: string, redactor: Pick<Redactor, "redactString">): string => {
   const parts: string[] = [];
   let cursor = 0;
   let remaining = 0;
@@ -43,4 +39,25 @@ export const encodeRedactedJson = (value: unknown, redactor: Redactor): string =
   }
   parts.push(json.slice(remaining));
   return parts.join("");
+};
+
+// Serialize first to retain JSON's toJSON, omission, and array semantics. Only
+// string tokens enter redaction; primitive values and JSON punctuation stay intact.
+// With a schema policy, literal-constrained values and declared keys survive.
+export const encodeRedactedJson = (
+  value: unknown,
+  redactor: Pick<Redactor, "redactString">,
+  policy?: ValueRedactionScope,
+): string => {
+  const json = JSON.stringify(value);
+  if (json === undefined) throw new Error("Expected a JSON document.");
+  if (policy === undefined) return redactTokens(json, redactor);
+  if (!json.includes('"')) return json;
+  // Walk the serialized representation so a schema-fixed literal keeps its
+  // serialized spelling; a secret-named key gets no special case here, matching
+  // the token path.
+  // Keep the token path's decoded + JSON-escaped double redaction.
+  const redact = (text: string): string =>
+    JSON.parse(redactStringToken(JSON.stringify(text), redactor)) as string;
+  return JSON.stringify(redactValueWith(redact, () => false, JSON.parse(json), policy));
 };

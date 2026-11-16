@@ -3,6 +3,7 @@ import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { GlobalConfigSnapshot } from "@lando/engine/services/config";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import { HostExecutionDefaults } from "@lando/engine/services/host-execution-context";
+import { redactLineText } from "@lando/redaction/line-stream";
 import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import {
   RendererHost,
@@ -613,13 +614,18 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         }
         const value = commandOutcome.value.value;
         const redaction = yield* Effect.serviceOption(RedactionService);
-        const redactor =
+        const resultRedaction = {
+          sourceEnv,
+          redactionTokens: [...extraTokens, ...(options.redactionTokens?.(value) ?? [])],
+        };
+        const scope =
           redaction._tag === "Some"
-            ? yield* redaction.value.forProfile("secrets", {
-                sourceEnv,
-                redactionTokens: [...extraTokens, ...(options.redactionTokens?.(value) ?? [])],
-              })
+            ? {
+                redactor: yield* redaction.value.forProfile("secrets", resultRedaction),
+                payloadValues: yield* redaction.value.payloadValues(resultRedaction),
+              }
             : undefined;
+        const redactor = scope?.redactor;
         if (redactor !== undefined) capture?.setRedactor(redactor);
         // Redact command/result fields before the formatter paints SGR. Rewriting
         // an already-styled string can splice `[redacted]` into CSI parameters.
@@ -631,10 +637,12 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         };
         const rendered = options.render?.(displayValue, paintContext);
         if (rendered !== undefined && rendered.length > 0) {
+          // A rendered result can carry process output, so plain text gets the same value layer
+          // and line-stream as live output instead of one whole-string pass.
           const output =
-            isDecoratedContext(paintContext) || redactor === undefined
+            isDecoratedContext(paintContext) || scope === undefined
               ? rendered
-              : redactor.redactString(rendered);
+              : redactLineText(scope, rendered);
           yield* writeResultLine(output);
         }
       }),

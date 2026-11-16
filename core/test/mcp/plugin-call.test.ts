@@ -17,6 +17,8 @@ const fixture = (spec: ExecutableCommandSpec) =>
         serviceLayer.pipe(
           Layer.provide(
             Layer.succeed(McpRuntimeConfig, {
+              cwd: process.cwd(),
+              env: { ...process.env },
               commandEntries: registry.commandEntries,
               defaultAllowlist: [],
               apps: testAppGenerations(),

@@ -22,7 +22,7 @@ import {
   ServiceStartError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
 import { Schema } from "effect";
@@ -151,7 +151,14 @@ export function redactProviderError(
     case "ProviderInternalError":
       return new ProviderInternalError(baseFields(error, redactor, options));
     case "ArtifactBuildError":
-      return new ArtifactBuildError(baseFields(error, redactor, options));
+      return new ArtifactBuildError({
+        ...baseFields(error, redactor, options),
+        ...(error.service === undefined ? {} : { service: redactor.redactString(error.service) }),
+        ...(error.transcriptPath === undefined
+          ? {}
+          : { transcriptPath: AbsolutePath.make(redactor.redactString(error.transcriptPath)) }),
+        ...(error.outputTail === undefined ? {} : { outputTail: redactor.redactString(error.outputTail) }),
+      });
     case "HealthcheckTargetUnsupportedError":
       return new HealthcheckTargetUnsupportedError({
         message: redactor.redactString(error.message),

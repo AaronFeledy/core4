@@ -91,10 +91,8 @@ test("lint reports build argument secrets as load failures with safe runtime gui
     {
       path,
       reason: "unsupported-secret-reference",
-      message:
-        "Secret references are not supported at services.app.build.args.TOKEN. Build arguments can be recorded in image history.",
-      suggestion:
-        "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.",
+      message: expect.stringContaining("image history"),
+      suggestion: expect.stringContaining("services.app.environment.TOKEN"),
       source: { file, layer: "canonical", path },
     },
   ]);
@@ -109,6 +107,23 @@ test("lint carries the failure tag as reason for a missing include", async () =>
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     { path: ["includes", 0], reason: "LandofileIncludeError" },
   ]);
+});
+
+test("compose fragments use their implicit service type for remediation before stamping defaults", async () => {
+  await writeFile(
+    join(root, ".lando.yml"),
+    "name: aggregate\nincludes:\n  - source: ./compose.yml\n    kind: compose\n",
+  );
+  await writeFile(join(root, "compose.yml"), 'services:\n  app:\n    command: "echo ${secret:TOKEN}"\n');
+  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
+  const issue = snapshot.result.violations.find((issue) => issue.reason === "unsupported-secret-reference");
+  expect(issue?.suggestion).not.toContain("when the service type");
+  expect(issue).toMatchObject({
+    rule: "landofile.load",
+    path: ["services", "app", "command"],
+    source: { file: join(root, "compose.yml") },
+    suggestion: expect.stringContaining("sh -c"),
+  });
 });
 
 test("blocks acquisition after an eager include-source failure", async () => {

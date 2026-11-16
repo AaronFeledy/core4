@@ -14,9 +14,11 @@ import {
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
+import { executionSiteAt } from "@lando/sdk/landofile/execution-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
+import { recordExpressionEnvironment } from "./environment-dependencies.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
 import { normalizeLoadExpressionFailure } from "./load-expression-failure.ts";
@@ -33,8 +35,9 @@ import {
   templateExpression,
 } from "./load-expression-shape.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
-import { eligibleBindingPath } from "./secret-reference.ts";
+import { eligibleBindingPath, isLoweredSecretReferenceSite } from "./secret-reference.ts";
 import { deferredToolingScopeError } from "./tooling-deferred-scopes.ts";
+import { loweredSecretRefusal } from "./tooling-shell-binding.ts";
 import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
 
 export type { ResolveLandofileLoadExpressionsOptions } from "./load-expression-shape.ts";
@@ -126,8 +129,7 @@ export const resolveLandofileLoadExpressions = (
           if (options.recorder === undefined) throw cause;
           const source = { file: options.source.sourcePath, layer: options.source.layer, path };
           const failure = normalizeLoadExpressionFailure(cause, options.source, path);
-          if (failure instanceof NotImplementedError)
-            options.recorder.effectiveChecks.push(Effect.fail(failure));
+          if (failure instanceof NotImplementedError) options.recorder.deferRefusal(failure, source);
           else options.recorder.record(failure, source);
           return value;
         }
@@ -181,20 +183,49 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
+          if (options.environmentRecorder !== undefined)
+            recordExpressionEnvironment(options.environmentRecorder, parsed.success);
           const deferred = deferredToolingScopeError(parsed.success, path, options.source.sourcePath);
           if (deferred !== undefined) throw deferred;
-          const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
-          if (secret !== undefined && !eligibleBindingPath(path))
-            throw unsupportedSecretReferenceError(
-              { file: options.source.sourcePath, layer: options.source.layer, path },
-              secret.name,
+          const references = parsed.success.segments.flatMap((segment) =>
+            segment.kind === "SecretRefSegment" ? [segment.name] : [],
+          );
+          const bindable = eligibleBindingPath(path);
+          const lowered =
+            references.length > 0 && !bindable && isLoweredSecretReferenceSite(executionSiteAt(path), path);
+          if (references.length > 0 && !bindable && !lowered)
+            throw unsupportedSecretReferenceError({
+              source: { file: options.source.sourcePath, layer: options.source.layer, path },
+              references,
               value,
-            );
+              ...(options.pathPrefix === undefined ? { document: options.value } : {}),
+              ...(options.defaultServiceType === undefined
+                ? {}
+                : { defaultServiceType: options.defaultServiceType }),
+            });
+          if (
+            lowered &&
+            parsed.success.segments.every(
+              (segment) =>
+                segment.kind === "LiteralSegment" ||
+                segment.kind === "CommentSegment" ||
+                segment.kind === "SecretRefSegment",
+            )
+          ) {
+            const refusal = loweredSecretRefusal(parsed.success);
+            if (refusal !== undefined)
+              throw unsupportedSecretReferenceError({
+                source: { file: options.source.sourcePath, layer: options.source.layer, path },
+                references,
+                value,
+                context: refusal.context,
+              });
+          }
           const shell = parsed.success.segments.find((segment) => segment.kind === "ShellParamSegment");
           if (shell !== undefined) return unsupported(path, "Configuration expressions", shell);
           const secretMembers = expressionScopeMembers(parsed.success, "secrets");
           const scopes =
-            eligibleBindingPath(path) && secretMembers.analyzable
+            (bindable || lowered) && secretMembers.analyzable
               ? [...LOAD_DEFERRED_EXPRESSION_SCOPES, "secrets"]
               : LOAD_DEFERRED_EXPRESSION_SCOPES;
           const admittedScopes = executableExpressionPath(path) ? [...scopes, ...INVOCATION_SCOPES] : scopes;

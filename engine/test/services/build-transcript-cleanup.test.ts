@@ -1,0 +1,209 @@
+import { describe, expect, test } from "bun:test";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { Effect } from "effect";
+import {
+  openArtifactBuildResults,
+  recordArtifactBuildResult,
+} from "../../src/services/build-artifact-results.ts";
+import { BuildOwner } from "../../src/services/build-owner.ts";
+import { openAppBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
+import {
+  removeBuildTranscripts,
+  sweepAppBuildTranscripts,
+} from "../../src/services/build-transcript-cleanup.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
+
+const withRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-build-cleanup-")));
+  try {
+    return await run(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
+describe("sweepAppBuildTranscripts", () => {
+  test("keeps a referenced transcript whose recorded root is spelled differently", async () => {
+    await withRoot(async (root) => {
+      // Given a transcript on disk and an index entry with the same service dir and file name but
+      // a different user data root spelling (a symlinked home, a different env variable spelling).
+      const store = makeTestStateStore();
+      const owner = BuildOwner.root(AbsolutePath.make("/tmp/app"));
+      const transcript = join(root, "builds", "owners", owner.key, "app", "web", "key.log");
+      await mkdir(dirname(transcript), { recursive: true });
+      await writeFile(transcript, "output\n");
+      const bucket = await Effect.runPromise(openAppBuildResults(store.service, owner));
+      await Effect.runPromise(
+        recordBuildResult(bucket, {
+          buildKey: "key",
+          service: ServiceName.make("web"),
+          phase: "app",
+          step: "web:app:install",
+          outcome: "complete",
+          exitCode: 0,
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(
+            join("/symlinked-home/lando", "builds", "owners", owner.key, "app", "web", "key.log"),
+          ),
+        }),
+      );
+
+      // When
+      await Effect.runPromise(
+        sweepAppBuildTranscripts({
+          stateStore: store.service,
+          owner,
+          phase: "app",
+          userDataRoot: root,
+          redact: (text) => text,
+        }),
+      );
+
+      // Then
+      expect(await Bun.file(transcript).exists()).toBe(true);
+    });
+  });
+
+  test("keeps an artifact transcript another owner's reused record still points at", async () => {
+    await withRoot(async (root) => {
+      // Given owner A's transcripts, where only owner B's record (reused from A) names one of them.
+      const store = makeTestStateStore();
+      const owner = BuildOwner.root(AbsolutePath.make("/tmp/app-a"));
+      const other = BuildOwner.root(AbsolutePath.make("/tmp/app-b"));
+      const directory = join(root, "builds", "owners", owner.key, "artifact", "web");
+      const reused = join(directory, "shared.log");
+      const stale = join(directory, "stale.log");
+      await mkdir(directory, { recursive: true });
+      await writeFile(reused, "build output\n");
+      await writeFile(stale, "old output\n");
+      const bucket = await Effect.runPromise(openArtifactBuildResults(store.service));
+      await Effect.runPromise(
+        recordArtifactBuildResult(bucket, {
+          owner: other.key,
+          providerId: "podman",
+          phase: "artifact",
+          service: ServiceName.make("web"),
+          buildKey: "shared",
+          artifactRef: "lando-build-0000abcd-podman-web-shared",
+          artifactOrigin: "build",
+          outcome: "complete",
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(reused),
+        }),
+      );
+
+      // When A's artifact phase is swept.
+      await Effect.runPromise(
+        sweepAppBuildTranscripts({
+          stateStore: store.service,
+          owner,
+          phase: "artifact",
+          userDataRoot: root,
+          redact: (text) => text,
+        }),
+      );
+
+      // Then the transcript B's record shows stays, and the unreferenced one goes.
+      expect(await Bun.file(reused).exists()).toBe(true);
+      expect(await Bun.file(stale).exists()).toBe(false);
+    });
+  });
+
+  test("sweeps a scratch app phase against the per-app index", async () => {
+    await withRoot(async (root) => {
+      // Given a scratch app with one referenced app-step transcript and one stale transcript.
+      const store = makeTestStateStore();
+      const appId = "scratch-demo-123456";
+      const owner = BuildOwner.scratch(AppId.make(appId));
+      const directory = join(root, "builds", "scratch", appId, "app", "web");
+      const referenced = join(directory, "install.log");
+      const stale = join(directory, "stale.log");
+      await mkdir(directory, { recursive: true });
+      await writeFile(referenced, "install output\n");
+      await writeFile(stale, "stale output\n");
+      const bucket = await Effect.runPromise(openAppBuildResults(store.service, owner));
+      await Effect.runPromise(
+        recordBuildResult(bucket, {
+          buildKey: "install",
+          service: ServiceName.make("web"),
+          phase: "app",
+          step: "web:app:install",
+          outcome: "complete",
+          exitCode: 0,
+          durationMs: 1,
+          transcriptPath: AbsolutePath.make(referenced),
+        }),
+      );
+
+      // When the scratch app phase is swept.
+      await Effect.runPromise(
+        sweepAppBuildTranscripts({
+          stateStore: store.service,
+          owner,
+          phase: "app",
+          userDataRoot: root,
+          redact: (text) => text,
+        }),
+      );
+
+      // Then the shared image index never decides the app phase: the app's own entry is consulted.
+      expect(await Bun.file(referenced).exists()).toBe(true);
+      expect(await Bun.file(stale).exists()).toBe(false);
+    });
+  });
+});
+
+describe("removeBuildTranscripts", () => {
+  test.skipIf(process.platform === "win32")(
+    "does not unlink an app entry whose parent symlinks outside the data root",
+    async () => {
+      await withRoot(async (root) => {
+        // Given a `builds` directory that is a symlink to an outside directory holding a file
+        // named after the app.
+        const userDataRoot = join(root, "data");
+        const outside = join(root, "outside");
+        await mkdir(userDataRoot);
+        await mkdir(outside);
+        await mkdir(join(outside, "owners"));
+        const owner = BuildOwner.root(AbsolutePath.make("/tmp/app"));
+        const victim = join(outside, "owners", owner.key);
+        await writeFile(victim, "keep me\n");
+        await symlink(outside, join(userDataRoot, "builds"));
+
+        // When the app's build output is removed.
+        await Effect.runPromise(removeBuildTranscripts({ userDataRoot, owner, providerId: "test" }));
+
+        // Then the outside file survives: the unlink branch checks its parent first.
+        expect(await readFile(victim, "utf8")).toBe("keep me\n");
+      });
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "unlinks a symlink at the app path without following it",
+    async () => {
+      await withRoot(async (root) => {
+        // Given an app path that is a symlink to a directory outside the data root.
+        const userDataRoot = join(root, "data");
+        const outside = join(root, "outside");
+        await mkdir(join(userDataRoot, "builds", "owners"), { recursive: true });
+        await mkdir(outside);
+        const insideOutside = join(outside, "transcript.log");
+        await writeFile(insideOutside, "outside output\n");
+        const owner = BuildOwner.root(AbsolutePath.make("/tmp/app"));
+        const appDir = join(userDataRoot, "builds", "owners", owner.key);
+        await symlink(outside, appDir);
+
+        // When the app's build output is removed.
+        await Effect.runPromise(removeBuildTranscripts({ userDataRoot, owner, providerId: "test" }));
+
+        // Then the link itself is gone and its target is untouched.
+        await expect(lstat(appDir)).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await readFile(insideOutside, "utf8")).toBe("outside output\n");
+      });
+    },
+  );
+});

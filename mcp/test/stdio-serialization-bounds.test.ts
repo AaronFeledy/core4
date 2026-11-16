@@ -20,9 +20,10 @@ test("combined text and structured content respect the 8 MiB limit and publish f
       }),
     ).pipe(
       Effect.provide(
-        serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }).pipe(
-          Layer.provide(eventLayer(events)),
-        ),
+        serverLayer({
+          commandEntries: [{ kind: "command" as const, spec }],
+          defaultAllowlist: [spec.id],
+        }).pipe(Layer.provide(eventLayer(events))),
       ),
     ),
   );
@@ -65,7 +66,11 @@ test("oversized-result-fails-closed-before-retaining-the-complete-frame", async 
           yield* client.request("tools/call", { name: spec.id }),
         ] as const;
       }),
-    ).pipe(Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }))),
+    ).pipe(
+      Effect.provide(
+        serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+      ),
+    ),
   );
   expect(trailingPropertyRead).toBe(false);
   expect(toolErrorObject(responses[0])).toMatchObject({
@@ -106,7 +111,11 @@ test("oversized-progress-fails-before-reading-values-past-the-bound", async () =
         });
         return { response, notifications: yield* client.notifications };
       }),
-    ).pipe(Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }))),
+    ).pipe(
+      Effect.provide(
+        serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+      ),
+    ),
   );
   expect(toolErrorObject(observed.response)).toMatchObject({
     _tag: "McpTransportError",
@@ -140,7 +149,11 @@ test.each(["circular", "bigint"])(
           });
           return { response, notifications: yield* client.notifications };
         }),
-      ).pipe(Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }))),
+      ).pipe(
+        Effect.provide(
+          serverLayer({ commandEntries: [{ kind: "command" as const, spec }], defaultAllowlist: [spec.id] }),
+        ),
+      ),
     );
     expect(toolErrorObject(observed.response)).toMatchObject({ _tag: "McpTransportError" });
     expect(observed.notifications).toEqual([]);

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "@lando/mcp/bounded-json";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
+import { structuralRedaction } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
-import { createRedactor } from "@lando/sdk/secrets";
-import { Cause, Effect, Option } from "effect";
+import { REDACTED, createRedactor } from "@lando/sdk/secrets";
+import { Cause, Effect, Option, Schema } from "effect";
 
 describe("bounded MCP JSON", () => {
   test("matches native JSON string semantics for astral and surrogate strings", async () => {
@@ -213,5 +214,100 @@ describe("bounded MCP JSON", () => {
       throw new Error("memory fixture returned an invalid result");
     }
     expect(result.retainedArrayBufferBytes).toBeLessThan(1 * 1_024 * 1_024);
+  });
+
+  test("keeps schema-fixed literals and declared keys while redacting free text", async () => {
+    // Given
+    const redactor = createRedactor("secrets", { values: ["tooling", "kind", "value"] });
+    const schema = Schema.Struct({
+      kind: Schema.Literals(["tooling", "plugin"]),
+      message: Schema.String,
+      items: Schema.Array(Schema.Struct({ kind: Schema.Literal("tooling"), message: Schema.String })),
+    });
+
+    // When
+    const redacted = await Effect.runPromise(
+      redactBoundedJsonValue(
+        {
+          kind: "tooling",
+          message: "tooling value",
+          items: [{ kind: "tooling", message: "tooling" }],
+          value: "tooling",
+        },
+        redactor,
+        "literal payload",
+        structuralRedaction(schema),
+      ),
+    );
+
+    // Then
+    expect(redacted).toEqual({
+      kind: "tooling",
+      message: `${REDACTED} ${REDACTED}`,
+      items: [{ kind: "tooling", message: REDACTED }],
+      [REDACTED]: REDACTED,
+    });
+  });
+
+  test("redacts dynamic keys and keeps schema-fixed secret-key literals", async () => {
+    // Given
+    const redactor = createRedactor("secrets", { values: ["dynamic-key", "none"] });
+    const literal = Schema.Struct({ password: Schema.Literal("none") });
+
+    // When
+    const dynamic = await Effect.runPromise(
+      redactBoundedJsonValue(
+        { "dynamic-key": "fixed" },
+        redactor,
+        "dynamic payload",
+        structuralRedaction(Schema.Record(Schema.String, Schema.String)),
+      ),
+    );
+    const secret = await Effect.runPromise(
+      redactBoundedJsonValue({ password: "none" }, redactor, "literal secret", structuralRedaction(literal)),
+    );
+
+    // Then
+    expect(dynamic).toEqual({ [REDACTED]: "fixed" });
+    expect(secret).toEqual({ password: "none" });
+  });
+
+  test("keeps ambiguous unions redacted", async () => {
+    // Given
+    const redactor = createRedactor("secrets", { values: ["tooling"] });
+    const ambiguous = Schema.Union([Schema.Literal("tooling"), Schema.String]);
+
+    // When
+    const redacted = await Effect.runPromise(
+      redactBoundedJsonValue("tooling", redactor, "ambiguous payload", structuralRedaction(ambiguous)),
+    );
+
+    // Then
+    expect(redacted).toBe(REDACTED);
+  });
+
+  test("keeps rejecting proxies and accessors when a policy is present", async () => {
+    // Given
+    let getterCalls = 0;
+    const accessor = {
+      get value(): string {
+        getterCalls += 1;
+        return "not-read";
+      },
+    };
+    const policy = structuralRedaction(Schema.Unknown);
+
+    // When
+    const accessorExit = await Effect.runPromiseExit(
+      stringifyBoundedJson(accessor, "accessor payload", undefined, policy),
+    );
+    const proxyExit = await Effect.runPromiseExit(
+      stringifyBoundedJson(new Proxy({}, {}), "proxy payload", undefined, policy),
+    );
+
+    // Then
+    expect(accessorExit._tag).toBe("Failure");
+    expect(proxyExit._tag).toBe("Failure");
+    expect(getterCalls).toBe(0);
   });
 });

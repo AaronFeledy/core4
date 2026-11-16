@@ -29,6 +29,8 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { Effect } from "effect";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
+import { BuildOwner } from "../services/build-owner.ts";
+import { removeAppBuildOutput } from "../services/build-transcript-cleanup.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
@@ -167,14 +169,23 @@ export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
       yield* prepareDestroyOwners(root, options);
       const resolution = yield* resolveTeardownResolution;
       // An explicit provider only tears down what that provider holds; it never falls back to the desired plan.
-      if (resolution.kind === "absent" && (yield* TeardownProvider) !== undefined)
+      const scopedProvider = yield* TeardownProvider;
+      if (resolution.kind === "absent" && scopedProvider !== undefined) {
+        const builtImages = yield* removeAppBuildOutput(
+          BuildOwner.root(resolution.root),
+          String(scopedProvider),
+          String(scopedProvider),
+          { images: options.purgeCaches === true ? "remove" : "release" },
+        );
         return {
           app: basename(resolution.root),
           outcome: "unchanged" as const,
           servicesDestroyed: [],
           volumesRemoved: false,
           snapshotsRemoved: 0,
+          builtImages,
         };
+      }
       return yield* runTeardown(resolution, options, { desired: resolveDesiredAppTarget });
     }),
   );

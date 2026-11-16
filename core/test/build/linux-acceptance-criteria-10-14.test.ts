@@ -116,7 +116,7 @@ describe("linux-x64 acceptance criteria 10-14", () => {
         "runs provider, CA, router, shell integration, and file sync in deterministic order",
         "validates network trust before provider and file-sync downloads and honors config proxy precedence",
         "reports file sync as already satisfied for native bind-mount providers",
-        "--skip-file-sync records the explicitly configured engine without installing it",
+        "--skip-file-sync records deferred readiness without installing the configured engine",
       ];
       for (const filter of setupSpotChecks) {
         await expectPassingSpotCheck("core/test/cli/setup.test.ts", filter);

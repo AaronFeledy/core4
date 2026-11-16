@@ -70,6 +70,8 @@ The `mysql` type ships the client task. After start:
 lando mysql --version
 ```
 
+`lando start` checks the configured login when it started or recreated the database container, or when the planned connection changed since the last apply, and warns when the running server rejects it. An unchanged running database is checked by `lando doctor --app`, `lando restart`, and `lando rebuild`. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
+
 The generated client supplies its password for each invocation. Lando scopes the client-only `MYSQL_PWD` variable to client and healthcheck processes, not the database server's initialization environment.
 
 Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can also pipe a plain SQL file directly into the client. This executes the dump's statements against the database, so back up any data you need first:
@@ -118,6 +120,35 @@ Apply the change with `lando rebuild`, then check the running server:
 ```sh
 lando mysql -N -e 'SELECT @@port'
 ```
+
+## Recover when credentials don't match
+
+`creds:` seeds a fresh volume. MySQL ignores it once its data volume holds data, so changing `creds:` on an existing app changes what Lando's clients send, not the accounts the server stores. After the service is ready, `lando start` checks the configured login when it started or recreated the container, or when the planned connection changed since the last apply; `lando restart` and `lando rebuild` check the services they restart. Each warns when the server rejects it. When Lando has the previously applied plan to compare, the warning names the `creds` members whose descriptors changed and says that comparison does not prove the cause. It never names a value. Without the warning, the first `lando mysql` or `lando db:*` command fails with `ERROR 1045 Access denied`.
+
+Fix it without losing data, in this order:
+
+1. Put `creds:` back to the values the volume was created with, then run `lando start` so Lando's clients send them again.
+2. To keep the new password, sign in with the old one and change it inside MySQL. The password prompt keeps the value out of your shell history and the container's argv:
+
+   ```sh
+   lando exec db -- mysql -u root -p
+   ```
+
+   Then, in that shell, replace `<user>` and `<new-password>`:
+
+   ```sql
+   ALTER USER '<user>'@'%' IDENTIFIED BY '<new-password>';
+   ```
+
+   Set `creds:` to the new values and run `lando start` again.
+3. Only when the data is disposable, start over. This deletes the database:
+
+   ```sh
+   lando destroy -y --volumes
+   lando start
+   ```
+
+Lando never picks option 3 for you. `lando doctor --app` runs the same login check against a running app and reports what it observed.
 
 ## Pin a version
 

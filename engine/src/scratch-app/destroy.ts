@@ -9,13 +9,14 @@ import {
   PreScratchDestroyEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
 import {
   DataMover,
   EventService,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
@@ -23,6 +24,9 @@ import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
+import { BuildOwner } from "../services/build-owner.ts";
+import { clearAppBuildResults } from "../services/build-results.ts";
+import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
 import { ScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -42,6 +46,7 @@ export const makeScratchReaper = Effect.gen(function* () {
   const mover = yield* DataMover;
   const router = yield* Effect.serviceOption(RouterService);
   const paths = yield* Effect.serviceOption(PathsService);
+  const stateStore = yield* StateStore;
   return Effect.fn("ScratchApp.reap")(
     function* (input: ScratchReapInput) {
       const entry = yield* registry.get(input.id);
@@ -62,6 +67,7 @@ export const makeScratchReaper = Effect.gen(function* () {
         root: plan?.root ?? AbsolutePath.make(entry?.rootPath ?? input.instanceRoot),
       };
       const keepVolumes = input.keepVolumes === true;
+      const scratchProviderId = String(plan?.provider ?? "lando");
       const payload = {
         scope: "scratch" as const,
         app,
@@ -130,6 +136,23 @@ export const makeScratchReaper = Effect.gen(function* () {
                 return outcome;
               }),
             });
+        // teardown succeeded: the destroyed container's build output is stale.
+        const buildOwner = BuildOwner.scratch(AppId.make(input.id));
+        yield* (
+          Option.isSome(paths)
+            ? removeAppBuildOutput(buildOwner, scratchProviderId, undefined, {
+                images: "release",
+              }).pipe(
+                Effect.provideService(PathsService, paths.value),
+                Effect.provideService(StateStore, stateStore),
+                Effect.provideService(RuntimeProviderRegistry, providers),
+              )
+            : clearAppBuildResults(stateStore, buildOwner)
+        ).pipe(
+          Effect.catch((failure) =>
+            warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
+          ),
+        );
         yield* events.publish(
           PostDestroyEvent.make({ app, evidence, outcome, timestamp: DateTime.nowUnsafe() }),
         );

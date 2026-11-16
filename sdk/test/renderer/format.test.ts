@@ -72,6 +72,17 @@ describe("neutral task completion", () => {
     expect(line).toBe("[web] • complete: HTTP 500 (12ms)");
   });
 
+  test("rounds sub-second durations to whole milliseconds", () => {
+    // Given
+    const fractional = { ...event, durationMs: 214.142611 };
+
+    // When
+    const line = renderPlainLine(fractional);
+
+    // Then
+    expect(line).toBe("[web] • complete: HTTP 500 (214ms)");
+  });
+
   test("reuses the neutral plain line when verbose output formats an info result", () => {
     // Given / When
     const line = renderVerboseLine(event);

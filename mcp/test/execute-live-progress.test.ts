@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { makeNestedExecute } from "@lando/mcp/execute";
 import { normalizeDefect, resolveCommandCompletion } from "@lando/sdk/command-result";
 import { Cause, Context, Effect, Exit, Schema } from "effect";
@@ -25,7 +26,7 @@ describe("nested MCP stream drain lifecycle", () => {
     };
     const defect = new Error("flush defect");
     const execute = makeNestedExecute(
-      Context.makeUnsafe<unknown>(new Map()),
+      Context.makeUnsafe<unknown>(Context.make(RuntimeCwd, "/captured-app").mapUnsafe),
       {
         sink: { emit: () => Effect.void },
         finish: () =>
@@ -39,6 +40,7 @@ describe("nested MCP stream drain lifecycle", () => {
     const outcome = await Effect.runPromise(
       execute(
         {
+          kind: "command" as const,
           spec: {
             id: "app:exec",
             summary: "Scoped",
@@ -65,7 +67,7 @@ describe("nested MCP stream drain lifecycle", () => {
     const primary = { _tag: "ExecError", message: "execution failed" };
     const secondary = new Error("flush defect");
     const execute = makeNestedExecute(
-      Context.makeUnsafe<unknown>(new Map()),
+      Context.makeUnsafe<unknown>(Context.make(RuntimeCwd, "/captured-app").mapUnsafe),
       { sink: { emit: () => Effect.void }, finish: () => Effect.die(secondary) },
       {
         execute: (command, execution) =>
@@ -82,6 +84,7 @@ describe("nested MCP stream drain lifecycle", () => {
     const outcome = await Effect.runPromise(
       execute(
         {
+          kind: "command" as const,
           spec: {
             id: "app:exec",
             summary: "Fail",

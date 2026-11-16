@@ -43,6 +43,7 @@ import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
+import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
@@ -71,39 +72,41 @@ const repairedLandofile = (): JsonSchema =>
   );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalServiceCreds(
-    evolveHistoricalComposeKnobValues(
-      evolveHistoricalSwarmReservations(
-        evolveHistoricalToolingVars(
-          evolveHistoricalToolingWrapper(
-            evolveHistoricalUploadDirs(
-              evolveHistoricalConsolePort(
-                evolveHistoricalToolingSensitivity(
-                  evolveHistoricalAppMountAcceleration(
-                    evolveHistoricalToolingShorthand(
-                      evolveHistoricalEnvironment(
-                        evolveHistoricalEndpointMetadata(
-                          evolveHistoricalServicePort(
-                            evolveHistoricalTimestamps(
-                              evolveHistoricalContainerUser(
-                                evolveHistoricalReadiness(
-                                  evolveHistoricalShorthand(
-                                    evolveHistoricalNetworks(
-                                      evolveHistoricalNativeInit(repairedLandofile()),
-                                      "bare",
+  evolveHistoricalSchedule(
+    evolveHistoricalServiceCreds(
+      evolveHistoricalComposeKnobValues(
+        evolveHistoricalSwarmReservations(
+          evolveHistoricalToolingVars(
+            evolveHistoricalToolingWrapper(
+              evolveHistoricalUploadDirs(
+                evolveHistoricalConsolePort(
+                  evolveHistoricalToolingSensitivity(
+                    evolveHistoricalAppMountAcceleration(
+                      evolveHistoricalToolingShorthand(
+                        evolveHistoricalEnvironment(
+                          evolveHistoricalEndpointMetadata(
+                            evolveHistoricalServicePort(
+                              evolveHistoricalTimestamps(
+                                evolveHistoricalContainerUser(
+                                  evolveHistoricalReadiness(
+                                    evolveHistoricalShorthand(
+                                      evolveHistoricalNetworks(
+                                        evolveHistoricalNativeInit(repairedLandofile()),
+                                        "bare",
+                                      ),
                                     ),
                                   ),
                                 ),
+                                "bare",
                               ),
-                              "bare",
                             ),
                           ),
                         ),
+                        "bare",
                       ),
-                      "bare",
                     ),
+                    "bare",
                   ),
-                  "bare",
                 ),
               ),
             ),

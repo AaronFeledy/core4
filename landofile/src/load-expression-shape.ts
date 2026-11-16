@@ -1,17 +1,15 @@
 import { type ExpressionNode, type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Predicate, Result } from "effect";
+import type { EnvironmentRecorder } from "./environment-dependencies.ts";
 import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression-file.ts";
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 
-export const buildArgumentPath = (path: readonly (string | number)[]): boolean =>
-  path[0] === "services" && path[2] === "build" && path[3] === "args" && path.length === 5;
-
 export const keyValueEntryPath = (path: readonly (string | number)[]): boolean =>
   eligibleBindingPath(path) ||
   (path[0] === "services" && path[2] === "labels" && path.length === 4) ||
-  buildArgumentPath(path);
+  (path[0] === "services" && path[2] === "build" && path[3] === "args" && path.length === 5);
 
 export const keyValueEntryHasExpression = (
   value: string,
@@ -28,8 +26,11 @@ export const keyValueEntryHasExpression = (
 };
 
 export interface ResolveLandofileLoadExpressionsOptions {
+  readonly defaultServiceType?: string;
   readonly pathPrefix?: readonly (string | number)[];
   readonly recorder?: LoadFailureRecorder | undefined;
+  /** Records static env members for every parsed expression site (deferred included). */
+  readonly environmentRecorder?: EnvironmentRecorder | undefined;
   readonly value: unknown;
   readonly source: LandofileLoadSource;
   readonly policy: LandofileLoadPolicy;

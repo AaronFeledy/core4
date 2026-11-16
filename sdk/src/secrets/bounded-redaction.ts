@@ -69,8 +69,9 @@ const appendReplacement = (
   match: RegExpExecArray,
 ): boolean => {
   if (typeof replacement === "string") return builder.append(replacement);
-  const groups = match.slice(1).map((group) => group ?? "");
-  return builder.append(replacement(match[0], ...groups));
+  // Captured groups pass through untouched: an unmatched optional group is
+  // `undefined` at runtime, exactly as `String.replace` hands it to a replacer.
+  return builder.append(replacement(match[0], ...match.slice(1)));
 };
 
 /** Mask overlapping occurrence unions, widening partial sentinel intersections. */

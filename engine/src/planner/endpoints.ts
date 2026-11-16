@@ -181,10 +181,12 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
               })),
             },
           };
+    const storeOwner = entry.storeOwner ?? name;
     const context = {
       appRoot: input.appRoot,
       appSlug: input.dataSlug ?? input.appSlug,
       serviceName: name,
+      storeOwner,
       configs: input.configs,
     };
     const preparedMounts = prepareServiceMounts({
@@ -240,6 +242,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         mounts: [...planWithShadows.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
       },
       serviceName: name,
+      storeOwner,
       appSlug: input.dataSlug ?? input.appSlug,
       appRoot: input.appRoot,
       intent: homeIntent,

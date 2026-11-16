@@ -129,3 +129,42 @@ test("classifyLoweredEnvRedaction omits public identities", () => {
   );
   expect(values).toEqual({ substring: [], wholeToken: [] });
 });
+
+test("includes proxy URL credentials from a service environment as substring values", () => {
+  const plan = planWith({
+    http_proxy: "http://proxyuser:proxypass-hunter2@127.0.0.1:3128",
+    DB_PASSWORD: "db-private",
+  });
+
+  const values = planRedactionValues(plan);
+
+  expect(values.substring).toEqual(expect.arrayContaining(["proxypass-hunter2", "proxyuser", "db-private"]));
+  // The inventory itself stays secret-name based; proxy keys are an additional redaction source.
+  expect([...sensitivePlanCandidates(plan)].map(({ path }) => path)).not.toContainEqual([
+    "services",
+    "db",
+    "environment",
+    "http_proxy",
+  ]);
+});
+
+test("classifyLoweredEnvRedaction includes proxy URL credentials for uppercase proxy keys", () => {
+  const values = classifyLoweredEnvRedaction({
+    HTTPS_PROXY: "http://lower-user:lower-pass@127.0.0.1:3128",
+    FTP_PROXY: "ftp://ftp-user:ftp-pass@127.0.0.1:21",
+  });
+
+  expect(values.substring).toEqual(
+    expect.arrayContaining(["lower-user", "lower-pass", "ftp-user", "ftp-pass"]),
+  );
+  expect(values.wholeToken).toEqual([]);
+});
+
+test("omits public proxy userinfo", () => {
+  const values = classifyLoweredEnvRedaction(
+    { ALL_PROXY: "http://proxyuser:proxypass@127.0.0.1:3128" },
+    { publicValues: new Set(["proxyuser"]) },
+  );
+
+  expect(values.substring).toEqual(["proxypass"]);
+});

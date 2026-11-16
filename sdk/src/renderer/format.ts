@@ -35,7 +35,7 @@ const asNumber = (value: unknown): number | undefined => (typeof value === "numb
 
 export const formatDurationSuffix = (durationMs: number | undefined): string => {
   if (durationMs === undefined) return "";
-  if (durationMs < 1000) return ` (${durationMs}ms)`;
+  if (durationMs < 1000) return ` (${Math.round(durationMs)}ms)`;
   return ` (${(durationMs / 1000).toFixed(1)}s)`;
 };
 

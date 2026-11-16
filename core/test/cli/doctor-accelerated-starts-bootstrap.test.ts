@@ -74,7 +74,9 @@ test("safe-mode doctor inventories the state store supplied by its provider runt
     ),
   );
   // Then exactly the injected journal is reported, not journals from the ambient home.
-  const checks = report.subsystems.checks.filter(({ name }) => name === "accelerated-start");
+  const checks = report.checks.filter(
+    (check) => check.section === "accelerated-starts" && check.name === "accelerated-start",
+  );
   expect(checks).toHaveLength(1);
   expect(checks[0]?.context).toMatchObject({
     appId: "runtime-app",

@@ -73,7 +73,9 @@ test.each([false, true])(
         Effect.provideService(RuntimeLayerFactory, RuntimeLayerFactory.of({ make: () => runtime })),
       ),
     );
-    const checks = report.subsystems.checks.filter(({ name }) => name === "missing-app-root");
+    const checks = report.checks.filter(
+      (check) => check.section === "missing-app-roots" && check.name === "missing-app-root",
+    );
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({
       context: { appRoot: "/apps/gone" },

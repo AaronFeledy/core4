@@ -198,6 +198,49 @@ describe("provider-lando applied state persistence", () => {
       });
     }
   }
+  test("list inspects only applied plans for the requested app", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const first: AppPlan = { ...plan, id: AppId.make("first-app"), name: "first-app", slug: "first-app" };
+      const second: AppPlan = {
+        ...plan,
+        id: AppId.make("second-app"),
+        name: "second-app",
+        slug: "second-app",
+      };
+      await Effect.runPromise(persistAppliedPlan(state, first));
+      await Effect.runPromise(persistAppliedPlan(state, second));
+      const requests: string[] = [];
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          sanitizeAppliedPlan: (value) => value,
+          appliedPlanState: state,
+          appliedPlanStateDir: stateDir,
+          podmanApi: {
+            info: Effect.succeed({}),
+            ping: Effect.void,
+            request: (input) =>
+              Effect.sync(() => {
+                requests.push(input.path);
+                return { status: 404, body: "" };
+              }),
+          },
+        }),
+      );
+
+      const all = await Effect.runPromise(provider.list({}));
+      expect(all).toHaveLength(4);
+      requests.length = 0;
+
+      const filtered = await Effect.runPromise(provider.list({ app: first.id }));
+
+      expect(filtered.map((row) => row.app)).toEqual([first.id, first.id]);
+      expect(requests).toHaveLength(2);
+      expect(requests.some((path) => path.includes(String(second.id)))).toBe(false);
+    });
+  });
+
   test("appliedPlanPath places each app in the applied-plans namespace", () => {
     expect(appliedPlanPath("/tmp/plugin-state/", plan.id)).toBe(
       "/tmp/plugin-state/applied-plans/applied-state.json",

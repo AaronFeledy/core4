@@ -51,6 +51,7 @@ const project = async (root: string) =>
   mcpRegistryWithToolingEntries(
     { commandEntries: [] },
     compileInspectedAppCommands({
+      sourcePath: root,
       landofile: {},
       inspection: await Effect.runPromise(inspectBunShellScripts({ appRoot: root })),
       redact: createRedactor("secrets").redactString,

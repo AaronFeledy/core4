@@ -2,7 +2,7 @@ import { acceleratedStartInventory } from "@lando/engine/operations/accelerated-
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { FileSystem, StateStore } from "@lando/sdk/services";
 import { Effect, Layer, Option } from "effect";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
 
 export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
   const store = yield* Effect.serviceOption(StateStore);
@@ -26,8 +26,9 @@ export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (tex
   );
   return [
     ...inventory.unreadable.map(
-      (journal): DoctorSubsystemCheck => ({
+      (journal): DoctorFinding => ({
         name: "accelerated-start-journal",
+        subject: redact(journal.path),
         status: "warn",
         severity: "warn",
         recovery: "manual",
@@ -40,8 +41,9 @@ export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (tex
       }),
     ),
     ...inventory.records.map(
-      (record): DoctorSubsystemCheck => ({
+      (record): DoctorFinding => ({
         name: "accelerated-start",
+        subject: redact(record.appRoot),
         status: "warn",
         severity: "warn",
         recovery: "manual",
@@ -54,9 +56,9 @@ export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (tex
             providerId: record.providerId,
             engineId: record.engineId,
             journalPath: record.path,
-            sessions: record.sessions.map(({ name }) => name).join(", "),
-            volumes: record.targets.map(({ volumeName }) => volumeName).join(", "),
-          }).map(([key, value]) => [key, redact(value)]),
+            sessions: record.sessions.map(({ name }) => name),
+            volumes: record.targets.map(({ volumeName }) => volumeName),
+          }).map(([key, value]) => [key, typeof value === "string" ? redact(value) : value.map(redact)]),
         ),
         solutions: [{ kind: "manual", description: redact(record.remediation) }],
       }),

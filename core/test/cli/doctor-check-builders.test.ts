@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
-import {
-  DoctorSeveritySchema,
-  DoctorStatusSchema,
-  failCheck,
-  passCheckNamed,
-  warnCheck,
-} from "../../src/cli/commands/doctor-check-builders";
+import { failCheck, passCheckNamed, warnCheck } from "../../src/cli/commands/doctor-check-builders";
+import { DoctorSeverity, DoctorStatus } from "../../src/cli/commands/doctor-contract";
 
 describe("doctor check builders", () => {
   const input = { name: "example", context: { ready: "false" }, solutions: [] } as const;
@@ -50,18 +45,18 @@ describe("doctor check builders", () => {
   });
 
   test.each(["pass", "warn", "fail"])("accepts status %s", (status) => {
-    expect(Schema.is(DoctorStatusSchema)(status)).toBe(true);
+    expect(Schema.is(DoctorStatus)(status)).toBe(true);
   });
 
   test.each(["warning", "info", "error", "PASS", "", null, undefined, 0, {}])(
     "rejects non-status %p",
     (status) => {
-      expect(Schema.is(DoctorStatusSchema)(status)).toBe(false);
+      expect(Schema.is(DoctorStatus)(status)).toBe(false);
     },
   );
 
   test("preserves the captured pre-refactor status JSON Schema", () => {
-    const document = Schema.toJsonSchemaDocument(DoctorStatusSchema);
+    const document = Schema.toJsonSchemaDocument(DoctorStatus);
     expect(document).toEqual({
       dialect: "draft-2020-12",
       schema: { type: "string", enum: ["pass", "warn", "fail"] },
@@ -70,7 +65,7 @@ describe("doctor check builders", () => {
   });
 
   test("preserves severity schema choices", () => {
-    const document = Schema.toJsonSchemaDocument(DoctorSeveritySchema);
+    const document = Schema.toJsonSchemaDocument(DoctorSeverity);
     expect(document.schema).toEqual({ type: "string", enum: ["info", "warn", "error"] });
   });
 });

@@ -151,6 +151,11 @@ export const globalTeardownHarness = async (
             status: "running" as const,
             containerId: "owned-container",
             publications: { status: "unknown" as const },
+            labels: {
+              "dev.lando.app": "global",
+              "dev.lando.app-root": input.orphanRoot,
+              "dev.lando.service": "ssh-agent",
+            },
           },
         ];
       }),

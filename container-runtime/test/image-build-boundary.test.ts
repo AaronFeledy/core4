@@ -80,6 +80,8 @@ test.each([
           service: serviceName,
           plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
           buildKey: "stream-error",
+          labels: { "dev.lando.test": "boundary" },
+          ref: "lando-build-docker-web-stream-error",
         },
         { providerId, api, sourceEnv: {} },
       ),
@@ -111,6 +113,8 @@ test("finds a valid error frame among malformed and partial JSON lines", async (
           service: serviceName,
           plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
           buildKey: "malformed-stream",
+          labels: { "dev.lando.test": "boundary" },
+          ref: "lando-build-docker-web-malformed-stream",
         },
         { providerId, api, sourceEnv: {} },
       ),
@@ -139,6 +143,8 @@ test("returns an artifact without a digest when exact-tag image inspect succeeds
         service: serviceName,
         plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
         buildKey: "inspect-success",
+        labels: { "dev.lando.test": "boundary" },
+        ref: "lando-build-docker-web-inspect-success",
       },
       { providerId, api, sourceEnv: {} },
     ),
@@ -169,6 +175,8 @@ test("fails buildArtifact when exact-tag image inspect returns 404", async () =>
           service: serviceName,
           plan: plan(derivedService({ kind: "ref", ref: "alpine:3.22" })),
           buildKey: "inspect-missing",
+          labels: { "dev.lando.test": "boundary" },
+          ref: "lando-build-docker-web-inspect-missing",
         },
         { providerId, api, sourceEnv: {} },
       ),
@@ -180,7 +188,7 @@ test("fails buildArtifact when exact-tag image inspect returns 404", async () =>
   expect(failure.details).toEqual(expect.objectContaining({ status: 404 }));
 });
 
-test("verifies base and derived tags when both builds run", async () => {
+test("verifies an untagged base by ID and the final build by tag", async () => {
   const context = await mkdtemp(join(tmpdir(), "lando-build-boundary-"));
   try {
     await writeFile(join(context, "Containerfile"), "FROM alpine\n");
@@ -189,13 +197,17 @@ test("verifies base and derived tags when both builds run", async () => {
       request: (request: { readonly method: "GET" | "POST"; readonly path: `/${string}` }) =>
         Effect.sync(() => {
           if (request.method === "GET") inspected.push(request.path);
-          return { status: 200, body: request.method === "GET" ? "{}" : "" };
+          return {
+            status: 200,
+            body: request.method === "GET" ? "{}" : '{"aux":{"ID":"sha256:base-image"}}',
+          };
         }),
     };
 
     await Effect.runPromise(
       buildContainerArtifact(
         {
+          labels: { "dev.lando.test": "boundary" },
           app: appId,
           service: serviceName,
           plan: plan(
@@ -206,15 +218,13 @@ test("verifies base and derived tags when both builds run", async () => {
             }),
           ),
           buildKey: "two-builds",
+          ref: "lando-build-docker-web-two-builds",
         },
         { providerId, api, sourceEnv: {} },
       ),
     );
 
-    expect(inspected).toEqual([
-      "/images/lando-build-docker-web-two-builds-base/json",
-      "/images/lando-build-docker-web-two-builds/json",
-    ]);
+    expect(inspected).toEqual(["/images/base-image/json", "/images/lando-build-docker-web-two-builds/json"]);
   } finally {
     await rm(context, { recursive: true, force: true });
   }
@@ -237,6 +247,7 @@ test("redacts build arguments from surfaced stream errors", async () => {
       Effect.flip(
         buildContainerArtifact(
           {
+            labels: { "dev.lando.test": "boundary" },
             app: appId,
             service: serviceName,
             plan: plan(
@@ -249,6 +260,7 @@ test("redacts build arguments from surfaced stream errors", async () => {
               }),
             ),
             buildKey: "secret-stream",
+            ref: "lando-build-docker-web-secret-stream",
           },
           { providerId, api, sourceEnv: {} },
         ),

@@ -55,10 +55,13 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
     return resolveMutationPlan(appId).pipe(Effect.catch(() => Effect.succeed(undefined)));
   };
 
-  const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {
+  const rememberPlan = (
+    plan: AppPlan,
+    mode: { readonly complete?: boolean } = {},
+  ): Effect.Effect<void, ProviderUnavailableError> => {
     const write = Effect.gen(function* () {
       const previous = yield* resolveMutationPlan(plan.id);
-      const persisted = sanitize(mergeAppliedPlan(previous, plan, reconcile));
+      const persisted = sanitize(mergeAppliedPlan(previous, plan, mode));
       if (state !== undefined) yield* options.persist(state, persisted);
       plans.set(plan.id, persisted);
     });

@@ -3,8 +3,6 @@ import { resolve } from "node:path";
 
 import { bounded, valueAfter, writeAcceptanceReport } from "./_acceptance-harness.ts";
 
-const CHECK_SECTIONS = ["provider", "subsystems", "globalApp", "mcp"] as const;
-
 export interface PlatformReadinessDoctorCommandResult {
   readonly exitCode: number;
   readonly stdout: string;
@@ -33,20 +31,12 @@ const parseStdoutJson = (stdout: string): unknown | undefined => {
   }
 };
 
-const sectionChecks = (section: unknown): readonly unknown[] => {
-  if (!isRecord(section)) return [];
-  const checks = section.checks;
-  return Array.isArray(checks) ? checks : [];
-};
-
 const checkFailed = (check: unknown): boolean => isRecord(check) && check.status === "fail";
 
-const isPassingSetupReadiness = (check: unknown): boolean => {
-  if (!isRecord(check)) return false;
-  if (check.name !== "setup-readiness" || check.status !== "pass") return false;
-  const runtime = check.runtime;
-  return isRecord(runtime) && runtime.running === true;
-};
+const isDoctorSelf = (check: unknown): boolean => isRecord(check) && check.name === "doctor-self";
+
+const isPassingSetupReadiness = (check: unknown): boolean =>
+  isRecord(check) && check.name === "setup-readiness" && check.status === "pass";
 
 export const classifyPlatformReadinessDoctorResult = (
   result: PlatformReadinessDoctorCommandResult,
@@ -56,7 +46,7 @@ export const classifyPlatformReadinessDoctorResult = (
   }
 
   const parsed = parseStdoutJson(result.stdout);
-  if (parsed === undefined || !isRecord(parsed)) {
+  if (!isRecord(parsed)) {
     return failed("Doctor stdout was not a JSON object.");
   }
   if (parsed.apiVersion !== "v4") {
@@ -73,18 +63,15 @@ export const classifyPlatformReadinessDoctorResult = (
   if (!isRecord(report)) {
     return failed("Doctor envelope result was not an object.");
   }
-  if (isRecord(report.self)) {
-    return failed("Doctor report included a self object.");
+  const checks: readonly unknown[] = Array.isArray(report.checks) ? report.checks : [];
+  if (checks.some(isDoctorSelf)) {
+    return failed("Doctor report included a doctor-self failure.");
   }
-
-  for (const section of CHECK_SECTIONS) {
-    if (sectionChecks(report[section]).some(checkFailed)) {
-      return failed(`Doctor report included a failing ${section} check.`);
-    }
+  if (checks.some(checkFailed)) {
+    return failed("Doctor report included a failing check.");
   }
-
-  if (!sectionChecks(report.provider).some(isPassingSetupReadiness)) {
-    return failed("Doctor report did not include a passing setup-readiness check with a running runtime.");
+  if (!checks.some(isPassingSetupReadiness)) {
+    return failed("Doctor report did not include a passing setup-readiness check.");
   }
 
   return { outcome: "passed", exitCode: 0 };

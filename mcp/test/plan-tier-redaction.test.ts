@@ -51,6 +51,7 @@ test("MCP exec-result rendering masks bare whole-token password, keeps wordpress
   const redactor = await Effect.runPromise(service.forProfile("secrets", { sourceEnv }));
   const payload = "PASSWORD=wordpress\nwp-content/plugins/wordpress-seo\nprefix-substring-private-suffix";
   const entry = {
+    kind: "command" as const,
     spec: {
       id: "app:exec",
       summary: "Echo plan-sensitive output",

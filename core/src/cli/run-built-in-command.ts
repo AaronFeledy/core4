@@ -10,6 +10,7 @@ import { compiledCommandInputFromArgv } from "./compiled-input";
 import { InvalidCliInvocationError, invocationParityError } from "./compiled-invocation-parity";
 import { runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
 import { type HostProxyLandoCall, withHostProxyCall } from "./host-proxy/call-context";
+import type { CommandTokens } from "./invocation";
 import type { LandoCommandSpec } from "./spec/command-base";
 
 export const compiledCommandOptionsFromSpec = (spec: LandoCommandSpec, input: unknown) => {
@@ -25,13 +26,14 @@ export const compiledCommandOptionsFromSpec = (spec: LandoCommandSpec, input: un
 
 export const runBuiltInCommand = (
   entry: BuiltInCommandEntry,
-  argv: ReadonlyArray<string>,
+  tokens: CommandTokens,
   parentSignal?: AbortSignal,
   hostProxy?: HostProxyLandoCall,
   context?: CliInvocationContext,
 ): Promise<void> => {
   if (parentSignal?.aborted) return Promise.resolve();
-  const diagnostic = entry.spec.strict === false ? undefined : invocationParityError(entry.spec.id, argv);
+  const diagnostic =
+    entry.spec.strict === false ? undefined : invocationParityError(entry.spec.id, tokens.argv);
   if (diagnostic !== undefined) {
     return runCompiledCommand(
       Effect.fail(
@@ -53,11 +55,12 @@ export const runBuiltInCommand = (
 
   return runWithProcessAbortSignal(
     (signal) => {
-      const input = compiledCommandInputFromArgv(entry.spec.id, argv, {
+      const input = compiledCommandInputFromArgv(entry.spec.id, tokens.argv, {
+        tokens,
         signal,
         ...(context === undefined ? {} : { context }),
       });
-      if (entry.spec.id === "meta:mcp") return runMetaMcp(argv, signal, context);
+      if (entry.spec.id === "meta:mcp") return runMetaMcp(tokens, signal, context);
 
       const runtime = makeLandoRuntime(
         cliRuntimeOptions(

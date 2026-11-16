@@ -177,6 +177,37 @@ describe("stop summary line", () => {
 });
 
 describe("destroy and global summary lines", () => {
+  test.each(["destroy", "global"] as const)(
+    "%s reports retained, removed, and in-use images even without service changes",
+    (kind) => {
+      const builtImages = {
+        removed: 3,
+        released: 2,
+        inUse: [
+          { ref: "image-a", containers: ["web", "worker"], reason: "busy" },
+          { ref: "image-b", containers: [], reason: "busy" },
+        ],
+      };
+      const result = {
+        app: "shop",
+        outcome: "unchanged" as const,
+        servicesDestroyed: [],
+        volumesRemoved: false,
+        snapshotsRemoved: 0,
+        builtImages,
+      };
+      const output =
+        kind === "global"
+          ? renderGlobalDestroyResult({ ...result, materialized: true })
+          : renderDestroyAppResult(result);
+      expect(output.split("\n").slice(1)).toEqual([
+        `Kept 2 built images for reuse for up to 7 days; ${kind === "global" ? "--purge" : "--purge-caches"} removes them.`,
+        "Removed 3 built images.",
+        "Kept image image-a: used by container web, worker.",
+        "Kept image image-b: in use.",
+      ]);
+    },
+  );
   test("keeps the volumes trailer after the observed services", () => {
     const result: DestroyAppResult = {
       app: "shop",

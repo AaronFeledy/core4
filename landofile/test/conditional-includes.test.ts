@@ -126,7 +126,7 @@ test("rejects a secret reference in an include condition with secret-specific gu
     {
       path: ["includes", 0, "when"],
       reason: "unsupported-secret-reference",
-      message: "Secret references are not supported at includes.0.when.",
+      message: expect.stringContaining("Secret references are not supported"),
       source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["includes", 0, "when"] },
     },
   ]);

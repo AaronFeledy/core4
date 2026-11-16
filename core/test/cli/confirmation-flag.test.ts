@@ -4,7 +4,9 @@ import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { appsScratchDestroySpec } from "../../src/cli/command-specs/apps/scratch/destroy.ts";
 import { flagDefinitionsForCommand } from "../../src/cli/compiled-argv.ts";
+import { specOwnerPolicy } from "../../src/cli/flag-claims.ts";
 import { validateCommandCliFlags } from "../../src/cli/flag-value-validation.ts";
+import { splitCommandTokens } from "../../src/cli/invocation.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import {
   pluginFlagDefinitions,
@@ -13,6 +15,9 @@ import {
   renderPluginOwnedCommandHelp,
 } from "../../src/cli/run-plugin-owned-command.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+
+const tokensFor = (spec: ExecutableCommandSpec, argv: ReadonlyArray<string>) =>
+  splitCommandTokens(argv, specOwnerPolicy(spec, pluginFlagDefinitions(spec)), "all").command;
 
 const DESTRUCTIVE_VERBS = new Set([
   "destroy",
@@ -105,7 +110,7 @@ describe("confirmation argv and help", () => {
       const argName = Object.keys(spec.args ?? {})[0];
       const argv = argName === undefined ? ["-y"] : ["snap", "-y"];
       // When
-      const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+      const parsed = pluginOwnedCommandInputFromArgv(spec, tokensFor(spec, argv));
       // Then
       expect(parsed.flags.yes).toBe(true);
       if (argName !== undefined) expect(parsed.args[argName]).toBe("snap");
@@ -117,7 +122,7 @@ describe("confirmation argv and help", () => {
       // Given
       const spec = sqlSpec(id);
       // When
-      const error = pluginOwnedCliFlagError(spec, ["snap", "-y"]);
+      const error = pluginOwnedCliFlagError(spec, tokensFor(spec, ["snap", "-y"]));
       // Then
       expect(error).toBeUndefined();
     }

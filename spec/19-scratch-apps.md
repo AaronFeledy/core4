@@ -38,9 +38,9 @@ Scratch ids MAY appear in user-facing output and are not secrets.
 
 ### 21.3 The scratch app root
 
-Scratch state lives under `<userDataRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan` record, from which `scratch:info` derives its output; build outcomes use the cache-root `scratch-build-results` index (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
+Scratch state lives under `<userDataRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan` record, from which `scratch:info` derives its output; artifact-step outcomes use the scratch id's own records in the data-root `artifact-build-results` index and reuse any other owner's record of the same build key (§6.13.5), so a fork reuses its source app's built images; app-step outcomes use the scratch id's own bucket in the `build-results-owned` index (§12.1), so two scratch apps never share app-step results even when forked from one source app. Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
 
-The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
+The entire scratch tree MUST be excluded from cwd discovery. After resource destruction succeeds, scope finalization removes the scratch app's app-step results, root, caches, and transcripts; its artifact records are released (§6.13.5), so a scratch app of the same stack started within the release window reuses its built images. App-step results are bound to their container (§6.13.5), so removing them is storage cleanup. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
 
 ### 21.4 Scratch sources
 
@@ -86,7 +86,7 @@ Required behavior:
 - `acquire` binds the root, caches, host-proxy socket, routes, containers, and volumes to the caller's `Scope`. Finalization MUST destroy resources before unlinking state.
 - CLI foreground acquisition uses the command scope so interruption reaches finalization.
 - Destroy is idempotent after success; an unresolved id raises `ScratchUnknownIdError`.
-- Operations for one id are serialized across callers and processes through the canonical state and locking contracts (§12.7).
+- Operations for one id are serialized across callers and processes by one lifecycle lock: the app mutation lock of kind `scratch` keyed by the id and its canonical instance root `<userDataRoot>/scratch/<id>/`, also for passthrough forks whose plan root is the source app. Acquisition holds it from the registry `acquire` write through `mark-running`, covering its own failure cleanup; explicit destroy and stop, `apps:poweroff`, foreground scope-close cleanup, and each GC reap acquire it. Scope-close cleanup reacquires the lock instead of inheriting the acquisition's hold. The lock is taken before any global or app mutation lock.
 - Failures are tagged as listed in §21.14.
 
 The service reuses the standard Landofile, planner, build, routing, certificate, and provider services.
@@ -202,11 +202,13 @@ Arguments after `--` pass verbatim to provider exec. Stdin and PTY follow the §
 
 The `scratch-registry` at `<userDataRoot>/scratch/registry.bin` (§12.1) is the active-process source of truth. Entries identify the scratch, source, isolation, global-storage policy, detached and owner state, managed paths, lifecycle status, and timestamps. Acquisition records state before provider operations, marks running after start, and removes the entry after destroy. Failed finalization leaves a cleanup-pending entry: a destroy that fails after `pre-scratch-destroy` records `destroyed-pending-cleanup` best effort, without replacing the original failure, and GC treats that entry as a candidate whatever its owner liveness or detached state.
 
-Registry updates MUST use the canonical atomic, lockable `StateStore` contract (§12.7). `apps:scratch:gc` combines two authorities:
+Registry updates MUST use the canonical atomic, lockable `StateStore` contract (§12.7). `apps:scratch:gc` combines three authorities:
 
-1. Registry entries whose recorded owner is no longer alive are candidates.
+1. Registry entries whose recorded owner is no longer alive, and entries whose instance directory is missing, are candidates; so are instance directories with no registry entry.
 2. Provider resources labeled `dev.lando.scratch=TRUE` whose scratch id is absent from the registry are candidates.
-3. Without `--prune`, GC reports candidates and exits successfully. With `--prune`, it destroys each id and removes managed host state.
+3. Canonical scratch ids with build output under `<userDataRoot>/builds/scratch/<id>/` and no registry entry are candidates.
+
+Without `--prune`, GC reports `inspected`, the candidate ids as `candidates`, and empty `reaped` and `errors`, and exits successfully. With `--prune`, it reports the same `candidates`, takes each candidate's lifecycle lock (§21.5), re-evaluates the id, skips one that stopped being a candidate, and destroys the rest through the scratch reaper, which removes managed host state including the id's app-step results and transcripts.
 
 The registry walk MUST NOT replace the provider-label scan, and the provider-label scan MUST NOT replace the registry walk. The combined protocol recovers both lost registry entries and host-only artifacts. The JSON report is the canonical machine shape and GC is safe for unattended use.
 

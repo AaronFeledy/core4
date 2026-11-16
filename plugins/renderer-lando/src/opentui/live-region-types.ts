@@ -1,38 +1,30 @@
-import type { NativeStyledTextModuleLike } from "./ansi-styled-text.ts";
+import type { NativeStyledTextLike, NativeStyledTextModuleLike } from "./ansi-styled-text.ts";
 import type { LiveRegionSpoolFactory } from "./live-region-spool.ts";
 import type { OpenTuiModuleLike, RendererLike } from "./prompt-driver-types.ts";
 
 export type LiveRegionScreenMode = "alternate-screen" | "main-screen" | "split-footer";
 type LiveRegionExternalOutputMode = "capture-stdout" | "passthrough";
 
-export interface LiveRegionRenderableLike {
-  add?(child: LiveRegionRenderableLike): unknown;
+interface LiveRegionNodeLike {
   destroy?(): unknown;
+  width: number;
+  height: number;
 }
 
-interface ScrollbackRenderContextLike {
-  readonly width: number;
-  readonly renderContext: unknown;
+export interface LiveRegionRenderableLike extends LiveRegionNodeLike {
+  add?(child: LiveRegionNodeLike): unknown;
 }
 
-interface ScrollbackSnapshotLike {
-  readonly root: LiveRegionRenderableLike;
-  readonly width?: number;
-  readonly height?: number;
-  readonly startOnNewLine?: boolean;
-  readonly trailingNewline?: boolean;
+export interface LiveRegionTextLike extends LiveRegionNodeLike {
+  content: NativeStyledTextLike;
 }
-
-type ScrollbackWriterLike = (context: ScrollbackRenderContextLike) => ScrollbackSnapshotLike;
 
 export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProcessFn"> {
   readonly root: {
     add(child: LiveRegionRenderableLike): unknown;
   };
-  writeToScrollback(writer: ScrollbackWriterLike): void;
   requestLive(): void;
   dropLive(): void;
-  readonly liveRequestCount: number;
   targetFps: number;
   maxFps: number;
   resize(width: number, height: number): void;
@@ -40,18 +32,21 @@ export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProce
   externalOutputMode: LiveRegionExternalOutputMode;
   readonly terminalWidth: number;
   readonly terminalHeight: number;
-  setCursorPosition(x: number, y: number, visible: boolean): void;
   on(event: "resize", listener: () => void): LiveRegionRendererLike;
   off(event: "resize", listener: () => void): LiveRegionRendererLike;
-  footerHeight: number;
-  resetSplitFooterForReplay(options: { readonly clearSavedLines: boolean }): void;
+  /** Restores the terminal asynchronously; await `closed` before writing to the terminal again. */
   destroy(): void;
-  suspend?(): void;
-  resume?(): void;
+  /** True once destroyed, including when OpenTUI tears itself down after its output stream fails. */
+  readonly isDestroyed: boolean;
+  /** Settles after destruction writes the remaining output and restores the terminal. */
+  readonly closed: Promise<void>;
+  /** Hands the terminal back; OpenTUI rejects a transition while another one is pending. */
+  suspend(): Promise<void>;
+  resume(): Promise<void>;
 }
 
-interface RenderableConstructorLike {
-  new (context: unknown, options: Record<string, unknown>): LiveRegionRenderableLike;
+interface RenderableConstructorLike<TRenderable> {
+  new (context: unknown, options: Record<string, unknown>): TRenderable;
 }
 
 export interface OpenTuiLiveRegionModuleLike<
@@ -59,11 +54,8 @@ export interface OpenTuiLiveRegionModuleLike<
 > extends NativeStyledTextModuleLike {
   createCliRenderer(config: Record<string, unknown>): Promise<TRenderer>;
   readonly RGBA: NativeStyledTextModuleLike["RGBA"] & OpenTuiModuleLike["RGBA"];
-  BoxRenderable: RenderableConstructorLike;
-  TextRenderable: new (
-    context: unknown,
-    options: Record<string, unknown>,
-  ) => Pick<LiveRegionRenderableLike, "destroy">;
+  BoxRenderable: RenderableConstructorLike<LiveRegionRenderableLike>;
+  TextRenderable: RenderableConstructorLike<LiveRegionTextLike>;
 }
 
 export interface LiveRegionStdout {
@@ -80,7 +72,6 @@ export interface LiveRegionControllerOptions {
   readonly noColor?: boolean;
   readonly width: number;
   readonly height: number;
-  readonly footerHeight?: number;
   readonly onResize?: (width: number, height: number) => void;
 }
 

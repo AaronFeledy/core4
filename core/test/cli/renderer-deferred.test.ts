@@ -161,6 +161,16 @@ describe("renderer-selection integration with deferred surfaces", () => {
     expect(resolveRendererMode({ argv: ["--renderer=plain"] }).mode).toBe("plain");
   });
 
+  test("a deferred flag wins over an invalid renderer value", () => {
+    try {
+      resolveRendererMode({ argv: ["--renderer=bogus", "--expand"] });
+      throw new Error("expected throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotImplementedError);
+      expect((error as NotImplementedError).message).toContain("--expand");
+    }
+  });
+
   test("deferred flag rejection happens before --renderer parsing (so order does not matter)", () => {
     expect(() => resolveRendererMode({ argv: ["--renderer=json", "--collapse"] })).toThrow(
       NotImplementedError,

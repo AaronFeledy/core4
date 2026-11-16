@@ -9,7 +9,7 @@ import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
-import type { DoctorSelectionRecord } from "./doctor-contract";
+import type { DoctorSelection } from "./doctor-contract";
 
 export interface DoctorSelectionOptions {
   readonly flagProviderId?: string | undefined;
@@ -28,7 +28,7 @@ const branded = (value: string | undefined): ProviderId | undefined => {
   return ProviderId.make(trimmed);
 };
 
-export const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSelectionRecord => ({
+export const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSelection => ({
   providerId: String(resolution.providerId),
   source: resolution.source,
   inputs: {

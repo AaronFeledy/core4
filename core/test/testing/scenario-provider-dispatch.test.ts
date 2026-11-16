@@ -5,7 +5,14 @@ import { withScenarioContext } from "@lando/core/testing";
 import { resolveDesiredAppTarget } from "@lando/engine/landofile/app-resolution";
 import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import { CliInvocation } from "../../src/runtime/invocation-context.ts";
@@ -35,6 +42,38 @@ const planAt = (id: string, appRoot: AbsolutePath): AppPlan => ({
 });
 
 type ScenarioProvider = ReturnType<typeof makeScenarioProvider>;
+
+const serviceAt = (name: string): ServicePlan => ({
+  name: ServiceName.make(name),
+  type: "test",
+  provider: ProviderId.make("test"),
+  primary: false,
+  artifact: { kind: "ref", ref: `${name}:test` },
+  command: [],
+  environment: {},
+  mounts: [],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata: {
+    resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00.000Z"),
+    source: "scenario-provider-dispatch.test",
+    runtime: 4,
+  },
+  extensions: {},
+});
+
+const planWith = (id: string, appRoot: AbsolutePath, services: ReadonlyArray<string>): AppPlan => ({
+  ...planAt(id, appRoot),
+  services: Object.fromEntries(services.map((service) => [service, serviceAt(service)])),
+});
+
+const appliedServices = async (provider: ScenarioProvider, app: string): Promise<ReadonlyArray<string>> => {
+  const records = await Effect.runPromise(provider.appliedPlans);
+  const record = records.find((candidate) => candidate.id === AppId.make(app));
+  return Object.keys(record?.services ?? {}).sort();
+};
 
 // Plans a fixture through the real planner and applies it, as `lando start` does.
 const planAndApply = async (provider: ScenarioProvider, root: string): Promise<AppPlan> => {
@@ -300,4 +339,58 @@ test("observes only the containers its apply, stop, and destroy produced", async
       }),
     ),
   );
+});
+
+test("carries previously recorded services through a partial apply", async () => {
+  const provider = makeScenarioProvider();
+  const root = AbsolutePath.make("/tmp/scenario-merge-app");
+  await Effect.runPromise(
+    Effect.scoped(provider.provider.apply(planWith("merge-app", root, ["app", "db"]), { reconcile: false })),
+  );
+  await Effect.runPromise(
+    Effect.scoped(provider.provider.apply(planWith("merge-app", root, ["app"]), { reconcile: false })),
+  );
+
+  expect(await appliedServices(provider, "merge-app")).toEqual(["app", "db"]);
+});
+
+test("merges a partial apply that supplies its own recorded plan", async () => {
+  const provider = makeScenarioProvider();
+  const root = AbsolutePath.make("/tmp/scenario-merge-recorded-app");
+  await Effect.runPromise(
+    Effect.scoped(
+      provider.provider.apply(planWith("merge-recorded-app", root, ["app", "db"]), { reconcile: false }),
+    ),
+  );
+  await Effect.runPromise(
+    Effect.scoped(
+      provider.provider.apply(planWith("merge-recorded-app", root, ["app"]), {
+        reconcile: false,
+        recordedPlan: planWith("merge-recorded-app", root, ["app"]),
+      }),
+    ),
+  );
+
+  expect(await appliedServices(provider, "merge-recorded-app")).toEqual(["app", "db"]);
+});
+
+test("replaces the record when the apply is complete", async () => {
+  const provider = makeScenarioProvider();
+  const root = AbsolutePath.make("/tmp/scenario-complete-app");
+  await Effect.runPromise(
+    Effect.scoped(
+      provider.provider.apply(planWith("complete-app", root, ["app", "db"]), { reconcile: false }),
+    ),
+  );
+  await Effect.runPromise(
+    Effect.scoped(provider.provider.apply(planWith("complete-app", root, ["app"]), { reconcile: false })),
+  );
+  expect(await appliedServices(provider, "complete-app")).toEqual(["app", "db"]);
+  await Effect.runPromise(
+    Effect.scoped(
+      provider.provider.apply(planWith("complete-app", root, ["app"]), { reconcile: false, complete: true }),
+    ),
+  );
+
+  expect(await appliedServices(provider, "complete-app")).toEqual(["app"]);
 });

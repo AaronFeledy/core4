@@ -1,6 +1,6 @@
 import { PortablePath, ProviderId, type VolumeSnapshotRef } from "@lando/sdk/schema";
 import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
-import { type Effect, type Scope, Stream } from "effect";
+import { Effect, type Scope, Stream } from "effect";
 import type { ProviderErrorMember } from "../../../src/providers/output-policy.ts";
 import { plan, target } from "./error-registry.ts";
 
@@ -49,9 +49,18 @@ export const memberCalls = {
       upstream: { _tag: "unix", path: plan.root },
       socketName: "agent",
     }),
-  buildArtifact: (p) => p.buildArtifact({ app: plan.id, service: target.service, plan, buildKey: "key" }),
+  buildArtifact: (p) =>
+    p.buildArtifact({
+      app: plan.id,
+      service: target.service,
+      plan,
+      buildKey: "key",
+      ref: "built",
+      labels: { "dev.lando.test": "member-calls" },
+    }),
   pullArtifact: (p) => p.pullArtifact({ ref: "image" }),
   removeArtifact: (p) => p.removeArtifact(artifact),
+  listArtifacts: (p) => p.listArtifacts({ labels: {} }),
   inspectAppliedFileSync: (p) => required(p.inspectAppliedFileSync)(plan),
   prepareFileSyncTargets: (p) => required(p.prepareFileSyncTargets)(plan),
   quiesceRetainedFileSync: (p) => required(p.quiesceRetainedFileSync)(plan),
@@ -77,6 +86,8 @@ export const memberCalls = {
   execStream: (p) => Stream.runCollect(p.execStream(target, command)),
   run: (p) => p.run(run),
   runStream: (p) => Stream.runCollect(p.runStream(run)),
+  exportVolume: (p) => Stream.runCollect(p.exportVolume(volume)),
+  importVolume: (p) => p.importVolume({ target: volume, archive: Stream.empty, beforeCommit: Effect.void }),
   logs: (p) => Stream.runCollect(p.logs(target, { follow: false })),
   inspect: (p) => p.inspect(target),
   list: (p) => p.list({}),

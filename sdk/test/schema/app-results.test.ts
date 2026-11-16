@@ -6,6 +6,8 @@ import {
   ExecAppResult,
   InfoAppResult,
   LandofileEventsOutcome,
+  RebuildAppResult,
+  RestartAppResult,
   ServiceName,
   ShareStopAppResult,
   StartAppResult,
@@ -70,12 +72,50 @@ describe("StartAppResult", () => {
     expect(roundTrip(StartAppResult, withChecks)).toEqual(withChecks);
   });
 
+  test("preserves servicesRemoved when present and when absent", () => {
+    for (const servicesRemoved of [undefined, [], ["db"]]) {
+      const value = {
+        app: "demo",
+        servicesStarted: [startedService],
+        ...(servicesRemoved === undefined ? {} : { servicesRemoved }),
+      };
+      expect(roundTrip(StartAppResult, value)).toStrictEqual(value);
+    }
+  });
+
   test("rejects excess properties", () => {
     expect(
       Result.isFailure(
         decode(StartAppResult, { app: "demo", servicesStarted: [startedService], unexpected: 1 }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("RestartAppResult", () => {
+  test("preserves servicesRemoved when present and when absent", () => {
+    for (const servicesRemoved of [undefined, [], ["db"]]) {
+      const value = {
+        app: "demo",
+        servicesStarted: [startedService],
+        ...(servicesRemoved === undefined ? {} : { servicesRemoved }),
+      };
+      expect(roundTrip(RestartAppResult, value)).toStrictEqual(value);
+    }
+  });
+});
+
+describe("RebuildAppResult", () => {
+  test("preserves servicesRemoved when present and when absent", () => {
+    for (const servicesRemoved of [undefined, [], ["db"]]) {
+      const value = {
+        app: "demo",
+        servicesRebuilt: ["web"],
+        servicesStarted: [startedService],
+        ...(servicesRemoved === undefined ? {} : { servicesRemoved }),
+      };
+      expect(roundTrip(RebuildAppResult, value)).toStrictEqual(value);
+    }
   });
 });
 

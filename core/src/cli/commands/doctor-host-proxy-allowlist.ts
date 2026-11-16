@@ -1,24 +1,6 @@
 import { COMMAND_REGISTRY_MANIFEST } from "../generated/command-registry-manifest";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
-import type {
-  DoctorCheck,
-  DoctorProviderKind,
-  DoctorRuntime,
-  DoctorSelectionRecord,
-  DoctorSolution,
-} from "./doctor";
-
-interface HostProxyAllowlistDoctorOptions {
-  readonly provider: {
-    readonly id: string;
-    readonly displayName: string;
-    readonly version: string;
-  };
-  readonly providerKind: DoctorProviderKind;
-  readonly runtimeStatus: string;
-  readonly runtime: DoctorRuntime;
-  readonly selection: DoctorSelectionRecord;
-}
+import type { DoctorFinding, DoctorSolution } from "./doctor-contract";
 
 interface HostProxyManifestCommand {
   readonly spec?: unknown;
@@ -67,26 +49,17 @@ const HOST_PROXY_ALLOWLIST_REMEDIATION: DoctorSolution = {
 
 export const buildHostProxyAllowlistDoctorCheck = (
   freshness: HostProxyAllowlistFreshness,
-  options: HostProxyAllowlistDoctorOptions,
-): DoctorCheck | undefined =>
+): DoctorFinding | undefined =>
   freshness.fresh
     ? undefined
     : {
         name: "host-proxy-allowlist",
         status: "warn",
         severity: "warn",
-        providerId: options.provider.id,
-        providerName: options.provider.displayName,
-        providerVersion: options.provider.version,
-        providerKind: options.providerKind,
-        runtimeStatus: options.runtimeStatus,
-        runtime: options.runtime,
-        capabilities: {},
         context: {
           freshness: "stale",
-          missing: freshness.missing.join(",") || "none",
-          unexpected: freshness.unexpected.join(",") || "none",
+          missing: freshness.missing,
+          unexpected: freshness.unexpected,
         },
         solutions: [HOST_PROXY_ALLOWLIST_REMEDIATION],
-        selection: options.selection,
       };

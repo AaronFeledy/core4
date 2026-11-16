@@ -2,7 +2,7 @@ import { scanMissingAppRoots } from "@lando/engine/operations/missing-app-roots"
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { warnCheck } from "./doctor-check-builders";
-import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
+import type { DoctorFinding } from "./doctor-contract";
 
 export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
@@ -15,7 +15,7 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
   );
   if (Result.isFailure(inventory)) {
     const message = inventory.failure.message;
-    const check: DoctorSubsystemCheck = warnCheck({
+    const check: DoctorFinding = warnCheck({
       name: "missing-app-root-scan",
       recovery: "manual",
       context: { error: redact(message) },
@@ -30,12 +30,13 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
     });
     return [check];
   }
-  const scanChecks: DoctorSubsystemCheck[] = inventory.success.scans
+  const scanChecks: DoctorFinding[] = inventory.success.scans
     .filter((scan) => scan.errorTag !== undefined)
     .map((scan) =>
       warnCheck({
         name: "missing-app-root-scan",
         recovery: "manual",
+        subject: redact(scan.providerId),
         context: { error: redact(scan.message) },
         solutions: [
           {
@@ -51,7 +52,7 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
   const command = `lando apps:gc --prune${copiesRemovable ? " --volumes" : ""}${inventory.success.candidates.some((root) => root.cacheVolumes.length > 0) ? " --purge-caches" : ""}`;
   return [
     ...scanChecks,
-    ...inventory.success.candidates.map((record): DoctorSubsystemCheck => {
+    ...inventory.success.candidates.map((record): DoctorFinding => {
       const runtimeGuidance = record.runtimeObserved
         ? ""
         : " Its runtime was not observed, so containers and volumes may be missing from this list.";
@@ -61,33 +62,26 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
       const description = `The app folder no longer exists. If you moved the app, move it back to that path and keep using it. ${cleanup}${runtimeGuidance}`;
       return warnCheck({
         name: "missing-app-root",
+        subject: redact(record.root),
         recovery: "manual",
         context: Object.fromEntries(
           Object.entries({
             appRoot: record.root,
-            apps: record.apps.join(", "),
-            providers: record.providers.join(", "),
+            apps: record.apps,
+            providers: record.providers,
             appliedState: String(record.appliedState),
             runtimeObserved: String(record.runtimeObserved),
-            ...(record.services.length === 0 ? {} : { containers: record.services.join(", ") }),
-            ...(record.dataVolumes.length === 0 ? {} : { dataVolumes: record.dataVolumes.join(", ") }),
-            ...(record.cacheVolumes.length === 0 ? {} : { cacheVolumes: record.cacheVolumes.join(", ") }),
-            ...(record.journals.length === 0
-              ? {}
-              : {
-                  attempts: record.journals.map((journal) => journal.attemptId).join(", "),
-                  phases: record.journals.map((journal) => journal.phase).join(", "),
-                  engines: record.journals.map((journal) => journal.engineId).join(", "),
-                  sessions: record.journals
-                    .flatMap((journal) => journal.sessions.map((session) => session.name))
-                    .join(", "),
-                  targets: record.journals
-                    .flatMap((journal) => journal.targets.map((target) => target.volumeName))
-                    .join(", "),
-                }),
+            containers: record.services,
+            dataVolumes: record.dataVolumes,
+            cacheVolumes: record.cacheVolumes,
+            attempts: record.journals.map((journal) => journal.attemptId),
+            phases: record.journals.map((journal) => journal.phase),
+            engines: record.journals.map((journal) => journal.engineId),
+            sessions: record.journals.flatMap((journal) => journal.sessions.map((session) => session.name)),
+            targets: record.journals.flatMap((journal) => journal.targets.map((target) => target.volumeName)),
           })
-            .filter(([, value]) => value !== "")
-            .map(([key, value]) => [key, redact(value)]),
+            .filter(([, value]) => (typeof value === "string" ? value !== "" : value.length > 0))
+            .map(([key, value]) => [key, typeof value === "string" ? redact(value) : value.map(redact)]),
         ),
         solutions: [{ kind: "manual", description: redact(description), command: redact(command) }],
       });

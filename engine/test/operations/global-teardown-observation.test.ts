@@ -64,7 +64,10 @@ for (const command of ["stop", "destroy"] as const) {
       expect(harness.calls).toEqual(["removeRoutes"]);
       const globalRoot = join(dataRoot, "global");
       const lockDirectory = `.lando-global-${appMutationLockKey("global", globalRoot)}`;
-      expect(await readdir(dataRoot)).toEqual([lockDirectory]);
+      expect((await readdir(dataRoot)).toSorted()).toEqual([
+        lockDirectory,
+        ...(command === "destroy" ? ["cache"] : []),
+      ]);
       expect(await readdir(join(dataRoot, lockDirectory))).toEqual([]);
       await expect(stat(globalRoot)).rejects.toMatchObject({ code: "ENOENT" });
     });

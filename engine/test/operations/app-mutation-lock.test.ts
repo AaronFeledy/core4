@@ -138,20 +138,18 @@ describe("per-app mutation lock", () => {
   });
 
   test("info, logs, and config lint stay off the mutate lock", async () => {
-    const [info, logs, lint, start, stop, rebuild, restart, destroy] = await Promise.all([
+    const [info, logs, lint, activation, stop, destroy] = await Promise.all([
       Bun.file(new URL("../../src/operations/info.ts", import.meta.url)).text(),
       Bun.file(new URL("../../src/operations/logs.ts", import.meta.url)).text(),
       Bun.file(new URL("../../src/operations/app-config-lint.ts", import.meta.url)).text(),
-      Bun.file(new URL("../../src/operations/start.ts", import.meta.url)).text(),
+      Bun.file(new URL("../../src/operations/app-activation.ts", import.meta.url)).text(),
       Bun.file(new URL("../../src/operations/stop.ts", import.meta.url)).text(),
-      Bun.file(new URL("../../src/operations/rebuild.ts", import.meta.url)).text(),
-      Bun.file(new URL("../../src/operations/restart.ts", import.meta.url)).text(),
       Bun.file(new URL("../../src/operations/destroy.ts", import.meta.url)).text(),
     ]);
     for (const source of [info, logs, lint]) {
       expect(source).not.toContain("withAppMutationLock");
     }
-    for (const source of [start, stop, rebuild, restart, destroy]) {
+    for (const source of [activation, stop, destroy]) {
       expect(source).toContain("withAppMutationLock");
     }
   });

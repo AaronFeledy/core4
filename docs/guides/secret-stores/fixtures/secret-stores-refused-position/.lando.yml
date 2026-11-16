@@ -1,0 +1,9 @@
+name: secret-refused-position
+services:
+  app:
+    type: "node:22"
+    primary: true
+tooling:
+  whoami:
+    service: ":host"
+    cmd: 'echo `curl -fsS -H "Authorization: Bearer ${secret:API_TOKEN}" https://api.example.com/whoami`'

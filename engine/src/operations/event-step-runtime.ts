@@ -1,5 +1,4 @@
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
-import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
 import {
   LandofileEventStepFailedError,
@@ -10,7 +9,7 @@ import {
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
-import { createPayloadRedactor } from "@lando/sdk/secrets";
+import type { TieredRedactionValues } from "@lando/sdk/secrets";
 // allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
 import {
   EnvironmentValueResolver,
@@ -37,14 +36,17 @@ import type {
 } from "../tooling/step-runner.ts";
 import { publishEventOutputProgress } from "./event-output-progress.ts";
 import { eventStepLabel } from "./event-step-identity.ts";
-import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
+import {
+  type EventStepOutputTail,
+  failureOutputTail,
+  redactCollectedOutput,
+  withStreamedTail,
+} from "./event-step-output.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
 import { admitToolingTask } from "./tooling-input-admission.ts";
 import { prepareToolingInvocation } from "./tooling-prepare.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
-
-const OUTPUT_TAIL_LENGTH = 4_000;
 
 interface Redactor {
   readonly redactString: (value: string) => string;
@@ -53,6 +55,8 @@ interface Redactor {
 interface EventRedactionScope {
   readonly redactor: Redactor;
   readonly redactionTokens: ReadonlyArray<string>;
+  /** The scope's exact values, for the value layer that must run before output is framed. */
+  readonly payloadValues: () => TieredRedactionValues;
 }
 
 type EventRecord = Readonly<Record<string, unknown>> | undefined;
@@ -85,14 +89,12 @@ interface EventLeafResult {
   readonly startedAt: number;
   readonly result: ToolingEngineResult;
   readonly redactor: Redactor;
+  readonly payloadValues: () => TieredRedactionValues;
   /** Bounded copy of output that a live sink already delivered; the result holds none of it. */
-  readonly streamedTail?: { readonly stdout: string; readonly stderr: string };
+  readonly streamedTail?: EventStepOutputTail;
 }
 
 type EventLeafError = EventRuntimeError;
-
-const outputTail = (stdout: string, stderr: string): string =>
-  `${stdout}${stdout.length > 0 && stderr.length > 0 ? "\n" : ""}${stderr}`.slice(-OUTPUT_TAIL_LENGTH);
 
 const failureExitCode = (error: unknown): number => {
   if (
@@ -164,7 +166,7 @@ const nonzeroFailure = (
   options: EventRuntimeOptions,
   leaf: ResolvedToolingStepLeaf,
   result: ToolingEngineResult,
-  output: { readonly stdout: string; readonly stderr: string } = result,
+  outputTail: string,
 ): LandofileEventStepFailedError => {
   const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
   return new LandofileEventStepFailedError({
@@ -174,10 +176,7 @@ const nonzeroFailure = (
     kind: leaf.kind,
     ...(String(result.service) === "" ? {} : { service: String(result.service) }),
     exitCode: result.exitCode,
-    outputTail: outputTail(
-      options.redactor.redactString(output.stdout),
-      options.redactor.redactString(output.stderr),
-    ),
+    outputTail,
     remediation: lifecycleRemediation(options, leaf, undefined, result),
   });
 };
@@ -272,7 +271,7 @@ const runInvocation = Effect.fnUntraced(function* (
 
 const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
   const startedAt = yield* Clock.currentTimeMillis;
-  const { redactor, redactionTokens } = yield* options.redactorFor({ env: [leaf.env] });
+  const { redactor, redactionTokens, payloadValues } = yield* options.redactorFor({ env: [leaf.env] });
   const env = hostEventChildEnv(leaf.source, leaf.env, leaf.service);
   const task: ToolingTaskShape = {
     cmd: leaf.command,
@@ -284,7 +283,7 @@ const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: 
     redactionTokens,
     ...(env === undefined ? {} : { env }),
   }).pipe(mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)));
-  return { leaf, result, startedAt, redactor };
+  return { leaf, result, startedAt, redactor, payloadValues };
 });
 
 const runTask = Effect.fnUntraced(function* (
@@ -317,6 +316,7 @@ const runTask = Effect.fnUntraced(function* (
         result: { ...script, stdout: script.stdout ?? "", stderr: script.stderr ?? "" },
         startedAt,
         redactor: variableRedaction.redactor,
+        payloadValues: variableRedaction.payloadValues,
       };
     }
     return yield* Effect.fail(
@@ -356,14 +356,14 @@ const runTask = Effect.fnUntraced(function* (
   const compiled = yield* options.hostRunner === undefined
     ? resolution
     : resolution.pipe(Effect.provideService(ShellRunner, options.hostRunner));
-  const { redactor, redactionTokens } = yield* options.redactorFor({
+  const { redactor, redactionTokens, payloadValues } = yield* options.redactorFor({
     env: [leaf.vars, ...compiled.invocations.map((invocation) => invocation.env)],
     directTokens: compiled.redactionTokens,
   });
   const result = yield* runInvocation(options, leaf.task, client.task, { redactionTokens, compiled }).pipe(
     mapFailures((error) => stepFailure({ ...options, redactor }, leaf, error)),
   );
-  return { leaf, result, startedAt, redactor };
+  return { leaf, result, startedAt, redactor, payloadValues };
 });
 
 const publish = Effect.fnUntraced(function* (options: EventRuntimeOptions, execution: EventLeafResult) {
@@ -373,8 +373,8 @@ const publish = Effect.fnUntraced(function* (options: EventRuntimeOptions, execu
       events: options.events,
       task: `${options.event}:${execution.leaf.authoredIndex + 1}`,
       service: String(execution.result.service),
-      stdout: execution.redactor.redactString(execution.result.stdout),
-      stderr: execution.redactor.redactString(execution.result.stderr),
+      stdout: redactCollectedOutput(execution, execution.result.stdout),
+      stderr: redactCollectedOutput(execution, execution.result.stderr),
       exitCode: execution.result.exitCode,
       durationMs,
     });
@@ -386,48 +386,12 @@ const publish = Effect.fnUntraced(function* (options: EventRuntimeOptions, execu
 
 const finish = (options: EventRuntimeOptions, execution: EventLeafResult) => {
   if (execution.result.exitCode === 0) return Effect.succeed(execution);
+  const tail = failureOutputTail(execution, execution.result, execution.streamedTail);
   const failure = Effect.fail(
-    nonzeroFailure(
-      { ...options, redactor: execution.redactor },
-      execution.leaf,
-      execution.result,
-      execution.streamedTail,
-    ),
+    nonzeroFailure({ ...options, redactor: execution.redactor }, execution.leaf, execution.result, tail),
   );
   return execution.leaf.silent ? failure : publish(options, execution).pipe(Effect.andThen(failure));
 };
-
-const withStreamedTail = Effect.fnUntraced(function* (
-  effect: Effect.Effect<EventLeafResult, unknown>,
-): Effect.fn.Return<EventLeafResult, unknown> {
-  const live = yield* Effect.serviceOption(StreamFrameSink);
-  if (Option.isNone(live)) return yield* effect;
-  const redaction = yield* Effect.serviceOption(RedactionService);
-  const values = Option.isSome(redaction) ? yield* redaction.value.payloadValues() : createPayloadValues([]);
-  const tail = { stdout: "", stderr: "" };
-  const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
-  const encoder = new TextEncoder();
-  const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
-  const tee: StreamFrameSinkShape = {
-    emit: (frame) =>
-      Effect.sync(() => {
-        const bytes =
-          frame.kind === "record"
-            ? encoder.encode(`${frame.chunk}\n`)
-            : typeof frame.chunk === "string"
-              ? encoder.encode(frame.chunk)
-              : frame.chunk;
-        const text = decoders[frame._tag].decode(payloads[frame._tag].write(bytes), { stream: true });
-        tail[frame._tag] = (tail[frame._tag] + text).slice(-OUTPUT_TAIL_LENGTH);
-      }).pipe(Effect.andThen(live.value.emit(frame))),
-  };
-  const execution = yield* effect.pipe(Effect.provideService(StreamFrameSink, tee));
-  for (const kind of ["stdout", "stderr"] as const) {
-    const text = decoders[kind].decode(payloads[kind].flush());
-    tail[kind] = (tail[kind] + text).slice(-OUTPUT_TAIL_LENGTH);
-  }
-  return { ...execution, streamedTail: tail };
-});
 
 export const makeEventStepRunners = (
   options: EventRuntimeOptions,
@@ -437,6 +401,7 @@ export const makeEventStepRunners = (
     effect: Effect.Effect<EventLeafResult, unknown, EnvironmentValueResolver>,
   ): Effect.Effect<EventLeafResult, EventLeafError> =>
     withStreamedTail(
+      options.redactor,
       Option.isSome(options.environmentResolver)
         ? effect.pipe(Effect.provideService(EnvironmentValueResolver, options.environmentResolver.value))
         : Effect.fail(
@@ -471,12 +436,12 @@ export const makeEventStepRunners = (
         Clock.currentTimeMillis.pipe(
           Effect.flatMap((startedAt) =>
             options.redactorFor({ input: [leaf.flags, leaf.args], directTokens: leaf.raw }).pipe(
-              Effect.flatMap(({ redactor, redactionTokens }) =>
+              Effect.flatMap(({ redactor, redactionTokens, payloadValues }) =>
                 options.runCanonical(leaf, redactionTokens).pipe(
                   mapFailures((error) =>
                     isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
                   ),
-                  Effect.map((result) => ({ leaf, result, startedAt, redactor })),
+                  Effect.map((result) => ({ leaf, result, startedAt, redactor, payloadValues })),
                 ),
               ),
             ),

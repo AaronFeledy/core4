@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { Result, Schema } from "effect";
+import { Redacted, Result, Schema } from "effect";
 
 import {
   JSON_SCHEMA_NAMES,
@@ -21,7 +21,12 @@ export type PublicSchemaContractFixture = {
 };
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
+  CertificateMaterial: "sdk/test/certificates/prepare-certificate-pair.test.ts",
+  CertificatePairPreparation: "sdk/test/certificates/prepare-certificate-pair.test.ts",
+  PreparedCertificatePair: "sdk/test/certificates/prepare-certificate-pair.test.ts",
   ConfigKeyDescription: "sdk/test/schema/config-key.test.ts",
+  ExecutionSite: "sdk/test/schema/execution-site-contracts.test.ts",
+  ExecutionSiteMatch: "sdk/test/schema/execution-site-contracts.test.ts",
   CommandContribution: "sdk/test/schema/command-contribution.test.ts",
   LandofileSourceValue: "sdk/test/schema/landofile-source.test.ts",
   LandofileSourceDocument: "sdk/test/schema/landofile-source.test.ts",
@@ -279,6 +284,10 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   TomcatServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   VarnishServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  CronExpression: "sdk/test/schema/schedule.test.ts",
+  ScheduleConfig: "sdk/test/schema/schedule.test.ts",
+  ScheduleJob: "sdk/test/schema/schedule.test.ts",
+  ScheduleJobName: "sdk/test/schema/schedule.test.ts",
 } satisfies Partial<Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>>;
 
 export const publicSchemaContractTestFile = (
@@ -724,6 +733,17 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
       headers: { Authorization: "Bearer token" },
     },
   },
+  CronExpression: "@hourly",
+  CertificateMaterial: { certificate: "public PEM", privateKey: Redacted.make("private PEM") },
+  PreparedCertificatePair: {
+    source: "issued",
+    certificate: "public PEM",
+    privateKey: Redacted.make("private PEM"),
+    root: "root PEM",
+  },
+  ScheduleJobName: "tick",
+  ScheduleJob: { name: "tick", every: "@hourly", run: "true" },
+  ScheduleConfig: [{ name: "tick", every: "@hourly", run: "true" }],
 };
 
 export const publicSchemaHappyPathFixture = (schemaName: JsonSchemaName): unknown => {

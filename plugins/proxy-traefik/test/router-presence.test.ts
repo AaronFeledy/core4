@@ -15,6 +15,7 @@ import { Effect, Layer, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { layer, makeTraefikRouterService } from "../src/proxy.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
+import { makeAckStore } from "./observe-routes-fixture.ts";
 import { routeOwner } from "./route-owner-fixture.ts";
 
 const root = "/lando/global/proxy-traefik";
@@ -36,6 +37,7 @@ const fixture = () => {
     [watcher, "previous watcher failure"],
   ]);
   const service = makeTraefikRouterService({
+    stateStore: makeAckStore([]),
     readTraefikState: () =>
       Effect.suspend(() => {
         onObservation();

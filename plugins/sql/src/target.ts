@@ -1,5 +1,10 @@
 import { SqlServiceAmbiguousError, SqlServiceNotFoundError } from "@lando/sdk/errors";
-import { type DatabaseConnection, canonicalSqlitePath } from "@lando/sdk/schema";
+import {
+  type DatabaseConnection,
+  type ServicePlan,
+  canonicalSqlitePath,
+  clonedServiceParent,
+} from "@lando/sdk/schema";
 import { Result } from "effect";
 
 import { type SqlFamily, familyFromServiceType } from "./families.ts";
@@ -30,6 +35,7 @@ export type SqlTargetPlan = {
         readonly type: string;
         readonly connection?: DatabaseConnection;
         readonly sqlite?: { readonly path: string };
+        readonly provenance?: ServicePlan["provenance"];
       }
     >
   >;
@@ -40,6 +46,9 @@ export const NOT_FOUND_REMEDIATION = "Add a mysql, mariadb, postgres, mongodb, m
 export const sqlCandidates = (plan: SqlTargetPlan): ReadonlyArray<SqlTarget> =>
   Object.values(plan.services)
     .flatMap((service): ReadonlyArray<SqlTarget> => {
+      // A cloned sidecar shares its parent's credentials; it is never a second
+      // database a user can choose between.
+      if (clonedServiceParent(service) !== undefined) return [];
       const family = service.connection?.family ?? familyFromServiceType(service.type);
       const server: ReadonlyArray<SqlTarget> =
         family === undefined ? [] : [{ kind: "server", name: service.name, type: service.type, family }];

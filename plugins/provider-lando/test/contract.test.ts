@@ -7,6 +7,13 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import { installSupervisedExecFixture } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
+import {
+  type VolumeArchiveSnapshot,
+  makeVolumeArchiveFakeState,
+  volumeArchiveFakeReadsStdin,
+  volumeArchiveFakeStart,
+  volumeArchiveFakeStdin,
+} from "@lando/container-runtime/testing/volume-archive-fake";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
@@ -316,6 +323,11 @@ const makeFakeApi = () => {
             ),
           };
         }
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          return { status: 404, body: JSON.stringify({ message: "No such image" }) };
+        }
+        if (request.method === "GET" && request.path.startsWith("/images/json?"))
+          return { status: 200, body: "[]" };
         return {
           status: 500,
           body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),
@@ -495,6 +507,11 @@ const makeFakeApiWithHooks = () => {
             }),
           };
         }
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          return { status: 404, body: JSON.stringify({ message: "No such image" }) };
+        }
+        if (request.method === "GET" && request.path.startsWith("/images/json?"))
+          return { status: 200, body: "[]" };
         return {
           status: 500,
           body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),
@@ -530,10 +547,19 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
 
 const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) => {
   const calls: EngineHttpRequest[] = [];
-  const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
+  const containers = new Map<
+    string,
+    {
+      readonly body: unknown;
+      stdout: Uint8Array;
+      exitCode: number;
+      readonly stdinDone?: { readonly promise: Promise<void>; readonly resolve: () => void };
+    }
+  >();
   const volumes = new Map<string, Uint8Array>();
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>();
-  const snapshots = new Map<string, Uint8Array>();
+  const snapshots = new Map<string, VolumeArchiveSnapshot>();
+  const volumeArchive = makeVolumeArchiveFakeState(volumes, snapshots);
   const serviceFiles = new Map<string, Uint8Array>();
   const artifacts = new Map<string, Uint8Array>();
   let artifactCount = 0;
@@ -560,7 +586,22 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
-          containers.set(name, { body: request.body, stdout: new Uint8Array(), exitCode: 0 });
+          const createBody = request.body as { Cmd?: ReadonlyArray<string> } | undefined;
+          let resolveStdin: (() => void) | undefined;
+          const stdinDone = volumeArchiveFakeReadsStdin(createBody?.Cmd ?? [])
+            ? {
+                promise: new Promise<void>((resolve) => {
+                  resolveStdin = resolve;
+                }),
+                resolve: () => resolveStdin?.(),
+              }
+            : undefined;
+          containers.set(name, {
+            body: request.body,
+            stdout: new Uint8Array(),
+            exitCode: 0,
+            ...(stdinDone === undefined ? {} : { stdinDone }),
+          });
           return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/start")) {
@@ -573,22 +614,23 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const command = body?.Cmd?.join(" ");
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
-          if (
-            container !== undefined &&
-            volume !== undefined &&
-            command === "sh -c rm -rf /snapshot && mkdir -p /snapshot && cp -a /lando-data/. /snapshot/"
-          )
-            container.stdout = volumes.get(volume) ?? new Uint8Array();
-          if (
-            volume !== undefined &&
-            body?.Image?.startsWith("localhost/lando-volume-snapshot:") === true &&
-            command?.includes("cp -a --") === true
-          )
-            volumes.set(volume, snapshots.get(body.Image) ?? new Uint8Array());
+          const helperStdout =
+            container === undefined
+              ? undefined
+              : volumeArchiveFakeStart({
+                  state: volumeArchive,
+                  command: body?.Cmd ?? [],
+                  volume,
+                  image: body?.Image,
+                });
+          if (container !== undefined && helperStdout !== undefined) container.stdout = helperStdout;
           return { status: 204, body: "" };
         }
-        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait"))
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/wait".length));
+          await containers.get(name)?.stdinDone?.promise;
           return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
+        }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json"))
           return { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) };
         if (
@@ -605,7 +647,10 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
           const repo = params.get("repo") ?? "localhost/lando-volume-snapshot";
           const tag = params.get("tag") ?? `native-${snapshotCount}`;
-          snapshots.set(`${repo}:${tag}`, volumes.get(volume ?? "") ?? new Uint8Array());
+          snapshots.set(`${repo}:${tag}`, {
+            files: new Uint8Array(volumes.get(volume ?? "") ?? new Uint8Array()),
+            archives: new Uint8Array(volumeArchive.archives.get(volume ?? "") ?? new Uint8Array()),
+          });
           return { status: 201, body: JSON.stringify({ id: `${repo}:${tag}` }) };
         }
         if (
@@ -617,7 +662,13 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const payload = snapshots.get(ref);
           return payload === undefined
             ? { status: 404, body: "{}" }
-            : { status: 200, body: JSON.stringify({ Id: ref, Size: payload.byteLength }) };
+            : {
+                status: 200,
+                body: JSON.stringify({
+                  Id: ref,
+                  Size: payload.files.byteLength + payload.archives.byteLength,
+                }),
+              };
         }
         if (request.path.startsWith("/images/") && request.method === "DELETE") {
           const ref = decodeURIComponent(request.path.slice("/images/".length));
@@ -688,6 +739,11 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           artifacts.set(ref, await collectAsyncBytes(request.stdin));
           return { status: 200, body: JSON.stringify({ ref }) };
         }
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          return { status: 404, body: JSON.stringify({ message: "No such image" }) };
+        }
+        if (request.method === "GET" && request.path.startsWith("/images/json?"))
+          return { status: 200, body: "[]" };
         return {
           status: 500,
           body: JSON.stringify({ message: `unhandled ${request.method} ${request.path}` }),
@@ -713,13 +769,20 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
               | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
               | undefined;
             const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
-            if (
-              container !== undefined &&
-              volume !== undefined &&
-              body?.Cmd?.join(" ") === "sh -c cat > /data/payload"
-            ) {
-              volumes.set(volume, await collectAsyncBytes(request.stdin));
+            const stdinBytes =
+              request.stdin === undefined ? undefined : await collectAsyncBytes(request.stdin);
+            if (volume !== undefined && stdinBytes !== undefined) {
+              if (body?.Cmd?.join(" ") === "sh -c cat > /data/payload") {
+                volumes.set(volume, stdinBytes);
+              }
+              volumeArchiveFakeStdin({
+                state: volumeArchive,
+                command: body?.Cmd ?? [],
+                volume,
+                bytes: stdinBytes,
+              });
             }
+            container?.stdinDone?.resolve();
             return Stream.make(attachBytesFrame(1, container?.stdout ?? new Uint8Array()));
           }),
         );
