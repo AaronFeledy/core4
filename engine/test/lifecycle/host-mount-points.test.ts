@@ -213,7 +213,7 @@ test("refuses to create through a symlink that leaves the app root", async () =>
   });
 });
 
-test("treats an invisible bind source as a no-op and creates only a file mount point's parents", async () => {
+test("treats an invisible bind source as a no-op and creates a file mount point as an empty host file", async () => {
   await withRoot(async (root) => {
     const source = join(root, "config.inc");
     await writeFile(source, "config");
@@ -238,11 +238,40 @@ test("treats an invisible bind source as a no-op and creates only a file mount p
     );
 
     expect(await exists(join(root, "missing", "web"))).toBe(false);
-    // The runtime would otherwise create settings/ as an id the host user cannot write.
+    // The runtime would otherwise create both as an id the host user cannot write.
     const parent = await stat(join(root, "settings"));
     expect(parent.isDirectory()).toBe(true);
     expect(`${parent.uid}:${parent.gid}`).toBe(`${process.getuid?.()}:${process.getgid?.()}`);
-    expect(await exists(join(root, "settings", "config.inc"))).toBe(false);
+    const placeholder = await stat(join(root, "settings", "config.inc"));
+    expect(placeholder.isFile()).toBe(true);
+    expect(placeholder.size).toBe(0);
+    expect(`${placeholder.uid}:${placeholder.gid}`).toBe(`${process.getuid?.()}:${process.getgid?.()}`);
+  });
+});
+
+test("leaves an existing file mount point untouched", async () => {
+  await withRoot(async (root) => {
+    const source = join(root, "config.inc");
+    await writeFile(source, "config");
+    await mkdir(join(root, "settings"));
+    await writeFile(join(root, "settings", "config.inc"), "kept");
+    const plan = {
+      services: {
+        file: service({
+          name: "file",
+          mounts: [appBind({ source: root }), bind(source, "/app/settings/config.inc")],
+        }),
+      },
+    };
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const hostMountPoints = yield* HostMountPoints;
+        yield* hostMountPoints.prepare(plan);
+      }).pipe(Effect.provide(HostMountPoints.layer)),
+    );
+
+    expect(await Bun.file(join(root, "settings", "config.inc")).text()).toBe("kept");
   });
 });
 

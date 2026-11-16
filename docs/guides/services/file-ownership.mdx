@@ -56,7 +56,7 @@ A container runtime creates a missing mount point itself, as an account that is 
 
 - The service's working directory.
 - Each nested mount point, such as the empty `vendor` and `node_modules` directories that a service volume covers.
-- The parent directories of a file you mount into the app.
+- A file you mount into the app, created empty, along with its parent directories.
 
 That's why a fresh `web/` or `public/` webroot belongs to you, and why the empty `vendor` and `node_modules` directories in your app are yours to keep or delete.
 

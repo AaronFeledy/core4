@@ -9,15 +9,14 @@
  * missing children correctly, so Lando creates them itself, as the host user,
  * before provider apply creates the service containers.
  *
- * Only directories are prepared: a working directory below the app mount, every
- * directory mount point below it, and the parent directories of a file mount
- * point, whose target itself is left to the runtime. Paths map through the app
- * bind's host source and
+ * Prepared are a working directory below the app mount, every directory mount
+ * point below it, and a file mount point with its parent directories; a file
+ * mount point is created empty. Paths map through the app bind's host source and
  * stay inside the canonical app root; `..` and a symlink that leaves the root
  * are refused, existing paths are never modified, and a bind source the CLI
  * cannot see (an accelerated or remote mount) is a no-op.
  */
-import { lstat, mkdir, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, posix, sep } from "node:path";
 
 import { isErrnoCode, safeFileIoError } from "@lando/sdk/errors";
@@ -139,23 +138,23 @@ const statOrUndefined = async (path: string) => {
   }
 };
 
-/** The segments to create: a file bind's target is never created, only the directories above it. */
-const segmentsToCreate = async (directory: HostMountDirectory): Promise<ReadonlyArray<string>> => {
+/** Whether a mount point is a file: a passthrough bind whose host source is not a directory. */
+const isFileMountPoint = async (directory: HostMountDirectory): Promise<boolean> => {
   const mount = directory.mount;
-  if (mount === undefined || mount.type !== "bind" || mount.realization === "accelerated")
-    return directory.segments;
+  if (mount === undefined || mount.type !== "bind" || mount.realization === "accelerated") return false;
   const source = await statOrUndefined(mount.source);
-  return source === undefined || source.isDirectory() ? directory.segments : directory.segments.slice(0, -1);
+  return source !== undefined && !source.isDirectory();
 };
 
 /**
- * Creates every missing segment below `root`.
+ * Creates every missing segment below `root` and reports whether the walk
+ * reached the last one.
  *
  * An existing directory is left untouched. A symlink is followed only while it
  * still resolves inside `root`, and a path that names anything other than a
  * directory stops the walk instead of being replaced.
  */
-const createDirectory = async (root: string, segments: ReadonlyArray<string>): Promise<void> => {
+const createDirectory = async (root: string, segments: ReadonlyArray<string>): Promise<boolean> => {
   let current = root;
   for (const segment of segments) {
     const next = join(current, segment);
@@ -174,14 +173,24 @@ const createDirectory = async (root: string, segments: ReadonlyArray<string>): P
         if (isErrnoCode(cause, "ENOENT") || isErrnoCode(cause, "ELOOP")) return undefined;
         throw cause;
       });
-      if (resolved === undefined || !inside(root, resolved)) return;
+      if (resolved === undefined || !inside(root, resolved)) return false;
       const followed = await statOrUndefined(next);
-      if (followed === undefined || !followed.isDirectory()) return;
+      if (followed === undefined || !followed.isDirectory()) return false;
       current = next;
       continue;
     }
-    if (!info.isDirectory()) return;
+    if (!info.isDirectory()) return false;
     current = next;
+  }
+  return true;
+};
+
+/** Creates an empty file mount point; any existing path, a symlink included, is left alone. */
+const createFile = async (path: string): Promise<void> => {
+  try {
+    await writeFile(path, "", { flag: "wx" });
+  } catch (cause) {
+    if (!isErrnoCode(cause, "EEXIST")) throw cause;
   }
 };
 
@@ -195,13 +204,15 @@ export const prepareHostMountPoints = Effect.fn("HostMountPoints.prepare")(funct
     if (!roots.has(directory.root)) roots.set(directory.root, yield* canonicalDirectory(directory.root));
     const root = roots.get(directory.root);
     if (root === undefined) continue;
-    const segments = yield* Effect.tryPromise({
-      try: () => segmentsToCreate(directory),
-      catch: (cause) => safeFileIoError("persist", directory.path, cause),
-    });
-    if (segments.length === 0) continue;
     yield* Effect.tryPromise({
-      try: () => createDirectory(root, segments),
+      try: async () => {
+        if (!(await isFileMountPoint(directory))) {
+          await createDirectory(root, directory.segments);
+          return;
+        }
+        const parents = directory.segments.slice(0, -1);
+        if (await createDirectory(root, parents)) await createFile(join(root, ...directory.segments));
+      },
       catch: (cause) => safeFileIoError("persist", directory.path, cause),
     });
   }
