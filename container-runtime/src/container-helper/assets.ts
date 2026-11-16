@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
@@ -9,7 +9,13 @@ import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors
 import { AbsolutePath, type ContainerHelperArtifact, type ContainerHelperTarget } from "@lando/sdk/schema";
 import { ContainerHelperAssets, PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
-import { CONTAINER_HELPER_FILE } from "../container-helper.ts";
+import {
+  CONTAINER_HELPER_COMMANDS,
+  CONTAINER_HELPER_FILE,
+  containerHelperCommandEnginePath,
+  containerHelperCommandMount,
+  containerHelperCommandShim,
+} from "../container-helper.ts";
 
 import { containerHelperNotices } from "./notices.ts";
 import {
@@ -127,6 +133,71 @@ export const extractEmbeddedContainerHelper = async (input: {
   return artifact(input.target, path, bytes);
 };
 
+const missingIfAbsent = (cause: unknown) => {
+  if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return undefined;
+  throw cause;
+};
+
+const publishContainerHelperCommand = async (helper: ContainerHelperArtifact): Promise<void> => {
+  const [first] = CONTAINER_HELPER_COMMANDS;
+  for (const directory of [
+    dirname(containerHelperCommandMount(helper, first)),
+    dirname(containerHelperCommandEnginePath(helper, first)),
+  ]) {
+    await mkdir(directory, { recursive: true, mode: 0o755 });
+    await chmod(directory, 0o755);
+  }
+  for (const name of CONTAINER_HELPER_COMMANDS) {
+    await publishContainerHelperShim(containerHelperCommandMount(helper, name), name);
+    await publishContainerHelperEngine(helper, name);
+  }
+};
+
+/**
+ * The shim is immutable content at a stable path, so it publishes only when it is
+ * missing or was written by an older format; a running container keeps an
+ * identical copy.
+ */
+const publishContainerHelperShim = async (path: string, name: string): Promise<void> => {
+  const content = containerHelperCommandShim(name);
+  const existing = await readIfPresent(path);
+  if (existing !== undefined && new TextDecoder().decode(existing) === content) return;
+  const staging = `${path}.lando-stage.${process.pid}.${randomUUID()}`;
+  try {
+    await writeFile(staging, content, { flag: "wx", mode: 0o755 });
+    await chmod(staging, 0o755);
+    await rename(staging, path);
+  } finally {
+    await rm(staging, { force: true });
+  }
+};
+
+/**
+ * The engine link names the helper this architecture must execute. A staging hard
+ * link plus rename updates it in one atomic step, so a container exec resolves a
+ * complete helper and two Lando processes (or versions) racing leave one complete
+ * engine behind. A filesystem without hard links falls back to a staged copy.
+ */
+const publishContainerHelperEngine = async (helper: ContainerHelperArtifact, name: string): Promise<void> => {
+  const engine = containerHelperCommandEnginePath(helper, name);
+  const [published, source] = await Promise.all([
+    stat(engine, { bigint: true }).catch(missingIfAbsent),
+    stat(helper.path, { bigint: true }),
+  ]);
+  if (published !== undefined && published.dev === source.dev && published.ino === source.ino) return;
+  const staging = `${engine}.lando-stage.${process.pid}.${randomUUID()}`;
+  try {
+    await link(helper.path, staging).catch(async () => {
+      const bytes = await readFile(helper.path);
+      await writeFile(staging, bytes, { flag: "wx", mode: 0o755 });
+      await chmod(staging, 0o755);
+    });
+    await rename(staging, engine);
+  } finally {
+    await rm(staging, { force: true });
+  }
+};
+
 const embeddedFiles = (): ReadonlyArray<EmbeddedHelperFile> =>
   Bun.embeddedFiles.flatMap((file) =>
     "name" in file && typeof file.name === "string" ? [Object.assign(file, { name: file.name })] : [],
@@ -159,16 +230,20 @@ export const resolveContainerHelper = (
 ): Effect.Effect<ContainerHelperArtifact, ContainerHelperUnavailableError> => {
   const standalone = input.standalone ?? Bun.isStandaloneExecutable;
   return Effect.tryPromise({
-    try: () => {
+    try: async () => {
       const override = (input.env ?? process.env)[CONTAINER_HELPER_DIR_ENV];
-      if (override !== undefined && override.length > 0)
-        return fromFile(target, resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE));
-      if (!standalone) return fromSourceBuild(target);
-      return extractEmbeddedContainerHelper({
-        target,
-        files: input.embeddedFiles ?? embeddedFiles(),
-        cacheRoot: input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper"),
-      });
+      const artifact =
+        override !== undefined && override.length > 0
+          ? await fromFile(target, resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE))
+          : !standalone
+            ? await fromSourceBuild(target)
+            : await extractEmbeddedContainerHelper({
+                target,
+                files: input.embeddedFiles ?? embeddedFiles(),
+                cacheRoot: input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper"),
+              });
+      await publishContainerHelperCommand(artifact);
+      return artifact;
     },
     catch: (cause) => unavailable(target, cause, standalone),
   });

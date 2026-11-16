@@ -19,7 +19,7 @@ const options = (digest: string) => ({
     }),
 });
 
-test("new helper digests share a directory mount but recreate the stable command names", async () => {
+test("new helper digests share one stable command source and create identity", async () => {
   const first = await Effect.runPromise(prepareContainerHelperMounts(plan, options("a".repeat(64))));
   const next = await Effect.runPromise(prepareContainerHelperMounts(plan, options("b".repeat(64))));
   const a = first.services[service.name];
@@ -30,13 +30,19 @@ test("new helper digests share a directory mount but recreate the stable command
     target: "/run/lando/helper",
     readOnly: true,
   });
+  // The commands bind immutable per-architecture shims, so a helper update never
+  // changes a mount source.
   for (const name of CONTAINER_HELPER_COMMANDS) {
-    expect(a.mounts.find((mount) => mount.target === `/usr/local/bin/${name}`)).toMatchObject({
-      source: `/helpers/linux-x64/${"a".repeat(64)}/lando-container-helper`,
+    const target = `/usr/local/bin/${name}`;
+    const mount = a.mounts.find((candidate) => candidate.target === target);
+    expect(mount).toMatchObject({
+      source: `/helpers/linux-x64/shims/${name}`,
+      target,
       readOnly: true,
     });
+    expect(b.mounts.find((candidate) => candidate.target === target)).toEqual(mount);
   }
-  expect(commonContainerLabels(first, a)["dev.lando.create-config"]).not.toBe(
+  expect(commonContainerLabels(first, a)["dev.lando.create-config"]).toBe(
     commonContainerLabels(next, b)["dev.lando.create-config"],
   );
   expect(commonContainerLabels(first, a)["dev.lando.create-config"]).not.toBe(
@@ -53,7 +59,7 @@ test("service creation lowers the helper directory without mutating its logical 
       Binds: [
         "/helpers/linux-x64:/run/lando/helper:ro",
         ...CONTAINER_HELPER_COMMANDS.map(
-          (name) => `/helpers/linux-x64/${"a".repeat(64)}/lando-container-helper:/usr/local/bin/${name}:ro`,
+          (name) => `/helpers/linux-x64/shims/${name}:/usr/local/bin/${name}:ro`,
         ),
       ],
     },

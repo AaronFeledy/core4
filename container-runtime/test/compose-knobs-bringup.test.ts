@@ -203,7 +203,7 @@ describe("Podman Compose knob bring-up realization", () => {
       "/tmp/lando-compose-knob-bind:/workspace",
       `${fixtureHelperMount.source}:/run/lando/helper:ro`,
       ...CONTAINER_HELPER_COMMANDS.map(
-        (name) => `${fixtureHelperMount.source}/lando-container-helper:/usr/local/bin/${name}:ro`,
+        (name) => `${fixtureHelperMount.source}/shims/${name}:/usr/local/bin/${name}:ro`,
       ),
     ]);
     expect(field(host, "Mounts")).toEqual([
@@ -358,7 +358,7 @@ describe("Podman Compose knob bring-up realization", () => {
     expected.HostConfig.Binds.push(
       `${fixtureHelperMount.source}:/run/lando/helper:ro`,
       ...CONTAINER_HELPER_COMMANDS.map(
-        (name) => `${fixtureHelperMount.source}/lando-container-helper:/usr/local/bin/${name}:ro`,
+        (name) => `${fixtureHelperMount.source}/shims/${name}:/usr/local/bin/${name}:ro`,
       ),
     );
     expect(create?.body).toEqual(expected);
