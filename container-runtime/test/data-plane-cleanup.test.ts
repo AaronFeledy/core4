@@ -100,7 +100,7 @@ const redactSecrets = (value: unknown): unknown => {
 };
 
 describe("ephemeral cleanup", () => {
-  test.each([204, 404])("buffered success stays successful when cleanup returns %s", async (status) => {
+  test.each([204, 404])("buffered success stays successful when cleanup returns %d", async (status) => {
     const requests: Array<{ method: string; path: string }> = [];
     const exit = await Effect.runPromiseExit(
       Effect.scoped(recordedPlane(requests, { cleanup: { kind: "status", status } }).run(spec)),
@@ -293,7 +293,7 @@ describe("ephemeral cleanup", () => {
     expect(deletes(requests)).toEqual([]);
   });
 
-  test.each([204, 404])("streamed success stays successful when cleanup returns %s", async (status) => {
+  test.each([204, 404])("streamed success stays successful when cleanup returns %d", async (status) => {
     const requests: Array<{ method: string; path: string }> = [];
     const chunks = await Effect.runPromise(
       Effect.scoped(
