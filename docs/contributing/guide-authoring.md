@@ -210,6 +210,28 @@ the scenario published that event, so put it right after the command:
 e2e commands run in a separate process and publish no events to the
 scenario, so assert their output instead.
 
+### Exercise every app install you teach
+
+An app-install command in a prose shell fence must also run in a live
+`layer="e2e"` scenario somewhere under `docs/guides/**` or
+`recipes/*/README.mdx`. `bun run lint:guides` checks this across files with
+`guide.install.e2e-coverage`. It checks `sh`, `bash`, `shell`, and `console`
+fences outside `<Guide>`, including commands split with backslash continuations.
+
+Coverage matches `lando create-project` and `lando composer create-project`
+by package name, ignoring quotes, versions, and flags. Each
+`lando <name>-scaffold` command has its own coverage key. The covering scenario
+must execute a matching `<Run command>` or `<Verify command>`; variables use
+their execution `value`, and skipped steps do not count.
+
+Add the e2e scenario with `<Cleanup />` and `lando destroy -y`, or replace the
+untested install instructions with a link to a guide whose e2e scenario runs
+that install. Before calling the guide verified, run the covering scenario
+on the default `lando` provider (managed Podman). A passing lint run proves
+coverage is declared; a passing live run proves the install works. Use the
+[e2e scenario instructions](../guides/authoring/e2e-smoke-scenarios.mdx#where-it-runs)
+to enable live execution and confirm the scenario passed rather than skipped.
+
 ## How variables bind
 
 One compiler validates the guide and resolves each scenario for each variant.

@@ -12,6 +12,7 @@ import {
   buildFixtureInventory,
   lintFixtures,
 } from "./guides/fixture-lint.ts";
+import { type InstallLintDocument, lintInstallCoverage } from "./guides/install-lint.ts";
 import {
   type GuideLintDiagnostic,
   diagnostic,
@@ -153,6 +154,7 @@ export const lintGuides = async (
   options: GuideLintOptions = {},
 ): Promise<GuideLintResult> => {
   const diagnostics: GuideLintDiagnostic[] = [];
+  const documents: InstallLintDocument[] = [];
   for (const sourcePath of await discoverLintFiles(root, options.guideRoot)) {
     const content = await Bun.file(resolve(root, sourcePath)).text();
     let mdx: Root;
@@ -169,11 +171,13 @@ export const lintGuides = async (
         ? await buildFixtureInventory(root, frontmatter.id, options.guideRoot)
         : [];
     const result = lintParsed(sourcePath, mdx, { fixtures });
+    documents.push({ sourcePath, root: mdx, ...(result.guide === undefined ? {} : { guide: result.guide }) });
     diagnostics.push(...result.diagnostics);
     await lintFixtureLandofiles(root, fixtures, diagnostics);
     if (result.guide !== undefined)
       diagnostics.push(...lintResolvedTranscripts(result.guide, resolveHostGuidePlatform()).diagnostics);
   }
+  diagnostics.push(...lintInstallCoverage(documents));
   return { diagnostics };
 };
 export const formatGuideLintDiagnostic = (entry: GuideLintDiagnostic): string =>
