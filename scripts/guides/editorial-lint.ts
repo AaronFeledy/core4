@@ -106,6 +106,45 @@ export const lintEditorial = (
         ),
       );
   }
+  const e2eScenarios = scenarios.filter(
+    (scenario) => (propsOf(scenario, sourcePath).layer ?? frontmatter.defaultLayer) === "e2e",
+  );
+  const fixtureUsesByName = new Map<string, Array<{ scenario: MdxNode; node: MdxNode }>>();
+  for (const scenario of e2eScenarios)
+    walkAllNodes(scenario, (node) => {
+      if (node.name !== "UseFixture") return;
+      const name = propsOf(node, sourcePath).name;
+      if (typeof name !== "string") return;
+      fixtureUsesByName.set(name, [...(fixtureUsesByName.get(name) ?? []), { scenario, node }]);
+    });
+  const destroysVolumes = (scenario: MdxNode): boolean => {
+    let found = false;
+    walkAllNodes(scenario, (node) => {
+      if (found || node.name !== "Run") return;
+      const command = propsOf(node, sourcePath).command;
+      found = typeof command === "string" && /\blando\s+destroy\b[^\n]*--(?:volumes|purge)\b/u.test(command);
+    });
+    return found;
+  };
+  // Two e2e scenarios in one guide share the provider, so a reused fixture means one app
+  // name in two roots. A plain `lando destroy` keeps that app's volumes, and the next
+  // scenario then fails the volume-ownership check against the earlier root.
+  for (const [name, uses] of fixtureUsesByName) {
+    if (uses.length < 2) continue;
+    const reportedScenarios = new Set<MdxNode>();
+    for (const use of uses) {
+      if (reportedScenarios.has(use.scenario) || destroysVolumes(use.scenario)) continue;
+      reportedScenarios.add(use.scenario);
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          use.node,
+          "guide.scenario.e2e-shared-fixture-volumes",
+          `<Scenario layer="e2e"> reuses fixture "${name}", so its cleanup must destroy with --volumes or --purge: a plain lando destroy keeps the app's volumes, which the next scenario using that app name inherits.`,
+        ),
+      );
+    }
+  }
   if (
     guide !== undefined &&
     Object.hasOwn(frontmatter, "diataxis") &&

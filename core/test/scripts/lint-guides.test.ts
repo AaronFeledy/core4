@@ -118,6 +118,54 @@ describe("lint:guides", () => {
       'core/test/lint/guides/e2e-smoke.mdx:9:3: guide.scenario.e2e-cleanup: <Scenario layer="e2e"> requires at least one <Cleanup> step so provider resources are torn down.',
     ]);
   });
+  test("requires volume-removing cleanup when e2e scenarios reuse a fixture", () => {
+    const sourcePath = "core/test/lint/guides/e2e-shared-fixture.mdx";
+    const lintWithDestroy = (destroy: string) =>
+      lintGuideContent(
+        sourcePath,
+        [
+          "---",
+          "id: e2e-shared-fixture",
+          "provider: test",
+          "defaultLayer: e2e",
+          "diataxis: tutorial",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="first">',
+          '    <Step name="start">',
+          '      <UseFixture name="shared-demo" />',
+          '      <Run command="lando start" />',
+          "    </Step>",
+          '    <Step name="cleanup">',
+          "      <Cleanup />",
+          `      <Run command="${destroy}" />`,
+          "    </Step>",
+          "  </Scenario>",
+          '  <Scenario id="second">',
+          '    <Step name="start">',
+          '      <UseFixture name="shared-demo" />',
+          '      <Run command="lando start" />',
+          "    </Step>",
+          '    <Step name="cleanup">',
+          "      <Cleanup />",
+          '      <Run command="lando destroy -y --volumes" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      ).diagnostics.map(formatGuideLintDiagnostic);
+
+    // The fixture directory itself is absent here; only this rule's verdict matters.
+    const sharedFixtureRule = (destroy: string) =>
+      lintWithDestroy(destroy).filter((line) => line.includes("guide.scenario.e2e-shared-fixture-volumes"));
+
+    expect(sharedFixtureRule("lando destroy -y")).toEqual([
+      expect.stringContaining(": guide.scenario.e2e-shared-fixture-volumes:"),
+    ]);
+    expect(sharedFixtureRule("lando destroy -y --volumes")).toEqual([]);
+  });
 
   test("accepts a guide with a <Hidden> block carrying a reason", async () => {
     expect(await lintFixture("hidden-green")).toEqual([]);
