@@ -407,15 +407,15 @@ export const ProviderCapabilities = Schema.Struct({
   routeProvider: Schema.Boolean,
   tlsCertificates: Schema.Literals(["native", "lando", "none"]),
   rootless: Schema.Boolean,
-  projectUserMapping: Schema.Literals(["userns-keep-id", "unsupported"]).annotate({
+  projectUserMapping: Schema.Literals(["userns-keep-id", "image-renumber", "unsupported"]).annotate({
     title: "Project User Mapping",
     description:
-      "Whether the provider maps one container id to the host user for a service. userns-keep-id realizes keep-id:<uid>:<gid>; unsupported keeps the historical identity behavior.",
+      "Whether the provider maps one container id to the host user for a service. userns-keep-id realizes keep-id:<uid>:<gid>; image-renumber realizes the catalog project user by renumbering it to the host ids in the derived image; unsupported keeps the historical identity behavior.",
   }),
-  bindOwnership: Schema.Literals(["root-is-host-user", "host-ids", "unknown"]).annotate({
+  bindOwnership: Schema.Literals(["root-is-host-user", "host-ids", "userns-remap", "unknown"]).annotate({
     title: "Bind Ownership",
     description:
-      "How files a container writes to a host bind appear on the host: host-ids for rootful engines, root-is-host-user for a rootless user namespace, unknown when the engine cannot be inspected.",
+      "How files a container writes to a host bind appear on the host: host-ids for rootful engines, root-is-host-user for a rootless user namespace, userns-remap when a daemon user namespace stores subordinate host ids, unknown when the engine cannot be inspected.",
   }),
   privilegedServices: Schema.Boolean,
   architectureEmulation: Schema.Boolean.pipe(

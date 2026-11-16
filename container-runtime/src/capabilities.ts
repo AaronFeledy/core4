@@ -90,6 +90,20 @@ export const engineInfoRootless = (info: unknown): boolean | undefined => {
   return undefined;
 };
 
+/**
+ * Whether the live Docker daemon remaps container ids through a daemon user
+ * namespace (`userns-remap`). Docker reports it as a `name=userns` security
+ * option. Undefined when the response carries no SecurityOptions.
+ */
+export const engineInfoUsernsRemap = (info: unknown): boolean | undefined => {
+  const options =
+    typeof info === "object" && info !== null && "SecurityOptions" in info ? info.SecurityOptions : undefined;
+  if (!Array.isArray(options)) return undefined;
+  return options.some(
+    (option) => typeof option === "string" && (option === "name=userns" || option.startsWith("name=userns,")),
+  );
+};
+
 export interface ProviderCapabilityConstants {
   readonly bindMounts: ProviderCapabilitiesShape["bindMounts"];
   readonly bindMountPerformance: ProviderCapabilitiesShape["bindMountPerformance"];

@@ -361,10 +361,15 @@ export const podmanCapabilitiesForPlatform = (
 ): ProviderCapabilities => {
   const family = hostPlatformFamily(platform);
   // Rootless Podman on a Linux host maps one container id to the host user.
-  // A rootful engine writes real host ids, and the VM-backed desktop engines
-  // expose neither fact to the guest.
+  // A rootful engine writes real host ids, so it renumbers a catalog project
+  // user to them during the image build. The VM-backed desktop engines expose
+  // neither fact to the guest.
   const projectUserMapping =
-    family === "linux" && rootless ? ("userns-keep-id" as const) : ("unsupported" as const);
+    family !== "linux"
+      ? ("unsupported" as const)
+      : rootless
+        ? ("userns-keep-id" as const)
+        : ("image-renumber" as const);
   const bindOwnership =
     family !== "linux"
       ? ("unknown" as const)

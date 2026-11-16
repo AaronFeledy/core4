@@ -4,6 +4,7 @@ import {
   decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
   engineInfoRootless,
+  engineInfoUsernsRemap,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
@@ -271,16 +272,23 @@ export const dockerCapabilitiesForHost = (
   dockerHost: string,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
   rootless = false,
+  usernsRemap = false,
 ): ProviderCapabilities => {
-  // Docker offers no per-container user-namespace mapping to the host user,
-  // so a project user is never realized here. Rootless Docker still makes
-  // container root write as the host user; a VM-mediated host hides both facts.
+  // A VM-mediated endpoint hides the engine's identity facts. A rootless
+  // Docker engine maps only container root to the host user, and a daemon
+  // user namespace stores subordinate host ids, so neither can realize a
+  // non-root project user. A local rootful engine writes real host ids and
+  // can renumber a catalog account to them during the image build.
   const vmMediated = isVmMediatedDockerHost(platform, dockerHost);
   const bindOwnership = vmMediated
     ? ("unknown" as const)
-    : rootless
-      ? ("root-is-host-user" as const)
-      : ("host-ids" as const);
+    : usernsRemap
+      ? ("userns-remap" as const)
+      : rootless
+        ? ("root-is-host-user" as const)
+        : ("host-ids" as const);
+  const projectUserMapping =
+    vmMediated || usernsRemap || rootless ? ("unsupported" as const) : ("image-renumber" as const);
   return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
@@ -293,7 +301,7 @@ export const dockerCapabilitiesForHost = (
     ephemeralMounts: true,
     tlsCertificates: "none",
     rootless,
-    projectUserMapping: "unsupported",
+    projectUserMapping,
     bindOwnership,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
@@ -345,6 +353,7 @@ export const introspectProviderCapabilities = (
         dockerHost,
         hostProxyContainerTargets(engineArch),
         engineInfoRootless(info) ?? false,
+        engineInfoUsernsRemap(info) ?? false,
       );
     }),
   );

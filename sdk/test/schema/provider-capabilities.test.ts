@@ -33,8 +33,8 @@ const LITERAL_FIELDS = {
   composeSpec: ["none", "portable", "native"],
   volumeSnapshot: ["native", "none"],
   serviceFileCopy: ["native", "exec", "none"],
-  projectUserMapping: ["userns-keep-id", "unsupported"],
-  bindOwnership: ["root-is-host-user", "host-ids", "unknown"],
+  projectUserMapping: ["userns-keep-id", "image-renumber", "unsupported"],
+  bindOwnership: ["root-is-host-user", "host-ids", "userns-remap", "unknown"],
 } as const;
 
 const ARRAY_FIELDS = ["providerExtensions"] as const;
