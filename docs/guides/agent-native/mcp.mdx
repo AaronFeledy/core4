@@ -234,7 +234,10 @@ byte sequences become replacement characters, so progress notifications are not
 a binary transfer channel. Continuous output is buffered to a newline or 64 KiB;
 the remaining tail is sent when the command finishes. Log records are delivered
 without waiting for a newline. Known secret values are masked even when split
-between output chunks.
+between output chunks. A credential shape that wraps onto the next line, such as
+a quoted `password=` value, is masked as one value. Lando holds that unfinished
+value for at most half a second, then sends the masked line and hides the rest
+of the value as it arrives, up to its closing quote or 64 lines.
 
 Wait for the response with the original request id before closing stdin.
 Every completed command response includes `structuredContent.output`, even without

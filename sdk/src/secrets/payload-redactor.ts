@@ -6,10 +6,36 @@ import {
 } from "./literal-matcher.ts";
 import { REDACTED, isUsableExactRedactionValue } from "./redactor.ts";
 
+/** Bytes committed by {@link PayloadRedactor.expire}. */
+export interface PayloadExpiry {
+  /** Masked bytes to emit now; empty when nothing was uncovered. */
+  readonly bytes: Uint8Array;
+  /** True when the newly committed region contained a line terminator. */
+  readonly heldNewline: boolean;
+}
+
 /** Value-only byte redaction. Each instance owns one ordered payload stream. */
 export interface PayloadRedactor {
   readonly write: (chunk: Uint8Array) => Uint8Array;
   readonly flush: () => Uint8Array;
+  /** True while bytes are withheld as a possible prefix of a registered value. */
+  readonly holdsPending: () => boolean;
+  /** Bytes retained as that possible prefix, for sink accounting. */
+  readonly retainedBytes: () => number;
+  /**
+   * Monotonic count of sentinels this stream has emitted. A caller that retains
+   * output compares two readings to learn that the value layer rewrote bytes,
+   * which framing and the pattern layer alone cannot report.
+   */
+  readonly redactions: () => number;
+  /**
+   * Commit the withheld prefix as masked, for a live surface whose clock ran
+   * out. Emits one sentinel for the uncovered region and covers the whole
+   * pending region while keeping the matcher state, so a continuation that
+   * completes the value stays masked and a divergent continuation flows.
+   * Never releases a possible registered-value prefix raw.
+   */
+  readonly expire: () => PayloadExpiry;
 }
 
 /**
@@ -29,6 +55,17 @@ export const createPayloadRedactor = (
   // End of the union whose sentinel was already emitted, relative to pending.
   let coveredUntil = 0;
   let previousByte: number | undefined;
+  let redactions = 0;
+
+  const expire = (): PayloadExpiry => {
+    if (pending.length <= coveredUntil) return { bytes: new Uint8Array(0), heldNewline: false };
+    // Only the newly committed region decides whether the framer's partial
+    // line can never complete, because an earlier expiry already released it.
+    const heldNewline = pending.includes(10, coveredUntil);
+    coveredUntil = pending.length;
+    redactions += 1;
+    return { bytes: replacement, heldNewline };
+  };
 
   const redact = (chunk: Uint8Array, final: boolean): Uint8Array => {
     const values = getValues();
@@ -67,7 +104,10 @@ export const createPayloadRedactor = (
         break;
       }
       if (match.end > index) {
-        if (index >= coveredUntil) pieces.push(input.subarray(start, index), replacement);
+        if (index >= coveredUntil) {
+          pieces.push(input.subarray(start, index), replacement);
+          redactions += 1;
+        }
         coveredUntil = Math.max(coveredUntil, match.end);
         start = coveredUntil;
       }
@@ -89,5 +129,9 @@ export const createPayloadRedactor = (
     ...redactedInspection,
     write: (chunk) => redact(chunk, false),
     flush: () => redact(new Uint8Array(0), true),
+    holdsPending: () => pending.length > coveredUntil,
+    retainedBytes: () => pending.length,
+    redactions: () => redactions,
+    expire,
   };
 };

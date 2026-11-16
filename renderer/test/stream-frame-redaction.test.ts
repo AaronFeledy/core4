@@ -6,6 +6,7 @@ import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { REDACTED } from "@lando/sdk/secrets";
 import { Effect, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 const secret = "s3cret-exec-pipe-value";
 const payload = new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, 0x80, 0xfe, 0x7f, 0x00]);
@@ -211,5 +212,205 @@ describe("stream frame redaction", () => {
 
     // Then
     expect(io.stdoutBytes()).toEqual(input);
+  });
+});
+
+describe("time-bounded followed-log holds", () => {
+  const serviceLayer = (values: readonly string[]) =>
+    Layer.effect(
+      RedactionService,
+      Effect.gen(function* () {
+        const service = makeRedactionService();
+        if (values.length > 0) yield* service.registerValues([...values]);
+        return service;
+      }),
+    );
+
+  const runTimed = <A, E>(
+    format: "text" | "json",
+    io: ReturnType<typeof createBufferedRendererIO>,
+    values: readonly string[],
+    effect: Effect.Effect<A, E, StreamFrameSink>,
+  ) =>
+    Effect.runPromise(
+      Effect.scoped(effect).pipe(
+        Effect.provide(
+          RendererOutput.layerStreamFrameSink(format).pipe(
+            Layer.provide(
+              Layer.merge(
+                format === "json"
+                  ? RendererRuntime.layerJsonService(io)
+                  : RendererRuntime.layerPlainService(io),
+                serviceLayer(values),
+              ),
+            ),
+          ),
+        ),
+        Effect.provide(TestClock.layer()),
+      ),
+    );
+
+  test("holds a split quoted text record until the deadline and emits one masked line", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    // When
+    await runTimed(
+      "text",
+      io,
+      [],
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: 'password="first',
+          service: "app",
+          source: "logs",
+        });
+        yield* TestClock.adjust(499);
+        expect(io.stderr()).toBe("");
+        yield* TestClock.adjust(1);
+        expect(io.stderr()).toBe("app stderr [logs]: password=[redacted]\n");
+        yield* TestClock.adjust(5_000);
+      }),
+    );
+    // Then no later clock advance changes the line.
+    expect(io.stderr()).toBe("app stderr [logs]: password=[redacted]\n");
+  });
+
+  test("holds a split quoted JSON record until the deadline and emits one masked frame", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    // When
+    await runTimed(
+      "json",
+      io,
+      [],
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: 'password="first',
+          service: "app",
+          source: "logs",
+        });
+        yield* TestClock.adjust(499);
+        expect(io.stdout()).toBe("");
+        yield* TestClock.adjust(1);
+        expect(io.stdoutLines().map((line) => JSON.parse(line))).toEqual([
+          { _tag: "stderr", chunk: "password=[redacted]\n", service: "app", source: "logs" },
+        ]);
+        yield* TestClock.adjust(5_000);
+      }),
+    );
+    // Then later clock advances add nothing.
+    expect(io.stdoutLines()).toHaveLength(1);
+  });
+
+  test("completes two JSON records inside the window as one masked frame", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    // When
+    await runTimed(
+      "json",
+      io,
+      [],
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: 'password="a', service: "app" });
+        yield* TestClock.adjust(499);
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: 'b"', service: "app" });
+        expect(io.stdoutLines().map((line) => JSON.parse(line))).toEqual([
+          { _tag: "stdout", chunk: "password=[redacted]\n", service: "app" },
+        ]);
+      }),
+    );
+    // Then the completed value is one frame, not a per-record split.
+    expect(io.stdoutLines().map((line) => JSON.parse(line))).toEqual([
+      { _tag: "stdout", chunk: "password=[redacted]\n", service: "app" },
+    ]);
+  });
+
+  test("masks a registered multi-line value across records", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    // When
+    await runTimed(
+      "text",
+      io,
+      ["left\nright"],
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: "before left",
+          service: "app",
+          source: "logs",
+        });
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: "right after",
+          service: "app",
+          source: "logs",
+        });
+      }),
+    );
+    // Then the value is one masked line, never split across records.
+    expect(io.stderr()).toBe("app stderr [logs]: before [redacted] after\n");
+  });
+
+  test("expires a withheld registered-value prefix and releases its line once", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    // When a registered value's prefix is withheld by the value layer.
+    await runTimed(
+      "text",
+      io,
+      ["left\nright"],
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: "before left",
+          service: "app",
+          source: "logs",
+        });
+        yield* TestClock.adjust(499);
+        expect(io.stderr()).toBe("");
+        yield* TestClock.adjust(1);
+        expect(io.stderr()).toBe("app stderr [logs]: before [redacted]\n");
+      }),
+    );
+    // Then the expired prefix is committed masked as one line.
+    expect(io.stderr()).toBe("app stderr [logs]: before [redacted]\n");
+  });
+
+  test("finish flushes a held record and later clock advances write nothing", async () => {
+    // Given
+    const io = createBufferedRendererIO();
+    // When
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const owner = yield* RendererOutput.makeStreamFrameSink("json");
+        yield* owner.sink.emit({ kind: "record", _tag: "stdout", chunk: 'password="first' });
+        yield* owner.finish();
+        expect(io.stdoutLines().map((line) => JSON.parse(line))).toEqual([
+          { _tag: "stdout", chunk: "password=[redacted]\n" },
+        ]);
+        yield* TestClock.adjust(5_000);
+        yield* owner.finish();
+      }).pipe(
+        Effect.provide(Layer.merge(RendererRuntime.layerJsonService(io), redaction)),
+        Effect.provide(TestClock.layer()),
+      ),
+    );
+    // Then the one held frame was flushed before the later advances.
+    expect(io.stdoutLines().map((line) => JSON.parse(line))).toEqual([
+      { _tag: "stdout", chunk: "password=[redacted]\n" },
+    ]);
   });
 });

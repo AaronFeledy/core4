@@ -1,128 +1,19 @@
 /**
- * Bounded line-stream redaction.
+ * The per-stream output pipeline built on the line hold.
  *
- * Process output arrives as framed lines, but several canonical secret shapes
- * span newlines: quoted assignment and signed-query values, and the whitespace
- * between `Bearer` and its token. Redacting each line independently therefore
- * leaks such a value one line at a time.
- *
- * This primitive holds a block only while the canonical patterns over the
- * already-redacted block report an open construct. It then redacts the whole
- * block once, so a construct that completes within the hold is masked as one
- * value and collapses to the lines the redactor produced. An unresolved
- * construct is never held without bound: at the line or byte bound, after a
- * line the framer truncated (it may have dropped the closer), or at end of
- * stream, the held region fails closed to `[redacted]` and later lines flow
- * normally. Nothing after the bound is blanked, and a quoted value longer than
- * the bound can therefore expose its continuation beyond the masked region.
- *
- * The caller owns ordering: push lines from one stream in order, and flush
- * that stream at its end. A held stdout block can be overtaken by stderr lines
- * because the two streams hold independently. {@link createOutputLineRedactor}
+ * {@link redactLineSequence} redacts lines that arrive already split, keeping
+ * each released line at its input position; {@link redactLineText} redacts text
+ * that already holds whole lines; and {@link createOutputLineRedactor}
  * composes the whole per-stream pipeline (value layer, framing, line-stream)
- * for raw process bytes, and {@link redactLineSequence} redacts lines that
- * arrive already split, keeping each released line at its input position.
+ * for raw process bytes. The value layer runs over the joined stream first, so
+ * a registered value split across chunks or lines stays masked before the
+ * pattern layer or the hold sees it.
  */
 import { type FramedLine, makeLineFramer } from "@lando/sdk/log-follow";
-import {
-  type OpenSecretConstruct,
-  maskOpenSecretConstruct,
-  type Redactor,
-  type TieredRedactionValues,
-  createPayloadRedactor,
-  findOpenSecretConstruct,
-} from "@lando/sdk/secrets";
+import { type Redactor, type TieredRedactionValues, createPayloadRedactor } from "@lando/sdk/secrets";
+import { type LineStreamRedactorOptions, createLineStreamRedactor } from "./line-hold.ts";
 
-export const DEFAULT_LINE_STREAM_MAX_HELD_LINES = 64;
-/** UTF-8 bytes, including separators between held lines. */
-export const DEFAULT_LINE_STREAM_MAX_HELD_BYTES = 16 * 1024;
-
-export interface LineStreamPushOptions {
-  /** True when the framer dropped bytes from this line, including any closer. */
-  readonly truncated?: boolean;
-}
-
-export interface LineStreamRedactor {
-  /** Feed one framed line; returns the lines that are safe to publish now. */
-  readonly push: (line: string, options?: LineStreamPushOptions) => readonly string[];
-  /** End the stream, releasing any held block fail-closed. */
-  readonly flush: () => readonly string[];
-}
-
-export interface LineStreamRedactorOptions {
-  readonly maxHeldLines?: number;
-  readonly maxHeldBytes?: number;
-}
-
-const encoder = new TextEncoder();
-
-/**
- * Create a line-stream redactor. `redactor.redactString` is the canonical
- * `secrets` redactor; with nothing held a push costs one redaction of that line
- * plus the detector. While a quoted value is held, a line without its quote
- * character cannot close it, so the push only counts toward the bounds instead
- * of redacting the whole block again. Skipping can only keep a block held, and
- * every release redacts the whole held block, so the output is unchanged.
- */
-export const createLineStreamRedactor = (
-  redactor: Pick<Redactor, "redactPrefix">,
-  options: LineStreamRedactorOptions = {},
-): LineStreamRedactor => {
-  const maxHeldLines = options.maxHeldLines ?? DEFAULT_LINE_STREAM_MAX_HELD_LINES;
-  const maxHeldBytes = options.maxHeldBytes ?? DEFAULT_LINE_STREAM_MAX_HELD_BYTES;
-
-  let held: string[] = [];
-  let heldBytes = 0;
-  let heldTruncated = false;
-  // Quote character of the leftmost open construct; undefined for `Bearer`.
-  let heldQuote: string | undefined;
-
-  const redactedBlock = (): string => redactor.redactPrefix(held.join("\n"));
-
-  const clear = (): void => {
-    held = [];
-    heldBytes = 0;
-    heldTruncated = false;
-    heldQuote = undefined;
-  };
-
-  const failClosed = (output: string, open: OpenSecretConstruct): readonly string[] => {
-    const masked = maskOpenSecretConstruct(output, open);
-    clear();
-    return masked.split("\n");
-  };
-
-  const push: LineStreamRedactor["push"] = (line, pushOptions = {}) => {
-    const separator = held.length === 0 ? 0 : 1;
-    const bytes = encoder.encode(line).length;
-    held.push(line);
-    heldBytes += bytes + separator;
-    heldTruncated ||= pushOptions.truncated === true;
-    const overBound = heldTruncated || held.length > maxHeldLines || heldBytes > maxHeldBytes;
-    if (heldQuote !== undefined && !overBound && !line.includes(heldQuote)) return [];
-
-    const output = redactedBlock();
-    const open = findOpenSecretConstruct(output);
-    if (open === undefined) {
-      clear();
-      return output.split("\n");
-    }
-    if (overBound) return failClosed(output, open);
-    heldQuote = open.quote;
-    return [];
-  };
-
-  const flush: LineStreamRedactor["flush"] = () => {
-    if (held.length === 0) return [];
-    const output = redactedBlock();
-    const open = findOpenSecretConstruct(output);
-    if (open !== undefined) return failClosed(output, open);
-    clear();
-    return output.split("\n");
-  };
-
-  return { push, flush };
-};
+export * from "./line-hold.ts";
 
 /** The value layer over whole text, so a registered value split across lines stays masked. */
 const valueSafeText = (scope: OutputRedactionScope, text: string): string => {
@@ -181,10 +72,20 @@ export const redactLineText = (scope: OutputRedactionScope, text: string): strin
 
 /** The two redaction layers one process-output stream needs. */
 export interface OutputRedactionScope {
-  /** The canonical `secrets` pattern redactor. */
+  /** The canonical `secrets` pattern redactor and its streaming prefix form. */
   readonly redactor: Pick<Redactor, "redactString" | "redactPrefix">;
   /** The exact values, read before every write so later registrations apply. */
   readonly payloadValues: () => Iterable<string> | TieredRedactionValues;
+}
+
+/** Framing bound for callers whose records are already bounded by their producer. */
+interface OutputLineRedactorOptions extends LineStreamRedactorOptions {
+  /**
+   * Bytes one framed line may retain before the framer marks it truncated.
+   * A live records channel receives lines its producer already bounded, so it
+   * raises this to avoid truncating a legitimate long record a second time.
+   */
+  readonly maxLineBytes?: number;
 }
 
 export interface OutputLineRedactor {
@@ -192,6 +93,16 @@ export interface OutputLineRedactor {
   readonly write: (bytes: Uint8Array) => readonly string[];
   /** End the stream, releasing everything still held. */
   readonly end: () => readonly string[];
+  /** Earliest deadline of either layer, or `undefined` when nothing is held. */
+  readonly deadline: () => number | undefined;
+  /**
+   * Release an expired hold fail-closed. Commits a withheld value-layer prefix
+   * as masked; when that prefix held the line's newline, the framer's partial
+   * line is released as a line. A producer's own partial line is never released.
+   */
+  readonly expire: () => readonly string[];
+  /** Bytes retained by the value layer and the line hold, for sink accounting. */
+  readonly retainedBytes: () => number;
 }
 
 /**
@@ -202,15 +113,84 @@ export interface OutputLineRedactor {
  */
 export const createOutputLineRedactor = (
   scope: OutputRedactionScope,
-  options?: LineStreamRedactorOptions,
+  options?: OutputLineRedactorOptions,
 ): OutputLineRedactor => {
   const payload = createPayloadRedactor(scope.payloadValues);
-  const framer = makeLineFramer();
+  const framer = makeLineFramer(options?.maxLineBytes);
   const lines = createLineStreamRedactor(scope.redactor, options);
-  const release = (framed: readonly FramedLine[]): string[] =>
-    framed.flatMap((line) => lines.push(line.text, { truncated: line.truncated }));
+  const timeBound = options?.timeBound;
+  // Set by the write that first left the value layer holding a possible prefix.
+  let payloadHoldStart: number | undefined;
+
+  const now = (): number | undefined => timeBound?.now();
+  const payloadDeadline = (): number | undefined =>
+    payloadHoldStart === undefined || timeBound === undefined
+      ? undefined
+      : payloadHoldStart + timeBound.maxHeldMillis;
+  const refreshPayloadHold = (): void => {
+    if (!payload.holdsPending()) {
+      payloadHoldStart = undefined;
+      return;
+    }
+    payloadHoldStart ??= now();
+  };
+  const earliest = (left: number | undefined, right: number | undefined): number | undefined =>
+    left === undefined ? right : right === undefined ? left : Math.min(left, right);
+  const release = (framed: readonly FramedLine[], heldSince?: number): string[] =>
+    framed.flatMap((line) =>
+      lines.push(line.text, {
+        truncated: line.truncated,
+        ...(heldSince === undefined ? {} : { heldSince }),
+      }),
+    );
+  const deadline = (): number | undefined => earliest(lines.deadline(), payloadDeadline());
+  const expire = (): readonly string[] => {
+    const nowMs = now();
+    if (nowMs === undefined) return [];
+    const released: string[] = [];
+    const payloadDue = payloadDeadline();
+    if (payloadDue !== undefined && nowMs >= payloadDue) {
+      // The bytes this expiry commits arrived when the payload hold began, so
+      // a line-stream hold they open keeps that start instead of a new window.
+      const heldSince = payloadHoldStart;
+      const expiry = payload.expire();
+      if (expiry.bytes.length > 0) {
+        released.push(...release(framer.feed(expiry.bytes), heldSince));
+        if (expiry.heldNewline) released.push(...release(framer.flush(), heldSince));
+      }
+      payloadHoldStart = payload.holdsPending() ? nowMs : undefined;
+    }
+    const lineDue = lines.deadline();
+    if (lineDue !== undefined && nowMs >= lineDue) released.push(...lines.expire());
+    return released;
+  };
   return {
-    write: (bytes) => release(framer.feed(payload.write(bytes))),
-    end: () => [...release(framer.feed(payload.flush())), ...release(framer.flush()), ...lines.flush()],
+    write: (bytes) => {
+      const deadlineMs = deadline();
+      const nowMs = now();
+      // A write after the deadline fails the expired hold closed first, so a
+      // possible registered-value prefix is never released raw.
+      const released =
+        deadlineMs !== undefined && nowMs !== undefined && nowMs >= deadlineMs ? [...expire()] : [];
+      // A payload prefix resolved by this write arrived when that hold began,
+      // so a line hold its bytes open keeps the same start instead of buying a
+      // second full window.
+      const heldSince = payloadHoldStart;
+      released.push(...release(framer.feed(payload.write(bytes)), heldSince));
+      refreshPayloadHold();
+      return released;
+    },
+    end: () => {
+      const released = [
+        ...release(framer.feed(payload.flush())),
+        ...release(framer.flush()),
+        ...lines.flush(),
+      ];
+      refreshPayloadHold();
+      return released;
+    },
+    deadline,
+    expire,
+    retainedBytes: () => payload.retainedBytes() + lines.retainedBytes(),
   };
 };

@@ -385,3 +385,133 @@ describe("value layer line-ending variants (#2397)", () => {
     ]);
   });
 });
+
+describe("live time bound", () => {
+  const liveClock = (start = 1_000) => {
+    let current = start;
+    return {
+      timeBound: { maxHeldMillis: 500, now: () => current },
+      advance: (millis: number) => {
+        current += millis;
+      },
+    };
+  };
+
+  test("holds until the deadline, then releases fail-closed without another line", () => {
+    // Given a quoted value whose closer has not arrived.
+    const clock = liveClock();
+    const stream = createLineStreamRedactor(createRedactor("secrets"), {
+      timeBound: clock.timeBound,
+    });
+    // When the caller's clock is still inside the window.
+    expect(stream.push('password="first')).toEqual([]);
+    expect(stream.deadline()).toBe(1_500);
+    clock.advance(499);
+    expect(stream.expire()).toEqual([]);
+    // Then the deadline releases the whole held region once.
+    clock.advance(1);
+    expect(stream.expire()).toEqual(["password=[redacted]"]);
+    expect(stream.deadline()).toBeUndefined();
+    expect(stream.push("plain")).toEqual(["plain"]);
+  });
+
+  test("measures the hold from the push that began it, not from each line", () => {
+    // Given a hold that began at t0.
+    const clock = liveClock();
+    const stream = createLineStreamRedactor(createRedactor("secrets"), {
+      timeBound: clock.timeBound,
+    });
+    expect(stream.push('password="first')).toEqual([]);
+    // When a quote-free continuation arrives inside the window.
+    clock.advance(300);
+    expect(stream.push("still-held")).toEqual([]);
+    // Then the original deadline still applies.
+    expect(stream.deadline()).toBe(1_500);
+    clock.advance(199);
+    expect(stream.expire()).toEqual([]);
+    clock.advance(1);
+    expect(stream.expire()).toEqual(["password=[redacted]"]);
+  });
+
+  test("keeps the payload layer's held newline bounded and releases its partial line", () => {
+    // Given a registered value whose newline is withheld by the value layer.
+    const clock = liveClock();
+    const values = ["left\nright"];
+    const output = createOutputLineRedactor(
+      { redactor: createRedactor("secrets", { values }), payloadValues: () => values },
+      { timeBound: clock.timeBound },
+    );
+    // When the value layer holds the prefix and framing has a partial line.
+    expect(output.write(encoder.encode("before left\n"))).toEqual([]);
+    expect(output.deadline()).toBe(1_500);
+    clock.advance(499);
+    expect(output.expire()).toEqual([]);
+    clock.advance(1);
+    // Then the partial line is released with the committed mask.
+    expect(output.expire()).toEqual(["before [redacted]"]);
+    // And the continuation only contributes its uncovered bytes.
+    expect(output.write(encoder.encode("right after\n"))).toEqual([" after"]);
+    expect(output.end()).toEqual([]);
+  });
+
+  test("never releases a producer's own partial line on expiry", () => {
+    // Given a value-layer hold with no newline in the committed region.
+    const clock = liveClock();
+    const values = ["secret"];
+    const output = createOutputLineRedactor(
+      { redactor: createRedactor("secrets", { values }), payloadValues: () => values },
+      { timeBound: clock.timeBound },
+    );
+    expect(output.write(encoder.encode("before sec"))).toEqual([]);
+    clock.advance(500);
+    // When expiry commits the prefix without a newline.
+    expect(output.expire()).toEqual([]);
+    // Then the producer's partial line waits for its own newline.
+    expect(output.write(encoder.encode("ret\n"))).toEqual(["before [redacted]"]);
+  });
+});
+
+describe("live time bound on the output pipeline", () => {
+  const liveClock = (start = 1_000) => {
+    let current = start;
+    return {
+      timeBound: { maxHeldMillis: 500, now: () => current },
+      advance: (millis: number) => {
+        current += millis;
+      },
+    };
+  };
+
+  test("a write after the deadline masks the expired prefix before flowing", () => {
+    // Given a withheld prefix of a registered value and an expired deadline.
+    const clock = liveClock();
+    const values = ["secret"];
+    const output = createOutputLineRedactor(
+      { redactor: createRedactor("secrets", { values }), payloadValues: () => values },
+      { timeBound: clock.timeBound },
+    );
+    expect(output.write(encoder.encode("before sec"))).toEqual([]);
+    clock.advance(500);
+    // When a divergent continuation arrives before the timer tick runs.
+    expect(output.write(encoder.encode("ond unrelated\n"))).toEqual(["before [redacted]ond unrelated"]);
+  });
+
+  test("a line released by a value-layer expiry keeps the original hold start", () => {
+    // Given a partial line withheld inside a registered value's newline prefix.
+    const clock = liveClock();
+    const values = ["left\nright"];
+    const output = createOutputLineRedactor(
+      { redactor: createRedactor("secrets", { values }), payloadValues: () => values },
+      { timeBound: clock.timeBound },
+    );
+    expect(output.write(encoder.encode('password="left\n'))).toEqual([]);
+    expect(output.deadline()).toBe(1_500);
+    clock.advance(499);
+    expect(output.expire()).toEqual([]);
+    // Then at the payload deadline the still-open line fails closed in the same
+    // release; it must not open a second 500 ms window from the release time.
+    clock.advance(1);
+    expect(output.expire()).toEqual(["password=[redacted]"]);
+    expect(output.deadline()).toBeUndefined();
+  });
+});

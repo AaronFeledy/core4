@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Buffer } from "node:buffer";
+import { McpTransportError } from "@lando/sdk/errors";
+import { createRedactor } from "@lando/sdk/secrets";
+import { Cause, Effect, Exit } from "effect";
+import { TestClock } from "effect/testing";
+import { LiveProgress } from "../src/live-progress";
 import { flushProgress, progressFixture } from "./live-progress-fixture";
 
 describe("MCP live progress", () => {
@@ -62,7 +67,7 @@ describe("MCP live progress", () => {
     );
   });
   test.each(["whole-token", "substring-upgrade"] as const)(
-    "retained replay applies late %s registrations",
+    "fails closed when a late %s registration follows a value-layer rewrite",
     async (mode) => {
       await Effect.runPromise(
         Effect.gen(function* () {
@@ -83,11 +88,9 @@ describe("MCP live progress", () => {
             match: mode === "whole-token" ? "whole-token" : "substring",
           });
           const retained = owner.capture.snapshot(yield* service.forProfile("secrets"));
-          expect(retained.chunks.map((frame) => frame.chunk).join("")).toBe(
-            mode === "whole-token"
-              ? "[redacted]\nwordpress-seo\n[redacted]wordpress\nwordpress[redacted]\n"
-              : "[redacted]\n[redacted]-seo\n[redacted][redacted]\n[redacted][redacted]\n",
-          );
+          // The live chunks already lost their original bytes, so a late value
+          // cannot be replayed safely: retained capture fails closed.
+          expect(retained).toEqual({ chunks: [], truncated: true });
         }),
       );
     },
@@ -206,4 +209,158 @@ describe("MCP live progress", () => {
       }),
     );
   });
+});
+
+describe("MCP live time bound", () => {
+  test("holds a split quoted record until the deadline and emits one masked frame", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        // Given
+        const { sink, owner, frames } = yield* progressFixture();
+        // When
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stderr",
+          chunk: 'password="first',
+          service: "app",
+          source: "logs",
+        });
+        yield* TestClock.adjust(499);
+        expect(frames).toEqual([]);
+        yield* TestClock.adjust(1);
+        expect(frames).toEqual([
+          { _tag: "stderr", chunk: "password=[redacted]\n", service: "app", source: "logs" },
+        ]);
+        yield* TestClock.adjust(5_000);
+        // Then no later clock advance changes the frame.
+        expect(frames).toHaveLength(1);
+        yield* owner.finish();
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+
+  test("completes two records inside the window as one masked frame", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        // Given
+        const { sink, owner, frames } = yield* progressFixture();
+        // When
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: 'password="a', service: "app" });
+        yield* TestClock.adjust(499);
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: 'b"', service: "app" });
+        // Then
+        expect(frames).toEqual([{ _tag: "stdout", chunk: "password=[redacted]\n", service: "app" }]);
+        yield* owner.finish();
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+
+  test("masks a registered multi-line value across records", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        // Given
+        const { sink, owner, service, text } = yield* progressFixture();
+        yield* service.registerValues(["left\nright"]);
+        // When
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: "before left", service: "app" });
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: "right after", service: "app" });
+        yield* owner.finish();
+        // Then
+        expect(text()).toBe("before [redacted] after\n");
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+
+  test("expires a withheld registered-value prefix and releases its line once", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        // Given a registered value whose newline is withheld with its prefix.
+        const { sink, owner, service, frames } = yield* progressFixture();
+        yield* service.registerValues(["left\nright"]);
+        // When the record's prefix is held and the deadline passes.
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: "before left" });
+        yield* TestClock.adjust(499);
+        expect(frames).toEqual([]);
+        yield* TestClock.adjust(1);
+        // Then the committed prefix is masked as one line.
+        expect(frames).toEqual([{ _tag: "stdout", chunk: "before [redacted]\n" }]);
+        yield* owner.finish();
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+
+  test("finish flushes a held record and later clock advances emit nothing", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        // Given
+        const { sink, owner, frames } = yield* progressFixture();
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: 'password="first' });
+        // When
+        yield* owner.finish();
+        expect(frames).toEqual([{ _tag: "stdout", chunk: "password=[redacted]\n" }]);
+        yield* TestClock.adjust(5_000);
+        yield* owner.finish();
+        // Then
+        expect(frames).toEqual([{ _tag: "stdout", chunk: "password=[redacted]\n" }]);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+
+  test("holds an open byte line until a newline completes it", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        // Given a byte channel whose open quoted value has no newline yet.
+        const { sink, owner, frames } = yield* progressFixture();
+        yield* sink.emit({ kind: "bytes", _tag: "stdout", chunk: Buffer.from('password="first') });
+        yield* TestClock.adjust(500);
+        expect(frames).toEqual([]);
+        // When the producer completes the line.
+        yield* sink.emit({ kind: "bytes", _tag: "stdout", chunk: Buffer.from('second"\n') });
+        // Then the whole line is masked once.
+        expect(frames).toEqual([{ _tag: "stdout", chunk: "password=[redacted]\n" }]);
+        yield* owner.finish();
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+});
+
+test("a line released by a payload expiry masks at the payload deadline", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      // Given a registered multi-line value whose newline the value layer withholds.
+      const { sink, owner, frames, service } = yield* progressFixture();
+      yield* service.registerValues(["left\nright"]);
+      yield* sink.emit({ kind: "bytes", _tag: "stdout", chunk: Buffer.from('password="left\n') });
+      expect(frames).toEqual([]);
+      // When the payload deadline passes, the still-open line keeps the original start.
+      yield* TestClock.adjust(500);
+      // Then it is masked at 500 ms, not after a second full window.
+      expect(frames).toEqual([{ _tag: "stdout", chunk: "password=[redacted]\n" }]);
+      yield* owner.finish();
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+});
+
+test("counts undelivered queued chunks against the retained byte budget", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      // Given a client that never commits a delivery.
+      const live = new LiveProgress(
+        () => [],
+        () =>
+          Effect.sync(() => {
+            throw new Error("stalled client");
+          }),
+        { redactor: createRedactor("secrets"), now: () => 0 },
+      );
+      const record = "h".repeat(65_536);
+      let failed = false;
+      for (let index = 0; index < 200 && !failed; index += 1) {
+        const exit = yield* Effect.exit(live.emit({ kind: "record", _tag: "stdout", chunk: record }));
+        if (Exit.isFailure(exit) && Cause.squash(exit.cause) instanceof McpTransportError) failed = true;
+      }
+      // Then queued bytes cross the fail-closed limit instead of accumulating unseen.
+      expect(failed).toBe(true);
+    }),
+  );
 });
