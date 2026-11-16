@@ -159,3 +159,62 @@ export const publicationCapabilityError = (
         remediation: `Choose a provider with host port publish support or make service ${intent.name} endpoints internal.`,
       })
     : undefined;
+
+/**
+ * Re-checks project-user realizability against the provider in front of a
+ * plan. Fresh planning fails explicit authoring before it builds the plan;
+ * this is the same rule applied to a cached plan, so a plan written under a
+ * different engine never runs with a mapping the current provider cannot make.
+ */
+export const projectUserCapabilityErrors = (
+  provider: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: ReadonlyArray<{
+    readonly name: string;
+    readonly projectUser?: unknown;
+    readonly projectUserExplanation?: {
+      readonly state: string;
+      readonly explicit: boolean;
+    };
+  }>,
+): readonly CapabilityError[] =>
+  services.flatMap((service) => {
+    const realizationRequired =
+      service.projectUser !== undefined ||
+      (service.projectUserExplanation?.state === "provider-unsupported" &&
+        service.projectUserExplanation.explicit);
+    if (!realizationRequired || capabilities.projectUserMapping === "userns-keep-id") return [];
+    return [
+      missingCapability(
+        provider,
+        service.name,
+        "project user mapping",
+        "projectUserMapping",
+        `Set services.${service.name}.projectUser to false to keep the container default identity, or choose a provider that maps one container id to the host user.`,
+      ),
+    ];
+  });
+
+/**
+ * Fails a plan whose services require a project-user mapping the provider
+ * cannot realize. Fresh planning fails explicit authoring before it builds the
+ * plan; a cache hit runs the same admission so a plan written under another
+ * engine cannot run unmapped.
+ */
+export const assertProjectUserSupported = (
+  provider: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: Readonly<
+    Record<
+      string,
+      {
+        readonly name: string;
+        readonly projectUser?: unknown;
+        readonly projectUserExplanation?: { readonly state: string; readonly explicit: boolean };
+      }
+    >
+  >,
+): Effect.Effect<void, CapabilityError> =>
+  Effect.forEach(projectUserCapabilityErrors(provider, capabilities, Object.values(services)), Effect.fail, {
+    discard: true,
+  });

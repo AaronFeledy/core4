@@ -93,6 +93,10 @@ const serviceInfoMetadata = (
     primary: service.primary,
     ...(artifact === undefined ? {} : { artifact }),
     ...(service.user === undefined ? {} : { user: service.user }),
+    ...(service.projectUser === undefined ? {} : { projectUser: service.projectUser }),
+    ...(service.projectUserExplanation === undefined
+      ? {}
+      : { projectUserExplanation: service.projectUserExplanation }),
     ...(service.workingDirectory === undefined ? {} : { workingDirectory: service.workingDirectory }),
     hostnames,
     ...(certs === undefined ? {} : { certs }),

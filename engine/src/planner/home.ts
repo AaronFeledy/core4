@@ -9,7 +9,7 @@
  * planned rather than guessing a path.
  */
 import { LandofileValidationError } from "@lando/sdk/errors";
-import type { ServiceConfig, ServiceHomePlan, ServicePlan } from "@lando/sdk/schema";
+import type { ServiceConfig, ServiceHomePlan, ServicePlan, ServiceProjectUser } from "@lando/sdk/schema";
 import { AbsoluteContainerPath, landoServiceHomeStoreName, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
@@ -99,15 +99,21 @@ export const applyServiceHome = (input: {
   readonly appSlug: string;
   readonly appRoot: string;
   readonly intent: ServiceHomeIntent;
+  /**
+   * The realized project user, whose home a user command runs in. It wins over
+   * the planned process user because the process may still be root (Apache).
+   */
+  readonly projectUser?: ServiceProjectUser;
 }): LandofileValidationError | (ServicePlan & { readonly home: ServiceHomePlan }) => {
-  const user =
-    input.servicePlan.user ?? (input.intent.customImage ? undefined : input.intent.identity?.defaultUser);
+  const commandUser = input.projectUser?.name ?? input.servicePlan.user;
+  const user = commandUser ?? (input.intent.customImage ? undefined : input.intent.identity?.defaultUser);
+  input.servicePlan.user ?? (input.intent.customImage ? undefined : input.intent.identity?.defaultUser);
   const principal = user === undefined ? undefined : userPrincipal(user);
   const knownUser = principal === undefined ? {} : { user: principal };
   const resolved = resolveHomePath({
     serviceName: input.serviceName,
     intent: input.intent,
-    plannedUser: input.servicePlan.user,
+    plannedUser: commandUser,
   });
   if (resolved === undefined)
     return {

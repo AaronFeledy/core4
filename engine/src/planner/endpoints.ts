@@ -1,5 +1,5 @@
 import {
-  type CapabilityError,
+  CapabilityError,
   DataTreeOwnershipCapabilityError,
   type FileSyncSelectionError,
   LandofileValidationError,
@@ -47,6 +47,7 @@ import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-
 import { applyServiceHome } from "./home.ts";
 import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from "./mounts.ts";
 import { encodeServicePlan } from "./plan-decode.ts";
+import { projectUserTmpfsMounts, projectUserVolumeTrees, resolveProjectUser } from "./project-user.ts";
 import {
   publicationCapabilityError,
   requiredLogSourceCapabilityError,
@@ -83,6 +84,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appSlug: string;
   readonly dataSlug?: string;
   readonly appName: string;
+  readonly appKind?: "user" | "global" | "scratch";
   readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
   readonly provider: ProviderId;
@@ -212,6 +214,36 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     shadowHostChecks.push(...shadowResult.shadowHostChecks);
     const planWithShadows = shadowResult.servicePlan;
     const appMount = serviceAppMount(planWithShadows);
+    const projectUserResolution = resolveProjectUser({
+      appKind: input.appKind ?? "user",
+      serviceName: name,
+      serviceTypeLabel: homeIntent.serviceType,
+      appRoot: input.appRoot,
+      provider: input.provider,
+      capabilities: input.providerCapabilities,
+      authored: draft.normalizedConfig.projectUser,
+      authoredUser: draft.normalizedConfig.user,
+      appSourceMounted: appMount !== undefined,
+      identity: homeIntent.identity,
+    });
+    if (
+      projectUserResolution instanceof LandofileValidationError ||
+      projectUserResolution instanceof CapabilityError
+    )
+      return yield* Effect.fail(projectUserResolution);
+    const projectUserFields = {
+      ...(projectUserResolution.projectUser === undefined
+        ? {}
+        : { projectUser: projectUserResolution.projectUser }),
+      ...(projectUserResolution.explanation === undefined
+        ? {}
+        : { projectUserExplanation: projectUserResolution.explanation }),
+    };
+    const planWithProjectUser = {
+      ...planWithShadows,
+      ...projectUserFields,
+      mounts: projectUserTmpfsMounts(planWithShadows.mounts, projectUserResolution.projectUser),
+    };
     const engine =
       appMount !== undefined &&
       input.providerCapabilities.bindMountPerformance === "slow" &&
@@ -238,14 +270,17 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
     const homePlan = applyServiceHome({
       servicePlan: {
-        ...planWithShadows,
-        mounts: [...planWithShadows.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
+        ...planWithProjectUser,
+        mounts: [...planWithProjectUser.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
       },
       serviceName: name,
       storeOwner,
       appSlug: input.dataSlug ?? input.appSlug,
       appRoot: input.appRoot,
       intent: homeIntent,
+      ...(projectUserResolution.projectUser === undefined
+        ? {}
+        : { projectUser: projectUserResolution.projectUser }),
     });
     if (homePlan instanceof LandofileValidationError) return yield* Effect.fail(homePlan);
     // Data-tree ownership resolves here, where the composed `draft.user` and
@@ -282,6 +317,15 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       if (preparedHome instanceof DataTreeOwnershipCapabilityError) return yield* Effect.fail(preparedHome);
       ownershipTrees.push(...preparedHome);
     }
+    ownershipTrees.push(
+      ...projectUserVolumeTrees({
+        mounts: homePlan.mounts,
+        ...(projectUserResolution.projectUser === undefined
+          ? {}
+          : { projectUser: projectUserResolution.projectUser }),
+        ...(homePlan.home.state === "persisted" ? { homeStore: homePlan.home.store } : {}),
+      }),
+    );
     const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
     const draftForPlan = {
       ...draft,
@@ -300,6 +344,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForPlan),
         mounts: homePlan.mounts,
         home: homePlan.home,
+        ...projectUserFields,
       },
       input.providerCapabilities.hostReachability,
     );

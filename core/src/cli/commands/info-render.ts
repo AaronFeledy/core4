@@ -78,10 +78,30 @@ const planMetadataFields = (service: InfoAppService): NonNullable<SummaryRow["fi
           },
         ]),
     ...(service.user === undefined ? [] : [{ label: "user", value: service.user }]),
+    ...projectUserField(service),
     ...(service.listenerAuthority === undefined
       ? []
       : [{ label: "listener", value: listenerText(service.listenerAuthority) }]),
   ].map((field) => ({ ...field, value: escapeDiagnosticText(field.value) }));
+
+/**
+ * Reports a realized project user, and the reason for its absence when the
+ * absence is actionable. Routine not-applicable cases stay out of the row.
+ */
+const projectUserField = (service: InfoAppService): Array<{ label: string; value: string }> => {
+  const projectUser = service.projectUser;
+  if (projectUser !== undefined)
+    return [
+      {
+        label: "project user",
+        value: `${projectUser.name} (${projectUser.uid}:${projectUser.gid})`,
+      },
+    ];
+  const explanation = service.projectUserExplanation;
+  if (explanation === undefined) return [];
+  if (!explanation.explicit && explanation.state !== "provider-unsupported") return [];
+  return [{ label: "project user", value: explanation.detail }];
+};
 
 /** One pointer to the JSON contract for the details the summary leaves out. */
 const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string => {

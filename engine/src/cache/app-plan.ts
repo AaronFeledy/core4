@@ -38,7 +38,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 53n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 54n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -175,6 +175,13 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       kind: input.kind ?? "user",
       hostProvider: input.hostProvider,
       landofile: input.landofile,
+      providerProjectUserFacts:
+        input.providerCapabilities === undefined
+          ? null
+          : {
+              projectUserMapping: input.providerCapabilities.projectUserMapping,
+              bindOwnership: input.providerCapabilities.bindOwnership,
+            },
       sourceFingerprint:
         input.sourceFingerprint === undefined
           ? null

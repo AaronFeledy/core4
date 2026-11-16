@@ -90,6 +90,7 @@ import { normalizeNetworks } from "./networks.ts";
 import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
 import {
   agentSocketCapabilityErrors,
+  assertProjectUserSupported,
   assertRouteNetworkingSupported,
   assertServiceInitSupported,
 } from "./resource-capabilities.ts";
@@ -101,7 +102,6 @@ import { resolveServiceConfigSources } from "./service-config-files.ts";
 import { validateServiceProbes } from "./service-probes.ts";
 import { type ResolvedService, resolvedServiceCacheInput } from "./service-types.ts";
 import { authoredStorageScopes } from "./storage.ts";
-
 export interface PlanAppInput {
   readonly identity?: AppIdentity;
   readonly dataName?: string;
@@ -112,7 +112,6 @@ export interface PlanAppInput {
   readonly mode?: "validate";
   readonly resolution?: ResolvedLandofile;
 }
-
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
@@ -237,7 +236,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const preparedApp = endpointProjection.preparedApp;
   rememberAppFeatureEnvironment(authoredLandofile, preparedApp.environment.dependencies);
   const appFeatures = preparedApp.features;
-
   const composeConfigFileInputs = yield* loadComposeConfigFiles({
     appRoot,
     landofile,
@@ -443,6 +441,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeKnobsSupported(capabilityContext, cached.services);
       yield* assertServiceInitSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeFieldsSupported(capabilityContext, cached);
+      yield* assertProjectUserSupported(provider, providerCapabilities, cached.services);
       const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
         attachEffectiveTooling(proven, effectiveTooling, { connectionClients, provenance }),
@@ -478,13 +477,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     );
     yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
   }
-
   const finalized = yield* finalizeServices({
     manifests,
     configs: landofile.configs,
     plannedServiceDrafts: plannedWithClones,
     appId,
     appRoot,
+    appKind: input.kind ?? "user",
     appSlug,
     appName,
     dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
@@ -581,6 +580,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);
   yield* assertComposeFieldsSupported(capabilityContext, plan);
+  yield* assertProjectUserSupported(provider, providerCapabilities, plan.services);
   if (planCache !== undefined && !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) {
     yield* writeCachedAppPlan({
       cacheRoot,
