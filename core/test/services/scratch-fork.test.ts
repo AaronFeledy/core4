@@ -855,7 +855,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(await readFile(join(String(appliedPlan.root), "marker.txt"), "utf8")).toBe("source-content");
       expect(await readFile(join(String(appliedPlan.root), ".lando.yml"), "utf8")).toContain("forkme");
       expect(await readFile(join(dir, "marker.txt"), "utf8")).toBe("source-content");
-      expect(await pathExists(join(String(appliedPlan.root), "node_modules"))).toBe(false);
+      // Apply prepares an empty node_modules mount point; the fork must not copy its contents.
+      expect(await pathExists(join(String(appliedPlan.root), "node_modules", "package"))).toBe(false);
       expect(await pathExists(join(String(appliedPlan.root), "coverage"))).toBe(false);
       expect(await pathExists(join(String(appliedPlan.root), ".lando.local.yml"))).toBe(false);
       expect(await pathExists(join(String(appliedPlan.root), ".lando.user.yml"))).toBe(false);
