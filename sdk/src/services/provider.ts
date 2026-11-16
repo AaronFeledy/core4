@@ -398,6 +398,14 @@ export type AppliedTeardownEvidence =
   | { readonly kind: "owned"; readonly ownership: ReadonlyArray<ResourceOwnership> }
   | { readonly kind: "absent" };
 
+/**
+ * How far applied-plan resolution may widen from the lookup root. `"ancestor"` accepts the
+ * deepest applied plan whose app root contains the lookup root, which suits a working
+ * directory inside an app; `"exact"` requires the plan recorded for that root itself and is
+ * what a caller that already resolved its app must use.
+ */
+export type AppliedPlanLookup = "ancestor" | "exact";
+
 /** Read-only host-wide evidence; an unobserved runtime contributes only applied plans. */
 export interface ProviderRuntimeSnapshot {
   readonly providerId: ProviderId;
@@ -439,9 +447,15 @@ export class RuntimeProviderRegistry extends Context.Service<
       providerId: ProviderId,
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
+    /**
+     * The applied plan for a lookup root, failing closed on contradictory or orphaned runtime
+     * state. With the default `"ancestor"` lookup a working directory inside an app resolves
+     * that app; `"exact"` never returns an enclosing app's plan.
+     */
     readonly resolveAppliedPlan: (
       root: AbsolutePath,
       app?: Pick<AppRef, "kind" | "id">,
+      lookup?: AppliedPlanLookup,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly resolveTeardownEvidence: (
       root: AbsolutePath,
