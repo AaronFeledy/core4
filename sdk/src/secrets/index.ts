@@ -12,6 +12,7 @@ export {
   type TieredRedactionValues,
   isRedactionTokenBoundaryUnit,
 } from "./literal-matcher.ts";
+export * from "./open-construct.ts";
 export * from "./payload-redactor.ts";
 export * from "./public-default-credentials.ts";
 export * from "./redactor.ts";

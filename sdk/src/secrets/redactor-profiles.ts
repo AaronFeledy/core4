@@ -106,6 +106,7 @@ const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
 
+// Plain quoted values may span newlines; `findOpenSecretConstruct` reports an opener whose closer has not arrived.
 const QUOTED_VALUE_SOURCE = `${DOUBLE_QUOTED_VALUE_SOURCE}|${String.raw`\\+'[^']*\\+'|'[^']*'|`}`;
 
 const ASSIGNMENT_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(ASSIGNMENT_STOP_CLASS);

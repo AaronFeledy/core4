@@ -31,6 +31,7 @@ describe("@lando/sdk/secrets import boundary", () => {
       "../../src/secrets/bounded-redaction.ts",
       "../../src/secrets/env-placeholder.ts",
       "../../src/secrets/literal-matcher.ts",
+      "../../src/secrets/open-construct.ts",
       "../../src/secrets/payload-redactor.ts",
       "../../src/secrets/redactor-profiles.ts",
       "../../src/secrets/redactor.ts",

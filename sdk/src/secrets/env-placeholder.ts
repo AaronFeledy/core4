@@ -43,6 +43,9 @@ const COMPLETE_ENV_REFERENCE = new RegExp(
  */
 export const isCompleteEnvReference = (value: string): boolean => COMPLETE_ENV_REFERENCE.test(value);
 
+/** Quote characters that open a plain quoted secret value; such a value may span newlines. */
+export const SECRET_VALUE_QUOTE_CHARS = ['"', "'"] as const;
+
 /** Escaped double-quoted value: one or more backslashes on each side of the quotes. */
 export const ESCAPED_DOUBLE_QUOTED_SOURCE = String.raw`\\+"[^"]*\\+"`;
 
