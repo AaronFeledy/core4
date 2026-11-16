@@ -95,6 +95,7 @@ describe("ConfigTranslator contract — bundled lando3", () => {
           redacted += 1;
           return text;
         },
+        redactPrefix: (text: string) => text,
         redactValue: (value: unknown) => value,
       },
     });

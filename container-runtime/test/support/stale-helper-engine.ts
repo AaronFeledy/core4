@@ -13,6 +13,7 @@ export const staleTime = new Date(NOW - 600_001).toISOString();
 export const freshTime = new Date(NOW - 60_000).toISOString();
 export const redactor = {
   redactString: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
+  redactPrefix: (value: string) => value.replaceAll("SENSITIVE", "[REDACTED]"),
   redactValue: (value: unknown) => value,
 };
 

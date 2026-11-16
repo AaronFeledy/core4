@@ -11,7 +11,12 @@ import {
   structuralRedaction,
 } from "@lando/sdk/command-result";
 import { LandoEvent, TaskDetailEvent } from "@lando/sdk/events";
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import {
+  CommandResultEnvelope,
+  SchemaNotCredentialAnnotationId,
+  SecretRef,
+  StreamFrame,
+} from "@lando/sdk/schema";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 
@@ -62,7 +67,8 @@ describe("schema-fixed string exemptions", () => {
     const dynamicLine = Effect.runSync(
       encodeCommandResult(resultOptions({ "dynamic-secret": "value" }, dynamic, ["dynamic-secret"])),
     );
-    expect(JSON.parse(dynamicLine).result).toEqual({ [REDACTED]: "value" });
+    // The key is schema-indexed but also secret-named, so the rule masks the entry.
+    expect(JSON.parse(dynamicLine).result).toEqual({ [REDACTED]: REDACTED });
   });
 });
 
@@ -276,4 +282,70 @@ describe("runtime value redaction", () => {
 test("the exported envelope policy compiles once per result schema", () => {
   const schema = Schema.Struct({ kind: Schema.Literal("tooling") });
   expect(commandResultEnvelopePolicy(schema)).toBe(commandResultEnvelopePolicy(schema));
+});
+
+describe("the secret-named-field rule under a compiled policy", () => {
+  const redactor = createRedactor("secrets");
+
+  test("masks an aliased object under the secret key that reaches it last", () => {
+    // Given: an opaque position puts both keys on the same scope object.
+    const policy = structuralRedaction(Schema.Unknown);
+    const shared = { value: "hunter2" };
+    // When
+    const publicFirst = redactValueWithPolicy(redactor, policy, { ok: shared, password: shared });
+    const secretFirst = redactValueWithPolicy(redactor, policy, { password: shared, ok: shared });
+    // Then
+    expect(publicFirst).toEqual({ ok: { value: "hunter2" }, password: REDACTED });
+    expect(secretFirst).toEqual({ password: REDACTED, ok: { value: "hunter2" } });
+  });
+
+  test("drops a member that requires a property the value lacks", () => {
+    // Given: only one member can decode each value, so neither the descriptor
+    // annotation nor the plain struct's fields are ambiguous.
+    const policy = structuralRedaction(
+      Schema.Struct({ password: Schema.Union([SecretRef, Schema.Struct({ value: Schema.String })]) }),
+    );
+    // When
+    const descriptor = redactValueWithPolicy(redactor, policy, {
+      password: { _tag: "SecretRef", reference: "DB_PASSWORD" },
+    });
+    const plain = redactValueWithPolicy(redactor, policy, { password: { value: "hunter2" } });
+    // Then
+    expect(descriptor).toEqual({ password: { _tag: "SecretRef", reference: "DB_PASSWORD" } });
+    expect(plain).toEqual({ password: { value: REDACTED } });
+  });
+});
+
+describe("the NotCredential annotation", () => {
+  const redactor = createRedactor("secrets", { values: ["registered-value"] });
+  const notCredential = <T extends Schema.Top>(schema: T) =>
+    schema.annotate({ [SchemaNotCredentialAnnotationId]: true });
+
+  test("keeps an annotated secret-named string and masks an unannotated one", () => {
+    // Given one position the schema proves holds a name and one it does not.
+    const policy = structuralRedaction(
+      Schema.Struct({
+        defaultSecretStore: notCredential(Schema.String),
+        secretAnswers: Schema.String,
+      }),
+    );
+    // When
+    const output = redactValueWithPolicy(redactor, policy, {
+      defaultSecretStore: "1password",
+      secretAnswers: "hunter2",
+    });
+    // Then
+    expect(output).toEqual({ defaultSecretStore: "1password", secretAnswers: REDACTED });
+  });
+
+  test("still applies ordinary string redaction inside an annotated position", () => {
+    // Given an annotated field whose text carries a registered value.
+    const policy = structuralRedaction(Schema.Struct({ defaultSecretStore: notCredential(Schema.String) }));
+    // When
+    const output = redactValueWithPolicy(redactor, policy, {
+      defaultSecretStore: "store-registered-value",
+    });
+    // Then
+    expect(output).toEqual({ defaultSecretStore: `store-${REDACTED}` });
+  });
 });

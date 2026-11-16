@@ -1798,6 +1798,7 @@
       "SchemaExecutionSiteAnnotationId",
       "SchemaIssueLeaf",
       "SchemaLayerMergeAnnotationId",
+      "SchemaNotCredentialAnnotationId",
       "SecretRef",
       "SecretReference",
       "SecretStoreContribution",
@@ -2114,6 +2115,7 @@
       "PUBLIC_DEFAULT_CREDENTIALS",
       "REDACTED",
       "REDACTION_PROFILES",
+      "continueSecretValue",
       "createPayloadRedactor",
       "createRedactor",
       "createSecretRedactor",
@@ -2124,9 +2126,13 @@
       "isSecretEnvName",
       "isSecretFieldName",
       "isSecretStructuralName",
+      "isSignedQueryName",
       "isUsableExactRedactionValue",
+      "maskOpenSecretConstruct",
       "parseSecretReference",
-      "redactValueWith"
+      "redactSecretField",
+      "redactValueWith",
+      "startSecretContinuation"
     ],
     "./services": [
       "AppPlanSanitizer",

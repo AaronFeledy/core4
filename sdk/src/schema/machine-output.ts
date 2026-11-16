@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { CommandTrace } from "./command-trace.ts";
 import { DeprecationUse } from "./deprecation.ts";
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { FailureRole } from "./failure-role.ts";
 
 export { FailureRole } from "./failure-role.ts";
@@ -80,6 +81,12 @@ const taggedErrorFields = {
   }),
 };
 
+// A tagged error's remaining fields are Lando-authored diagnostics, not
+// credential bytes. Annotating the rest keeps the ordinary string rules there
+// so the secret-named-field rule cannot hide remediation (an unknown command's
+// token, a missing secret's id); registered values and patterns still mask.
+const errorRestValue = Schema.Unknown.annotate({ [SchemaNotCredentialAnnotationId]: true });
+
 const AdditionalErrorJson = Schema.StructWithRest(
   Schema.Struct({
     ...taggedErrorFields,
@@ -90,7 +97,7 @@ const AdditionalErrorJson = Schema.StructWithRest(
       description: "Additional failures cannot contain a nested additionalErrors property.",
     }),
   }),
-  [Schema.Record(Schema.String, Schema.Unknown)],
+  [Schema.Record(Schema.String, errorRestValue)],
 );
 
 export const TaggedErrorJson = Schema.StructWithRest(
@@ -101,7 +108,7 @@ export const TaggedErrorJson = Schema.StructWithRest(
         "Ordered additional failures after the primary error, excluding interruptions and nested additionalErrors.",
     }),
   }),
-  [Schema.Record(Schema.String, Schema.Unknown)],
+  [Schema.Record(Schema.String, errorRestValue)],
 ).annotate({
   description: "Additional keys are the failing tagged error's remaining JSON-safe own fields.",
 });

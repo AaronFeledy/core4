@@ -50,6 +50,7 @@ import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 interface Redactor {
   readonly redactString: (value: string) => string;
+  readonly redactPrefix: (value: string) => string;
 }
 
 interface EventRedactionScope {

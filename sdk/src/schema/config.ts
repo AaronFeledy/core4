@@ -3,6 +3,7 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 
 import { withDefaultKey } from "./default-key.ts";
 import { BindAddress } from "./endpoint.ts";
+import { SchemaNotCredentialAnnotationId } from "./environment-value.ts";
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
 import { HostEvents } from "./host-events.ts";
 import { DomainName } from "./hostname.ts";
@@ -271,6 +272,7 @@ export const GlobalConfig = Schema.Struct({
   }),
   defaultSecretStore: Schema.optionalKey(Schema.String).annotate({
     description: "SecretStore contribution id for bare secret references; defaults to env when omitted.",
+    [SchemaNotCredentialAnnotationId]: true,
   }),
   userDataRoot: Schema.optionalKey(AbsolutePath).annotate({ description: "Root for durable user data." }),
   userConfRoot: Schema.optionalKey(AbsolutePath).annotate({

@@ -57,6 +57,7 @@ export const runRecipeDecomposerContractSuite = Effect.fnUntraced(function* (
       stringCalls += 1;
       return text;
     },
+    redactPrefix: (text) => text,
     redactValue: (value) => {
       valueCalls += 1;
       return value;

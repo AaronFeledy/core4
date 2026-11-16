@@ -140,14 +140,16 @@ export const buildBugReport = (input: {
     }
   }
   return {
+    // Every printed component takes the redactor, so the boundary may treat this
+    // report as already redacted instead of rescanning its labels as free text.
     code: redactor.redactString(error._tag),
-    commandId: ctx.commandId,
+    commandId: redactor.redactString(ctx.commandId),
     body: redactor.redactString(text.message.join("\n")),
     remediation: redactor.redactString(text.remediation.join(" ")),
-    appId,
-    providerId,
-    logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,
-    cacheDir,
+    appId: appId === undefined ? undefined : redactor.redactString(appId),
+    providerId: providerId === undefined ? undefined : redactor.redactString(providerId),
+    logsDir: redactor.redactString(`${cacheDir.replace(/\/+$/u, "")}/logs`),
+    cacheDir: redactor.redactString(cacheDir),
     ...(issues.length === 0
       ? {}
       : { issues: Schema.decodeUnknownSync(Schema.Array(ValidationIssue))(redactor.redactValue(issues)) }),
