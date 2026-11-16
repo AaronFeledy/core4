@@ -219,7 +219,9 @@ An app-install command in a prose shell fence must also run in a live
 fences outside `<Guide>`, including commands split with backslash continuations.
 
 Coverage matches `lando create-project` and `lando composer create-project`
-by package name, ignoring quotes, versions, and flags. Each
+by package name, ignoring quotes, versions, and flags. A version written
+inline as `vendor/package:^2` matches the same package as a separate `^2`
+argument or no version at all. Each
 `lando <name>-scaffold` command has its own coverage key. The covering scenario
 must execute a matching `<Run command>` or `<Verify command>`; variables use
 their execution `value`, and skipped steps do not count.

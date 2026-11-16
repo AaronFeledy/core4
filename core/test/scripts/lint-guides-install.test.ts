@@ -74,6 +74,18 @@ const cases: readonly InstallCase[] = [
     keys: [],
   },
   {
+    name: "ignores an inline package version constraint",
+    prose: "lando create-project vendor/project:^2 --no-scripts",
+    exercise: '<Run command="lando create-project vendor/project ^3" />',
+    keys: [],
+  },
+  {
+    name: "matches an inline composer constraint against a separate version",
+    prose: "lando composer create-project 'vendor/project:^14' tmp-app",
+    exercise: '<Verify command="lando composer create-project vendor/project other-dir ^15" />',
+    keys: [],
+  },
+  {
     name: "reports composer packages independently",
     prose: "lando composer create-project vendor/missing tmp-app",
     exercise: '<Run command="lando composer create-project vendor/other tmp-app" />',

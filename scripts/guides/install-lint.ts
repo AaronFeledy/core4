@@ -10,6 +10,12 @@ export interface InstallLintDocument {
   readonly guide?: GuideScenarioAst;
 }
 
+/** A Composer package token, without its optional inline version constraint. */
+const packageName = (token: string): string => {
+  const separator = token.indexOf(":");
+  return separator === -1 ? token : token.slice(0, separator);
+};
+
 const installKey = (argv: readonly string[]): string | undefined => {
   if (argv[0] !== "lando") return undefined;
   const subcommand = argv[1];
@@ -22,7 +28,7 @@ const installKey = (argv: readonly string[]): string | undefined => {
         : undefined;
   if (prefix === undefined) return undefined;
   const pkg = argv.slice(prefix.length).find((arg) => !arg.startsWith("-"));
-  return pkg === undefined ? undefined : `${prefix.join(" ")} ${pkg}`;
+  return pkg === undefined ? undefined : `${prefix.join(" ")} ${packageName(pkg)}`;
 };
 
 export const lintInstallCoverage = (
