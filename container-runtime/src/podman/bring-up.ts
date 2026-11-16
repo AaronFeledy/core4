@@ -558,28 +558,27 @@ const resolvedCreateUser = (
   });
 };
 
-const buildCreateRequest = (
+const buildCreateRequest = Effect.fn("RuntimeProvider.buildCreateRequest")(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
   name: string,
   endpoints: ReadonlyArray<EndpointPlan>,
-) =>
-  Effect.gen(function* () {
-    const createUser = yield* resolvedCreateUser(deps, service);
-    return yield* Effect.try({
-      try: () => createContainerRequest(deps, plan, service, name, endpoints, createUser),
-      catch: (cause) =>
-        cause instanceof ServiceStartError
-          ? cause
-          : podmanFailure(deps, {
-              service,
-              operation: "bringUp.create",
-              message: `Failed to build provider-${deps.options.ctx.providerId} container create payload.`,
-              cause,
-            }),
-    });
+) {
+  const createUser = yield* resolvedCreateUser(deps, service);
+  return yield* Effect.try({
+    try: () => createContainerRequest(deps, plan, service, name, endpoints, createUser),
+    catch: (cause) =>
+      cause instanceof ServiceStartError
+        ? cause
+        : podmanFailure(deps, {
+            service,
+            operation: "bringUp.create",
+            message: `Failed to build provider-${deps.options.ctx.providerId} container create payload.`,
+            cause,
+          }),
   });
+});
 
 const createContainer = Effect.fnUntraced(function* (
   deps: BringUpDeps,
