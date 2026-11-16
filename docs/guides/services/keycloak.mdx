@@ -1,0 +1,244 @@
+---
+id: keycloak
+provider: test
+timeout: 900000
+tags: [docs, keycloak, compose, service, oidc, sso]
+---
+
+# Add a Keycloak login server
+
+Testing "Log in with SSO" locally needs an OpenID Connect provider you can throw away and reseed. Keycloak's official image runs as a Compose service, imports a realm file when it starts, and hands your app tokens over the app network.
+
+Run every command on this page from the app directory on your host.
+
+## Add Keycloak and a realm
+
+Save this as `.lando.yml` in an empty directory:
+
+```yaml
+name: keycloak-demo
+services:
+  keycloak:
+    type: compose
+    image: quay.io/keycloak/keycloak:26.8
+    command: start-dev --import-realm
+    appMount: false
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-development-only
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: https://keycloak.keycloak-demo.lndo.site
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    readiness:
+      kind: command
+      command: bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q UP <&3'
+      intervalSeconds: 5
+      retries: 40
+  app:
+    type: "node:22"
+    dependsOn:
+      keycloak:
+        condition: service_healthy
+```
+
+- Keycloak publishes minor tags such as `26.8`, not a bare `26`, so pin a minor and bump it on purpose.
+- `start-dev` runs Keycloak in development mode on plain HTTP port `8080` with a file database inside the container. `--import-realm` loads the realm files in `/opt/keycloak/data/import` at startup.
+- `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` create the admin account for the `master` realm. Keep these values local.
+- `KC_HOSTNAME` is the URL your browser uses. Keycloak puts it in login redirects and in the `iss` claim of every token. Set it to the `keycloak` URL that `lando info` prints, including the port when it shows one, such as `:8443`.
+- `KC_HOSTNAME_BACKCHANNEL_DYNAMIC` lets your app call Keycloak at `http://keycloak:8080` over the app network for tokens and signing keys, while tokens still name the browser URL as their issuer.
+- `KC_HEALTH_ENABLED` turns on `/health/ready` on Keycloak's management port, `9000`. The image ships `bash` but no `curl`, so the `readiness` probe talks HTTP through bash's `/dev/tcp`. `lando start` waits for it, and `dependsOn` with `condition: service_healthy` holds `app` until it passes.
+- `./realm` is bind-mounted read-only, so the realm file stays in your repo. `appMount: false` keeps the rest of your source out of the Keycloak container.
+- `app` stands in for your application. A `node:22` service with no `command:` stays idle so you can run scripts in it. Your PHP, Python, or Node app reaches Keycloak at the same URLs.
+
+Create `realm/demo-realm.json` next to `.lando.yml`. It defines a `demo` realm, a confidential `demo-app` client, and one user, `alice`, whose password is `alice`:
+
+```json
+{
+  "realm": "demo",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "demo-app",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "local-development-only",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://app.keycloak-demo.lndo.site/*"],
+      "webOrigins": ["https://app.keycloak-demo.lndo.site"]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Example",
+      "credentials": [{ "type": "password", "value": "alice", "temporary": false }]
+    }
+  ]
+}
+```
+
+`standardFlowEnabled` and `redirectUris` are for your app's browser login. `directAccessGrantsEnabled` lets a script trade a username and password for a token, which the check below uses. Leave it off for clients that only log in through the browser.
+
+## Start it and check the realm
+
+```sh
+lando start
+lando exec keycloak -- /opt/keycloak/bin/kcadm.sh get users -r demo --fields username --no-config --server http://localhost:8080 --realm master --user admin --password local-development-only
+```
+
+`kcadm.sh` is Keycloak's admin CLI, and it ships in the image. The second command signs in as the bootstrap admin and lists the users in the `demo` realm. Seeing `"username" : "alice"` proves the realm file was imported and the admin credentials work. It doesn't prove your app can reach Keycloak; the next section does.
+
+If `lando start` stops with `dependency gate keycloak:healthy was not satisfied`, see [Fix a Keycloak start failure](#fix-a-keycloak-start-failure).
+
+## Open the admin console
+
+Run `lando info` and open the `keycloak` URL with `/admin/` on the end, `https://keycloak.keycloak-demo.lndo.site/admin/`. Sign in as `admin` with the password from the Landofile, then switch to the `demo` realm to manage clients and users. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+
+## Get a token from your app
+
+Save this as `check-token.mjs` next to `.lando.yml`. It does what an OpenID Connect client library does: read the discovery document, then request a token for `alice`:
+
+```js
+const discoveryUrl = "http://keycloak:8080/realms/demo/.well-known/openid-configuration";
+const discovery = await (await fetch(discoveryUrl)).json();
+
+const response = await fetch(discovery.token_endpoint, {
+  method: "POST",
+  body: new URLSearchParams({
+    grant_type: "password",
+    client_id: "demo-app",
+    client_secret: "local-development-only",
+    username: "alice",
+    password: "alice",
+  }),
+});
+if (!response.ok) {
+  console.error(`token request failed: ${response.status} ${await response.text()}`);
+  process.exit(1);
+}
+
+const { access_token } = await response.json();
+const claims = JSON.parse(Buffer.from(access_token.split(".")[1], "base64url").toString());
+console.log(`browser login: ${discovery.authorization_endpoint}`);
+console.log(`token endpoint: ${discovery.token_endpoint}`);
+console.log(`signing keys: ${discovery.jwks_uri}`);
+console.log(`user: ${claims.preferred_username}`);
+console.log(`issuer: ${claims.iss}`);
+```
+
+Run it in the `app` service, which mounts your app directory at `/app`:
+
+```sh
+lando exec app -- node check-token.mjs
+```
+
+The output shows the split that `KC_HOSTNAME_BACKCHANNEL_DYNAMIC` sets up:
+
+- `browser login` is on `https://keycloak.keycloak-demo.lndo.site`, so your app redirects browsers to the proxy URL.
+- `token endpoint` and `signing keys` are on `http://keycloak:8080`, so your app's server-side calls stay on the app network.
+- `issuer` is `https://keycloak.keycloak-demo.lndo.site/realms/demo`. Configure your app to expect that issuer, even though it fetched the token from `keycloak:8080`.
+
+`user: alice` proves the client secret and the user's password are right. This script decodes the token without checking its signature; your OIDC library does that with the keys from the discovery document's `jwks_uri`.
+
+## Fix a Keycloak start failure
+
+When Keycloak can't start, `lando start` waits for the readiness probe until its retries run out, then fails with `dependency gate keycloak:healthy was not satisfied` and prints the end of the Keycloak log. If that log ends with `hostname-backchannel-dynamic must be set to false if hostname is not provided as full URL`, `KC_HOSTNAME` is missing its `https://` scheme. Set the full URL and start again:
+
+```sh
+lando app:config:set services.keycloak.environment.KC_HOSTNAME https://keycloak.keycloak-demo.lndo.site
+lando start
+```
+
+For any other error in that log tail, run `lando logs -s keycloak` to read the whole startup.
+
+## Check the plan
+
+The `happy-path` scenario checks the planned image, endpoint, and dependency gate. The `login` scenario starts the app, confirms the Keycloak URL in `lando info`, lists `alice` with `kcadm.sh`, and runs `check-token.mjs` to get a token with the expected issuer. The `fix-hostname` scenario sets `KC_HOSTNAME` without its scheme, sees `lando start` fail with the Keycloak error above, then runs the documented fix and gets a token again.
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="keycloak-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"quay\\.io/keycloak/keycloak:26\\.8\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"protocol\":\\s*\"http\",\\s*\"port\":\\s*8080" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="login" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold">
+      <UseFixture name="keycloak-demo" />
+    </Step>
+    <Step name="start">
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: keycloak-demo" } }} />
+    </Step>
+    <Step name="route">
+      <Verify command="lando info" expect={{ stdout: { regex: "keycloak\\.keycloak-demo\\.lndo\\.site" } }} />
+    </Step>
+    <Step name="realm-imported">
+      <Verify command="lando exec keycloak -- /opt/keycloak/bin/kcadm.sh get users -r demo --fields username --no-config --server http://localhost:8080 --realm master --user admin --password local-development-only" expect={{ stdout: { regex: "\"username\" : \"alice\"" } }} />
+    </Step>
+    <Step name="token">
+      <Verify command="lando exec app -- node check-token.mjs" expect={{ stdout: { regex: "browser login: https://keycloak\\.keycloak-demo\\.lndo\\.site/realms/demo/protocol/openid-connect/auth[\\s\\S]*token endpoint: http://keycloak:8080/realms/demo/protocol/openid-connect/token[\\s\\S]*signing keys: http://keycloak:8080/realms/demo/protocol/openid-connect/certs[\\s\\S]*user: alice[\\s\\S]*issuer: https://keycloak\\.keycloak-demo\\.lndo\\.site/realms/demo" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="fix-hostname" layer="e2e" tags={["@smoke"]} render={false} reason="Prove the scheme-less KC_HOSTNAME failure and the documented fix">
+    <Step name="scaffold">
+      <UseFixture name="keycloak-demo" />
+    </Step>
+    <Hidden reason="Shorten the readiness wait and break KC_HOSTNAME so start fails quickly">
+      <Step name="break-hostname">
+        <Run command="lando app:config:set --type number services.keycloak.readiness.retries 6" />
+        <Run command="lando app:config:set services.keycloak.environment.KC_HOSTNAME keycloak.keycloak-demo.lndo.site" />
+      </Step>
+      <Step name="failed-start">
+        <Verify command="lando start" expectExit={1} expect={{ stderr: { regex: "dependency gate keycloak:healthy was not satisfied[\\s\\S]*hostname-backchannel-dynamic must be set to false if hostname is not provided as full URL" } }} />
+      </Step>
+    </Hidden>
+    <Step name="fix">
+      <Run command="lando app:config:set services.keycloak.environment.KC_HOSTNAME https://keycloak.keycloak-demo.lndo.site" />
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: keycloak-demo" } }} />
+    </Step>
+    <Step name="token-after-fix">
+      <Verify command="lando exec app -- node check-token.mjs" expect={{ stdout: { regex: "issuer: https://keycloak\\.keycloak-demo\\.lndo\\.site/realms/demo" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Add a Compose service](./compose-passthrough.mdx) for the keys `type: compose` accepts
+- [Make start wait for your app](./wait-for-your-app.mdx) for readiness timing and probe forms
+- [Reach services by name](../subsystems/service-dns.mdx) for app network hostnames
+- [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx) for the admin console's certificate

@@ -1,0 +1,30 @@
+name: keycloak-demo
+services:
+  keycloak:
+    type: compose
+    image: quay.io/keycloak/keycloak:26.8
+    command: start-dev --import-realm
+    appMount: false
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-development-only
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: https://keycloak.keycloak-demo.lndo.site
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 8080
+    readiness:
+      kind: command
+      command: bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q UP <&3'
+      intervalSeconds: 5
+      retries: 40
+  app:
+    type: "node:22"
+    dependsOn:
+      keycloak:
+        condition: service_healthy
