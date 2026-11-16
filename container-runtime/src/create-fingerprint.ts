@@ -21,6 +21,7 @@ import {
 } from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 import { composeKnobIdentity } from "./podman/compose-knobs.ts";
+import { serviceProjectUserMapping } from "./project-user-realization.ts";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
@@ -117,8 +118,8 @@ export const createConfigFingerprint = (
     entrypoint: normalizeEntrypoint(service.entrypoint),
     init: service.init,
     user: service.user === "" ? undefined : service.user,
-    // The namespace mapping is part of what was created; a plan that gains or
-    // loses it must not be mistaken for the same container.
+    // The mapping is part of what was created; a plan that gains, loses, or
+    // changes it must not be mistaken for the same container.
     projectUser:
       service.projectUser === undefined
         ? undefined
@@ -126,6 +127,7 @@ export const createConfigFingerprint = (
             name: service.projectUser.name,
             uid: service.projectUser.uid,
             gid: service.projectUser.gid,
+            mapping: serviceProjectUserMapping(service),
           },
     workingDirectory: service.workingDirectory,
     environment: Object.fromEntries(

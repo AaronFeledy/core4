@@ -54,4 +54,15 @@ describe("projectUserCapabilityErrors", () => {
       ]),
     ).toEqual([]);
   });
+
+  test("an image-renumber plan is admitted by an image-renumber provider", () => {
+    expect(
+      projectUserCapabilityErrors(ProviderId.make("docker"), capabilities("image-renumber"), [
+        {
+          name: "web",
+          projectUser: { name: "www-data", uid: 1000, gid: 1000 },
+        },
+      ]),
+    ).toEqual([]);
+  });
 });

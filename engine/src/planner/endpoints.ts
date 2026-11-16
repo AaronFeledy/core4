@@ -1,3 +1,4 @@
+import { PROJECT_USER_MAPPING_EXTENSION_KEY } from "@lando/container-runtime/project-user-realization";
 import {
   CapabilityError,
   DataTreeOwnershipCapabilityError,
@@ -26,7 +27,7 @@ import {
   serviceAppMount,
   validationIssue,
 } from "@lando/sdk/schema";
-import type { FileSystem } from "@lando/sdk/services";
+import type { FileSystem, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { type Context, Effect, Predicate } from "effect";
 
 import {
@@ -50,6 +51,7 @@ import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from 
 import { encodeServicePlan } from "./plan-decode.ts";
 import {
   type ResolvedProjectUser,
+  projectUserRenumberStep,
   projectUserTmpfsMounts,
   projectUserVolumeTrees,
   resolveProjectUser,
@@ -93,6 +95,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appKind?: "user" | "global" | "scratch";
   readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
+  readonly host?: ServiceTypeHostFacts | undefined;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
@@ -239,6 +242,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         authoredUser: draft.normalizedConfig.user,
         appSourceMounted: appMount !== undefined,
         identity: homeIntent.identity,
+        host: input.host,
       });
     if (
       projectUserResolution instanceof LandofileValidationError ||
@@ -258,6 +262,13 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...planWithShadows,
       ...projectUserFields,
       mounts: projectUserTmpfsMounts(planWithShadows.mounts, projectUserResolution.projectUser),
+    };
+    const renumberedProjectUser =
+      projectUserResolution.projectUser !== undefined &&
+      input.providerCapabilities.projectUserMapping === "image-renumber";
+    const extensionsForService: ServicePlan["extensions"] = {
+      ...extensionsForPlan,
+      ...(renumberedProjectUser ? { [PROJECT_USER_MAPPING_EXTENSION_KEY]: "image-renumber" } : {}),
     };
     const engine =
       appMount !== undefined &&
@@ -348,10 +359,18 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       );
     }
     const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
+    // Renumber before anything gives a tree to the account by name, so a
+    // prepared home and every owned data tree resolve to the host ids.
+    const renumberStep = projectUserRenumberStep({
+      identity: homeIntent.identity,
+      mapping: input.providerCapabilities.projectUserMapping,
+      host: input.host,
+    });
     const draftForPlan = {
       ...draft,
       storageOwnership,
       buildSteps: [
+        ...(renumberStep === undefined ? [] : [renumberStep]),
         ...(ownershipStep === undefined ? [] : [ownershipStep]),
         ...draft.buildSteps,
         ...redirectSteps,
@@ -362,7 +381,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     if (endpointError !== undefined) return yield* Effect.fail(endpointError);
     const planned = applyHostReachability(
       {
-        ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForPlan),
+        ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForService),
         mounts: homePlan.mounts,
         home: homePlan.home,
         ...projectUserFields,

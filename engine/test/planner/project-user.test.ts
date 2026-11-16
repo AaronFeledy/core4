@@ -198,7 +198,7 @@ describe("resolveProjectUser provider capability", () => {
         state: "provider-unsupported",
         explicit: false,
         detail:
-          "Provider lando does not map one container id to the host user, so the service keeps the container default identity.",
+          "This engine maps only container root to the host user, so a non-root project user would be a subordinate id.",
       },
     });
   });

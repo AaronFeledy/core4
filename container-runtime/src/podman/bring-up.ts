@@ -60,6 +60,7 @@ import {
   containerHostConfigFragment,
   fingerprintInspectPublishPorts,
   fingerprintPlannedPublishPorts,
+  projectUserNumericCreateUser,
   serviceContainerName,
 } from "../plan.ts";
 import { StartFailureLogRedactor, redactDetails, redactorFor, withApiReason } from "../redact.ts";
@@ -537,15 +538,20 @@ export const isMissingImageCreateResponse = (response: EngineHttpResponse): bool
 /**
  * The identity the container is created as. A project-user create always
  * names it explicitly: without one, keep-id runs the container as the mapped
- * id instead of the image's configured user. Authored `user:` wins; otherwise
- * the image's own user is read without running anything inside it.
+ * id instead of the image's configured user. An image-renumber catalog plan
+ * keeps the image user so a root master stays root; a numeric image-renumber
+ * plan is a custom image and runs as the host ids directly. Authored `user:`
+ * wins; otherwise the image's own user is read without running anything.
  */
 const resolvedCreateUser = (
   deps: BringUpDeps,
   service: ServicePlan,
 ): Effect.Effect<string | undefined, ProviderError> => {
-  if (service.projectUser === undefined) return Effect.succeed(undefined);
+  const projectUser = service.projectUser;
+  if (projectUser === undefined) return Effect.succeed(undefined);
   if (service.user !== undefined && service.user.length > 0) return Effect.succeed(service.user);
+  const numeric = projectUserNumericCreateUser(service);
+  if (numeric !== undefined) return Effect.succeed(numeric);
   const artifact = service.artifact;
   const request = deps.api.request;
   if (artifact?.kind !== "ref" || request === undefined) return Effect.succeed("root");

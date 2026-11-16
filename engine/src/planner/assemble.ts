@@ -100,7 +100,7 @@ import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { hasServiceArtifacts } from "./service-artifact.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import { validateServiceProbes } from "./service-probes.ts";
-import { type ResolvedService, resolvedServiceCacheInput } from "./service-types.ts";
+import { type ResolvedService, resolveHostFacts, resolvedServiceCacheInput } from "./service-types.ts";
 import { authoredStorageScopes } from "./storage.ts";
 export interface PlanAppInput {
   readonly identity?: AppIdentity;
@@ -378,11 +378,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       ]),
     );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
+  const host = resolveHostFacts();
   const cacheKey = deriveAppPlanCacheKey({
     dataName: input.dataName ?? appName,
     kind: input.kind ?? "user",
     hostProvider,
     appRoot,
+    ...(host === undefined ? {} : { host }),
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
@@ -488,6 +490,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     appName,
     dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
     defaultDomain,
+    host,
     provider,
     providerCapabilities,
     metadata,

@@ -38,7 +38,7 @@ const base = (overrides: Partial<AppPlanCacheKeyInput> = {}): AppPlanCacheKeyInp
 
 describe("deriveAppPlanCacheKey project-user facts", () => {
   test("bumps the schema version for the new plan fields", () => {
-    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(54n);
+    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(55n);
   });
 
   test("mapping support changes the key", () => {
@@ -65,6 +65,36 @@ describe("deriveAppPlanCacheKey project-user facts", () => {
       }),
     );
     expect(mapped).not.toBe(hostsIds);
+  });
+
+  test("host ids change the key only when the engine renumbers to them", () => {
+    const renumbered = capabilities({
+      projectUserMapping: "image-renumber",
+      bindOwnership: "host-ids",
+    });
+    const first = deriveAppPlanCacheKey(
+      base({
+        providerCapabilities: renumbered,
+        host: { uid: "1000", gid: "1000" },
+      }),
+    );
+    const second = deriveAppPlanCacheKey(
+      base({
+        providerCapabilities: renumbered,
+        host: { uid: "1001", gid: "1001" },
+      }),
+    );
+    expect(first).not.toBe(second);
+
+    const keepId = base({
+      providerCapabilities: capabilities({
+        projectUserMapping: "userns-keep-id",
+        bindOwnership: "root-is-host-user",
+      }),
+    });
+    expect(deriveAppPlanCacheKey({ ...keepId, host: { uid: "1000", gid: "1000" } })).toBe(
+      deriveAppPlanCacheKey({ ...keepId, host: { uid: "1001", gid: "1001" } }),
+    );
   });
 
   test("capabilities that differ elsewhere do not change the key", () => {

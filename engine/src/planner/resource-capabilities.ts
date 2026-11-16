@@ -1,5 +1,5 @@
 import { CapabilityError, PublicationUnsupportedError } from "@lando/sdk/errors";
-import type { ProviderCapabilities, ProviderId, ServicePlan } from "@lando/sdk/schema";
+import type { ProviderCapabilities, ProviderId, ServicePlan, ServiceProjectUser } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import {
@@ -171,7 +171,7 @@ export const projectUserMappingCapabilityError = (
   capabilities: ProviderCapabilities,
   serviceName: string,
 ): CapabilityError | undefined =>
-  capabilities.projectUserMapping === "userns-keep-id"
+  capabilities.projectUserMapping !== "unsupported"
     ? undefined
     : missingCapability(
         provider,
@@ -186,7 +186,7 @@ export const projectUserCapabilityErrors = (
   capabilities: ProviderCapabilities,
   services: ReadonlyArray<{
     readonly name: string;
-    readonly projectUser?: unknown;
+    readonly projectUser?: ServiceProjectUser | undefined;
     readonly projectUserExplanation?: {
       readonly state: string;
       readonly explicit: boolean;
@@ -217,7 +217,7 @@ export const assertProjectUserSupported = (
       string,
       {
         readonly name: string;
-        readonly projectUser?: unknown;
+        readonly projectUser?: ServiceProjectUser | undefined;
         readonly projectUserExplanation?: { readonly state: string; readonly explicit: boolean };
       }
     >

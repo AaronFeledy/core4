@@ -15,6 +15,7 @@ import {
   commonContainerLabels,
   containerCreateBodyFragment,
   containerHostConfigFragment,
+  projectUserNumericCreateUser,
 } from "../src/plan.ts";
 
 const metadata = {
@@ -105,5 +106,45 @@ describe("project-user container creation", () => {
     )[CREATE_CONFIG_LABEL];
     expect(withMapping).not.toBe(without);
     expect(changedIds).not.toBe(withMapping);
+  });
+});
+
+describe("image-renumber container creation", () => {
+  const withMapping = (value: ServicePlan): ServicePlan => ({
+    ...value,
+    extensions: { ...value.extensions, "@lando/core/project-user-mapping": "image-renumber" },
+  });
+  const renumbered = withMapping(service({ projectUser: { name: "www-data", uid: 1000, gid: 1000 } }));
+
+  test("Given an image-renumber plan, Then no user namespace is requested", () => {
+    expect(containerHostConfigFragment(plan(renumbered), renumbered)).not.toHaveProperty("UsernsMode");
+  });
+
+  test("Given a numeric renumbered identity, Then the create user is the host id pair", () => {
+    expect(
+      projectUserNumericCreateUser(
+        withMapping(service({ projectUser: { name: "1000", uid: 1000, gid: 1000 } })),
+      ),
+    ).toBe("1000:1000");
+    expect(projectUserNumericCreateUser(renumbered)).toBeUndefined();
+    expect(
+      projectUserNumericCreateUser(service({ projectUser: { name: "www-data", uid: 33, gid: 33 } })),
+    ).toBeUndefined();
+  });
+
+  test("Given a numeric renumbered identity, Then the create body names it explicitly", () => {
+    const value = withMapping(service({ projectUser: { name: "1000", uid: 1000, gid: 1000 } }));
+    const body = containerCreateBodyFragment(plan(value), value, { createUser: "1000:1000" });
+    expect(body.User).toBe("1000:1000");
+  });
+
+  test("The realization is part of the create fingerprint", () => {
+    const keepId = { name: "www-data", uid: 1000, gid: 1000 };
+    const namespaced = commonContainerLabels(
+      plan(service({ projectUser: keepId })),
+      service({ projectUser: keepId }),
+    )[CREATE_CONFIG_LABEL];
+    const renamed = commonContainerLabels(plan(renumbered), renumbered)[CREATE_CONFIG_LABEL];
+    expect(renamed).not.toBe(namespaced);
   });
 });
