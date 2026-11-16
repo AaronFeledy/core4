@@ -213,13 +213,16 @@ The `happy-path` scenario checks the planned image, endpoint, and dependency gat
     <Step name="scaffold">
       <UseFixture name="keycloak-demo" />
     </Step>
-    <Hidden reason="Shorten the readiness wait and break KC_HOSTNAME so start fails quickly">
+    <Hidden reason="Shorten the readiness wait and break KC_HOSTNAME so start fails quickly, then restore the wait">
       <Step name="break-hostname">
         <Run command="lando app:config:set --type number services.keycloak.readiness.retries 6" />
         <Run command="lando app:config:set services.keycloak.environment.KC_HOSTNAME keycloak.keycloak-demo.lndo.site" />
       </Step>
       <Step name="failed-start">
         <Verify command="lando start" expectExit={1} expect={{ stderr: { regex: "dependency gate keycloak:healthy was not satisfied[\\s\\S]*hostname-backchannel-dynamic must be set to false if hostname is not provided as full URL" } }} />
+      </Step>
+      <Step name="restore-wait">
+        <Run command="lando app:config:set --type number services.keycloak.readiness.retries 40" />
       </Step>
     </Hidden>
     <Step name="fix">
