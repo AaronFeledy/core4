@@ -52,6 +52,7 @@ import type {
   ProviderId,
   ProviderSetupPlan,
   RetainedFileSyncQuiescence,
+  ServiceContainerChange,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
@@ -199,6 +200,12 @@ export interface ApplyOptions {
 export interface ApplyResult {
   readonly changed: boolean;
   readonly createdVolumes?: readonly import("../schema/volume-initialization.ts").VolumeCreationFact[];
+  /**
+   * What apply did to each executed service's container. Providers that cannot report a
+   * container-level outcome omit it, and consumers then announce nothing and add no
+   * `container` field rather than guessing.
+   */
+  readonly services?: Readonly<Record<string, ServiceContainerChange>>;
 }
 
 export interface ServiceSelector {

@@ -184,6 +184,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
       yield* publishPlacementVolumeTransitionNotices(admission.placement, admission.target.plan);
       return yield* launchAdmittedApp(admission, options, managed, {
         ...(admission.preparedTargets === undefined ? {} : { preparedTargets: admission.preparedTargets }),
+        announceApplyOutcome: true,
       });
     }),
   );

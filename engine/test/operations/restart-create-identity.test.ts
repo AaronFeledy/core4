@@ -126,6 +126,8 @@ const runRestart = (
     apply: (runtimePlan, runtimeOptions) => {
       mutations.push("apply");
       expect(Object.keys(runtimePlan.services)).toEqual([web.name]);
+      // The build stamped the derived artifact before apply, and restart never re-resolved the base ref.
+      expect(runtimePlan.services[web.name]?.artifact).toEqual(realized.artifact);
       return bringUp(runtimePlan, {
         ...fixtureHelperOptions,
         ...runtimeOptions,
@@ -184,7 +186,6 @@ test("selected restart retains a built container with unchanged descriptor inten
   expect(restart.requests.filter((request) => request.method !== "GET")).toMatchObject([
     { method: "POST", path: expect.stringContaining("/start") },
   ]);
-  expect(restart.inspections[0]?.services).toEqual(applied.services);
   expect(restart.secretReads).toEqual([]);
   expect(byTag(restart.harness.events, "message.info")).toEqual([]);
 });
@@ -202,7 +203,7 @@ test("selected restart recreates a container whose create intent drifted after p
     ),
   ).toBe(true);
   expect(byTag(restart.harness.events, "message.info").map((event) => event.body)).toEqual([
-    "Lando replaced web's container instead of restarting it in place. Named volumes were kept.",
+    "Lando replaced web's container because its configuration changed. Its anonymous volume at /var/lib/postgresql/data went with it; declare that path under storage: to keep its data.",
   ]);
 });
 

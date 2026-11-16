@@ -11,6 +11,7 @@ import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { resolveAppPlacement } from "../providers/app-placement.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import type { AdmittedServices } from "./app-activation.ts";
+import { publishApplyOutcomeNotices } from "./apply-outcome-notices.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import {
   openDatabaseCredentialSession,
@@ -20,7 +21,7 @@ import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import { publishRelaunchNotice, selectedAppliedRecord } from "./selected-relaunch-record.ts";
+import { selectedAppliedRecord } from "./selected-relaunch-record.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
@@ -133,19 +134,6 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
         Effect.scoped(
           Effect.gen(function* () {
             const environment = yield* openDatabaseCredentialSession(runtimePlan);
-            const prior = new Map<string, ServiceRuntimeInfo>();
-            if (operation === "restart") {
-              for (const service of services) {
-                prior.set(
-                  String(service.name),
-                  yield* provider.inspect({
-                    app: target.plan.id,
-                    service: service.name,
-                    plan: readinessPlan,
-                  }),
-                );
-              }
-            }
             for (const service of [...services].reverse()) {
               if (signal?.aborted === true) return yield* Effect.interrupt;
               yield* events.publish(
@@ -172,7 +160,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               );
             }
             if (signal?.aborted === true) return yield* Effect.interrupt;
-            yield* applyActivation({
+            const applied = yield* applyActivation({
               provider,
               plan: runtimePlan,
               certificates,
@@ -196,7 +184,8 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               );
             }
             // Publish before completion so a later readiness failure still reports the replacement.
-            if (operation === "restart") yield* publishRelaunchNotice(events, prior, initial);
+            if (operation === "restart")
+              yield* publishApplyOutcomeNotices(events, applied.services, { created: true });
             const ready = yield* completeStartup({
               policy: "selected",
               selectedPlan: runtimePlan,
@@ -218,7 +207,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
                 ...(appliedPlan === undefined ? {} : { previousPlan: appliedPlan }),
               });
             }
-            return startedServices(yield* collectPlanConnections(readinessPlan, ready));
+            return startedServices(yield* collectPlanConnections(readinessPlan, ready), applied.services);
           }),
         ),
       );

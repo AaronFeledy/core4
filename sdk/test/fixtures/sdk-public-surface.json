@@ -1803,6 +1803,7 @@
       "ServiceConfig",
       "ServiceConfigInput",
       "ServiceConnection",
+      "ServiceContainerChange",
       "ServiceCopyInSpec",
       "ServiceCopyOutSpec",
       "ServiceCreds",

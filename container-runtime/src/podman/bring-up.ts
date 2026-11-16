@@ -16,6 +16,7 @@ import {
   type EndpointPlan,
   type HostPlatform,
   ProviderId,
+  type ServiceContainerChange,
   ServiceName,
   type ServiceNetworkAttachment,
   type ServicePlan,
@@ -189,6 +190,8 @@ interface BringUpDeps {
   readonly options: BringUpOptions;
   readonly remediation: string;
   readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
+  /** What this bringUp did to each service container, reported as ApplyResult.services. */
+  readonly changes: Map<string, ServiceContainerChange>;
   /** Cached once per bringUp; never construct per failure/inspect line. */
   readonly redactor: ReturnType<typeof redactorFor>;
 }
@@ -713,6 +716,26 @@ const publish = (
         ),
       );
 
+/**
+ * Anonymous volumes are the inspected container's volume mounts that no planned mount or store of
+ * the service covers. They leave with a replaced container, so the change reports their paths.
+ */
+const anonymousVolumePaths = (service: ServicePlan, body: unknown): ReadonlyArray<string> => {
+  if (typeof body !== "object" || body === null) return [];
+  const mounts = Reflect.get(body, "Mounts");
+  if (!Array.isArray(mounts)) return [];
+  const planned = new Set<string>(service.mounts.map((mount) => mount.target));
+  const paths: string[] = [];
+  for (const mount of mounts) {
+    if (typeof mount !== "object" || mount === null) continue;
+    if (Reflect.get(mount, "Type") !== "volume") continue;
+    const destination = Reflect.get(mount, "Destination");
+    if (typeof destination !== "string" || planned.has(destination)) continue;
+    paths.push(destination);
+  }
+  return paths;
+};
+
 const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -758,13 +781,16 @@ const startService = Effect.fnUntraced(function* (
     plannedFingerprint.length > 0 &&
     inspected.publishFingerprint.length > 0 &&
     inspected.publishFingerprint !== plannedFingerprint;
-  const recreateReasons = inspected.exists ? bringUpRecreateReasons(plan, service, inspected) : [];
+  const existedBefore = inspected.exists;
+  const recreateReasons = existedBefore ? bringUpRecreateReasons(plan, service, inspected) : [];
+  let replacedReason: ServiceContainerChange["reason"];
   let before = inspected;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
     yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);
       yield* removeContainer(deps, service, existingId);
+      replacedReason = deps.options.reconcile === true ? "reconcile" : recreateReasons[0];
     }
     before = {
       exists: false,
@@ -804,6 +830,7 @@ const startService = Effect.fnUntraced(function* (
   for (const attachment of attachmentsAfterCreate(deps, plan, service, !before.exists)) {
     yield* connectNetwork(deps, service, name, attachment);
   }
+  let started = false;
   if (!before.running) {
     const response = yield* startContainer(deps, name);
     if (response.status !== 204 && response.status !== 304) {
@@ -824,6 +851,8 @@ const startService = Effect.fnUntraced(function* (
         if (recoveryId !== undefined) {
           yield* stopContainerSilent(deps, recoveryId);
           yield* removeContainer(deps, service, recoveryId);
+          // The bind-rejection recovery recreated a container this apply had not replaced yet.
+          if (existedBefore) replacedReason ??= "host-port";
         }
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
@@ -847,6 +876,7 @@ const startService = Effect.fnUntraced(function* (
         );
       }
     }
+    started = true;
     changed = true;
   }
 
@@ -883,6 +913,16 @@ const startService = Effect.fnUntraced(function* (
       }),
     );
   }
+
+  const action =
+    replacedReason !== undefined ? "replaced" : !existedBefore ? "created" : started ? "started" : "kept";
+  const anonymousVolumes = action === "replaced" ? anonymousVolumePaths(service, inspected.body) : [];
+  const reason = action === "replaced" ? replacedReason : undefined;
+  deps.changes.set(String(service.name), {
+    action,
+    ...(reason === undefined ? {} : { reason }),
+    ...(anonymousVolumes.length === 0 ? {} : { anonymousVolumes }),
+  });
 
   yield* publish(
     deps,
@@ -1017,6 +1057,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     options,
     remediation: applyRemediationFor(plan),
     creationEnvironments: new Map(),
+    changes: new Map(),
     redactor: redactorFor(options.ctx),
   };
 
@@ -1205,5 +1246,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     );
   }
 
-  return { changed: result.changed || staleNameChanged || createdVolumes.length > 0, createdVolumes };
+  return {
+    changed: result.changed || staleNameChanged || createdVolumes.length > 0,
+    createdVolumes,
+    ...(deps.changes.size === 0 ? {} : { services: Object.fromEntries(deps.changes) }),
+  };
 });

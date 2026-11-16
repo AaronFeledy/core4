@@ -15,6 +15,7 @@ import type { PreparedFileSyncTarget } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   type AppPlanner,
+  type ApplyResult,
   type BuildOptions,
   BuildOrchestrator,
   EventService,
@@ -46,6 +47,7 @@ import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
 import type { AdmittedApp } from "./app-activation.ts";
+import { publishApplyOutcomeNotices } from "./apply-outcome-notices.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
 import {
   openDatabaseCredentialSession,
@@ -183,6 +185,8 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
+    /** Ordinary start announces replacements; a halt-and-relaunch recreates everything by design. */
+    readonly announceApplyOutcome?: boolean;
   },
 ): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
   const { target, provider, overlays: preparedOverlays } = admitted;
@@ -325,6 +329,7 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
             });
 
             const initialRuntime = new Map<string, ServiceRuntimeInfo>();
+            let applyOutcome: ApplyResult | undefined;
             // Pre-apply observations, captured once for removed-service convergence and the
             // credential check's before/after comparison.
             let observedBefore: ReadonlyArray<ServiceRuntimeInfo> = [];
@@ -347,7 +352,7 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
                 })),
               );
               if (pendingStart !== undefined) yield* pendingStart.advance("record-apply-intent");
-              yield* applyActivation({
+              applyOutcome = yield* applyActivation({
                 provider,
                 plan: runtimePlan,
                 certificates,
@@ -379,6 +384,8 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
               services: serviceList,
               work: applyAndInspect,
             });
+            if (execution.announceApplyOutcome === true)
+              yield* publishApplyOutcomeNotices(events, applyOutcome?.services, { created: false });
 
             const ready = yield* completeStartup({
               policy: "user-start",
@@ -395,7 +402,10 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
               initial: initialRuntime,
               ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
             });
-            const servicesStarted = startedServices(yield* collectPlanConnections(runtimePlan, ready));
+            const servicesStarted = startedServices(
+              yield* collectPlanConnections(runtimePlan, ready),
+              applyOutcome?.services,
+            );
 
             yield* events.publish(
               PostAppStartEvent.make({

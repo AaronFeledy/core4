@@ -526,7 +526,7 @@ import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
-import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import {
   DestroyOutcome,
@@ -926,6 +926,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProviderExtensionConfig,
   HostPlatform,
   ServiceInfo,
+  ServiceContainerChange,
   ServiceInfoLogSource,
   ServiceShutdownObservation,
   FileSyncQuiesceResult,
@@ -1279,6 +1280,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Durable app file-sync disposal progress, including restartable drain and resumed cleanup.",
   DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
   ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
+  ServiceContainerChange:
+    "What apply did to one service container, with the replacement reason and any anonymous volumes lost.",
   StartedService: "Service startup result with scoped connection evidence.",
   PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PreparedFileSyncTarget: "Public Lando schema contract for a prepared file-sync target.",

@@ -43,7 +43,7 @@ for (const [host, replaced] of [
     // Given
     const stopped: string[] = [];
     const appliedAliases: (typeof web.hostAliases)[] = [];
-    let containerId = "php";
+    const containerId = "php";
     const harness = makeHarness({
       plannedApp: desired,
       resolveAppliedPlan: () => Effect.succeed(desired),
@@ -52,8 +52,15 @@ for (const [host, replaced] of [
       },
       onApply: (applied) => {
         appliedAliases.push(applied.services[web.name]?.hostAliases ?? []);
-        if (replaced) containerId = "php-replaced";
       },
+      ...(replaced
+        ? {
+            applyOutcome: () => ({
+              changed: true,
+              services: { [web.name]: { action: "replaced", reason: "config" } },
+            }),
+          }
+        : {}),
       inspect: (request) =>
         Effect.succeed({
           app: desired.id,
@@ -78,9 +85,7 @@ for (const [host, replaced] of [
     expect(stopped).toEqual(["stop"]);
     expect(appliedAliases).toEqual([[{ hostname: DEBUGGER_HOST_ALIAS, ip: host }]]);
     expect(byTag(harness.events, "message.info").map((event) => event.body)).toEqual(
-      replaced
-        ? ["Lando replaced web's container instead of restarting it in place. Named volumes were kept."]
-        : [],
+      replaced ? ["Lando replaced web's container because its configuration changed."] : [],
     );
   });
 }

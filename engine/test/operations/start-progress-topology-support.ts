@@ -143,6 +143,11 @@ export const makeHarness = (
     readonly resourceOwnership?: typeof RuntimeProviderRegistry.Service.resourceOwnership;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
+    /** Container-level outcome a fake apply reports; absent means the provider cannot report one. */
+    readonly applyOutcome?: (
+      plan: AppPlan,
+      options: ApplyOptions,
+    ) => import("@lando/sdk/services").ApplyResult | undefined;
     readonly apply?: RuntimeProviderShape["apply"];
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly onRemoveRoutes?: () => void;
@@ -219,7 +224,12 @@ export const makeHarness = (
             return Effect.isEffect(result) ? result : Effect.void;
           }),
         ),
-        Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
+        Effect.andThen(
+          options.applyEffect ??
+            Effect.sync(
+              () => options.applyOutcome?.(appliedPlan, applyOptions) ?? { changed: true as const },
+            ),
+        ),
       ));
   const userProvider: RuntimeProviderShape = {
     ...TestRuntimeProvider,

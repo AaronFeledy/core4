@@ -161,6 +161,8 @@ const makeFakeApi = (input: {
   readonly networkExists?: boolean;
   readonly containerExists?: boolean;
   readonly running?: boolean;
+  readonly existingHostPort?: string;
+  readonly failStartWithBindRejection?: boolean;
   readonly existingLabels?: Readonly<Record<string, string>>;
   readonly existingPlan?: AppPlan;
   readonly additionalMounts?: ReadonlyArray<{
@@ -184,7 +186,8 @@ const makeFakeApi = (input: {
   const calls: EngineHttpRequest[] = [];
   let exists = input.containerExists ?? true;
   let running = input.running ?? true;
-  let hostPort = "18080";
+  let hostPort = input.existingHostPort ?? "18080";
+  let failNextStart = input.failStartWithBindRejection === true;
   let bindSource = input.existingBindSource;
   const original = input.existingPlan ?? planWithHostPort(18080);
   const originalService = original.services[serviceName];
@@ -265,6 +268,10 @@ const makeFakeApi = (input: {
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && action === "start") {
+          if (failNextStart) {
+            failNextStart = false;
+            return { status: 500, body: JSON.stringify({ message: "bind: address already in use" }) };
+          }
           running = true;
           return { status: 204, body: "" };
         }
@@ -1035,5 +1042,162 @@ describe("Podman publish-port recreate", () => {
     expect(first.changed).toBe(false);
     expect(second.changed).toBe(false);
     expect(createCalls(fake.calls)).toEqual([]);
+  });
+});
+
+const assignedHostPortPlan = (): AppPlan => {
+  const base = planWithHostPort(18080);
+  const service = base.services[serviceName];
+  if (service === undefined) throw new Error("Test service is missing.");
+  return {
+    ...base,
+    services: {
+      [serviceName]: {
+        ...service,
+        endpoints: service.endpoints.map((endpoint) =>
+          endpoint._tag === "published"
+            ? { ...endpoint, publication: { bindAddress: "127.0.0.1" } }
+            : endpoint,
+        ),
+      },
+    },
+  };
+};
+
+const volumePlan = (): AppPlan => {
+  const base = planWithHostPort(18080);
+  const service = base.services[serviceName];
+  if (service === undefined) throw new Error("Test service is missing.");
+  return {
+    ...base,
+    services: {
+      [serviceName]: {
+        ...service,
+        mounts: [{ type: "volume", store: "data", target: PortablePath.make("/data"), readOnly: false }],
+      },
+    },
+  };
+};
+
+test("reports a kept container for an unchanged running service", async () => {
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    networkExists: true,
+    existingNetworks: ["recreate-ports-network"],
+  });
+  const result = await Effect.runPromise(
+    bringUp(planWithHostPort(18080), { api: fake.api, ctx, reconcile: false }),
+  );
+  expect(result.services).toEqual({ web: { action: "kept" } });
+});
+
+test("reports a started container for an unchanged stopped service", async () => {
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    running: false,
+    networkExists: true,
+    existingNetworks: ["recreate-ports-network"],
+  });
+  const result = await Effect.runPromise(
+    bringUp(planWithHostPort(18080), { api: fake.api, ctx, reconcile: false }),
+  );
+  expect(result.services).toEqual({ web: { action: "started" } });
+});
+
+test("reports a created container when none existed", async () => {
+  const fake = makeFakeApi({ deleteStatus: 204, containerExists: false, networkExists: true });
+  const result = await Effect.runPromise(
+    bringUp(planWithHostPort(18080), { api: fake.api, ctx, reconcile: false }),
+  );
+  expect(result.services).toEqual({ web: { action: "created" } });
+});
+
+test("reports a replacement caused by create-config drift", async () => {
+  const base = planWithHostPort(18080);
+  const service = base.services[serviceName];
+  if (service === undefined) throw new Error("Test service is missing.");
+  const { [CREATE_CONFIG_LABEL]: _stale, ...ownershipLabels } = commonContainerLabels(base, service);
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    existingLabels: ownershipLabels,
+    networkExists: true,
+    existingNetworks: ["recreate-ports-network"],
+  });
+  const result = await Effect.runPromise(bringUp(base, { api: fake.api, ctx, reconcile: false }));
+  expect(result.services).toEqual({ web: { action: "replaced", reason: "config" } });
+});
+
+test("reports a replacement caused by published-port drift", async () => {
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    existingHostPort: "18081",
+    networkExists: true,
+    existingNetworks: ["recreate-ports-network"],
+  });
+  const result = await Effect.runPromise(
+    bringUp(planWithHostPort(18080), { api: fake.api, ctx, reconcile: false }),
+  );
+  expect(result.services).toEqual({ web: { action: "replaced", reason: "publish-port" } });
+});
+
+test("reports a replacement caused by a missing planned network", async () => {
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    networkExists: true,
+    existingNetworks: [],
+  });
+  const result = await Effect.runPromise(
+    bringUp(planWithHostPort(18080), { api: fake.api, ctx, reconcile: false }),
+  );
+  expect(result.services).toEqual({ web: { action: "replaced", reason: "network" } });
+});
+
+test("reports reconcile as the replacement reason when reconcile forced it", async () => {
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    networkExists: true,
+    existingNetworks: ["recreate-ports-network"],
+  });
+  const result = await Effect.runPromise(
+    bringUp(planWithHostPort(18080), { api: fake.api, ctx, reconcile: true }),
+  );
+  expect(result.services).toEqual({ web: { action: "replaced", reason: "reconcile" } });
+});
+
+test("reports a host-port recovery replacement of a container that existed before apply", async () => {
+  const base = assignedHostPortPlan();
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    running: false,
+    failStartWithBindRejection: true,
+    existingPlan: base,
+    networkExists: true,
+    existingNetworks: ["recreate-ports-network"],
+  });
+  const result = await Effect.runPromise(bringUp(base, { api: fake.api, ctx, reconcile: false }));
+  expect(result.services).toEqual({ web: { action: "replaced", reason: "host-port" } });
+});
+
+test("lists only anonymous volumes of the replaced container that no planned mount covers", async () => {
+  const base = volumePlan();
+  const service = base.services[serviceName];
+  if (service === undefined) throw new Error("Test service is missing.");
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    existingLabels: commonContainerLabels(base, service),
+    existingMounts: [
+      { Type: "volume", Source: "data", Destination: "/data" },
+      { Type: "volume", Source: "anonymous-1", Destination: "/var/lib/anonymous" },
+    ],
+    networkExists: true,
+    existingNetworks: ["recreate-ports-network"],
+  });
+  const result = await Effect.runPromise(bringUp(base, { api: fake.api, ctx, reconcile: true }));
+  expect(result.services).toEqual({
+    web: {
+      action: "replaced",
+      reason: "reconcile",
+      anonymousVolumes: ["/var/lib/anonymous"],
+    },
   });
 });

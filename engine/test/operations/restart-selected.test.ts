@@ -6,6 +6,7 @@ import {
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   PortablePath,
+  type ServiceContainerChange,
   ServiceName,
   type ServicePlan,
   type ServiceRunObservation,
@@ -95,6 +96,7 @@ const runSelected = (
     readonly signal?: AbortSignal;
     readonly afterApply?: (applied: AppPlan, runtimes: Map<string, ServiceRuntimeInfo>) => void;
     readonly buildResult?: (selected: AppPlan) => AppPlan;
+    readonly containerChanges?: (applied: AppPlan) => Readonly<Record<string, ServiceContainerChange>>;
   } = {},
 ) => {
   const applyCalls: Array<{ readonly plan: AppPlan; readonly options: ApplyOptions }> = [];
@@ -127,6 +129,10 @@ const runSelected = (
     },
     onStop: (target) => {
       stopCalls.push(target.service);
+    },
+    applyOutcome: (applied) => {
+      const services = options.containerChanges?.(applied);
+      return services === undefined ? undefined : { changed: true, services };
     },
     inspect: (target) =>
       Effect.succeed(runtimes.get(String(target.service)) ?? runtimeFor(plannedApp, target.service)),
@@ -195,8 +201,67 @@ describe("selected service restart", () => {
     expect(result.servicesStarted.map((service) => service.name)).toEqual([redis.name]);
   });
 
-  test("announces a replacement when apply changes the selected container id", async () => {
-    // Given the provider reports a different container id after apply.
+  test("announces a reported replacement without inspecting the container before apply", async () => {
+    // Given the provider reports that apply replaced the selected container.
+    const plannedApp = twoServicePlan();
+    let applied = false;
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
+      containerChanges: () => ({ redis: { action: "replaced", reason: "config" } }),
+      afterApply: () => {
+        applied = true;
+      },
+      inspect: (target) => {
+        if (!applied) throw new Error("selected restart inspected before apply");
+        return Effect.succeed(runtimeFor(plannedApp, target.service));
+      },
+    });
+    // When only redis is restarted.
+    const result = await Effect.runPromise(selected.operation);
+    // Then the replacement is announced from the apply result and the result carries it.
+    expect(byTag(selected.harness.events, "message.info").map((event) => event.body)).toEqual([
+      "Lando replaced redis's container because its configuration changed.",
+    ]);
+    expect(result.servicesStarted[0]?.container).toEqual({ action: "replaced", reason: "config" });
+    expect(selected.applyCalls[0]?.options).toMatchObject({ reconcile: false });
+    expect(selected.appBuildCalls.map(({ plan: appPlan }) => Object.keys(appPlan.services))).toEqual([
+      ["redis"],
+    ]);
+    expect(selected.runtimes.get("web")?.containerId).toBe("cid-web");
+  });
+
+  test("names the anonymous volumes a reported replacement removed", async () => {
+    const plannedApp = twoServicePlan();
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
+      containerChanges: () => ({
+        redis: { action: "replaced", reason: "bind-source", anonymousVolumes: ["/data"] },
+      }),
+    });
+    // When the restart runs.
+    await Effect.runPromise(selected.operation);
+    // Then the notice names the lost data and how to keep it.
+    expect(byTag(selected.harness.events, "message.info").map((event) => event.body)).toEqual([
+      "Lando replaced redis's container because a mounted host path changed. Its anonymous volume at /data went with it; declare that path under storage: to keep its data.",
+    ]);
+  });
+
+  test("announces a reported creation of an absent selected container", async () => {
+    const plannedApp = twoServicePlan();
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
+      containerChanges: () => ({ redis: { action: "created" } }),
+    });
+    // When the restart runs.
+    const result = await Effect.runPromise(selected.operation);
+    // Then it announces the creation from the apply result.
+    expect(byTag(selected.harness.events, "message.info").map((event) => event.body)).toEqual([
+      "redis had no container, so Lando created one.",
+    ]);
+    expect(result.servicesStarted[0]?.container).toEqual({ action: "created" });
+  });
+
+  test("publishes no notice when the provider reports no container outcomes", async () => {
     const plannedApp = twoServicePlan();
     const selected = runSelected(plannedApp, {
       services: [redis.name],
@@ -211,60 +276,11 @@ describe("selected service restart", () => {
         }
       },
     });
-    // When only redis is restarted.
-    await Effect.runPromise(selected.operation);
-    // Then the replacement is announced and the app steps ran only for that service.
-    expect(byTag(selected.harness.events, "message.info").map((event) => event.body)).toEqual([
-      "Lando replaced redis's container instead of restarting it in place. Named volumes were kept.",
-    ]);
-    expect(selected.applyCalls[0]?.options).toMatchObject({ reconcile: false });
-    expect(selected.appBuildCalls.map(({ plan: appPlan }) => Object.keys(appPlan.services))).toEqual([
-      ["redis"],
-    ]);
-    expect(selected.runtimes.get("web")?.containerId).toBe("cid-web");
-  });
-
-  test("announces creation when an absent selected container is present after apply", async () => {
-    // Given the selected service reports an absent container before apply.
-    const plannedApp = twoServicePlan();
-    let created = false;
-    const selected = runSelected(plannedApp, {
-      services: [redis.name],
-      inspect: (target) =>
-        Effect.succeed(
-          target.service === redis.name && !created
-            ? {
-                app: plannedApp.id,
-                service: target.service,
-                providerId: plannedApp.provider,
-                status: "absent" as const,
-                publications: { status: "missing" as const },
-              }
-            : runtimeFor(plannedApp, target.service),
-        ),
-      afterApply: () => {
-        created = true;
-      },
-    });
-    // When the restart runs.
-    await Effect.runPromise(selected.operation);
-    // Then it announces the newly observed container.
-    expect(byTag(selected.harness.events, "message.info").map((event) => event.body)).toEqual([
-      "redis had no container, so Lando created one.",
-    ]);
-  });
-
-  test("publishes no notice when both container ids are unknown", async () => {
-    const plannedApp = twoServicePlan();
-    const selected = runSelected(plannedApp, {
-      services: [redis.name],
-      inspect: (target) => {
-        const { containerId: _containerId, ...withoutId } = runtimeFor(plannedApp, target.service);
-        return Effect.succeed(withoutId);
-      },
-    });
-    await Effect.runPromise(selected.operation);
+    // When the restart runs without a container report.
+    const result = await Effect.runPromise(selected.operation);
+    // Then observation changes alone prove nothing, and no container field is invented.
     expect(byTag(selected.harness.events, "message.info")).toEqual([]);
+    expect(result.servicesStarted[0]?.container).toBeUndefined();
   });
 
   test("refuses without an applied plan before any stop, hook, or build", async () => {
