@@ -6,7 +6,7 @@ import { ContainerHelperUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type ContainerHelperTarget, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { engineInfoArchitecture, hostProxyContainerTargets } from "../../src/capabilities.ts";
-import { containerHelperDelivery } from "../../src/container-helper.ts";
+import { CONTAINER_HELPER_COMMANDS, containerHelperDelivery } from "../../src/container-helper.ts";
 import type { EngineHttpApi, EngineHttpRequest } from "../../src/engine-api.ts";
 import type { ResolveContainerHelper } from "../../src/log-source-binding.ts";
 import { commonContainerLabels } from "../../src/plan.ts";
@@ -31,12 +31,22 @@ export const fixtureHelperMount = {
   readOnly: true,
   realization: "passthrough" as const,
 };
+export const fixtureHelperCommandMounts = CONTAINER_HELPER_COMMANDS.map((name) => ({
+  type: "bind" as const,
+  origin: "integration" as const,
+  source: `${fixtureHelperMount.source}/lando-container-helper`,
+  target: PortablePath.make(`/usr/local/bin/${name}`),
+  readOnly: true,
+  realization: "passthrough" as const,
+}));
+
 export const fixtureContainerLabels: typeof commonContainerLabels = (plan, service) =>
   commonContainerLabels(plan, {
     ...service,
     mounts: [
       ...service.mounts,
       { ...fixtureHelperMount, target: PortablePath.make(fixtureHelperMount.target) },
+      ...fixtureHelperCommandMounts,
     ],
   });
 

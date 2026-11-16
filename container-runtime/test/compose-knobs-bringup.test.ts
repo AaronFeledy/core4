@@ -9,6 +9,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { Cause, DateTime, Effect, Exit } from "effect";
+import { CONTAINER_HELPER_COMMANDS } from "../src/container-helper.ts";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { fixtureHelperMount } from "./support/exec-supervision.ts";
@@ -201,6 +202,9 @@ describe("Podman Compose knob bring-up realization", () => {
     expect(field(host, "Binds")).toEqual([
       "/tmp/lando-compose-knob-bind:/workspace",
       `${fixtureHelperMount.source}:/run/lando/helper:ro`,
+      ...CONTAINER_HELPER_COMMANDS.map(
+        (name) => `${fixtureHelperMount.source}/lando-container-helper:/usr/local/bin/${name}:ro`,
+      ),
     ]);
     expect(field(host, "Mounts")).toEqual([
       {
@@ -351,7 +355,12 @@ describe("Podman Compose knob bring-up realization", () => {
     const service = Object.values(plan.services)[0];
     if (service === undefined) throw new TypeError("Missing fixture service");
     expected.Labels = commonContainerLabels(plan, service);
-    expected.HostConfig.Binds.push(`${fixtureHelperMount.source}:/run/lando/helper:ro`);
+    expected.HostConfig.Binds.push(
+      `${fixtureHelperMount.source}:/run/lando/helper:ro`,
+      ...CONTAINER_HELPER_COMMANDS.map(
+        (name) => `${fixtureHelperMount.source}/lando-container-helper:/usr/local/bin/${name}:ro`,
+      ),
+    );
     expect(create?.body).toEqual(expected);
   });
 });
