@@ -98,9 +98,10 @@ Open the HTTPS URL `lando info` prints. A fresh install serves the `Home` page t
 
 Skip this section if the `Home` page loaded. The symptom is "Oops, an error occurred!" on every HTTPS page, with "The current host header value does not match the configured trusted hosts pattern". You see it when Lando's proxy is on port `443`. The proxy serves HTTPS and forwards plain HTTP to Apache, so Apache reports `HTTPS=on` but port `80`, and TYPO3's default host check expects `443`. On a fallback port such as `8443`, Apache takes the port from the request and the check passes.
 
-Set the trusted hosts pattern with TYPO3's own configuration command. Replace `typo3-demo\.lndo\.site` with the hostname from the HTTPS URL `lando info` prints, and escape each dot:
+Set the trusted hosts pattern with TYPO3's `configuration:set` command. It ships in the `typo3/cms-lowlevel` system extension, which the base distribution leaves out, so install that first. Replace `typo3-demo\.lndo\.site` with the hostname from the HTTPS URL `lando info` prints, and escape each dot:
 
 ```sh
+lando composer require typo3/cms-lowlevel:"^14.3"
 lando typo3 configuration:set SYS/trustedHostsPattern 'typo3-demo\.lndo\.site(:[0-9]+)?'
 lando typo3 cache:flush
 ```
@@ -244,6 +245,7 @@ lando db:restore before-update --yes
     </Step>
     <Step name="trusted-hosts">
       <Verify command={`lando exec appserver -- curl -s -H "Host: typo3-demo.lndo.site" -H "X-Forwarded-Proto: https" http://127.0.0.1/`} expect={{ stdout: { regex: "does not match the configured trusted hosts pattern" } }} />
+      <Run command={`lando composer require typo3/cms-lowlevel:"^14.3"`} />
       <Run command={`lando typo3 configuration:set SYS/trustedHostsPattern 'typo3-demo\\.lndo\\.site(:[0-9]+)?'`} />
       <Run command="lando typo3 cache:flush" />
       <Verify command={`lando exec appserver -- curl -s -H "Host: typo3-demo.lndo.site" -H "X-Forwarded-Proto: https" http://127.0.0.1/`} expect={{ stdout: { regex: "Welcome to your default website" } }} />
