@@ -1176,3 +1176,21 @@ Opt-in OTLP export:
 - Export is fire-and-forget. Export failure MUST NOT change exit status or result output. The flush runs after the completion line and is bounded to 1 second. Nothing is sent when neither config nor env names an endpoint.
 
 ---
+
+### 8.12 Execution identity for user commands
+
+Lando distinguishes the service's process identity from the identity its user commands run as. A service's process identity is `ServicePlan.user`, or the image's configured user when absent; the Apache master stays root while its workers are `www-data`. User commands instead follow one selector: CLI `--user`, then a tooling step user, then a task user, then the applied service plan's realized `projectUser` (§6.2.3), then the container default.
+
+| Surface | Identity |
+|---|---|
+| `lando exec`, `lando ssh` | User-command selector. |
+| Service-mode `lando shell` | User-command selector, on its own exec target. |
+| Tooling tasks and container Landofile event steps | User-command selector; `:host` steps keep the host identity. |
+| `build.app` steps | User-command selector, resolved into the build step and its build key so a changed mapping cannot reuse an earlier success. |
+| SQLite operations that create app files | The applied service's project user. |
+| Artifact build steps and the main process | Unchanged process identity. |
+| Readiness probes, native healthchecks, database-credential checks, listener diagnostics, and log reads | Unchanged; a probe keeps its explicit `user` or the process identity. |
+| Scheduled jobs | A job without `user` keeps the parent process identity; its sidecar inherits the parent's namespace mapping. |
+| Data-mover, file-sync helpers, and the container-helper supervisor | Unchanged helper identities. |
+
+The selector reads the applied service plan, never the desired plan, so a container created before the project user existed keeps its old command defaults. When the selected identity is the realized project user, the command also receives `HOME` (the planned home when known), `LANDO_USER`, `LANDO_UID`, and `LANDO_GID`. An explicit identity keeps its own environment, and a root process keeps the image's home. Generated administrative tooling that rewrites service configuration is pinned to root explicitly rather than inheriting the project user; Xdebug's toggle task is the first such task.

@@ -210,6 +210,8 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `routeProvider` | Realizes host routes. |
 | `tlsCertificates` | TLS realization is `native`, `lando`, or `none`. |
 | `rootless` | Operates without root privileges. |
+| `projectUserMapping` | `userns-keep-id` or `unsupported` (§6.2.3). `userns-keep-id` means the provider can map one container id to the host user for one service by creating it with `keep-id`; `unsupported` keeps the historical identity behavior. Required; never inferred from `rootless`. |
+| `bindOwnership` | How a write to a host bind appears on the host: `host-ids` for a rootful engine, `root-is-host-user` for a rootless user namespace, or `unknown` when the engine cannot be inspected or runs in a VM. Required. |
 | `privilegedServices` | Supports privileged service intent. |
 | `serviceInit` | Optional boolean: realizes native container init as PID 1 for a service with effective `init: true` (§6.2.1). Omission means unsupported, and planning fails closed with `CapabilityError` before provider action; absence or explicit `false` on a service never requires it. |
 | `composeSpec` | Compose realization is `none`, `portable`, or `native`. |
@@ -260,6 +262,8 @@ The frozen, schema-validated plan is the sole source of truth for portable inten
 | `command`, `entrypoint` | Planned process invocation. |
 | `init` | Optional boolean native container init intent (§6.2.1). `true` and `false` are planned intent; absence means the provider's own default and is not rewritten. Realized through the shared container-runtime lowering, never a provider-specific mapping. |
 | `environment`, `user`, `workingDirectory` | Runtime process environment and identity. `environment` is one map of `EnvironmentValue` descriptors (§7.3.1): a literal string, a `SecretRef`, or flat `BoundText`. A literal is final bytes and is never rescanned; a descriptor is resolved by the operation's `EnvironmentValueResolver` session immediately before the provider request (§5.5.2). |
+| `projectUser` | Optional realized project-user identity `{ name, uid, gid }` (§6.2.3). Written only when the provider declared `projectUserMapping: userns-keep-id`; execution identity reads this field alone. |
+| `projectUserExplanation` | Optional structured reason (`opted-out`, `provider-unsupported`, `unresolved`, `not-applicable`), explicit-authoring flag, and detail for a service whose plan has no `projectUser`. |
 | `connection` | Optional `DatabaseConnection` resolved once by a database service type: `family`, typed `creds` (`user`, `database` literal; `password`, `rootPassword` as `EnvironmentValue`), and the planned `port` (§6.12.4). Clients, info, SQL operations, and `services.<name>.*` expression scopes read this, never the environment map. |
 | `serviceTypeId` | Optional nonempty canonical registry ID of the effective service-type declaration, including its composed inheritance chain. Fresh plans stamp every resolved service independently of tooling winners; `type` retains its normalized-family meaning. Missing historical declaration identity is not inferred from that normalized type. |
 | `nonSqlCreds` | Optional typed `ServiceCreds` published by a non-SQL service type, such as password-protected Redis, for credential expression scopes. Mutually exclusive with `connection`; it survives plan serialization and never duplicates database connection credentials. |
@@ -287,6 +291,10 @@ The frozen, schema-validated plan is the sole source of truth for portable inten
 | `extensions` | Namespaced preserved provider intent. |
 
 Providers MAY translate plans into native representations, but MUST consume resolved route backends without endpoint heuristics. Host aliases require declared capability and known gateway data; providers MUST NOT guess missing gateway data or install legacy helper mounts (§6.9).
+
+A provider that declares `projectUserMapping: userns-keep-id` creates a service with a realized `projectUser` using the engine's `keep-id` user namespace for exactly that `uid` and `gid`, and MUST always send an explicit container `User`: the authored process user, otherwise the artifact's configured image user read without running the image, with an empty configuration meaning root. It MUST NOT substitute root for a non-root image user. The mapping and the resolved creation identity derive from the plan, never from inspection of an existing container, and both enter create-config identity so a changed mapping recreates the container. Management commands, artifact build steps, readiness, native healthchecks, database-credential checks, log readers, and scheduled jobs keep the process identity unless a step or job names another. This realization is unsupported on Docker and on VM-backed engines, where the created container keeps today's behavior.
+
+The two capability facts are admission inputs, not hints. Fresh planning and a cache hit both re-check them before provider action: a realized project user or an explicitly authored one on a provider that reports `unsupported` fails planning with `CapabilityError` naming `projectUserMapping` and a remediation that offers `projectUser: false` or a capable provider. An implicit catalog default never fails; the plan records the explanation. Both facts and the realized plan field participate in the desired-plan cache key, so a capability change cannot reuse a stale plan.
 
 #### 5.5.1 Supported Compose input at the boundary
 
