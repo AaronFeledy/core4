@@ -45,7 +45,10 @@ export const sidebar = [
       {
         label: "Services",
         collapsed: true,
-        items: [{ autogenerate: { directory: "guides/services", collapsed: true } }],
+        items: [
+          { label: "Who owns your app files", slug: "guides/services/file-ownership" },
+          { autogenerate: { directory: "guides/services", collapsed: true } },
+        ],
       },
       {
         label: "Recipe guides",

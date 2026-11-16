@@ -161,13 +161,7 @@ lando bee status
 lando mariadb -e 'SHOW TABLES;'
 ```
 
-Apache runs as `www-data` and writes uploads and config under `files/`. Give it that directory:
-
-```sh
-lando exec appserver -- chown -R www-data:www-data /app/files
-```
-
-Bee runs as root, so if the site later can't write to `files/`, run that `chown` again. Open the HTTPS URL `lando info` prints. A fresh install serves the site name you passed to `install`.
+On Linux with the default managed provider, Bee and Apache's PHP workers use the project user, `www-data`, so their app-file writes belong to your host user. If the site cannot write `files/` on another platform or provider, see [Who owns your app files](../services/file-ownership.mdx). Open the HTTPS URL `lando info` prints. A fresh install serves the site name you passed to `install`.
 
 ## Connect Backdrop to MariaDB
 
@@ -193,12 +187,11 @@ lando start
 
 Add the build steps above. `BACKDROP_SETTINGS` overrides whatever `$database` your `settings.php` carries, so the site connects with the values in the table above and your settings file stays untouched.
 
-Copy the site's `files/` into the app root on your host, plus its active config directory if that lives outside `files/`. The app root is mounted at `/app`, so it shows up in `appserver` right away. Then load the database and hand `files/` to Apache:
+Copy the site's `files/` into the app root on your host, plus its active config directory if that lives outside `files/`. The app root is mounted at `/app`, so it shows up in `appserver` right away. Then load the database and clear caches:
 
 ```sh
 lando db:import site.sql.gz --yes
 lando bee cc all
-lando exec appserver -- chown -R www-data:www-data /app/files
 lando bee status
 ```
 

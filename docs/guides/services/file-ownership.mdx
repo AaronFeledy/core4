@@ -1,0 +1,96 @@
+---
+id: file-ownership
+provider: test
+timeout: 60000
+tags: [docs, service, php, ownership]
+---
+
+# Who owns your app files
+
+On Linux with the default `lando` provider (managed rootless Podman), files your PHP service writes into the app mount belong to your host user. Composer, your editor, and PHP's web workers can work on the same files without handing the project back and forth with `chown`.
+
+Lando calls the container account mapped to your host user the **project user**. Stock PHP services declare `www-data`, UID and GID `33`. Podman's keep-id mapping makes that account's writes belong to you on the host; it does not change your host UID to `33`. This applies to user apps whose services mount the app source. Database services, services without that mount, scratch apps, and the global app do not gain a project user.
+
+macOS, Windows, and the Docker provider keep their previous ownership behavior for now: the PHP default does not stop those apps from starting, but it does not make their files belong to your host user either. [Run `lando info`](#see-the-services-project-user) to see which case applies to a service.
+
+## See the service's project user
+
+From your app directory on the host, run:
+
+```sh
+lando info
+lando info --format=json
+lando app:config:lint --format=json
+```
+
+In the terminal view, `lando info` shows a `project user` row with the account name and its `uid:gid` when the plan realizes one. On a provider that cannot map it, the row carries the reason instead. In JSON, each service carries `projectUser` (`name`, `uid`, `gid`) when realized, or `projectUserExplanation` with a `state` of `opted-out`, `provider-unsupported`, `unresolved`, or `not-applicable` and a `detail` sentence. `lando app:config:lint` warns for `opted-out` and `provider-unsupported`. These commands show the plan, not the identity an older running container was created with.
+
+After upgrading Lando, run `lando start` to apply the new plan. In a running stock PHP service named `appserver`, check the command identity and home with:
+
+```sh
+lando exec appserver -- id
+lando exec appserver -- printenv HOME
+```
+
+With the mapping applied, the command runs as `www-data` and its home is `/var/www`. Execution defaults come from the applied plan, so a container created before this feature keeps its earlier defaults until Lando applies the new plan.
+
+## Which commands use the project user
+
+`lando exec`, `lando ssh`, service-mode `lando shell`, tooling tasks, container event steps, and `build.app` steps use the project user by default. Host event steps keep your host identity. Commands that default to the project user also receive `LANDO_USER`, `LANDO_UID`, `LANDO_GID`, and `HOME` when Lando knows the home path.
+
+An explicit identity takes precedence in this order: CLI `--user`, step `user`, task `user`, then the project user. Without any of these, the command uses the container default. An explicit user keeps its own environment rather than receiving the project user's home settings. For example, an administrative command can still run as root:
+
+```sh
+lando exec appserver --user root -- id
+```
+
+The main process keeps its own identity. In stock PHP Apache services the master stays root and its `www-data` workers use the mapping; PHP-FPM workers also run as `www-data`. Artifact build steps, healthchecks, readiness probes, and database processes keep their existing identities. A scheduled job without `user:` keeps its parent process's identity, so set `user: www-data` on a PHP job that should write as that account. Generated administrative tooling, such as the Xdebug toggle, explicitly runs as root.
+
+For stock PHP, the persisted home follows the project user to `/var/www` even while the Apache master remains root. Root processes keep the image's home. See [Keep a service home across rebuilds](./home-and-host.mdx) for home overrides and persistence.
+
+## Choose a project user in your Landofile
+
+You do not need to set `projectUser` for stock PHP. To opt a service out, add this to its existing block in `.lando.yml`:
+
+```yaml
+services:
+  appserver:
+    projectUser: false
+```
+
+The service then uses the provider's previous identity behavior, including command defaults. Lint reports the opt-out so it remains visible.
+
+To select an identity explicitly, `projectUser` accepts a numeric pair such as `"1000:1000"`, or the exact name declared by the service type (`www-data` for stock PHP). It does not accept a bare UID, `name:group`, or an arbitrary account name. A custom `image:` or Compose `build.context` has no declared account metadata, so use a numeric pair for it. The account must be usable in your image; a numeric identity with no declared home gets no guessed home path. Set `home.path` if you need to retain a known home there.
+
+When `projectUser` is omitted, an authored service `user:` that is a numeric pair or the type's declared name supplies the project identity; otherwise the type's declared project user applies. An authored root identity resolves to no project user. `projectUser` controls file ownership and user-command defaults; `user:` controls the main process.
+
+An explicit project-user identity on an unsupported provider fails planning before builds or service changes. Leave the key unset to keep the automatic platform behavior, or use `false` to opt out. Run `lando app:config:lint` after editing the Landofile and `lando start` to apply a valid change.
+
+## If PHP cannot write a directory on another platform
+
+If a site on macOS, Windows, or Docker reports that it cannot write a specific directory, first confirm its project-user explanation with `lando info` and check the directory named by the error. If that directory needs to belong to PHP's worker, give only that directory to `www-data`. Replace `<dir>` with the failing path inside `appserver`, such as `/app/storage`:
+
+```sh
+lando exec appserver --user root -- chown -R www-data:www-data <dir>
+lando exec appserver --user www-data -- test -w <dir>
+```
+
+The check exits successfully without output when the directory is writable. Retry the failing site action too. This changes ownership and can affect host editing depending on your provider's mount or file-sync behavior. Never run it against the whole app or `/app`, and do not make the project world-writable. Existing files from an older container or an imported site can retain their previous owners; the mapping does not recursively reown your source at start.
+
+<Guide>
+  <Scenario id="inspect-project-user-plan" render={false} reason="Inspect PHP project-user planning without running containers">
+    <Step name="create-config">
+      <Run command="lando init --recipe lamp --name=ownership-demo --yes" />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-identity">
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"projectUser(?:Explanation)?\":\\s*\\{" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+</Guide>

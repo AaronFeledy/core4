@@ -124,6 +124,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/tutorial/from-lando-3");
     expect(slugs).toContain("guides/node-postgres");
     expect(slugs).toContain("guides/cli/everyday-commands");
+    expect(slugs).toContain("guides/services/file-ownership");
     expect(slugs).toContain("guides/cli/cache-refresh");
     expect(slugs).toContain("guides/cli/verbosity-and-debug");
     expect(slugs).toContain("guides/scratch/scratch-from-recipe");
