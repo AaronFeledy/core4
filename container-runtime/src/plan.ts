@@ -213,6 +213,11 @@ export const containerHostConfigFragment = (
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
     ...(Object.keys(tmpfs).length > 0 ? { Tmpfs: tmpfs } : {}),
     ...(extraHosts.length === 0 ? {} : { ExtraHosts: extraHosts }),
+    ...(service.projectUser === undefined
+      ? {}
+      : {
+          UsernsMode: `keep-id:uid=${service.projectUser.uid},gid=${service.projectUser.gid}`,
+        }),
   };
 };
 
@@ -223,6 +228,12 @@ export interface ContainerCreateBodyOptions {
   readonly networkingConfig?: Record<string, unknown>;
   readonly onMissingArtifact?: (artifact: ServicePlan["artifact"]) => never;
   readonly environment?: Readonly<Record<string, string>>;
+  /**
+   * Identity the container is created as. A project-user create always names
+   * one explicitly: without it a keep-id container runs as the mapped id
+   * instead of the image's own user.
+   */
+  readonly createUser?: string;
 }
 
 const missingArtifact = (artifact: ServicePlan["artifact"]): never => {
@@ -250,7 +261,9 @@ export const containerCreateBodyFragment = (
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
-    ...(service.user === undefined || service.user === "" ? {} : { User: service.user }),
+    ...((options.createUser ?? service.user) === undefined || (options.createUser ?? service.user) === ""
+      ? {}
+      : { User: options.createUser ?? service.user }),
     ...(healthcheck === undefined ? {} : { Healthcheck: healthcheck }),
     ...(Object.keys(exposedPorts).length > 0 ? { ExposedPorts: exposedPorts } : {}),
     Labels: options.labels ?? commonContainerLabels(plan, service),

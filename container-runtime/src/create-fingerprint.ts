@@ -117,6 +117,16 @@ export const createConfigFingerprint = (
     entrypoint: normalizeEntrypoint(service.entrypoint),
     init: service.init,
     user: service.user === "" ? undefined : service.user,
+    // The namespace mapping is part of what was created; a plan that gains or
+    // loses it must not be mistaken for the same container.
+    projectUser:
+      service.projectUser === undefined
+        ? undefined
+        : {
+            name: service.projectUser.name,
+            uid: service.projectUser.uid,
+            gid: service.projectUser.gid,
+          },
     workingDirectory: service.workingDirectory,
     environment: Object.fromEntries(
       Object.entries(service.environment).filter(

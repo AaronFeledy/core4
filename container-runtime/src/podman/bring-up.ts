@@ -43,6 +43,7 @@ import {
   unsupportedHealthcheckTarget,
   validateHealthcheckExecution,
 } from "../healthcheck-attempt.ts";
+import { inspectImageUser } from "../image-build-user.ts";
 import { isProducedArtifact, producedImageMissing } from "../image-ensure.ts";
 import { PROVIDER_LABEL } from "../labels.ts";
 import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
@@ -350,6 +351,7 @@ const createContainerRequest = (
   service: ServicePlan,
   name: string,
   endpoints: ReadonlyArray<EndpointPlan>,
+  createUser?: string,
 ) => {
   const knobs = realizePodmanComposeKnobs(service, {
     dialect: (deps.options.dialect ?? libpodLifecycleDialect).engine,
@@ -390,6 +392,7 @@ const createContainerRequest = (
         });
       },
       environment: deps.creationEnvironments.get(service.name) ?? literalServiceEnvironment(service),
+      ...(createUser === undefined ? {} : { createUser }),
     }),
     ...knobs.topLevel,
   };
@@ -531,6 +534,30 @@ const ensureVolume = (
 export const isMissingImageCreateResponse = (response: EngineHttpResponse): boolean =>
   response.status === 404 || /no such image/iu.test(response.body);
 
+/**
+ * The identity the container is created as. A project-user create always
+ * names it explicitly: without one, keep-id runs the container as the mapped
+ * id instead of the image's configured user. Authored `user:` wins; otherwise
+ * the image's own user is read without running anything inside it.
+ */
+const resolvedCreateUser = (
+  deps: BringUpDeps,
+  service: ServicePlan,
+): Effect.Effect<string | undefined, ProviderError> => {
+  if (service.projectUser === undefined) return Effect.succeed(undefined);
+  if (service.user !== undefined && service.user.length > 0) return Effect.succeed(service.user);
+  const artifact = service.artifact;
+  const request = deps.api.request;
+  if (artifact?.kind !== "ref" || request === undefined) return Effect.succeed("root");
+  return inspectImageUser({
+    baseRef: artifact.ref,
+    providerId: deps.options.ctx.providerId,
+    request,
+    operation: "bringUp.create",
+    subject: "service image",
+  });
+};
+
 const buildCreateRequest = (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -538,17 +565,20 @@ const buildCreateRequest = (
   name: string,
   endpoints: ReadonlyArray<EndpointPlan>,
 ) =>
-  Effect.try({
-    try: () => createContainerRequest(deps, plan, service, name, endpoints),
-    catch: (cause) =>
-      cause instanceof ServiceStartError
-        ? cause
-        : podmanFailure(deps, {
-            service,
-            operation: "bringUp.create",
-            message: `Failed to build provider-${deps.options.ctx.providerId} container create payload.`,
-            cause,
-          }),
+  Effect.gen(function* () {
+    const createUser = yield* resolvedCreateUser(deps, service);
+    return yield* Effect.try({
+      try: () => createContainerRequest(deps, plan, service, name, endpoints, createUser),
+      catch: (cause) =>
+        cause instanceof ServiceStartError
+          ? cause
+          : podmanFailure(deps, {
+              service,
+              operation: "bringUp.create",
+              message: `Failed to build provider-${deps.options.ctx.providerId} container create payload.`,
+              cause,
+            }),
+    });
   });
 
 const createContainer = Effect.fnUntraced(function* (
