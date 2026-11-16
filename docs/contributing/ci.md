@@ -664,7 +664,7 @@ LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun run test:selection nightly-provide
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. The job has a 90-minute timeout, including room for six additional Composer install scenarios at about three minutes each.
 
-On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports any failed jobs, even when other dependencies were skipped or cancelled. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
+On scheduled nightly runs on `main`, `report-failure` waits for every other job and reports any failed jobs, even when other dependencies were skipped. GitHub reports a job stopped by its `timeout-minutes` as cancelled, so the reporter also lists cancelled jobs, marked as timed out or cancelled. A run cancelled as a whole files nothing. It searches open issues for the exact title `nightly automation failure`, comments on the oldest match, and creates an issue assigned to `AaronFeledy` only when none is open. The issue or comment names the failed jobs and links the workflow run. Only the reporter receives `issues: write`; the workflow keeps `contents: read`. Manual dispatches and runs on other branches do not file reports.
 
 ## Nightly source-store acceptance
 

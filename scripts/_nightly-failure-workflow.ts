@@ -5,7 +5,7 @@ export const renderNightlyFailureJob = (jobsYaml: string): string => {
   return `
   report-failure:
     needs: [${needs.join(", ")}]
-    if: \${{ always() && failure() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' }}
+    if: \${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -19,7 +19,8 @@ export const renderNightlyFailureJob = (jobsYaml: string): string => {
 ${renderFailureIssueStep({
   title: "nightly automation failure",
   assignee: "AaronFeledy",
-  bodyScript: `FAILED_JOBS="$(jq -r '[to_entries[] | select(.value.result == "failure") | .key] | join(", ")' <<< "$NEEDS_JSON")"
+  // A job stopped by timeout-minutes reaches needs as cancelled; in a run nobody cancelled, report it too.
+  bodyScript: `FAILED_JOBS="$(jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key + (if .value.result == "cancelled" then " (timed out or cancelled)" else "" end)] | join(", ")' <<< "$NEEDS_JSON")"
 printf -v BODY 'Workflow run failed: %s\\n\\nFailed jobs: %s' "$RUN_URL" "$FAILED_JOBS"`,
 })}`;
 };

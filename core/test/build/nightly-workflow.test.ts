@@ -147,33 +147,44 @@ test("#2302 nightly reporter waits for every job with issue permission only on t
 });
 
 test.each([
-  ["schedule", "refs/heads/main", ["failure", "skipped", "cancelled"], true],
-  ["schedule", "refs/heads/main", ["success", "failure"], true],
-  ["schedule", "refs/heads/main", ["success", "skipped", "cancelled"], false],
-  ["workflow_dispatch", "refs/heads/main", ["failure"], false],
-  ["workflow_dispatch", "refs/heads/fix", ["failure"], false],
-  ["schedule", "refs/heads/fix", ["failure"], false],
-] as const)("#2302 reporter gate for %s on %s with %j", (event, ref, results, expected) => {
-  const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
-  const condition = jobs["report-failure"]?.if;
-  expect(condition).toBe(
-    "${{ always() && failure() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' }}",
-  );
-  if (condition === undefined) throw new TypeError("Missing reporter condition");
-  // This expression uses the common JavaScript/GitHub boolean subset. GitHub documents
-  // failure() as any failed ancestor; always() admits skipped/cancelled dependencies.
-  const evaluate = new Function("always", "failure", "github", `return (${condition.slice(3, -2)});`);
-  expect(
-    evaluate(
-      () => true,
-      () => results.some((result) => result === "failure"),
-      {
-        event_name: event,
-        ref,
-      },
-    ),
-  ).toBe(expected);
-});
+  ["schedule", "refs/heads/main", ["failure", "skipped", "cancelled"], false, true],
+  ["schedule", "refs/heads/main", ["success", "failure"], false, true],
+  // GitHub reports a job stopped by timeout-minutes as cancelled, not failed.
+  ["schedule", "refs/heads/main", ["success", "skipped", "cancelled"], false, true],
+  ["schedule", "refs/heads/main", ["success", "skipped"], false, false],
+  // A run cancelled by hand cancels its jobs too, and files nothing.
+  ["schedule", "refs/heads/main", ["success", "cancelled"], true, false],
+  ["workflow_dispatch", "refs/heads/main", ["failure"], false, false],
+  ["workflow_dispatch", "refs/heads/fix", ["failure"], false, false],
+  ["schedule", "refs/heads/fix", ["failure"], false, false],
+] as const)(
+  "#2302 reporter gate for %s on %s with %j (run cancelled: %p)",
+  (event, ref, results, runCancelled, expected) => {
+    const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+    const condition = jobs["report-failure"]?.if;
+    expect(condition).toBe(
+      "${{ !cancelled() && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}",
+    );
+    if (condition === undefined) throw new TypeError("Missing reporter condition");
+    // This expression uses the common JavaScript/GitHub boolean subset once the
+    // needs.*.result object filter is bound to the direct dependency results.
+    const evaluate = new Function(
+      "cancelled",
+      "contains",
+      "github",
+      "results",
+      `return (${condition.slice(3, -2).replaceAll("needs.*.result", "results")});`,
+    );
+    expect(
+      evaluate(
+        () => runCancelled,
+        (values: ReadonlyArray<string>, value: string) => values.includes(value),
+        { event_name: event, ref },
+        results,
+      ),
+    ).toBe(expected);
+  },
+);
 
 test.skipIf(process.platform === "win32").each([true, false])(
   "#2302 nightly reports failed job names and run URL (existing issue: %s)",
@@ -194,7 +205,9 @@ test.skipIf(process.platform === "win32").each([true, false])(
     expect(commands).toContain(
       existing ? "gh issue comment 42 --body" : `gh issue create --title ${title} --body`,
     );
-    expect(commands).toContain("Failed jobs: container-helper, file-sync-contract-linux-x64");
+    expect(commands).toContain(
+      "Failed jobs: container-helper, file-sync-contract-linux-x64, refresh-test-timings-linux-x64 (timed out or cancelled)",
+    );
     expect(commands).toContain("https://example.invalid/fork/core4/actions/runs/42");
     expect(commands).toContain("repo=fork/core4");
     expect(commands.includes("--assignee AaronFeledy")).toBe(!existing);
