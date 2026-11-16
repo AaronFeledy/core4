@@ -214,6 +214,38 @@ describe("create-project protocol", () => {
     });
   });
 
+  test("defaults the app root to LANDO_PROJECT_MOUNT", async () => {
+    await withTempDir(async (dir) => {
+      const { appRoot, env } = await fixture(dir);
+      const mounted = join(dir, "workspace");
+      await mkdir(mounted, { recursive: true });
+      const withProjectMount: Record<string, string> = Object.fromEntries(
+        Object.entries(env).filter(([key]) => key !== "LANDO_CREATE_PROJECT_APP_ROOT"),
+      );
+      withProjectMount.LANDO_PROJECT_MOUNT = mounted;
+
+      const result = await run(dir, withProjectMount, ["acme/mounted-root"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(await Bun.file(join(mounted, "composer.json")).exists()).toBe(true);
+      expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(false);
+    });
+  });
+
+  test("keeps LANDO_CREATE_PROJECT_APP_ROOT over LANDO_PROJECT_MOUNT", async () => {
+    await withTempDir(async (dir) => {
+      const { appRoot, env } = await fixture(dir);
+      const mounted = join(dir, "workspace");
+      await mkdir(mounted, { recursive: true });
+
+      const result = await run(dir, { ...env, LANDO_PROJECT_MOUNT: mounted }, ["acme/explicit-root"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(true);
+      expect(await Bun.file(join(mounted, "composer.json")).exists()).toBe(false);
+    });
+  });
+
   test("refuses an app root that already has composer.json", async () => {
     await withTempDir(async (dir) => {
       const { appRoot, composerLog, env } = await fixture(dir);

@@ -30,6 +30,7 @@ export const createProjectCommand = (): string =>
       appRootEnv: "LANDO_CREATE_PROJECT_APP_ROOT",
       stagingRootEnv: "LANDO_CREATE_PROJECT_STAGING_ROOT",
       defaultAppRoot: "/app",
+      defaultAppRootEnv: "LANDO_PROJECT_MOUNT",
       stagingPrefix: "lando-create-project-",
       completeMessage: "create-project already published a project at $app_root.",
       outputs: "composer.json",

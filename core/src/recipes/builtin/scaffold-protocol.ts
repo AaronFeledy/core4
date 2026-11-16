@@ -26,6 +26,12 @@ export interface ScaffoldProtocolOptions {
   readonly stagingRootEnv: string;
   /** App root used when the env override is absent. */
   readonly defaultAppRoot: string;
+  /**
+   * Env var that supplies the app root when the explicit override is absent,
+   * used by a recipe whose app mount has an authored target.
+   */
+  readonly defaultAppRootEnv?: string;
+  readonly defaultAppRoot: string;
   /** Mktemp stem for the staging directory, e.g. `lando-drupal-`. */
   readonly stagingPrefix: string;
   /** Message emitted when the completion marker and its outputs are present. */
@@ -49,6 +55,11 @@ export const scaffoldProtocol = (options: ScaffoldProtocolOptions): string => {
   return [
     "set -eu",
     `app_root=${options.defaultAppRoot}`,
+    ...(options.defaultAppRootEnv === undefined
+      ? []
+      : [
+          `lando_default_app_root=$(printenv ${options.defaultAppRootEnv} 2>/dev/null || true); if test -n "$lando_default_app_root"; then app_root=$lando_default_app_root; fi`,
+        ]),
     `if printenv ${options.appRootEnv} >/dev/null 2>&1; then app_root=$(printenv ${options.appRootEnv}); fi`,
     'staging_parent=$(printenv TMPDIR 2>/dev/null || true); if test -z "$staging_parent"; then staging_parent=/tmp; fi',
     `if printenv ${options.stagingRootEnv} >/dev/null 2>&1; then staging_parent=$(printenv ${options.stagingRootEnv}); fi`,
