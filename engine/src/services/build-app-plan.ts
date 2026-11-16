@@ -2,7 +2,7 @@ import type { AppPlan, BuildStep, ServicePlan } from "@lando/sdk/schema";
 import { Graph, Result, Schema } from "effect";
 
 import { appBuildKeyForStep } from "./build-key.ts";
-import { projectUserEnvironment, projectUserExecUser } from "./execution-identity.ts";
+import { selectCommandIdentity } from "./execution-identity.ts";
 
 const ProviderCommandSpec = Schema.Struct({
   command: Schema.Array(Schema.String),
@@ -65,14 +65,13 @@ const stepFor = (
   // An app step runs with the same identity a user command gets, and the
   // identity is part of both the step and its build key so a changed mapping
   // cannot reuse the earlier success.
-  const projectUser = intent.user === undefined ? service.projectUser : undefined;
-  const user = intent.user ?? projectUserExecUser(projectUser);
+  const identity = selectCommandIdentity({ stepUser: intent.user, service });
   const command =
-    projectUser === undefined
+    Object.keys(identity.environment).length === 0
       ? intent.command
       : {
           ...intent.command,
-          env: { ...projectUserEnvironment(service), ...intent.command.env },
+          env: { ...identity.environment, ...intent.command.env },
         };
   return {
     command,
@@ -83,12 +82,12 @@ const stepFor = (
       kind: "execStream",
       command: command.command,
       dependsOn: [...new Set(dependencies)],
-      ...(user === undefined ? {} : { user }),
+      ...(identity.user === undefined ? {} : { user: identity.user }),
       buildKey: appBuildKeyForStep({
         command,
         service,
         stepId: id,
-        ...(user === undefined ? {} : { user }),
+        ...(identity.user === undefined ? {} : { user: identity.user }),
       }),
     },
   };

@@ -95,6 +95,22 @@ describe("build.app execution identity", () => {
     expect(step?.command.env).toBeUndefined();
   });
 
+  test("an empty step user is not an identity and falls back to the project user", () => {
+    const web: ServicePlan = {
+      ...service({ name: "www-data", uid: 33, gid: 33 }),
+      extensions: {
+        "@lando/core/service-features": {
+          buildSteps: [
+            { id: "seed", phase: "app", user: "", command: { command: ["php", "app/console", "seed"] } },
+          ],
+        },
+      },
+    };
+    const [step] = appSteps(plan(web));
+    expect(step?.step.user).toBe("www-data");
+    expect(step?.command.env).toMatchObject({ LANDO_USER: "www-data", LANDO_UID: "33" });
+  });
+
   test("the mapping enters the step build key", () => {
     const [plain] = appSteps(plan(service()));
     const [mapped] = appSteps(plan(service({ name: "www-data", uid: 33, gid: 33 })));
