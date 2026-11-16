@@ -57,6 +57,7 @@ export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 
 export type GlobalRebuildError =
   | import("@lando/sdk/errors").CaError
+  | import("@lando/sdk/services").FileSystemError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>
   | ServiceNotReadyError
   | GlobalAppError
