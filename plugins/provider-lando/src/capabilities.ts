@@ -127,7 +127,6 @@ export const providerLandoCapabilitiesForPlatform = (
       : rootless
         ? ("root-is-host-user" as const)
         : ("host-ids" as const);
-  family !== "linux" ? "unknown" : rootless ? "root-is-host-user" : "host-ids";
   return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,

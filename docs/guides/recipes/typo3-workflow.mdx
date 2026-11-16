@@ -7,7 +7,7 @@ tags: [beta, docs, recipes, typo3, lamp, php, mariadb]
 
 # Run a TYPO3 site on the LAMP recipe
 
-TYPO3 needs Composer, a `public/` webroot, working `.htaccess` rewrites, and a `fileadmin/` that never runs PHP. The LAMP recipe already turns on `.htaccess`; two commands add the rest. Run these commands from your host terminal.
+TYPO3 needs Composer, a `public/` webroot, working `.htaccess` rewrites, and a `fileadmin/` that never runs PHP. The LAMP recipe enables `.htaccess`; two commands add the remaining configuration below. Run these commands from your host terminal.
 
 ```sh
 lando init --recipe lamp --name=typo3-demo --answer=webroot=public --yes
@@ -43,7 +43,7 @@ If something else owns 80 or 443, `lando info` shows the fallback port it picked
 lando create-project typo3/cms-base-distribution "^14"
 ```
 
-`lando create-project` installs the project into the app root, next to `.lando.yml`, and never overwrites it. It puts `composer.json`, `config/`, and `public/` beside `.lando.yml` and installs `vendor/` into the service's volume.
+`lando create-project` installs the project in the app root without overwriting `.lando.yml`. It puts `composer.json`, `config/`, and `public/` there and installs `vendor/` into the service's volume.
 
 Run the rest of this section from a POSIX shell on your host (WSL on Windows). The password step also needs `openssl`.
 
@@ -77,9 +77,9 @@ lando typo3 setup \
 unset TYPO3_ADMIN_PASSWORD
 ```
 
-`--server-type=apache` is the flag that writes `public/.htaccess`.
+`--server-type=apache` writes `public/.htaccess`.
 
-Lando runs `lando typo3`, `lando composer`, and `lando exec` as `www-data`, the same user Apache serves TYPO3 with. On Linux that user is you on the host, so `config/`, `var/`, and `public/fileadmin/` stay yours and the site can write them. [Who owns your app files](../services/file-ownership.mdx) explains the rule and the platforms where it doesn't apply yet.
+Lando runs `lando typo3`, `lando composer`, and `lando exec` as `www-data`, the account Apache uses to serve TYPO3. On Linux, that account maps to your host user, so `config/`, `var/`, and `public/fileadmin/` stay yours and writable by the site. See [Who owns your app files](../services/file-ownership.mdx) for the ownership rule and platform limits.
 
 ## Check the tools and the site
 
@@ -106,7 +106,7 @@ lando typo3 configuration:set SYS/trustedHostsPattern 'typo3-demo\.lndo\.site(:[
 lando typo3 cache:flush
 ```
 
-The command writes the value into `config/system/settings.php`. A pattern set in `config/system/additional.php` still wins, because TYPO3 reads that file last.
+The command writes the value into `config/system/settings.php`. A pattern in `config/system/additional.php` takes precedence because TYPO3 reads that file last.
 
 TYPO3 matches the pattern as a case-insensitive regular expression against the whole `Host` header. `(:[0-9]+)?` also accepts a fallback port. Requests for any other hostname still get TYPO3's error page. Reload the HTTPS URL, and the `Home` page loads.
 

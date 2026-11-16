@@ -841,7 +841,7 @@ Composer recipes (`lamp` when its `composer` option is enabled, `lemp`, `laravel
 
 `package` is a required declared argument holding a Composer name (`vendor/name`, optionally pinned as `vendor/name:constraint`); `version` is an optional declared argument holding a version or constraint; `no-scripts` is a declared boolean flag. Because the flag is declared, Lando's own flag parsing leaves it to the task.
 
-The program belongs to a stock PHP service type, not to the Landofile: a stock PHP service with Composer enabled installs `lando-create-project` at `/usr/local/bin/lando-create-project` in its derived image, and a stock service with Composer disabled installs none. A custom (author-owned) PHP runtime receives none automatically and MUST supply its own if it keeps the recipe's task. The recipe's tool entry is therefore only the task declaration (`cmd: lando-create-project`), and a recipe gates the tool the same way it gates Composer. The installed text is generated from the shared scaffold protocol described below and travels in the image's build steps and build key, so editing the protocol rebuilds the image instead of reusing one that carries an old program. The file is world readable and executable because tooling may run as the site's non-root user.
+A stock PHP service with Composer enabled installs `lando-create-project` at `/usr/local/bin/lando-create-project` in its derived image, and a stock service with Composer disabled installs none. A custom (author-owned) PHP runtime receives none automatically and MUST supply its own if it keeps the recipe's task. The recipe's tool entry is therefore only the task declaration (`cmd: lando-create-project`), and a recipe gates the tool the same way it gates Composer. The installed text is generated from the shared scaffold protocol described below and travels in the image's build steps and build key, so editing the protocol rebuilds the image. The file is world readable and executable because tooling may run as the site's non-root user.
 
 The tool MUST refuse an app root that already holds `composer.json` without the tool's own recovery manifest, and the remediation MUST name `lando composer install` as the way to finish an existing project. It MUST stage with `composer create-project <package> <staging> [<version>] --no-install --no-scripts --no-interaction`, MUST NOT overwrite `.lando.yml` or any other existing path, MUST fill an empty directory at a target (a mounted `vendor`, `node_modules`, or working-directory shadow) in place, and MUST install dependencies directly in the app root rather than copying a staged `vendor`.
 
@@ -1179,7 +1179,7 @@ Opt-in OTLP export:
 
 ### 8.12 Execution identity for user commands
 
-Lando distinguishes the service's process identity from the identity its user commands run as. A service's process identity is `ServicePlan.user`, or the image's configured user when absent; the Apache master stays root while its workers are `www-data`. User commands instead follow one selector: CLI `--user`, then a tooling step user, then a task user, then the applied service plan's realized `projectUser` (§6.2.3), then the container default.
+A service's process identity is `ServicePlan.user`, or the image's configured user when absent; the Apache master stays root while its workers are `www-data`. User commands instead follow one selector: CLI `--user`, then a tooling step user, then a task user, then the applied service plan's realized `projectUser` (§6.2.3), then the container default.
 
 | Surface | Identity |
 |---|---|

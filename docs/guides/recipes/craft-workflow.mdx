@@ -7,7 +7,7 @@ tags: [beta, docs, recipes, craft, lamp, php, mariadb]
 
 # Run a Craft CMS site on the LAMP recipe
 
-Craft CMS 5 needs Composer, a `web/` webroot, and working `.htaccess` rewrites. The LAMP recipe already turns on `.htaccess`, so you only pick the webroot and add a `lando craft` shortcut. Run these commands from your host terminal.
+Craft CMS 5 needs Composer, a `web/` webroot, and working `.htaccess` rewrites. The LAMP recipe enables `.htaccess`; choose the webroot and add a `lando craft` shortcut below. Run these commands from your host terminal.
 
 ```sh
 lando init --recipe lamp --name=craft-demo --answer=webroot=web --yes
@@ -40,7 +40,9 @@ lando create-project craftcms/craft "^5" --no-scripts
 lando exec appserver -- sh -c 'mv composer.json.default composer.json && cp .env.example.dev .env'
 ```
 
-`lando create-project` installs the project into the app root, next to `.lando.yml`, and never overwrites it. `--no-scripts` skips Craft's own Composer hooks, which would start Craft's interactive installer. The second command does the rest of those hooks: it swaps in the project's own `composer.json` and creates `.env` from the dev example. `vendor/` lives in a service volume, so it stays empty on the host while PHP sees the packages inside the container. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+`lando create-project` installs the project in the app root without overwriting `.lando.yml`. `--no-scripts` skips Craft's Composer hooks, which would start its interactive installer. The second command performs the remaining hook actions: it swaps in the project's `composer.json` and creates `.env` from the dev example.
+
+`vendor/` lives in a service volume, so it stays empty on the host while PHP sees the packages inside the container. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 
 Save the database connection to `.env`:
 
@@ -75,7 +77,7 @@ lando craft install \
 unset CRAFT_ADMIN_PASSWORD
 ```
 
-Lando runs `lando craft`, `lando composer`, and `lando exec` as `www-data`, the same user Apache serves Craft with. On Linux that user is you on the host, so `.env`, `storage/`, and the project config Craft writes stay yours and the site can write them. [Who owns your app files](../services/file-ownership.mdx) explains the rule and the platforms where it doesn't apply yet.
+Lando runs `lando craft`, `lando composer`, and `lando exec` as `www-data`, the account Apache uses to serve Craft. On Linux, that account maps to your host user, so `.env`, `storage/`, and the project config Craft writes stay yours and writable by the site. See [Who owns your app files](../services/file-ownership.mdx) for the ownership rule and platform limits.
 
 ## Check the tools and the site
 

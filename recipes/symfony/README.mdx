@@ -42,7 +42,7 @@ lando init --recipe symfony --name=my-symfony-app --yes \
 
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
-Create the Symfony application in the app root with the bundled `create-project` tool. It stages `symfony/skeleton` outside the app root, promotes it without overwriting `.lando.yml`, installs `vendor` in place, and runs the project's own Composer hooks:
+Create the Symfony application in the app root with the bundled `create-project` tool. It stages `symfony/skeleton` outside the app root, then moves it into place without overwriting `.lando.yml`. It installs `vendor` in place and runs the project's Composer hooks:
 
 ```sh
 lando create-project symfony/skeleton

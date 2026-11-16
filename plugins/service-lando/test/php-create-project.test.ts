@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { PHP_FEATURE_ID, php84ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import {
@@ -28,18 +27,15 @@ const BuildSteps = Schema.Struct({
   ),
 });
 
-const composePhpPlan = (
-  overrides: Record<string, unknown> = {},
-  serviceType: ServiceType = php84ServiceType,
-): Promise<ServicePlan> => {
+const composePhpPlan = (overrides: Record<string, unknown> = {}): Promise<ServicePlan> => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "php-create-project",
-    services: { web: { type: serviceType.id, ...overrides } },
+    services: { web: { type: php84ServiceType.id, ...overrides } },
   });
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return composeServicePlan({
-    serviceType,
+    serviceType: php84ServiceType,
     service,
     appRoot: "/srv/apps/php-create-project",
     appName: "php-create-project",
@@ -53,11 +49,10 @@ const composePhpPlan = (
   });
 };
 
-const buildStepsFor = (plan: ServicePlan) =>
-  Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]).buildSteps ?? [];
-
 const createProjectStep = (plan: ServicePlan) =>
-  buildStepsFor(plan).find((step) => step.id === PHP_CREATE_PROJECT_STEP_ID);
+  Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]).buildSteps?.find(
+    (step) => step.id === PHP_CREATE_PROJECT_STEP_ID,
+  );
 
 describe("PHP create-project image step", () => {
   test("installs the shared program as an executable when Composer is enabled", async () => {
@@ -66,12 +61,10 @@ describe("PHP create-project image step", () => {
     const step = createProjectStep(plan);
 
     expect(step).toBeDefined();
-    expect(PHP_CREATE_PROJECT_PATH.startsWith("/usr/local/bin/")).toBe(true);
+    expect(PHP_CREATE_PROJECT_PATH).toBe("/usr/local/bin/lando-create-project");
     expect(step?.user).toBe("root");
     expect(typeof step?.command).toBe("string");
-    expect(step?.command as string).toContain(
-      `> ${PHP_CREATE_PROJECT_PATH} && chmod 0755 ${PHP_CREATE_PROJECT_PATH}`,
-    );
+    expect(step?.command).toContain(`> ${PHP_CREATE_PROJECT_PATH} && chmod 0755 ${PHP_CREATE_PROJECT_PATH}`);
     expect(step?.buildKeyInputs?.createProject).toEqual({
       path: PHP_CREATE_PROJECT_PATH,
       content: PHP_CREATE_PROJECT_SCRIPT,

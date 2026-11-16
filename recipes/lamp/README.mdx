@@ -41,7 +41,7 @@ lando init --recipe lamp --name=my-lamp-app --yes \
 
 `lando start` prints the app URL. `lando info` repeats it.
 
-To add a Composer project to an initialized app, run `lando create-project <package> [<version>]`. It stages the package outside the app root, then promotes it into the mounted `/app` without overwriting `.lando.yml` or files you added, fills empty mounted directories such as `vendor`, installs dependencies in place, and runs the project's own Composer hooks. Pass `--no-scripts` to skip those hooks and install scripts:
+To add a Composer project to an initialized app, run `lando create-project <package> [<version>]`. It stages the package outside the app root, then moves it into the mounted `/app` without overwriting `.lando.yml` or files you added. It fills empty mounted directories such as `vendor`, installs dependencies in place, and runs the project's Composer hooks. Pass `--no-scripts` to skip those hooks and install scripts:
 
 ```sh
 lando create-project typo3/cms-base-distribution "^14"
