@@ -23,6 +23,7 @@ const expectedServices = {
     type: "php:{{ recipe.php }}",
     primary: true,
     framework: "none",
+    allowOverride: true,
     webroot: "{{ recipe.webroot }}",
     composer: "{{ recipe.composer }}",
     port: 80,

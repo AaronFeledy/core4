@@ -13,7 +13,7 @@ Init prompts for PHP 8.1 through 8.6, MariaDB or MySQL (with versions), Composer
 
 ## See the generated defaults
 
-The generated Landofile is an Apache-backed `appserver` on `php:8.4`, `framework: none`, port `80`, `composer: "2"`, `webroot: .`, a `database` service with `type: mariadb:11.4`, plus `composer` and `php` tooling.
+The generated Landofile is an Apache-backed `appserver` on `php:8.4`, `framework: none`, port `80`, `composer: "2"`, `webroot: .`, `allowOverride: true`, a `database` service with `type: mariadb:11.4`, plus `composer` and `php` tooling. Apache reads your application's `.htaccess` rules unless you set `allowOverride: false` on `appserver`.
 
 <Guide>
   <Scenario id="default-recipe-output" render>

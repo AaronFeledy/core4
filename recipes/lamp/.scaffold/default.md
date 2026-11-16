@@ -17,6 +17,10 @@ lando info
 
 `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
+The generated `appserver` sets `allowOverride: true`, so Apache reads your
+application's `.htaccess` rules. Set it to `false` in `.lando.yml` if your app
+should ignore those files.
+
 To choose a different stack, use this initialization command instead of the
 default one above. Run it from the parent directory, not inside the app:
 

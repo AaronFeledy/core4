@@ -29,7 +29,7 @@ export const source = {
   config: {
     runtime: 4,
     services: {
-      appserver: { ...phpAppserver("none"), port: 80, routes: defaultRoutes },
+      appserver: { ...phpAppserver("none"), allowOverride: true, port: 80, routes: defaultRoutes },
       database: { type: "{{ recipe.database }}" },
     },
     tooling: { php: phpTool },
