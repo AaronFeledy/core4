@@ -18,6 +18,12 @@ import {
 } from "./ephemeral-data-helpers.ts";
 import { ensureEphemeral2xx, runtimeRemediation } from "./ephemeral-http-failure.ts";
 import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
+import {
+  type HelperReclaimOptions,
+  helperOwnerIdentityFor,
+  registerActiveHelper,
+  releaseActiveHelper,
+} from "./helper-owner.ts";
 import type { PulledImage } from "./image-pull.ts";
 import {
   APP_LABEL,
@@ -154,6 +160,8 @@ export interface ProviderDataPlaneOptions {
     plan: AppPlan,
     store: AppPlan["stores"][number],
   ) => Readonly<Record<string, string>>;
+  /** Test seam for the creator identity and owner-liveness probe. */
+  readonly helperReclaim?: HelperReclaimOptions;
 }
 
 const textDecoder = new TextDecoder();
@@ -624,6 +632,7 @@ const ensureStaleHelperSweep = (options: ProviderDataPlaneOptions): Effect.Effec
     return sweepStaleDataHelpers(options.api.request, {
       providerId: options.providerId,
       redactor: options.redactor,
+      ...(options.helperReclaim === undefined ? {} : { helperReclaim: options.helperReclaim }),
     });
   });
 
@@ -677,6 +686,8 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
   ];
   const attachStdin = spec.stdinStream !== undefined;
   yield* ensureStaleHelperSweep(options);
+  // Stamp the creating process before the POST so cleanup can prove when it exits.
+  const owner = yield* helperOwnerIdentityFor(options.helperReclaim);
   const response = yield* request(options, "run.create", {
     method: "POST",
     path: `/containers/create?name=${encodeURIComponent(name)}`,
@@ -685,6 +696,8 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
       Cmd: spec.command,
       Labels: ephemeralDataHelperLabels({
         providerId: options.providerId,
+        remove: spec.remove !== false,
+        ...(owner === undefined ? {} : { owner }),
         ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
         ...(spec.owner?.plan?.identity === undefined ? {} : { appRoot: spec.owner.plan.identity.appRoot }),
         ...(mount === undefined ? {} : { store: mount.store }),
@@ -721,6 +734,7 @@ const createEphemeralContainer = Effect.fn("DataPlane.createEphemeralContainer")
   const accepted = ensureEphemeral2xx(options, spec, { operation: "run.create", response });
   // 409: another container already holds this name, so it is not ours to remove.
   yield* response.status === 409 ? accepted : accepted.pipe(Effect.catchCause(compensate));
+  registerActiveHelper(name);
   return name;
 });
 
@@ -836,13 +850,18 @@ const compensateFailedCreate = (
   name: string,
   cause: Cause.Cause<ProviderError>,
 ): Effect.Effect<never, ProviderError> => {
-  if (spec.remove === false) return Effect.failCause(cause);
+  if (spec.remove === false) {
+    releaseActiveHelper(name);
+    return Effect.failCause(cause);
+  }
   return boundedEphemeralRemoval(
     options,
     name,
     "run.create",
     leftoverHelperRemediation(options.redactor, false),
   ).pipe(
+    // The name is no longer live for this process once compensation settles.
+    Effect.ensuring(Effect.sync(() => releaseActiveHelper(name))),
     Effect.matchCauseEffect({
       onSuccess: () => Effect.failCause(cause),
       onFailure: (cleanup) => Effect.failCause(mergeFailure(cause, cleanup, "cleanup")),
@@ -852,6 +871,7 @@ const compensateFailedCreate = (
 
 const releaseEphemeralContainer = (release: EphemeralRelease) => {
   const { options, name, remove, exit, operation, observed } = release;
+  releaseActiveHelper(name);
   if (!remove) return Effect.void;
   return boundedEphemeralRemoval(
     options,
@@ -1947,6 +1967,7 @@ export const makeProviderDataPlane = (input: ProviderDataPlaneOptions) => {
               providerId: options.providerId,
               holders,
               redactor: options.redactor,
+              ...(options.helperReclaim === undefined ? {} : { helperReclaim: options.helperReclaim }),
             });
             if (recovered) {
               return yield* deleteVolume.pipe(

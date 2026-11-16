@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect, Fiber, Logger, References } from "effect";
 import { TestClock } from "effect/testing";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
-import { isStaleDataHelper, sweepStaleDataHelpers } from "../src/stale-data-helpers.ts";
+import { dataHelperReclaimVerdict, sweepStaleDataHelpers } from "../src/stale-data-helpers.ts";
 import {
   NOW,
   freshTime,
@@ -69,15 +69,19 @@ test.each([
   ["paused container", "paused", staleTime],
 ] as const)("preserves a helper with %s", (_name, state, finishedAt) => {
   expect(
-    isStaleDataHelper({
+    dataHelperReclaimVerdict({
       labels: helperLabels(),
       providerId: "test",
+      name: "helper",
       state,
       finishedAt,
       created: staleTime,
       nowMs: NOW,
+      identity: undefined,
+      isActive: () => false,
+      probe: () => ({ state: "unknown" }),
     }),
-  ).toBe(false);
+  ).toBe("keep");
 });
 
 test("sweep runs once per data-plane instance even with reused options and unexecuted runs", async () => {

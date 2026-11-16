@@ -4,6 +4,8 @@ import { Effect, Result } from "effect";
 import { TestClock } from "effect/testing";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
+import { ephemeralDataHelperLabels } from "../src/ephemeral-data-helpers.ts";
+import type { HelperOwnerIdentity } from "../src/helper-owner.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { volumeOwnershipLabels } from "../src/volume-ownership.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
@@ -16,6 +18,23 @@ import {
   redactor,
   staleHelper,
 } from "./support/stale-helper-engine.ts";
+
+const SELF: HelperOwnerIdentity = {
+  machine: "a".repeat(32),
+  pidDomain: "pid:[4026531836]",
+  pid: 100,
+  boot: "boot-1",
+  start: "500",
+};
+
+const OWNER: HelperOwnerIdentity = { ...SELF, pid: 200, start: "700" };
+
+const ownerLabels = (owner: HelperOwnerIdentity) => ephemeralDataHelperLabels({ providerId: "test", owner });
+
+const deadOwnerReclaim = {
+  identity: Effect.succeed(SELF),
+  probe: () => ({ state: "absent" as const }),
+};
 
 test("volume removal reclaims stale holders and retries once", async () => {
   const engine = helperEngine([staleHelper("first"), staleHelper("second")]);
@@ -141,6 +160,73 @@ test("bringDown reclaims stale holders before retrying its selected volume", asy
     Effect.gen(function* () {
       yield* TestClock.setTime(NOW);
       return yield* bringDown(plan, {
+        api: {
+          request: (input) => {
+            if (input.path.startsWith("/networks/")) return Effect.succeed({ status: 404, body: "" });
+            if (
+              input.path.startsWith("/containers/json?") &&
+              !decodeURIComponent(input.path).includes('"volume"')
+            ) {
+              return Effect.succeed({ status: 200, body: "[]" });
+            }
+            if (input.method === "GET" && input.path === "/volumes/data")
+              return Effect.succeed({
+                status: 200,
+                body: JSON.stringify({ Labels: volumeOwnershipLabels(plan, store) }),
+              });
+            // This scenario injects no engine failures, so any failure here is a broken fixture.
+            return engine.api.request(input).pipe(Effect.orDie);
+          },
+        },
+        ctx: { providerId: "test", remediation: "Retry.", env: {}, redactor },
+        dialect: dockerLifecycleDialect,
+        volumes: true,
+      });
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+  expect(result.changed).toBe(true);
+  expect([...engine.containers.keys()]).toEqual([]);
+  expect([...engine.volumes.keys()]).toEqual([]);
+  expect(
+    engine.calls.filter((call) => call.method === "DELETE" && call.path === "/volumes/data"),
+  ).toHaveLength(2);
+});
+
+test("volume removal reclaims a dead owner's running helper and retries once", async () => {
+  const engine = helperEngine([
+    { id: "dead-owner", state: "running", running: true, labels: ownerLabels(OWNER) },
+  ]);
+  const plane = makeProviderDataPlane({
+    providerId: "test",
+    capabilities: { volumeSnapshot: "none" },
+    redactor,
+    api: engine.api,
+    helperReclaim: deadOwnerReclaim,
+  });
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* TestClock.setTime(NOW);
+      yield* plane.removeVolume({ app: AppId.make("app"), store: "data" }, generation);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+  expect([...engine.containers.keys()]).toEqual([]);
+  expect([...engine.volumes.keys()]).toEqual([]);
+  expect(
+    engine.calls.filter((call) => call.method === "DELETE" && call.path === "/volumes/data"),
+  ).toHaveLength(2);
+});
+
+test("bringDown reclaims a dead owner's running holder before retrying", async () => {
+  const store = { name: "data", scope: "app", kind: "data" } as const;
+  const plan = { ...networkPlan, services: {}, stores: [store] } satisfies AppPlan;
+  const engine = helperEngine([
+    { id: "dead-owner", state: "running", running: true, labels: ownerLabels(OWNER) },
+  ]);
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* TestClock.setTime(NOW);
+      return yield* bringDown(plan, {
+        helperReclaim: deadOwnerReclaim,
         api: {
           request: (input) => {
             if (input.path.startsWith("/networks/")) return Effect.succeed({ status: 404, body: "" });

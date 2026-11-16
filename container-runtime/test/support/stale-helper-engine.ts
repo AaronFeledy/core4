@@ -18,6 +18,8 @@ export const redactor = {
 
 export interface Helper {
   readonly id: string;
+  /** Container name; defaults to the id. */
+  readonly name?: string;
   readonly state: string;
   readonly labels: Readonly<Record<string, string>>;
   readonly finishedAt?: string;
@@ -59,6 +61,7 @@ export const helperEngine = (initial: ReadonlyArray<Helper>) => {
         return Effect.succeed({
           status: 200,
           body: JSON.stringify({
+            Name: `/${helper.name ?? helper.id}`,
             State: {
               Status: helper.state,
               StartedAt: helper.startedAt,
