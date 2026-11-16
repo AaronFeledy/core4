@@ -18,8 +18,10 @@
 export interface ScaffoldProtocolOptions {
   /** Human-readable name used in every failure message. */
   readonly label: string;
-  /** Marker, manifest, and lock namespace, e.g. `.lando-drupal-scaffold`. */
+  /** Marker and manifest namespace, e.g. `.lando-drupal-scaffold`; all scaffolds share one app-root lock. */
   readonly markerPrefix: string;
+  /** Keep a completion marker for refusal and repair on later runs (default true). */
+  readonly keepCompletionMarker?: boolean;
   /** Marked file inside the staging directory that promotion ignores. */
   readonly stagingMarker: string;
   /** Env var overriding the container app root. */
@@ -66,7 +68,7 @@ export const scaffoldProtocol = (options: ScaffoldProtocolOptions): string => {
     `if printenv ${options.stagingRootEnv} >/dev/null 2>&1; then staging_parent=$(printenv ${options.stagingRootEnv}); fi`,
     `complete_marker="$app_root/${markerPrefix}-complete"`,
     `manifest="$app_root/${markerPrefix}-manifest"`,
-    `lock_dir="$app_root/${markerPrefix}-lock"`,
+    'lock_dir="$app_root/.lando-scaffold-lock"',
     "lock_owned=0",
     "staging_root=",
     'cleanup() { if test -n "$staging_root"; then rm -rf "$staging_root"; fi; if test "$lock_owned" -eq 1; then rm -f "$lock_dir/pid"; rmdir "$lock_dir" 2>/dev/null || true; fi; }',
@@ -81,9 +83,11 @@ export const scaffoldProtocol = (options: ScaffoldProtocolOptions): string => {
     `scaffold_valid() { ${options.complete.join(" && ")}; }`,
     ...(options.prepare ?? []),
     'mkdir -p "$app_root"',
-    `if ! mkdir "$lock_dir" 2>/dev/null; then lock_pid=; if test -f "$lock_dir/pid"; then IFS= read -r lock_pid < "$lock_dir/pid" || lock_pid=; fi; case "$lock_pid" in ""|*[!0-9]*) fail "${label} scaffold lock at $lock_dir has no recoverable owner.";; esac; if kill -0 "$lock_pid" 2>/dev/null; then fail "${label} scaffold is already running for $app_root."; fi; rm -f "$lock_dir/pid"; rmdir "$lock_dir" 2>/dev/null || fail "${label} scaffold lock at $lock_dir is not safely recoverable."; mkdir "$lock_dir" 2>/dev/null || fail "Unable to acquire ${label} scaffold lock for $app_root."; fi`,
+    `if ! mkdir "$lock_dir" 2>/dev/null; then lock_pid=; if test -f "$lock_dir/pid"; then IFS= read -r lock_pid < "$lock_dir/pid" || lock_pid=; fi; case "$lock_pid" in ""|*[!0-9]*) fail "${label} scaffold lock at $lock_dir has no recoverable owner.";; esac; if kill -0 "$lock_pid" 2>/dev/null; then fail "Another Lando scaffold is already running for $app_root."; fi; rm -f "$lock_dir/pid"; rmdir "$lock_dir" 2>/dev/null || fail "${label} scaffold lock at $lock_dir is not safely recoverable."; mkdir "$lock_dir" 2>/dev/null || fail "Unable to acquire ${label} scaffold lock for $app_root."; fi`,
     'lock_owned=1; printf "%s\n" "$$" > "$lock_dir/pid"',
-    `if test -e "$complete_marker" && scaffold_valid; then fail "${options.completeMessage}"; fi`,
+    ...(options.keepCompletionMarker === false
+      ? []
+      : [`if test -e "$complete_marker" && scaffold_valid; then fail "${options.completeMessage}"; fi`]),
     ...(options.preflight ?? []),
     'repair=0; if test -e "$complete_marker"; then repair=1; fi',
     `if test -f "$manifest"; then while IFS=: read -r state entry; do valid_name "$entry" || fail "Invalid ${label} scaffold recovery path: $entry"; case "$state" in incomplete|ready|complete|preexisting|sibling-incomplete|sibling-ready|nested-incomplete|nested-ready|nested-complete) ;; *) fail "Invalid ${label} scaffold manifest state: $state";; esac; target="$app_root/$entry"; partial="$target.lando-partial"; nested_partial="$target/.lando-partial"; case "$state" in incomplete) if test -e "$partial" || test -L "$partial"; then fail "${label} scaffold found an ambiguous legacy partial path: $partial"; fi; if test -e "$target" || test -L "$target"; then empty_dir "$target" || fail "${label} scaffold found ambiguous contents after an interrupted legacy copy: $target"; fi;; ready) fail "${label} scaffold found an ambiguous legacy ready state: $entry";; sibling-ready|sibling-incomplete) owner="$partial.lando-owner"; test -d "$owner" && ! test -L "$owner" && test -f "$owner/version" && test "$(cat "$owner/version")" = v1 || fail "${label} scaffold sibling partial ownership is invalid: $partial"; if test -e "$target" || test -L "$target"; then if test "$state" = sibling-ready && ! test -e "$partial" && ! test -L "$partial"; then rm -rf "$owner"; write_state complete "$entry"; else fail "${label} scaffold found an ambiguous target after an interrupted copy: $target"; fi; elif test -e "$partial" || test -L "$partial"; then rm -rf "$partial"; rm -rf "$owner"; write_state incomplete "$entry"; else rm -rf "$owner"; write_state incomplete "$entry"; fi;; complete) owner="$partial.lando-owner"; if test -e "$owner" || test -L "$owner"; then test -d "$owner" && ! test -L "$owner" && test -f "$owner/version" && test "$(cat "$owner/version")" = v1 || fail "${label} scaffold sibling partial ownership is invalid: $partial"; rm -rf "$owner"; fi;; nested-incomplete) test -d "$nested_partial" && ! test -L "$nested_partial" && test -f "$nested_partial/.lando-owned" && test "$(cat "$nested_partial/.lando-owned")" = v1 || fail "${label} scaffold nested partial ownership is invalid: $nested_partial"; rm -rf "$nested_partial"; empty_dir "$target" || fail "${label} scaffold found ambiguous contents after an interrupted copy: $target"; write_state incomplete "$entry";; nested-ready) test -f "$nested_partial/.lando-owned" && test "$(cat "$nested_partial/.lando-owned")" = v1 || fail "${label} scaffold nested partial ownership is invalid: $nested_partial"; promote_nested "$entry" "$target" "$nested_partial";; nested-complete) if test -L "$nested_partial" || { test -e "$nested_partial" && ! test -d "$nested_partial"; }; then fail "${label} scaffold nested partial path is not safely recoverable: $nested_partial"; fi; if test -d "$nested_partial"; then if test -e "$nested_partial/.lando-owned" || test -L "$nested_partial/.lando-owned"; then test -f "$nested_partial/.lando-owned" && ! test -L "$nested_partial/.lando-owned" && test "$(cat "$nested_partial/.lando-owned")" = v1 || fail "${label} scaffold nested partial ownership is invalid: $nested_partial"; rm -f "$nested_partial/.lando-owned"; fi; rmdir "$nested_partial" 2>/dev/null || fail "${label} scaffold nested partial path is not safely recoverable: $nested_partial"; fi; esac; done < "$manifest"; fi`,
@@ -99,7 +103,7 @@ export const scaffoldProtocol = (options: ScaffoldProtocolOptions): string => {
     `while IFS=: read -r state entry; do test "$state" = incomplete || continue; target="$app_root/$entry"; partial="$target.lando-partial"; if test -e "$target" || test -L "$target"; then if empty_dir "$target"; then nested_partial="$target/.lando-partial"; mkdir "$nested_partial"; printf "v1\n" > "$nested_partial/.lando-owned"; write_state nested-incomplete "$entry"; cp -R "$staging_root/$entry/." "$nested_partial/"; write_state nested-ready "$entry"; promote_nested "$entry" "$target" "$nested_partial"; continue; fi; fail "${label} scaffold found an ambiguous target after manifest snapshot: $target"; fi; if test -e "$partial" || test -L "$partial"; then fail "${label} scaffold partial path already exists: $partial"; fi; owner="$partial.lando-owner"; mkdir "$owner"; printf "v1\n" > "$owner/version"; write_state sibling-incomplete "$entry"; cp -R "$staging_root/$entry" "$partial"; write_state sibling-ready "$entry"; promote_no_replace "$partial" "$target"; write_state complete "$entry"; rm -rf "$owner"; done < "$manifest"`,
     `scaffold_valid || fail "${label} scaffold did not produce ${options.outputs}."`,
     ...(options.afterPromote ?? []),
-    'touch "$complete_marker"',
+    ...(options.keepCompletionMarker === false ? [] : ['touch "$complete_marker"']),
     'rm -f "$manifest"',
   ].join("\n");
 };

@@ -26,6 +26,7 @@ export const createProjectCommand = (): string =>
     scaffoldProtocol({
       label: "create-project",
       markerPrefix: ".lando-create-project",
+      keepCompletionMarker: false,
       stagingMarker: ".lando-create-project-stage-complete",
       appRootEnv: "LANDO_CREATE_PROJECT_APP_ROOT",
       stagingRootEnv: "LANDO_CREATE_PROJECT_STAGING_ROOT",
@@ -46,6 +47,7 @@ export const createProjectCommand = (): string =>
       ],
       preflight: [
         'if test -f "$app_root/composer.json" && ! test -f "$manifest"; then fail "create-project refuses $app_root because composer.json already exists; run lando composer install for an existing project, or start from an empty app root."; fi',
+        'hook_state="$app_root/.lando-create-project-hooks"; if ! test -f "$manifest"; then rm -f "$hook_state"; fi',
       ],
       generate: [
         'if test -n "$version"; then composer create-project "$package" "$staging_root" "$version" --no-install --no-scripts --no-interaction; else composer create-project "$package" "$staging_root" --no-install --no-scripts --no-interaction; fi',
@@ -53,10 +55,11 @@ export const createProjectCommand = (): string =>
       ],
       afterPromote: [
         'cd "$app_root"',
-        'has_script() { LANDO_COMPOSER_EVENT="$1" php -r \'exit(isset(json_decode(file_get_contents("composer.json"), true)["scripts"][getenv("LANDO_COMPOSER_EVENT")]) ? 0 : 1);\'; }',
-        'if test "$no_scripts" -eq 0 && has_script post-root-package-install; then composer run-script post-root-package-install || fail "create-project could not run the post-root-package-install hook; fix the hook and rerun lando create-project."; fi',
+        'has_script() { LANDO_COMPOSER_EVENT="$1" php -r \'exit(!empty(json_decode(file_get_contents("composer.json"), true)["scripts"][getenv("LANDO_COMPOSER_EVENT")]) ? 0 : 1);\'; }',
+        'if test "$no_scripts" -eq 0 && ! test -f "$hook_state" && has_script post-root-package-install; then composer run-script post-root-package-install || fail "create-project could not run the post-root-package-install hook; fix the hook and rerun lando create-project."; printf "post-root-package-install\\n" > "$hook_state"; fi',
         'if test "$no_scripts" -eq 1; then composer install --no-interaction --no-scripts || fail "create-project could not install dependencies; fix the Composer error and rerun lando composer install."; else composer install --no-interaction || fail "create-project could not install dependencies; fix the Composer error and rerun lando composer install."; fi',
         'if test "$no_scripts" -eq 0 && has_script post-create-project-cmd; then composer run-script post-create-project-cmd || fail "create-project could not run the post-create-project-cmd hook; fix the hook and rerun lando create-project."; fi',
+        'rm -f "$hook_state"',
       ],
     }),
     "",

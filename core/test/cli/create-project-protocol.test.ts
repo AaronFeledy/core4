@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProjectCommand } from "../../src/recipes/builtin/create-project.ts";
@@ -31,6 +31,7 @@ const fakeComposer = [
   '    printf "%s\\n" staged > "$destination/public/index.php"',
   '    case "$COMPOSER_HOOKS" in',
   '      both) printf "%s\\n" \'{"scripts":{"post-root-package-install":["true"],"post-create-project-cmd":["true"]}}\' > "$destination/composer.json" ;;',
+  '      empty) printf "%s\\n" \'{"scripts":{"post-root-package-install":[],"post-create-project-cmd":[]}}\' > "$destination/composer.json" ;;',
   '      failing-root) printf "%s\\n" \'{"scripts":{"post-root-package-install":["false"]}}\' > "$destination/composer.json" ;;',
   '      failing-create) printf "%s\\n" \'{"scripts":{"post-create-project-cmd":["false"]}}\' > "$destination/composer.json" ;;',
   '      *) printf "%s\\n" \'{"scripts":{}}\' > "$destination/composer.json" ;;',
@@ -38,12 +39,13 @@ const fakeComposer = [
   "    ;;",
   "  run-script)",
   '    case "$2" in',
-  '      post-root-package-install) test "$COMPOSER_HOOKS" != failing-root ;;',
-  '      post-create-project-cmd) test "$COMPOSER_HOOKS" != failing-create ;;',
+  '      post-root-package-install) test "$COMPOSER_HOOKS" != empty && test "$COMPOSER_HOOKS" != failing-root ;;',
+  '      post-create-project-cmd) test "$COMPOSER_HOOKS" != empty && test "$COMPOSER_HOOKS" != failing-create ;;',
   "      *) exit 1 ;;",
   "    esac",
   "    ;;",
   "  install)",
+  '    if test "${COMPOSER_FAIL_INSTALL:-0}" = 1; then exit 42; fi',
   "    mkdir -p vendor",
   '    printf "%s\\n" installed > vendor/autoload.php',
   '    printf "%s\\n" "{}" > composer.lock',
@@ -51,8 +53,7 @@ const fakeComposer = [
   "esac",
 ].join("\n");
 
-/** Stands in for `php -r` in the hook probe: the event name must appear in composer.json. */
-const fakePhp = ["#!/bin/sh", "set -u", 'grep -q "$LANDO_COMPOSER_EVENT" composer.json'].join("\n");
+const fakePhp = ["#!/bin/sh", 'exec /usr/bin/php "$@"'].join("\n");
 
 const withTempDir = async <T>(use: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-create-project-"));
@@ -133,6 +134,42 @@ const calls = async (log: string): Promise<ReadonlyArray<string>> =>
   (await Bun.file(log).text()).trim().split("\n");
 
 describe("create-project protocol", () => {
+  test("resume skips a successful root hook after dependency installation fails", async () => {
+    await withTempDir(async (dir) => {
+      const { appRoot, composerLog, env } = await fixture(dir, "both");
+
+      const failed = await run(dir, { ...env, COMPOSER_FAIL_INSTALL: "1" }, ["acme/resumable"]);
+      expect(failed.exitCode).not.toBe(0);
+      expect(failed.stderr).toContain("could not install dependencies");
+      const resumed = await run(dir, env, ["acme/resumable"]);
+
+      expect(resumed.exitCode).toBe(0);
+      expect((await calls(composerLog)).filter((line) => !line.startsWith("create-project"))).toEqual([
+        "run-script post-root-package-install",
+        "install --no-interaction",
+        "install --no-interaction",
+        "run-script post-create-project-cmd",
+      ]);
+      expect(await Bun.file(join(appRoot, ".lando-create-project-hooks")).exists()).toBe(false);
+    });
+  });
+
+  test("a fresh run clears stale hook state before running its root hook", async () => {
+    await withTempDir(async (dir) => {
+      const { appRoot, composerLog, env } = await fixture(dir, "both");
+      await writeFile(join(appRoot, ".lando-create-project-hooks"), "post-root-package-install\n");
+
+      const result = await run(dir, env, ["acme/fresh"]);
+
+      expect(result.exitCode).toBe(0);
+      expect((await calls(composerLog)).filter((line) => line.startsWith("run-script"))).toEqual([
+        "run-script post-root-package-install",
+        "run-script post-create-project-cmd",
+      ]);
+      expect(await Bun.file(join(appRoot, ".lando-create-project-hooks")).exists()).toBe(false);
+    });
+  });
+
   test("runs the defined root hooks around install in Composer's order", async () => {
     await withTempDir(async (dir) => {
       const { appRoot, composerLog, env } = await fixture(dir, "both");
@@ -151,7 +188,9 @@ describe("create-project protocol", () => {
       expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(true);
       expect(await Bun.file(join(appRoot, "vendor", "autoload.php")).exists()).toBe(true);
       expect(await Bun.file(join(appRoot, "composer.lock")).exists()).toBe(true);
-      expect(await Bun.file(join(appRoot, ".lando-create-project-complete")).exists()).toBe(true);
+      expect((await readdir(appRoot)).filter((name) => name.startsWith(".lando-create-project-"))).toEqual(
+        [],
+      );
       expect(await Bun.file(join(appRoot, ".lando-create-project-manifest")).exists()).toBe(false);
     });
   });
@@ -169,9 +208,9 @@ describe("create-project protocol", () => {
     });
   });
 
-  test("succeeds when the root package defines no hooks", async () => {
+  test.each(["none", "empty"])("succeeds when the root package defines %s hooks", async (hooks) => {
     await withTempDir(async (dir) => {
-      const { composerLog, env } = await fixture(dir, "none");
+      const { composerLog, env } = await fixture(dir, hooks);
 
       const result = await run(dir, env, ["acme/hookless"]);
 
@@ -262,7 +301,7 @@ describe("create-project protocol", () => {
 
       expect(resumed.exitCode).toBe(0);
       expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(true);
-      expect(await Bun.file(join(appRoot, ".lando-create-project-complete")).exists()).toBe(true);
+      expect(await Bun.file(join(appRoot, ".lando-create-project-complete")).exists()).toBe(false);
       expect(await Bun.file(join(appRoot, ".lando-create-project-manifest")).exists()).toBe(false);
     });
   });
@@ -283,28 +322,27 @@ describe("create-project protocol", () => {
 
   test("refuses a completed project on rerun", async () => {
     await withTempDir(async (dir) => {
-      const { appRoot, env } = await fixture(dir);
-      await writeFile(join(appRoot, "composer.json"), "{}\n");
-      await writeFile(join(appRoot, ".lando-create-project-complete"), "");
+      const { env } = await fixture(dir);
+      expect((await run(dir, env, ["laravel/laravel"])).exitCode).toBe(0);
 
       const result = await run(dir, env, ["laravel/laravel"]);
 
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("already published a project");
+      expect(result.stderr).toContain("composer.json already exists");
     });
   });
 
   test("fails fast when another create-project holds the app lock", async () => {
     await withTempDir(async (dir) => {
       const { appRoot, composerLog, env } = await fixture(dir);
-      const lockDir = join(appRoot, ".lando-create-project-lock");
+      const lockDir = join(appRoot, ".lando-scaffold-lock");
       await mkdir(lockDir, { recursive: true });
       await writeFile(join(lockDir, "pid"), `${process.pid}\n`);
 
       const result = await run(dir, env, ["laravel/laravel"]);
 
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("already running");
+      expect(result.stderr).toContain(`Another Lando scaffold is already running for ${appRoot}.`);
       expect(await Bun.file(composerLog).exists()).toBe(false);
     });
   });
@@ -378,7 +416,7 @@ describe("create-project protocol", () => {
       expect(await Bun.file(join(appRoot, "app", "index.php")).exists()).toBe(true);
       expect(await Bun.file(join(appRoot, "public", "index.php")).exists()).toBe(true);
       expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(true);
-      expect(await Bun.file(join(appRoot, ".lando-create-project-complete")).exists()).toBe(true);
+      expect(await Bun.file(join(appRoot, ".lando-create-project-complete")).exists()).toBe(false);
       expect(await Bun.file(join(appRoot, ".lando-create-project-manifest")).exists()).toBe(false);
       expect(await Bun.file(join(appRoot, "app.lando-partial")).exists()).toBe(false);
     });

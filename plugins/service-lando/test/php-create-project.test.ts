@@ -79,7 +79,7 @@ describe("PHP create-project image step", () => {
 
   test("carries the generated program verbatim as a shebang script", () => {
     expect(PHP_CREATE_PROJECT_SCRIPT.startsWith("#!/bin/sh\n")).toBe(true);
-    expect(PHP_CREATE_PROJECT_SCRIPT).toContain(".lando-create-project-lock");
+    expect(PHP_CREATE_PROJECT_SCRIPT).toContain(".lando-scaffold-lock");
     expect(PHP_CREATE_PROJECT_SCRIPT).toContain("composer install --no-interaction");
     expect(PHP_CREATE_PROJECT_SCRIPT.endsWith("\n")).toBe(true);
     expect(phpCreateProjectBuildStep().buildKeyInputs).toEqual({

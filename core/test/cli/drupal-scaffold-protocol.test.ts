@@ -329,25 +329,28 @@ describe("Drupal scaffold copy protocol", () => {
     },
   );
 
-  test("fails fast when another scaffold holds the app lock", async () => {
+  test.each([
+    ["Drupal", DRUPAL_SCAFFOLD_COMMAND],
+    ["Drupal CMS", DRUPAL_CMS_SCAFFOLD_COMMAND],
+  ] as const)("%s fails fast when another scaffold holds the app lock", async (_, command) => {
     await withTempDir(async (dir) => {
       // Given
       const appRoot = join(dir, "app");
       const stagingParent = join(dir, "staging");
       const binDir = join(dir, "bin");
       const composerLog = join(dir, "composer.log");
-      const lockDir = join(appRoot, ".lando-drupal-scaffold-lock");
+      const lockDir = join(appRoot, ".lando-scaffold-lock");
       await mkdir(lockDir, { recursive: true });
       await mkdir(binDir, { recursive: true });
       await writeFile(join(lockDir, "pid"), `${process.pid}\n`);
-      await writeFakeComposer(binDir);
+      await writeFakeComposer(binDir, command);
 
       // When
-      const result = await run(dir, baseEnv(appRoot, stagingParent, binDir, composerLog));
+      const result = await run(dir, baseEnv(appRoot, stagingParent, binDir, composerLog), command);
 
       // Then
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("already running");
+      expect(result.stderr).toContain(`Another Lando scaffold is already running for ${appRoot}.`);
       expect(await Bun.file(composerLog).exists()).toBe(false);
     });
   });
@@ -359,7 +362,7 @@ describe("Drupal scaffold copy protocol", () => {
       const stagingParent = join(dir, "staging");
       const binDir = join(dir, "bin");
       const composerLog = join(dir, "composer.log");
-      const lockDir = join(appRoot, ".lando-drupal-scaffold-lock");
+      const lockDir = join(appRoot, ".lando-scaffold-lock");
       await mkdir(lockDir, { recursive: true });
       await mkdir(binDir, { recursive: true });
       await writeFile(join(lockDir, "pid"), "999999999\n");
