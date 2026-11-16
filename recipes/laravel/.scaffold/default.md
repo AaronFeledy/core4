@@ -21,7 +21,7 @@ The named init creates `my-laravel-app/`. Change into it before app commands. `l
 
 The recipe writes a Landofile, not a Laravel application. Create the Laravel
 project in the app root with the bundled `create-project` tool. It stages
-`laravel/laravel` outside the app root, promotes it without overwriting
+`laravel/laravel` outside the app root, moves it into place without overwriting
 `.lando.yml`, installs `vendor` in place, and runs Laravel's own Composer
 hooks in Composer's order:
 
