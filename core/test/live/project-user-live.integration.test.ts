@@ -192,3 +192,102 @@ test.skipIf(socket === undefined || process.platform !== "linux")(
   },
   1_200_000,
 );
+
+test.skipIf(socket === undefined || process.platform !== "linux")(
+  "a fresh PHP webroot and exclude shadow are host-owned before the container starts",
+  async () => {
+    if (socket === undefined) throw new Error("A live Podman socket is required");
+    const providerId = process.env.LANDO_CONFIG__default_provider_id ?? "lando";
+    expect(["lando", "podman"], "Run against the managed provider or rootless Podman").toContain(providerId);
+    const hostOwnerId = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
+    const root = await mkdtemp(join(tmpdir(), "lando-project-user-webroot-"));
+    const nonce = crypto.randomUUID().slice(0, 8);
+    const name = `fx-pu-webroot-${nonce}`;
+    const service = "app";
+    const lando = async (args: readonly string[]) => {
+      const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
+      const { BUN_BE_BUN: _bunBeBun, ...env } = process.env;
+      const child = Bun.spawn(
+        [
+          ...(binary === undefined
+            ? [process.execPath, resolve(import.meta.dirname, "../../bin/lando.ts")]
+            : [binary]),
+          ...args,
+        ],
+        {
+          cwd: root,
+          env: { ...env, LANDO_PROVIDER: providerId, LANDO_TELEMETRY_ENABLED: "false" },
+          stdin: "ignore",
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: 600_000,
+          killSignal: "SIGKILL",
+        },
+      );
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      return { exitCode, stdout, stderr };
+    };
+    const must = async (args: readonly string[]) => {
+      const result = await lando(args);
+      expect(result.exitCode, `${args.join(" ")}\n${result.stdout}${result.stderr}`).toBe(0);
+      return result;
+    };
+    const hostOwner = async (path: string) => {
+      const info = await stat(path);
+      return `${info.uid}:${info.gid}`;
+    };
+    const exists = (path: string) =>
+      stat(path).then(
+        () => true,
+        () => false,
+      );
+    const landofile = [
+      `name: ${name}`,
+      "runtime: 4",
+      `provider: ${providerId}`,
+      "router:",
+      "  enabled: false",
+      "services:",
+      `  ${service}:`,
+      "    type: php:8.3",
+      "    via: apache",
+      "    primary: true",
+      "    webroot: web",
+      "    appMount:",
+      "      target: /app",
+      "      excludes: [vendor]",
+      "",
+    ].join("\n");
+
+    try {
+      await writeFile(join(root, ".lando.yml"), landofile);
+      await writeFile(join(root, "index.php"), "<?php echo 'served';");
+      expect(await exists(join(root, "web")), "the fixture starts without a host webroot").toBe(false);
+
+      await must(["start", "--format=json"]);
+
+      // The runtime would have created these as container root; Lando creates them as the host user.
+      for (const directory of ["web", "vendor"]) {
+        const info = await stat(join(root, directory));
+        expect(info.isDirectory(), `${directory} must exist as a directory`).toBe(true);
+        expect(`${info.uid}:${info.gid}`, `${directory} must belong to the host user`).toBe(hostOwnerId);
+      }
+
+      // The project user can create in the working directory the runtime would have made.
+      await must(["exec", service, "--", "sh", "-c", "printf project > /app/web/project.txt"]);
+      expect(await hostOwner(join(root, "web/project.txt"))).toBe(hostOwnerId);
+
+      // The host user can create in the same directory.
+      await writeFile(join(root, "web/host.txt"), "host");
+      expect((await Bun.file(join(root, "web/host.txt")).text()).trim()).toBe("host");
+    } finally {
+      await lando(["destroy", "--yes", "--volumes", "--purge-caches", "--format=json"]);
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  1_200_000,
+);
