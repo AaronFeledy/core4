@@ -85,6 +85,28 @@ describe("appliedServicePlan", () => {
     expect(resolved).toBeUndefined();
   });
 
+  test("ignores an enclosing app's applied plan when this app has none", async () => {
+    // Applied-state resolution walks up from the app root, so a nested app with
+    // no applied record can resolve its parent's plan.
+    const nested: AppPlan = {
+      ...plan,
+      id: AppId.make("nested"),
+      root: AbsolutePath.make("/tmp/applied/nested"),
+    };
+    const parent: AppPlan = {
+      ...plan,
+      services: { [ServiceName.make("web")]: service("web", { name: "www-data", uid: 33, gid: 33 }) },
+    };
+    const resolved = await Effect.runPromise(
+      appliedServicePlan(
+        registry(async () => parent),
+        nested,
+        "web",
+      ),
+    );
+    expect(resolved).toBeUndefined();
+  });
+
   test("returns undefined when applied state cannot be read", async () => {
     const resolved = await Effect.runPromise(
       appliedServicePlan(

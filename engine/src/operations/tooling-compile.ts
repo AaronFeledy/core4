@@ -21,7 +21,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option, Schema, type Scope } from "effect";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
-import { selectCommandIdentity } from "../services/execution-identity.ts";
+import { appliedAppPlan, selectCommandIdentity } from "../services/execution-identity.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
@@ -215,9 +215,7 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
     ([, service]) => service.primary === true,
   )?.[0];
   const appliedPlan = input.requiresProvider
-    ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) =>
-        registry.resolveAppliedPlan(input.plan.root),
-      ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => appliedAppPlan(registry, input.plan))
     : undefined;
   for (const typedInvocation of input.invocations) {
     let invocation = {

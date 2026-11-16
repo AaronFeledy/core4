@@ -73,6 +73,24 @@ export const selectCommandIdentity = (input: SelectCommandIdentityInput): Comman
   return { user, environment: projectUserEnvironment(service) };
 };
 
+const appRootOf = (plan: AppPlan): string => plan.identity?.appRoot ?? plan.root;
+
+/**
+ * This app's applied plan, or `undefined` when none is readable. Applied-state
+ * resolution walks up from the app root, so a plan recorded for an enclosing
+ * app is not evidence for this one and is ignored.
+ */
+export const appliedAppPlan = (
+  registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
+  plan: AppPlan,
+): Effect.Effect<AppPlan | undefined> =>
+  registry.resolveAppliedPlan(plan.root).pipe(
+    Effect.map((applied) =>
+      applied !== undefined && appRootOf(applied) === appRootOf(plan) ? applied : undefined,
+    ),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+
 /**
  * The service plan as it was applied, or `undefined` when no applied plan is
  * readable. Execution defaults must not follow a desired plan that the running
@@ -83,11 +101,10 @@ export const appliedServicePlan = (
   plan: AppPlan,
   serviceName: string,
 ): Effect.Effect<ServicePlan | undefined> =>
-  registry.resolveAppliedPlan(plan.root).pipe(
+  appliedAppPlan(registry, plan).pipe(
     Effect.map((applied) =>
       applied === undefined
         ? undefined
         : Object.values(applied.services).find((service) => String(service.name) === serviceName),
     ),
-    Effect.catch(() => Effect.succeed(undefined)),
   );
