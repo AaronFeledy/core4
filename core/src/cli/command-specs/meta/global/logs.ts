@@ -1,5 +1,6 @@
 import { LogsAppResult } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import {
   type GlobalLogsResult,
   followGlobalLogs,
@@ -13,6 +14,7 @@ import {
   logLinesToStreamFrames,
   logOptionsFromInput,
   logSignalFromInput,
+  redactLogLineStreams,
 } from "../../logs-input";
 
 export interface GlobalLogsFlags {
@@ -47,7 +49,8 @@ export const globalLogsSpec: LandoCommandSpec<GlobalLogsResult> = {
   },
   run: (input) => {
     const options = globalLogsOptionsFromInput(input);
-    if (!globalLogsFollowFromInput(input)) return globalLogs(options);
+    if (!globalLogsFollowFromInput(input))
+      return globalLogs(options).pipe(Effect.flatMap(redactLogLineStreams));
     const signal = logSignalFromInput(input);
     return followGlobalLogs({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },

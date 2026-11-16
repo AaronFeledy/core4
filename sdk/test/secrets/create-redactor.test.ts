@@ -398,6 +398,14 @@ describe("telemetry profile placeholders", () => {
 });
 
 describe("transcript profile placeholders", () => {
+  test("every transcript assignment grammar keeps a complete reference", () => {
+    const tr = createRedactor("transcript");
+    for (const input of ["token=$A", "password $A", "-t=$A", "-t $A", 'token="$A"'])
+      expect(tr.redactString(input), input).toBe(input);
+    for (const input of ["token=$A.b", "password $A.b", "-t=$A.b", "-t $A.b"])
+      expect(tr.redactString(input), input).toContain(REDACTED);
+  });
+
   test("masks env home root to <HOME> when env supplied", () => {
     const tr = createRedactor("transcript", { env: { home: "/home/alice" } });
     expect(tr.redactString("/home/alice/app")).toContain("<HOME>");
@@ -431,32 +439,56 @@ describe("transcript profile placeholders", () => {
   });
 });
 
-describe("complete env-placeholder exemption (all profiles)", () => {
+describe("complete env-reference exemption (all profiles)", () => {
   const profiles = ["secrets", "telemetry", "transcript"] as const;
+  // Every value here is one complete environment-variable reference in a form
+  // Lando documents, so the pattern layer must leave the whole line untouched.
   const completeCases = [
     "//npm.example.com/:_authToken=${NPM_TOKEN}",
     "password=${NPM_TOKEN?}",
     "?api_token=${NPM_TOKEN}",
     "API_KEY=${CI_TOKEN?}",
+    "npm publish --token=$NPM_TOKEN",
+    'npm publish --token="$NPM_TOKEN"',
+    'export PASSWORD="$DB_PASSWORD"',
+    "npm publish --token=$${NPM_TOKEN}",
+    "token=$${NPM_TOKEN?}",
+    "token=$A}",
+    "{token=$A}",
+    "token=$A next=1",
+    'token=\\"$NPM_TOKEN\\"',
+    'token=\\\\"$NPM_TOKEN\\\\"',
+    // The lowered binding landofile/src/tooling-shell-binding.ts writes.
+    '--token="$LANDO_BOUND_SECRET_ab12"""',
   ] as const;
+  // Forms that name an environment variable but are not exactly one reference,
+  // or are not terminated by a stop character of their grammar.
   const maskedCases = [
     { input: "token=${NPM_TOKEN}suffix", note: "suffix" },
     { input: "token=${NPM_TO", note: "truncated-open" },
-    { input: 'token="${NPM_TOKEN}"', note: "double-quoted" },
+    { input: "token=$${NPM_TOKEN", note: "truncated-doubled" },
+    { input: "token=$${NPM_TOKEN}x", note: "suffixed-doubled" },
+    { input: "token=${NPM_TOKEN}x", note: "suffixed-braced" },
+    { input: "token=$NPM_TOKEN.b", note: "suffixed-bare" },
+    { input: 'token="$NPM_TOKEN"suffix', note: "suffixed-quoted" },
     { input: "token='${NPM_TOKEN}'", note: "single-quoted" },
+    { input: "token='$NPM_TOKEN'", note: "single-quoted-bare" },
     { input: "token=\\${NPM_TOKEN}", note: "escaped" },
+    { input: "token=\\$NPM_TOKEN", note: "escaped-bare" },
+    { input: 'token=\\"$NPM_TOKEN"', note: "unequal-backslashes" },
     { input: "token=${not a valid}", note: "malformed" },
+    { input: "token=${BAD-NAME}", note: "malformed-identifier" },
+    { input: "token=$1", note: "positional" },
     { input: "password=hunter2", note: "literal-secret" },
     { input: "?token=abc", note: "query-literal" },
   ] as const;
 
   for (const profile of profiles) {
-    test(`${profile} leaves complete \${IDENT} / \${IDENT?} with boundaries intact`, () => {
+    test(`${profile} leaves every complete environment reference intact`, () => {
       const redactor = createRedactor(profile);
       for (const input of completeCases) {
         const output = redactor.redactString(input);
-        expect(output).toContain("${");
-        expect(output).not.toContain(`${REDACTED}}`);
+        expect(output).not.toContain(REDACTED);
         expect(output).toBe(
           input.includes("npm.example.com") && profile === "telemetry"
             ? input.replace("npm.example.com", "[host]")
@@ -466,20 +498,20 @@ describe("complete env-placeholder exemption (all profiles)", () => {
       }
     });
 
-    test(`${profile} masks suffix, malformed, quoted, escaped, and literal values`, () => {
+    test(`${profile} masks every suffix, quote, escape, and malformed body`, () => {
       const redactor = createRedactor(profile);
       for (const { input, note } of maskedCases) {
         const output = redactor.redactString(input);
         expect(output, note).toContain(REDACTED);
-        if (note === "suffix" || note === "escaped") {
-          expect(output, note).not.toMatch(/\$\{[A-Za-z_]/);
-        }
+        // Never a partial token such as `[redacted]}`.
+        expect(output, note).not.toContain(`${REDACTED}}`);
+        if (note.startsWith("suffix")) expect(output, note).not.toMatch(/\$\$?\{?[A-Za-z_]/u);
       }
     });
 
-    test(`${profile} keeps registered values authoritative over placeholders`, () => {
+    test(`${profile} keeps registered values authoritative over references`, () => {
       const redactor = createRedactor(profile, {
-        values: ["s3cr3t-token-value"],
+        values: ["s3cr3t-token-value", "auth-authority-token"],
         authoritativeValues: ["auth-authority-token"],
       });
       const mixed = "token=s3cr3t-token-value _authToken=${NPM_TOKEN} pin=auth-authority-token";
@@ -489,9 +521,52 @@ describe("complete env-placeholder exemption (all profiles)", () => {
       expect(output).not.toContain("auth-authority-token");
       expect(output).toContain(REDACTED);
     });
+
+    test(`${profile} masks a registered value that is the whole reference or part of it`, () => {
+      const whole = createRedactor(profile, { values: ["$DB_PASSWORD"] });
+      expect(whole.redactString('export PASSWORD="$DB_PASSWORD"')).not.toContain("DB_PASSWORD");
+      const partial = createRedactor(profile, { values: ["DB_PASSWORD"] });
+      expect(partial.redactString('export PASSWORD="$DB_PASSWORD"')).not.toContain("DB_PASSWORD");
+      expect(partial.redactString("?token=$DB_PASSWORD")).not.toContain("DB_PASSWORD");
+    });
   }
 
-  test("truncation of an incomplete placeholder stays masked on the secrets path", () => {
+  test("a value the value layer masked mid-value is replaced whole without a stray bracket", () => {
+    // Given a registered name that the value layer masks inside each value.
+    const redactor = createRedactor("secrets", { values: ["DB_PASSWORD"] });
+
+    // When / Then each value collapses to one sentinel and the next parameter survives.
+    expect(redactor.redactString("token=$DB_PASSWORD next")).toBe("token=[redacted] next");
+    expect(redactor.redactString("?token=$DB_PASSWORD&a=1")).toBe("?token=[redacted]&a=1");
+    expect(redactor.redactString("password=preDB_PASSWORDpost")).toBe("password=[redacted]");
+    // A braced reference still matches through its closing brace.
+    expect(redactor.redactString("?sig=${DB_PASSWORD}")).toBe("?sig=[redacted]");
+  });
+
+  test("the lowered secret bindings stay readable", () => {
+    // landofile/src/tooling-shell-binding.ts writes a quoted `"$NAME"` word plus
+    // trailing empty quotes so an empty secret still reaches argv as one word.
+    const name = "LANDO_BOUND_SECRET_0123456789abcdef";
+    const redactor = createRedactor("secrets");
+    expect(redactor.redactString(`--token="$${name}"""`)).toBe(`--token="$${name}"""`);
+    // A shell-escaped copy of that word.
+    expect(redactor.redactString(`--token=\\"$${name}\\"`)).toBe(`--token=\\"$${name}\\"`);
+    // The single-quoted insertion is a single-quoted value, so it stays masked.
+    expect(redactor.redactString(`--token='"$${name}"'`)).toContain(REDACTED);
+  });
+
+  test("a stop character of each grammar verifies the terminator", () => {
+    // The assignment grammar ends a value at a comma or semicolon; the query
+    // grammar ends it at `&`, which must stay available to the next parameter.
+    expect(createRedactor("secrets").redactString("token=$A,next=1")).toBe("token=$A,next=1");
+    expect(createRedactor("secrets").redactString("token=$A;")).toBe("token=$A;");
+    expect(createRedactor("secrets").redactString("?token=$A&next=1")).toBe("?token=$A&next=1");
+    expect(createRedactor("transcript").redactString("?token=$A&next=1")).toBe("?token=$A&next=1");
+    // Outside its own stop class the terminator is unverified, so the value stays masked.
+    expect(createRedactor("transcript").redactString("token=$A,next=1")).toContain(REDACTED);
+  });
+
+  test("truncation of an incomplete reference stays masked on the secrets path", () => {
     const redactor = createRedactor("secrets");
     const input = `token=\${NPM_TOK${LOG_LINE_TRUNCATED_MARKER}`;
     const output = redactor.redactString(input);

@@ -1,12 +1,20 @@
 import { StreamFrame } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
+import { eventFramePolicy, streamFramePolicy } from "./output-policies.ts";
 import { encodeRedactedJson } from "./redacted-json.ts";
+import type { StructuralRedactionNode } from "./structural-redaction.ts";
 
 export interface EncodeStreamEventFrameOptions {
   readonly event: string;
   readonly payload: unknown;
   readonly redactor: Redactor;
+  /**
+   * The schema the payload was published with. Real lifecycle events pass the
+   * event schema so literal discriminants and declared keys survive redaction;
+   * custom payloads leave it out and keep ordinary redaction.
+   */
+  readonly payloadSchema?: Schema.Top;
 }
 
 export interface EncodeStreamChunkFrameOptions {
@@ -21,9 +29,13 @@ export const identityRedactor: Redactor = {
   redactValue: (value) => value,
 };
 
-export const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<string, never> =>
+export const encodeStreamFrame = (
+  frame: unknown,
+  redactor: Redactor,
+  policy: StructuralRedactionNode | undefined = streamFramePolicy,
+): Effect.Effect<string, never> =>
   Effect.try({
-    try: () => encodeRedactedJson(Schema.encodeUnknownSync(StreamFrame)(frame), redactor),
+    try: () => encodeRedactedJson(Schema.encodeUnknownSync(StreamFrame)(frame), redactor, policy),
     catch: (error) => error,
   }).pipe(
     Effect.catch(() =>
@@ -35,6 +47,7 @@ export const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Ef
             payload: { message: "Failed to encode stream frame." },
           },
           redactor,
+          streamFramePolicy,
         ),
       ),
     ),
@@ -43,7 +56,11 @@ export const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Ef
 export const encodeStreamEventFrame = (
   options: EncodeStreamEventFrameOptions,
 ): Effect.Effect<string, never> =>
-  encodeStreamFrame({ _tag: "event", event: options.event, payload: options.payload }, options.redactor);
+  encodeStreamFrame(
+    { _tag: "event", event: options.event, payload: options.payload },
+    options.redactor,
+    options.payloadSchema === undefined ? undefined : eventFramePolicy(options.event, options.payloadSchema),
+  );
 
 const encodeStreamChunkFrame = (
   tag: "stdout" | "stderr",

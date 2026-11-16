@@ -1,11 +1,17 @@
 import {
+  DOUBLE_QUOTED_VALUE_SOURCE,
+  SECRET_VALUE_TERMINATOR_SOURCE,
   TRANSCRIPT_KEY_STOP_CLASS,
   TRANSCRIPT_SHORT_STOP_CLASS,
-  keepCompleteEnvPlaceholderOrRedact,
+  keepCompleteEnvReferenceReplacer,
   unquotedSecretValueSource,
 } from "./env-placeholder.ts";
 import { REDACTED } from "./redactor.ts";
-import { SECRET_WORD_SOURCE } from "./secret-names.ts";
+import {
+  SECRET_ASSIGNMENT_LEFT_BOUNDARY_SOURCE,
+  SECRET_ASSIGNMENT_NAME_SOURCE,
+  SECRET_WORD_SOURCE,
+} from "./secret-names.ts";
 
 export interface TranscriptRedactionEnv {
   readonly home?: string;
@@ -28,18 +34,28 @@ const BT = "`";
 
 const FIXTURE_PATH = /(^|[\s"'`(=])((?:\.{1,2}[\\/])?(?:[A-Za-z0-9._-]+[\\/])*fixtures[\\/][^\s"'`)]+)/giu;
 
-// Escaped and plain quotes, then unquoted values that prefer complete `${IDENT}`.
-const QUOTED_VALUE_SOURCE = `${String.raw`\\"[^"]*\\"|\\'[^']*\\'|`}\\\\${BT}[^${BT}]*\\\\${BT}|${String.raw`"[^"]*"|'[^']*'|`}${BT}[^${BT}]*${BT}`;
+const QUOTED_VALUE_SOURCE = `${DOUBLE_QUOTED_VALUE_SOURCE}|${String.raw`\\'[^']*\\'|`}\\\\${BT}[^${BT}]*\\\\${BT}|'[^']*'|${BT}[^${BT}]*${BT}`;
 const SHORT_VALUE_SOURCE = `${QUOTED_VALUE_SOURCE}|${unquotedSecretValueSource(TRANSCRIPT_SHORT_STOP_CLASS)}`;
-const SHORT_EQUALS_SECRET = new RegExp(`(^|[\\s"'${BT}(])(-[tk])\\s*=\\s*(${SHORT_VALUE_SOURCE})`, "giu");
-const SHORT_SPACE_SECRET = new RegExp(`(^|[\\s"'${BT}(])(-[tk])\\s+(${SHORT_VALUE_SOURCE})`, "giu");
+const SHORT_EQUALS_SECRET = new RegExp(
+  `(^|[\\s"'${BT}(])(-[tk])\\s*=\\s*(${SHORT_VALUE_SOURCE})${SECRET_VALUE_TERMINATOR_SOURCE}`,
+  "giu",
+);
+const SHORT_SPACE_SECRET = new RegExp(
+  `(^|[\\s"'${BT}(])(-[tk])\\s+(${SHORT_VALUE_SOURCE})${SECRET_VALUE_TERMINATOR_SOURCE}`,
+  "giu",
+);
 
 const KEY_VALUE_SOURCE = `${QUOTED_VALUE_SOURCE}|${unquotedSecretValueSource(TRANSCRIPT_KEY_STOP_CLASS)}`;
 const KEY_EQUALS_SECRET = new RegExp(
-  `(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)\\s*=\\s*(${KEY_VALUE_SOURCE})`,
+  `${SECRET_ASSIGNMENT_LEFT_BOUNDARY_SOURCE}(${SECRET_ASSIGNMENT_NAME_SOURCE})\\s*=\\s*(${KEY_VALUE_SOURCE})${SECRET_VALUE_TERMINATOR_SOURCE}`,
   "giu",
 );
-const KEY_SPACE_SECRET = new RegExp(`\\b(${SECRET_WORD_SOURCE})\\s+(${KEY_VALUE_SOURCE})`, "giu");
+const KEY_SPACE_SECRET = new RegExp(
+  `\\b(${SECRET_WORD_SOURCE})\\s+(${KEY_VALUE_SOURCE})${SECRET_VALUE_TERMINATOR_SOURCE}`,
+  "giu",
+);
+const keepShortEnvReference = keepCompleteEnvReferenceReplacer(TRANSCRIPT_SHORT_STOP_CLASS);
+const keepKeyEnvReference = keepCompleteEnvReferenceReplacer(TRANSCRIPT_KEY_STOP_CLASS);
 const TOKEN_SECRET_LITERAL = /\btoken\s+secret\b/gi;
 const GENERIC_PATHS: readonly RegExp[] = [
   /\/home\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
@@ -97,17 +113,17 @@ export const redactTranscriptString = (
   if (env.user) output = output.replace(new RegExp(`\\b${escapeRegExp(env.user)}\\b`, "gi"), USER);
   if (env.host) output = output.replace(new RegExp(`\\b${escapeRegExp(env.host)}\\b`, "gi"), HOST);
   output = output
-    .replace(SHORT_EQUALS_SECRET, (match, prefix: string, key: string, value: string) =>
-      keepCompleteEnvPlaceholderOrRedact(match, `${prefix}${key}=${REDACTED}`, value),
+    .replace(SHORT_EQUALS_SECRET, (match, prefix: string, key: string, value: string, terminator?: string) =>
+      keepShortEnvReference(match, `${prefix}${key}=${REDACTED}`, value, terminator),
     )
-    .replace(SHORT_SPACE_SECRET, (match, prefix: string, key: string, value: string) =>
-      keepCompleteEnvPlaceholderOrRedact(match, `${prefix}${key} ${REDACTED}`, value),
+    .replace(SHORT_SPACE_SECRET, (match, prefix: string, key: string, value: string, terminator?: string) =>
+      keepShortEnvReference(match, `${prefix}${key} ${REDACTED}`, value, terminator),
     )
-    .replace(KEY_EQUALS_SECRET, (match, key: string, value: string) =>
-      keepCompleteEnvPlaceholderOrRedact(match, `${key}=${REDACTED}`, value),
+    .replace(KEY_EQUALS_SECRET, (match, key: string, value: string, terminator?: string) =>
+      keepKeyEnvReference(match, `${key}=${REDACTED}`, value, terminator),
     )
-    .replace(KEY_SPACE_SECRET, (match, key: string, value: string) =>
-      keepCompleteEnvPlaceholderOrRedact(match, `${key} ${REDACTED}`, value),
+    .replace(KEY_SPACE_SECRET, (match, key: string, value: string, terminator?: string) =>
+      keepKeyEnvReference(match, `${key} ${REDACTED}`, value, terminator),
     )
     .replace(TOKEN_SECRET_LITERAL, `token ${REDACTED}`);
   // Query masking belongs to the shared secrets pass, not a transcript copy.

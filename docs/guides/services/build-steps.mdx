@@ -129,7 +129,7 @@ Lando also saves the full output of each step that runs. Print the output of the
 lando logs --build
 ```
 
-Image build lines are labeled `[build]` and `build.app` lines `[build:<step id>]`. Secrets Lando knows about are masked as `[redacted]` in the live lines and before the output is saved. A live line longer than 512 characters is cut there; the saved output keeps the line, up to 64 KiB.
+Image build lines are labeled `[build]` and `build.app` lines `[build:<step id>]`. Secrets Lando knows about, and text shaped like `password=...`, `scheme://user:pass@host`, or `Bearer ...`, are masked as `[redacted]` in the live lines and before the output is saved. Masking follows a value across line breaks, so a quoted secret that wraps onto the next line is still hidden. Lando holds output only as long as it needs to decide, at most 64 lines or 16 KiB. If a value still has not closed at that limit or at the end of the step, Lando masks the rest of what it held and shows later lines normally. A live line longer than 512 characters is cut there; the saved output keeps the line, up to 64 KiB.
 
 A step that `lando start` reports as cached prints nothing new, and `lando logs --build` still prints the output of the run that produced it. A successful `lando destroy` removes the app's saved build output along with its containers.
 

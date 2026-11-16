@@ -19,6 +19,7 @@ import {
   encodeStreamStdoutFrame,
 } from "@lando/sdk/command-result";
 import { JqExpressionError } from "@lando/sdk/errors";
+import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { CommandTrace } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
@@ -150,7 +151,12 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     yield* writeEncodedLine(line, outcome);
   });
   const encodeEventFrame = (event: LandoEvent, redactor: Redactor) =>
-    encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
+    encodeStreamEventFrame({
+      event: event._tag,
+      payload: event,
+      redactor,
+      payloadSchema: LandoEventSchema,
+    });
   const emitStreamingSuccess = Effect.fnUntraced(function* (
     value: A,
     outcome: CommandResultOutcome = { _tag: "success", value },
