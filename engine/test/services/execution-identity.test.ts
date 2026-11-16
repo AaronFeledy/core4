@@ -73,8 +73,16 @@ describe("selectCommandIdentity", () => {
         }),
       }),
     ).toEqual({
-      user: "1000",
+      user: "1000:1001",
       environment: { LANDO_USER: "1000", LANDO_UID: "1000", LANDO_GID: "1001" },
+    });
+  });
+
+  test("a missing applied plan keeps the container default but an explicit user still applies", () => {
+    expect(selectCommandIdentity({ service: undefined })).toEqual({ environment: {} });
+    expect(selectCommandIdentity({ cliUser: "root", service: undefined })).toEqual({
+      user: "root",
+      environment: {},
     });
   });
 });

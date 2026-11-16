@@ -232,9 +232,9 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
         serviceName === undefined
           ? undefined
           : Object.values(services).find((service) => String(service.name) === serviceName);
-      const service = findService(appliedPlan?.services ?? {}) ?? findService(input.plan.services);
-      if (service !== undefined) {
-        const identity = selectCommandIdentity({ taskUser: typedInvocation.user, service });
+      const service = findService(appliedPlan?.services ?? {});
+      const identity = selectCommandIdentity({ taskUser: typedInvocation.user, service });
+      if (identity.user !== undefined || Object.keys(identity.environment).length > 0) {
         invocation = {
           ...invocation,
           ...(identity.user === undefined ? {} : { user: identity.user }),

@@ -275,7 +275,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
     const appliedService = yield* appliedServicePlan(registry, plan, String(service.name));
     const identity = selectCommandIdentity({
       cliUser: options.user,
-      service: appliedService ?? service,
+      service: appliedService,
     });
     const redaction = yield* Effect.serviceOption(RedactionService);
     const values = Option.isSome(redaction)

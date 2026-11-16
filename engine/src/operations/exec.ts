@@ -218,7 +218,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   const appliedService = yield* appliedServicePlan(registry, plan, String(service.name));
   const identity = selectCommandIdentity({
     cliUser: options.user,
-    service: appliedService ?? service,
+    service: appliedService,
   });
   const target: ExecTarget = {
     app: plan.id,

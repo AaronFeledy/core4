@@ -98,4 +98,11 @@ describe("build.app execution identity", () => {
     const [mapped] = appSteps(plan(service({ name: "www-data", uid: 33, gid: 33 })));
     expect(mapped?.step.buildKey).not.toBe(plain?.step.buildKey);
   });
+
+  test("a numeric project user runs with its authored primary gid", () => {
+    const [step] = appSteps(plan(service({ name: "1000", uid: 1000, gid: 1001 })));
+    expect(step?.step.user).toBe("1000:1001");
+    expect(step?.command.env?.LANDO_USER).toBe("1000");
+    expect(step?.command.env?.LANDO_GID).toBe("1001");
+  });
 });

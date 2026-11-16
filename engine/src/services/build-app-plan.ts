@@ -2,7 +2,7 @@ import type { AppPlan, BuildStep, ServicePlan } from "@lando/sdk/schema";
 import { Graph, Result, Schema } from "effect";
 
 import { appBuildKeyForStep } from "./build-key.ts";
-import { projectUserEnvironment } from "./execution-identity.ts";
+import { projectUserEnvironment, projectUserExecUser } from "./execution-identity.ts";
 
 const ProviderCommandSpec = Schema.Struct({
   command: Schema.Array(Schema.String),
@@ -66,7 +66,7 @@ const stepFor = (
   // identity is part of both the step and its build key so a changed mapping
   // cannot reuse the earlier success.
   const projectUser = intent.user === undefined ? service.projectUser : undefined;
-  const user = intent.user ?? projectUser?.name;
+  const user = intent.user ?? projectUserExecUser(projectUser);
   const command =
     projectUser === undefined
       ? intent.command

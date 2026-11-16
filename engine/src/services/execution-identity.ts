@@ -40,9 +40,24 @@ export interface SelectCommandIdentityInput {
   readonly stepUser?: string | undefined;
   /** Tooling task user. */
   readonly taskUser?: string | undefined;
-  /** The applied service plan the command actually runs in. */
-  readonly service: ServicePlan;
+  /**
+   * The applied service plan the command actually runs in, or `undefined` when
+   * no applied evidence is readable. A missing applied plan keeps the
+   * container default so a command never inherits a mapping the container
+   * does not realize.
+   */
+  readonly service?: ServicePlan | undefined;
 }
+
+/**
+ * The `user` value for an execution that runs as the realized project user.
+ * A numeric principal has no passwd entry to supply its authored primary gid,
+ * so it names both ids explicitly; a named principal keeps its name.
+ */
+export const projectUserExecUser = (projectUser: ServiceProjectUser | undefined): string | undefined => {
+  if (projectUser === undefined) return undefined;
+  return /^[0-9]+$/u.test(projectUser.name) ? `${projectUser.uid}:${projectUser.gid}` : projectUser.name;
+};
 
 /**
  * Picks the identity for a user command and the environment that identity
@@ -51,9 +66,12 @@ export interface SelectCommandIdentityInput {
 export const selectCommandIdentity = (input: SelectCommandIdentityInput): CommandIdentity => {
   const explicit = input.cliUser ?? input.stepUser ?? input.taskUser;
   if (explicit !== undefined && explicit.length > 0) return { user: explicit, environment: {} };
-  const projectUser: ServiceProjectUser | undefined = input.service.projectUser;
-  if (projectUser === undefined) return { environment: {} };
-  return { user: projectUser.name, environment: projectUserEnvironment(input.service) };
+  const service = input.service;
+  if (service === undefined) return { environment: {} };
+  const projectUser: ServiceProjectUser | undefined = service.projectUser;
+  const user = projectUserExecUser(projectUser);
+  if (projectUser === undefined || user === undefined) return { environment: {} };
+  return { user, environment: projectUserEnvironment(service) };
 };
 
 /**
