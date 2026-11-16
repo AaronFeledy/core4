@@ -650,6 +650,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     user: Schema.optionalKey(ContainerUser).annotate({
       description: "Container user used to run service processes.",
     }),
+    projectUser: Schema.optionalKey(Schema.Union([Schema.Literal(false), Schema.String])).annotate({
+      description:
+        'In-container identity that owns files written to the app mount. Accepts false, a numeric "<uid>:<gid>" pair, or the project user name the service type declares. Omitted, a numeric or matching authored user is used, then the service type default.',
+    }),
     workingDirectory: Schema.optionalKey(PortablePath).annotate({
       description: "Container working directory for service processes.",
     }),

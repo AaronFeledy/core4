@@ -14,6 +14,7 @@ import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
   engineInfoArchitecture,
+  engineInfoRootless,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
@@ -356,8 +357,21 @@ const bindMountPerformanceForPlatform = (
 export const podmanCapabilitiesForPlatform = (
   platform: HostPlatform,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
-): ProviderCapabilities =>
-  buildProviderCapabilities({
+  rootless = true,
+): ProviderCapabilities => {
+  const family = hostPlatformFamily(platform);
+  // Rootless Podman on a Linux host maps one container id to the host user.
+  // A rootful engine writes real host ids, and the VM-backed desktop engines
+  // expose neither fact to the guest.
+  const projectUserMapping =
+    family === "linux" && rootless ? ("userns-keep-id" as const) : ("unsupported" as const);
+  const bindOwnership =
+    family !== "linux"
+      ? ("unknown" as const)
+      : rootless
+        ? ("root-is-host-user" as const)
+        : ("host-ids" as const);
+  return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
     artifactPull: true,
@@ -368,7 +382,9 @@ export const podmanCapabilitiesForPlatform = (
     artifactImport: true,
     ephemeralMounts: true,
     tlsCertificates: "none",
-    rootless: true,
+    rootless,
+    projectUserMapping,
+    bindOwnership,
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
@@ -380,6 +396,7 @@ export const podmanCapabilitiesForPlatform = (
       ? { agentSocket: { delivery: "bind-directory" as const } }
       : {}),
   });
+};
 
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
 export const macosPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("darwin");
@@ -679,6 +696,7 @@ const assembleRuntimeProvider = (
           const capabilities = podmanCapabilitiesForPlatform(
             platform,
             hostProxyContainerTargets(containerArch),
+            engineInfoRootless(info) ?? true,
           );
           const logSourceBinding = makeProviderLogSourceBinding({
             ...(PODMAN_CTX.redactor === undefined ? {} : { redactor: PODMAN_CTX.redactor }),

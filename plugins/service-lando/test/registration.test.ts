@@ -42,6 +42,8 @@ const providerCapabilities = {
   routeProvider: true,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: true,
   composeSpec: "native",

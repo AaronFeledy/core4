@@ -107,6 +107,8 @@ const capabilities: ProviderCapabilities = {
   routeProvider: false,
   tlsCertificates: "lando",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "native",

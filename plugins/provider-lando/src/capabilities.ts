@@ -116,6 +116,18 @@ export const providerLandoCapabilitiesForPlatform = (
 ): ProviderCapabilities => {
   const family = hostPlatformFamily(platform);
   const agentSocket = agentSocketCapabilities(agentSocketDeliveryForPlatform(family));
+  // A user namespace maps one container id to the host user only on a rootless
+  // Linux engine. macOS and Windows run the engine in a VM, where the host
+  // bind identity is neither the container id nor a knowable host id.
+  const projectUserMapping =
+    family === "linux" && rootless ? ("userns-keep-id" as const) : ("unsupported" as const);
+  const bindOwnership =
+    family !== "linux"
+      ? ("unknown" as const)
+      : rootless
+        ? ("root-is-host-user" as const)
+        : ("host-ids" as const);
+  family !== "linux" ? "unknown" : rootless ? "root-is-host-user" : "host-ids";
   return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
@@ -128,6 +140,8 @@ export const providerLandoCapabilitiesForPlatform = (
     ephemeralMounts: true,
     tlsCertificates: "lando",
     rootless,
+    projectUserMapping,
+    bindOwnership,
     composeSpec: "native",
     composeKnobs: { supported: withheldResourceComposeKnobs },
     composeServiceFields: { supported: ["labels", "configs"] },

@@ -3,6 +3,7 @@ import {
   buildProviderCapabilities,
   decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
+  engineInfoRootless,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
@@ -269,8 +270,18 @@ export const dockerCapabilitiesForHost = (
   platform: HostPlatform,
   dockerHost: string,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
-): ProviderCapabilities =>
-  buildProviderCapabilities({
+  rootless = false,
+): ProviderCapabilities => {
+  // Docker offers no per-container user-namespace mapping to the host user,
+  // so a project user is never realized here. Rootless Docker still makes
+  // container root write as the host user; a VM-mediated host hides both facts.
+  const vmMediated = isVmMediatedDockerHost(platform, dockerHost);
+  const bindOwnership = vmMediated
+    ? ("unknown" as const)
+    : rootless
+      ? ("root-is-host-user" as const)
+      : ("host-ids" as const);
+  return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
     artifactPull: true,
@@ -281,7 +292,9 @@ export const dockerCapabilitiesForHost = (
     artifactImport: true,
     ephemeralMounts: true,
     tlsCertificates: "none",
-    rootless: false,
+    rootless,
+    projectUserMapping: "unsupported",
+    bindOwnership,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("docker") },
@@ -294,6 +307,7 @@ export const dockerCapabilitiesForHost = (
       delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
     },
   });
+};
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
   dockerCapabilitiesForHost(platform, "/var/run/docker.sock");
@@ -326,7 +340,12 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const engineArch = engineInfoArchitecture(info);
-      return dockerCapabilitiesForHost(platform, dockerHost, hostProxyContainerTargets(engineArch));
+      return dockerCapabilitiesForHost(
+        platform,
+        dockerHost,
+        hostProxyContainerTargets(engineArch),
+        engineInfoRootless(info) ?? false,
+      );
     }),
   );
 

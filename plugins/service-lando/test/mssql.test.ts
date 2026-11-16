@@ -69,6 +69,8 @@ const providerCapabilities = (architectureEmulation: boolean): ProviderCapabilit
   routeProvider: false,
   tlsCertificates: "none",
   rootless: true,
+  projectUserMapping: "unsupported" as const,
+  bindOwnership: "unknown" as const,
   privilegedServices: false,
   architectureEmulation,
   composeSpec: "none",
