@@ -41,21 +41,29 @@ const appWith = (
   ),
 });
 
-test("records only the relaunched services and leaves the rest of the applied record as it was", () => {
-  // Given an applied record whose web and db ran old.js behind web.test and db.test, plus a service
-  // the Landofile has since dropped.
-  const webRoute = routeTo(web, "web.test");
-  const dbRoute = routeTo(db, "db.test");
+const hostnames = (applied: AppPlan, service: ServiceName) =>
+  (applied.services[service]?.routes ?? []).map((ref) => applied.routes[ref.index]?.hostname);
+
+test("composes unselected applied routes with the selected service's desired routes", () => {
+  // Given an applied record whose web, db, and since-removed gone ran old.js behind their routes.
   const previous: AppPlan = {
-    ...appWith("old.js", [webRoute, dbRoute], [web, db, gone]),
+    ...appWith(
+      "old.js",
+      [routeTo(web, "web.test"), routeTo(db, "db.test"), routeTo(gone, "gone.test")],
+      [web, db, gone],
+    ),
     fileSyncPolicy: {
       reason: "service-opt-out",
       services: { web: policy("ordinary"), db: policy("ordinary"), gone: policy("ordinary") },
     },
   };
-  // And a desired plan that changed both services, moved web to a new hostname, and gave db a second route.
+  // And a desired plan that moved web to a new hostname, changed db's route, and gave db a second one.
   const desired: AppPlan = {
-    ...appWith("new.js", [routeTo(web, "web-new.test"), dbRoute, routeTo(db, "db-extra.test")], [web, db]),
+    ...appWith(
+      "new.js",
+      [routeTo(web, "web-new.test"), routeTo(db, "db-new.test"), routeTo(db, "db-extra.test")],
+      [web, db],
+    ),
     fileSyncPolicy: {
       reason: "service-opt-out",
       services: { web: policy("accelerated"), db: policy("accelerated") },
@@ -72,7 +80,15 @@ test("records only the relaunched services and leaves the rest of the applied re
   const record = selectedAppliedRecord(desired, runtime, previous);
   const merged = mergeAppliedPlan(previous, record);
 
-  // Then db records what was applied, while web keeps its applied command and policy.
+  // Then the published table keeps web's and gone's applied routes in applied order, then db's desired
+  // routes; web's unapplied edit is never in it.
+  expect(record.routes.map((route) => route.hostname)).toEqual([
+    "web.test",
+    "gone.test",
+    "db-new.test",
+    "db-extra.test",
+  ]);
+  // And db records what was applied, while web and gone keep their applied command and policy.
   expect(record.fileSyncPolicy?.services).toEqual({ db: policy("accelerated") });
   expect(merged.services[db.name]?.command).toEqual(["node", "built.js"]);
   expect(merged.services[web.name]?.command).toEqual(["node", "old.js"]);
@@ -81,24 +97,39 @@ test("records only the relaunched services and leaves the rest of the applied re
     db: policy("accelerated"),
     gone: policy("ordinary"),
   });
-  // And the routes stay as published: a selected relaunch publishes none, so web keeps web.test and
-  // db keeps the route references it was applied with.
-  const hostnames = (service: ServiceName) =>
-    (merged.services[service]?.routes ?? []).map((ref) => merged.routes[ref.index]?.hostname);
-  expect(hostnames(web.name)).toEqual(["web.test"]);
-  expect(hostnames(db.name)).toEqual(["db.test"]);
-  // And the dropped service stays as cleanup evidence.
-  expect(merged.services[gone.name]?.command).toEqual(["node", "old.js"]);
+  // And every service's route references point at the composed table.
+  expect(hostnames(merged, web.name)).toEqual(["web.test"]);
+  expect(hostnames(merged, db.name)).toEqual(["db-new.test", "db-extra.test"]);
+  expect(hostnames(merged, gone.name)).toEqual(["gone.test"]);
 });
 
-test("records no routes when no applied plan exists", () => {
-  // Given a selected rebuild of an app that was never started.
-  const desired = appWith("new.js", [routeTo(web, "web.test")], [web]);
+test("drops the selected service's removed route and keeps unselected applied routes", () => {
+  // Given an applied record with one route on each service.
+  const previous = appWith("old.js", [routeTo(web, "web.test"), routeTo(db, "db.test")], [web, db]);
+  // And a desired plan whose selected service no longer declares a route.
+  const desired = appWith("new.js", [routeTo(web, "web.test")], [web, db]);
+  const runtime: AppPlan = { ...desired, services: { [db.name]: desired.services[db.name] ?? db } };
+
+  // When db is relaunched.
+  const record = selectedAppliedRecord(desired, runtime, previous);
+  const merged = mergeAppliedPlan(previous, record);
+
+  // Then only web's applied route remains published and db records none.
+  expect(record.routes.map((route) => route.hostname)).toEqual(["web.test"]);
+  expect(hostnames(merged, web.name)).toEqual(["web.test"]);
+  expect(hostnames(merged, db.name)).toEqual([]);
+});
+
+test("records the selected services' desired routes when no applied plan exists", () => {
+  // Given a selected rebuild of an app that was never started, with an unselected service.
+  const desired = appWith("new.js", [routeTo(web, "web.test"), routeTo(db, "db.test")], [web, db]);
+  const runtime: AppPlan = { ...desired, services: { [web.name]: desired.services[web.name] ?? web } };
 
   // When its record is built without a previous applied plan.
-  const record = selectedAppliedRecord(desired, desired, undefined);
+  const record = selectedAppliedRecord(desired, runtime, undefined);
 
-  // Then no route is claimed as published.
-  expect(record.routes).toEqual([]);
-  expect(record.services[web.name]?.routes).toEqual([]);
+  // Then the table is just the selected service's desired routes and its references point there.
+  expect(record.routes.map((route) => route.hostname)).toEqual(["web.test"]);
+  expect(record.services[web.name]?.routes).toEqual([{ index: 0 }]);
+  expect(record.services[db.name]).toBeUndefined();
 });

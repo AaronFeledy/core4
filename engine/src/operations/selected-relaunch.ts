@@ -2,7 +2,7 @@ import { FileSyncStartError, ProviderUnavailableError } from "@lando/sdk/errors"
 import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import type { AppPlan, FileSyncSessionSpec } from "@lando/sdk/schema";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
-import { BuildOrchestrator, EventService } from "@lando/sdk/services";
+import { BuildOrchestrator, EventService, RouterService } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
@@ -102,6 +102,8 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
   const { selectedPlan, target, provider, overlays: preparedOverlays, appliedPlan } = admitted;
   const builds = yield* BuildOrchestrator;
   const events = yield* EventService;
+  const router = yield* RouterService;
+  const landofileRouter = target.landofile?.document.router;
   // Prepare before anything stops, so a CA failure leaves the services running.
   const { plan, certificates } = yield* prepareServiceCertificates(selectedPlan);
   yield* markStartMutation(target.plan);
@@ -121,15 +123,14 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
         ...target.plan,
         services: { ...target.plan.services, ...runtimePlan.services },
       };
+      const record = selectedAppliedRecord(target.plan, runtimePlan, appliedPlan);
       const services = Object.values(runtimePlan.services);
       return yield* withGlobalConsumerAdmission(
         {
           plan: readinessPlan,
           setupRouter: true,
           ...(signal === undefined ? {} : { signal }),
-          ...(target.landofile?.document.router === undefined
-            ? {}
-            : { landofileRouter: target.landofile.document.router }),
+          ...(landofileRouter === undefined ? {} : { landofileRouter }),
         },
         Effect.scoped(
           Effect.gen(function* () {
@@ -165,7 +166,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               plan: runtimePlan,
               certificates,
               reconcile: operation === "rebuild",
-              recordedPlan: selectedAppliedRecord(target.plan, runtimePlan, appliedPlan),
+              recordedPlan: record,
               completionPlan: readinessPlan,
               ...(environment === undefined ? {} : { environment }),
               ...(signal === undefined ? {} : { signal }),
@@ -189,7 +190,9 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
             const ready = yield* completeStartup({
               policy: "selected",
               selectedPlan: runtimePlan,
+              routePlan: record,
               builds,
+              router,
               events,
               ...(operation === "rebuild" ? { forceAppBuild: true } : {}),
               provider,
@@ -197,6 +200,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               services: services.map((service) => service.name),
               initial,
               ...(signal === undefined ? {} : { signal }),
+              ...(landofileRouter === undefined ? {} : { landofileRouter }),
             });
             if (environment !== undefined) {
               yield* publishDatabaseCredentialWarningsSafely({

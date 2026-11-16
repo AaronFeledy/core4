@@ -58,7 +58,14 @@ for (const policy of ["user-start", "selected"] as const) {
             if (policy === "user-start") {
               yield* completeStartup({ ...common, policy, router: TestRouterService });
             } else {
-              yield* completeStartup({ ...common, policy, selectedPlan: plan, forceAppBuild: true });
+              yield* completeStartup({
+                ...common,
+                policy,
+                selectedPlan: plan,
+                routePlan: plan,
+                router: TestRouterService,
+                forceAppBuild: true,
+              });
             }
             return yield* (yield* openAppBuildResults(yield* StateStore, BuildOwner.fromPlan(plan))).get;
           }),
@@ -116,6 +123,8 @@ test("selected relaunch without force dispatches the app step and records the ac
             policy: "selected",
             plan,
             selectedPlan: plan,
+            routePlan: plan,
+            router: TestRouterService,
             provider,
             services: [],
             events: yield* EventService,

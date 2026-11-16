@@ -16,6 +16,7 @@ import { RouterService } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
@@ -92,6 +93,7 @@ const runtimeFor = (
 const runSelected = (
   plannedApp: AppPlan,
   options: Parameters<typeof makeHarness>[0] & {
+    readonly operation?: "restart" | "rebuild";
     readonly services?: ReadonlyArray<ServiceName>;
     readonly signal?: AbortSignal;
     readonly afterApply?: (applied: AppPlan, runtimes: Map<string, ServiceRuntimeInfo>) => void;
@@ -103,7 +105,8 @@ const runSelected = (
   const buildCalls: Array<{ readonly plan: AppPlan; readonly refresh?: boolean }> = [];
   const appBuildCalls: Array<{ readonly plan: AppPlan; readonly force: boolean | undefined }> = [];
   const stopCalls: ServiceName[] = [];
-  const applyRoutes: number[] = [];
+  const calls: string[] = [];
+  const applyRoutes: string[] = [];
   const removeRoutes: string[] = [];
   const runtimes = new Map<string, ServiceRuntimeInfo>(
     Object.values(plannedApp.services).map((service) => [
@@ -124,6 +127,7 @@ const runSelected = (
       appBuildCalls.push({ plan: appPlan, force: appBuildOptions?.force });
     },
     onApply: (applied, applyOptions) => {
+      calls.push("apply");
       applyCalls.push({ plan: applied, options: applyOptions ?? { reconcile: false } });
       options.afterApply?.(applied, runtimes);
     },
@@ -138,7 +142,7 @@ const runSelected = (
       Effect.succeed(runtimes.get(String(target.service)) ?? runtimeFor(plannedApp, target.service)),
     ...options,
   });
-  const operation = restartApp(
+  const operation = (options.operation === "rebuild" ? rebuildApp : restartApp)(
     {
       ...(options.services === undefined ? {} : { services: options.services }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -153,7 +157,8 @@ const runSelected = (
       ...TestRouterService,
       applyRoutes: (routes, owner) =>
         Effect.sync(() => {
-          applyRoutes.push(routes.length);
+          calls.push("routes");
+          applyRoutes.push(...routes.map((applied) => applied.hostname));
         }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, owner))),
       removeRoutes: (owner) => Effect.sync(() => void removeRoutes.push(owner.ownerKey)),
     }),
@@ -166,6 +171,7 @@ const runSelected = (
     buildCalls,
     appBuildCalls,
     stopCalls,
+    calls,
     applyRoutes,
     removeRoutes,
     runtimes,
@@ -185,7 +191,7 @@ describe("selected service restart", () => {
     expect(selected.applyCalls[0]?.options).toMatchObject({ reconcile: false });
     expect(selected.applyCalls[0]?.options.complete).toBeUndefined();
     expect(Object.keys(selected.applyCalls[0]?.plan.services ?? {})).toEqual([redis.name]);
-    // The recorded plan keeps the full desired routes so the selected service's refs stay valid.
+    // The record keeps web's applied route, so the selected service's refs stay valid.
     expect(selected.applyCalls[0]?.options.recordedPlan?.routes).toEqual(plannedApp.routes);
     expect(Object.keys(selected.applyCalls[0]?.options.recordedPlan?.services ?? {})).toEqual([redis.name]);
     // The artifact build ran with the default cache policy and the app build was not forced.
@@ -482,14 +488,58 @@ describe("selected service restart", () => {
     expect(selected.applyCalls).toEqual([]);
   });
 
-  test("does not apply or remove routes for a selected restart", async () => {
-    const plannedApp = twoServicePlan();
-    const selected = runSelected(plannedApp, { services: [redis.name] });
+  test.each(["restart", "rebuild"] as const)(
+    "publishes the composed route table after apply and records it on a selected %s",
+    async (operation) => {
+      // Given an applied record with web on web.test and a desired plan that moved web to web-new.test.
+      const previous = twoServicePlan();
+      const plannedApp: AppPlan = {
+        ...twoServicePlan(),
+        routes: [{ ...route, hostname: "web-new.test" }],
+      };
+      // When only redis is selected, web's unapplied route edit must not publish.
+      const selected = runSelected(plannedApp, {
+        operation,
+        services: [redis.name],
+        appliedPlans: [previous],
+        resolveAppliedPlan: () => Effect.succeed(previous),
+      });
+
+      await Effect.runPromise(selected.operation);
+
+      // Then web's applied route is kept, published after apply, and recorded.
+      expect(selected.applyRoutes).toEqual(["web.test"]);
+      expect(selected.calls.indexOf("apply")).toBeLessThan(selected.calls.indexOf("routes"));
+      expect(selected.applyCalls[0]?.options.recordedPlan?.routes.map((entry) => entry.hostname)).toEqual([
+        "web.test",
+      ]);
+      expect(selected.applyCalls[0]?.options.recordedPlan?.services[redis.name]?.routes).toEqual([]);
+      expect(selected.removeRoutes).toEqual([]);
+    },
+  );
+
+  test("publishes a selected service's changed route instead of its applied one", async () => {
+    // Given an applied record with web on web.test and a desired plan that moved it.
+    const previous = twoServicePlan();
+    const plannedApp: AppPlan = {
+      ...twoServicePlan(),
+      routes: [{ ...route, hostname: "web-new.test" }],
+    };
+    // When web itself is selected.
+    const selected = runSelected(plannedApp, {
+      services: [web.name],
+      appliedPlans: [previous],
+      resolveAppliedPlan: () => Effect.succeed(previous),
+    });
 
     await Effect.runPromise(selected.operation);
 
-    expect(selected.applyRoutes).toEqual([]);
-    expect(selected.removeRoutes).toEqual([]);
+    // Then the composed table drops web's applied route and publishes the desired one.
+    expect(selected.applyRoutes).toEqual(["web-new.test"]);
+    expect(selected.applyCalls[0]?.options.recordedPlan?.routes.map((entry) => entry.hostname)).toEqual([
+      "web-new.test",
+    ]);
+    expect(selected.applyCalls[0]?.options.recordedPlan?.services[web.name]?.routes).toEqual([{ index: 0 }]);
   });
 
   test("publishes pre-restart and post-restart with selected services and per-service stop events only for them", async () => {

@@ -25,8 +25,12 @@ type UserStart = Readiness & {
 type Selected = Readiness & {
   readonly policy: "selected";
   readonly selectedPlan: AppPlan;
+  /** The composed table whose routes are published, including unselected applied routes. */
+  readonly routePlan: AppPlan;
   readonly builds: typeof BuildOrchestrator.Service;
+  readonly router: RouterServiceShape;
   readonly events: ProgressEmitter;
+  readonly landofileRouter?: RouterConfig;
   readonly forceAppBuild?: boolean;
 };
 type EnsureGlobal = Readiness & { readonly policy: "ensure-global" };
@@ -80,6 +84,10 @@ const selected = Effect.fn("StartupCompletion.selected")(function* (request: Sel
     request.provider,
   );
   yield* verifyGlobalConsumerAdmission;
+  const routes = applyAppRoutes(request.router, request.routePlan, request.events, request.landofileRouter);
+  yield* request.routePlan.routes.length === 0
+    ? routes
+    : withRoutesStartProgress({ events: request.events, plan: request.routePlan, work: routes });
   return yield* waitForServiceReadiness(request);
 });
 const scratch = Effect.fn("StartupCompletion.scratch")(function* (request: Scratch) {

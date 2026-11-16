@@ -223,7 +223,7 @@ const makeRestartLayer = (
       Effect.sync(() => {
         routeApplies.push(routes.length);
       }).pipe(Effect.andThen(TestRouterService.applyRoutes(routes, app))),
-    removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
+    removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app.id))),
   };
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
@@ -453,7 +453,7 @@ describe("lando restart", () => {
     expect(harness.events).not.toContain("post-restart");
   });
 
-  test("restarts one named service without destroying others or applying routes", async () => {
+  test("restarts one named service without destroying others and publishes its composed route set", async () => {
     const redis: ServicePlan = {
       ...web,
       name: ServiceName.make("redis"),
@@ -473,8 +473,9 @@ describe("lando restart", () => {
     expect(harness.applyCalls).toEqual([
       { reconcile: false, services: ["redis"], recordedServices: ["redis"] },
     ]);
+    // The composed table is empty, so publication withdraws this owner's route set.
     expect(harness.routeApplies).toEqual([]);
-    expect(harness.routeRemovals).toEqual([]);
+    expect(harness.routeRemovals).toEqual([String(plan.id)]);
     expect(harness.events.filter((event) => event === "pre-stop" || event === "pre-start")).toEqual([]);
     expect(result.servicesStarted.map((service) => service.name)).toEqual(["redis"]);
   });

@@ -108,7 +108,9 @@ test.each([...policies, "forced-user-start" as const, "forced-selected" as const
               services: acceleratedPlan.services,
               fileSync: acceleratedPlan.fileSync,
             },
+            routePlan: fullPlan,
             builds,
+            router,
             events,
           });
         case "forced-selected":
@@ -120,7 +122,9 @@ test.each([...policies, "forced-user-start" as const, "forced-selected" as const
               services: acceleratedPlan.services,
               fileSync: acceleratedPlan.fileSync,
             },
+            routePlan: fullPlan,
             builds,
+            router,
             events,
             forceAppBuild: true,
           });
@@ -152,8 +156,8 @@ test.each([...policies, "forced-user-start" as const, "forced-selected" as const
     const expected = {
       "user-start": ["build", "route-setup", "routes", "readiness"],
       "forced-user-start": ["forced-build", "route-setup", "routes", "readiness"],
-      selected: ["file-sync", "build", "readiness"],
-      "forced-selected": ["file-sync", "forced-build", "readiness"],
+      selected: ["file-sync", "build", "route-setup", "routes", "readiness"],
+      "forced-selected": ["file-sync", "forced-build", "route-setup", "routes", "readiness"],
       "ensure-global": ["readiness"],
       scratch: ["route-setup", "routes", "readiness"],
     };
