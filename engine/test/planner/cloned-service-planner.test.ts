@@ -7,6 +7,7 @@ import {
   AbsolutePath,
   LogSourceId,
   PluginManifest,
+  PortablePath,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -46,6 +47,25 @@ const entrypointFeature: ServiceFeatureDefinition = {
     }),
 };
 
+/** Minimal app-source feature so a project user has host content to own. */
+const appMountFeature: ServiceFeatureDefinition = {
+  id: "lando.app-mount",
+  priority: 800,
+  apply: (ctx) =>
+    Effect.sync(() => {
+      const authored = ctx.normalizedConfig.appMount;
+      if (authored === undefined || authored === false) return;
+      const target = typeof authored === "string" ? authored : (authored.target ?? "/app");
+      ctx.setAppMount({
+        source: AbsolutePath.make(ctx.appRoot),
+        target: PortablePath.make(target),
+        readOnly: false,
+        excludes: [],
+        includes: [],
+      });
+    }),
+};
+
 const clonedServiceType: ServiceType = {
   id: "cloned",
   name: "cloned",
@@ -79,8 +99,15 @@ const homeServiceType: ServiceType = {
       root: AbsoluteContainerPath.make("/root"),
       "www-data": AbsoluteContainerPath.make("/var/www"),
     },
+    projectUser: { name: "www-data", uid: 33, gid: 33 },
     preparedHomes: ["node", "www-data"],
   },
+  resolve: ({ service }) =>
+    Effect.succeed({
+      base: "l337",
+      normalizedConfig: service,
+      features: [{ id: entrypointFeature.id }, { id: appMountFeature.id }],
+    }),
 };
 
 const redirectLogServiceType: ServiceType = {
@@ -113,6 +140,7 @@ const landoBaseFeatureStubs: ReadonlyArray<ServiceFeatureDefinition> = LANDO_BAS
 
 const testServiceFeatures = new Map<string, ServiceFeatureDefinition>([
   ...landoBaseFeatureStubs.map((feature) => [feature.id, feature] as const),
+  [appMountFeature.id, appMountFeature],
   [entrypointFeature.id, entrypointFeature],
 ]);
 
@@ -271,7 +299,11 @@ describe("cloned services in a planned app", () => {
   });
 
   test("a user override keeps the parent image steps and drops home persistence", async () => {
-    const preparedWeb = { type: "cloned-home:3.22", build: { artifact: ["echo artifact"] } };
+    const preparedWeb = {
+      type: "cloned-home:3.22",
+      appMount: "/app",
+      build: { artifact: ["echo artifact"] },
+    };
     const inherit = { ...cloneRequest, name: "web-inherit" };
     const extraStep: ServiceBuildStepIntent = {
       id: "clone.extra",
@@ -326,6 +358,56 @@ describe("cloned services in a planned app", () => {
       volumeStores(own).some((store) => store === parentHomeStore),
       "a user override must not mount the parent home store",
     ).toBe(false);
+  });
+
+  test.each([
+    ["an implicit catalog default", undefined],
+    ["an authored project user", "www-data"],
+  ] as const)("keeps %s on a sidecar that overrides the job user", async (_label, authored) => {
+    const feature: AppFeatureDefinition = {
+      id: "test.clone",
+      priority: 500,
+      selectors: { names: ["web"] },
+      apply: (ctx) =>
+        Effect.sync(() => {
+          ctx.addClonedService({ ...cloneRequest, name: "web-schedule", user: "www-data" });
+        }),
+    };
+    const app = await Effect.runPromise(
+      planWithClone(
+        {
+          name: "clones",
+          services: {
+            web: {
+              type: "cloned-home:3.22",
+              appMount: "/app",
+              ...(authored === undefined ? {} : { projectUser: authored }),
+            },
+          },
+        },
+        feature,
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const parent = app.services[ServiceName.make("web")];
+    const sidecar = app.services[ServiceName.make("web-schedule")];
+    if (parent === undefined || sidecar === undefined) throw new Error("expected both services");
+    expect(parent.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
+    expect(sidecar.projectUser).toEqual(parent.projectUser);
+  });
+
+  test("a sidecar without a user override also keeps the parent mapping", async () => {
+    const app = await Effect.runPromise(
+      planWithClone(
+        { name: "clones", services: { web: { type: "cloned-home:3.22", appMount: "/app" } } },
+        cloneFeature(cloneRequest),
+        { ...TestRuntimeProvider.capabilities, projectUserMapping: "userns-keep-id", artifactBuild: true },
+      ),
+    );
+    const parent = app.services[ServiceName.make("web")];
+    const sidecar = app.services[ServiceName.make("web-schedule")];
+    if (parent === undefined || sidecar === undefined) throw new Error("expected both services");
+    expect(sidecar.projectUser).toEqual(parent.projectUser);
   });
 
   test("a clone never re-claims a Compose host publication", async () => {

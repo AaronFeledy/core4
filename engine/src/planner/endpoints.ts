@@ -20,6 +20,7 @@ import {
   type RoutePlan,
   type ServicePlan,
   type StorageScope,
+  clonedServiceParent,
   parseContainerDestination,
   selectHttpEndpoint,
   serviceAppMount,
@@ -47,7 +48,12 @@ import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-
 import { applyServiceHome } from "./home.ts";
 import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from "./mounts.ts";
 import { encodeServicePlan } from "./plan-decode.ts";
-import { projectUserTmpfsMounts, projectUserVolumeTrees, resolveProjectUser } from "./project-user.ts";
+import {
+  type ResolvedProjectUser,
+  projectUserTmpfsMounts,
+  projectUserVolumeTrees,
+  resolveProjectUser,
+} from "./project-user.ts";
 import {
   publicationCapabilityError,
   requiredLogSourceCapabilityError,
@@ -111,6 +117,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   const servicePolicies: Record<string, FileSyncPolicy["services"][string]> = {};
   let selectedEngine: SelectedFileSyncPolicy | undefined;
   const routeAccumulator = makeRouteAccumulator();
+  const projectUsers = new Map<string, ResolvedProjectUser>();
   const storeOwners = new Map<
     string,
     { readonly store: FinalizedServices["stores"][number]; readonly service: string }
@@ -214,23 +221,31 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     shadowHostChecks.push(...shadowResult.shadowHostChecks);
     const planWithShadows = shadowResult.servicePlan;
     const appMount = serviceAppMount(planWithShadows);
-    const projectUserResolution = resolveProjectUser({
-      appKind: input.appKind ?? "user",
-      serviceName: name,
-      serviceTypeLabel: homeIntent.serviceType,
-      appRoot: input.appRoot,
-      provider: input.provider,
-      capabilities: input.providerCapabilities,
-      authored: draft.normalizedConfig.projectUser,
-      authoredUser: draft.normalizedConfig.user,
-      appSourceMounted: appMount !== undefined,
-      identity: homeIntent.identity,
-    });
+    // A clone is a companion of its parent and shares its namespace mapping:
+    // the mapping is independent of the clone's own process user and home
+    // decision, so reuse the parent's resolution instead of re-deriving one
+    // from the clone's overridden `user:`.
+    const clonedFrom = clonedServiceParent(draft);
+    const projectUserResolution =
+      (clonedFrom === undefined ? undefined : projectUsers.get(clonedFrom)) ??
+      resolveProjectUser({
+        appKind: input.appKind ?? "user",
+        serviceName: name,
+        serviceTypeLabel: homeIntent.serviceType,
+        appRoot: input.appRoot,
+        provider: input.provider,
+        capabilities: input.providerCapabilities,
+        authored: draft.normalizedConfig.projectUser,
+        authoredUser: draft.normalizedConfig.user,
+        appSourceMounted: appMount !== undefined,
+        identity: homeIntent.identity,
+      });
     if (
       projectUserResolution instanceof LandofileValidationError ||
       projectUserResolution instanceof CapabilityError
     )
       return yield* Effect.fail(projectUserResolution);
+    projectUsers.set(name, projectUserResolution);
     const projectUserFields = {
       ...(projectUserResolution.projectUser === undefined
         ? {}
@@ -317,15 +332,20 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       if (preparedHome instanceof DataTreeOwnershipCapabilityError) return yield* Effect.fail(preparedHome);
       ownershipTrees.push(...preparedHome);
     }
-    ownershipTrees.push(
-      ...projectUserVolumeTrees({
-        mounts: homePlan.mounts,
-        ...(projectUserResolution.projectUser === undefined
-          ? {}
-          : { projectUser: projectUserResolution.projectUser }),
-        ...(homePlan.home.state === "persisted" ? { homeStore: homePlan.home.store } : {}),
-      }),
-    );
+    // A clone seeds no data of its own: it shares the parent's stores, and the
+    // parent's derived image already prepares their ownership. Only an ordinary
+    // service prepares the fresh volume trees its project user writes.
+    if (clonedFrom === undefined) {
+      ownershipTrees.push(
+        ...projectUserVolumeTrees({
+          mounts: homePlan.mounts,
+          ...(projectUserResolution.projectUser === undefined
+            ? {}
+            : { projectUser: projectUserResolution.projectUser }),
+          ...(homePlan.home.state === "persisted" ? { homeStore: homePlan.home.store } : {}),
+        }),
+      );
+    }
     const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
     const draftForPlan = {
       ...draft,
