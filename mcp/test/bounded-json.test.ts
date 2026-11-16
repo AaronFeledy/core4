@@ -3,6 +3,7 @@ import { redactBoundedJsonValue, stringifyBoundedJson } from "@lando/mcp/bounded
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { structuralRedaction } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
+import { BoundText, SecretRef } from "@lando/sdk/schema";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Option, Schema } from "effect";
 
@@ -310,4 +311,150 @@ describe("bounded MCP JSON", () => {
     expect(proxyExit._tag).toBe("Failure");
     expect(getterCalls).toBe(0);
   });
+});
+
+describe("bounded MCP JSON applies one secret-named-field rule", () => {
+  const redactor = createRedactor("secrets");
+
+  test("masks free text and record entries while keeping typed facts", async () => {
+    // Given a typed number and one the schema cannot type, both secret-named.
+    const schema = Schema.Struct({
+      password: Schema.String,
+      secretRedaction: Schema.Boolean,
+      missingToken: Schema.Null,
+      apiToken: Schema.Number,
+      secretCount: Schema.Unknown,
+      secretAnswers: Schema.Record(Schema.String, Schema.String),
+    });
+    // When
+    const redacted = await Effect.runPromise(
+      redactBoundedJsonValue(
+        {
+          password: "hunter2",
+          secretRedaction: true,
+          missingToken: null,
+          apiToken: 12345,
+          secretCount: 7,
+          secretAnswers: { q1: "hunter2" },
+        },
+        redactor,
+        "secret field payload",
+        structuralRedaction(schema),
+      ),
+    );
+    // Then the typed number survives so `outputSchema` still accepts the envelope.
+    expect(redacted).toEqual({
+      password: REDACTED,
+      secretRedaction: true,
+      missingToken: null,
+      apiToken: 12345,
+      secretCount: REDACTED,
+      secretAnswers: { q1: REDACTED },
+    });
+    expect(Schema.is(schema)(redacted)).toBe(true);
+  });
+
+  test("keeps a secret descriptor and walks a declared object field by field", async () => {
+    // Given
+    const schema = Schema.Struct({
+      password: SecretRef,
+      credential: Schema.Struct({ value: Schema.String }),
+    });
+    // When
+    const redacted = await Effect.runPromise(
+      redactBoundedJsonValue(
+        {
+          password: { _tag: "SecretRef", reference: "DB_PASSWORD" },
+          credential: { value: "hunter2" },
+        },
+        redactor,
+        "descriptor payload",
+        structuralRedaction(schema),
+      ),
+    );
+    // Then
+    expect(redacted).toEqual({
+      password: { _tag: "SecretRef", reference: "DB_PASSWORD" },
+      credential: { value: REDACTED },
+    });
+  });
+
+  test("keeps an array's type and masks BoundText literal parts under a secret key", async () => {
+    // Given
+    const schema = Schema.Struct({
+      tokenParts: Schema.Array(Schema.String),
+      password: BoundText,
+    });
+    // When
+    const redacted = await Effect.runPromise(
+      redactBoundedJsonValue(
+        {
+          tokenParts: ["hunter2", "hunter2"],
+          password: {
+            _tag: "BoundText",
+            parts: ["literal-bytes", { reference: "DB_PASSWORD", encoding: "raw" }],
+          },
+        },
+        redactor,
+        "bound text payload",
+        structuralRedaction(schema),
+      ),
+    );
+    // Then
+    expect(redacted).toEqual({
+      tokenParts: [REDACTED, REDACTED],
+      password: {
+        _tag: "BoundText",
+        parts: [REDACTED, { reference: "DB_PASSWORD", encoding: "raw" }],
+      },
+    });
+  });
+});
+
+test("rejects a proxy under a secret-named key before classifying it", async () => {
+  // Given a secret-keyed value that is a proxy, live and revoked.
+  let trapCalls = 0;
+  const traps: ProxyHandler<object> = {
+    get: () => {
+      trapCalls += 1;
+      return undefined;
+    },
+    getOwnPropertyDescriptor: () => {
+      trapCalls += 1;
+      return undefined;
+    },
+    getPrototypeOf: () => {
+      trapCalls += 1;
+      return null;
+    },
+    ownKeys: () => {
+      trapCalls += 1;
+      return [];
+    },
+  };
+  const live = new Proxy({}, traps);
+  const revoked = Proxy.revocable({ value: "hunter2" }, {});
+  revoked.revoke();
+  const redactor = createRedactor("secrets");
+  const policy = structuralRedaction(
+    Schema.Struct({
+      password: Schema.Struct({ value: Schema.String }),
+      tokenParts: Schema.Array(Schema.String),
+    }),
+  );
+  // When
+  const liveExit = await Effect.runPromiseExit(
+    stringifyBoundedJson({ password: live }, "secret proxy", redactor, policy),
+  );
+  const revokedExit = await Effect.runPromiseExit(
+    stringifyBoundedJson({ password: revoked.proxy }, "revoked proxy", redactor, policy),
+  );
+  const elementExit = await Effect.runPromiseExit(
+    stringifyBoundedJson({ tokenParts: [live] }, "secret array element", redactor, policy),
+  );
+  // Then classification never ran a trap, and every proxy fails closed.
+  expect(liveExit._tag).toBe("Failure");
+  expect(revokedExit._tag).toBe("Failure");
+  expect(elementExit._tag).toBe("Failure");
+  expect(trapCalls).toBe(0);
 });

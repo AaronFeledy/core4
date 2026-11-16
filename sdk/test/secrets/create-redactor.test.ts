@@ -392,6 +392,40 @@ describe("redactValue structure preservation", () => {
     expect(r.redactValue(throwingProxy)).toBe("[redacted]");
   });
 
+  test("fails closed when a root array element or a root error field throws", () => {
+    // Given a root array with a throwing element getter.
+    const list = [1, 2, 3];
+    Object.defineProperty(list, 1, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        throw new Error("element boom");
+      },
+    });
+    // When / Then the element fails closed and the redactor never throws.
+    expect(() => r.redactValue(list)).not.toThrow();
+    expect(r.redactValue(list)).toEqual([1, "[redacted]", 3]);
+    // And a root error whose message or name getter throws.
+    const messageError = new Error("hidden");
+    Object.defineProperty(messageError, "message", {
+      configurable: true,
+      get() {
+        throw new Error("message boom");
+      },
+    });
+    expect(() => r.redactValue(messageError)).not.toThrow();
+    expect(r.redactValue(messageError)).toEqual({ name: "Error", message: "[redacted]" });
+    const nameError = new Error("plain");
+    Object.defineProperty(nameError, "name", {
+      configurable: true,
+      get() {
+        throw new Error("name boom");
+      },
+    });
+    expect(() => r.redactValue(nameError)).not.toThrow();
+    expect(r.redactValue(nameError)).toEqual({ name: "[redacted]", message: "plain" });
+  });
+
   test("redacts throwing object properties without leaking sibling values", () => {
     const value = {
       safe: "ok",

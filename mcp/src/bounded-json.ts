@@ -1,6 +1,7 @@
 import type { StructuralRedactionNode } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
-import type { Redactor } from "@lando/sdk/secrets";
+import type { Redactor, SecretFieldRedaction } from "@lando/sdk/secrets";
+import { isSecretFieldName, redactSecretField } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 
 import { isRuntimeProxy } from "./runtime-proxy";
@@ -95,38 +96,42 @@ class BoundedJsonWriter {
     this.#append('"');
   }
 
-  #secretKeyReplacement(
-    key: string,
+  #secretDecision(value: unknown, scope: StructuralRedactionNode | undefined): SecretFieldRedaction {
+    // Classification must never run a proxy trap, so a proxy is rejected here
+    // for object fields and array elements alike.
+    if (typeof value === "object" && value !== null && isRuntimeProxy(value))
+      throw serializationFailure(this.#context);
+    return redactSecretField((text) => this.#redactor.redactString(text), value, scope);
+  }
+
+  #writeSecretValue(value: unknown, scope: StructuralRedactionNode | undefined): void {
+    this.#writeDecision(this.#secretDecision(value, scope), value, scope);
+  }
+
+  #writeDecision(
+    decision: SecretFieldRedaction,
     value: unknown,
     scope: StructuralRedactionNode | undefined,
-  ): string | undefined {
-    const redacted = this.#redactor.redactValue({ [key]: null });
-    if (
-      redacted === null ||
-      typeof redacted !== "object" ||
-      Array.isArray(redacted) ||
-      isRuntimeProxy(redacted)
-    ) {
-      throw serializationFailure(this.#context);
+  ): void {
+    if (decision.kind === "replace") {
+      this.#appendString(decision.text, false, false);
+      return;
     }
-    const descriptor = Object.getOwnPropertyDescriptor(redacted, key);
-    if (descriptor === undefined || !("value" in descriptor)) throw serializationFailure(this.#context);
-    const replacement = descriptor.value;
-    if (replacement === null) return undefined;
-    if (typeof replacement !== "string") throw serializationFailure(this.#context);
-    // A schema-fixed literal cannot carry credential material, so the key rule
-    // keeps it just as it keeps a boolean capability flag.
-    if (typeof value === "string" && scope?.stringIsExempt(value) === true) return undefined;
-    // A published default string survives the key rule; ask the same redactor
-    // about the real bytes so registrations and patterns still mask them.
-    if (typeof value !== "string") return replacement;
-    const actual = this.#redactor.redactValue({ [key]: value });
-    if (actual === null || typeof actual !== "object" || Array.isArray(actual) || isRuntimeProxy(actual))
-      return replacement;
-    const actualDescriptor = Object.getOwnPropertyDescriptor(actual, key);
-    if (actualDescriptor === undefined || !("value" in actualDescriptor))
-      throw serializationFailure(this.#context);
-    return typeof actualDescriptor.value === "string" ? actualDescriptor.value : replacement;
+    if (decision.kind === "ordinary") {
+      this.#writeValue(value, false, scope);
+      return;
+    }
+    // The rule keeps structure only for an array or an object whose every key
+    // the schema describes, so no other shape can reach this branch.
+    if (Array.isArray(value)) {
+      this.#writeArray(value, scope, true);
+      return;
+    }
+    if (typeof value === "object" && value !== null) {
+      this.#writeObject(value, scope, true);
+      return;
+    }
+    throw serializationFailure(this.#context);
   }
 
   #withAncestor(value: object, write: () => void): void {
@@ -139,7 +144,11 @@ class BoundedJsonWriter {
     }
   }
 
-  #writeArray(value: ReadonlyArray<unknown>, scope: StructuralRedactionNode | undefined): void {
+  #writeArray(
+    value: ReadonlyArray<unknown>,
+    scope: StructuralRedactionNode | undefined,
+    secret = false,
+  ): void {
     if (
       Object.getPrototypeOf(value) !== Array.prototype ||
       value.length > MAX_OUTBOUND_QUEUED_BYTES ||
@@ -161,14 +170,19 @@ class BoundedJsonWriter {
         } else if (isOmittedObjectValue(descriptor.value)) {
           this.#append("null");
         } else {
-          this.#writeValue(descriptor.value, false, scope?.element(index, value.length));
+          const elementScope = scope?.element(index, value.length);
+          if (secret) this.#writeSecretValue(descriptor.value, elementScope);
+          else this.#writeValue(descriptor.value, false, elementScope);
         }
       }
       this.#append("]");
     });
   }
 
-  #writeObject(value: object, scope: StructuralRedactionNode | undefined): void {
+  #writeObject(value: object, scope: StructuralRedactionNode | undefined, secret = false): void {
+    // A runtime proxy is not inspectable output, and its traps must never run
+    // during classification.
+    if (isRuntimeProxy(value)) throw serializationFailure(this.#context);
     const prototype = Object.getPrototypeOf(value);
     if (
       (prototype !== Object.prototype && prototype !== null) ||
@@ -184,17 +198,21 @@ class BoundedJsonWriter {
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (descriptor === undefined) throw serializationFailure(this.#context);
         this.#assertBoundedInputString(key);
+        if (!("value" in descriptor)) throw serializationFailure(this.#context);
+        const fieldValue = descriptor.value;
         const child = scope?.child(key, value);
-        const secretKeyReplacement = this.#secretKeyReplacement(key, descriptor.value, child);
-        if (secretKeyReplacement === undefined && !("value" in descriptor)) {
-          throw serializationFailure(this.#context);
-        }
-        if (secretKeyReplacement === undefined && isOmittedObjectValue(descriptor.value)) continue;
+        const secretField = secret || isSecretFieldName(key);
+        const decision = secretField ? this.#secretDecision(fieldValue, child) : undefined;
+        // `JSON.stringify` never emits a key whose value it omits, and the rule
+        // keeps `undefined` under a secret key.
+        const omitted =
+          (decision === undefined || decision.kind === "ordinary") && isOmittedObjectValue(fieldValue);
+        if (omitted) continue;
         if (emitted > 0) this.#append(",");
         this.#appendString(key, scope?.keyIsDeclared(key, value) !== true, false);
         this.#append(":");
-        if (secretKeyReplacement !== undefined) this.#appendString(secretKeyReplacement, false, false);
-        else this.#writeValue(descriptor.value, false, child);
+        if (decision !== undefined) this.#writeDecision(decision, fieldValue, child);
+        else this.#writeValue(fieldValue, false, child);
         emitted += 1;
       }
       this.#append("}");

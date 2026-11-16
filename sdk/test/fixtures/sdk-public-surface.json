@@ -1798,6 +1798,7 @@
       "SchemaExecutionSiteAnnotationId",
       "SchemaIssueLeaf",
       "SchemaLayerMergeAnnotationId",
+      "SchemaSecretDescriptorAnnotationId",
       "SecretRef",
       "SecretReference",
       "SecretStoreContribution",
@@ -2128,6 +2129,7 @@
       "isUsableExactRedactionValue",
       "maskOpenSecretConstruct",
       "parseSecretReference",
+      "redactSecretField",
       "redactValueWith"
     ],
     "./services": [

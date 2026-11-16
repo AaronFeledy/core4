@@ -226,6 +226,46 @@ describe("runWithRendererHandling redaction", () => {
     expect(io.stderr()).not.toContain("outersecret");
   });
 
+  test("renders decoded results with the machine secret-named-field rule", async () => {
+    // Given a decoded result the command renders as text, with no registered values.
+    const io = createBufferedRendererIO();
+    // When
+    await runWithRendererHandling(
+      Effect.succeed({ password: "hunter2", note: "free text", secretRedaction: true }),
+      {
+        runtime: RedactionService.layer,
+        rendererMode: "plain",
+        resultSchema: Schema.Struct({
+          password: Schema.String,
+          note: Schema.String,
+          secretRedaction: Schema.Boolean,
+        }),
+        io,
+        render: (result) => `${result.password} ${result.note} ${String(result.secretRedaction)}`,
+        formatError: ({ error }) => String(error),
+        setExitCode: () => undefined,
+      },
+    );
+    // Then
+    expect(io.stdout()).toBe("[redacted] free text true\n");
+  });
+
+  test("keeps rendering a result when the command declares no result schema", async () => {
+    // Given the fallback empty result schema applies to a shape it cannot describe.
+    const io = createBufferedRendererIO();
+    // When
+    await runWithRendererHandling(Effect.succeed({ stdout: "plain text" }), {
+      runtime: RedactionService.layer,
+      rendererMode: "plain",
+      io,
+      render: (result) => result.stdout,
+      formatError: ({ error }) => String(error),
+      setExitCode: () => undefined,
+    });
+    // Then
+    expect(io.stdout()).toBe("plain text\n");
+  });
+
   test("redacts exact result tokens from plain command output", async () => {
     const io = createBufferedRendererIO();
     const secret = "bare-tooling-password";

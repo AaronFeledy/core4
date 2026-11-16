@@ -104,3 +104,57 @@ test.each(["app:config:view", "app:config:get"])(
     );
   },
 );
+
+test("keeps deferred reference descriptors under secret-named environment keys", async () => {
+  // Given: an environment map that names a secret reference and a free-text value.
+  const root = await mkdtemp(join(tmpdir(), "lando-views-wire-refs-"));
+  await writeFile(
+    join(root, ".lando.yml"),
+    `name: refs\nservices:\n  web:\n    type: "nginx:1.27"\n    environment:\n      DB_PASSWORD: '\${secret:DB_PASSWORD}'\n      API_TOKEN: hunter2\n      PLAIN: visible\n`,
+  );
+  try {
+    for (const format of ["json", "yaml"]) {
+      // When
+      const spawned = Bun.spawn({
+        cmd: [Bun.which("bun") ?? "bun", cli, "app:config", `--format=${format}`],
+        cwd: root,
+        env: {
+          ...globalThis.process.env,
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CACHE_ROOT: join(root, "cache"),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [code, output, stderr] = await Promise.all([
+        spawned.exited,
+        new Response(spawned.stdout).text(),
+        new Response(spawned.stderr).text(),
+      ]);
+      // JSON wraps the view in the result envelope; YAML prints the document itself.
+      const parsed = Bun.YAML.parse(output) as {
+        ok?: boolean;
+        result?: { landofile: { services: { web: { environment: Record<string, unknown> } } } };
+        services?: { web: { environment: Record<string, unknown> } };
+      };
+      const environment =
+        format === "json"
+          ? parsed.result?.landofile.services.web.environment
+          : parsed.services?.web.environment;
+      // Then: the descriptor stays decodable, the plain literal names nothing, and free text masks.
+      expect({ code, stderr, ok: format === "json" ? parsed.ok : true }).toEqual({
+        code: 0,
+        stderr: "",
+        ok: true,
+      });
+      expect(environment).toEqual({
+        DB_PASSWORD: { _tag: "SecretRef", reference: "DB_PASSWORD" },
+        API_TOKEN: "[redacted]",
+        PLAIN: "visible",
+      });
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

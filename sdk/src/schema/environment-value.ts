@@ -6,6 +6,15 @@ import { layerMerge } from "./layer-merge.ts";
 // =============================================================================
 // Persistable environment descriptors. These schemas grant no authoring authority.
 // =============================================================================
+
+/**
+ * Namespaced annotation marking a published descriptor shape that carries
+ * references, never credential bytes. Structural redaction walks only an
+ * annotated object with the ordinary rules under a secret-named key; any other
+ * object keeps only schema-declared or schema-indexed fields.
+ */
+export const SchemaSecretDescriptorAnnotationId = "lando/schema/SecretDescriptor" as const;
+
 export const SecretReference = Schema.String.check(
   Schema.makeFilter((value) => Result.isSuccess(parseSecretReference(value)), {
     message: "Expected a valid bare secret id or store URI.",
@@ -25,6 +34,7 @@ export const SecretRef = Schema.Struct({
 }).annotate({
   identifier: "SecretRef",
   description: "Deferred secret lookup descriptor; contains no decrypted value.",
+  [SchemaSecretDescriptorAnnotationId]: true,
 });
 export type SecretRef = typeof SecretRef.Type;
 
@@ -33,7 +43,11 @@ export const BoundTextReference = Schema.Struct({
   encoding: Schema.Literals(["raw", "uri-component"]).annotate({
     description: "Explicit transformation applied after lookup.",
   }),
-}).annotate({ identifier: "BoundTextReference", description: "One deferred reference in flat bound text." });
+}).annotate({
+  identifier: "BoundTextReference",
+  description: "One deferred reference in flat bound text.",
+  [SchemaSecretDescriptorAnnotationId]: true,
+});
 export type BoundTextReference = typeof BoundTextReference.Type;
 
 export const BoundText = Schema.Struct({

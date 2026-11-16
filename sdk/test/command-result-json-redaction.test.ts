@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   encodeCommandResult,
   encodeStreamEventFrame,
@@ -7,7 +7,13 @@ import {
   encodeStreamStdoutFrame,
   identityRedactor,
 } from "@lando/sdk/command-result";
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import {
+  BoundText,
+  CommandResultEnvelope,
+  EnvironmentValue,
+  SecretRef,
+  StreamFrame,
+} from "@lando/sdk/schema";
 import { REDACTED, type Redactor, createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 
@@ -215,7 +221,7 @@ test("retains assignment, userinfo, bearer, and signed-query pattern masking", (
   expect(json.result).toEqual({
     assignment: `PASSWORD=${REDACTED}`,
     userinfo: `https://${REDACTED}@host/path`,
-    bearer: `Bearer ${REDACTED}`,
+    bearer: REDACTED,
     query: `https://host/path?access_token=${REDACTED}&safe=1`,
   });
   expect(Bun.YAML.parse(Effect.runSync(encodeCommandResult({ ...input, format: "yaml" })))).toEqual(json);
@@ -253,4 +259,122 @@ test("preserves chunk pre-redaction and identity serialization", () => {
       source: "task!",
     });
   }
+});
+
+describe("one secret-named-field rule in machine envelopes", () => {
+  const redactor = createRedactor("secrets");
+  const emit = (value: unknown, resultSchema: Schema.Codec<unknown, unknown>) => {
+    const input = {
+      command: "test:result",
+      resultSchema,
+      outcome: { _tag: "success" as const, value },
+      redactor,
+    };
+    const json = envelope(Effect.runSync(encodeCommandResult(input)));
+    const yaml = Bun.YAML.parse(Effect.runSync(encodeCommandResult({ ...input, format: "yaml" })));
+    return { json, yaml };
+  };
+
+  test("masks free text under a secret-named key in JSON and YAML", () => {
+    // Given
+    const resultSchema = Schema.Struct({ password: Schema.String, note: Schema.String });
+    // When
+    const { json, yaml } = emit({ password: "hunter2", note: "free text" }, resultSchema);
+    // Then
+    expect(json.result).toEqual({ password: REDACTED, note: "free text" });
+    expect(yaml).toEqual(json);
+  });
+
+  test("keeps a deferred environment descriptor under its secret-named variable", () => {
+    // Given the app:config model: a record of environment descriptors.
+    const resultSchema = Schema.Record(Schema.String, EnvironmentValue);
+    const value = {
+      DB_PASSWORD: { _tag: "SecretRef" as const, reference: "DB_PASSWORD" },
+      PLAIN: "visible",
+    };
+    // When
+    const { json, yaml } = emit(value, resultSchema);
+    // Then
+    expect(json.result).toEqual(value);
+    expect(yaml).toEqual(json);
+  });
+
+  test("keeps a secret descriptor under a secret-named key and still decodes", () => {
+    // Given
+    const resultSchema = Schema.Struct({ password: SecretRef });
+    const value = { password: { _tag: "SecretRef" as const, reference: "DB_PASSWORD" } };
+    // When
+    const { json, yaml } = emit(value, resultSchema);
+    // Then
+    expect(json.result).toEqual(value);
+    expect(yaml).toEqual(json);
+    expect(Schema.decodeUnknownSync(resultSchema)(json.result)).toEqual(value);
+  });
+
+  test("walks a schema-declared object field by field under a secret-named key", () => {
+    // Given
+    const resultSchema = Schema.Struct({ password: Schema.Struct({ value: Schema.String }) });
+    // When
+    const { json, yaml } = emit({ password: { value: "hunter2" } }, resultSchema);
+    // Then
+    expect(json.result).toEqual({ password: { value: REDACTED } });
+    expect(yaml).toEqual(json);
+  });
+
+  test("masks each entry of a record under a secret-named key", () => {
+    // Given
+    const resultSchema = Schema.Struct({ secretAnswers: Schema.Record(Schema.String, Schema.String) });
+    // When
+    const { json, yaml } = emit({ secretAnswers: { q1: "hunter2" } }, resultSchema);
+    // Then
+    expect(json.result).toEqual({ secretAnswers: { q1: REDACTED } });
+    expect(yaml).toEqual(json);
+  });
+
+  test("keeps booleans, null, and schema-typed numbers while masking an opaque number", () => {
+    // Given a number the schema types as a number and one it cannot type.
+    const resultSchema = Schema.Struct({
+      secretRedaction: Schema.Boolean,
+      password: Schema.Null,
+      apiToken: Schema.Number,
+      secretCount: Schema.Unknown,
+    });
+    // When
+    const { json, yaml } = emit(
+      { secretRedaction: true, password: null, apiToken: 12345, secretCount: 7 },
+      resultSchema,
+    );
+    // Then the typed number survives so the envelope still decodes; the opaque one masks.
+    expect(json.result).toEqual({
+      secretRedaction: true,
+      password: null,
+      apiToken: 12345,
+      secretCount: REDACTED,
+    });
+    expect(yaml).toEqual(json);
+    expect(Schema.decodeUnknownSync(resultSchema)(json.result)).toEqual({
+      secretRedaction: true,
+      password: null,
+      apiToken: 12345,
+      secretCount: REDACTED,
+    });
+  });
+
+  test("masks BoundText literal parts under a secret-named key and keeps its references", () => {
+    // Given
+    const resultSchema = Schema.Struct({ password: BoundText });
+    const value = {
+      password: {
+        _tag: "BoundText" as const,
+        parts: ["literal-bytes", { reference: "DB_PASSWORD", encoding: "raw" as const }],
+      },
+    };
+    // When
+    const { json, yaml } = emit(value, resultSchema);
+    // Then
+    expect(json.result).toEqual({
+      password: { _tag: "BoundText", parts: [REDACTED, { reference: "DB_PASSWORD", encoding: "raw" }] },
+    });
+    expect(yaml).toEqual(json);
+  });
 });
