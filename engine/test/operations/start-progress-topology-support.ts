@@ -350,10 +350,14 @@ export const makeHarness = (
         ? Effect.succeed(provider)
         : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
     },
-    resolveAppliedPlan: (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
+    resolveAppliedPlan: (
+      root: AbsolutePath,
+      app?: Pick<AppRef, "kind" | "id">,
+      lookup?: "ancestor" | "exact",
+    ) =>
       root === globalAdmission.root
         ? Effect.sync(() => globalAdmission.appliedPlan())
-        : resolveUserAppliedPlan(root, app),
+        : resolveUserAppliedPlan(root, app, lookup),
     resolveTeardownEvidence:
       options.resolveTeardownEvidence ??
       ((root: AbsolutePath) =>

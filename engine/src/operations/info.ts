@@ -145,6 +145,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
       kind: "user",
       id: completionPlan.id,
     },
+    "exact",
   );
   // selectInfoPlan returns the original plan only for an unscoped view.
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
