@@ -151,7 +151,9 @@ export const makeHarness = (
     readonly preparedFileSyncTargets?: (
       plan: AppPlan,
     ) => ReadonlyArray<import("@lando/sdk/schema").PreparedFileSyncTarget>;
-    readonly onBuildApp?: (plan: AppPlan) => void;
+    readonly onBuild?: (plan: AppPlan, options?: { readonly refresh?: boolean }) => void;
+    readonly buildResult?: (plan: AppPlan) => AppPlan;
+    readonly onBuildApp?: (plan: AppPlan, options?: { readonly force?: boolean }) => void;
     readonly onPublish?: (event: LandoEvent) => Effect.Effect<void, EventError>;
     readonly providerCanPrepareFileSync?: boolean;
     readonly providerCanInspectFileSync?: boolean;
@@ -449,10 +451,14 @@ export const makeHarness = (
     Layer.succeed(
       BuildOrchestrator,
       BuildOrchestrator.of({
-        build: (appPlan) => Effect.succeed(appPlan),
-        buildApp: (appPlan) =>
+        build: (appPlan, buildOptions) =>
           Effect.sync(() => {
-            options.onBuildApp?.(appPlan);
+            options.onBuild?.(appPlan, buildOptions);
+            return options.buildResult?.(appPlan) ?? appPlan;
+          }),
+        buildApp: (appPlan, buildAppOptions) =>
+          Effect.sync(() => {
+            options.onBuildApp?.(appPlan, buildAppOptions);
           }),
       }),
     ),

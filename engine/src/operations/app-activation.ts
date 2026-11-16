@@ -13,6 +13,7 @@ import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
 import { requireSelectableRouter } from "./global-consumer-admission.ts";
+import { preflightSelectedRelaunch } from "./selected-relaunch.ts";
 import { selectInfoPlan, selectRebuildPlan } from "./service-selection.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
@@ -22,12 +23,7 @@ import {
   launchAdmittedApp,
   preflightStartAppDrain,
 } from "./start-internal.ts";
-import {
-  type PreparedDebuggerOverlay,
-  type PreparedStartOverlays,
-  prepareDebuggerOverlay,
-  prepareStartOverlays,
-} from "./start-overlays.ts";
+import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overlays.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
 import {
@@ -50,10 +46,12 @@ export interface AdmittedApp extends AdmittedBase {
   readonly overlays: PreparedStartOverlays;
   readonly preparedTargets: readonly PreparedFileSyncTarget[] | undefined;
 }
-export interface AdmittedServices<Overlays extends PreparedDebuggerOverlay> extends AdmittedBase {
+export interface AdmittedServices extends AdmittedBase {
   readonly scope: "services";
   readonly selectedPlan: AppPlan;
-  readonly overlays: Overlays;
+  readonly overlays: PreparedStartOverlays;
+  /** The current applied plan, read after any resume; restart refuses without one. */
+  readonly appliedPlan: AppPlan | undefined;
 }
 interface StartActivation {
   readonly operation: "start";
@@ -79,19 +77,12 @@ export function withAppActivation<A, E, R>(
   body: ActivationBody<A, E, R, AdmittedApp>,
 ): Effect.Effect<A, E | AppActivationError, R | AppActivationServices>;
 export function withAppActivation<A, E, R>(
-  request: RestartActivation,
-  body: ActivationBody<A, E, R, AdmittedApp | AdmittedServices<PreparedDebuggerOverlay>>,
-): Effect.Effect<A, E | AppActivationError, R | AppActivationServices>;
-export function withAppActivation<A, E, R>(
-  request: RebuildActivation,
-  body: ActivationBody<A, E, R, AdmittedApp | AdmittedServices<PreparedStartOverlays>>,
+  request: RestartActivation | RebuildActivation,
+  body: ActivationBody<A, E, R, AdmittedApp | AdmittedServices>,
 ): Effect.Effect<A, E | AppActivationError, R | AppActivationServices>;
 export function withAppActivation<A, E, R>(
   request: StartActivation | RestartActivation | RebuildActivation,
-  body:
-    | ActivationBody<A, E, R, AdmittedApp>
-    | ActivationBody<A, E, R, AdmittedApp | AdmittedServices<PreparedDebuggerOverlay>>
-    | ActivationBody<A, E, R, AdmittedApp | AdmittedServices<PreparedStartOverlays>>,
+  body: ActivationBody<A, E, R, AdmittedApp> | ActivationBody<A, E, R, AdmittedApp | AdmittedServices>,
 ): Effect.Effect<A, E | AppActivationError, R | AppActivationServices> {
   return withVolumeTransitionNotices(
     withAppMutationLock(
@@ -121,10 +112,7 @@ export function withAppActivation<A, E, R>(
         yield* validateSelectedRename(target, placement.superseded, scoped);
         const registry = yield* RuntimeProviderRegistry;
         const selectedProvider = yield* registry.select(plan);
-        const overlays =
-          request.operation === "restart" && scoped
-            ? yield* prepareDebuggerOverlay(selectedPlan)
-            : yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
+        const overlays = yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
         const provider = yield* prepareProvider(selectedProvider);
         if (!scoped) yield* claimDataIdentityBeforeRetirement(target, placement.superseded, provider);
         const retired = yield* retireSupersededRealizations(target, placement.superseded, {
@@ -167,17 +155,15 @@ export function withAppActivation<A, E, R>(
                 return request satisfies never;
             }
             if (!retired) yield* ensureStartTransactionConsistent(target);
+            const appliedPlan =
+              scoped && request.operation !== "start"
+                ? yield* preflightSelectedRelaunch(target, selectedPlan, request.operation)
+                : undefined;
             if (resumed === undefined) yield* runAppInitEvents(plan);
             const base = { target, provider, placement, removedByResume: resumed?.servicesRemoved ?? [] };
-            // The overloads tie each operation to its overlay type; one body cannot express that pairing.
             const admission = scoped
-              ? ({
-                  ...base,
-                  scope: "services",
-                  selectedPlan,
-                  overlays,
-                } as AdmittedServices<PreparedDebuggerOverlay>)
-              : ({ ...base, scope: "app", overlays, preparedTargets } as AdmittedApp);
+              ? { ...base, scope: "services" as const, selectedPlan, overlays, appliedPlan }
+              : { ...base, scope: "app" as const, overlays, preparedTargets };
             return yield* (body as ActivationBody<A, E, R, typeof admission>)(admission);
           }),
         });

@@ -22,15 +22,12 @@ type UserStart = Readiness & {
   readonly landofileRouter?: RouterConfig;
   readonly forceAppBuild?: boolean;
 };
-type SelectedRestart = Readiness & {
-  readonly policy: "selected-restart";
-  readonly selectedPlan: AppPlan;
-  readonly events: ProgressEmitter;
-};
-type SelectedRebuild = Readiness & {
-  readonly policy: "selected-rebuild";
+type Selected = Readiness & {
+  readonly policy: "selected";
   readonly selectedPlan: AppPlan;
   readonly builds: typeof BuildOrchestrator.Service;
+  readonly events: ProgressEmitter;
+  readonly forceAppBuild?: boolean;
 };
 type EnsureGlobal = Readiness & { readonly policy: "ensure-global" };
 type Scratch = Readiness & {
@@ -70,16 +67,12 @@ const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: U
     : withRoutesStartProgress({ events: request.events, plan: request.plan, work: routes });
   return yield* waitForServiceReadiness(request);
 });
-const selectedRestart = Effect.fn("StartupCompletion.selectedRestart")(function* (request: SelectedRestart) {
+const selected = Effect.fn("StartupCompletion.selected")(function* (request: Selected) {
   yield* startFileSyncSessions(request.selectedPlan, request.events);
-  yield* verifyGlobalConsumerAdmission;
-  return yield* waitForServiceReadiness(request);
-});
-const selectedRebuild = Effect.fn("StartupCompletion.selectedRebuild")(function* (request: SelectedRebuild) {
   yield* withBuildProvider(
     withActivationObservations(
       request.builds.buildApp(request.selectedPlan, {
-        force: true,
+        ...(request.forceAppBuild === true ? { force: true } : {}),
         ...(request.signal === undefined ? {} : { signal: request.signal }),
       }),
       request.initial,
@@ -95,21 +88,16 @@ const scratch = Effect.fn("StartupCompletion.scratch")(function* (request: Scrat
 });
 
 export function completeStartup(request: UserStart): ReturnType<typeof userStart>;
-export function completeStartup(request: SelectedRestart): ReturnType<typeof selectedRestart>;
-export function completeStartup(request: SelectedRebuild): ReturnType<typeof selectedRebuild>;
+export function completeStartup(request: Selected): ReturnType<typeof selected>;
 export function completeStartup(request: EnsureGlobal): ReturnType<typeof waitForServiceReadiness>;
 export function completeStartup(request: Scratch): ReturnType<typeof scratch>;
 export function completeStartup<E>(request: GlobalGroups<E>): ReturnType<typeof completeGlobalGroups<E>>;
-export function completeStartup<E>(
-  request: UserStart | SelectedRestart | SelectedRebuild | EnsureGlobal | Scratch | GlobalGroups<E>,
-) {
+export function completeStartup<E>(request: UserStart | Selected | EnsureGlobal | Scratch | GlobalGroups<E>) {
   switch (request.policy) {
     case "user-start":
       return userStart(request);
-    case "selected-restart":
-      return selectedRestart(request);
-    case "selected-rebuild":
-      return selectedRebuild(request);
+    case "selected":
+      return selected(request);
     case "ensure-global":
       return waitForServiceReadiness(request);
     case "scratch":

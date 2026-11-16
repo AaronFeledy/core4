@@ -9,8 +9,8 @@ import { provideFileSyncEngine } from "../file-sync-engine.ts";
 import { acceleratedPlan } from "../operations/accelerated-start-recovery-support.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 
-const policies = ["user-start", "selected-restart", "selected-rebuild", "ensure-global", "scratch"] as const;
-test.each([...policies, "forced-user-start" as const])(
+const policies = ["user-start", "selected", "ensure-global", "scratch"] as const;
+test.each([...policies, "forced-user-start" as const, "forced-selected" as const])(
   "%s owns its complete ordered post-apply policy",
   async (policy) => {
     // Given recording services and a selected service with an unselected sibling.
@@ -99,7 +99,7 @@ test.each([...policies, "forced-user-start" as const])(
             events,
             forceAppBuild: true,
           });
-        case "selected-restart":
+        case "selected":
           return yield* completeStartup({
             ...readiness,
             policy,
@@ -108,10 +108,22 @@ test.each([...policies, "forced-user-start" as const])(
               services: acceleratedPlan.services,
               fileSync: acceleratedPlan.fileSync,
             },
+            builds,
             events,
           });
-        case "selected-rebuild":
-          return yield* completeStartup({ ...readiness, policy, selectedPlan, builds });
+        case "forced-selected":
+          return yield* completeStartup({
+            ...readiness,
+            policy: "selected",
+            selectedPlan: {
+              ...selectedPlan,
+              services: acceleratedPlan.services,
+              fileSync: acceleratedPlan.fileSync,
+            },
+            builds,
+            events,
+            forceAppBuild: true,
+          });
         case "ensure-global":
           return yield* completeStartup({ ...readiness, policy });
         case "scratch":
@@ -140,8 +152,8 @@ test.each([...policies, "forced-user-start" as const])(
     const expected = {
       "user-start": ["build", "route-setup", "routes", "readiness"],
       "forced-user-start": ["forced-build", "route-setup", "routes", "readiness"],
-      "selected-restart": ["file-sync", "readiness"],
-      "selected-rebuild": ["forced-build", "readiness"],
+      selected: ["file-sync", "build", "readiness"],
+      "forced-selected": ["file-sync", "forced-build", "readiness"],
       "ensure-global": ["readiness"],
       scratch: ["route-setup", "routes", "readiness"],
     };

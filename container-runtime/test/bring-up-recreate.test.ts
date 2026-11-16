@@ -490,33 +490,6 @@ describe("Podman publish-port recreate", () => {
     );
   });
 
-  test("forbidRecreate rejects config drift before any mutation", async () => {
-    // Given an owned running container with a previous config.
-    const plan = planWithHostPort(18080);
-    const service = plan.services[serviceName];
-    if (service === undefined) throw new Error("Test service is missing.");
-    const fake = makeFakeApi({ deleteStatus: 204, networkExists: true });
-    const updated: AppPlan = {
-      ...plan,
-      services: { [serviceName]: { ...service, environment: { MODE: "after" } } },
-    };
-    // When an in-place restart encounters config drift.
-    const error = await Effect.runPromise(
-      Effect.flip(
-        bringUp(updated, {
-          api: fake.api,
-          ctx,
-          reconcile: false,
-          forbidRecreate: true,
-        }),
-      ),
-    );
-    // Then it refuses and leaves the existing container untouched.
-    expect(error).toMatchObject({ _tag: "ServiceRestartWouldRecreateError", reason: "config" });
-    expect(error.remediation).toContain("lando rebuild -s web");
-    expect(fake.calls.every((call) => call.method === "GET")).toBe(true);
-  });
-
   test.each(["environment", "command"] as const)(
     "recreates with the new create config when %s changes with reconcile=false",
     async (field) => {
@@ -558,17 +531,17 @@ describe("Podman publish-port recreate", () => {
     },
   );
 
-  test("forbidRecreate refuses a missing container without creating one", async () => {
-    // Given a container removed after the operation's preflight.
+  test("a missing container converges by creating it", async () => {
+    // Given a selected service whose container is already gone.
     const fake = makeFakeApi({ deleteStatus: 204, networkExists: true, containerExists: false });
-    // When the provider applies an in-place restart.
-    const exit = await Effect.runPromiseExit(
-      bringUp(planWithHostPort(18080), { api: fake.api, ctx, forbidRecreate: true }),
+    // When the provider applies the selection.
+    const result = await Effect.runPromise(bringUp(planWithHostPort(18080), { api: fake.api, ctx }));
+    // Then it creates the container instead of failing the apply.
+    expect(result.changed).toBe(true);
+    expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
+      false,
     );
-    // Then it fails without creating a replacement or deleting the existing network.
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(createCalls(fake.calls)).toHaveLength(0);
-    expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
   });
 
   test.each([
@@ -736,6 +709,14 @@ describe("Podman publish-port recreate", () => {
 
     expect(result.changed).toBe(true);
     expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(createCalls(fake.calls)[0]?.body).toMatchObject({
+      NetworkingConfig: {
+        EndpointsConfig: { "lando-vm-0123456789ab-fedcba987654": {} },
+      },
+    });
+    expect(fake.calls.some((call) => call.method === "POST" && call.path.endsWith("/networks/create"))).toBe(
+      true,
+    );
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
       true,
     );
@@ -820,6 +801,12 @@ describe("Podman publish-port recreate", () => {
     // Then
     expect(result.changed).toBe(true);
     expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
+      false,
+    );
   });
 
   test("recreates an existing stopped container when a host-proxy bind source changes", async () => {
@@ -1048,112 +1035,5 @@ describe("Podman publish-port recreate", () => {
     expect(first.changed).toBe(false);
     expect(second.changed).toBe(false);
     expect(createCalls(fake.calls)).toEqual([]);
-  });
-
-  test("forbidRecreate refuses a publish-port mismatch instead of recreating", async () => {
-    const fake = makeFakeApi({ deleteStatus: 204, networkExists: true });
-    const plan = planWithHostPort(38080);
-    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
-    const failures = Exit.isFailure(exit)
-      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
-      : [];
-    expect(failures).toContainEqual(
-      expect.objectContaining({
-        _tag: "ServiceRestartWouldRecreateError",
-        reason: "publish-port",
-        service: "web",
-      }),
-    );
-    expect(createCalls(fake.calls)).toEqual([]);
-    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
-      false,
-    );
-    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
-      false,
-    );
-  });
-
-  test("forbidRecreate refuses a host-proxy bind-source change instead of recreating", async () => {
-    const base = planWithHostPort(18080);
-    const service = base.services[serviceName];
-    if (service === undefined) throw new Error("Test service is missing.");
-    const desired: ServicePlan = {
-      ...service,
-      environment: { ...hostProxyRuntimeEnv },
-      mounts: hostProxyOverlayMounts({
-        socket: "/home/user/new/host-proxy.sock",
-        credentials: "/home/user/session/credentials",
-      }),
-      extensions: trustedHostProxyExtension("forbid-session"),
-    };
-    const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
-    const fake = makeFakeApi({
-      deleteStatus: 204,
-      existingPlan: plan,
-      existingMounts: [
-        { Type: "bind", Source: "/home/user/old/host-proxy.sock", Destination: "/run/lando/host-proxy.sock" },
-        {
-          Type: "bind",
-          Source: "/home/user/session/credentials",
-          Destination: "/run/lando/host-proxy/credentials",
-        },
-      ],
-      existingNetworks: ["recreate-ports-network"],
-      networkExists: true,
-    });
-    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
-    const failures = Exit.isFailure(exit)
-      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
-      : [];
-    expect(failures).toContainEqual(
-      expect.objectContaining({ _tag: "ServiceRestartWouldRecreateError", reason: "bind-source" }),
-    );
-    expect(createCalls(fake.calls)).toEqual([]);
-  });
-
-  test("forbidRecreate refuses a missing planned network instead of recreating", async () => {
-    const fake = makeFakeApi({
-      deleteStatus: 204,
-      existingNetworks: ["lando-shared"],
-    });
-    const base = planWithHostPort(18080);
-    const plan: AppPlan = {
-      ...base,
-      networking: {
-        perAppBridge: {
-          name: "lando-vm-0123456789ab-fedcba987654",
-          driver: "bridge",
-        },
-      },
-    };
-    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
-    const failures = Exit.isFailure(exit)
-      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
-      : [];
-    expect(failures).toContainEqual(
-      expect.objectContaining({ _tag: "ServiceRestartWouldRecreateError", reason: "network" }),
-    );
-    expect(createCalls(fake.calls)).toEqual([]);
-  });
-
-  test("forbidRecreate refuses when combined with reconcile", async () => {
-    const fake = makeFakeApi({ deleteStatus: 204 });
-    const exit = await Effect.runPromiseExit(
-      bringUp(planWithHostPort(18080), { api: fake.api, ctx, forbidRecreate: true, reconcile: true }),
-    );
-    const failures = Exit.isFailure(exit)
-      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
-      : [];
-    expect(failures).toContainEqual(
-      expect.objectContaining({
-        _tag: "ProviderInternalError",
-        operation: "bringUp",
-        message: "forbidRecreate cannot be combined with reconcile.",
-      }),
-    );
-    expect(createCalls(fake.calls)).toEqual([]);
-    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
-      false,
-    );
   });
 });

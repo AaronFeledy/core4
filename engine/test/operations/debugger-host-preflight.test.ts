@@ -7,7 +7,7 @@ import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { applyDebuggerHost } from "../../src/subsystems/debugger-host.ts";
-import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
+import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const desired: AppPlan = {
   ...plan,
@@ -35,18 +35,24 @@ const runningService = Object.values(runningPlan.services)[0];
 if (runningService === undefined) throw new TypeError("Missing fixture service");
 const labels = commonContainerLabels(runningPlan, runningService);
 
-for (const [host, succeeds] of [
-  ["192.0.2.40", true],
-  ["192.0.2.41", false],
+for (const [host, replaced] of [
+  ["192.0.2.40", false],
+  ["192.0.2.41", true],
 ] as const) {
-  test(`selected restart ${succeeds ? "accepts unchanged" : "rejects changed"} debugger address before stopping`, async () => {
+  test(`selected restart applies the ${replaced ? "changed" : "unchanged"} debugger address and ${replaced ? "reports an observed replacement" : "omits a replacement notice for the retained container"}`, async () => {
     // Given
     const stopped: string[] = [];
+    const appliedAliases: (typeof web.hostAliases)[] = [];
+    let containerId = "php";
     const harness = makeHarness({
       plannedApp: desired,
       resolveAppliedPlan: () => Effect.succeed(desired),
       onStop: () => {
         stopped.push("stop");
+      },
+      onApply: (applied) => {
+        appliedAliases.push(applied.services[web.name]?.hostAliases ?? []);
+        if (replaced) containerId = "php-replaced";
       },
       inspect: (request) =>
         Effect.succeed({
@@ -54,7 +60,7 @@ for (const [host, succeeds] of [
           service: request.service,
           providerId: desired.provider,
           status: "running",
-          containerId: "php",
+          containerId,
           labels,
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
           publications: { status: "unknown" },
@@ -67,14 +73,15 @@ for (const [host, succeeds] of [
         Effect.result,
       ),
     );
-    // Then
-    expect(result._tag).toBe(succeeds ? "Success" : "Failure");
-    expect(stopped).toHaveLength(succeeds ? 1 : 0);
-    if (result._tag === "Failure")
-      expect(result.failure).toMatchObject({
-        _tag: "ServiceRestartWouldRecreateError",
-        reason: "config",
-      });
+    // Then the restart converges either way instead of refusing.
+    expect(result._tag).toBe("Success");
+    expect(stopped).toEqual(["stop"]);
+    expect(appliedAliases).toEqual([[{ hostname: DEBUGGER_HOST_ALIAS, ip: host }]]);
+    expect(byTag(harness.events, "message.info").map((event) => event.body)).toEqual(
+      replaced
+        ? ["Lando replaced web's container instead of restarting it in place. Named volumes were kept."]
+        : [],
+    );
   });
 }
 

@@ -1,9 +1,7 @@
-import { ServiceRestartWouldRecreateError } from "@lando/sdk/errors";
 import {
   AGENT_SOCKET_CONTAINER_DIR,
   type AppPlan,
   type BindMountPlan,
-  type ServiceName,
   type ServicePlan,
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
@@ -84,33 +82,6 @@ export const inspectContainerLabels = (body: unknown): Readonly<Record<string, s
   );
 };
 
-/** Present logical evidence only after verifying the full physical create configuration. */
-export const presentLogicalCreateConfig = (
-  labels: Readonly<Record<string, string>>,
-  plans: { readonly physical: AppPlan; readonly logical: AppPlan; readonly service: ServiceName },
-): Readonly<Record<string, string>> => {
-  const physicalService = plans.physical.services[plans.service];
-  const logicalService = plans.logical.services[plans.service];
-  if (physicalService === undefined || logicalService === undefined) return labels;
-  const physicalExpected = commonContainerLabels(plans.physical, physicalService)[CREATE_CONFIG_LABEL];
-  const logicalExpected = commonContainerLabels(plans.logical, logicalService)[CREATE_CONFIG_LABEL];
-  if (
-    physicalExpected === undefined ||
-    logicalExpected === undefined ||
-    labels[CREATE_CONFIG_LABEL] === undefined
-  ) {
-    return labels;
-  }
-  if (labels[CREATE_CONFIG_LABEL] !== physicalExpected) {
-    if (physicalExpected === logicalExpected) return labels;
-    return Object.fromEntries(Object.entries(labels).filter(([key]) => key !== CREATE_CONFIG_LABEL));
-  }
-  return {
-    ...labels,
-    [CREATE_CONFIG_LABEL]: logicalExpected,
-  };
-};
-
 export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspectSnapshot): boolean => {
   const source = sourceLookup(inspected.bindSources);
   for (const target of Object.values(AGENT_SOCKET_CONTAINER_DIR)) {
@@ -178,75 +149,20 @@ export const bringUpRecreateReasons = (
   plan: AppPlan,
   service: ServicePlan,
   inspected: BringUpInspectSnapshot,
-  options: { readonly skipAbsentFields?: boolean } = {},
 ): ReadonlyArray<BringUpRecreateReason> => {
-  const skipAbsent = options.skipAbsentFields === true;
   const reasons: BringUpRecreateReason[] = [];
-  if (!skipAbsent || inspected.publishFingerprint !== undefined) {
-    if (publishPortMismatch(service, inspected)) reasons.push("publish-port");
-  }
-  if (!skipAbsent || inspected.bindSources !== undefined) {
-    if (bindSourceChanged(service, inspected)) reasons.push("bind-source");
-  }
+  if (publishPortMismatch(service, inspected)) reasons.push("publish-port");
+  const expectedLabels = commonContainerLabels(plan, service);
   if (
-    hostProxySessionDigest(service.extensions) !== undefined &&
-    (!skipAbsent || inspected.labels !== undefined)
+    bindSourceChanged(service, inspected) ||
+    (hostProxySessionDigest(service.extensions) !== undefined &&
+      inspected.labels?.[HOST_PROXY_SESSION_LABEL] !== expectedLabels[HOST_PROXY_SESSION_LABEL])
   ) {
-    if (
-      inspected.labels?.[HOST_PROXY_SESSION_LABEL] !==
-        commonContainerLabels(plan, service)[HOST_PROXY_SESSION_LABEL] &&
-      !reasons.includes("bind-source")
-    )
-      reasons.push("bind-source");
+    reasons.push("bind-source");
   }
-  if (!skipAbsent || inspected.networkNames !== undefined) {
-    if (plannedNetworkMissing(plan, service, inspected)) reasons.push("network");
-  }
-  if (!skipAbsent || inspected.labels !== undefined) {
-    if (
-      inspected.labels?.[CREATE_CONFIG_LABEL] !== commonContainerLabels(plan, service)[CREATE_CONFIG_LABEL]
-    ) {
-      reasons.push("config");
-    }
+  if (plannedNetworkMissing(plan, service, inspected)) reasons.push("network");
+  if (inspected.labels?.[CREATE_CONFIG_LABEL] !== expectedLabels[CREATE_CONFIG_LABEL]) {
+    reasons.push("config");
   }
   return reasons;
 };
-
-const recreateMessage = (
-  service: string,
-  reason: ServiceRestartWouldRecreateError["reason"],
-  operation: string,
-): string => {
-  switch (reason) {
-    case "publish-port":
-      return `Restarting ${service} would recreate it because its published ports no longer match the running container.`;
-    case "bind-source":
-      return `Restarting ${service} would recreate it because a bind mount source changed.`;
-    case "network":
-      return `Restarting ${service} would recreate it because a planned network is missing.`;
-    case "config":
-      return `Restarting ${service} would recreate it because its create configuration changed.`;
-    case "host-port":
-      return operation === "bringUp.start"
-        ? `${service} was stopped and is still down because its assigned host port is already in use. Run \`lando rebuild -s ${service}\`.`
-        : `Restarting ${service} would recreate it because its assigned host port is already in use.`;
-  }
-};
-
-export const serviceRestartRebuildHint = (service: string): string =>
-  `Run \`lando rebuild -s ${service}\` to recreate this service.`;
-
-export const makeServiceRestartWouldRecreateError = (input: {
-  readonly providerId: string;
-  readonly service: string;
-  readonly reason: ServiceRestartWouldRecreateError["reason"];
-  readonly operation?: string;
-}): ServiceRestartWouldRecreateError =>
-  new ServiceRestartWouldRecreateError({
-    providerId: input.providerId,
-    operation: input.operation ?? "restart",
-    service: input.service,
-    reason: input.reason,
-    message: recreateMessage(input.service, input.reason, input.operation ?? "restart"),
-    remediation: serviceRestartRebuildHint(input.service),
-  });

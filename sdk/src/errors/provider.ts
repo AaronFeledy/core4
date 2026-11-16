@@ -113,24 +113,6 @@ export class ServiceNotFoundError extends Schema.TaggedError<ServiceNotFoundErro
   service: Schema.String,
 }) {}
 
-export const ServiceRestartWouldRecreateReason = Schema.Literals([
-  "publish-port",
-  "bind-source",
-  "network",
-  "host-port",
-  "config",
-]);
-export type ServiceRestartWouldRecreateReason = typeof ServiceRestartWouldRecreateReason.Type;
-
-export class ServiceRestartWouldRecreateError extends Schema.TaggedError<ServiceRestartWouldRecreateError>()(
-  "ServiceRestartWouldRecreateError",
-  {
-    ...ProviderErrorBase,
-    service: Schema.String,
-    reason: ServiceRestartWouldRecreateReason,
-  },
-) {}
-
 export class NoProviderInstalledError extends Schema.TaggedError<NoProviderInstalledError>()(
   "NoProviderInstalledError",
   {

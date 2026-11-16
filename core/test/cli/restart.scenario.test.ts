@@ -211,7 +211,6 @@ const makeRestartLayer = (
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const applyCalls: Array<{
     readonly reconcile: boolean;
-    readonly forbidRecreate?: boolean;
     readonly services: ReadonlyArray<string>;
     readonly recordedServices: ReadonlyArray<string>;
   }> = [];
@@ -236,9 +235,6 @@ const makeRestartLayer = (
       Effect.sync(() => {
         applyCalls.push({
           reconcile: applyOptions.reconcile ?? false,
-          ...(applyOptions.forbidRecreate === undefined
-            ? {}
-            : { forbidRecreate: applyOptions.forbidRecreate }),
           services: Object.keys(appliedPlan.services),
           recordedServices: Object.keys((applyOptions.recordedPlan ?? appliedPlan).services),
         });
@@ -475,7 +471,7 @@ describe("lando restart", () => {
     expect(harness.destroyCalls).toEqual([]);
     expect(harness.stopCalls).toEqual([redis.name]);
     expect(harness.applyCalls).toEqual([
-      { reconcile: false, forbidRecreate: true, services: ["redis"], recordedServices: ["web", "redis"] },
+      { reconcile: false, services: ["redis"], recordedServices: ["redis"] },
     ]);
     expect(harness.routeApplies).toEqual([]);
     expect(harness.routeRemovals).toEqual([]);

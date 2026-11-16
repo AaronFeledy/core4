@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { commonContainerLabels } from "@lando/container-runtime/plan";
-import {
-  ProviderUnavailableError,
-  ServiceNotFoundError,
-  ServiceRestartWouldRecreateError,
-} from "@lando/sdk/errors";
+import { FileSyncStartError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type AppPlan,
@@ -15,8 +10,8 @@ import {
   type ServicePlan,
   type ServiceRunObservation,
 } from "@lando/sdk/schema";
-import type { ApplyOptions, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { RouterService, type ServiceRuntimeFields } from "@lando/sdk/services";
+import type { ApplyOptions, ServiceRuntimeFields, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { RouterService } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
@@ -49,9 +44,21 @@ const worker: ServicePlan = {
   endpoints: [],
 };
 
+const route = {
+  hostname: "web.test",
+  scheme: "http" as const,
+  service: web.name,
+  priority: 2,
+  backend: { service: web.name, port: 3000, protocol: "http" as const },
+};
+
 const twoServicePlan = (): AppPlan => ({
   ...plan,
-  services: { [web.name]: web, [redis.name]: redis },
+  routes: [route],
+  services: {
+    [web.name]: { ...web, routes: [{ index: 0 }] },
+    [redis.name]: redis,
+  },
 });
 
 const threeServicePlan = (): AppPlan => ({
@@ -86,11 +93,14 @@ const runSelected = (
   options: Parameters<typeof makeHarness>[0] & {
     readonly services?: ReadonlyArray<ServiceName>;
     readonly signal?: AbortSignal;
+    readonly afterApply?: (applied: AppPlan, runtimes: Map<string, ServiceRuntimeInfo>) => void;
+    readonly buildResult?: (selected: AppPlan) => AppPlan;
   } = {},
 ) => {
   const applyCalls: Array<{ readonly plan: AppPlan; readonly options: ApplyOptions }> = [];
+  const buildCalls: Array<{ readonly plan: AppPlan; readonly refresh?: boolean }> = [];
+  const appBuildCalls: Array<{ readonly plan: AppPlan; readonly force: boolean | undefined }> = [];
   const stopCalls: ServiceName[] = [];
-  const destroyCalls: number[] = [];
   const applyRoutes: number[] = [];
   const removeRoutes: string[] = [];
   const runtimes = new Map<string, ServiceRuntimeInfo>(
@@ -101,24 +111,22 @@ const runSelected = (
   );
   const harness = makeHarness({
     plannedApp,
+    onBuild: (buildPlan, buildOptions) => {
+      if (buildPlan.id !== plannedApp.id) return;
+      buildCalls.push({
+        plan: buildPlan,
+        ...(buildOptions?.refresh === undefined ? {} : { refresh: buildOptions.refresh }),
+      });
+    },
+    onBuildApp: (appPlan, appBuildOptions) => {
+      appBuildCalls.push({ plan: appPlan, force: appBuildOptions?.force });
+    },
     onApply: (applied, applyOptions) => {
       applyCalls.push({ plan: applied, options: applyOptions ?? { reconcile: false } });
-      if (applyOptions?.reconcile === true || applyOptions?.forbidRecreate !== true) {
-        for (const service of Object.values(applied.services)) {
-          const current = runtimes.get(String(service.name));
-          if (current === undefined) continue;
-          runtimes.set(String(service.name), {
-            ...current,
-            containerId: `recreated-${String(service.name)}`,
-          });
-        }
-      }
+      options.afterApply?.(applied, runtimes);
     },
     onStop: (target) => {
       stopCalls.push(target.service);
-    },
-    onDestroy: () => {
-      destroyCalls.push(1);
     },
     inspect: (target) =>
       Effect.succeed(runtimes.get(String(target.service)) ?? runtimeFor(plannedApp, target.service)),
@@ -145,70 +153,246 @@ const runSelected = (
     }),
     Effect.provide(harness.layer),
   );
-  return { harness, operation, applyCalls, stopCalls, destroyCalls, applyRoutes, removeRoutes, runtimes };
+  return {
+    harness,
+    operation,
+    applyCalls,
+    buildCalls,
+    appBuildCalls,
+    stopCalls,
+    applyRoutes,
+    removeRoutes,
+    runtimes,
+  };
 };
 
 describe("selected service restart", () => {
-  test.each(["missing", "changed"] as const)(
-    "refuses %s create config before stopping any selected service",
-    async (scenario) => {
-      // Given two selected services and an old or missing create-config label on web.
-      const original = twoServicePlan();
-      const desired: AppPlan = {
-        ...original,
-        services: {
-          ...original.services,
-          [web.name]: { ...web, environment: { ...web.environment, MODE: "after" } },
-        },
-      };
-      const selected = runSelected(desired, {
-        services: [web.name, redis.name],
-        inspect: (target) =>
-          Effect.succeed(
-            runtimeFor(desired, target.service, {
-              labels:
-                target.service === web.name
-                  ? scenario === "missing"
-                    ? {}
-                    : commonContainerLabels(original, web)
-                  : commonContainerLabels(original, redis),
-            }),
-          ),
-      });
-      // When selected restart preflights the whole selection.
-      const error = await Effect.runPromise(Effect.flip(selected.operation));
-      // Then it refuses config recreation before stopping even an unchanged selected service.
-      expect(error).toMatchObject({
-        _tag: "ServiceRestartWouldRecreateError",
-        reason: "config",
-        service: "web",
-      });
-      if (!(error instanceof ServiceRestartWouldRecreateError)) {
-        throw new TypeError("expected ServiceRestartWouldRecreateError");
-      }
-      expect(error.remediation).toContain("lando rebuild -s web");
-      expect(selected.stopCalls).toEqual([]);
-      expect(selected.applyCalls).toEqual([]);
-    },
-  );
+  test("applies only the selected service with default build and reconciliation policies", async () => {
+    // Given a started two-service app whose selected container is unchanged.
+    const plannedApp = twoServicePlan();
+    const selected = runSelected(plannedApp, { services: [redis.name] });
+    // When only redis is restarted.
+    const result = await Effect.runPromise(selected.operation);
+    // Then it stops and applies the one selected service without forcing recreation.
+    expect(selected.stopCalls).toEqual([redis.name]);
+    expect(selected.applyCalls).toHaveLength(1);
+    expect(selected.applyCalls[0]?.options).toMatchObject({ reconcile: false });
+    expect(selected.applyCalls[0]?.options.complete).toBeUndefined();
+    expect(Object.keys(selected.applyCalls[0]?.plan.services ?? {})).toEqual([redis.name]);
+    // The recorded plan keeps the full desired routes so the selected service's refs stay valid.
+    expect(selected.applyCalls[0]?.options.recordedPlan?.routes).toEqual(plannedApp.routes);
+    expect(Object.keys(selected.applyCalls[0]?.options.recordedPlan?.services ?? {})).toEqual([redis.name]);
+    // The artifact build ran with the default cache policy and the app build was not forced.
+    expect(selected.buildCalls).toHaveLength(1);
+    expect(selected.buildCalls[0]?.refresh).toBeUndefined();
+    expect(selected.appBuildCalls).toHaveLength(1);
+    expect(selected.appBuildCalls[0]?.force).toBeUndefined();
+    expect(Object.keys(selected.appBuildCalls[0]?.plan.services ?? {})).toEqual([redis.name]);
+    // The container kept its identity and no replacement notice was published.
+    expect(selected.runtimes.get("redis")?.containerId).toBe("cid-redis");
+    expect(selected.runtimes.get("web")?.containerId).toBe("cid-web");
+    expect(byTag(selected.harness.events, "message.info")).toEqual([]);
+    expect(result.servicesStarted.map((service) => service.name)).toEqual([redis.name]);
+  });
 
-  test("refuses a missing container before stopping any selected service", async () => {
-    // Given the provider's missing-container inspect response.
-    const selected = runSelected(twoServicePlan(), {
-      services: [web.name, redis.name],
+  test("announces a replacement when apply changes the selected container id", async () => {
+    // Given the provider reports a different container id after apply.
+    const plannedApp = twoServicePlan();
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
+      afterApply: (applied, runtimes) => {
+        for (const service of Object.values(applied.services)) {
+          const current = runtimes.get(String(service.name));
+          if (current === undefined) continue;
+          runtimes.set(String(service.name), {
+            ...current,
+            containerId: `recreated-${String(service.name)}`,
+          });
+        }
+      },
+    });
+    // When only redis is restarted.
+    await Effect.runPromise(selected.operation);
+    // Then the replacement is announced and the app steps ran only for that service.
+    expect(byTag(selected.harness.events, "message.info").map((event) => event.body)).toEqual([
+      "Lando replaced redis's container instead of restarting it in place. Named volumes were kept.",
+    ]);
+    expect(selected.applyCalls[0]?.options).toMatchObject({ reconcile: false });
+    expect(selected.appBuildCalls.map(({ plan: appPlan }) => Object.keys(appPlan.services))).toEqual([
+      ["redis"],
+    ]);
+    expect(selected.runtimes.get("web")?.containerId).toBe("cid-web");
+  });
+
+  test("announces creation when an absent selected container is present after apply", async () => {
+    // Given the selected service reports an absent container before apply.
+    const plannedApp = twoServicePlan();
+    let created = false;
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
       inspect: (target) =>
-        Effect.succeed({
-          app: plan.id,
-          service: target.service,
-          providerId: plan.provider,
-          status: "absent" as const,
-          publications: { status: "missing" },
-        }),
+        Effect.succeed(
+          target.service === redis.name && !created
+            ? {
+                app: plannedApp.id,
+                service: target.service,
+                providerId: plannedApp.provider,
+                status: "absent" as const,
+                publications: { status: "missing" as const },
+              }
+            : runtimeFor(plannedApp, target.service),
+        ),
+      afterApply: () => {
+        created = true;
+      },
+    });
+    // When the restart runs.
+    await Effect.runPromise(selected.operation);
+    // Then it announces the newly observed container.
+    expect(byTag(selected.harness.events, "message.info").map((event) => event.body)).toEqual([
+      "redis had no container, so Lando created one.",
+    ]);
+  });
+
+  test("publishes no notice when both container ids are unknown", async () => {
+    const plannedApp = twoServicePlan();
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
+      inspect: (target) => {
+        const { containerId: _containerId, ...withoutId } = runtimeFor(plannedApp, target.service);
+        return Effect.succeed(withoutId);
+      },
+    });
+    await Effect.runPromise(selected.operation);
+    expect(byTag(selected.harness.events, "message.info")).toEqual([]);
+  });
+
+  test("refuses without an applied plan before any stop, hook, or build", async () => {
+    // Given no ownership-matched applied plan.
+    const selected = runSelected(twoServicePlan(), {
+      services: [redis.name],
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      appliedPlans: [],
     });
     // When a selected restart runs.
     const error = await Effect.runPromise(Effect.flip(selected.operation));
-    // Then it refuses before changing either service.
+    // Then it refuses with the start remediation before doing anything.
     expect(error).toBeInstanceOf(ProviderUnavailableError);
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", operation: "restart" });
+    expect(error.remediation).toContain("lando start");
+    expect(selected.stopCalls).toEqual([]);
+    expect(selected.applyCalls).toEqual([]);
+    expect(selected.buildCalls).toEqual([]);
+    expect(byTag(selected.harness.events, "pre-init")).toEqual([]);
+    expect(byTag(selected.harness.events, "pre-restart")).toEqual([]);
+    expect(byTag(selected.harness.events, "pre-service-stop")).toEqual([]);
+  });
+
+  test("refuses a new accelerated session before stopping", async () => {
+    // Given a selected accelerated bind whose session the applied plan never prepared.
+    const plannedApp = withAcceleratedBind(twoServicePlan(), redis.name, {
+      type: "bind",
+      source: AbsolutePath.make(`${plan.root}/data`),
+      target: PortablePath.make("/data"),
+      readOnly: false,
+      realization: "accelerated",
+      mountKey: "data",
+      excludes: [],
+    });
+    const applied = twoServicePlan();
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
+      resolveAppliedPlan: () => Effect.succeed(applied),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([]),
+      },
+    });
+    // When the restart preflights the accelerated bundle.
+    const error = await Effect.runPromise(Effect.flip(selected.operation));
+    // Then it refuses before any stop with file-sync remediation.
+    expect(error).toBeInstanceOf(FileSyncStartError);
+    expect(error.message).toContain("redis");
+    expect(error.remediation).toContain("lando start");
+    expect(selected.stopCalls).toEqual([]);
+    expect(selected.applyCalls).toEqual([]);
+  });
+
+  test("refuses an accelerated session the applied record holds under another engine", async () => {
+    // Given a selected accelerated bind whose applied session spec matches but names another engine.
+    const mount = {
+      type: "bind" as const,
+      source: AbsolutePath.make(`${plan.root}/data`),
+      target: PortablePath.make("/data"),
+      readOnly: false,
+      realization: "accelerated" as const,
+      mountKey: "data",
+      excludes: [],
+    };
+    const plannedApp = withAcceleratedBind(twoServicePlan(), redis.name, mount);
+    const previous = withAcceleratedBind(twoServicePlan(), redis.name, mount);
+    const applied: AppPlan = {
+      ...previous,
+      fileSync: previous.fileSync.map((entry) => ({ ...entry, engineId: "other-engine" })),
+    };
+    const selected = runSelected(plannedApp, {
+      services: [redis.name],
+      resolveAppliedPlan: () => Effect.succeed(applied),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([]),
+      },
+    });
+    // When the restart preflights the selected sessions.
+    const error = await Effect.runPromise(Effect.flip(selected.operation));
+    // Then it refuses before any stop, because only start switches the sync engine.
+    expect(error).toBeInstanceOf(FileSyncStartError);
+    expect(error.remediation).toContain("lando start");
+    expect(selected.stopCalls).toEqual([]);
+    expect(selected.applyCalls).toEqual([]);
+  });
+
+  test("refuses a removed accelerated session before stopping", async () => {
+    // Given an applied accelerated bind that the desired plan turned back into an ordinary bind.
+    const applied = withAcceleratedBind(twoServicePlan(), redis.name, {
+      type: "bind",
+      source: AbsolutePath.make(`${plan.root}/data`),
+      target: PortablePath.make("/data"),
+      readOnly: false,
+      realization: "accelerated",
+      mountKey: "data",
+      excludes: [],
+    });
+    const selected = runSelected(twoServicePlan(), {
+      services: [redis.name],
+      resolveAppliedPlan: () => Effect.succeed(applied),
+    });
+    // When the restart preflights the selected sessions.
+    const error = await Effect.runPromise(Effect.flip(selected.operation));
+    // Then it refuses before any stop, because only start flushes and retires the sync target.
+    expect(error).toBeInstanceOf(FileSyncStartError);
+    expect(error.message).toContain("redis");
+    expect(error.remediation).toContain("lando start");
+    expect(selected.stopCalls).toEqual([]);
+    expect(selected.applyCalls).toEqual([]);
+  });
+
+  test("leaves the selected services running when the artifact build fails", async () => {
+    // Given a selected service whose artifact build fails.
+    const selected = runSelected(twoServicePlan(), {
+      services: [redis.name],
+      buildResult: () => {
+        throw new Error("artifact build failed");
+      },
+    });
+    // When the restart builds before it stops anything.
+    const exit = await Effect.runPromiseExit(selected.operation);
+    // Then it fails without stopping or applying the service.
+    expect(Exit.isFailure(exit)).toBe(true);
     expect(selected.stopCalls).toEqual([]);
     expect(selected.applyCalls).toEqual([]);
   });
@@ -258,31 +442,6 @@ describe("selected service restart", () => {
     expect(byTag(selected.harness.events, "post-restart")).toEqual([]);
   });
 
-  test("restarts one service and leaves the others' container IDs and host ports in place", async () => {
-    const plannedApp = twoServicePlan();
-    const selected = runSelected(plannedApp, { services: [redis.name] });
-
-    const result = await Effect.runPromise(selected.operation);
-
-    expect(selected.destroyCalls).toEqual([]);
-    expect(selected.stopCalls).toEqual([redis.name]);
-    expect(selected.applyCalls).toHaveLength(1);
-    expect(Object.keys(selected.applyCalls[0]?.plan.services ?? {})).toEqual(["redis"]);
-    expect(selected.applyCalls[0]?.options).toMatchObject({
-      reconcile: false,
-      forbidRecreate: true,
-    });
-    expect(Object.keys(selected.applyCalls[0]?.options.recordedPlan?.services ?? {})).toEqual([
-      "web",
-      "redis",
-    ]);
-    expect(selected.runtimes.get("web")?.containerId).toBe("cid-web");
-    expect(selected.runtimes.get("redis")?.containerId).toBe("cid-redis");
-    const redisHttp = selected.runtimes.get("redis")?.publications;
-    expect(redisHttp?.status === "present" ? redisHttp.bindings[0]?.hostPort : undefined).toBe(34567);
-    expect(result.servicesStarted.map((service) => service.name)).toEqual(["redis"]);
-  });
-
   test("stops multiple selected services in reverse plan order", async () => {
     const plannedApp = threeServicePlan();
     const selected = runSelected(plannedApp, { services: [web.name, worker.name] });
@@ -290,49 +449,9 @@ describe("selected service restart", () => {
     const result = await Effect.runPromise(selected.operation);
 
     expect(selected.stopCalls).toEqual([worker.name, web.name]);
-    expect(selected.destroyCalls).toEqual([]);
     expect(Object.keys(selected.applyCalls[0]?.plan.services ?? {})).toEqual(["web", "worker"]);
     expect(result.servicesStarted.map((service) => service.name)).toEqual(["web", "worker"]);
     expect(selected.runtimes.get("redis")?.containerId).toBe("cid-redis");
-  });
-
-  test("refuses before stop when publish-port, bind-source, or network drift would recreate", async () => {
-    const cases: Array<{
-      readonly extras: Partial<ServiceRuntimeFields> | ServiceRunObservation;
-      readonly reason: ServiceRestartWouldRecreateError["reason"];
-    }> = [
-      { extras: { publishFingerprint: "8080/tcp@127.0.0.1:18080" }, reason: "publish-port" },
-      { extras: { bindSources: { "/run/lando/ssh-agent": "bind:/tmp/old" } }, reason: "bind-source" },
-      { extras: { networkNames: ["unrelated"] }, reason: "network" },
-    ];
-    for (const testCase of cases) {
-      const plannedApp = twoServicePlan();
-      const selected = runSelected(plannedApp, {
-        services: [web.name],
-        inspect: () =>
-          Effect.succeed(
-            runtimeFor(plannedApp, web.name, {
-              publishFingerprint: "",
-              bindSources: {},
-              networkNames: [],
-              ...testCase.extras,
-            }),
-          ),
-      });
-      const error = await Effect.runPromise(Effect.flip(selected.operation));
-      expect(error).toBeInstanceOf(ServiceRestartWouldRecreateError);
-      if (!(error instanceof ServiceRestartWouldRecreateError)) {
-        throw new TypeError("expected ServiceRestartWouldRecreateError");
-      }
-      expect(error).toMatchObject({
-        _tag: "ServiceRestartWouldRecreateError",
-        service: "web",
-        reason: testCase.reason,
-      });
-      expect(error.remediation).toContain("lando rebuild -s web");
-      expect(selected.stopCalls).toEqual([]);
-      expect(selected.applyCalls).toEqual([]);
-    }
   });
 
   test("unknown service fails with ServiceNotFoundError before provider action", async () => {
@@ -345,7 +464,6 @@ describe("selected service restart", () => {
     expect(error).toMatchObject({ _tag: "ServiceNotFoundError", service: "missing" });
     expect(selected.stopCalls).toEqual([]);
     expect(selected.applyCalls).toEqual([]);
-    expect(selected.destroyCalls).toEqual([]);
   });
 
   test("does not apply or remove routes for a selected restart", async () => {
@@ -448,8 +566,9 @@ describe("selected service restart", () => {
       expect(terminated).toEqual([]);
       expect(flushed).toEqual(selectedService === redis.name ? ["sess-redis"] : []);
       expect(selected.stopCalls).toEqual([selectedService]);
-      expect(selected.destroyCalls).toEqual([]);
-      expect(selected.applyCalls[0]?.options.recordedPlan?.fileSync).toEqual(plannedApp.fileSync);
+      expect(selected.applyCalls[0]?.options.recordedPlan?.fileSync).toEqual(
+        plannedApp.fileSync.filter(({ session }) => session.service === selectedService),
+      );
     },
   );
 });
