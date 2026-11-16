@@ -847,7 +847,7 @@ The tool MUST refuse an app root that already holds `composer.json` without the 
 
 After promotion it MUST run, in Composer's own order and only for events the root package defines, `post-root-package-install`, then `composer install --no-interaction`, then `post-create-project-cmd`; `--no-scripts` MUST skip both hooks and pass `--no-scripts` to `composer install`. A defined hook that fails MUST fail the tool. Hooks keep the terminal so interactive ones can prompt.
 
-`create-project` and the two Drupal scaffold tools share one promotion protocol: a lock, a durable per-path manifest, atomic promotion with resume from an interrupted copy or promotion, a completion marker, and the refusal to overwrite an occupied path. `drupal-scaffold` and `drupal-cms-scaffold` stage their own projects and keep their own tool names, markers, and completion checks.
+`create-project` and the two Drupal scaffold tools share one promotion protocol: one app-root lock that excludes all three tools from each other, a durable per-path manifest, atomic promotion with resume from an interrupted copy or promotion, and the refusal to overwrite an occupied path. A resumed `create-project` MUST NOT rerun a `post-root-package-install` hook that already succeeded, and an event whose script list is empty counts as undefined. `drupal-scaffold` and `drupal-cms-scaffold` stage their own projects, keep their own tool names, and leave a completion marker that their completion checks read. `create-project` leaves no marker or state file in the app root once it succeeds; the `composer.json` refusal above covers a rerun.
 
 ### 8.9 Renderers and messages
 
