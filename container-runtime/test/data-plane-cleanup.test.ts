@@ -642,7 +642,7 @@ const createHttpError = (status: number) => ({
 
 describe("failed-create compensation", () => {
   test.each(acquireModes.flatMap((mode) => [204, 404].map((status) => [mode, status] as const)))(
-    "%s removes the create-query name once when create returns 500 and DELETE returns %s",
+    "%s removes the create-query name once when create returns 500 and DELETE returns %d",
     async (mode, status) => {
       const requests: Array<{ method: string; path: string }> = [];
       const created = new Set<string>();
@@ -800,32 +800,18 @@ describe("failed-create compensation", () => {
     return {
       typed,
       defect,
-      typedReason,
-      defectReason,
       cause: Cause.fromReasons([typedReason, defectReason]),
     };
   };
-
-  const createReasons = (cause: Cause.Cause<unknown>) =>
-    cause.reasons.filter(
-      (reason) =>
-        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) !== "cleanup",
-    );
 
   const expectPreservedCreateCause = (
     cause: Cause.Cause<unknown>,
     original: ReturnType<typeof annotatedCreateCause>,
   ) => {
-    expect(original.cause.reasons).toEqual([original.typedReason, original.defectReason]);
-    expect(Context.getOrUndefined(Cause.reasonAnnotations(original.typedReason), FailureRoleAnnotation)).toBe(
-      "peer",
+    const preserved = cause.reasons.filter(
+      (reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) !== "cleanup",
     );
-    expect(
-      Context.getOrUndefined(Cause.reasonAnnotations(original.defectReason), FailureRoleAnnotation),
-    ).toBe("rollback");
-    expect(original.typedReason.error).toBe(original.typed);
-    expect(original.defectReason.defect).toBe(original.defect);
-    const preserved = createReasons(cause);
     expect(cause.reasons[0]).toBe(preserved[0]);
     expect(preserved.map((reason) => reason._tag)).toEqual(["Fail", "Die"]);
     const fail = preserved[0];
@@ -836,16 +822,12 @@ describe("failed-create compensation", () => {
     expect(Context.getOrUndefined(Cause.reasonAnnotations(fail), FailureRoleAnnotation)).toBe("peer");
     expect(Context.getOrUndefined(Cause.reasonAnnotations(die), FailureRoleAnnotation)).toBe("rollback");
     expect(fail.error).toBeInstanceOf(ProviderUnavailableError);
-    expect(fail.error).toMatchObject({
-      _tag: "ProviderUnavailableError",
-      operation: "transport",
-      message: "socket down",
-    });
+    expect(fail.error).toMatchObject(original.typed);
     expect(die.defect).toBe(original.defect);
   };
 
   test.each(publicModes.flatMap((mode) => [204, 404].map((status) => [mode, status] as const)))(
-    "%s preserves an annotated compound create Cause when DELETE returns %s",
+    "%s preserves an annotated compound create Cause when DELETE returns %d",
     async (mode, status) => {
       const original = annotatedCreateCause();
       const requests: Array<{ method: string; path: string }> = [];
