@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import { Effect } from "effect";
 import { ephemeralDataHelperLabels } from "../src/ephemeral-data-helpers.ts";
 import {
@@ -259,10 +260,11 @@ test.each([
 test.skipIf(process.platform !== "linux")(
   "observes a real process as present and then absent",
   async () => {
-    const child = Bun.spawn(["sleep", "30"]);
+    const child = Bun.spawn(["cat"], { stdin: "pipe", stdout: "ignore" });
     try {
       const before = probeHelperOwnerPid(child.pid);
       expect(before.state).toBe("present");
+      expect(before.start).toMatch(/^\d+$/u);
       expect(before.start).toBe(readProcessStartToken(child.pid));
     } finally {
       child.kill();
@@ -273,14 +275,19 @@ test.skipIf(process.platform !== "linux")(
   10_000,
 );
 
-test.skipIf(process.platform !== "linux")(
+// Hosts without a machine id (some minimal containers) record no owner; that path is covered by the verdict table.
+const hasMachineId = ["/etc/machine-id", "/var/lib/dbus/machine-id"].some(
+  (path) => existsSync(path) && readFileSync(path, "utf8").trim().length > 0,
+);
+
+test.skipIf(process.platform !== "linux" || !hasMachineId)(
   "captures a Linux owner identity from the live process",
   async () => {
     const identity = await Effect.runPromise(helperOwnerIdentity);
-    if (identity === undefined) return;
-    expect(identity.machine).toMatch(/^[0-9a-f]{32}$/u);
-    expect(identity.pid).toBe(process.pid);
-    expect(identity.pidDomain.length).toBeGreaterThan(0);
-    expect(identity.start).toBe(readProcessStartToken(process.pid));
+    expect(identity?.machine).toMatch(/^[0-9a-f]{32}$/u);
+    expect(identity?.pid).toBe(process.pid);
+    expect(identity?.pidDomain).toMatch(/^pid:\[\d+\]$/u);
+    expect(identity?.start).toMatch(/^\d+$/u);
+    expect(identity?.start).toBe(readProcessStartToken(process.pid));
   },
 );
