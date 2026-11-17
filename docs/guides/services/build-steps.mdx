@@ -97,7 +97,8 @@ A `build.app` step did its work inside one container, so its result counts only 
 | What you ran | `build.app` steps |
 | --- | --- |
 | `lando start` again, container kept | Cached |
-| `lando restart -s <service>` | Not run. The container stays, and so does the step's work |
+| `lando restart -s <service>`, container kept | Not run. The container stays, and so does the step's work |
+| `lando restart -s <service>` that replaces or creates the container | Run again, for that service only |
 | `lando stop`, then `lando start` | Run again |
 | `lando restart` | Run again |
 | `lando destroy`, then `lando start` | Run again |
@@ -117,7 +118,7 @@ Put anything that belongs to the image in `build.artifact`: system packages and 
 Two limits:
 
 - Lando doesn't read the files a `build.app` step uses. Editing `package-lock.json` doesn't rerun `npm ci` in a container that stayed. Run `lando rebuild` for that.
-- A `tmpfs` mount is emptied whenever its container stops, including `lando restart -s <service>`, and the step isn't rerun to fill it.
+- A `tmpfs` mount is emptied whenever its container stops, including a `lando restart -s <service>` that keeps the container, and the step isn't rerun to fill it.
 
 ## Read step output and failures
 

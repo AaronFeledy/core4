@@ -133,7 +133,7 @@ Environment inheritance MUST occur once for an invocation, with caller overrides
 
 ### 3.5 Lifecycle events
 
-Events are typed, schema-validated, and drawn from a closed registry. Plugin subscribers register declaratively. CLI events use canonical command ids, not aliases. `pre-restart` and `post-restart` MUST bracket the inner stop/start events, which MUST still fire. Resolved tooling extends the valid set with `pre-<tool>` and `post-<tool>`; nested command-event recursion MUST be bounded and report the complete valid-name set on rejection (§8.5.7).
+Events are typed, schema-validated, and drawn from a closed registry. Plugin subscribers register declaratively. CLI events use canonical command ids, not aliases. `pre-restart` and `post-restart` MUST bracket the inner stop/start events, which MUST still fire: a whole-app restart's app stop and start pairs, and a selected restart's `pre-service-stop`/`post-service-stop` pair per selected service (§6.15). Resolved tooling extends the valid set with `pre-<tool>` and `post-<tool>`; nested command-event recursion MUST be bounded and report the complete valid-name set on rejection (§8.5.7).
 
 | Scope | Event names |
 |---|---|
@@ -286,7 +286,7 @@ A cold `app:start` follows this canonical order; optional global and build detai
 11. exactly one of `cli-app:start-run` or `cli-app:start-error`
 12. `before-exit`
 
-The global bracket MUST emit on every required-service check; `cached` distinguishes warm no-op from cold work. Build phases remain ordered while sibling steps run concurrently (§6.13). Stop, rebuild, and destroy use analogous pairs. Restart MUST order `pre-restart`, stop pair, start pair, `post-restart`; `post-restart` MUST NOT report success after either body fails.
+The global bracket MUST emit on every required-service check; `cached` distinguishes warm no-op from cold work. Build phases remain ordered while sibling steps run concurrently (§6.13). Stop, rebuild, and destroy use analogous pairs. Whole-app restart MUST order `pre-restart`, stop pair, start pair, `post-restart`; selected restart orders `pre-restart`, one service stop pair per selected service, the services' start events from apply, `post-restart`. `post-restart` MUST NOT report success after either body fails.
 
 ### 11.5 Hot-path events
 

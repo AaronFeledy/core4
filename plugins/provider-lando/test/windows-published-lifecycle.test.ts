@@ -420,7 +420,9 @@ describe("managed Windows published lifecycle", () => {
       await matchingRequestedLock.promise;
       expect(calls.some((call) => call.endsWith("/containers/lando-global--traefik/restart"))).toBe(false);
       expect(calls.some((call) => call === "GET /containers/router-id/json")).toBe(false);
-      await Effect.runPromise(Effect.scoped(provider.apply(other, { reconcile: true })));
+      const otherResult = await Effect.runPromise(Effect.scoped(provider.apply(other, { reconcile: true })));
+      // The Windows physical-plan path reports the same container outcome as any other apply.
+      expect(otherResult.services).toEqual({ traefik: { action: "created" } });
       expect(running.has("lando-other--traefik")).toBe(true);
       expect(lockCalls.filter((call) => call.key === "windows-published-lifecycle")).toHaveLength(3);
     } finally {

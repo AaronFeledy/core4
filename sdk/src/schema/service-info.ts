@@ -46,10 +46,30 @@ export const ServiceInfoLogSource = Schema.Union([
 ]);
 export type ServiceInfoLogSource = typeof ServiceInfoLogSource.Type;
 
+export const ServiceContainerChange = Schema.Struct({
+  action: Schema.Literals(["kept", "started", "replaced", "created"]).annotate({
+    description: "What apply did to the service container: kept, started in place, replaced, or created.",
+  }),
+  reason: Schema.optionalKey(
+    Schema.Literals(["reconcile", "config", "publish-port", "bind-source", "network", "host-port"]).annotate({
+      description:
+        "Why an existing container was replaced: reconcile, create-config drift, published ports, a bind source, a missing network, or a taken host port. Absent for kept, started, and created containers.",
+    }),
+  ),
+  anonymousVolumes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description:
+      "Container paths of a replaced container's anonymous volumes, meaning volume mounts whose destination no planned mount or store of the service covers.",
+  }),
+});
+export type ServiceContainerChange = typeof ServiceContainerChange.Type;
+
 export const StartedService = Schema.Struct({
   name: Schema.String.annotate({ description: "Service name in the app plan." }),
   state: ServiceState.annotate({
     description: "Observed service state after startup or readiness supervision.",
+  }),
+  container: Schema.optionalKey(ServiceContainerChange).annotate({
+    description: "What apply did to this service's container; absent when the provider does not report it.",
   }),
   ...connectionAddressFields,
 });

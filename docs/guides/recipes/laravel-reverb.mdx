@@ -247,7 +247,6 @@ If nothing arrives within 60 seconds, the script exits 1. Check `lando logs -s w
 | --- | --- |
 | `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | That service lacks `includes: [vendor]`. Add it and run `lando start`. |
 | `tempnam(): file created in the system's temporary directory` on the app URL | Check which directory Laravel cannot write and the service's project-user status. See [Who owns your app files](../services/file-ownership.mdx). |
-| Selected `lando restart -s` refuses after a `command:` change | That restart stays in place. Run `lando start`, or `lando rebuild -s <service>` for a forced refresh. |
 
 ## Tear down
 

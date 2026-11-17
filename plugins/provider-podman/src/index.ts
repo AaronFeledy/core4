@@ -807,7 +807,7 @@ const assembleRuntimeProvider = (
             ctx: PODMAN_CTX,
             ...execHelper,
           }),
-        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX, ...execHelper }),
+        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
       },
     });
 
@@ -888,7 +888,6 @@ const assembleRuntimeProvider = (
             : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
-          ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(

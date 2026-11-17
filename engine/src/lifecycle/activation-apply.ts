@@ -15,7 +15,6 @@ export interface ActivationApply<E, R> {
   readonly complete?: boolean;
   readonly recordedPlan?: AppPlan;
   readonly completionPlan?: AppPlan;
-  readonly forbidRecreate?: boolean;
   readonly signal?: AbortSignal;
   readonly beforeApply?: Effect.Effect<void, E, R>;
   readonly environment?: EnvironmentValueResolverSession;
@@ -40,7 +39,6 @@ export const applyActivation = Effect.fn("Activation.apply")(
           ...(request.complete === undefined ? {} : { complete: request.complete }),
           ...(request.recordedPlan === undefined ? {} : { recordedPlan: request.recordedPlan }),
           ...(request.completionPlan === undefined ? {} : { completionPlan: request.completionPlan }),
-          ...(request.forbidRecreate === undefined ? {} : { forbidRecreate: request.forbidRecreate }),
           ...(request.signal === undefined ? {} : { signal: request.signal }),
           resolveServiceEnvironment: (service) => session.resolveEnvironment(service.environment),
           onVolumeCreated,

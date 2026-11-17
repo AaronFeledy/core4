@@ -175,7 +175,10 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
         // Re-observe the router before the post event: a rebuild that leaves the
         // router's startup observation broken has not finished rebuilding.
         yield* revalidateRouter;
-        const servicesRebuilt = startedServices(yield* collectObservedConnections(builtPlan, outcome.ready));
+        const servicesRebuilt = startedServices(
+          yield* collectObservedConnections(builtPlan, outcome.ready),
+          applied.changes,
+        );
 
         return { builtPlan, servicesRebuilt };
       }),

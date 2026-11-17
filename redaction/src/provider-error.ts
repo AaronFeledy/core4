@@ -18,7 +18,6 @@ import {
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
-  ServiceRestartWouldRecreateError,
   ServiceStartError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -44,7 +43,6 @@ export const isProviderError = Schema.is(
     HealthcheckTargetUnsupportedError,
     ServiceExecError,
     ServiceNotFoundError,
-    ServiceRestartWouldRecreateError,
     ServiceStartError,
     VolumeOperationError,
     ServiceCopyError,
@@ -176,12 +174,6 @@ export function redactProviderError(
       return new ServiceNotFoundError({
         ...baseFields(error, redactor, options),
         service: redactor.redactString(error.service),
-      });
-    case "ServiceRestartWouldRecreateError":
-      return new ServiceRestartWouldRecreateError({
-        ...baseFields(error, redactor, options),
-        service: redactor.redactString(error.service),
-        reason: error.reason,
       });
     case "ServiceStartError":
       return new ServiceStartError({

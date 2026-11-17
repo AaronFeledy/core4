@@ -122,7 +122,7 @@ Lando keeps each app's leaf in its own folder under the Lando data directory and
 
 Removing a hostname doesn't trigger a new certificate. The one you have still covers the names that remain.
 
-When the certificate does change, the next `lando start` recreates that service so it mounts the new files. An unchanged certificate never recreates a service. `lando restart --service <name>` won't recreate a service, so it asks you to run `lando rebuild` instead. `lando destroy` deletes the app's leaf.
+When the certificate does change, the next `lando start` recreates that service so it mounts the new files. `lando restart --service <name>` does the same for the services you name. An unchanged certificate never recreates a service. `lando destroy` deletes the app's leaf.
 
 The router keeps separate certificates for HTTPS routes. Whenever Lando publishes an app's HTTPS routes, it checks that app's router certificate and the shared default certificate against the current CA and the same renewal margin. It replaces stale pairs and reloads them automatically, even when the route names haven't changed. Apps that start at the same time take turns, so they cannot mix the shared default certificate and key from separate issuances. You don't need to delete certificates or restart the shared router yourself. On Windows, Lando handles the restart needed to load changed routes or certificates, or confirm a previously unfinished reload.
 

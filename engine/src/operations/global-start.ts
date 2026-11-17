@@ -213,7 +213,10 @@ export const globalStart = Effect.fn("GlobalStart.start")(
         });
         const planOrder = new Map(Object.keys(loaded.plan.services).map((id, index) => [id, index]));
         const servicesStarted = [
-          ...startedServices(yield* collectObservedConnections(outcome.builtPlan, outcome.ready)),
+          ...startedServices(
+            yield* collectObservedConnections(outcome.builtPlan, outcome.ready),
+            applied.changes,
+          ),
         ].sort((left, right) => (planOrder.get(left.name) ?? 0) - (planOrder.get(right.name) ?? 0));
         return { app: loaded.plan.name, servicesStarted };
       }),

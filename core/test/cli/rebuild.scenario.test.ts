@@ -491,14 +491,14 @@ describe("lando rebuild", () => {
       {
         reconcile: true,
         services: ["database", "api"],
-        recordedServices: ["api", "database", "dependent", "unrelated"],
+        recordedServices: ["database", "api"],
       },
     ]);
     expect(harness.recordedPlans[0]?.services[api.name]?.artifact).toEqual({
       kind: "ref",
       ref: "api:new-built-artifact",
     });
-    expect(harness.recordedPlans[0]?.services[unrelated.name]).toEqual(unrelated);
+    expect(harness.recordedPlans[0]?.routes).toEqual(scopedPlan.routes);
     expect(harness.buildAppCalls).toEqual([{ force: true, services: ["database", "api"] }]);
     expect(result.servicesRebuilt).toEqual(["database", "api"]);
   });

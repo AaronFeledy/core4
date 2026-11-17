@@ -7,7 +7,6 @@ import {
 } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 import { DateTime, Effect, Option, Schema } from "effect";
-import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import type {
   EngineHttpApi,
   EngineHttpRequest,
@@ -15,18 +14,12 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
-import type { ExecSupervisionOptions } from "../exec-supervision.ts";
 import { APP_ROOT_LABEL } from "../labels.ts";
 import { containerOwnershipLabels } from "../native-ownership.ts";
-import { fingerprintInspectPublishPorts, serviceContainerName } from "../plan.ts";
+import { serviceContainerName } from "../plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { runObservationFromInspectState } from "../run-observation.ts";
-import {
-  inspectBindSources,
-  inspectContainerLabels,
-  inspectNetworkNames,
-  presentLogicalCreateConfig,
-} from "./bring-up-recreate.ts";
+import { inspectContainerLabels } from "./bring-up-recreate.ts";
 import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
 interface ContainerInspect {
@@ -85,8 +78,7 @@ export const publicationObservationFromInspect = (inspect: unknown): Publication
   return { status: "present", bindings };
 };
 
-export interface InspectOptions
-  extends Pick<ExecSupervisionOptions, "resolveContainerHelper" | "helperTarget"> {
+export interface InspectOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
 }
@@ -181,12 +173,6 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   }
   const run = runObservationFromInspectState(decoded.State);
   const startedAt = lastStartedAt(decoded);
-  const bindSources = inspectBindSources(decoded);
-  const networkNames = inspectNetworkNames(decoded);
-  const physical =
-    options.resolveContainerHelper === undefined || options.helperTarget === undefined
-      ? plan
-      : yield* prepareContainerHelperMounts(plan, options);
   return {
     app: plan.id,
     appRoot: plan.root,
@@ -200,9 +186,6 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     publications: publicationObservationFromInspect(decoded),
     mounts: mountObservationFromInspect(decoded),
     ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
-    publishFingerprint: fingerprintInspectPublishPorts(decoded),
-    labels: presentLogicalCreateConfig(labels, { physical, logical: plan, service: service.name }),
-    ...(bindSources === undefined ? {} : { bindSources }),
-    ...(networkNames === undefined ? {} : { networkNames }),
+    labels,
   };
 });
