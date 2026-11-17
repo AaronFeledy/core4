@@ -80,10 +80,7 @@ export const invalidateAppBuildResult = (
   bucket.mutate((current) => {
     const entries = current ?? [];
     const updated = entries.map((entry) =>
-      entry.phase === "app" &&
-      identityOf(entry) === identityOf(input) &&
-      entry.outcome === "complete" &&
-      !entry.invalidated
+      identityOf(entry) === identityOf(input) && entry.outcome === "complete" && !entry.invalidated
         ? { ...entry, invalidated: true as const }
         : entry,
     );
@@ -103,10 +100,7 @@ export function findCompleteBuildResult(
     if (entry !== undefined && identityOf(entry) === identityOf(input)) {
       // Only the latest recorded attempt counts: a newer failure hides an older success.
       if (entry.outcome !== "complete" || entry.buildKey !== input.buildKey) return undefined;
-      return entry.phase === "app" &&
-        !entry.invalidated &&
-        input.containerId &&
-        entry.containerId === input.containerId
+      return !entry.invalidated && input.containerId && entry.containerId === input.containerId
         ? entry
         : undefined;
     }
@@ -124,7 +118,7 @@ export const clearAppBuildResults = Effect.fnUntraced(function* (
 
 type BuildResultIdentity = Pick<AppBuildResult, "service" | "phase" | "step" | "buildKey">;
 const identityOf = (entry: BuildResultIdentity): string =>
-  `${entry.service}\u0000${entry.phase}\u0000${entry.step ?? ""}`;
+  `${entry.service}\u0000${entry.phase}\u0000${entry.step}`;
 
 const resultKeyOf = (entry: BuildResultIdentity): string => `${identityOf(entry)}\u0000${entry.buildKey}`;
 
