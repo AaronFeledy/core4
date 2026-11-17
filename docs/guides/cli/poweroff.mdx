@@ -23,7 +23,7 @@ lando poweroff -y
 
 Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando removes the containers it can prove belong to that root and keeps their named volumes. Apps whose containers have already exited are skipped, so their stop steps do not run again.
 
-If one app fails, poweroff still stops the others and then reports every failure with its remediation. It leaves the global app and the managed runtime running in that case, so you can fix the failed app and run `lando poweroff` again.
+If one app fails, poweroff still stops the others and then reports every failure with its remediation. It also reports a provider that cannot be observed while it still records apps, and an accelerated-start journal it cannot read. Every failure leaves the global app and the managed runtime running, so you can fix the problem and run `lando poweroff` again.
 
 <Guide>
   <Scenario id="stop-every-app" render>
