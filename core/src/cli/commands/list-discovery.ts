@@ -82,13 +82,12 @@ const preferRoot = (left: string, right: string): string => {
   return left;
 };
 
-const entryKind = (entry: AppsListEntry): "global" | "scratch" | "user" =>
+const entryKind = (entry: Pick<AppsListEntry, "appId" | "scratch">): "global" | "scratch" | "user" =>
   entry.appId === GLOBAL_APP_ID ? "global" : entry.scratch === true ? "scratch" : "user";
 
-const identityKey = (entry: AppsListEntry): string =>
-  `${entry.providerId}\0${entry.appRoot}\0${entryKind(entry)}\0${entry.appId}`;
-
-export const appsListIdentity = (entry: AppsListEntry): string => identityKey(entry);
+export const appsListIdentity = (
+  entry: Pick<AppsListEntry, "providerId" | "appRoot" | "appId" | "scratch">,
+): string => `${entry.providerId}\0${entry.appRoot}\0${entryKind(entry)}\0${entry.appId}`;
 
 const mergeEntries = (existing: AppsListEntry, entry: AppsListEntry): AppsListEntry => ({
   appId: existing.appId,
@@ -102,7 +101,7 @@ const mergeEntries = (existing: AppsListEntry, entry: AppsListEntry): AppsListEn
 export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): AppsListEntry[] => {
   const byIdentity = new Map<string, AppsListEntry>();
   for (const entry of entries) {
-    const key = identityKey(entry);
+    const key = appsListIdentity(entry);
     const existing = byIdentity.get(key);
     byIdentity.set(key, existing === undefined ? entry : mergeEntries(existing, entry));
   }
@@ -320,7 +319,7 @@ export const appsFromContainerList = (
     if (options.includeScratch !== true && scratch) continue;
     const providerId = labels[PROVIDER_LABEL] ?? "lando";
     const appRoot = labels[APP_ROOT_LABEL] ?? (appId === GLOBAL_APP_ID ? (options.globalAppRoot ?? "") : "");
-    const key = `${providerId}\0${appRoot}\0${appId === GLOBAL_APP_ID ? "global" : scratch ? "scratch" : "user"}\0${appId}`;
+    const key = appsListIdentity({ providerId, appRoot, appId, scratch });
     const existing = grouped.get(key) ?? {
       appId,
       appRoot,
