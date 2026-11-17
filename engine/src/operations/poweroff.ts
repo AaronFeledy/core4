@@ -133,26 +133,24 @@ const failureMessage = (error: unknown): string => {
 const failureRemediation = (error: unknown): string =>
   taggedErrorRemediation(error) ?? "Resolve the reported failure for this app, then retry `lando poweroff`.";
 
-const redacted = (text: string): Effect.Effect<string> =>
-  Effect.gen(function* () {
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    if (Option.isNone(redaction)) return text;
-    const profile = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
-    return profile.redactString(text);
-  });
+const redacted = Effect.fnUntraced(function* (text: string) {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (Option.isNone(redaction)) return text;
+  const profile = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
+  return profile.redactString(text);
+});
 
-const stopFailure = (
+const stopFailure = Effect.fnUntraced(function* (
   target: Pick<StopFailure, "kind" | "appId" | "appRoot" | "providerId">,
   error: unknown,
-): Effect.Effect<PoweroffStopFailure> =>
-  Effect.gen(function* () {
-    return {
-      ...target,
-      errorTag: failureTag(error),
-      message: yield* redacted(failureMessage(error)),
-      remediation: yield* redacted(failureRemediation(error)),
-    };
-  });
+) {
+  return {
+    ...target,
+    errorTag: failureTag(error),
+    message: yield* redacted(failureMessage(error)),
+    remediation: yield* redacted(failureRemediation(error)),
+  } satisfies PoweroffStopFailure;
+});
 
 const stopEntries = (failures: ReadonlyArray<StopFailure>): Effect.Effect<PoweroffStopFailure[]> =>
   Effect.forEach(failures, (failure) => stopFailure(failure, failure.error), { concurrency: 1 });
@@ -459,19 +457,20 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   };
 });
 
-const globalStopTarget = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) =>
-  Effect.gen(function* () {
-    const plan = snapshots
-      .flatMap((snapshot) => snapshot.appliedPlans)
-      .find((candidate) => candidate.id === "global");
-    if (plan !== undefined) return { root: plan.identity?.appRoot ?? plan.root, providerId: plan.provider };
-    const service = snapshots
-      .flatMap((snapshot) => snapshot.services)
-      .find((candidate) => candidate.app === "global" && candidate.appRoot !== undefined);
-    if (service?.appRoot !== undefined) return { root: service.appRoot, providerId: service.providerId };
-    const app = yield* GlobalAppService;
-    return { root: (yield* app.paths).root, providerId: yield* globalObserveProviderId };
-  });
+const globalStopTarget = Effect.fnUntraced(function* (
+  snapshots: ReadonlyArray<ProviderRuntimeSnapshot>,
+) {
+  const plan = snapshots
+    .flatMap((snapshot) => snapshot.appliedPlans)
+    .find((candidate) => candidate.id === "global");
+  if (plan !== undefined) return { root: plan.identity?.appRoot ?? plan.root, providerId: plan.provider };
+  const service = snapshots
+    .flatMap((snapshot) => snapshot.services)
+    .find((candidate) => candidate.app === "global" && candidate.appRoot !== undefined);
+  if (service?.appRoot !== undefined) return { root: service.appRoot, providerId: service.providerId };
+  const app = yield* GlobalAppService;
+  return { root: (yield* app.paths).root, providerId: yield* globalObserveProviderId };
+});
 
 const stopManagedRuntimeService: Effect.Effect<
   RuntimeServiceStopResult,
