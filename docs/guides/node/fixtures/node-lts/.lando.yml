@@ -1,0 +1,5 @@
+name: node-lts
+services:
+  app:
+    type: node
+    primary: true

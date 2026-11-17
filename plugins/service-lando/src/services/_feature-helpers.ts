@@ -15,13 +15,25 @@ import type {
 } from "@lando/sdk/services";
 import { Effect } from "effect";
 
+export interface ServiceConfigIssueOptions {
+  readonly suggestion?: string;
+  /** App-root-relative project file whose content produced the issue. */
+  readonly projectFile?: string;
+}
+
 export class ServiceConfigIssue extends Error {
+  readonly suggestion: string | undefined;
+  readonly projectFile: string | undefined;
+
   constructor(
     readonly path: ValidationIssuePath,
     message: string,
-    readonly suggestion?: string,
+    options: string | ServiceConfigIssueOptions = {},
   ) {
     super(message);
+    const resolved = typeof options === "string" ? { suggestion: options } : options;
+    this.suggestion = resolved.suggestion;
+    this.projectFile = resolved.projectFile;
     this.name = "ServiceConfigIssue";
   }
 }
@@ -107,6 +119,15 @@ export const serviceTypeResolve = <A>(
                   path: cause.path,
                   message: cause.message,
                   ...(cause.suggestion ? { suggestion: cause.suggestion } : {}),
+                  ...(cause.projectFile === undefined
+                    ? {}
+                    : {
+                        source: {
+                          layer: "project-file" as const,
+                          file: cause.projectFile,
+                          path: [],
+                        },
+                      }),
                 },
               ],
             }

@@ -210,7 +210,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       storage: authoredStorage,
     });
     if (preparedMounts instanceof LandofileValidationError || preparedMounts instanceof ServiceFeatureError)
-      return yield* Effect.fail(servicePlanError(input.appRoot, name, preparedMounts));
+      return yield* Effect.fail(
+        servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: preparedMounts }),
+      );
     const volumeTargets = new Set<string>(
       preparedMounts.servicePlan.mounts
         .filter((mount) => mount.type === "volume")
@@ -399,7 +401,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
     const withArtifact = resolveServiceArtifact(servicePlan, entry, input.manifests);
     if (withArtifact instanceof ServiceTypeError)
-      return yield* Effect.fail(servicePlanError(input.appRoot, name, withArtifact));
+      return yield* Effect.fail(
+        servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: withArtifact }),
+      );
     for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
       artifactBuild: withArtifact.artifact?.kind === "build" || ownershipStep !== undefined,

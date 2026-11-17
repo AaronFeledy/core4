@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import {
   LandofileValidationError,
   PluginLoadError,
@@ -5,7 +6,8 @@ import {
   type ServiceTypeCollisionError,
   ServiceTypeError,
 } from "@lando/sdk/errors";
-import { validationIssue } from "@lando/sdk/schema";
+import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
+import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
 
 export const serviceTypeCollision = (
   appRoot: string,
@@ -24,7 +26,37 @@ export const serviceTypeCollision = (
     ],
   });
 
-export const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) => {
+/**
+ * Resolve a service-type's project-file reference against the files the planner actually read.
+ * The service type names an app-root-relative file; the planner owns containment and the absolute
+ * path, so an undeclared file falls back to authored attribution instead of naming an unread path.
+ */
+const attributeProjectFileIssue = (
+  appRoot: string,
+  issue: ValidationIssue,
+  projectFiles: ReadonlyArray<ServiceTypeProjectFileInput> | undefined,
+): ValidationIssue => {
+  const source = issue.source;
+  if (source === undefined || source.layer !== "project-file") return issue;
+  const declared = projectFiles?.find(
+    (file) => resolve(appRoot, file.path) === resolve(appRoot, source.file),
+  );
+  if (declared === undefined) {
+    const { source: _unverified, ...withoutSource } = issue;
+    return withoutSource;
+  }
+  return { ...issue, source: { ...source, file: resolve(appRoot, declared.path) } };
+};
+
+export interface ServicePlanErrorInput {
+  readonly appRoot: string;
+  readonly serviceName: string;
+  readonly cause: unknown;
+  /** Project files the planner read for this service, when its type resolves from them. */
+  readonly projectFiles?: ReadonlyArray<ServiceTypeProjectFileInput>;
+}
+
+export const servicePlanError = ({ appRoot, serviceName, cause, projectFiles }: ServicePlanErrorInput) => {
   if (cause instanceof LandofileValidationError) return cause;
   const remediation =
     cause instanceof ServiceTypeError ||
@@ -32,25 +64,30 @@ export const servicePlanError = (appRoot: string, serviceName: string, cause: un
     cause instanceof PluginLoadError
       ? cause.remediation
       : undefined;
+  const issues: ReadonlyArray<ValidationIssue> =
+    (cause instanceof ServiceTypeError || cause instanceof ServiceFeatureError) &&
+    cause.issues !== undefined &&
+    cause.issues.length > 0
+      ? cause.issues.map((issue) => {
+          const attributed = attributeProjectFileIssue(appRoot, issue, projectFiles);
+          return {
+            ...attributed,
+            path: ["services", serviceName, ...attributed.path],
+            suggestion: attributed.suggestion ?? cause.remediation,
+          };
+        })
+      : [
+          validationIssue(
+            ["services", serviceName],
+            cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
+            remediation,
+          ),
+        ];
+  const projectFile = issues.find((issue) => issue.source?.layer === "project-file")?.source;
   return new LandofileValidationError({
     message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
     remediation: remediation ?? `Correct the configuration of service ${serviceName}.`,
-    file: `${appRoot}/.lando.yml`,
-    issues:
-      (cause instanceof ServiceTypeError || cause instanceof ServiceFeatureError) &&
-      cause.issues !== undefined &&
-      cause.issues.length > 0
-        ? cause.issues.map((issue) => ({
-            ...issue,
-            path: ["services", serviceName, ...issue.path],
-            suggestion: issue.suggestion ?? cause.remediation,
-          }))
-        : [
-            validationIssue(
-              ["services", serviceName],
-              cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
-              remediation,
-            ),
-          ],
+    file: projectFile !== undefined && "file" in projectFile ? projectFile.file : `${appRoot}/.lando.yml`,
+    issues,
   });
 };

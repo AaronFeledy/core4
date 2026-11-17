@@ -620,7 +620,11 @@ that value. `source` names the layer that supplied it:
 | `env` | `variable`, `path` | `Unset <variable> or set it to a valid value.` |
 | `host` | `path` | `` Fix the `<key>` host config option. `` |
 
-Landofile issues keep their `{ file, layer, path }` source. Branch on
+Landofile issues keep their `{ file, layer, path }` source. An issue caused by
+a project file a service reads, such as a `.nvmrc` that conflicts with
+`package.json` for `type: node`, carries
+`{ layer: "project-file", file, path }` with that file's absolute path; fix the
+named file rather than the Landofile. Branch on
 `source.layer` to pick the fix; do not parse `error.message`, which prefixes
 the first issue with `Invalid config file <path>` or `Invalid global
 configuration (<sources>)` depending on which layers failed:

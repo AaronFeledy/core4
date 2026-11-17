@@ -312,6 +312,17 @@ export const TEST_SELECTIONS = [
     ],
     jobs: [{ workflow: "tomcat-bump.yml", job: "bump" }],
   },
+  {
+    id: "node-releases-bump",
+    paths: [
+      "plugins/service-lando/test/node-versions.test.ts",
+      "plugins/service-lando/test/node-inference.test.ts",
+      "core/test/scripts/node-releases-update.test.ts",
+      "core/test/scripts/node-releases-catalog.test.ts",
+      "core/test/build/node-releases-bump-workflow.test.ts",
+    ],
+    jobs: [{ workflow: "node-releases-bump.yml", job: "bump" }],
+  },
 ] as const satisfies readonly TestSelection[];
 
 export type TestSelectionId = (typeof TEST_SELECTIONS)[number]["id"];

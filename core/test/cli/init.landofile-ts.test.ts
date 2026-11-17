@@ -227,7 +227,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
         expect(landofile.document.name).toBe("discovered-ts-app");
         const web = landofile.document.services?.[ServiceName.make("web")];
         expect(web).toBeDefined();
-        expect(web?.image).toBe("node:24");
+        expect(web?.type).toBe("node:lts");
         expect(web?.environment).toEqual({ NODE_ENV: "development" });
       });
     });
@@ -247,7 +247,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
       await withEnv({ LANDO_NODE_VERSION: "22", NODE_ENV: "production" }, async () => {
         const landofile = await discoverFrom(result.directory);
         const web = landofile.document.services?.[ServiceName.make("web")];
-        expect(web?.image).toBe("node:22");
+        expect(web?.type).toBe("node:22");
         expect(web?.environment).toEqual({ NODE_ENV: "production" });
       });
     });

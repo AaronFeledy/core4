@@ -3,7 +3,17 @@ import { decodeLogStream } from "@lando/container-runtime/streams";
 import { makePodmanApiClient } from "@lando/provider-lando";
 import { Effect, Schema, Stream } from "effect";
 
-export const runBuiltImage = async (socketPath: string, image: string, command: readonly string[]) =>
+export const runBuiltImage = async (
+  socketPath: string,
+  image: string,
+  command: readonly string[],
+  options: {
+    readonly user?: string;
+    readonly env?: Readonly<Record<string, string>>;
+    /** Run with no network so a test proves the image already holds what the command needs. */
+    readonly offline?: boolean;
+  } = {},
+) =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
@@ -15,7 +25,15 @@ export const runBuiltImage = async (socketPath: string, image: string, command: 
         const created = yield* request({
           method: "POST",
           path: `/containers/create?name=lando-build-test-${crypto.randomUUID()}`,
-          body: { Image: image, Cmd: command },
+          body: {
+            Image: image,
+            Cmd: command,
+            ...(options.user === undefined ? {} : { User: options.user }),
+            ...(options.offline === true ? { HostConfig: { NetworkMode: "none" } } : {}),
+            ...(options.env === undefined
+              ? {}
+              : { Env: Object.entries(options.env).map(([name, value]) => `${name}=${value}`) }),
+          },
         });
         expect(created.status, created.body).toBe(201);
         const { Id } = Schema.decodeUnknownSync(Schema.Struct({ Id: Schema.String }))(

@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -50,6 +51,15 @@ const planBoth = () => {
   );
 };
 
+const planLandofile = (landofile: LandofileShape) =>
+  Effect.flatMap(AppPlanner, (planner) =>
+    planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
+  ).pipe(
+    Effect.provide(AppPlannerLayer.layer),
+    Effect.provide(PluginRegistryLayer.layer),
+    Effect.provide(BunFileSystem.layer),
+  );
+
 test("keeps Node project-file fingerprints and catalog config sources in one cache key", () =>
   withTempCwd(async () => {
     const keys = spyOn(cache, "deriveAppPlanCacheKey");
@@ -86,3 +96,61 @@ test("keeps Node project-file fingerprints and catalog config sources in one cac
   }));
 
 import { planTestLandofile } from "../compiled-landofile.ts";
+
+test("attributes a Node inference conflict to the project file that caused it", () =>
+  withTempCwd(async (root) => {
+    await writeFile(join(root, ".nvmrc"), "lts/*\n");
+    await writeFile(join(root, "package.json"), JSON.stringify({ engines: { node: "^24" } }));
+    const result = await Effect.runPromise(
+      Effect.result(
+        planLandofile({
+          name: "conflict",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: { type: "node" } },
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toBeInstanceOf(LandofileValidationError);
+      if (result.failure instanceof LandofileValidationError) {
+        expect(result.failure.file).toBe(join(root, ".nvmrc"));
+        expect(result.failure.issues).toMatchObject([
+          {
+            path: ["services", "web"],
+            source: { layer: "project-file", file: join(root, ".nvmrc"), path: [] },
+          },
+        ]);
+      }
+    }
+  }));
+
+test("attributes a nested packageRoot conflict to the nested project file", () =>
+  withTempCwd(async (root) => {
+    const nested = join(root, "apps", "web");
+    await mkdir(nested, { recursive: true });
+    await writeFile(join(nested, ".nvmrc"), "lts/*\n");
+    await writeFile(join(nested, "package.json"), JSON.stringify({ engines: { node: "^24" } }));
+    const result = await Effect.runPromise(
+      Effect.result(
+        planLandofile({
+          name: "nested-conflict",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" } },
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toBeInstanceOf(LandofileValidationError);
+      if (result.failure instanceof LandofileValidationError) {
+        expect(result.failure.file).toBe(join(root, "apps", "web", ".nvmrc"));
+        expect(result.failure.issues).toMatchObject([
+          {
+            path: ["services", "web"],
+            source: { layer: "project-file", file: join(root, "apps", "web", ".nvmrc"), path: [] },
+          },
+        ]);
+      }
+    }
+  }));
