@@ -15,6 +15,7 @@ import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundar
 import {
   type AppsDiscoveryEvidence,
   type AppsListEntry,
+  appsListIdentity,
   containerSocketCandidates,
   discoverRunningAppsEvidenceFromSockets,
   mergeAppsListEntries,
@@ -175,12 +176,11 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const running = evidence.apps;
 
   const merged = mergeAppsListEntries([...persisted, ...running]);
+  const runningIdentities = new Set(running.map(appsListIdentity));
   const apps = yield* Effect.promise(() =>
     Promise.all(
       merged.map(async (app) => {
-        const status = running.some(
-          (entry) => entry.appId === app.appId && entry.providerId === app.providerId,
-        )
+        const status = runningIdentities.has(appsListIdentity(app))
           ? "active"
           : evidence.confirmedProviderIds.includes(app.providerId) ||
               evidence.idleProviderIds?.includes(app.providerId) === true

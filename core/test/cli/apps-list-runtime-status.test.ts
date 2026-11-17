@@ -80,6 +80,7 @@ for (const fixture of cases) {
           State,
           Labels: {
             "dev.lando.app": appId,
+            "dev.lando.app-root": root,
             "dev.lando.provider": "lando",
             "dev.lando.service": `service-${index}`,
           },
@@ -178,6 +179,7 @@ const mixedStatusInventory = async (
                 State: "running",
                 Labels: {
                   "dev.lando.app": "alpha",
+                  "dev.lando.app-root": root,
                   "dev.lando.provider": "lando",
                   "dev.lando.service": "web",
                 },

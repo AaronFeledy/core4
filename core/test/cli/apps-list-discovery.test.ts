@@ -238,7 +238,7 @@ describe("appsFromContainerList", () => {
 });
 
 describe("mergeAppsListEntries", () => {
-  test("unions services and prefers persisted roots over label-only rows", () => {
+  test("keeps a rootless running row separate and merges a cache row at the same root", () => {
     const merged = mergeAppsListEntries([
       {
         appId: "drupal-cms",
@@ -259,7 +259,7 @@ describe("mergeAppsListEntries", () => {
         appName: "drupal-cms",
         providerId: "cache",
         appRoot: "/srv/drupal-cms",
-        services: [],
+        services: ["database"],
       },
     ]);
     expect(merged).toEqual([
@@ -270,10 +270,17 @@ describe("mergeAppsListEntries", () => {
         appRoot: "/srv/drupal-cms",
         services: ["appserver", "database"],
       },
+      {
+        appId: "drupal-cms",
+        appName: "drupal-cms",
+        providerId: "lando",
+        appRoot: "",
+        services: ["appserver", "database"],
+      },
     ]);
   });
 
-  test("keeps the first nonempty plugin root over a longer leftover path", () => {
+  test("keeps the same id at different roots as separate rows", () => {
     const merged = mergeAppsListEntries([
       {
         appId: "drupal-cms",
@@ -284,9 +291,9 @@ describe("mergeAppsListEntries", () => {
       },
       {
         appId: "drupal-cms",
-        appName: "stale",
-        providerId: "docker",
-        appRoot: "/very/long/stale/legacy/path/to/app",
+        appName: "Drupal CMS",
+        providerId: "lando",
+        appRoot: "/very/long/other/path/to/app",
         services: ["database"],
       },
     ]);
@@ -296,14 +303,21 @@ describe("mergeAppsListEntries", () => {
         appName: "Drupal CMS",
         providerId: "lando",
         appRoot: "/srv/app",
-        services: ["appserver", "database"],
+        services: ["appserver"],
+      },
+      {
+        appId: "drupal-cms",
+        appName: "Drupal CMS",
+        providerId: "lando",
+        appRoot: "/very/long/other/path/to/app",
+        services: ["database"],
       },
     ]);
   });
 });
 
 describe("apps:list host-wide discovery", () => {
-  test("prefers plugin applied-plans over leftover legacy providers/*/apps for the same appId", async () => {
+  test("lists plugin applied plans and leftover legacy roots for the same appId separately", async () => {
     await withTempRoot(async (userDataRoot) => {
       const paths = makeLandoPaths({ userDataRoot });
       const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
@@ -333,7 +347,16 @@ describe("apps:list host-wide discovery", () => {
           appName: "Drupal CMS",
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
-          services: ["appserver", "database"],
+          services: ["appserver"],
+          status: "unknown",
+          stale: true,
+        },
+        {
+          appId: "drupal-cms",
+          appName: "stale-name",
+          providerId: "docker",
+          appRoot: "/very/long/stale/legacy/drupal-cms",
+          services: ["database"],
           status: "unknown",
           stale: true,
         },
@@ -617,7 +640,10 @@ describe("apps:list host-wide discovery", () => {
       );
       const result = await runList(userDataRoot, {
         discoverContainers: async () =>
-          appsFromContainerList([labeled("drupal-cms", "appserver"), labeled("drupal-cms", "database")]),
+          appsFromContainerList([
+            labeled("drupal-cms", "appserver", { "dev.lando.app-root": "/workspace/drupal-cms" }),
+            labeled("drupal-cms", "database", { "dev.lando.app-root": "/workspace/drupal-cms" }),
+          ]),
       });
       expect(result.apps).toEqual([
         {
@@ -629,6 +655,35 @@ describe("apps:list host-wide discovery", () => {
           status: "active",
           stale: true,
         },
+      ]);
+    });
+  });
+
+  test("lists the same id at two roots as two rows and matches active by full identity", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
+      await mkdir(appliedDir, { recursive: true });
+      await writeFile(
+        join(appliedDir, "one.json"),
+        JSON.stringify(stateEnvelope("twin", "twin", "/workspace/one", ["web"])),
+      );
+      await writeFile(
+        join(appliedDir, "two.json"),
+        JSON.stringify(stateEnvelope("twin", "twin", "/workspace/two", ["web"])),
+      );
+      const result = await runList(userDataRoot, {
+        discoverContainers: async () =>
+          appsFromContainerList([
+            labeled("twin", "web", {
+              "dev.lando.provider": "lando",
+              "dev.lando.app-root": "/workspace/one",
+            }),
+          ]),
+      });
+      expect(result.apps.map((app) => [app.appRoot, app.status]).sort()).toEqual([
+        ["/workspace/one", "active"],
+        ["/workspace/two", "stopped"],
       ]);
     });
   });
