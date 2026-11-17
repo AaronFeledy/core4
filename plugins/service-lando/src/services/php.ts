@@ -4,12 +4,14 @@ import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import { apacheGeneratedCertificateEndpoint, apacheRunsAsRootParent } from "./apache.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import { PHP_FEATURE_ID } from "./php-feature.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
+  PHP_LISTENERS,
   SUPPORTED_PHP_VERSIONS,
   type SupportedPhpVersion,
   assertPhpViaKeys,
@@ -92,11 +94,21 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
       const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);
+      const generatedCertificateEndpoint =
+        via === "apache" && policy.processAuthority === "lando"
+          ? apacheGeneratedCertificateEndpoint({
+              serviceName: input.name,
+              plainPort: input.service.port ?? PHP_LISTENERS.apache.port,
+              owned: true,
+              rootParent: apacheRunsAsRootParent(input.service.user),
+            })
+          : undefined;
       return {
         base: "lando" as const,
         normalizedConfig: { ...input.service, type: `php:${resolvedVersion}` } satisfies ServiceConfig,
         metadata: { [PHP_RUNTIME_POLICY_KEY]: policy },
         logSources: phpLogSources(policy.logMode),
+        ...(generatedCertificateEndpoint === undefined ? {} : { generatedCertificateEndpoint }),
         features: [
           {
             id: PHP_FEATURE_ID,

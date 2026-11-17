@@ -95,15 +95,22 @@ services:
     </Step>
   </Scenario>
 
-## Get HTTPS URLs behind the proxy
+## Get HTTPS URLs through the proxy
 
-Lando's proxy ends HTTPS and forwards each request over plain HTTP to the web server in front of PHP: Apache in a `via: apache` service, or the nginx service that passes requests to FPM over FastCGI. The forwarded request carries an `X-Forwarded-Proto` header naming the scheme the browser used. The Apache and nginx configuration Lando generates turns `X-Forwarded-Proto: https` into `$_SERVER['HTTPS'] = 'on'`, so WordPress, Laravel, Symfony, Drupal, and other PHP apps build `https://` links and asset URLs without a `wp-config.php` snippet or a trusted-proxy setting. A request that arrived over plain HTTP leaves `HTTPS` unset.
+A `php` service using `via: apache` serves real TLS. Lando gives Apache a plain listener and a second HTTPS listener on `443` (`8443` when your plain `port:` is already `443`), serving the generated certificate for that service. Apache terminates TLS itself, so PHP sees `HTTPS=on`, `REQUEST_SCHEME=https`, and the public port in `SERVER_PORT`. A production `.htaccess` rule that tests `%{HTTPS}` or `RewriteCond %{HTTPS} off` works unchanged: an HTTPS request does not redirect, and an HTTP request redirects once to the HTTPS URL. Relative `[R]` targets and directory trailing-slash redirects keep the browser's scheme, host, and port.
+
+The router still fronts the app and terminates its own public TLS. It verifies the Apache certificate when it forwards HTTPS to it, so `lando setup` must have installed the certificate authority before an app that serves native TLS starts.
 
 To check it, save `https-check.php` in your webroot:
 
 ```php
 <?php
-echo 'HTTPS=' . ($_SERVER['HTTPS'] ?? '') . "\n";
+header('Content-Type: application/json');
+echo json_encode([
+    'https' => $_SERVER['HTTPS'] ?? '',
+    'scheme' => $_SERVER['REQUEST_SCHEME'] ?? '',
+    'port' => $_SERVER['SERVER_PORT'] ?? '',
+]);
 ```
 
 From your app directory on the host, request it through the HTTPS URL `lando info` prints, including any fallback port. Replace `<app-url>` with that URL:
@@ -112,11 +119,15 @@ From your app directory on the host, request it through the HTTPS URL `lando inf
 curl -fsS <app-url>/https-check.php
 ```
 
-The response is `HTTPS=on`. Delete `https-check.php` when you're done. If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
+The response reports `"https":"on"`, `"scheme":"https"`, and `"port":"443"` (or the public fallback port). Delete `https-check.php` when you're done. If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
 
-Redirects the web server sends keep the browser's URL too: a request for a directory without its trailing slash, such as `/wp-admin`, redirects to the same scheme, host, and port with the slash added. Apache's own `%{HTTPS}` variable stays `off`, because the proxy ended TLS, not Apache. In `.htaccess` rewrite conditions, test `%{ENV:HTTPS}` or `%{HTTP:X-Forwarded-Proto}` instead.
+With `via: fpm`, TLS terminates at the router and the nginx service in front of PHP projects the public values. Lando's generated FastCGI configuration sets `HTTPS`, `REQUEST_SCHEME`, and `SERVER_PORT` from the router's forwarded scheme and port, replacing a spoofed client header, and sets `SERVER_NAME` to the requested host. A direct request to a published port without forwarded headers keeps the listener's actual scheme and port, and an invalid forwarded port falls back to `443` or `80` and then the listener port.
 
-All of this lives in the server configuration Lando generates. On a `via: apache` service, a custom image, `build.context`, or an authored `command:` or `entrypoint:` takes over that configuration, so map `X-Forwarded-Proto` yourself there. With FPM, the mapping belongs to the nginx service: it still applies to a custom FPM image, and stops only if the nginx service sets its own `command:` or `entrypoint:`.
+### When Apache does not serve native TLS
+
+Lando generates the HTTPS listener only when it owns the Apache launcher, the service runs its parent process as root, and the effective configuration asks for a generated certificate. `certs: false`, custom certificate material, or an authored `user:` such as `www-data` keeps the plain listener: HTTPS routes terminate at the router and bind plain HTTP to Apache. PHP still gets `HTTPS=on` from the forwarded header, but Apache's own `%{HTTPS}` stays off and its directory redirects are `http`, so an app force-HTTPS rule redirects a request that already has a public HTTPS URL. Native TLS is the default for a stock `php` service with no authored process fields.
+
+A custom `image:`, `build.context`, authored `command:`, or `entrypoint:` takes over Apache's configuration, so no generated TLS listener, certificate request, or module edit applies there. An explicit `certs: true` keeps its existing meaning and configures the TLS listener for a root parent.
 
 ## Keep PHP out of upload directories
 
