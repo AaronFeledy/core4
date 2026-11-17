@@ -23,7 +23,7 @@ const router = {
   service: svc0,
 } as const;
 const services = {
-  [svc0]: { loadBalancer: { servers: [{ url: "http://api.demo.internal:8080" }] } },
+  [svc0]: { loadBalancer: { passHostHeader: true, servers: [{ url: "http://api.demo.internal:8080" }] } },
 } as const;
 const filters = [
   { type: "stripPrefix", prefix: "/old" },
@@ -106,7 +106,12 @@ describe("Traefik route filter YAML", () => {
           services: Object.fromEntries(
             [0, 1].map((index) => [
               routeObjectName(owner, index),
-              { loadBalancer: { servers: [{ url: `http://api.${appName}.internal:8080` }] } },
+              {
+                loadBalancer: {
+                  passHostHeader: true,
+                  servers: [{ url: `http://api.${appName}.internal:8080` }],
+                },
+              },
             ]),
           ),
           middlewares: {
@@ -211,6 +216,7 @@ describe("Traefik route filter YAML", () => {
           "  services:",
           `    ${svc0}:`,
           "      loadBalancer:",
+          "        passHostHeader: true",
           "        servers:",
           "          - url: http://api.demo.internal:8080",
           "",

@@ -648,3 +648,32 @@ describe("applied plan records", () => {
     expect(written).toEqual([{ [plan.id]: record }]);
   });
 });
+
+test("reads a historical both route and absent backend TLS intent", () => {
+  // Given: applied state written before per-scheme plans and managed backend TLS.
+  const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+  const historical = {
+    ...encoded,
+    routes: [
+      {
+        priority: 2,
+        hostname: "web.lndo.site",
+        scheme: "both",
+        service: "web",
+        backend: { service: "web", protocol: "http", port: 80 },
+      },
+    ],
+    services: {
+      web: {
+        ...encoded.services.web,
+        routes: [{ index: 0 }],
+      },
+    },
+  };
+  // When
+  const decoded = Schema.decodeUnknownSync(AppPlan)(historical);
+  // Then: the old shape stays readable and gains no invented TLS listener.
+  expect(decoded.routes[0]).toMatchObject({ scheme: "both", backend: { port: 80 } });
+  expect(decoded.routes[0]?.backend.tls).toBeUndefined();
+  expect(decoded.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }]);
+});

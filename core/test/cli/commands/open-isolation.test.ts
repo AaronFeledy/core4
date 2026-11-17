@@ -259,3 +259,56 @@ test("scoped observations retain completion intent from the full plan", async ()
   expect(result).toMatchObject([{ name: "web", state: "completed" }]);
   expect(result[0]?.connections.every((connection) => connection.state !== "active")).toBe(true);
 });
+
+test("does not skip a service whose only route targets its generated HTTPS listener", async () => {
+  // Given: the first service keeps an HTTP primary plus the generated HTTPS
+  // listener, and its only route targets the HTTPS listener.
+  const { plan, publicServices, inspected } = await fixture("nobody");
+  const web = plan.services[ServiceName.make("web")];
+  const mailpit = plan.services[ServiceName.make("mailpit")];
+  if (web === undefined || mailpit === undefined) throw new Error("fixture services missing");
+  const scoped = {
+    ...plan,
+    services: {
+      [ServiceName.make("web")]: {
+        ...web,
+        endpoints: [
+          {
+            _tag: "internal" as const,
+            protocol: "http" as const,
+            port: 80,
+            name: "web",
+            primary: true as const,
+          },
+          { _tag: "internal" as const, protocol: "https" as const, port: 443, name: "web-https" },
+        ],
+        certs: { cn: "web.nobody.internal", sans: ["web.nobody.internal"], caId: "mkcert" },
+      },
+      [ServiceName.make("mailpit")]: mailpit,
+    },
+    routes: [
+      {
+        hostname: "web.myapp.lndo.site",
+        priority: 2,
+        scheme: "https" as const,
+        service: ServiceName.make("web"),
+        backend: { service: ServiceName.make("web"), protocol: "https" as const, port: 443 },
+      },
+      {
+        hostname: "mailpit.myapp.lndo.site",
+        priority: 2,
+        scheme: "https" as const,
+        service: ServiceName.make("mailpit"),
+        backend: { service: ServiceName.make("mailpit"), protocol: "http" as const, port: 80 },
+      },
+    ],
+  };
+  // When
+  const rows = await Effect.runPromise(
+    collectOpenConnections(scoped, {}).pipe(Effect.provide(publicServices)),
+  );
+  // Then: the primary service is inspected for its generated HTTPS route
+  // instead of being skipped for not targeting the plain primary listener.
+  expect(inspected[0]).toBe("web");
+  expect(rows.some((row) => String(row.name) === "web")).toBe(true);
+});

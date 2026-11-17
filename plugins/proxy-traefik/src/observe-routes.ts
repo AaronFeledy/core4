@@ -1,6 +1,7 @@
 import type { AppRouteOwner, RouteEvidence, RoutePlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { readLiveRouteSnapshot } from "./live-route-snapshot.ts";
+import { readOwnedBackendTransports } from "./owned-backend-transports.ts";
 import { readAcquisitionState } from "./port-acquisition-state.ts";
 import { defaultDomainFile } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
@@ -27,9 +28,17 @@ export const observeRoutes = Effect.fn("TraefikRouter.observeRoutes")(function* 
     Effect.catch(() => Effect.succeed(undefined)),
   );
   if (snapshot === undefined) return unknown;
-  const matches = requestedRoutes.flatMap((route) =>
+  const references = yield* readOwnedBackendTransports(dependencies, owner, requestedRoutes).pipe(
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+  if (references === undefined) return unknown;
+  const matches = requestedRoutes.flatMap((route, index) =>
     routeSchemes(route).map((scheme) => ({
-      matched: matchesLiveRoute(snapshot, owner, { route, scheme }),
+      matched: matchesLiveRoute(snapshot, owner, {
+        route,
+        scheme,
+        serversTransport: references[index] === undefined ? undefined : `${references[index]}@file`,
+      }),
       publication: { route, authority: { hostname: route.hostname, scheme, port: ports[scheme] } },
     })),
   );

@@ -171,11 +171,16 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       endpoints: error === undefined ? { _tag: "Available", value: normalized } : unavailable(record(error)),
     });
   }
+  // Bind exactly as planning will: only a service holding a generated certificate
+  // can prefer its HTTPS listener, because only then can the router verify it.
+  const generatedCertificates = new Set(
+    input.services.filter((seed) => seed.resolution.normalizedConfig.certs === true).map((seed) => seed.name),
+  );
   for (const [name, routes] of input.routes) {
     const row = rows.get(name);
     if (row === undefined || row.endpoints._tag === "Unavailable") continue;
     for (const route of routes ?? []) {
-      const binding = bindRoute(name, row.endpoints.value, route);
+      const binding = bindRoute(name, row.endpoints.value, route, generatedCertificates.has(name));
       if (Result.isFailure(binding)) issues.push({ ...binding.failure, rule: "landofile.route" });
     }
   }

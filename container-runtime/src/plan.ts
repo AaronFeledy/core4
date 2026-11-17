@@ -37,16 +37,27 @@ export const mergeAppliedPlan = (
 ): AppPlan => {
   if (options.complete === true || previous === undefined || previous.id !== incoming.id) return incoming;
   const carried = Object.entries(previous.services).filter(([name]) => !(name in incoming.services));
-  const routeKeys = incoming.routes.map(canonicalJson);
+  // Carried routes are appended when the incoming plan does not name them, so an
+  // untouched container keeps the route refs and backend binding it was created
+  // with even beside new per-scheme routes for the selected services.
+  const routes = [...incoming.routes];
+  const routeKeys = routes.map(canonicalJson);
+  const resolveCarriedRouteIndex = (route: AppPlan["routes"][number]): number => {
+    const key = canonicalJson(route);
+    const existing = routeKeys.indexOf(key);
+    if (existing >= 0) return existing;
+    routes.push(route);
+    routeKeys.push(key);
+    return routes.length - 1;
+  };
   const services = Object.fromEntries(
     carried.map(([name, service]) => {
       if (service.routes.length === 0) return [name, service];
-      const routes = service.routes.flatMap((ref) => {
+      const carriedRefs = service.routes.flatMap((ref) => {
         const route = previous.routes[ref.index];
-        const index = route === undefined ? -1 : routeKeys.indexOf(canonicalJson(route));
-        return index < 0 ? [] : [{ index }];
+        return route === undefined ? [] : [{ index: resolveCarriedRouteIndex(route) }];
       });
-      return [name, { ...service, routes }];
+      return [name, { ...service, routes: carriedRefs }];
     }),
   );
   const mountedStores = new Set(
@@ -75,6 +86,7 @@ export const mergeAppliedPlan = (
   );
   const merged = {
     ...incoming,
+    routes,
     stores,
     fileSync,
     ...(incoming.fileSyncPolicy === undefined || carriedPolicies.length === 0

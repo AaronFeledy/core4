@@ -36,6 +36,16 @@ export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-
 
 export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
 
+/**
+ * Whether a container identity names the root principal. `root`, `0`, and any
+ * numeric spelling of uid 0 count; a group suffix does not change the user.
+ * An omitted identity is not root: callers decide their own default.
+ */
+export const isRootContainerUser = (value: string): boolean => {
+  const user = value.split(":", 1)[0] ?? "";
+  return user === "root" || (/^[0-9]+$/u.test(user) && Number(user) === 0);
+};
+
 export const ContainerUser = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(CONTAINER_USER_PATTERN, {

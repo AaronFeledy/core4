@@ -683,3 +683,56 @@ describe("renderOpenAppResult", () => {
     expect(text).toBe("Resolved:\nweb\thttps://web.myapp.lndo.site\n");
   });
 });
+
+test("default open follows a generated HTTPS route when the service's primary listener is HTTP", async () => {
+  // Given: per-scheme plans leave the primary plain listener HTTP and route to TLS.
+  const plan = makePlan(
+    [route({ hostname: "web.myapp.lndo.site", scheme: "https", service: "web" })],
+    ["web"],
+  );
+  const service = plan.services[ServiceName.make("web")];
+  if (service === undefined) throw new Error("web service missing");
+  const primaryPlan: AppPlan = {
+    ...plan,
+    services: {
+      [ServiceName.make("web")]: {
+        ...service,
+        endpoints: [
+          { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+        ],
+        certs: { cn: "web.myapp.internal", sans: ["web.myapp.internal"], caId: "mkcert" },
+      },
+    },
+  };
+  const rows: readonly StartedService[] = [
+    {
+      name: ServiceName.make("web"),
+      state: "running",
+      connections: [
+        {
+          scope: "host",
+          source: "route",
+          binding: "assigned",
+          state: "active",
+          host: "web.myapp.lndo.site",
+          protocol: "https",
+          port: 443,
+          pathPrefix: "",
+          url: "https://web.myapp.lndo.site",
+          alternateUrls: [],
+          endpoint: { port: 443, transport: "tcp", names: ["web-https"], primary: false },
+        },
+      ],
+    },
+  ] satisfies readonly StartedService[];
+  const rec = record();
+  // When
+  const result = await Effect.runPromise(
+    openForPlan(primaryPlan, { print: true }, rows).pipe(Effect.provide(layers(rec))),
+  );
+  // Then
+  expect(result.targets).toEqual([
+    { service: "web", hostname: "web.myapp.lndo.site", scheme: "https", url: "https://web.myapp.lndo.site" },
+  ]);
+});

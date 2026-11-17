@@ -55,7 +55,9 @@ services:
     via: fpm
 ```
 
-The generated FastCGI configuration passes `HTTPS=on` to PHP when the browser reached the proxy over HTTPS, so PHP apps build `https://` URLs; see [Get HTTPS URLs behind the proxy](./php.mdx#get-https-urls-behind-the-proxy). It runs PHP only for lowercase `.php` names and answers `.PHP` and other case variants with Lando's 403 page, so a case-insensitive app mount on macOS or Windows can't serve PHP source.
+The generated FastCGI configuration passes `HTTPS=on` to PHP when the browser reached the proxy over HTTPS, so PHP apps build `https://` URLs; see [Get HTTPS URLs through the proxy](./php.mdx#get-https-urls-through-the-proxy). It runs PHP only for lowercase `.php` names and answers `.PHP` and other case variants with Lando's 403 page, so a case-insensitive app mount on macOS or Windows can't serve PHP source.
+
+FastCGI also receives `REQUEST_SCHEME` and `SERVER_PORT`, so `$_SERVER` agrees with `HTTPS`, and `SERVER_NAME` is the requested host, so frameworks that compare the `Host` header with it accept routed requests. The router supplies the public value through `X-Forwarded-Proto` and `X-Forwarded-Port`; a valid forwarded port from `1` to `65535` is used as-is, while a missing, malformed, comma-separated, or out-of-range value falls back to `443` for `https`, `80` for `http`, or nginx's own listener port when the scheme is unknown. A direct request to the container without forwarded headers reports nginx's own scheme and listener port. The router replaces client-supplied `X-Forwarded-*` headers, so a browser cannot spoof these values through the proxy.
 
 ## Stop PHP in upload directories
 

@@ -3,6 +3,7 @@ import { isAbsolute, relative } from "node:path";
 import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import { forgetAppliedPlanUnlessKept, rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -12,7 +13,12 @@ import {
   type RuntimeProviderShape,
   UrlScanner,
 } from "@lando/sdk/services";
-import { makeTestRouterService, makeTestRuntimeProvider, makeTestUrlScanner } from "@lando/sdk/test";
+import {
+  makeMintingCertificateAuthority,
+  makeTestRouterService,
+  makeTestRuntimeProvider,
+  makeTestUrlScanner,
+} from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 
 const canonicalPath = (path: string): Effect.Effect<string> =>
@@ -112,11 +118,20 @@ export const makeScenarioProvider = () => {
       }),
   });
   // Routes go to an in-memory stand-in for the default Traefik router: the scenario has no
-  // containers for a real proxy to reach, and no host ports or certificate authority to touch.
-  // Nothing listens on the scenario's routed URLs, so the post-start scan has no host to probe.
+  // containers for a real proxy to reach, and nothing listens on the routed URLs, so the post-start
+  // scan has no host to probe. The CA resolver uses an in-memory `mkcert` authority to match
+  // the planner's platform default without downloading or trusting a host tool.
+  const certificateAuthority = makeMintingCertificateAuthority({ id: "mkcert" });
   const hostServices = Layer.mergeAll(
     Layer.succeed(RouterService, RouterService.of({ ...makeTestRouterService(), id: "traefik" })),
     Layer.succeed(UrlScanner, UrlScanner.of(makeTestUrlScanner())),
+    Layer.succeed(
+      CertificateAuthorityResolver,
+      CertificateAuthorityResolver.of({
+        selectedId: certificateAuthority.id,
+        resolve: Effect.succeed(certificateAuthority),
+      }),
+    ),
   );
   return { layer: Layer.succeed(RuntimeProviderRegistry, registry), hostServices, provider, appliedPlans };
 };

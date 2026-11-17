@@ -179,7 +179,10 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "proxy-traefik-certificate-live",
-    paths: ["plugins/proxy-traefik/test/router-certificate-publication.integration.test.ts"],
+    paths: [
+      "plugins/proxy-traefik/test/router-certificate-publication.integration.test.ts",
+      "plugins/proxy-traefik/test/backend-tls-live.integration.test.ts",
+    ],
     jobs: live,
     needs: "LANDO_TEST_PODMAN_SOCKET",
   },

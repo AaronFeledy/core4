@@ -810,12 +810,13 @@ describe("AppPlannerLayer.layer", () => {
       )?.buildSteps;
       expect(buildSteps?.map(({ id }) => id)).toEqual([
         "lando.boot:scaffold",
+        "service-lando.apache:ssl-module",
         "lando-log-redirect-mkdir:access",
         "lando-log-redirect:access",
         "lando-log-redirect-mkdir:error",
         "lando-log-redirect:error",
       ]);
-      expect(buildSteps?.slice(1)).toEqual([
+      expect(buildSteps?.slice(2)).toEqual([
         {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
@@ -2200,18 +2201,19 @@ describe("AppPlannerLayer.layer", () => {
         }),
       );
 
-      expect(appPlan.routes).toEqual([
-        {
+      // `both` binds once per scheme, HTTP first.
+      expect(appPlan.routes).toEqual(
+        (["http", "https"] as const).map((scheme) => ({
           hostname: "custom.example.test",
           priority: 65_543,
-          scheme: "both",
+          scheme,
           service: ServiceName.make("web"),
           endpoint: "web",
           pathPrefix: "/api",
           backend: { service: ServiceName.make("web"), protocol: "http", port: 3000 },
-        },
-      ]);
-      expect(appPlan.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }]);
+        })),
+      );
+      expect(appPlan.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }, { index: 1 }]);
     });
   });
 

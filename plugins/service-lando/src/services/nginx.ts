@@ -28,7 +28,7 @@ import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-erro
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
-import { defaultStaticCommand } from "./static.ts";
+import { defaultNginxStaticCommand } from "./static.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
@@ -80,6 +80,23 @@ const phpFastcgiCommand = (
       "  default $https;",
       "  https on;",
       "}",
+      // The router replaces untrusted X-Forwarded-* headers; direct requests keep
+      // nginx's own scheme and listener port.
+      "map $http_x_forwarded_proto $lando_fastcgi_scheme {",
+      "  default $scheme;",
+      "  http http;",
+      "  https https;",
+      "}",
+      "map $http_x_forwarded_proto $lando_fastcgi_fallback_port {",
+      "  default $server_port;",
+      "  http 80;",
+      "  https 443;",
+      "}",
+      "map $http_x_forwarded_port $lando_fastcgi_port {",
+      "  default $lando_fastcgi_fallback_port;",
+      // 1..65535 with no leading zero; anything else keeps the fallback.
+      '  "~^(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$" $http_x_forwarded_port;',
+      "}",
       "server {",
       `  listen ${String(ports.listen)};`,
       `  root ${webroot};`,
@@ -109,6 +126,12 @@ const phpFastcgiCommand = (
       "    include /etc/nginx/fastcgi_params;",
       // FPM keeps the last HTTPS parameter, overriding the include's direct-connection value.
       "    fastcgi_param HTTPS $lando_fastcgi_https if_not_empty;",
+      // After the stock include so the public-variable assignments win. The
+      // generated server has no server_name, so SERVER_NAME follows the request
+      // host the way Apache's does.
+      "    fastcgi_param REQUEST_SCHEME $lando_fastcgi_scheme;",
+      "    fastcgi_param SERVER_PORT $lando_fastcgi_port;",
+      "    fastcgi_param SERVER_NAME $host;",
       // After the include so this assignment wins. PATH_TRANSLATED is omitted
       // on purpose: setting it can make the extra path look like the script
       // and break Apache-via PATH_INFO parity.
@@ -152,7 +175,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
             service.user,
             service.uploadDirs,
           )
-        : defaultStaticCommand("nginx", webroot, port, service.user),
+        : defaultNginxStaticCommand(webroot, port, service.user),
     );
   } else {
     ctx.setListenerAuthority(launcherAuthority(NGINX_LISTENER, port));

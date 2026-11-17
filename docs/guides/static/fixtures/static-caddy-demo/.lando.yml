@@ -1,0 +1,5 @@
+name: static-caddy-demo
+services:
+  web:
+    type: static:caddy
+    webroot: dist

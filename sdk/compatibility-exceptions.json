@@ -6499,18 +6499,18 @@
     "surface": "schema:RegisteredCommand",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "The config-lint rule registry gains `service.projectUser` for the project-user explanation warning. Registered command metadata embeds that rule-id union, so the conservative checker reports the enclosing union as changed even though no command identity or accepted input shape changed."
+    "justification": "The config-lint rule registry gains `service.projectUser` (project-user explanation) and `service.router-tls-termination` (GitHub #2184). Registered command metadata embeds that rule-id union, so the conservative checker reports the enclosing union as changed even though no command identity or accepted input shape changed."
   },
   {
     "surface": "command:app:cache:refresh",
     "changeKind": "union-widened",
     "path": "$.unavailableTasks.items.issues.items.rule.anyOf",
-    "justification": "The shared config-lint rule-id union gains `service.projectUser`. The command result shape is otherwise unchanged, and every previous rule id remains accepted; the new member only names the project-user explanation warning."
+    "justification": "The shared config-lint rule-id union gains `service.projectUser` and `service.router-tls-termination` (GitHub #2184). The command result shape is otherwise unchanged, and every previous rule id remains accepted; the new members only name warnings."
   },
   {
     "surface": "command:meta:mcp",
     "changeKind": "union-widened",
     "path": "$.diagnostics.items.issues.items.rule.anyOf",
-    "justification": "The shared config-lint rule-id union gains `service.projectUser`. MCP diagnostics keep the same envelope and previous rule ids; the new member only names the project-user explanation warning."
+    "justification": "The shared config-lint rule-id union gains `service.projectUser` and `service.router-tls-termination` (GitHub #2184). MCP diagnostics keep the same envelope and previous rule ids; the new members only name warnings."
   }
 ]

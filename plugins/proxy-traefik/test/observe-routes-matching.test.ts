@@ -156,7 +156,14 @@ test("matches IPv6 backend authorities without discarding the requested path", a
   const fixture = makeObserveFixture({
     ...graph,
     services: {
-      [demoService]: { status: "enabled", loadBalancer: { servers: [{ url: "http://[::1]:8080" }] } },
+      [demoService]: {
+        status: "enabled",
+        loadBalancer: {
+          servers: [{ url: "http://[::1]:8080" }],
+          passHostHeader: true,
+          responseForwarding: { flushInterval: "100ms" },
+        },
+      },
     },
   });
   const requested = { ...route, backend: { ...route.backend, host: "::1" } };

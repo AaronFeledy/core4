@@ -95,6 +95,11 @@ export const selectContributedCertificateAuthority = <
   selectCertificateAuthorityCandidate(graph?.certificateAuthorities ?? fallback(), platform);
 
 export interface CertificateAuthorityResolverShape {
+  /**
+   * The id of the authority selection chose, known without loading it. Absent
+   * when selection failed; `resolve` then reports why.
+   */
+  readonly selectedId?: string;
   readonly resolve: Effect.Effect<
     Context.Service.Shape<typeof CertificateAuthority>,
     SelectionError | PluginLoadError
@@ -139,7 +144,10 @@ export class CertificateAuthorityResolver extends Context.Service<
           ),
       });
       const cached = yield* Effect.cached(acquire);
-      return CertificateAuthorityResolver.of({ resolve: cached });
+      return CertificateAuthorityResolver.of({
+        resolve: cached,
+        ...(Result.isSuccess(selected) ? { selectedId: selected.success.id } : {}),
+      });
     }),
   );
 }

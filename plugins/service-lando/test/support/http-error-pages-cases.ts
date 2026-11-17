@@ -14,6 +14,7 @@ const hiddenPathFixtureFiles = {
   ".well-known/.env": HIDDEN_PATH_MARKER,
   "nested/.env": HIDDEN_PATH_MARKER,
   ".well-known/ok.txt": WELL_KNOWN_ASSET,
+  ".well-known/acme-challenge/token": WELL_KNOWN_ASSET,
 } as const;
 
 const phpResponse = (status: 403 | 404, marker: string, cookie: string, body: string | undefined): string =>
@@ -35,6 +36,8 @@ export const staticFixtureFiles: Readonly<Record<string, string>> = {
   "dist/index.html": STATIC_INDEX,
   "dist/asset.txt": STATIC_ASSET,
   "dist/noindex/hidden.txt": HIDDEN_ASSET,
+  // A directory with an index so Caddy's canonical trailing-slash redirect is reachable.
+  "dist/section/index.html": STATIC_INDEX,
 };
 
 export const PATHINFO_OK = "PATHINFO_OK\n";
@@ -51,6 +54,19 @@ export const PATHINFO_SCRIPT = [
   "",
 ].join("\n");
 
+/** Reports the public scheme, request scheme, and public port PHP receives. */
+export const PUBLIC_SCHEME_SCRIPT = [
+  "<?php",
+  "header('Content-Type: text/plain; charset=utf-8');",
+  "echo 'HTTPS=' . (isset($_SERVER['HTTPS']) ? $_SERVER['HTTPS'] : '') . \"\\n\";",
+  "echo 'REQUEST_SCHEME=' . (isset($_SERVER['REQUEST_SCHEME']) ? $_SERVER['REQUEST_SCHEME'] : '') . \"\\n\";",
+  "echo 'SERVER_PORT=' . (isset($_SERVER['SERVER_PORT']) ? $_SERVER['SERVER_PORT'] : '') . \"\\n\";",
+  "",
+].join("\n");
+
+export const publicSchemeResponse = (https: string, scheme: string, port: string): string =>
+  `HTTPS=${https}\nREQUEST_SCHEME=${scheme}\nSERVER_PORT=${port}\n`;
+
 /** Files written under a PHP app root; the app itself owns every `app*.php` status. */
 export const phpFixtureFiles: Readonly<Record<string, string>> = {
   ...hiddenPathFixtureFiles,
@@ -59,6 +75,7 @@ export const phpFixtureFiles: Readonly<Record<string, string>> = {
   "asset.txt": PHP_ASSET,
   "noindex/hidden.txt": HIDDEN_ASSET,
   "scheme.php": "<?php echo 'HTTPS=' . ($_SERVER['HTTPS'] ?? '');\n",
+  "public-scheme.php": PUBLIC_SCHEME_SCRIPT,
   ...Object.fromEntries(
     ["secret.PHP", "mixed.Php", ".PHP", "dir/.PhP", "control.php"].map((file) => [
       file,
@@ -187,6 +204,29 @@ export const staticCases: ReadonlyArray<ErrorPageCase> = [
     {
       method: "POST",
     },
+  ),
+  request("serves an ACME challenge token below .well-known", "/.well-known/acme-challenge/token", 200, {
+    exact: WELL_KNOWN_ASSET,
+  }),
+];
+
+/** Caddy serves the same files and shared pages, with its own redirect and status behavior. */
+export const caddyStaticCases: ReadonlyArray<ErrorPageCase> = [
+  request("serves the index", "/", 200, { exact: STATIC_INDEX }),
+  request("serves a normal asset", "/asset.txt", 200, { exact: STATIC_ASSET }),
+  request("serves an ACME challenge token below .well-known", "/.well-known/acme-challenge/token", 200, {
+    exact: WELL_KNOWN_ASSET,
+  }),
+  request("explains a missing file with the Lando 404 page", "/missing.html", 404, { page: 404 }),
+  request("explains a missing nested path with the Lando 404 page", "/missing/deep/path", 404, {
+    page: 404,
+  }),
+  request(
+    "answers HEAD for a missing file without a body",
+    "/missing.html",
+    404,
+    { page: 404 },
+    { method: "HEAD" },
   ),
 ];
 
