@@ -12,6 +12,8 @@ const (
 	scaffoldManifestVersion = 1
 	scaffoldLockName        = ".lando-scaffold-lock"
 	scaffoldStageRoot       = ".lando-scaffold"
+	scaffoldNestedPartial   = ".lando-partial"
+	scaffoldNestedOwner     = ".lando-owned"
 )
 
 // scaffoldManifest is the durable write-ahead record shared by every scaffold
@@ -180,6 +182,7 @@ func (s *scaffold) execute(options scaffoldOptions) (err error) {
 	if err := s.promote(manifest); err != nil {
 		return err
 	}
+	s.reportKeptPaths(manifest)
 	if manifest.Phase != "promoted" {
 		manifest.Phase = "promoted"
 		if err := s.saveManifest(manifest); err != nil {

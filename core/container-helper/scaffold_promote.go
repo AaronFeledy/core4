@@ -61,6 +61,35 @@ func (s *scaffold) classify(manifest *scaffoldManifest) error {
 	return nil
 }
 
+// reportKeptPaths tells the user, once per promotion, which existing paths
+// were kept instead of filled with the project's version. Lando's own files
+// are engine state, not project content, so they are never reported.
+func (s *scaffold) reportKeptPaths(manifest *scaffoldManifest) {
+	for _, entry := range manifest.Entries {
+		if entry.State != "preexisting" || s.isLandoOwnedName(entry.Name) {
+			continue
+		}
+		fmt.Fprintf(
+			s.streams.stderr,
+			"%s kept existing path %q; the project's version was not installed.\n",
+			s.label,
+			entry.Name,
+		)
+	}
+}
+
+// isLandoOwnedName reports whether a top-level path belongs to the engine's
+// own bookkeeping rather than to the scaffolded project.
+func (s *scaffold) isLandoOwnedName(name string) bool {
+	if name == ".lando.yml" || name == scaffoldStageRoot || name == scaffoldLockName {
+		return true
+	}
+	if name == filepath.Base(s.manifestPath) {
+		return true
+	}
+	return s.markerPath != "" && name == filepath.Base(s.markerPath)
+}
+
 func (s *scaffold) promote(manifest *scaffoldManifest) error {
 	for index := range manifest.Entries {
 		entry := &manifest.Entries[index]
