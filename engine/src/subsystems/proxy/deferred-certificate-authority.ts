@@ -21,8 +21,10 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const resolver = yield* CertificateAuthorityResolver;
     const resolve = yield* Effect.cached(resolver.resolve.pipe(mapFailures(resolutionError)));
+    // Selection is pure, so the wrapper reports the authority it will load
+    // instead of a placeholder that no planned `caId` can match.
     return CertificateAuthority.of({
-      id: "deferred",
+      id: resolver.selectedId ?? "unresolved",
       setup: (options) => Effect.flatMap(resolve, (authority) => authority.setup(options)),
       root: Effect.flatMap(resolve, (authority) => authority.root),
       issueCert: (spec) => Effect.flatMap(resolve, (authority) => authority.issueCert(spec)),
