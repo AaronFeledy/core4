@@ -53,11 +53,22 @@ const rows: readonly StartedService[] = [
     connections: [connection("web.test"), connection("web-alt.test", "http")],
   },
 ];
-const withWebEndpoints = (endpoints: readonly EndpointPlan[]): Pick<AppPlan, "services"> => ({
+const withWebEndpoints = (
+  endpoints: readonly EndpointPlan[],
+  options: { readonly generatedCertificate?: boolean } = {},
+): Pick<AppPlan, "services"> => ({
   services: Object.fromEntries(
     Object.values(plan.services).map((service) => [
       service.name,
-      service.name === "web" ? { ...service, endpoints } : service,
+      service.name === "web"
+        ? {
+            ...service,
+            endpoints,
+            ...(options.generatedCertificate === true
+              ? { certs: { cn: "web.test.internal", sans: ["web.test.internal"], caId: "mkcert" } }
+              : {}),
+          }
+        : service,
     ]),
   ),
 });
@@ -93,10 +104,13 @@ describe("resolveOpenTargets", () => {
     "opens the HTTPS route a generated TLS listener serves beside the plain primary: %j",
     (selection) => {
       // A plain primary plus a non-primary HTTPS listener: each scheme's route binds its own listener.
-      const declared = withWebEndpoints([
-        { _tag: "internal", protocol: "http", port: 80, primary: true },
-        { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
-      ]);
+      const declared = withWebEndpoints(
+        [
+          { _tag: "internal", protocol: "http", port: 80, primary: true },
+          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+        ],
+        { generatedCertificate: true },
+      );
       const tls = { port: 443, transport: "tcp", names: ["web-https"], primary: false } as const;
       const both: readonly StartedService[] = [
         {
@@ -121,6 +135,39 @@ describe("resolveOpenTargets", () => {
       expect(resolveOpenTargets(declared, selection, plainHttps).map((target) => target.url)).toEqual([
         "https://site.test:8443/v1",
       ]);
+    },
+  );
+
+  test.each([{}, { service: "web" }])(
+    "opens the primary-bound HTTPS route when no generated certificate lets the router verify the HTTPS listener: %j",
+    (selection) => {
+      // A plain primary plus an unmarked HTTPS listener with its own certificate.
+      const declared = withWebEndpoints([
+        { _tag: "internal", protocol: "http", port: 80, primary: true },
+        { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+      ]);
+      const primary = { port: 80, transport: "tcp", names: ["web"], primary: true } as const;
+      const tls = { port: 443, transport: "tcp", names: ["web-https"], primary: false } as const;
+      const boundPrimary: readonly StartedService[] = [
+        {
+          name: "web",
+          state: "running",
+          connections: [{ ...connection("site.test"), endpoint: primary, url: "https://site.test/primary" }],
+        },
+      ];
+      const observedTls: readonly StartedService[] = [
+        {
+          name: "web",
+          state: "running",
+          connections: [{ ...connection("site.test"), endpoint: tls, url: "https://site.test/tls" }],
+        },
+      ];
+      // The primary is the only default listener, so the HTTPS route bound to it opens.
+      expect(resolveOpenTargets(declared, selection, boundPrimary).map((target) => target.url)).toEqual([
+        "https://site.test/primary",
+      ]);
+      // The unverifiable HTTPS listener is not a default target.
+      expect(resolveOpenTargets(declared, selection, observedTls)).toEqual([]);
     },
   );
 

@@ -4,6 +4,7 @@ import {
   HttpEndpointSelection,
   endpointInvariantIssues,
   groupLogicalEndpoints,
+  routeListenerPreference,
   selectHttpEndpoint,
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
@@ -122,3 +123,12 @@ test.each([{ selector: "web" as const }, { selector: 80 as const }])(
     expect(selection).toMatchObject({ status: "selected", endpoint: { port: 80, protocol: "http" } });
   },
 );
+
+test.each([
+  { scheme: "http" as const, generated: false, expected: "http" },
+  { scheme: "http" as const, generated: true, expected: "http" },
+  { scheme: "https" as const, generated: false, expected: undefined },
+  { scheme: "https" as const, generated: true, expected: "https" },
+])("derives the $scheme preference for generated=$generated", ({ scheme, generated, expected }) => {
+  expect(routeListenerPreference(scheme, generated)).toBe(expected);
+});

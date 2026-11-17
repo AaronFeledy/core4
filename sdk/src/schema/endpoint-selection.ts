@@ -143,6 +143,21 @@ export type HttpSchemePreference = "http" | "https";
  * preferred protocol the full HTTP(S) set keeps its current meaning. Order is
  * never used to break a tie, and a mixed-protocol listener stays ambiguous.
  */
+
+/**
+ * The listener preference one route scheme contributes.
+ *
+ * An HTTP route prefers an HTTP listener. An HTTPS route prefers an HTTPS
+ * listener only when the router can verify it, which means the service holds a
+ * Lando-generated certificate and finalization stamps `backend.tls` on the
+ * result. Without one, an HTTPS route takes the ordinary explicit-primary or
+ * unique-listener rule and falls back to the full HTTP(S) set.
+ */
+export const routeListenerPreference = (
+  scheme: HttpSchemePreference,
+  generatedCertificate: boolean,
+): HttpSchemePreference | undefined =>
+  scheme === "http" ? "http" : generatedCertificate ? "https" : undefined;
 export const selectHttpEndpoint = (
   endpoints: readonly EndpointPlan[],
   selector?: string | number,

@@ -7,6 +7,7 @@ import {
   ServiceName,
   type ServicePlan,
   type ValidationIssue,
+  routeListenerPreference,
   selectHttpEndpoint,
   validationIssue,
 } from "@lando/sdk/schema";
@@ -25,8 +26,13 @@ const unresolvedIssue = (
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
   scheme: HttpSchemePreference,
+  generatedCertificate: boolean,
 ): ValidationIssue => {
-  const selection = selectHttpEndpoint(endpoints, route.endpoint, scheme);
+  const selection = selectHttpEndpoint(
+    endpoints,
+    route.endpoint,
+    routeListenerPreference(scheme, generatedCertificate),
+  );
   const unrestricted = selectHttpEndpoint(endpoints);
   const message =
     selection.status === "ambiguous"
@@ -47,24 +53,30 @@ const unresolvedIssue = (
  * Bind one authored route to the service's listeners.
  *
  * A single-scheme route yields one plan. `scheme: both` yields HTTP then HTTPS,
- * each selected independently with that protocol preferred, so an HTTP primary
- * plus a generated HTTPS secondary produces two plans instead of one. Any half
- * that cannot select a listener fails the whole authored entry: a route is
- * never partially published. Authored selectors stay authoritative on both
- * plans and ignore the scheme preference.
+ * each selected independently through the shared `routeListenerPreference`: an
+ * HTTP route prefers an HTTP listener, while an HTTPS route prefers an HTTPS
+ * listener only when the service holds a generated certificate the router can
+ * verify. Any half that cannot select a listener fails the whole authored
+ * entry: a route is never partially published. Authored selectors stay
+ * authoritative on both plans and ignore the scheme preference.
  */
 export const bindRoute = (
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
+  generatedCertificate: boolean,
 ): Result.Result<readonly RoutePlan[], ValidationIssue> => {
   const plans: RoutePlan[] = [];
   for (const scheme of routeSchemes(route.scheme)) {
-    const selection = selectHttpEndpoint(endpoints, route.endpoint, scheme);
+    const selection = selectHttpEndpoint(
+      endpoints,
+      route.endpoint,
+      routeListenerPreference(scheme, generatedCertificate),
+    );
     switch (selection.status) {
       case "none":
       case "ambiguous":
-        return Result.fail(unresolvedIssue(serviceName, endpoints, route, scheme));
+        return Result.fail(unresolvedIssue(serviceName, endpoints, route, scheme, generatedCertificate));
       case "selected":
         plans.push({
           priority: 2,
@@ -93,8 +105,9 @@ export const resolveRoute = Effect.fnUntraced(function* (
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
+  generatedCertificate: boolean,
 ): Effect.fn.Return<readonly RoutePlan[], LandofileValidationError> {
-  return yield* Effect.fromResult(bindRoute(serviceName, endpoints, route)).pipe(
+  return yield* Effect.fromResult(bindRoute(serviceName, endpoints, route, generatedCertificate)).pipe(
     mapFailures(
       (issue) =>
         new LandofileValidationError({

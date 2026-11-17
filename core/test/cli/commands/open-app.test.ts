@@ -701,6 +701,7 @@ test("default open follows a generated HTTPS route when the service's primary li
           { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
           { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
         ],
+        certs: { cn: "web.myapp.internal", sans: ["web.myapp.internal"], caId: "mkcert" },
       },
     },
   };

@@ -282,6 +282,7 @@ test("does not skip a service whose only route targets its generated HTTPS liste
           },
           { _tag: "internal" as const, protocol: "https" as const, port: 443, name: "web-https" },
         ],
+        certs: { cn: "web.nobody.internal", sans: ["web.nobody.internal"], caId: "mkcert" },
       },
       [ServiceName.make("mailpit")]: mailpit,
     },

@@ -25,7 +25,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
             (endpoint) => endpoint.protocol === "http" || endpoint.protocol === "https",
           ) || routes.some((route) => route.service === service.name)
         );
-      return defaultHttpListeners(service.endpoints).length > 0;
+      return defaultHttpListeners(service.endpoints, service.certs !== undefined).length > 0;
     }),
   );
   if (Object.keys(services).length === 0) return [];
@@ -43,7 +43,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
   if (selection.service === undefined && selection.route === undefined && selection.all !== true) {
     const observed: StartedService[] = [];
     for (const entry of entries) {
-      const listeners = defaultHttpListeners(entry[1].endpoints);
+      const listeners = defaultHttpListeners(entry[1].endpoints, entry[1].certs !== undefined);
       if (
         !routes.some(
           (route) =>

@@ -9,6 +9,7 @@ import {
   TunnelStopRequest,
   TunnelTarget,
   type TunnelTarget as TunnelTargetType,
+  routeListenerPreference,
   selectHttpEndpoint,
 } from "@lando/sdk/schema";
 import {
@@ -114,13 +115,20 @@ const resolvePlan = Effect.fnUntraced(function* (
 export const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
   const routes = routerEnabled(plan) ? plan.routes : [];
   const primary = Object.values(plan.services).find((service) => service.primary);
-  // Per-scheme plans leave the primary service's plain listener HTTP while the
-  // default route prefers HTTPS. Eligibility is the primary SERVICE, then its
-  // HTTPS-preferred listener, then any HTTPS route, so the split default route
-  // wins without losing the older preference for a marked primary listener.
+  // Per-scheme plans leave the primary service's plain listener HTTP while a
+  // verifiable HTTPS listener serves the HTTPS route. Eligibility is the primary
+  // SERVICE, then the listener the shared preference selects, then any HTTPS
+  // route, so the split default route wins without losing the older preference
+  // for a marked primary listener.
   const serviceRoutes = primary === undefined ? [] : routes.filter((route) => route.service === primary.name);
   const endpoint =
-    primary === undefined ? undefined : selectHttpEndpoint(primary.endpoints, undefined, "https");
+    primary === undefined
+      ? undefined
+      : selectHttpEndpoint(
+          primary.endpoints,
+          undefined,
+          routeListenerPreference("https", primary.certs !== undefined),
+        );
   const listenerRoutes =
     endpoint?.status === "selected"
       ? serviceRoutes.filter(

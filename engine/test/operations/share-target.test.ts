@@ -118,6 +118,7 @@ test("shares the generated HTTPS default route of a service whose primary listen
           { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
           { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
         ],
+        certs: { cn: "web.share-demo.internal", sans: ["web.share-demo.internal"], caId: "mkcert" },
       },
     },
     routes: [
@@ -134,5 +135,42 @@ test("shares the generated HTTPS default route of a service whose primary listen
     _tag: "route",
     routeId: "share-demo.lndo.site",
     hostname: "share-demo.lndo.site",
+  });
+});
+
+test("selects the primary listener of a service that holds no generated certificate", () => {
+  const plan: AppPlan = {
+    ...routedPlan,
+    services: {
+      [service]: {
+        ...web,
+        name: service,
+        endpoints: [
+          { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+        ],
+      },
+    },
+    routes: [
+      {
+        hostname: "primary.lndo.site",
+        priority: 2,
+        scheme: "https",
+        service,
+        backend: { service, protocol: "http", port: 80 },
+      },
+      {
+        hostname: "tls.lndo.site",
+        priority: 2,
+        scheme: "https",
+        service,
+        backend: { service, protocol: "https", port: 443 },
+      },
+    ],
+  };
+  expect(defaultTunnelTarget(plan)).toEqual({
+    _tag: "route",
+    routeId: "primary.lndo.site",
+    hostname: "primary.lndo.site",
   });
 });

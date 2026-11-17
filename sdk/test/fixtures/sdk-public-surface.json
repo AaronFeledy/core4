@@ -2048,6 +2048,7 @@
       "renderSchemaReferenceMarkdown",
       "reset",
       "resolveLifecycleCommandId",
+      "routeListenerPreference",
       "routerPortPairFromAcquisition",
       "sameImageReference",
       "sameRecipeFamily",

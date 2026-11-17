@@ -21,6 +21,7 @@ import {
   type ServicePlan,
   type StorageScope,
   parseContainerDestination,
+  routeListenerPreference,
   selectHttpEndpoint,
   serviceAppMount,
   validationIssue,
@@ -328,12 +329,19 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       yield* Effect.fail(error);
     const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities, accelerate);
 
-    const tls = { certificate: draft.certs, generated: draft.normalizedConfig.certs === true };
+    const generatedCertificate = draft.normalizedConfig.certs === true;
+    const tls = { certificate: draft.certs, generated: generatedCertificate };
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
       for (const [routeIndex, route] of authoredRoutes.entries()) {
         for (const plan of stampGeneratedBackendTls(
-          yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route),
+          yield* resolveRoute(
+            input.appRoot,
+            name,
+            servicePlanWithHome.endpoints,
+            route,
+            generatedCertificate,
+          ),
           tls,
         )) {
           routeRefs.push(
@@ -345,17 +353,27 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         }
       }
     } else {
-      // Discovery prefers the HTTPS listener, then records the resolved endpoint
-      // on the plan for reporting; it never turns that result into an authored
-      // selector before the binder chooses.
-      const selection = selectHttpEndpoint(servicePlanWithHome.endpoints, undefined, "https");
+      // Discovery uses the same preference the binder will, then records the
+      // resolved endpoint on the plan for reporting; it never turns that result
+      // into an authored selector before the binder chooses.
+      const selection = selectHttpEndpoint(
+        servicePlanWithHome.endpoints,
+        undefined,
+        routeListenerPreference("https", generatedCertificate),
+      );
       if (selection.status !== "none") {
         for (const plan of stampGeneratedBackendTls(
-          yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, {
-            hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
-            scheme: "https",
-            filters: [],
-          }),
+          yield* resolveRoute(
+            input.appRoot,
+            name,
+            servicePlanWithHome.endpoints,
+            {
+              hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
+              scheme: "https",
+              filters: [],
+            },
+            generatedCertificate,
+          ),
           tls,
         )) {
           routeRefs.push(
