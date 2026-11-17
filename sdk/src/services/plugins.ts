@@ -22,6 +22,7 @@ import type {
   ToolingTaskShape,
 } from "../schema/index.ts";
 import type { RegisteredCommand } from "../schema/registered-command.ts";
+import type { GeneratedCertificateEndpoint } from "../schema/service-resolution.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
 
@@ -139,6 +140,13 @@ export interface ServiceTypeResolution {
    */
   readonly connectionClientNames?: readonly string[];
   readonly metadata?: Record<string, unknown>;
+  /**
+   * The owned launcher's generated HTTPS listener, when it can serve the
+   * service's own generated certificate. It declares a capability and a port,
+   * not a certificate request: the association activates only for a materialized
+   * generated certificate and an HTTPS route that actually selects this port.
+   */
+  readonly generatedCertificateEndpoint?: GeneratedCertificateEndpoint;
 }
 
 /**

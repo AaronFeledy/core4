@@ -198,6 +198,9 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
   connectionClientNames: entry.resolution.connectionClientNames ?? [],
   ...(entry.resolution.connection === undefined ? {} : { connection: entry.resolution.connection }),
   ...(entry.resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: entry.resolution.nonSqlCreds }),
+  ...(entry.resolution.generatedCertificateEndpoint === undefined
+    ? {}
+    : { generatedCertificateEndpoint: entry.resolution.generatedCertificateEndpoint }),
   logSources: entry.logSources,
   features: entry.prepared.features.map((feature) => ({
     id: feature.id,

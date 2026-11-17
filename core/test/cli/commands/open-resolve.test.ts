@@ -67,7 +67,7 @@ describe("resolveOpenTargets", () => {
     "selects a marked primary listener when secondary observations arrive first: %j",
     (selection) => {
       const declared = withWebEndpoints([
-        { _tag: "internal", protocol: "https", port: 8080 },
+        { _tag: "internal", protocol: "http", port: 8080 },
         { _tag: "internal", protocol: "http", port: 80, primary: true },
       ]);
       const observed: readonly StartedService[] = [
@@ -76,7 +76,7 @@ describe("resolveOpenTargets", () => {
           state: "running",
           connections: [
             {
-              ...connection("secondary.test"),
+              ...connection("secondary.test", "http"),
               endpoint: { port: 8080, transport: "tcp", names: [], primary: false },
             },
             connection("primary.test", "http"),
@@ -89,10 +89,45 @@ describe("resolveOpenTargets", () => {
     },
   );
 
+  test.each([{}, { service: "web" }])(
+    "opens the HTTPS route a generated TLS listener serves beside the plain primary: %j",
+    (selection) => {
+      // A plain primary plus a non-primary HTTPS listener: each scheme's route binds its own listener.
+      const declared = withWebEndpoints([
+        { _tag: "internal", protocol: "http", port: 80, primary: true },
+        { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+      ]);
+      const tls = { port: 443, transport: "tcp", names: ["web-https"], primary: false } as const;
+      const both: readonly StartedService[] = [
+        {
+          name: "web",
+          state: "running",
+          connections: [connection("site.test", "http"), { ...connection("site.test"), endpoint: tls }],
+        },
+      ];
+      const httpsOnly: readonly StartedService[] = [
+        { name: "web", state: "running", connections: [{ ...connection("site.test"), endpoint: tls }] },
+      ];
+      expect(resolveOpenTargets(declared, selection, both).map((target) => target.url)).toEqual([
+        "https://site.test:8443/v1",
+      ]);
+      expect(resolveOpenTargets(declared, selection, httpsOnly).map((target) => target.url)).toEqual([
+        "https://site.test:8443/v1",
+      ]);
+      // An HTTPS route an author bound to the plain primary is still that service's URL.
+      const plainHttps: readonly StartedService[] = [
+        { name: "web", state: "running", connections: [connection("site.test")] },
+      ];
+      expect(resolveOpenTargets(declared, selection, plainHttps).map((target) => target.url)).toEqual([
+        "https://site.test:8443/v1",
+      ]);
+    },
+  );
+
   test.each([{}, { service: "web" }])("leaves two unmarked HTTP listeners unresolved: %j", (selection) => {
     const declared = withWebEndpoints([
       { _tag: "internal", protocol: "http", port: 80 },
-      { _tag: "internal", protocol: "https", port: 8080 },
+      { _tag: "internal", protocol: "http", port: 8080 },
     ]);
     const observed: readonly StartedService[] = [
       {
@@ -101,7 +136,7 @@ describe("resolveOpenTargets", () => {
         connections: [
           connection("first.test", "http"),
           {
-            ...connection("second.test"),
+            ...connection("second.test", "http"),
             endpoint: { port: 8080, transport: "tcp", names: [], primary: false },
           },
         ],

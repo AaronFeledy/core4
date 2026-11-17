@@ -114,18 +114,33 @@ const resolvePlan = Effect.fnUntraced(function* (
 export const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
   const routes = routerEnabled(plan) ? plan.routes : [];
   const primary = Object.values(plan.services).find((service) => service.primary);
-  const endpoint = primary === undefined ? undefined : selectHttpEndpoint(primary.endpoints);
-  const preferred =
-    endpoint?.status === "selected" && primary !== undefined
-      ? routes.filter(
+  // Per-scheme plans leave the primary service's plain listener HTTP while the
+  // default route prefers HTTPS. Eligibility is the primary SERVICE, then its
+  // HTTPS-preferred listener, then any HTTPS route, so the split default route
+  // wins without losing the older preference for a marked primary listener.
+  const serviceRoutes = primary === undefined ? [] : routes.filter((route) => route.service === primary.name);
+  const endpoint =
+    primary === undefined ? undefined : selectHttpEndpoint(primary.endpoints, undefined, "https");
+  const listenerRoutes =
+    endpoint?.status === "selected"
+      ? serviceRoutes.filter(
           (route) =>
-            route.service === primary.name &&
             route.backend.port === endpoint.endpoint.port &&
             route.backend.protocol === endpoint.endpoint.protocol,
         )
       : [];
+  const httpsRoutes = serviceRoutes.filter((route) => route.scheme !== "http");
+  const preferred =
+    listenerRoutes.length > 0 ? listenerRoutes : httpsRoutes.length > 0 ? httpsRoutes : serviceRoutes;
   const candidates = preferred.length > 0 ? preferred : routes;
-  const route = candidates.length === 1 ? candidates[0] : undefined;
+  // A tunnelled public authority is one hostname and path, regardless of how many
+  // scheme rows describe it.
+  const distinct = [
+    ...new Map(
+      candidates.map((route) => [`${route.hostname.toLowerCase()}\0${route.pathPrefix ?? "/"}`, route]),
+    ).values(),
+  ];
+  const route = distinct.length === 1 ? distinct[0] : undefined;
   if (route !== undefined) return { _tag: "route", routeId: route.hostname, hostname: route.hostname };
   return { _tag: "route", routeId: plan.id };
 };

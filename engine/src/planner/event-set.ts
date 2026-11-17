@@ -14,6 +14,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
+import { routerEnabledFrom } from "../config/router-config.ts";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
@@ -31,6 +32,7 @@ import {
   serviceScopeContext,
 } from "./landofile-scopes.ts";
 import { validateResolvedLandofile } from "./resolved-validation.ts";
+import { applyRouteDemandedCertificates } from "./route-certificate-defaults.ts";
 import { resolveServiceSeeds } from "./service-seeds.ts";
 import { contributionId, resolveHostFacts } from "./service-types.ts";
 import { toolingAndEventIssues } from "./tooling-event-issues.ts";
@@ -151,10 +153,21 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     ];
   }
   const validated = validateResolvedLandofile({ landofile, landofilePath, blocked, appSlug });
+  // A generated HTTPS route makes an owned Apache-style launcher demand its own
+  // certificate. Decide once here so endpoint projection, assembly, cache
+  // identity, and tooling all read the same effective `certs` value.
+  const effectiveSeeds = {
+    ...seeds,
+    services: applyRouteDemandedCertificates({
+      services: seeds.services,
+      routes: validated.routes,
+      routerEnabled: routerEnabledFrom(globalConfig?.router, landofile.router),
+    }),
+  };
   const projection = yield* projectEndpoints({
     dataName,
     appSlug,
-    services: seeds.services,
+    services: effectiveSeeds.services,
     unavailable: seeds.unavailable,
     landofile,
     manifests,
@@ -169,7 +182,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   });
   const issues = [...seeds.issues, ...validated.issues, ...projection.issues];
   const resolution = {
-    ...seeds,
+    ...effectiveSeeds,
     endpointProjection: projection,
     compiled: ServiceScopedLandofile.make({
       stage: "service-scoped",
@@ -199,7 +212,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     canonicalFile: input.file,
     toolingResolution: resolveEffectiveTooling({
       landofile,
-      services: seeds.services.map((entry) => ({
+      services: effectiveSeeds.services.map((entry) => ({
         name: entry.name,
         serviceTypeId: entry.serviceType.id,
         ...entry.resolution,

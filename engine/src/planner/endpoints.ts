@@ -52,6 +52,7 @@ import {
   requiredLogSourceCapabilityError,
   serviceResourceCapabilityErrors,
 } from "./resource-capabilities.ts";
+import { stampGeneratedBackendTls } from "./route-certificate-defaults.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import { resolveServiceArtifact } from "./service-artifact.ts";
 import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
@@ -327,32 +328,45 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       yield* Effect.fail(error);
     const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities, accelerate);
 
+    const tls = { certificate: draft.certs, generated: draft.normalizedConfig.certs === true };
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
       for (const [routeIndex, route] of authoredRoutes.entries()) {
-        routeRefs.push(
-          ...(yield* routeAccumulator.add(
-            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route),
-            route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
-          )),
-        );
+        for (const plan of stampGeneratedBackendTls(
+          yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route),
+          tls,
+        )) {
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
+              plan,
+              route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
+            )),
+          );
+        }
       }
     } else {
-      const selection = selectHttpEndpoint(servicePlanWithHome.endpoints);
+      // Discovery prefers the HTTPS listener, then records the resolved endpoint
+      // on the plan for reporting; it never turns that result into an authored
+      // selector before the binder chooses.
+      const selection = selectHttpEndpoint(servicePlanWithHome.endpoints, undefined, "https");
       if (selection.status !== "none") {
-        routeRefs.push(
-          ...(yield* routeAccumulator.add(
-            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, {
-              hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
-              scheme: "https",
-              filters: [],
-              ...(selection.status === "selected"
-                ? { endpoint: selection.endpoint.names[0] ?? selection.endpoint.port }
-                : {}),
-            }),
-            { key: `services.${name}.endpoints` },
-          )),
-        );
+        for (const plan of stampGeneratedBackendTls(
+          yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, {
+            hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
+            scheme: "https",
+            filters: [],
+          }),
+          tls,
+        )) {
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
+              selection.status === "selected"
+                ? { ...plan, endpoint: selection.endpoint.names[0] ?? selection.endpoint.port }
+                : plan,
+              { key: `services.${name}.endpoints` },
+            )),
+          );
+        }
       }
     }
     const servicePlanWithRoutes: ServicePlan = {

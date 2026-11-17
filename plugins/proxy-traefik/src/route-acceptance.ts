@@ -41,23 +41,29 @@ export const acceptsAllRoutes = (
   snapshot: RouteSnapshot,
   owner: AppRouteOwner,
   routes: ReadonlyArray<RoutePlan>,
+  references: ReadonlyArray<string | undefined> = [],
 ): boolean => {
   const namespace = routeNamespace(owner);
   const expected = routes.flatMap((route, index) =>
     routeSchemes(route).map((scheme) => ({
       route,
       scheme,
+      reference: references[index] === undefined ? undefined : `${references[index]}@file`,
       name: `${namespace}${index}-${scheme}@file`,
     })),
   );
   const owned = Object.keys(snapshot.routers).filter((name) => name.startsWith(`route-${owner.ownerKey}-`));
   return (
     owned.length === expected.length &&
-    expected.every(({ route, scheme, name }) => {
+    expected.every(({ route, scheme, reference, name }) => {
       const router = snapshot.routers[name];
       return (
         router !== undefined &&
-        matchesLiveRoute({ ...snapshot, routers: { [name]: router } }, owner, { route, scheme }) === true
+        matchesLiveRoute({ ...snapshot, routers: { [name]: router } }, owner, {
+          route,
+          scheme,
+          serversTransport: reference,
+        }) === true
       );
     })
   );
@@ -66,7 +72,11 @@ export const acceptsAllRoutes = (
 export const awaitRouteAcceptance = Effect.fn("TraefikRouter.awaitRouteAcceptance")(function* (
   dependencies: TraefikProxyDependencies,
   owner: AppRouteOwner,
-  input: { readonly routes: ReadonlyArray<RoutePlan>; readonly servedTls?: ServedTlsProof },
+  input: {
+    readonly routes: ReadonlyArray<RoutePlan>;
+    readonly servedTls?: ServedTlsProof;
+    readonly backendTransports?: ReadonlyArray<string | undefined>;
+  },
 ) {
   const { routes } = input;
   let classification = "graph-mismatch";
@@ -78,7 +88,7 @@ export const awaitRouteAcceptance = Effect.fn("TraefikRouter.awaitRouteAcceptanc
     },
     Effect.gen(function* () {
       const snapshot = yield* readLiveRouteSnapshot(dependencies, ["http"]);
-      if (snapshot === undefined || !acceptsAllRoutes(snapshot, owner, routes)) {
+      if (snapshot === undefined || !acceptsAllRoutes(snapshot, owner, routes, input.backendTransports)) {
         classification = "graph-mismatch";
         return false;
       }

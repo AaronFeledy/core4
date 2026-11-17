@@ -106,3 +106,33 @@ describe("defaultTunnelTarget", () => {
     expect(target).toEqual({ _tag: "route", routeId: "primary.demo.test", hostname: "primary.demo.test" });
   });
 });
+
+test("shares the generated HTTPS default route of a service whose primary listener is HTTP", () => {
+  const plan: AppPlan = {
+    ...routedPlan,
+    services: {
+      [service]: {
+        ...web,
+        name: service,
+        endpoints: [
+          { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+          { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+        ],
+      },
+    },
+    routes: [
+      {
+        hostname: "share-demo.lndo.site",
+        priority: 2,
+        scheme: "https",
+        service,
+        backend: { service, protocol: "https", port: 443, host: "web.share-demo.internal" },
+      },
+    ],
+  };
+  expect(defaultTunnelTarget(plan)).toEqual({
+    _tag: "route",
+    routeId: "share-demo.lndo.site",
+    hostname: "share-demo.lndo.site",
+  });
+});

@@ -29,7 +29,11 @@ const Router = Schema.Struct({
 });
 const Service = Schema.Struct({
   ...RuntimeStatus,
-  loadBalancer: Schema.Struct({ servers: Schema.Array(Schema.Struct({ url: Schema.String })) }),
+  loadBalancer: Schema.Struct({
+    servers: Schema.Array(Schema.Struct({ url: Schema.String })),
+    passHostHeader: Schema.optionalKey(Schema.Boolean),
+    serversTransport: Schema.optionalKey(Schema.String),
+  }),
 });
 const Middleware = Schema.Record(Schema.String, Schema.Unknown);
 
@@ -63,7 +67,12 @@ const reference = (name: string): string => (name.endsWith("@file") ? name : `${
 export const matchesLiveRoute = (
   snapshot: RouteSnapshot,
   owner: AppRouteOwner,
-  requested: { readonly route: RoutePlan; readonly scheme: "http" | "https" },
+  requested: {
+    readonly route: RoutePlan;
+    readonly scheme: "http" | "https";
+    /** Exact `name@file` transport reference the route requires, if any. */
+    readonly serversTransport?: string | undefined;
+  },
 ): boolean | undefined => {
   const { route, scheme } = requested;
   const namespace = routeNamespace(owner);
@@ -94,6 +103,10 @@ export const matchesLiveRoute = (
     if (
       service.status !== "enabled" ||
       (service.error?.length ?? 0) !== 0 ||
+      // Generated load balancers pass the browser Host through explicitly.
+      service.loadBalancer.passHostHeader !== true ||
+      // A missing, stale, or unexpected transport reference is not our graph.
+      service.loadBalancer.serversTransport !== requested.serversTransport ||
       !isDeepStrictEqual(service.loadBalancer.servers, [{ url: backend }])
     )
       return false;

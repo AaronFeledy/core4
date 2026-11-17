@@ -11,7 +11,7 @@ const route = Schema.decodeUnknownSync(RoutePlan)({
   backend: { service: "web", protocol: "http", port: 80 },
 });
 
-test("remaps carried route refs by canonical equality and drops absent routes", () => {
+test("remaps carried route refs by canonical equality and appends routes the incoming plan omits", () => {
   const other = { ...route, hostname: RoutePlan.fields.hostname.make("other.lndo.site") };
   const previous = {
     ...plan,
@@ -37,9 +37,11 @@ test("remaps carried route refs by canonical equality and drops absent routes", 
     { index: 1 },
     { index: 0 },
   ]);
-  expect(
-    mergeAppliedPlan(previous, { ...incoming, routes: [other] }).services[ServiceName.make("web")]?.routes,
-  ).toEqual([{ index: 0 }]);
+  // The incoming plan does not name web's own route, so it is carried at the end
+  // and the untouched container keeps a valid backend binding.
+  const carriedOnly = mergeAppliedPlan(previous, { ...incoming, routes: [other] });
+  expect(carriedOnly.services[ServiceName.make("web")]?.routes).toEqual([{ index: 1 }, { index: 0 }]);
+  expect(carriedOnly.routes[1]).toEqual(route);
   expect(mergeAppliedPlan(previous, incoming).services[ServiceName.make("db")]).toBe(incoming.services.db);
 });
 
@@ -76,4 +78,45 @@ test("carries only mounted previous stores while incoming store definitions win"
   ]);
   expect(mergeAppliedPlan(previous, incoming, { complete: true })).toBe(incoming);
   expect(mergeAppliedPlan(previous, incoming, { complete: false })).toEqual(merged);
+});
+
+test("keeps an untouched container's historical both route beside new per-scheme routes", () => {
+  // Given: an applied record from before per-scheme plans, one route per service.
+  const bothRoute = Schema.decodeUnknownSync(RoutePlan)({
+    hostname: "db.lndo.site",
+    scheme: "both",
+    service: "db",
+    backend: { service: "db", protocol: "http", port: 80 },
+  });
+  const previous = {
+    ...plan,
+    routes: [bothRoute],
+    services: {
+      web: { ...service, routes: [] },
+      db: { ...service, name: ServiceName.make("db"), routes: [{ index: 0 }] },
+    },
+  };
+  // When: a selected activation records fresh per-scheme routes for web only.
+  const httpRoute = Schema.decodeUnknownSync(RoutePlan)({
+    hostname: "web.lndo.site",
+    scheme: "http",
+    service: "web",
+    backend: { service: "web", protocol: "http", port: 80 },
+  });
+  const httpsRoute = Schema.decodeUnknownSync(RoutePlan)({
+    hostname: "web.lndo.site",
+    scheme: "https",
+    service: "web",
+    backend: { service: "web", protocol: "https", port: 443 },
+  });
+  const incoming = {
+    ...plan,
+    routes: [httpRoute, httpsRoute],
+    services: { web: { ...service, routes: [{ index: 0 }, { index: 1 }] } },
+  };
+  // Then: the untouched service keeps both its route object and its reference.
+  const merged = mergeAppliedPlan(previous, incoming);
+  expect(merged.services[ServiceName.make("db")]?.routes).toEqual([{ index: 2 }]);
+  expect(merged.routes[2]).toEqual(bothRoute);
+  expect(merged.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }, { index: 1 }]);
 });

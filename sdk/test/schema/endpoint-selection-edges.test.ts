@@ -70,3 +70,55 @@ test("allows repeated aliases on one Unix socket without creating a network list
   expect(issues).toEqual([]);
   expect(groupLogicalEndpoints(endpoints)).toEqual([]);
 });
+
+test.each([
+  { preferred: "https" as const, port: 443, protocol: "https" },
+  { preferred: "http" as const, port: 80, protocol: "http" },
+  { preferred: undefined, port: 80, protocol: "http" },
+])("prefers an available $preferred listener under an HTTP primary", ({ preferred, port, protocol }) => {
+  // Given
+  const endpoints = plans([
+    { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+    { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+  ]);
+  // When
+  const selection = selectHttpEndpoint(endpoints, undefined, preferred);
+  // Then
+  expect(selection).toMatchObject({ status: "selected", endpoint: { port, protocol } });
+});
+
+test("falls back to the HTTP(S) set when no listener serves the preferred protocol", () => {
+  // Given
+  const endpoints = plans([{ _tag: "internal", protocol: "http", port: 80, primary: true }]);
+  // When
+  const selection = selectHttpEndpoint(endpoints, undefined, "https");
+  // Then
+  expect(selection).toMatchObject({ status: "selected", endpoint: { port: 80, protocol: "http" } });
+});
+
+test("keeps ambiguity between two preferred-protocol listeners", () => {
+  // Given
+  const endpoints = plans([
+    { _tag: "internal", protocol: "https", port: 443, name: "a" },
+    { _tag: "internal", protocol: "https", port: 8443, name: "b" },
+  ]);
+  // When
+  const selection = selectHttpEndpoint(endpoints, undefined, "https");
+  // Then
+  expect(selection.status).toBe("ambiguous");
+});
+
+test.each([{ selector: "web" as const }, { selector: 80 as const }])(
+  "ignores the scheme preference when an authored selector names a listener: %j",
+  ({ selector }) => {
+    // Given
+    const endpoints = plans([
+      { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+      { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+    ]);
+    // When
+    const selection = selectHttpEndpoint(endpoints, selector, "https");
+    // Then
+    expect(selection).toMatchObject({ status: "selected", endpoint: { port: 80, protocol: "http" } });
+  },
+);

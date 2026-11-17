@@ -528,6 +528,7 @@ import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
 import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
+import { GeneratedCertificateEndpoint } from "./service-resolution.ts";
 import {
   DestroyOutcome,
   FileSyncQuiesceResult,
@@ -956,6 +957,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   EndpointInvariantIssue,
   HttpEndpointSelection,
   LogicalEndpoint,
+  GeneratedCertificateEndpoint,
   ServiceConnection,
   ServiceState,
   RouteEvidence,
@@ -1270,6 +1272,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointInvariantIssue: "Logical listener alias, primary, protocol, or scan-default conflict.",
   HttpEndpointSelection: "Unambiguous HTTP listener selection without order-based fallback.",
   LogicalEndpoint: "Grouped facets of one logical network listener.",
+  GeneratedCertificateEndpoint:
+    "Owned launcher HTTPS listener that can serve the service's generated certificate.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
   ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
   RouteEvidence: "Read-only configured ingress and live route publication evidence.",

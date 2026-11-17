@@ -130,9 +130,23 @@ export const endpointInvariantIssues = (
   return issues;
 };
 
+/** The HTTP(S) protocol a route prefers when its authored selector names no listener. */
+export type HttpSchemePreference = "http" | "https";
+
+/**
+ * Select one logical HTTP(S) listener.
+ *
+ * An authored name or port selector is authoritative and ignores the scheme
+ * preference entirely. Without a selector, the preference narrows the candidate
+ * set to listeners that serve that protocol when any exist, and the ordinary
+ * primary/unique-listener rule then picks within it. When no listener serves the
+ * preferred protocol the full HTTP(S) set keeps its current meaning. Order is
+ * never used to break a tie, and a mixed-protocol listener stays ambiguous.
+ */
 export const selectHttpEndpoint = (
   endpoints: readonly EndpointPlan[],
   selector?: string | number,
+  preferredScheme?: HttpSchemePreference,
 ): HttpEndpointSelection => {
   const groups = groupLogicalEndpoints(endpoints);
   const matching =
@@ -144,8 +158,13 @@ export const selectHttpEndpoint = (
   const http = matching.filter((group) =>
     group.protocols.some((protocol) => protocol === "http" || protocol === "https"),
   );
-  const primary = http.filter((group) => group.primary);
-  const candidates = selector === undefined && primary.length > 0 ? primary : http;
+  const preferred =
+    selector !== undefined || preferredScheme === undefined
+      ? http
+      : http.filter((group) => group.protocols.includes(preferredScheme));
+  const pool = preferred.length > 0 ? preferred : http;
+  const primary = pool.filter((group) => group.primary);
+  const candidates = selector === undefined && primary.length > 0 ? primary : pool;
   const candidate = candidates[0];
   if (candidate === undefined) return { status: "none" };
   const protocol = candidate.protocols[0];

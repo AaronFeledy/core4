@@ -25,6 +25,7 @@ import {
   type ServiceConfig,
   appIdentityKey,
   certificateNameForHostname,
+  serviceInternalAlias,
   validationIssue,
 } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
@@ -96,8 +97,6 @@ const validationError = (
 const customMaterialError = (input: ResolveCertsFeatureInput, message: string, cause?: unknown) =>
   validationError(input, { message, remediation: CUSTOM_MATERIAL_REMEDIATION, cause });
 
-const internalAlias = (serviceName: string, appName: string): string => `${serviceName}.${appName}.internal`;
-
 /** Keep first occurrence; compare case-insensitively. */
 const dedupeCertificateNames = (names: ReadonlyArray<string>): ReadonlyArray<string> => {
   const seen = new Set<string>();
@@ -118,7 +117,7 @@ const certificateSans = (input: ResolveCertsFeatureInput): ReadonlyArray<string>
   ];
   return dedupeCertificateNames([
     input.serviceName,
-    internalAlias(input.serviceName, input.appName),
+    serviceInternalAlias(input.serviceName, input.appName),
     ...input.hostnames,
     ...routeHostnames.flatMap((hostname) => certificateNameForHostname(hostname) ?? []),
     "localhost",
@@ -130,7 +129,7 @@ const certificateSans = (input: ResolveCertsFeatureInput): ReadonlyArray<string>
 const requireMandatoryCertificateIdentities = (
   input: ResolveCertsFeatureInput,
 ): Effect.Effect<void, LandofileValidationError> => {
-  const identity = [input.serviceName, internalAlias(input.serviceName, input.appName)].find(
+  const identity = [input.serviceName, serviceInternalAlias(input.serviceName, input.appName)].find(
     (name) => !Schema.is(CertificateName)(name),
   );
   return identity === undefined
@@ -195,7 +194,7 @@ const planGeneratedCertificate = (
               input.leafLocation.ownerKey,
               input.serviceName,
             ),
-            cn: internalAlias(input.serviceName, input.appName),
+            cn: serviceInternalAlias(input.serviceName, input.appName),
             sans: certificateSans(input),
             caId: authority.id,
           }),

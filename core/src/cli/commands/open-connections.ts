@@ -1,10 +1,9 @@
 import { routerEnabled } from "@lando/engine/config/router-config";
 import { collectPlanConnections } from "@lando/engine/operations/connection-collector";
 import type { AppPlan, StartedService } from "@lando/sdk/schema";
-import { selectHttpEndpoint } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
-import { type OpenTargetSelection, resolveOpenTargets } from "./open-targets";
+import { type OpenTargetSelection, defaultHttpListeners, resolveOpenTargets } from "./open-targets";
 
 export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(function* (
   plan: AppPlan,
@@ -26,7 +25,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
             (endpoint) => endpoint.protocol === "http" || endpoint.protocol === "https",
           ) || routes.some((route) => route.service === service.name)
         );
-      return selectHttpEndpoint(service.endpoints).status === "selected";
+      return defaultHttpListeners(service.endpoints).length > 0;
     }),
   );
   if (Object.keys(services).length === 0) return [];
@@ -44,24 +43,14 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
   if (selection.service === undefined && selection.route === undefined && selection.all !== true) {
     const observed: StartedService[] = [];
     for (const entry of entries) {
-      const listener = selectHttpEndpoint(entry[1].endpoints);
-      switch (listener.status) {
-        case "none":
-        case "ambiguous":
-          continue;
-        case "selected":
-          break;
-        default: {
-          const unreachable: never = listener;
-          return unreachable;
-        }
-      }
+      const listeners = defaultHttpListeners(entry[1].endpoints);
       if (
         !routes.some(
           (route) =>
             route.service === entry[1].name &&
-            route.backend.port === listener.endpoint.port &&
-            listener.endpoint.transport === "tcp",
+            listeners.some(
+              (listener) => listener.transport === "tcp" && listener.port === route.backend.port,
+            ),
         )
       )
         continue;

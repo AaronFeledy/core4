@@ -35,8 +35,13 @@ test.each([{ selector: undefined }, { selector: 8080 }, { selector: "browser" },
     );
     // Then
     for (const resolved of routes) {
-      expect(resolved.backend).toEqual({ service: ServiceName.make("web"), port: 8080, protocol: "http" });
-      expect(resolved.pathPrefix).toBe("/api");
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0]?.backend).toEqual({
+        service: ServiceName.make("web"),
+        port: 8080,
+        protocol: "http",
+      });
+      expect(resolved[0]?.pathPrefix).toBe("/api");
     }
   },
 );
@@ -47,7 +52,8 @@ test("selects a named secondary instead of the marked HTTP primary", async () =>
   // When
   const resolved = await Effect.runPromise(resolveRoute("/app", "web", endpoints, route));
   // Then
-  expect(resolved.backend.port).toBe(9000);
+  expect(resolved).toHaveLength(1);
+  expect(resolved[0]?.backend.port).toBe(9000);
 });
 
 test("uses the unique HTTP listener when a non-HTTP listener is primary", async () => {
@@ -61,7 +67,8 @@ test("uses the unique HTTP listener when a non-HTTP listener is primary", async 
     resolveRoute("/app", "mail", facets, { hostname: "mail.test", filters: [] }),
   );
   // Then
-  expect(resolved.backend.port).toBe(8025);
+  expect(resolved).toHaveLength(1);
+  expect(resolved[0]?.backend.port).toBe(8025);
 });
 
 test.each([
@@ -84,4 +91,77 @@ test.each([
       _tag: "LandofileValidationError",
       issues: [{ path: ["services", "web", "routes"] }],
     });
+});
+
+const dualListener = (): readonly EndpointPlan[] => [
+  { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+  { _tag: "internal", protocol: "https", port: 443, name: "web-https" },
+];
+
+test("binds both as independent HTTP then HTTPS plans", async () => {
+  // Given
+  const route = { hostname: "app.test", scheme: "both" as const, filters: [] };
+  // When
+  const resolved = await Effect.runPromise(resolveRoute("/app", "web", dualListener(), route));
+  // Then
+  expect(resolved.map((plan) => [plan.scheme, plan.backend.port, plan.backend.protocol])).toEqual([
+    ["http", 80, "http"],
+    ["https", 443, "https"],
+  ]);
+});
+
+test("default HTTPS selects the generated HTTPS secondary over an HTTP primary", async () => {
+  // Given
+  const route = { hostname: "app.test", filters: [] };
+  // When
+  const resolved = await Effect.runPromise(resolveRoute("/app", "web", dualListener(), route));
+  // Then
+  expect(resolved).toHaveLength(1);
+  expect(resolved[0]).toMatchObject({ scheme: "https", backend: { port: 443, protocol: "https" } });
+});
+
+test("an authored HTTP selector ignores the HTTPS preference on both plans", async () => {
+  // Given
+  const route = { hostname: "app.test", scheme: "both" as const, endpoint: "web", filters: [] };
+  // When
+  const resolved = await Effect.runPromise(resolveRoute("/app", "web", dualListener(), route));
+  // Then
+  expect(resolved.map((plan) => plan.backend.port)).toEqual([80, 80]);
+});
+
+test("never partially publishes both when one half cannot select", async () => {
+  // Given
+  const onlyHttp: readonly EndpointPlan[] = [
+    { _tag: "internal", protocol: "http", port: 80, name: "web", primary: true },
+  ];
+  // When
+  const resolved = await Effect.runPromise(
+    Effect.result(
+      resolveRoute("/app", "web", onlyHttp, { hostname: "app.test", scheme: "both", filters: [] }),
+    ),
+  );
+  // Then
+  expect(Result.isSuccess(resolved)).toBe(true);
+  if (Result.isSuccess(resolved))
+    expect(resolved.success.map((plan) => [plan.scheme, plan.backend.port])).toEqual([
+      ["http", 80],
+      ["https", 80],
+    ]);
+});
+
+test("fails both when the HTTPS half is ambiguous", async () => {
+  // Given
+  const ambiguous: readonly EndpointPlan[] = [
+    { _tag: "internal", protocol: "http", port: 80, primary: true },
+    { _tag: "internal", protocol: "https", port: 443 },
+    { _tag: "internal", protocol: "https", port: 8443 },
+  ];
+  // When
+  const resolved = await Effect.runPromise(
+    Effect.result(
+      resolveRoute("/app", "web", ambiguous, { hostname: "app.test", scheme: "both", filters: [] }),
+    ),
+  );
+  // Then
+  expect(Result.isFailure(resolved)).toBe(true);
 });

@@ -1,6 +1,7 @@
 import type { AppRouteOwner, RoutePlan } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { planBackendTransports } from "./backend-transport.ts";
 import { ensureDashboardFile, renderTraefikDashboardConfig } from "./dashboard.ts";
 import { readAcquisitionState } from "./port-acquisition-state.ts";
 import {
@@ -74,8 +75,17 @@ export const makeRouteApplication = (
       return { app, appliedRoutes: nextRoutes, authorities: authoritiesFor(nextRoutes, ports) };
     }
     const hostnames = httpsHostnames(nextRoutes);
+    // The root is demanded by a frontend HTTPS route OR a managed TLS backend.
+    // Root demand stays separate from frontend certificate preparation: an HTTP
+    // frontend with a managed HTTPS backend reads the root but issues no leaves.
+    const managedBackendTls = nextRoutes.some((route) => route.backend.tls !== undefined);
     const root =
-      hostnames.length === 0 ? undefined : (yield* dependencies.certificateAuthority.root).certificate;
+      hostnames.length === 0 && !managedBackendTls
+        ? undefined
+        : (yield* dependencies.certificateAuthority.root).certificate;
+    const backendTransports = planBackendTransports(nextRoutes, owner, root);
+    if (backendTransports.invalidRoot)
+      return yield* Effect.fail(acceptanceError(app, "backend-root-invalid"));
     const expectedTls =
       hostnames.length === 0
         ? undefined
@@ -91,8 +101,10 @@ export const makeRouteApplication = (
           : yield* readOptional(dependencies, defaultIssuerFile(dependencies.paths, domain)),
     };
     const persistedConfig = snapshot.routeConfig;
+    // Frontend leaves are prepared only for frontend HTTPS; managed backend TLS
+    // consumes the root inline in the transport instead.
     const tls =
-      root === undefined
+      root === undefined || hostnames.length === 0
         ? undefined
         : yield* prepareTlsFiles(dependencies, {
             owner,
@@ -102,7 +114,7 @@ export const makeRouteApplication = (
             root,
           });
     const expectedConfig =
-      renderTraefikDynamicConfig(nextRoutes, owner, expectedTls) +
+      renderTraefikDynamicConfig(nextRoutes, owner, expectedTls, backendTransports) +
       (tls === undefined ? "" : `# lando-certificate-generation: ${tls.generation}\n`);
     const tlsCurrent = tls === undefined || snapshot.defaultTlsConfig === tls.config.content;
     const unchanged =
@@ -140,6 +152,7 @@ export const makeRouteApplication = (
       }
       yield* awaitRouteAcceptance(dependencies, owner, {
         routes: nextRoutes,
+        backendTransports: backendTransports.references,
         ...(tls === undefined ? {} : { servedTls: { domain, tls } }),
       });
       if (
@@ -152,6 +165,7 @@ export const makeRouteApplication = (
     } else {
       yield* awaitRouteAcceptance(dependencies, owner, {
         routes: nextRoutes,
+        backendTransports: backendTransports.references,
         ...(tls === undefined ? {} : { servedTls: { domain, tls } }),
       });
       if (
