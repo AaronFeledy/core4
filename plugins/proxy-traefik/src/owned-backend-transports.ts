@@ -56,24 +56,21 @@ export const readOwnedBackendTransports = Effect.fnUntraced(function* (
       references.push(undefined);
       continue;
     }
-    const match = entries
+    const matches = entries
       .filter(([name]) => name.startsWith(`${namespace}tls-`))
       .flatMap(([name, value]) => {
         const body = Option.getOrUndefined(decodeObservedTransportBody(value));
         if (body === undefined) return [];
         if (body.serverName !== tls.serverName) return [];
-        const reference = observedTransportReference({
-          namespace,
-          caId: tls.caId,
-          body,
-        });
         // The reader reports the bare transport name; callers add `@file` so the
         // reference is spelled once, in the renderer.
-        return reference === `${name}@file` ? [{ name, reference: name }] : [];
+        return observedTransportReference({ namespace, caId: tls.caId, body }) === `${name}@file`
+          ? [name]
+          : [];
       });
-    const found = match[0];
-    if (found === undefined || match.length !== 1) return undefined;
-    references.push(found.reference);
+    const found = matches[0];
+    if (found === undefined || matches.length !== 1) return undefined;
+    references.push(found);
   }
   return references;
 });

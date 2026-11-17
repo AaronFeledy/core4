@@ -3,28 +3,6 @@ import type { CertificatePlan, GeneratedCertificateEndpoint, RoutePlan } from "@
 import { isRootContainerUser } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
 
-/**
- * Effective certificate demand for one service, derived from route intent.
- *
- * The service-owned capability is `generatedCertificateEndpoint`: an owned
- * launcher can serve the service's generated certificate on that HTTPS port.
- * Only a materialized generated certificate activates the association, and an
- * authored `certs` value stays authoritative in every form (`true`, `false`, or
- * custom material). A route asks for that certificate when it can actually land
- * on the generated listener: an HTTPS or `both` route with no selector, a
- * numeric selector naming the generated port, or a named selector resolving to
- * an authored HTTPS endpoint on that port. An authored endpoint replacement
- * keeps the association only when it still declares the generated HTTPS
- * listener; otherwise the route binds the plain listener and TLS terminates at
- * the router.
- *
- * The decision is pure and runs before feature preparation so the same seeds
- * carry the effective `certs` value into endpoint projection, assembly, plan
- * cache identity, and tooling projection. It never contacts a certificate
- * authority and never mutates the authored Landofile. `generatedCertificateDemand`
- * is the one classifier: certificate demand activates only on `active`, and
- * lint reports the `suppressed` reasons without re-deciding the route intent.
- */
 const authoredHttpsListenerSurvives = (resolution: ServiceTypeResolution, tlsPort: number): boolean => {
   const endpoints = resolution.normalizedConfig.endpoints;
   if (endpoints === undefined) return true;
@@ -73,6 +51,28 @@ const nativeTlsSuppression = (
   return undefined;
 };
 
+/**
+ * Effective certificate demand for one service, derived from route intent.
+ *
+ * The service-owned capability is `generatedCertificateEndpoint`: an owned
+ * launcher can serve the service's generated certificate on that HTTPS port.
+ * Only a materialized generated certificate activates the association, and an
+ * authored `certs` value stays authoritative in every form (`true`, `false`, or
+ * custom material). A route asks for that certificate when it can actually land
+ * on the generated listener: an HTTPS or `both` route with no selector, a
+ * numeric selector naming the generated port, or a named selector resolving to
+ * an authored HTTPS endpoint on that port. An authored endpoint replacement
+ * keeps the association only when it still declares the generated HTTPS
+ * listener; otherwise the route binds the plain listener and TLS terminates at
+ * the router.
+ *
+ * The decision is pure and runs before feature preparation so the same seeds
+ * carry the effective `certs` value into endpoint projection, assembly, plan
+ * cache identity, and tooling projection. It never contacts a certificate
+ * authority and never mutates the authored Landofile. This is the one
+ * classifier: certificate demand activates only on `active`, and lint reports
+ * the `suppressed` reasons without re-deciding the route intent.
+ */
 export const generatedCertificateDemand = (input: {
   readonly resolution: ServiceTypeResolution;
   readonly routes: readonly NormalizedRoute[] | undefined;
@@ -94,12 +94,6 @@ export const generatedCertificateDemand = (input: {
     : { kind: "suppressed", reason, endpoint: association };
 };
 
-const demandsGeneratedCertificate = (input: {
-  readonly resolution: ServiceTypeResolution;
-  readonly routes: readonly NormalizedRoute[] | undefined;
-  readonly routerEnabled: boolean;
-}): boolean => generatedCertificateDemand(input).kind === "active";
-
 export const applyRouteDemandedCertificates = <
   Service extends { readonly name: string; readonly resolution: ServiceTypeResolution },
 >(input: {
@@ -109,11 +103,11 @@ export const applyRouteDemandedCertificates = <
 }): readonly Service[] =>
   input.services.map((service) => {
     if (
-      !demandsGeneratedCertificate({
+      generatedCertificateDemand({
         resolution: service.resolution,
         routes: input.routes.get(service.name),
         routerEnabled: input.routerEnabled,
-      })
+      }).kind !== "active"
     )
       return service;
     return {

@@ -101,8 +101,6 @@ export const makeRouteApplication = (
           : yield* readOptional(dependencies, defaultIssuerFile(dependencies.paths, domain)),
     };
     const persistedConfig = snapshot.routeConfig;
-    // Frontend leaves are prepared only for frontend HTTPS; managed backend TLS
-    // consumes the root inline in the transport instead.
     const tls =
       root === undefined || hostnames.length === 0
         ? undefined

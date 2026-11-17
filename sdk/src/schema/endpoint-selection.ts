@@ -134,17 +134,6 @@ export const endpointInvariantIssues = (
 export type HttpSchemePreference = "http" | "https";
 
 /**
- * Select one logical HTTP(S) listener.
- *
- * An authored name or port selector is authoritative and ignores the scheme
- * preference entirely. Without a selector, the preference narrows the candidate
- * set to listeners that serve that protocol when any exist, and the ordinary
- * primary/unique-listener rule then picks within it. When no listener serves the
- * preferred protocol the full HTTP(S) set keeps its current meaning. Order is
- * never used to break a tie, and a mixed-protocol listener stays ambiguous.
- */
-
-/**
  * The listener preference one route scheme contributes.
  *
  * An HTTP route prefers an HTTP listener. An HTTPS route prefers an HTTPS
@@ -158,6 +147,17 @@ export const routeListenerPreference = (
   generatedCertificate: boolean,
 ): HttpSchemePreference | undefined =>
   scheme === "http" ? "http" : generatedCertificate ? "https" : undefined;
+
+/**
+ * Select one logical HTTP(S) listener.
+ *
+ * An authored name or port selector is authoritative and ignores the scheme
+ * preference entirely. Without a selector, the preference narrows the candidate
+ * set to listeners that serve that protocol when any exist, and the ordinary
+ * primary/unique-listener rule then picks within it. When no listener serves the
+ * preferred protocol the full HTTP(S) set keeps its current meaning. Order is
+ * never used to break a tie, and a mixed-protocol listener stays ambiguous.
+ */
 export const selectHttpEndpoint = (
   endpoints: readonly EndpointPlan[],
   selector?: string | number,
